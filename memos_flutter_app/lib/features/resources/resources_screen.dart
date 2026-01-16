@@ -1,0 +1,125 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../core/url.dart';
+import '../../data/models/local_memo.dart';
+import '../../state/database_provider.dart';
+import '../../state/memos_providers.dart';
+import '../../state/session_provider.dart';
+import '../about/about_screen.dart';
+import '../home/app_drawer.dart';
+import '../memos/memo_detail_screen.dart';
+import '../memos/memos_list_screen.dart';
+import '../review/ai_summary_screen.dart';
+import '../review/daily_review_screen.dart';
+import '../settings/settings_screen.dart';
+import '../stats/stats_screen.dart';
+import '../tags/tags_screen.dart';
+
+class ResourcesScreen extends ConsumerWidget {
+  const ResourcesScreen({super.key});
+
+  void _navigate(BuildContext context, AppDrawerDestination dest) {
+    Navigator.of(context).pop();
+    final route = switch (dest) {
+      AppDrawerDestination.memos =>
+        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
+      AppDrawerDestination.aiSummary => const AiSummaryScreen(),
+      AppDrawerDestination.archived => const MemosListScreen(title: '回收站', state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.tags => const TagsScreen(),
+      AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.stats => const StatsScreen(),
+      AppDrawerDestination.settings => const SettingsScreen(),
+      AppDrawerDestination.about => const AboutScreen(),
+    };
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+  }
+
+  void _openTag(BuildContext context, String tag) {
+    Navigator.of(context).pop();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => MemosListScreen(
+          title: '#$tag',
+          state: 'NORMAL',
+          tag: tag,
+          showDrawer: true,
+          enableCompose: true,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    final authHeader = (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
+
+    final entriesAsync = ref.watch(resourcesProvider);
+    final dateFmt = DateFormat('yyyy-MM-dd');
+
+    return Scaffold(
+      drawer: AppDrawer(
+        selected: AppDrawerDestination.resources,
+        onSelect: (d) => _navigate(context, d),
+        onSelectTag: (t) => _openTag(context, t),
+      ),
+      appBar: AppBar(title: const Text('附件')),
+      body: entriesAsync.when(
+        data: (entries) => entries.isEmpty
+            ? const Center(child: Text('暂无附件'))
+            : ListView.separated(
+                itemBuilder: (context, index) {
+                  final entry = entries[index];
+                  final a = entry.attachment;
+                  final isImage = a.type.startsWith('image/');
+                  final isAudio = a.type.startsWith('audio');
+
+                  final leading = isImage && baseUrl != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: a.externalLink.isNotEmpty
+                                ? a.externalLink
+                                : '${joinBaseUrl(baseUrl, 'file/${a.name}/${a.filename}')}?thumbnail=true',
+                            httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => const SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: Icon(Icons.image),
+                            ),
+                          ),
+                        )
+                      : Icon(isAudio ? Icons.mic : Icons.attach_file);
+
+                  return ListTile(
+                    leading: leading,
+                    title: Text(a.filename),
+                    subtitle: Text('${a.type} · ${dateFmt.format(entry.memoUpdateTime)}'),
+                    onTap: () async {
+                      final row = await ref.read(databaseProvider).getMemoByUid(entry.memoUid);
+                      if (row == null) return;
+                      final memo = LocalMemo.fromDb(row);
+                      if (!context.mounted) return;
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo)),
+                      );
+                    },
+                  );
+                },
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemCount: entries.length,
+              ),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('加载失败：$e')),
+      ),
+    );
+  }
+}
