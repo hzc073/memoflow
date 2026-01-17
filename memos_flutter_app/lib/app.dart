@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/lock/app_lock_gate.dart';
 import 'state/logging_provider.dart';
 import 'state/preferences_provider.dart';
 import 'state/session_provider.dart';
@@ -110,7 +111,7 @@ class App extends ConsumerWidget {
         final media = MediaQuery.of(context);
         return MediaQuery(
           data: media.copyWith(textScaler: TextScaler.linear(scale)),
-          child: child ?? const SizedBox.shrink(),
+          child: AppLockGate(child: child ?? const SizedBox.shrink()),
         );
       },
       home: sessionAsync.when(

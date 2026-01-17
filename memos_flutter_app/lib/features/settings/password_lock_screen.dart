@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
@@ -7,68 +8,15 @@ import '../../state/app_lock_provider.dart';
 class PasswordLockScreen extends ConsumerWidget {
   const PasswordLockScreen({super.key});
 
-  Future<bool> _showSetPasswordDialog(BuildContext context, {required bool isChange}) async {
-    final pwd = TextEditingController();
-    final confirm = TextEditingController();
-
-    Future<void> dispose() async {
-      pwd.dispose();
-      confirm.dispose();
-    }
-
-    final ok = await showDialog<bool>(
+  Future<String?> _showSetPasswordDialog(BuildContext context, {required bool isChange}) async {
+    final password = await showDialog<String?>(
           context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: Text(isChange ? '修改密码' : '设置密码'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: pwd,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: '新密码',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: confirm,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: '确认密码',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-                FilledButton(
-                  onPressed: () {
-                    final p1 = pwd.text.trim();
-                    final p2 = confirm.text.trim();
-                    if (p1.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入密码')));
-                      return;
-                    }
-                    if (p1 != p2) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('两次输入不一致')));
-                      return;
-                    }
-                    Navigator.of(context).pop(true);
-                  },
-                  child: const Text('确定'),
-                ),
-              ],
-            );
-          },
-        ) ??
-        false;
+          builder: (context) => _PasswordDialog(isChange: isChange),
+        );
 
-    await dispose();
-    return ok;
+    final trimmed = password?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
   }
 
   Future<void> _selectAutoLockTime(BuildContext context, WidgetRef ref, AutoLockTime selected) async {
@@ -170,10 +118,12 @@ class PasswordLockScreen extends ConsumerWidget {
                           return;
                         }
                         if (!state.hasPassword) {
-                          final ok = await _showSetPasswordDialog(context, isChange: false);
-                          if (!ok) return;
-                          ref.read(appLockProvider.notifier).setHasPassword(true);
+                          final password = await _showSetPasswordDialog(context, isChange: false);
+                          if (password == null) return;
+                          if (!context.mounted) return;
+                          await ref.read(appLockProvider.notifier).setPassword(password);
                         }
+                        if (!context.mounted) return;
                         ref.read(appLockProvider.notifier).setEnabled(true);
                       },
                       activeThumbColor: Colors.white,
@@ -201,10 +151,11 @@ class PasswordLockScreen extends ConsumerWidget {
                   textMain: textMain,
                   textMuted: textMuted,
                   onTap: () async {
-                    final ok = await _showSetPasswordDialog(context, isChange: true);
-                    if (!ok) return;
+                    final password = await _showSetPasswordDialog(context, isChange: true);
+                    if (password == null) return;
                     if (!context.mounted) return;
-                    ref.read(appLockProvider.notifier).setHasPassword(true);
+                    await ref.read(appLockProvider.notifier).setPassword(password);
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已修改密码（本地）')));
                   },
                 ),
@@ -228,6 +179,102 @@ class PasswordLockScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog({required this.isChange});
+
+  final bool isChange;
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  late final TextEditingController _pwdController;
+  late final TextEditingController _confirmController;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _pwdController = TextEditingController();
+    _confirmController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _pwdController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final p1 = _pwdController.text.trim();
+    final p2 = _confirmController.text.trim();
+    if (p1.isEmpty) {
+      setState(() => _error = '请输入密码');
+      return;
+    }
+    if (p1 != p2) {
+      setState(() => _error = '两次输入不一致');
+      return;
+    }
+    Navigator.of(context).pop(p1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.isChange ? '修改密码' : '设置密码'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _pwdController,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            textInputAction: TextInputAction.next,
+            enableSuggestions: false,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: '新密码',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _confirmController,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            textInputAction: TextInputAction.done,
+            enableSuggestions: false,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: '确认密码',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(null), child: const Text('取消')),
+        FilledButton(onPressed: _submit, child: const Text('确定')),
+      ],
     );
   }
 }

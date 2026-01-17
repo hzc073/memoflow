@@ -23,6 +23,7 @@ class AiSummaryScreen extends StatefulWidget {
 class _AiSummaryScreenState extends State<AiSummaryScreen> {
   final _promptController = TextEditingController();
   var _range = _AiRange.last7Days;
+  DateTimeRange? _customRange;
 
   @override
   void dispose() {
@@ -96,6 +97,37 @@ class _AiSummaryScreenState extends State<AiSummaryScreen> {
     _promptController.selection = TextSelection.fromPosition(
       TextPosition(offset: _promptController.text.length),
     );
+  }
+
+  Future<DateTimeRange?> _pickCustomRange() {
+    final now = DateTime.now();
+    final initial = _customRange ??
+        DateTimeRange(
+          start: DateTime(now.year, now.month, now.day).subtract(
+            const Duration(days: 6),
+          ),
+          end: DateTime(now.year, now.month, now.day),
+        );
+    return showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 1),
+      initialDateRange: initial,
+    );
+  }
+
+  Future<void> _handleCustomRangeTap() async {
+    final previous = _range;
+    final picked = await _pickCustomRange();
+    if (!mounted) return;
+    if (picked == null) {
+      setState(() => _range = previous);
+      return;
+    }
+    setState(() {
+      _customRange = picked;
+      _range = _AiRange.custom;
+    });
   }
 
   @override
@@ -242,8 +274,7 @@ class _AiSummaryScreenState extends State<AiSummaryScreen> {
                             child: _AiRangeButton(
                               label: _AiRange.custom.label,
                               selected: _range == _AiRange.custom,
-                              onTap: () =>
-                                  setState(() => _range = _AiRange.custom),
+                              onTap: _handleCustomRangeTap,
                               primary: MemoFlowPalette.primary,
                               background: chipBg,
                               borderColor: border,

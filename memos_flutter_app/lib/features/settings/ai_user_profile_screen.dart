@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
 
 class AiUserProfileScreen extends ConsumerStatefulWidget {
@@ -14,6 +15,7 @@ class AiUserProfileScreen extends ConsumerStatefulWidget {
 class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
   late final TextEditingController _controller;
   var _saving = false;
+  ProviderSubscription<AiSettings>? _settingsSubscription;
 
   @override
   void initState() {
@@ -21,7 +23,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
     final settings = ref.read(aiSettingsProvider);
     _controller = TextEditingController(text: settings.userProfile);
 
-    ref.listen(aiSettingsProvider, (prev, next) {
+    _settingsSubscription = ref.listenManual<AiSettings>(aiSettingsProvider, (prev, next) {
       if (!mounted) return;
       if (_saving) return;
       if (_controller.text.trim() == (prev?.userProfile.trim() ?? '')) {
@@ -32,6 +34,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
 
   @override
   void dispose() {
+    _settingsSubscription?.close();
     _controller.dispose();
     super.dispose();
   }
@@ -184,4 +187,3 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
     );
   }
 }
-

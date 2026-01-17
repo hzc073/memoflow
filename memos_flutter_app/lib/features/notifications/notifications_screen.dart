@@ -32,6 +32,7 @@ class NotificationsScreen extends ConsumerWidget {
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
+          openDrawerOnStart: true,
         ),
       ),
       (route) => false,
@@ -95,7 +96,14 @@ class NotificationsScreen extends ConsumerWidget {
           onSelectTag: (t) => _openTag(context, t),
           onOpenNotifications: () => _openNotifications(context),
         ),
-        appBar: AppBar(title: const Text('通知')),
+        appBar: AppBar(
+          title: const Text('通知'),
+          leading: IconButton(
+            tooltip: '返回',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _backToAllMemos(context),
+          ),
+        ),
         body: notificationsAsync.when(
           data: (items) {
             if (items.isEmpty) {

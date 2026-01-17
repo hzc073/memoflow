@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
-import '../../state/theme_mode_provider.dart';
 import '../memos/memos_list_screen.dart';
 import '../stats/stats_screen.dart';
 import 'about_us_screen.dart';
@@ -84,7 +83,6 @@ class SettingsScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
       ),
-      floatingActionButton: const _ThemeToggleFab(),
       body: Stack(
         children: [
           if (isDark)
@@ -512,33 +510,6 @@ class _ShortcutTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ThemeToggleFab extends ConsumerWidget {
-  const _ThemeToggleFab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final icon = isDark ? Icons.wb_sunny_rounded : Icons.nightlight_round;
-
-    return FloatingActionButton.small(
-      backgroundColor: bg,
-      elevation: isDark ? 0 : 6,
-      onPressed: () {
-        final mode = ref.read(appThemeModeProvider);
-        final brightness = Theme.of(context).brightness;
-        final next = switch (mode) {
-          ThemeMode.light => ThemeMode.dark,
-          ThemeMode.dark => ThemeMode.light,
-          ThemeMode.system => brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark,
-        };
-        ref.read(appThemeModeProvider.notifier).state = next;
-      },
-      child: Icon(icon, color: MemoFlowPalette.primary),
     );
   }
 }

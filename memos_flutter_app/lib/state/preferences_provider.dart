@@ -52,7 +52,7 @@ class AppPreferences {
     uploadOriginalImage: false,
     launchAction: LaunchAction.none,
     hapticsEnabled: true,
-    useLegacyApi: false,
+    useLegacyApi: true,
     networkLoggingEnabled: true,
   );
 

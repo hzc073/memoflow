@@ -467,6 +467,48 @@ LIMIT ?;
     );
   }
 
+  Future<List<Map<String, dynamic>>> listMemoUidSyncStates({String? state}) async {
+    final db = await this.db;
+    final normalizedState = (state ?? '').trim();
+    return db.query(
+      'memos',
+      columns: const ['uid', 'sync_state'],
+      where: normalizedState.isEmpty ? null : 'state = ?',
+      whereArgs: normalizedState.isEmpty ? null : [normalizedState],
+    );
+  }
+
+  Future<Set<String>> listPendingOutboxMemoUids() async {
+    final db = await this.db;
+    final rows = await db.query(
+      'outbox',
+      columns: const ['type', 'payload'],
+      where: 'state IN (0, 2)',
+    );
+
+    final uids = <String>{};
+    for (final row in rows) {
+      final type = row['type'];
+      final payloadRaw = row['payload'];
+      if (type is! String || payloadRaw is! String) continue;
+      Map<String, dynamic>? payload;
+      try {
+        payload = (jsonDecode(payloadRaw) as Map).cast<String, dynamic>();
+      } catch (_) {
+        continue;
+      }
+      final uid = switch (type) {
+        'create_memo' || 'update_memo' || 'delete_memo' => payload['uid'],
+        'upload_attachment' => payload['memo_uid'],
+        _ => null,
+      };
+      if (uid is String && uid.trim().isNotEmpty) {
+        uids.add(uid.trim());
+      }
+    }
+    return uids;
+  }
+
   Future<List<Map<String, dynamic>>> listMemosForExport({
     int? startTimeSec,
     int? endTimeSecExclusive,

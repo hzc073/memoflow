@@ -26,6 +26,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
   late final TextEditingController _apiUrlController;
   late final TextEditingController _apiKeyController;
   late final TextEditingController _promptController;
+  ProviderSubscription<AiSettings>? _settingsSubscription;
 
   var _model = '';
   var _dirty = false;
@@ -40,7 +41,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     _promptController = TextEditingController(text: settings.prompt);
     _model = settings.model;
 
-    ref.listen<AiSettings>(aiSettingsProvider, (prev, next) {
+    _settingsSubscription = ref.listenManual<AiSettings>(aiSettingsProvider, (prev, next) {
       if (_dirty || !mounted) return;
       _apiUrlController.text = next.apiUrl;
       _apiKeyController.text = next.apiKey;
@@ -53,6 +54,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
 
   @override
   void dispose() {
+    _settingsSubscription?.close();
     _apiUrlController.dispose();
     _apiKeyController.dispose();
     _promptController.dispose();
@@ -93,6 +95,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
 
     if (selected == '自定义…') {
       final custom = await _askCustomModel();
+      if (!mounted) return;
       if (custom == null || custom.trim().isEmpty) return;
       setState(() {
         _model = custom.trim();
@@ -108,26 +111,10 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
   }
 
   Future<String?> _askCustomModel() async {
-    final controller = TextEditingController(text: _model);
-    final result = await showDialog<String?>(
+    return showDialog<String?>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('自定义模型'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: '例如：claude-3-5-sonnet-20241022',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(null), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: const Text('确定')),
-        ],
-      ),
+      builder: (context) => _CustomModelDialog(initialValue: _model),
     );
-    controller.dispose();
-    return result;
   }
 
   Future<void> _save() async {
@@ -399,3 +386,50 @@ class _FieldBlock extends StatelessWidget {
   }
 }
 
+class _CustomModelDialog extends StatefulWidget {
+  const _CustomModelDialog({required this.initialValue});
+
+  final String initialValue;
+
+  @override
+  State<_CustomModelDialog> createState() => _CustomModelDialogState();
+}
+
+class _CustomModelDialogState extends State<_CustomModelDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close(String? result) {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('自定义模型'),
+      content: TextField(
+        controller: _controller,
+        decoration: const InputDecoration(
+          hintText: '例如：claude-3-5-sonnet-20241022',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => _close(null), child: const Text('取消')),
+        FilledButton(onPressed: () => _close(_controller.text), child: const Text('确定')),
+      ],
+    );
+  }
+}

@@ -10,6 +10,7 @@ import '../data/db/app_database.dart';
 import '../data/logs/sync_status_tracker.dart';
 import '../data/models/attachment.dart';
 import '../data/models/local_memo.dart';
+import '../data/models/memo_relation.dart';
 import '../state/database_provider.dart';
 import '../state/logging_provider.dart';
 import '../state/network_log_provider.dart';
@@ -52,6 +53,15 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
         limit: 200,
       )
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
+});
+
+final memoRelationsProvider = FutureProvider.family<List<MemoRelation>, String>((ref, memoUid) async {
+  final api = ref.watch(memosApiProvider);
+  final (relations, _) = await api.listMemoRelations(
+    memoUid: memoUid,
+    pageSize: 200,
+  );
+  return relations;
 });
 
 final syncControllerProvider = StateNotifierProvider<SyncController, AsyncValue<void>>((ref) {
@@ -312,6 +322,8 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final legacyCompat = api.useLegacyApi;
     var useParent = legacyCompat && memoParent != null && memoParent.isNotEmpty;
     var usedServerFilter = !useParent && creatorFilter != null;
+    final remoteUids = <String>{};
+    var completed = false;
 
     while (true) {
       try {
@@ -335,6 +347,10 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
           final attachments = memo.attachments.map((a) => a.toJson()).toList(growable: false);
           final mergedAttachments = localSync == 0 ? attachments : _mergeAttachmentJson(local, attachments);
 
+          if (memo.uid.isNotEmpty) {
+            remoteUids.add(memo.uid);
+          }
+
           await db.upsertMemo(
             uid: memo.uid,
             content: memo.content,
@@ -351,6 +367,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
 
         pageToken = nextToken;
         if (pageToken.isEmpty) {
+          completed = true;
           break;
         }
       } on DioException catch (e) {
@@ -359,6 +376,8 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
           useParent = false;
           usedServerFilter = creatorFilter != null;
           pageToken = '';
+          remoteUids.clear();
+          completed = false;
           continue;
         }
         if (usedServerFilter && creatorFilter != null && (status == 400 || status == 500)) {
@@ -366,12 +385,35 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
           // Fall back to the default ListMemos behavior and filter locally.
           usedServerFilter = false;
           pageToken = '';
+          remoteUids.clear();
+          completed = false;
           continue;
         }
         final method = e.requestOptions.method;
         final path = e.requestOptions.uri.path;
         throw StateError('${_summarizeHttpError(e)}锛?method $path');
       }
+    }
+
+    if (completed) {
+      await _pruneMissingMemos(state: state, remoteUids: remoteUids);
+    }
+  }
+
+  Future<void> _pruneMissingMemos({
+    required String state,
+    required Set<String> remoteUids,
+  }) async {
+    final pendingOutbox = await db.listPendingOutboxMemoUids();
+    final locals = await db.listMemoUidSyncStates(state: state);
+    for (final row in locals) {
+      final uid = row['uid'] as String?;
+      if (uid == null || uid.trim().isEmpty) continue;
+      if (remoteUids.contains(uid)) continue;
+      if (pendingOutbox.contains(uid)) continue;
+      final syncState = row['sync_state'] as int? ?? 0;
+      if (syncState != 0) continue;
+      await db.deleteMemoByUid(uid);
     }
   }
 
@@ -451,18 +493,30 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final content = payload['content'] as String?;
     final visibility = payload['visibility'] as String? ?? 'PRIVATE';
     final pinned = payload['pinned'] as bool? ?? false;
+    final relationsRaw = payload['relations'];
+    final relations = <Map<String, dynamic>>[];
+    if (relationsRaw is List) {
+      for (final item in relationsRaw) {
+        if (item is Map) {
+          relations.add(item.cast<String, dynamic>());
+        }
+      }
+    }
     if (uid == null || uid.isEmpty || content == null) {
       throw const FormatException('create_memo missing fields');
     }
     try {
       final created = await api.createMemo(memoId: uid, content: content, visibility: visibility, pinned: pinned);
       final remoteUid = created.uid;
+      final targetUid = remoteUid.isNotEmpty ? remoteUid : uid;
+      if (relations.isNotEmpty) {
+        await api.setMemoRelations(memoUid: targetUid, relations: relations);
+      }
       if (remoteUid.isNotEmpty && remoteUid != uid) {
         await db.renameMemoUid(oldUid: uid, newUid: remoteUid);
         await db.rewriteOutboxMemoUids(oldUid: uid, newUid: remoteUid);
-        return remoteUid;
       }
-      return uid;
+      return targetUid;
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status == 409) {

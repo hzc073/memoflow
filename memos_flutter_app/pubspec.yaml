@@ -39,9 +39,12 @@ dependencies:
   dio: ^5.8.0
   connectivity_plus: ^6.1.0
   device_info_plus: ^10.1.2
+  file_picker: ^8.1.2
+  image_picker: ^1.1.2
   package_info_plus: ^8.1.0
   flutter_riverpod: ^2.6.1
   flutter_secure_storage: ^9.2.4
+  crypto: ^3.0.3
   cached_network_image: ^3.4.1
   flutter_markdown: ^0.7.7+1
   markdown: ^7.3.0

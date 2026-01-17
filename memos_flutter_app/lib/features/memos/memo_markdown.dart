@@ -7,6 +7,15 @@ final RegExp _tagTokenPattern = RegExp(
   unicode: true,
 );
 
+typedef TaskToggleHandler = void Function(TaskToggleRequest request);
+
+class TaskToggleRequest {
+  const TaskToggleRequest({required this.taskIndex, required this.checked});
+
+  final int taskIndex;
+  final bool checked;
+}
+
 class MemoMarkdown extends StatelessWidget {
   const MemoMarkdown({
     super.key,
@@ -15,6 +24,7 @@ class MemoMarkdown extends StatelessWidget {
     this.selectable = false,
     this.blockSpacing = 6,
     this.shrinkWrap = true,
+    this.onToggleTask,
   });
 
   final String data;
@@ -22,11 +32,13 @@ class MemoMarkdown extends StatelessWidget {
   final bool selectable;
   final double blockSpacing;
   final bool shrinkWrap;
+  final TaskToggleHandler? onToggleTask;
 
   @override
   Widget build(BuildContext context) {
     final normalized = _normalizeTagSpacing(data);
-    final trimmed = normalized.trim();
+    final sanitized = _sanitizeMarkdown(normalized);
+    final trimmed = sanitized.trim();
     if (trimmed.isEmpty) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
@@ -45,12 +57,39 @@ class MemoMarkdown extends StatelessWidget {
       ),
       listBullet: baseStyle,
     );
+    var taskIndex = 0;
+
+    Widget buildCheckbox(bool checked) {
+      final handler = onToggleTask;
+      final currentIndex = taskIndex++;
+      final onTap = handler == null
+          ? null
+          : () => handler(TaskToggleRequest(taskIndex: currentIndex, checked: checked));
+      final icon = Icon(
+        checked ? Icons.check_box : Icons.check_box_outline_blank,
+        size: styleSheet.checkbox?.fontSize,
+        color: styleSheet.checkbox?.color,
+      );
+      final child = onTap == null
+          ? icon
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(4),
+              child: icon,
+            );
+      return Padding(
+        padding: styleSheet.listBulletPadding ?? EdgeInsets.zero,
+        child: child,
+      );
+    }
 
     return MarkdownBody(
       data: trimmed,
       selectable: selectable,
       styleSheet: styleSheet,
+      extensionSet: md.ExtensionSet.gitHubFlavored,
       inlineSyntaxes: [_MemoHighlightInlineSyntax(), _MemoTagInlineSyntax()],
+      checkboxBuilder: buildCheckbox,
       builders: {
         'memohighlight': _MemoHighlightBuilder(_MemoHighlightStyle.resolve(theme)),
         'memotag': _MemoTagBuilder(_MemoTagStyle.resolve(theme)),
@@ -59,6 +98,29 @@ class MemoMarkdown extends StatelessWidget {
       softLineBreak: true,
     );
   }
+}
+
+String _sanitizeMarkdown(String text) {
+  // Avoid empty markdown links that can leave the inline stack open in flutter_markdown.
+  final emptyLink = RegExp(r'\[\s*\]\(([^)]*)\)');
+  final stripped = text.replaceAllMapped(emptyLink, (match) {
+    final url = match.group(1)?.trim();
+    return url?.isNotEmpty == true ? url! : '';
+  });
+  return _escapeEmptyTaskHeadings(stripped);
+}
+
+String _escapeEmptyTaskHeadings(String text) {
+  final lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    final match = RegExp(r'^(\s*[-*+]\s+\[(?: |x|X)\]\s*)(#{1,6})\s*$').firstMatch(lines[i]);
+    if (match == null) continue;
+    final prefix = match.group(1) ?? '';
+    final hashes = match.group(2) ?? '';
+    final escaped = List.filled(hashes.length, r'\#').join();
+    lines[i] = '$prefix$escaped';
+  }
+  return lines.join('\n');
 }
 
 String _normalizeTagSpacing(String text) {
@@ -123,6 +185,9 @@ class _MemoTagInlineSyntax extends md.InlineSyntax {
   bool tryMatch(md.InlineParser parser, [int? startMatchPos]) {
     startMatchPos ??= parser.pos;
     if (parser.source.codeUnitAt(startMatchPos) != 0x23) return false;
+    if (startMatchPos > 0 && parser.source.codeUnitAt(startMatchPos - 1) == 0x23) {
+      return false;
+    }
     final match = _pattern.matchAsPrefix(parser.source, startMatchPos);
     if (match == null) return false;
     parser.writeText();

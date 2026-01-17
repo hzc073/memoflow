@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../state/login_draft_provider.dart';
+import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -76,10 +78,69 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required bool enabled,
+    required bool obscureText,
+    required String? Function(String?) validator,
+    ValueChanged<String>? onChanged,
+    TextInputType? keyboardType,
+    required bool isDark,
+    required Color card,
+    required Color textMain,
+    required Color textMuted,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted)),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: card,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      blurRadius: 18,
+                      offset: const Offset(0, 10),
+                      color: Colors.black.withValues(alpha: 0.08),
+                    ),
+                  ],
+          ),
+          child: TextFormField(
+            controller: controller,
+            enabled: enabled,
+            obscureText: obscureText,
+            keyboardType: keyboardType,
+            style: TextStyle(color: textMain, fontWeight: FontWeight.w500),
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.6), fontWeight: FontWeight.w500),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            validator: validator,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionAsync = ref.watch(appSessionProvider);
     final isBusy = sessionAsync.isLoading;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
+    final useLegacyApi = ref.watch(appPreferencesProvider.select((p) => p.useLegacyApi));
 
     if (!_shownInitialError) {
       _shownInitialError = true;
@@ -92,30 +153,47 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('连接 Memos')),
+      backgroundColor: bg,
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: '返回',
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text('连接 Memos'),
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+      ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              '使用 Personal Access Token 登录（推荐给移动端）。',
-              style: Theme.of(context).textTheme.bodyMedium,
+              '使用 Personal Access Token 登录。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textMuted, fontWeight: FontWeight.w500),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Form(
               key: _formKey,
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextFormField(
+                  _buildField(
                     controller: _baseUrlController,
+                    label: '服务器地址',
+                    hint: 'http://localhost:5230',
                     enabled: !isBusy,
-                    decoration: const InputDecoration(
-                      labelText: '服务器地址',
-                      hintText: 'http://192.168.1.10:5230',
-                      border: OutlineInputBorder(),
-                    ),
+                    obscureText: false,
                     keyboardType: TextInputType.url,
+                    isDark: isDark,
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
                     onChanged: (v) => ref.read(loginBaseUrlDraftProvider.notifier).state = v,
                     validator: (v) {
                       final raw = (v ?? '').trim();
@@ -127,30 +205,65 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
+                  const SizedBox(height: 14),
+                  _buildField(
                     controller: _tokenController,
+                    label: 'Token (PAT)',
+                    hint: 'Token (PAT)',
                     enabled: !isBusy,
-                    decoration: const InputDecoration(
-                      labelText: 'Token (PAT)',
-                      hintText: 'memos_pat_...',
-                      border: OutlineInputBorder(),
-                    ),
                     obscureText: true,
+                    isDark: isDark,
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
                     validator: (v) {
                       if ((v ?? '').trim().isEmpty) return '请输入 Token';
                       return null;
                     },
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '兼容模式',
+                          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+                        ),
+                      ),
+                      Switch(
+                        value: useLegacyApi,
+                        onChanged: isBusy
+                            ? null
+                            : (v) => ref.read(appPreferencesProvider.notifier).setUseLegacyApi(v),
+                        activeThumbColor: Colors.white,
+                        activeTrackColor: MemoFlowPalette.primary,
+                        inactiveTrackColor:
+                            isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.12),
+                        inactiveThumbColor: isDark ? Colors.white.withValues(alpha: 0.6) : Colors.white,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '开启后使用旧版接口（适用于老版本的 Memos）',
+                    style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
+                  const SizedBox(height: 24),
                   SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
+                    height: 52,
+                    child: ElevatedButton.icon(
                       onPressed: isBusy ? null : _connect,
                       icon: isBusy
                           ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Icon(Icons.link),
                       label: Text(isBusy ? '连接中…' : '连接'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MemoFlowPalette.primary,
+                        foregroundColor: Colors.white,
+                        elevation: isDark ? 0 : 6,
+                        shape: const StadiumBorder(),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
                 ],

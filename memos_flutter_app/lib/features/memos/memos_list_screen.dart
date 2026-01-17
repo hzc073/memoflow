@@ -60,6 +60,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
     this.tag,
     this.showDrawer = false,
     this.enableCompose = false,
+    this.openDrawerOnStart = false,
   });
 
   final String title;
@@ -67,6 +68,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final String? tag;
   final bool showDrawer;
   final bool enableCompose;
+  final bool openDrawerOnStart;
 
   @override
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
@@ -75,19 +77,30 @@ class MemosListScreen extends ConsumerStatefulWidget {
 class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _searchController = TextEditingController();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   var _searching = false;
+  var _openedDrawerOnStart = false;
   DateTime? _lastBackPressedAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openDrawerIfNeeded());
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openDrawerIfNeeded() {
+    if (!mounted || _openedDrawerOnStart || !widget.openDrawerOnStart || !widget.showDrawer) {
+      return;
+    }
+    _openedDrawerOnStart = true;
+    _scaffoldKey.currentState?.openDrawer();
   }
 
   bool get _isAllMemos {
@@ -297,6 +310,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     return WillPopScope(
       onWillPop: _handleWillPop,
       child: Scaffold(
+      key: _scaffoldKey,
       drawer: widget.showDrawer
           ? AppDrawer(
               selected: widget.state == 'ARCHIVED' ? AppDrawerDestination.archived : AppDrawerDestination.memos,
@@ -687,6 +701,7 @@ class _MemoCard extends StatelessWidget {
                     textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
                     blockSpacing: 4,
                   ),
+                _MemoRelationsSection(memoUid: memo.uid),
               ],
             ),
           ),
@@ -704,6 +719,185 @@ class _MemoCard extends StatelessWidget {
     if (hh <= 0) return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
   }
+}
+
+class _MemoRelationsSection extends ConsumerWidget {
+  const _MemoRelationsSection({required this.memoUid});
+
+  final String memoUid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final relationsAsync = ref.watch(memoRelationsProvider(memoUid));
+    return relationsAsync.when(
+      data: (relations) {
+        if (relations.isEmpty) return const SizedBox.shrink();
+
+        final currentName = 'memos/$memoUid';
+        final referencing = <_RelationItem>[];
+        final referencedBy = <_RelationItem>[];
+        final seenReferencing = <String>{};
+        final seenReferencedBy = <String>{};
+
+        for (final relation in relations) {
+          final memoName = relation.memo.name.trim();
+          final relatedName = relation.relatedMemo.name.trim();
+
+          if (memoName == currentName && relatedName.isNotEmpty) {
+            if (seenReferencing.add(relatedName)) {
+              referencing.add(
+                _RelationItem(
+                  name: relatedName,
+                  snippet: relation.relatedMemo.snippet,
+                ),
+              );
+            }
+            continue;
+          }
+          if (relatedName == currentName && memoName.isNotEmpty) {
+            if (seenReferencedBy.add(memoName)) {
+              referencedBy.add(
+                _RelationItem(
+                  name: memoName,
+                  snippet: relation.memo.snippet,
+                ),
+              );
+            }
+          }
+        }
+
+        if (referencing.isEmpty && referencedBy.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (referencing.isNotEmpty)
+                _RelationGroup(
+                  title: 'Referencing',
+                  items: referencing,
+                  isDark: isDark,
+                ),
+              if (referencing.isNotEmpty && referencedBy.isNotEmpty) const SizedBox(height: 8),
+              if (referencedBy.isNotEmpty)
+                _RelationGroup(
+                  title: 'Referenced by',
+                  items: referencedBy,
+                  isDark: isDark,
+                ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _RelationGroup extends StatelessWidget {
+  const _RelationGroup({
+    required this.title,
+    required this.items,
+    required this.isDark,
+  });
+
+  final String title;
+  final List<_RelationItem> items;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final headerColor = textMain.withValues(alpha: isDark ? 0.7 : 0.8);
+    final chipBg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.link, size: 14, color: headerColor),
+              const SizedBox(width: 6),
+              Text(
+                '$title (${items.length})',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: headerColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: chipBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _shortMemoId(item.name),
+                      style: TextStyle(fontSize: 10, color: headerColor),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _relationSnippet(item),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: textMain),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _relationSnippet(_RelationItem item) {
+    final snippet = item.snippet.trim();
+    if (snippet.isNotEmpty) return snippet;
+    final name = item.name.trim();
+    if (name.isNotEmpty) return name;
+    return '';
+  }
+
+  static String _shortMemoId(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '--';
+    final raw = trimmed.startsWith('memos/') ? trimmed.substring('memos/'.length) : trimmed;
+    return raw.length <= 6 ? raw : raw.substring(0, 6);
+  }
+}
+
+class _RelationItem {
+  const _RelationItem({
+    required this.name,
+    required this.snippet,
+  });
+
+  final String name;
+  final String snippet;
 }
 
 class _AudioRow extends StatelessWidget {

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../core/tags.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
@@ -142,6 +143,112 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
+  static final RegExp _taskLinePattern = RegExp(r'^\s*(?:>\s*)?(?:[-*+]|\d+[.)])\s+\[( |x|X)\]');
+  static final RegExp _codeFencePattern = RegExp(r'^\s*```');
+
+  Future<void> _toggleTask(TaskToggleRequest request, {required bool skipReferenceLines}) async {
+    final memo = _memo;
+    if (memo == null) return;
+    final updated = _applyTaskToggle(
+      memo.content,
+      request.taskIndex,
+      checked: request.checked,
+      skipReferenceLines: skipReferenceLines,
+    );
+    if (updated == null || updated == memo.content) return;
+
+    final now = DateTime.now();
+    final tags = extractTags(updated);
+    final db = ref.read(databaseProvider);
+
+    try {
+      await db.upsertMemo(
+        uid: memo.uid,
+        content: updated,
+        visibility: memo.visibility,
+        pinned: memo.pinned,
+        state: memo.state,
+        createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+        tags: tags,
+        attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+        syncState: 1,
+        lastError: null,
+      );
+
+      await db.enqueueOutbox(type: 'update_memo', payload: {
+        'uid': memo.uid,
+        'content': updated,
+        'visibility': memo.visibility,
+        'pinned': memo.pinned,
+      });
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+
+      if (!mounted) return;
+      setState(() {
+        _memo = LocalMemo(
+          uid: memo.uid,
+          content: updated,
+          visibility: memo.visibility,
+          pinned: memo.pinned,
+          state: memo.state,
+          createTime: memo.createTime,
+          updateTime: now,
+          tags: tags,
+          attachments: memo.attachments,
+          syncState: SyncState.pending,
+          lastError: null,
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e')));
+    }
+  }
+
+  String? _applyTaskToggle(
+    String content,
+    int taskIndex, {
+    required bool checked,
+    required bool skipReferenceLines,
+  }) {
+    final lines = content.split('\n');
+    var currentIndex = 0;
+    var inCodeBlock = false;
+
+    for (var i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trimLeft();
+      if (_codeFencePattern.hasMatch(trimmed)) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+      if (skipReferenceLines && trimmed.startsWith('>')) continue;
+
+      final match = _taskLinePattern.firstMatch(lines[i]);
+      if (match == null) continue;
+      if (currentIndex == taskIndex) {
+        lines[i] = _toggleTaskLine(lines[i], checked);
+        return lines.join('\n');
+      }
+      currentIndex++;
+    }
+
+    return null;
+  }
+
+  String _toggleTaskLine(String line, bool checked) {
+    final match = _taskLinePattern.firstMatch(line);
+    if (match == null) return line;
+    final fullMatch = match.group(0);
+    if (fullMatch == null) return line;
+    final bracketIndex = fullMatch.indexOf('[');
+    if (bracketIndex < 0) return line;
+    final start = match.start + bracketIndex + 1;
+    final replacement = checked ? ' ' : 'x';
+    return line.replaceRange(start, start + 1, replacement);
+  }
+
   String _attachmentUrl(Uri baseUrl, Attachment a, {required bool thumbnail}) {
     if (a.externalLink.isNotEmpty) return a.externalLink;
     final url = joinBaseUrl(baseUrl, 'file/${a.name}/${a.filename}');
@@ -201,6 +308,10 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                 collapseEnabled: prefs.collapseLongContent,
                 style: contentStyle,
                 hapticsEnabled: hapticsEnabled,
+                onToggleTask: (request) {
+                  maybeHaptic();
+                  unawaited(_toggleTask(request, skipReferenceLines: true));
+                },
               ),
               const SizedBox(height: 12),
               _ReferencesSection(
@@ -218,6 +329,10 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             collapseEnabled: prefs.collapseLongContent,
             style: contentStyle,
             hapticsEnabled: hapticsEnabled,
+            onToggleTask: (request) {
+              maybeHaptic();
+              unawaited(_toggleTask(request, skipReferenceLines: false));
+            },
           );
 
     final header = Column(
@@ -467,12 +582,14 @@ class _CollapsibleText extends StatefulWidget {
     required this.collapseEnabled,
     required this.style,
     required this.hapticsEnabled,
+    this.onToggleTask,
   });
 
   final String text;
   final bool collapseEnabled;
   final TextStyle? style;
   final bool hapticsEnabled;
+  final ValueChanged<TaskToggleRequest>? onToggleTask;
 
   @override
   State<_CollapsibleText> createState() => _CollapsibleTextState();
@@ -530,6 +647,7 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
           textStyle: widget.style,
           selectable: !showCollapsed,
           blockSpacing: 8,
+          onToggleTask: showCollapsed ? null : widget.onToggleTask,
         ),
         if (shouldCollapse)
           Align(
