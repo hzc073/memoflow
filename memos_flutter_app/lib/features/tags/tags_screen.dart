@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../state/memos_providers.dart';
 import '../about/about_screen.dart';
 import '../home/app_drawer.dart';
@@ -36,7 +37,11 @@ class TagsScreen extends ConsumerWidget {
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => const MemosListScreen(title: '回收站', state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.archived => MemosListScreen(
+          title: context.tr(zh: '回收站', en: 'Archive'),
+          state: 'ARCHIVED',
+          showDrawer: true,
+        ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -70,49 +75,51 @@ class TagsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tagsAsync = ref.watch(tagStatsProvider);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _backToAllMemos(context);
-        return false;
       },
       child: Scaffold(
-      drawer: AppDrawer(
-        selected: AppDrawerDestination.tags,
-        onSelect: (d) => _navigate(context, d),
-        onSelectTag: (t) => _openTag(context, t),
-        onOpenNotifications: () => _openNotifications(context),
-      ),
-      appBar: AppBar(title: const Text('标签')),
-      body: tagsAsync.when(
-        data: (tags) => tags.isEmpty
-            ? const Center(child: Text('暂无标签'))
-            : ListView.separated(
-                itemBuilder: (context, index) {
-                  final t = tags[index];
-                  return ListTile(
-                    leading: const Icon(Icons.tag),
-                    title: Text('#${t.tag}'),
-                    trailing: Text('${t.count}'),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => MemosListScreen(
-                            title: '标签',
-                            state: 'NORMAL',
-                            tag: t.tag,
-                            showDrawer: true,
+        drawer: AppDrawer(
+          selected: AppDrawerDestination.tags,
+          onSelect: (d) => _navigate(context, d),
+          onSelectTag: (t) => _openTag(context, t),
+          onOpenNotifications: () => _openNotifications(context),
+        ),
+        appBar: AppBar(title: Text(context.tr(zh: '标签', en: 'Tags'))),
+        body: tagsAsync.when(
+          data: (tags) => tags.isEmpty
+              ? Center(child: Text(context.tr(zh: '暂无标签', en: 'No tags yet')))
+              : ListView.separated(
+                  itemBuilder: (context, index) {
+                    final t = tags[index];
+                    return ListTile(
+                      leading: const Icon(Icons.tag),
+                      title: Text('#${t.tag}'),
+                      trailing: Text('${t.count}'),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => MemosListScreen(
+                              title: context.tr(zh: '标签', en: 'Tags'),
+                              state: 'NORMAL',
+                              tag: t.tag,
+                              showDrawer: true,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  );
-                },
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemCount: tags.length,
-              ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
+                        );
+                      },
+                    );
+                  },
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemCount: tags.length,
+                ),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+        ),
       ),
-    ));
+    );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/log_sanitizer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/database_provider.dart';
@@ -14,6 +15,7 @@ class FeedbackScreen extends ConsumerWidget {
   const FeedbackScreen({super.key});
 
   Future<String> _buildDiagnostics(WidgetRef ref) async {
+    final language = ref.read(appPreferencesProvider).language;
     final session = ref.read(appSessionProvider).valueOrNull;
     final account = session?.currentAccount;
 
@@ -34,7 +36,7 @@ class FeedbackScreen extends ConsumerWidget {
     final outboxPending = await count("SELECT COUNT(*) FROM outbox WHERE state IN (0,2);");
 
     final accountLabel = account == null
-        ? '未登录'
+        ? trByLanguage(language: language, zh: '未登录', en: 'Not signed in')
         : LogSanitizer.maskUserLabel(
             account.user.displayName.isNotEmpty ? account.user.displayName : account.user.name,
           );
@@ -42,17 +44,17 @@ class FeedbackScreen extends ConsumerWidget {
     final host = hostRaw.isEmpty ? '' : LogSanitizer.maskUrl(hostRaw);
 
     return [
-      'MemoFlow 诊断信息',
-      '时间：${DateTime.now().toIso8601String()}',
+      trByLanguage(language: language, zh: 'MemoFlow 诊断信息', en: 'MemoFlow Diagnostics'),
+      '${trByLanguage(language: language, zh: '时间', en: 'Time')}: ${DateTime.now().toIso8601String()}',
       '',
-      '账号：$accountLabel',
-      '后端：$host',
+      '${trByLanguage(language: language, zh: '账号', en: 'Account')}: $accountLabel',
+      '${trByLanguage(language: language, zh: '后端', en: 'Backend')}: $host',
       '',
-      '本地数据：',
-      '- memos：$memosCount',
-      '- 待同步 memos：$pendingCount',
-      '- outbox：$outboxCount',
-      '- 待处理 outbox：$outboxPending',
+      trByLanguage(language: language, zh: '本地数据：', en: 'Local data:'),
+      '- memos: $memosCount',
+      '- ${trByLanguage(language: language, zh: '待同步笔记', en: 'pending memos')}: $pendingCount',
+      '- outbox: $outboxCount',
+      '- ${trByLanguage(language: language, zh: '待处理队列', en: 'pending outbox')}: $outboxPending',
     ].join('\n');
   }
 
@@ -77,10 +79,14 @@ class FeedbackScreen extends ConsumerWidget {
         final text = await _buildDiagnostics(ref);
         await Clipboard.setData(ClipboardData(text: text));
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制诊断信息')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '诊断信息已复制', en: 'Diagnostics copied'))),
+        );
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('生成失败：$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '生成失败：$e', en: 'Failed to generate: $e'))),
+        );
       }
     }
 
@@ -92,11 +98,11 @@ class FeedbackScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('反馈建议'),
+        title: Text(context.tr(zh: '反馈', en: 'Feedback')),
         centerTitle: false,
       ),
       body: Stack(
@@ -126,7 +132,7 @@ class FeedbackScreen extends ConsumerWidget {
                 children: [
                   _ActionRow(
                     icon: Icons.content_copy,
-                    label: '复制诊断信息',
+                    label: context.tr(zh: '复制诊断信息', en: 'Copy diagnostics'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -136,7 +142,7 @@ class FeedbackScreen extends ConsumerWidget {
                   ),
                   _ActionRow(
                     icon: Icons.help_outline,
-                    label: '如何反馈？',
+                    label: context.tr(zh: '如何反馈？', en: 'How to report?'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -147,17 +153,28 @@ class FeedbackScreen extends ConsumerWidget {
                         builder: (context) => SafeArea(
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                            children: const [
-                              Text('如何反馈？', style: TextStyle(fontWeight: FontWeight.w800)),
-                              SizedBox(height: 12),
+                            children: [
                               Text(
-                                '建议附带：\n'
-                                '1) 复现步骤\n'
-                                '2) 截图/录屏\n'
-                                '3) 复制的诊断信息\n'
-                                '\n'
-                                '如果涉及隐私信息，请先脱敏再提交。',
-                                style: TextStyle(height: 1.5),
+                                context.tr(zh: '如何反馈？', en: 'How to report?'),
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                context.tr(
+                                  zh: '请提供以下信息：\n'
+                                      '1) 复现步骤\n'
+                                      '2) 截图 / 录屏\n'
+                                      '3) 已复制的诊断信息\n'
+                                      '\n'
+                                      '若包含敏感信息，请先打码。',
+                                  en: 'Please include:\n'
+                                      '1) Steps to reproduce\n'
+                                      '2) Screenshot / screen recording\n'
+                                      '3) Copied diagnostics\n'
+                                      '\n'
+                                      'If it contains sensitive info, redact it before submitting.',
+                                ),
+                                style: const TextStyle(height: 1.5),
                               ),
                             ],
                           ),
@@ -169,7 +186,10 @@ class FeedbackScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '提示：部分 Token 仅在创建时返回一次，后续无法从服务器再次获取，请妥善保存。',
+                context.tr(
+                  zh: '提示：Token 可能只返回一次，之后无法再次获取，请妥善保存。',
+                  en: 'Note: Some tokens are returned only once and cannot be retrieved later. Please keep them safe.',
+                ),
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],

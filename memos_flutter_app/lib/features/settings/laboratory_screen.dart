@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
 import 'submit_logs_screen.dart';
@@ -25,11 +26,11 @@ class LaboratoryScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('实验室'),
+        title: Text(context.tr(zh: '实验室', en: 'Laboratory')),
         centerTitle: false,
       ),
       body: Stack(
@@ -59,8 +60,8 @@ class LaboratoryScreen extends ConsumerWidget {
                     children: [
                       _ToggleCard(
                         card: card,
-                        label: '兼容旧版 API',
-                        description: '开启后使用旧版接口（适用于老版本 Memos）',
+                        label: context.tr(zh: '旧版 API 兼容', en: 'Legacy API Compatibility'),
+                        description: context.tr(zh: '使用旧版接口（适配旧版 Memos）', en: 'Use legacy endpoints (for older Memos servers).'),
                         value: prefs.useLegacyApi,
                         textMain: textMain,
                         textMuted: textMuted,
@@ -69,17 +70,21 @@ class LaboratoryScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
                       _CardRow(
                         card: card,
-                        label: '自定义侧边栏',
+                        label: context.tr(zh: '自定义侧边栏', en: 'Customize Sidebar'),
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const _PlaceholderScreen(title: '自定义侧边栏')),
+                          MaterialPageRoute<void>(
+                            builder: (_) => _PlaceholderScreen(
+                              title: context.tr(zh: '自定义侧边栏', en: 'Customize Sidebar'),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
                       _CardRow(
                         card: card,
-                        label: '提交日志',
+                        label: context.tr(zh: '提交日志', en: 'Submit Logs'),
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
@@ -261,7 +266,7 @@ class _PlaceholderScreen extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         title: Text(title),
       ),
-      body: Center(child: Text('$title：待实现')),
+      body: Center(child: Text(context.tr(zh: '$title：即将上线', en: '$title: coming soon'))),
     );
   }
 }

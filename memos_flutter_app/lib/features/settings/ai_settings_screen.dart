@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import 'ai_provider_settings_screen.dart';
 import 'ai_user_profile_screen.dart';
@@ -23,11 +24,11 @@ class AiSettingsScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('AI 设置'),
+        title: Text(context.tr(zh: 'AI 设置', en: 'AI Settings')),
         centerTitle: false,
       ),
       body: Stack(
@@ -53,8 +54,8 @@ class AiSettingsScreen extends StatelessWidget {
             children: [
               _CardRow(
                 card: card,
-                title: 'AI 设置',
-                subtitle: '帮助 AI 更好地了解你',
+                title: context.tr(zh: 'AI 提供方', en: 'AI Provider'),
+                subtitle: context.tr(zh: '帮助 AI 更了解你', en: 'Help AI understand you better'),
                 textMain: textMain,
                 textMuted: textMuted,
                 onTap: () {
@@ -66,7 +67,7 @@ class AiSettingsScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _CardRow(
                 card: card,
-                title: '我的信息',
+                title: context.tr(zh: '我的资料', en: 'My Profile'),
                 subtitle: '',
                 textMain: textMain,
                 textMuted: textMuted,

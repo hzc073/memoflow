@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/memo.dart';
 import '../../state/memos_providers.dart';
@@ -166,7 +167,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '关联卡片',
+              context.tr(zh: '关联卡片', en: 'Link Card'),
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textMain),
             ),
             const SizedBox(height: 12),
@@ -174,7 +175,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
               controller: _searchController,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: '搜索笔记内容',
+                hintText: context.tr(zh: '搜索笔记内容', en: 'Search memo content'),
                 isDense: true,
                 filled: true,
                 fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.04),
@@ -197,7 +198,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
             const SizedBox(height: 12),
             SizedBox(
               height: listHeight,
-              child: _buildList(textMain, textMuted, divider),
+              child: _buildList(context, textMain, textMuted, divider),
             ),
           ],
         ),
@@ -205,7 +206,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     );
   }
 
-  Widget _buildList(Color textMain, Color textMuted, Color divider) {
+  Widget _buildList(BuildContext context, Color textMain, Color textMuted, Color divider) {
     if (_loading) {
       return const Center(
         child: SizedBox.square(
@@ -217,7 +218,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     if (_error != null) {
       return Center(
         child: Text(
-          '加载失败',
+          context.tr(zh: '加载失败', en: 'Failed to load'),
           style: TextStyle(color: textMuted),
         ),
       );
@@ -225,7 +226,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     if (_memos.isEmpty) {
       return Center(
         child: Text(
-          '暂无可关联的笔记',
+          context.tr(zh: '暂无可关联的笔记', en: 'No memos available'),
           style: TextStyle(color: textMuted),
         ),
       );

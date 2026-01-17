@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/app_localization.dart';
 import '../core/tags.dart';
 import '../data/api/memos_api.dart';
 import '../data/db/app_database.dart';
@@ -69,11 +70,13 @@ final syncControllerProvider = StateNotifierProvider<SyncController, AsyncValue<
   if (account == null) {
     throw StateError('Not authenticated');
   }
+  final language = ref.watch(appPreferencesProvider.select((p) => p.language));
   return SyncController(
     db: ref.watch(databaseProvider),
     api: ref.watch(memosApiProvider),
     currentUserName: account.user.name,
     syncStatusTracker: ref.read(syncStatusTrackerProvider),
+    language: language,
   );
 });
 
@@ -173,12 +176,14 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     required this.api,
     required this.currentUserName,
     required this.syncStatusTracker,
+    required this.language,
   }) : super(const AsyncValue.data(null));
 
   final AppDatabase db;
   final MemosApi api;
   final String currentUserName;
   final SyncStatusTracker syncStatusTracker;
+  final AppLanguage language;
 
   static int? _parseUserId(String userName) {
     final raw = userName.trim();
@@ -223,33 +228,56 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     return '';
   }
 
-  static String _summarizeHttpError(DioException e) {
+  String _summarizeHttpError(DioException e) {
     final status = e.response?.statusCode;
     final msg = _extractErrorMessage(e.response?.data);
 
     if (status == null) {
       if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
-        return '网络超时，请稍后重试';
+        return trByLanguage(
+          language: language,
+          zh: '网络超时，请稍后重试',
+          en: 'Network timeout. Please try again.',
+        );
       }
       if (e.type == DioExceptionType.connectionError) {
-        return '网络连接失败，请检查网络';
+        return trByLanguage(
+          language: language,
+          zh: '网络连接失败，请检查网络',
+          en: 'Network connection failed. Please check your network.',
+        );
       }
       final raw = e.message ?? '';
-      return raw.trim().isEmpty ? '网络请求失败' : raw.trim();
+      if (raw.trim().isNotEmpty) return raw.trim();
+      return trByLanguage(
+        language: language,
+        zh: '网络请求失败',
+        en: 'Network request failed',
+      );
     }
 
     final base = switch (status) {
-      400 => '请求参数错误',
-      401 => '认证失败，请检查 Token',
-      403 => '权限不足',
-      404 => '接口不存在（可能是 Memos 版本不兼容）',
-      413 => '附件过大，超过服务器限制',
-      500 => '服务器内部错误',
-      _ => '请求失败',
+      400 => trByLanguage(language: language, zh: '请求参数错误', en: 'Invalid request parameters'),
+      401 => trByLanguage(language: language, zh: '认证失败，请检查 Token', en: 'Authentication failed. Check token.'),
+      403 => trByLanguage(language: language, zh: '权限不足', en: 'Insufficient permissions'),
+      404 => trByLanguage(language: language, zh: '接口不存在（可能是 Memos 版本不兼容）', en: 'Endpoint not found (version mismatch?)'),
+      413 => trByLanguage(language: language, zh: '附件过大，超过服务器限制', en: 'Attachment too large'),
+      500 => trByLanguage(language: language, zh: '服务器内部错误', en: 'Server error'),
+      _ => trByLanguage(language: language, zh: '请求失败', en: 'Request failed'),
     };
 
-    if (msg.isEmpty) return '$base（HTTP $status）';
-    return '$base（HTTP $status）：$msg';
+    if (msg.isEmpty) {
+      return trByLanguage(
+        language: language,
+        zh: '$base（HTTP $status）',
+        en: '$base (HTTP $status)',
+      );
+    }
+    return trByLanguage(
+      language: language,
+      zh: '$base（HTTP $status）：$msg',
+      en: '$base (HTTP $status): $msg',
+    );
   }
 
   static String _detailHttpError(DioException e) {
@@ -391,7 +419,8 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
         }
         final method = e.requestOptions.method;
         final path = e.requestOptions.uri.path;
-        throw StateError('${_summarizeHttpError(e)}锛?method $path');
+        final requestLabel = trByLanguage(language: language, zh: '请求', en: 'Request');
+        throw StateError('${_summarizeHttpError(e)} ($requestLabel: $method $path)');
       }
     }
 
@@ -480,7 +509,12 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
           _ => null,
         };
         if (memoUid != null && memoUid.isNotEmpty) {
-          await db.updateMemoSyncState(memoUid, syncState: 2, lastError: '同步失败（$type）：$memoError');
+          final errorText = trByLanguage(
+            language: language,
+            zh: '同步失败（$type）：$memoError',
+            en: 'Sync failed ($type): $memoError',
+          );
+          await db.updateMemoSyncState(memoUid, syncState: 2, lastError: errorText);
         }
         // Keep ordering: stop processing further ops until this one succeeds.
         break;

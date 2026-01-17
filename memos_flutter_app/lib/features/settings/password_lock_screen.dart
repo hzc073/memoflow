@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/app_lock_provider.dart';
 
@@ -27,15 +28,18 @@ class PasswordLockScreen extends ConsumerWidget {
         return SafeArea(
           child: ListView(
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(alignment: Alignment.centerLeft, child: Text('自动锁定时间')),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(context.tr(zh: '自动锁定时间', en: 'Auto-lock time')),
+                ),
               ),
               ...AutoLockTime.values.map((v) {
                 final isSelected = v == selected;
                 return ListTile(
                   leading: Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off),
-                  title: Text(v.label),
+                  title: Text(v.labelFor(context.appLanguage)),
                   onTap: () {
                     Navigator.of(context).pop();
                     ref.read(appLockProvider.notifier).setAutoLockTime(v);
@@ -68,11 +72,11 @@ class PasswordLockScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('密码锁'),
+        title: Text(context.tr(zh: '应用锁', en: 'App Lock')),
         centerTitle: false,
       ),
       body: Stack(
@@ -100,40 +104,41 @@ class PasswordLockScreen extends ConsumerWidget {
                 card: card,
                 divider: divider,
                 children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '开启密码锁',
-                        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-                      ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context.tr(zh: '启用应用锁', en: 'Enable App Lock'),
+                            style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                          ),
+                        ),
+                        Switch(
+                          value: state.enabled,
+                          onChanged: (v) async {
+                            if (!v) {
+                              ref.read(appLockProvider.notifier).setEnabled(false);
+                              return;
+                            }
+                            if (!state.hasPassword) {
+                              final password = await _showSetPasswordDialog(context, isChange: false);
+                              if (password == null) return;
+                              if (!context.mounted) return;
+                              await ref.read(appLockProvider.notifier).setPassword(password);
+                            }
+                            if (!context.mounted) return;
+                            ref.read(appLockProvider.notifier).setEnabled(true);
+                          },
+                          activeThumbColor: Colors.white,
+                          activeTrackColor: MemoFlowPalette.primary,
+                          inactiveTrackColor:
+                              isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.12),
+                          inactiveThumbColor: isDark ? Colors.white.withValues(alpha: 0.6) : Colors.white,
+                        ),
+                      ],
                     ),
-                    Switch(
-                      value: state.enabled,
-                      onChanged: (v) async {
-                        if (!v) {
-                          ref.read(appLockProvider.notifier).setEnabled(false);
-                          return;
-                        }
-                        if (!state.hasPassword) {
-                          final password = await _showSetPasswordDialog(context, isChange: false);
-                          if (password == null) return;
-                          if (!context.mounted) return;
-                          await ref.read(appLockProvider.notifier).setPassword(password);
-                        }
-                        if (!context.mounted) return;
-                        ref.read(appLockProvider.notifier).setEnabled(true);
-                      },
-                      activeThumbColor: Colors.white,
-                      activeTrackColor: MemoFlowPalette.primary,
-                      inactiveTrackColor: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.12),
-                      inactiveThumbColor: isDark ? Colors.white.withValues(alpha: 0.6) : Colors.white,
-                    ),
-                  ],
-                ),
-              ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -144,35 +149,40 @@ class PasswordLockScreen extends ConsumerWidget {
                   card: card,
                   divider: divider,
                   children: [
-                _ActionRow(
-                  label: '修改密码',
-                  trailingText: null,
-                  enabled: state.enabled,
-                  textMain: textMain,
-                  textMuted: textMuted,
-                  onTap: () async {
-                    final password = await _showSetPasswordDialog(context, isChange: true);
-                    if (password == null) return;
-                    if (!context.mounted) return;
-                    await ref.read(appLockProvider.notifier).setPassword(password);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已修改密码（本地）')));
-                  },
-                ),
-                _ActionRow(
-                  label: '自动锁定时间',
-                  trailingText: state.autoLockTime.label,
-                  enabled: state.enabled,
-                  textMain: textMain,
-                  textMuted: textMuted,
-                  onTap: () => _selectAutoLockTime(context, ref, state.autoLockTime),
-                ),
+                    _ActionRow(
+                      label: context.tr(zh: '修改密码', en: 'Change Password'),
+                      trailingText: null,
+                      enabled: state.enabled,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () async {
+                        final password = await _showSetPasswordDialog(context, isChange: true);
+                        if (password == null) return;
+                        if (!context.mounted) return;
+                        await ref.read(appLockProvider.notifier).setPassword(password);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr(zh: '密码已更新（仅本地）', en: 'Password updated (local)'))),
+                        );
+                      },
+                    ),
+                    _ActionRow(
+                      label: context.tr(zh: '自动锁定时间', en: 'Auto-lock time'),
+                      trailingText: state.autoLockTime.labelFor(context.appLanguage),
+                      enabled: state.enabled,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () => _selectAutoLockTime(context, ref, state.autoLockTime),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                '启用密码锁后，每次打开应用都需要进行验证。自动锁定时间是指应用切入后台后多久需要再次验证。',
+                context.tr(
+                  zh: '开启后每次进入应用需要验证。自动锁定时间决定应用进入后台后多久需要再次验证。',
+                  en: 'When enabled, you must verify on each app launch. Auto-lock time controls how soon verification is required after the app goes to background.',
+                ),
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],
@@ -215,11 +225,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     final p1 = _pwdController.text.trim();
     final p2 = _confirmController.text.trim();
     if (p1.isEmpty) {
-      setState(() => _error = '请输入密码');
+      setState(() => _error = context.tr(zh: '请输入密码', en: 'Please enter a password'));
       return;
     }
     if (p1 != p2) {
-      setState(() => _error = '两次输入不一致');
+      setState(() => _error = context.tr(zh: '两次密码不一致', en: 'Passwords do not match'));
       return;
     }
     Navigator.of(context).pop(p1);
@@ -228,7 +238,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.isChange ? '修改密码' : '设置密码'),
+      title: Text(
+        widget.isChange
+            ? context.tr(zh: '修改密码', en: 'Change Password')
+            : context.tr(zh: '设置密码', en: 'Set Password'),
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -240,9 +254,9 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             textInputAction: TextInputAction.next,
             enableSuggestions: false,
             autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: '新密码',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: context.tr(zh: '新密码', en: 'New Password'),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
@@ -254,9 +268,9 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             textInputAction: TextInputAction.done,
             enableSuggestions: false,
             autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: '确认密码',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: context.tr(zh: '确认密码', en: 'Confirm Password'),
+              border: const OutlineInputBorder(),
             ),
           ),
           if (_error != null) ...[
@@ -272,8 +286,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(null), child: const Text('取消')),
-        FilledButton(onPressed: _submit, child: const Text('确定')),
+        TextButton(onPressed: () => Navigator.of(context).pop(null), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+        FilledButton(onPressed: _submit, child: Text(context.tr(zh: '确定', en: 'OK'))),
       ],
     );
   }

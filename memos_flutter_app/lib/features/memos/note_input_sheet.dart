@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -41,6 +42,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Timer? _draftTimer;
   ProviderSubscription<AsyncValue<String>>? _draftSubscription;
   var _didApplyDraft = false;
+  List<TagStat> _tagStatsCache = const [];
   final _linkedMemos = <_LinkedMemo>[];
   final _pendingAttachments = <_PendingAttachment>[];
   final _tagMenuKey = GlobalKey();
@@ -61,6 +63,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _controller.addListener(_scheduleDraftSave);
     _controller.addListener(_trackHistory);
     _applyDraft(ref.read(noteDraftProvider));
+    _loadTagStats();
     _draftSubscription = ref.listenManual<AsyncValue<String>>(noteDraftProvider, (prev, next) {
       _applyDraft(next);
     });
@@ -94,6 +97,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _draftTimer = Timer(const Duration(milliseconds: 300), () {
       ref.read(noteDraftProvider.notifier).setDraft(text);
     });
+  }
+
+  Future<void> _loadTagStats() async {
+    try {
+      final tags = await ref.read(tagStatsProvider.future);
+      if (!mounted) return;
+      setState(() => _tagStatsCache = tags);
+    } catch (_) {}
   }
 
   void _trackHistory() {
@@ -624,13 +635,21 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
       final attachments = pendingAttachments
           .map(
-            (p) => Attachment(
-              name: 'attachments/${p.uid}',
-              filename: p.filename,
-              type: p.mimeType,
-              size: p.size,
-              externalLink: '',
-            ).toJson(),
+            (p) {
+              final rawPath = p.filePath.trim();
+              final externalLink = rawPath.isEmpty
+                  ? ''
+                  : rawPath.startsWith('content://')
+                      ? rawPath
+                      : Uri.file(rawPath).toString();
+              return Attachment(
+                name: 'attachments/${p.uid}',
+                filename: p.filename,
+                type: p.mimeType,
+                size: p.size,
+                externalLink: externalLink,
+              ).toJson();
+            },
           )
           .toList(growable: false);
 
@@ -693,8 +712,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final chipText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final chipDelete = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.grey.shade500;
 
-    final tagsAsync = ref.watch(tagStatsProvider);
-    final tagStats = tagsAsync.valueOrNull ?? const <TagStat>[];
+    final tagStats = _tagStatsCache;
 
     return ClipRect(
       child: BackdropFilter(
@@ -755,7 +773,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                           decoration: InputDecoration(
                             isDense: true,
                             border: InputBorder.none,
-                            hintText: 'Write your memo...',
+                            hintText: context.tr(zh: '写下你的想法...', en: 'Write down your thoughts...'),
                             hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
                           ),
                         ),

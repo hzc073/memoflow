@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/url.dart';
+import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
@@ -21,6 +25,18 @@ import '../tags/tags_screen.dart';
 
 class ResourcesScreen extends ConsumerWidget {
   const ResourcesScreen({super.key});
+
+  File? _localAttachmentFile(Attachment attachment) {
+    final raw = attachment.externalLink.trim();
+    if (!raw.startsWith('file://')) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    final path = uri.toFilePath();
+    if (path.trim().isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return file;
+  }
 
   void _backToAllMemos(BuildContext context) {
     Navigator.of(context).pushAndRemoveUntil(
@@ -43,7 +59,11 @@ class ResourcesScreen extends ConsumerWidget {
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => const MemosListScreen(title: '回收站', state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.archived => MemosListScreen(
+          title: context.tr(zh: '回收站', en: 'Archive'),
+          state: 'ARCHIVED',
+          showDrawer: true,
+        ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -82,10 +102,11 @@ class ResourcesScreen extends ConsumerWidget {
     final entriesAsync = ref.watch(resourcesProvider);
     final dateFmt = DateFormat('yyyy-MM-dd');
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _backToAllMemos(context);
-        return false;
       },
       child: Scaffold(
         drawer: AppDrawer(
@@ -94,37 +115,48 @@ class ResourcesScreen extends ConsumerWidget {
           onSelectTag: (t) => _openTag(context, t),
           onOpenNotifications: () => _openNotifications(context),
         ),
-        appBar: AppBar(title: const Text('附件')),
+        appBar: AppBar(title: Text(context.tr(zh: '附件', en: 'Attachments'))),
         body: entriesAsync.when(
           data: (entries) => entries.isEmpty
-              ? const Center(child: Text('暂无附件'))
+              ? Center(child: Text(context.tr(zh: '暂无附件', en: 'No attachments')))
               : ListView.separated(
                   itemBuilder: (context, index) {
                     final entry = entries[index];
                     final a = entry.attachment;
                     final isImage = a.type.startsWith('image/');
                     final isAudio = a.type.startsWith('audio');
-  
-                    final leading = isImage && baseUrl != null
+
+                    final localFile = _localAttachmentFile(a);
+                    final leading = isImage && localFile != null
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: a.externalLink.isNotEmpty
-                                  ? a.externalLink
-                                  : '${joinBaseUrl(baseUrl, 'file/${a.name}/${a.filename}')}?thumbnail=true',
-                              httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+                            child: Image.file(
+                              localFile,
                               width: 44,
                               height: 44,
                               fit: BoxFit.cover,
-                              errorWidget: (context, url, error) => const SizedBox(
-                                width: 44,
-                                height: 44,
-                                child: Icon(Icons.image),
-                              ),
                             ),
                           )
-                        : Icon(isAudio ? Icons.mic : Icons.attach_file);
-  
+                        : isImage && baseUrl != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: CachedNetworkImage(
+                                  imageUrl: a.externalLink.isNotEmpty
+                                      ? a.externalLink
+                                      : '${joinBaseUrl(baseUrl, 'file/${a.name}/${a.filename}')}?thumbnail=true',
+                                  httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+                                  width: 44,
+                                  height: 44,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (context, url, error) => const SizedBox(
+                                    width: 44,
+                                    height: 44,
+                                    child: Icon(Icons.image),
+                                  ),
+                                ),
+                              )
+                            : Icon(isAudio ? Icons.mic : Icons.attach_file);
+
                     return ListTile(
                       leading: leading,
                       title: Text(a.filename),
@@ -144,9 +176,9 @@ class ResourcesScreen extends ConsumerWidget {
                   itemCount: entries.length,
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('加载失败：$e')),
+          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
         ),
-        ),
+      ),
     );
   }
 }

@@ -6,12 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/local_memo.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/search_history_provider.dart';
 import '../../state/session_provider.dart';
 import '../about/about_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -103,6 +105,32 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     _scaffoldKey.currentState?.openDrawer();
   }
 
+  void _openSearch() {
+    setState(() => _searching = true);
+  }
+
+  void _closeSearch() {
+    _searchController.clear();
+    FocusScope.of(context).unfocus();
+    setState(() => _searching = false);
+  }
+
+  void _submitSearch(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    ref.read(searchHistoryProvider.notifier).add(trimmed);
+  }
+
+  void _applySearchQuery(String query) {
+    final trimmed = query.trim();
+    _searchController.text = trimmed;
+    _searchController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _searchController.text.length),
+    );
+    setState(() {});
+    _submitSearch(trimmed);
+  }
+
   bool get _isAllMemos {
     final tag = widget.tag;
     return widget.state == 'NORMAL' && (tag == null || tag.isEmpty);
@@ -123,6 +151,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   }
 
   Future<bool> _handleWillPop() async {
+    if (_searching) {
+      _closeSearch();
+      return false;
+    }
     if (!_isAllMemos) {
       if (widget.showDrawer) {
         _backToAllMemos();
@@ -135,9 +167,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (_lastBackPressedAt == null || now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {
       _lastBackPressedAt = now;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('再按一次返回退出'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(context.tr(zh: '再按一次返回退出', en: 'Press back again to exit')),
+          duration: const Duration(seconds: 2),
         ),
       );
       return false;
@@ -156,7 +188,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => const MemosListScreen(title: '回收站', state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.archived =>
+        MemosListScreen(title: context.tr(zh: '回收站', en: 'Archive'), state: 'ARCHIVED', showDrawer: true),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -209,9 +242,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(alignment: Alignment.centerLeft, child: Text('切换账号')),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(context.tr(zh: '切换账号', en: 'Switch account')),
+              ),
             ),
             ...accounts.map(
               (a) => ListTile(
@@ -261,11 +297,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('删除 Memo？'),
-            content: const Text('本地会立即移除，联网后将同步删除服务器内容。'),
+            title: Text(context.tr(zh: '删除 Memo？', en: 'Delete memo?')),
+            content: Text(context.tr(
+              zh: '本地会立即移除，联网后将同步删除服务器内容。',
+              en: 'It will be removed locally now and deleted on the server when online.',
+            )),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('删除')),
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
             ],
           ),
         ) ??
@@ -282,7 +321,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   Widget build(BuildContext context) {
     ref.listen(syncControllerProvider, (prev, next) {
       if (next.hasError && prev?.error != next.error) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('同步失败：${next.error}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '同步失败：${next.error}', en: 'Sync failed: ${next.error}'))),
+        );
       }
     });
 
@@ -297,6 +338,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         ),
       ),
     );
+    final searchHistory = ref.watch(searchHistoryProvider);
+    final tagStats = ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
+    final recommendedTags = [...tagStats]
+      ..sort((a, b) => b.count.compareTo(a.count));
+    final showSearchLanding = _searching && searchQuery.trim().isEmpty;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final headerBg = (isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight).withValues(alpha: 0.9);
@@ -307,8 +353,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
 
-    return WillPopScope(
-      onWillPop: _handleWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final shouldPop = await _handleWillPop();
+        if (!mounted || !shouldPop) return;
+        Navigator.of(context).pop();
+      },
       child: Scaffold(
       key: _scaffoldKey,
       drawer: widget.showDrawer
@@ -331,81 +383,128 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 elevation: 0,
                 scrolledUnderElevation: 0,
                 surfaceTintColor: Colors.transparent,
-                title: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: _searching
-                      ? TextField(
-                          key: const ValueKey('search'),
-                          controller: _searchController,
-                          autofocus: true,
-                          decoration: const InputDecoration(
-                            hintText: '搜索',
-                            border: InputBorder.none,
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        )
-                      : InkWell(
-                          key: const ValueKey('title'),
-                          onTap: () {
-                            maybeHaptic();
-                            _openAccountSwitcher();
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                              const SizedBox(width: 4),
-                              Icon(Icons.expand_more, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
-                            ],
+                automaticallyImplyLeading: !_searching,
+                leading: _searching
+                    ? IconButton(
+                        icon: const Icon(Icons.arrow_back_ios_new),
+                        onPressed: _closeSearch,
+                      )
+                    : null,
+                title: _searching
+                    ? Container(
+                        key: const ValueKey('search'),
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isDark
+                                ? MemoFlowPalette.borderDark.withValues(alpha: 0.7)
+                                : MemoFlowPalette.borderLight,
                           ),
                         ),
-                ),
-                actions: [
-                  IconButton(
-                    tooltip: _searching ? '关闭搜索' : '搜索',
-                    onPressed: () {
-                      setState(() => _searching = !_searching);
-                      if (!_searching) {
-                        _searchController.clear();
-                        setState(() {});
-                      }
-                    },
-                    icon: Icon(_searching ? Icons.close : Icons.search),
-                  ),
-                ],
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          textInputAction: TextInputAction.search,
+                          decoration: InputDecoration(
+                            hintText: context.tr(zh: '搜索', en: 'Search'),
+                            border: InputBorder.none,
+                            isDense: true,
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: _submitSearch,
+                        ),
+                      )
+                    : InkWell(
+                        key: const ValueKey('title'),
+                        onTap: () {
+                          maybeHaptic();
+                          _openAccountSwitcher();
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 4),
+                            Icon(Icons.expand_more, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
+                          ],
+                        ),
+                      ),
+                actions: _searching
+                    ? [
+                        TextButton(
+                          onPressed: _closeSearch,
+                          child: Text(
+                            context.tr(zh: '取消', en: 'Cancel'),
+                            style: TextStyle(
+                              color: MemoFlowPalette.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ]
+                    : [
+                        IconButton(
+                          tooltip: context.tr(zh: '搜索', en: 'Search'),
+                          onPressed: _openSearch,
+                          icon: const Icon(Icons.search),
+                        ),
+                      ],
                 flexibleSpace: ClipRect(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: Container(color: headerBg),
                   ),
                 ),
-                bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(56),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: _PillRow(
-                      onWeeklyInsights: () {
-                        maybeHaptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
-                      },
-                      onAiSummary: () {
-                        maybeHaptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AiSummaryScreen()));
-                      },
-                      onDailyReview: () {
-                        maybeHaptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
-                      },
-                    ),
-                  ),
-                ),
+                bottom: _searching
+                    ? null
+                    : PreferredSize(
+                        preferredSize: const Size.fromHeight(56),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: _PillRow(
+                            onWeeklyInsights: () {
+                              maybeHaptic();
+                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
+                            },
+                            onAiSummary: () {
+                              maybeHaptic();
+                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AiSummaryScreen()));
+                            },
+                            onDailyReview: () {
+                              maybeHaptic();
+                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
+                            },
+                          ),
+                        ),
+                      ),
               ),
-              if (memos.isEmpty)
-                const SliverToBoxAdapter(
+              if (showSearchLanding)
+                SliverToBoxAdapter(
+                  child: _SearchLanding(
+                    history: searchHistory,
+                    onClearHistory: () => ref.read(searchHistoryProvider.notifier).clear(),
+                    onRemoveHistory: (value) => ref.read(searchHistoryProvider.notifier).remove(value),
+                    onSelectHistory: _applySearchQuery,
+                    tags: recommendedTags.take(6).map((e) => e.tag).toList(growable: false),
+                    onSelectTag: _applySearchQuery,
+                  ),
+                )
+              else if (memos.isEmpty)
+                SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.only(top: 140),
-                    child: Center(child: Text('暂无内容')),
+                    padding: const EdgeInsets.only(top: 140),
+                    child: Center(
+                      child: Text(
+                        _searching
+                            ? context.tr(zh: '未找到相关内容', en: 'No results found')
+                            : context.tr(zh: '暂无内容', en: 'No content yet'),
+                      ),
+                    ),
                   ),
                 )
               else
@@ -446,10 +545,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           ),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
+        error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: widget.enableCompose
+      floatingActionButton: widget.enableCompose && !_searching
           ? _MemoFlowFab(
               onPressed: syncing ? null : _openNoteInput,
               hapticsEnabled: hapticsEnabled,
@@ -484,7 +583,7 @@ class _PillRow extends StatelessWidget {
           _PillButton(
             icon: Icons.insights,
             iconColor: MemoFlowPalette.primary,
-            label: '每月统计',
+            label: context.tr(zh: '每月统计', en: 'Monthly stats'),
             onPressed: onWeeklyInsights,
             backgroundColor: bgColor,
             borderColor: borderColor,
@@ -494,7 +593,7 @@ class _PillRow extends StatelessWidget {
           _PillButton(
             icon: Icons.auto_awesome,
             iconColor: isDark ? MemoFlowPalette.aiChipBlueDark : MemoFlowPalette.aiChipBlueLight,
-            label: 'AI 总结',
+            label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
             onPressed: onAiSummary,
             backgroundColor: bgColor,
             borderColor: borderColor,
@@ -504,11 +603,149 @@ class _PillRow extends StatelessWidget {
           _PillButton(
             icon: Icons.explore,
             iconColor: isDark ? MemoFlowPalette.reviewChipOrangeDark : MemoFlowPalette.reviewChipOrangeLight,
-            label: '随机漫步',
+            label: context.tr(zh: '随机漫步', en: 'Random Review'),
             onPressed: onDailyReview,
             backgroundColor: bgColor,
             borderColor: borderColor,
             textColor: textColor,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchLanding extends StatelessWidget {
+  const _SearchLanding({
+    required this.history,
+    required this.onClearHistory,
+    required this.onRemoveHistory,
+    required this.onSelectHistory,
+    required this.tags,
+    required this.onSelectTag,
+  });
+
+  final List<String> history;
+  final VoidCallback onClearHistory;
+  final ValueChanged<String> onRemoveHistory;
+  final ValueChanged<String> onSelectHistory;
+  final List<String> tags;
+  final ValueChanged<String> onSelectTag;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final chipBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+    final accent = MemoFlowPalette.primary;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                context.tr(zh: '最近搜索', en: 'Recent searches'),
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              if (history.isNotEmpty)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onClearHistory,
+                  icon: Icon(Icons.delete_outline, size: 18, color: textMuted),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (history.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                context.tr(zh: '暂无搜索记录', en: 'No search history'),
+                style: TextStyle(fontSize: 12, color: textMuted),
+              ),
+            )
+          else
+            Column(
+              children: [
+                for (final item in history)
+                  InkWell(
+                    onTap: () => onSelectHistory(item),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Icon(Icons.history, size: 18, color: textMuted),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              item,
+                              style: TextStyle(fontSize: 14, color: textMain),
+                            ),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => onRemoveHistory(item),
+                            icon: Icon(Icons.close, size: 18, color: textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          const SizedBox(height: 18),
+          Text(
+            context.tr(zh: '推荐标签', en: 'Suggested tags'),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
+          ),
+          const SizedBox(height: 10),
+          if (tags.isEmpty)
+            Text(context.tr(zh: '暂无标签', en: 'No tags'), style: TextStyle(fontSize: 12, color: textMuted))
+          else
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final tag in tags)
+                  InkWell(
+                    onTap: () => onSelectTag('#${tag.trim()}'),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: chipBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: border),
+                        boxShadow: isDark
+                            ? null
+                            : [
+                                BoxShadow(
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                ),
+                              ],
+                      ),
+                      child: Text(
+                        '#${tag.trim()}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          const SizedBox(height: 28),
+          Center(
+            child: Text(
+              context.tr(zh: '您可以搜索标题、内容或标签', en: 'Search by title, content, or tags'),
+              style: TextStyle(fontSize: 12, color: textMuted),
+            ),
           ),
         ],
       ),
@@ -588,7 +825,11 @@ class _MemoCard extends StatelessWidget {
   final VoidCallback onTap;
   final ValueChanged<_MemoCardAction> onAction;
 
-  static String _previewText(String content, {required bool collapseReferences}) {
+  static String _previewText(
+    String content, {
+    required bool collapseReferences,
+    required AppLanguage language,
+  }) {
     final trimmed = content.trim();
     if (!collapseReferences) return trimmed;
 
@@ -612,7 +853,7 @@ class _MemoCard extends StatelessWidget {
           .trim();
       return cleaned.isEmpty ? trimmed : cleaned;
     }
-    return '$main\n\n引用 $quoteLines 行';
+    return '$main\n\n${trByLanguage(language: language, zh: '引用 $quoteLines 行', en: 'Quoted $quoteLines lines')}';
   }
 
   @override
@@ -624,8 +865,9 @@ class _MemoCard extends StatelessWidget {
 
     final audio = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
     final hasAudio = audio.isNotEmpty;
+    final language = context.appLanguage;
     final preview = _truncatePreview(
-      _previewText(memo.content, collapseReferences: collapseReferences),
+      _previewText(memo.content, collapseReferences: collapseReferences, language: language),
       collapseLongContent: collapseLongContent,
     );
 
@@ -668,22 +910,26 @@ class _MemoCard extends StatelessWidget {
                       ),
                     ),
                     PopupMenuButton<_MemoCardAction>(
-                      tooltip: '更多',
+                      tooltip: context.tr(zh: '更多', en: 'More'),
                       icon: Icon(Icons.more_horiz, size: 20, color: textMain.withValues(alpha: 0.4)),
                       onSelected: onAction,
                       itemBuilder: (context) => [
                         PopupMenuItem(
                           value: _MemoCardAction.togglePinned,
-                          child: Text(memo.pinned ? '取消置顶' : '置顶'),
+                          child: Text(memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin')),
                         ),
                         PopupMenuItem(
                           value: _MemoCardAction.toggleArchived,
-                          child: Text(memo.state == 'ARCHIVED' ? '取消归档' : '归档'),
+                          child: Text(
+                            memo.state == 'ARCHIVED'
+                                ? context.tr(zh: '取消归档', en: 'Unarchive')
+                                : context.tr(zh: '归档', en: 'Archive'),
+                          ),
                         ),
                         const PopupMenuDivider(),
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: _MemoCardAction.delete,
-                          child: Text('删除'),
+                          child: Text(context.tr(zh: '删除', en: 'Delete')),
                         ),
                       ],
                     ),
@@ -974,7 +1220,7 @@ class _AudioRow extends StatelessWidget {
             children: [
               Icon(Icons.refresh, size: 14, color: text.withValues(alpha: 0.7)),
               const SizedBox(width: 4),
-              Text('无内容', style: TextStyle(fontSize: 11, color: text)),
+              Text(context.tr(zh: '无内容', en: 'No content'), style: TextStyle(fontSize: 11, color: text)),
             ],
           ),
         ],

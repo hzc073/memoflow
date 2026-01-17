@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/app_lock_provider.dart';
 
@@ -90,7 +91,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     if (_unlocking) return;
     final text = _controller.text.trim();
     if (text.isEmpty) {
-      setState(() => _error = '请输入密码');
+      setState(() => _error = context.tr(zh: '请输入密码', en: 'Please enter password'));
       return;
     }
     setState(() {
@@ -101,7 +102,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     if (!mounted) return;
     if (!ok) {
       setState(() {
-        _error = '密码错误';
+        _error = context.tr(zh: '密码错误', en: 'Incorrect password');
         _unlocking = false;
       });
       return;
@@ -164,9 +165,15 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('需要密码', style: TextStyle(fontWeight: FontWeight.w800, color: textMain, fontSize: 16)),
+                        Text(
+                          context.tr(zh: '需要密码', en: 'Password required'),
+                          style: TextStyle(fontWeight: FontWeight.w800, color: textMain, fontSize: 16),
+                        ),
                         const SizedBox(height: 6),
-                        Text('输入密码以继续使用 MemoFlow', style: TextStyle(color: textMuted, fontSize: 12)),
+                        Text(
+                          context.tr(zh: '请输入密码以继续', en: 'Enter password to continue'),
+                          style: TextStyle(color: textMuted, fontSize: 12),
+                        ),
                         const SizedBox(height: 16),
                         TextField(
                           controller: _controller,
@@ -179,7 +186,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                           enableSuggestions: false,
                           autocorrect: false,
                           decoration: InputDecoration(
-                            hintText: '请输入密码',
+                            hintText: context.tr(zh: '输入密码', en: 'Enter password'),
                             errorText: _error,
                             isDense: true,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -202,7 +209,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                                     dimension: 18,
                                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                   )
-                                : const Text('解锁', style: TextStyle(fontWeight: FontWeight.w700)),
+                                : Text(context.tr(zh: '解锁', en: 'Unlock'), style: const TextStyle(fontWeight: FontWeight.w700)),
                           ),
                         ),
                       ],

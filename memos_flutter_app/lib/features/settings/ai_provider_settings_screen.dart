@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
@@ -13,13 +14,14 @@ class AiProviderSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScreen> {
+  static const _kCustomModelOption = '__custom__';
   static const _kModelOptions = <String>[
     'Claude 3.5 Sonnet',
     'Claude 3.5 Haiku',
     'Claude 3 Opus',
     'GPT-4o mini',
     'GPT-4o',
-    '自定义…',
+    _kCustomModelOption,
   ];
 
   final _formKey = GlobalKey<FormState>();
@@ -66,6 +68,13 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     setState(() => _dirty = true);
   }
 
+  String _modelLabel(BuildContext context, String value) {
+    if (value == _kCustomModelOption) {
+      return context.tr(zh: '自定义', en: 'Custom');
+    }
+    return value;
+  }
+
   Future<void> _pickModel() async {
     if (_saving) return;
     final selected = await showModalBottomSheet<String>(
@@ -74,13 +83,16 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
       builder: (context) => SafeArea(
         child: ListView(
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(alignment: Alignment.centerLeft, child: Text('模型')),
-            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(context.tr(zh: '模型', en: 'Model')),
+                ),
+              ),
             ..._kModelOptions.map(
               (m) => ListTile(
-                title: Text(m),
+                title: Text(_modelLabel(context, m)),
                 trailing: m == _model ? const Icon(Icons.check) : null,
                 onTap: () => Navigator.of(context).pop(m),
               ),
@@ -93,7 +105,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     if (selected == null) return;
     if (!mounted) return;
 
-    if (selected == '自定义…') {
+    if (selected == _kCustomModelOption) {
       final custom = await _askCustomModel();
       if (!mounted) return;
       if (custom == null || custom.trim().isEmpty) return;
@@ -133,10 +145,14 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
       await ref.read(aiSettingsProvider.notifier).setAll(next);
       if (!mounted) return;
       setState(() => _dirty = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存设置')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '设置已保存', en: 'Settings saved'))),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -197,9 +213,11 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                           ),
                           validator: (v) {
                             final raw = (v ?? '').trim();
-                            if (raw.isEmpty) return '请输入 API URL';
+                            if (raw.isEmpty) return context.tr(zh: '请输入 API URL', en: 'Please enter API URL');
                             final uri = Uri.tryParse(raw);
-                            if (uri == null || !(uri.hasScheme && uri.hasAuthority)) return '请输入正确的 URL';
+                            if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
+                              return context.tr(zh: '请输入有效的 URL', en: 'Please enter a valid URL');
+                            }
                             return null;
                           },
                         ),
@@ -223,7 +241,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                       ),
                       Divider(height: 1, color: border),
                       _FieldBlock(
-                        label: '模型',
+                        label: context.tr(zh: '模型', en: 'Model'),
                         textMuted: textMuted,
                         child: Material(
                           color: Colors.transparent,
@@ -233,7 +251,9 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                               children: [
                                 Expanded(
                                   child: Text(
-                                    _model.trim().isEmpty ? '请选择' : _model.trim(),
+                                    _model.trim().isEmpty
+                                        ? context.tr(zh: '请选择', en: 'Select')
+                                        : _model.trim(),
                                     style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
                                   ),
                                 ),
@@ -273,7 +293,10 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('提示词 (Prompt)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted)),
+                    Text(
+                      context.tr(zh: '提示词 (Prompt)', en: 'Prompt'),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+                    ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: _promptController,
@@ -283,7 +306,10 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                       maxLines: 10,
                       style: TextStyle(fontWeight: FontWeight.w600, color: textMain, height: 1.35),
                       decoration: InputDecoration(
-                        hintText: '用于 AI 总结/报告的默认提示词',
+                        hintText: context.tr(
+                          zh: '用于 AI 总结/报告的默认提示词',
+                          en: 'Default prompt for AI summaries/reports',
+                        ),
                         hintStyle: TextStyle(color: textMuted),
                         border: InputBorder.none,
                         isDense: true,
@@ -313,7 +339,10 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                   onPressed: _saving ? null : _save,
                   child: _saving
                       ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('保存设置', style: TextStyle(fontWeight: FontWeight.w800)),
+                      : Text(
+                          context.tr(zh: '保存设置', en: 'Save Settings'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
                 ),
               ),
             ),
@@ -330,11 +359,11 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('AI 设置'),
+        title: Text(context.tr(zh: 'AI 设置', en: 'AI Settings')),
         centerTitle: false,
       ),
       body: isDark
@@ -418,17 +447,17 @@ class _CustomModelDialogState extends State<_CustomModelDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('自定义模型'),
+      title: Text(context.tr(zh: '自定义模型', en: 'Custom Model')),
       content: TextField(
         controller: _controller,
-        decoration: const InputDecoration(
-          hintText: '例如：claude-3-5-sonnet-20241022',
-          border: OutlineInputBorder(),
+        decoration: InputDecoration(
+          hintText: context.tr(zh: '例如 claude-3-5-sonnet-20241022', en: 'e.g. claude-3-5-sonnet-20241022'),
+          border: const OutlineInputBorder(),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => _close(null), child: const Text('取消')),
-        FilledButton(onPressed: () => _close(_controller.text), child: const Text('确定')),
+        TextButton(onPressed: () => _close(null), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+        FilledButton(onPressed: () => _close(_controller.text), child: Text(context.tr(zh: '确定', en: 'OK'))),
       ],
     );
   }

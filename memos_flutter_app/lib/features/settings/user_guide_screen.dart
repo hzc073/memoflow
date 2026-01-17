@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
 
@@ -49,11 +50,11 @@ class UserGuideScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('使用指南'),
+        title: Text(context.tr(zh: '使用指南', en: 'User Guide')),
         centerTitle: false,
       ),
       body: Stack(
@@ -83,61 +84,73 @@ class UserGuideScreen extends ConsumerWidget {
                 children: [
                   _GuideRow(
                     icon: Icons.refresh,
-                    title: '下拉刷新',
-                    subtitle: '同步最近内容',
+                    title: context.tr(zh: '下拉刷新', en: 'Pull to Refresh'),
+                    subtitle: context.tr(zh: '同步最近内容', en: 'Sync recent content'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
                       haptic();
                       await _showInfo(
                         context,
-                        title: '下拉刷新',
-                        body: '在 Memo 列表页向下拖动即可刷新并触发同步。同步会优先拉取最近的一批内容；定期可执行一次全量同步，以保证统计/热力图数据完整。',
+                        title: context.tr(zh: '下拉刷新', en: 'Pull to Refresh'),
+                        body: context.tr(
+                          zh: '在笔记列表下拉即可刷新并同步。同步会优先拉取最新内容；建议定期全量同步以保持统计/热力图完整。',
+                          en: 'Pull down in the memo list to refresh and sync. Sync fetches the most recent items first; run a full sync periodically to keep stats/heatmap complete.',
+                        ),
                       );
                     },
                   ),
                   _GuideRow(
                     icon: Icons.cloud_off_outlined,
-                    title: '离线可用',
-                    subtitle: '本地库 + 待同步队列',
+                    title: context.tr(zh: '离线可用', en: 'Offline Ready'),
+                    subtitle: context.tr(zh: '本地数据库 + 待同步队列', en: 'Local DB + pending queue'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
                       haptic();
                       await _showInfo(
                         context,
-                        title: '离线可用',
-                        body: '离线时创建/编辑/删除会先写入本地数据库，并进入待同步队列；联网后会按顺序补发。为了避免误操作，未提交的编辑内容也可以进入草稿箱。',
+                        title: context.tr(zh: '离线可用', en: 'Offline Ready'),
+                        body: context.tr(
+                          zh: '离线创建/编辑/删除会先保存在本地并加入待同步队列，联网后按顺序发送。为避免误操作，未提交的编辑可保留为草稿。',
+                          en: 'Create/edit/delete actions offline are stored locally and queued for sync. They are sent in order when online. To avoid mistakes, unsubmitted edits can be kept as drafts.',
+                        ),
                       );
                     },
                   ),
                   _GuideRow(
                     icon: Icons.search,
-                    title: '全文搜索',
-                    subtitle: '支持内容/标签',
+                    title: context.tr(zh: '全文搜索', en: 'Full-Text Search'),
+                    subtitle: context.tr(zh: '内容 + 标签', en: 'Content + tags'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
                       haptic();
                       await _showInfo(
                         context,
-                        title: '全文搜索',
-                        body: '在搜索框输入关键字即可搜索本地内容与标签。离线场景下也能使用；首次使用建议等待本地索引构建完成。',
+                        title: context.tr(zh: '全文搜索', en: 'Full-Text Search'),
+                        body: context.tr(
+                          zh: '在搜索框输入关键词可检索本地内容与标签。离线可用；首次使用请等待本地索引完成。',
+                          en: 'Enter keywords in the search box to query local content and tags. Works offline; for first use, wait until local indexing finishes.',
+                        ),
                       );
                     },
                   ),
                   _GuideRow(
                     icon: Icons.graphic_eq,
-                    title: '语音 Memo',
-                    subtitle: '录音后生成 memo',
+                    title: context.tr(zh: '语音备忘', en: 'Voice Memos'),
+                    subtitle: context.tr(zh: '录音生成 memo', en: 'Record to create memos'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
                       haptic();
                       await _showInfo(
                         context,
-                        title: '语音 Memo',
-                        body: '录音完成后会先生成一条本地 memo，并将音频加入待同步队列。最长支持 60 分钟；录音转写可在后续接入第三方服务实现。',
+                        title: context.tr(zh: '语音备忘', en: 'Voice Memos'),
+                        body: context.tr(
+                          zh: '录音完成后会创建本地 memo，并将音频加入待同步队列。最长 60 分钟；可后续通过第三方服务转写。',
+                          en: 'After recording, a local memo is created and the audio is queued for sync. Max length is 60 minutes; transcription can be added via third-party services later.',
+                        ),
                       );
                     },
                   ),
@@ -145,7 +158,10 @@ class UserGuideScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '提示：后端无需改动即可实现大部分能力（离线/统计/AI 报告/导出等），但 token 本身只会在创建时返回一次，请注意保存。',
+                context.tr(
+                  zh: '提示：大部分功能（离线/统计/AI 总结/导出）无需后端改动，但 Token 只返回一次，请妥善保存。',
+                  en: 'Note: Most features (offline/stats/AI reports/export) work without backend changes, but tokens are returned only once?please keep them safe.',
+                ),
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],
@@ -243,4 +259,3 @@ class _GuideRow extends StatelessWidget {
     );
   }
 }
-

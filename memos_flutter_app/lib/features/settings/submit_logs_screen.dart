@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/logging_provider.dart';
 import '../../state/preferences_provider.dart';
@@ -58,10 +59,14 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
       await File(outPath).writeAsString(text, flush: true);
       if (!mounted) return;
       setState(() => _lastPath = outPath);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('日志已生成')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '日志文件已生成', en: 'Log file created'))),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('生成失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '生成失败：$e', en: 'Failed to generate: $e'))),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -92,11 +97,11 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('提交日志'),
+        title: Text(context.tr(zh: '提交日志', en: 'Submit Logs')),
         centerTitle: false,
       ),
       body: Stack(
@@ -120,7 +125,10 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
           ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
-              Text('收集内容', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted)),
+              Text(
+                context.tr(zh: '包含', en: 'Include'),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
+              ),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
@@ -128,7 +136,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 children: [
                   _ToggleRow(
                     icon: Icons.report_gmailerrorred_outlined,
-                    label: '包含错误详情',
+                    label: context.tr(zh: '包含错误详情', en: 'Include error details'),
                     value: _includeErrors,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -139,7 +147,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   ),
                   _ToggleRow(
                     icon: Icons.outbox_outlined,
-                    label: '包含待同步队列',
+                    label: context.tr(zh: '包含待处理队列', en: 'Include pending queue'),
                     value: _includeOutbox,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -150,7 +158,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   ),
                   _ToggleRow(
                     icon: Icons.swap_horiz,
-                    label: '记录请求/响应日志',
+                    label: context.tr(zh: '记录请求/响应日志', en: 'Record request/response logs'),
                     value: networkLoggingEnabled,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -162,7 +170,10 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text('补充说明（可选）', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted)),
+              Text(
+                context.tr(zh: '补充说明（可选）', en: 'Additional notes (optional)'),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
+              ),
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -175,7 +186,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   minLines: 3,
                   maxLines: 5,
                   decoration: InputDecoration(
-                    hintText: '描述问题、出现时间、复现步骤等',
+                    hintText: context.tr(zh: '描述问题、时间、复现步骤等', en: 'Describe the issue, time, repro steps, etc.'),
                     border: InputBorder.none,
                     hintStyle: TextStyle(color: textMuted),
                   ),
@@ -183,7 +194,10 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text('操作', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted)),
+              Text(
+                context.tr(zh: '操作', en: 'Actions'),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
+              ),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
@@ -191,7 +205,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 children: [
                   _ActionRow(
                     icon: Icons.content_copy,
-                    label: '复制日志文本',
+                    label: context.tr(zh: '复制日志文本', en: 'Copy log text'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
@@ -199,16 +213,22 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                       try {
                         await _copyReport();
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制日志')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr(zh: '日志已复制', en: 'Log copied'))),
+                        );
                       } catch (e) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('复制失败：$e')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr(zh: '复制失败：$e', en: 'Copy failed: $e'))),
+                        );
                       }
                     },
                   ),
                   _ActionRow(
                     icon: Icons.file_present_outlined,
-                    label: _busy ? '正在生成…' : '生成日志文件',
+                    label: _busy
+                        ? context.tr(zh: '生成中…', en: 'Generating?')
+                        : context.tr(zh: '生成日志文件', en: 'Generate log file'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: _busy
@@ -231,7 +251,10 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('日志文件', style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                      Text(
+                        context.tr(zh: '日志文件', en: 'Log file'),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+                      ),
                       const SizedBox(height: 6),
                       Text(_lastPath!, style: TextStyle(fontSize: 12, color: textMuted)),
                       const SizedBox(height: 10),
@@ -242,9 +265,11 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                             haptic();
                             await Clipboard.setData(ClipboardData(text: _lastPath!));
                             if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制路径')));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(context.tr(zh: '路径已复制', en: 'Path copied'))),
+                            );
                           },
-                          child: const Text('复制路径'),
+                          child: Text(context.tr(zh: '复制路径', en: 'Copy path')),
                         ),
                       ),
                     ],
@@ -253,7 +278,10 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
               ],
               const SizedBox(height: 16),
               Text(
-                '提示：日志包含服务器地址、同步状态、错误信息等。若涉及隐私，请先检查或删减后再提交。',
+                context.tr(
+                  zh: '提示：日志包含服务器地址、同步状态、错误信息等。如含敏感数据，请提交前自行处理。',
+                  en: 'Note: logs include server address, sync status, error info, etc. If it contains sensitive data, review or redact before submitting.',
+                ),
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.75)),
               ),
             ],

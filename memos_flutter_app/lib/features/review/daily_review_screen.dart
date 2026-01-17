@@ -4,9 +4,11 @@ import 'package:appinio_swiper/appinio_swiper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/memos_providers.dart';
+import '../../state/preferences_provider.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
@@ -103,10 +105,11 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
 
     final memosAsync = ref.watch(_memosProvider);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _back();
-        return false;
       },
       child: Scaffold(
         backgroundColor: bg,
@@ -116,17 +119,17 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           leading: IconButton(
-            tooltip: '返回',
+            tooltip: context.tr(zh: '返回', en: 'Back'),
             icon: const Icon(Icons.arrow_back),
             onPressed: _back,
           ),
-          title: const Text('随机漫步'),
+          title: Text(context.tr(zh: '随机漫步', en: 'Random Review')),
           centerTitle: true,
         ),
         body: memosAsync.when(
         data: (memos) {
           if (memos.isEmpty) {
-            return Center(child: Text('暂无内容', style: TextStyle(color: textMuted)));
+            return Center(child: Text(context.tr(zh: '暂无内容', en: 'No content yet'), style: TextStyle(color: textMuted)));
           }
 
           final deck = _deck;
@@ -142,7 +145,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '随机抽取你的卡片笔记',
+                        context.tr(zh: '随机抽取你的卡片笔记', en: 'Randomly draw your memo cards'),
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
                       ),
                     ),
@@ -196,7 +199,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
+        error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
         ),
       ),
     );
@@ -222,8 +225,11 @@ class _RandomWalkCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final dt = memo.updateTime;
     final dateText = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    final relative = _relative(dt);
-    final content = memo.content.trim().isEmpty ? '（空内容）' : memo.content.trim();
+    final language = context.appLanguage;
+    final relative = _relative(dt, language);
+    final content = memo.content.trim().isEmpty
+        ? context.tr(zh: '（空内容）', en: '(Empty content)')
+        : memo.content.trim();
     final contentStyle = TextStyle(fontSize: 16, height: 1.6, fontWeight: FontWeight.w600, color: textMain);
 
     return GestureDetector(
@@ -339,13 +345,20 @@ class _RandomWalkCard extends StatelessWidget {
     );
   }
 
-  String _relative(DateTime dt) {
+  String _relative(DateTime dt, AppLanguage language) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inDays < 1) return '今天';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
-    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}周前';
-    if (diff.inDays < 365) return '${(diff.inDays / 30).floor()}个月前';
-    return '${(diff.inDays / 365).floor()}年前';
+    if (diff.inDays < 1) return trByLanguage(language: language, zh: '今天', en: 'Today');
+    if (diff.inDays < 7) return trByLanguage(language: language, zh: '${diff.inDays}天前', en: '${diff.inDays}d ago');
+    if (diff.inDays < 30) {
+      final weeks = (diff.inDays / 7).floor();
+      return trByLanguage(language: language, zh: '${weeks}周前', en: '${weeks}w ago');
+    }
+    if (diff.inDays < 365) {
+      final months = (diff.inDays / 30).floor();
+      return trByLanguage(language: language, zh: '${months}个月前', en: '${months}mo ago');
+    }
+    final years = (diff.inDays / 365).floor();
+    return trByLanguage(language: language, zh: '${years}年前', en: '${years}y ago');
   }
 }

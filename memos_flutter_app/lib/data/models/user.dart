@@ -4,22 +4,26 @@ class User {
     required this.username,
     required this.displayName,
     required this.avatarUrl,
+    required this.description,
   });
 
   final String name;
   final String username;
   final String displayName;
   final String avatarUrl;
+  final String description;
 
   const User.empty()
       : name = '',
         username = '',
         displayName = '',
-        avatarUrl = '';
+        avatarUrl = '',
+        description = '';
 
   factory User.fromJson(Map<String, dynamic> json) {
     final username = (json['username'] as String?) ?? (json['email'] as String?) ?? '';
-    final avatarUrl = (json['avatarUrl'] as String?) ?? (json['avatar_url'] as String?) ?? '';
+    final avatarUrl = (json['avatarUrl'] as String?) ?? (json['avatar_url'] as String?) ?? (json['avatarURL'] as String?) ?? '';
+    final description = (json['description'] as String?) ?? '';
     final rawName = (json['name'] as String?) ?? '';
     final idRaw = json['id'] ?? json['userId'] ?? json['user_id'];
     final id = idRaw?.toString() ?? '';
@@ -45,6 +49,7 @@ class User {
       username: username,
       displayName: displayName,
       avatarUrl: avatarUrl,
+      description: description,
     );
   }
 
@@ -53,5 +58,6 @@ class User {
         'username': username,
         'displayName': displayName,
         'avatarUrl': avatarUrl,
+        'description': description,
       };
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/url.dart';
@@ -93,11 +95,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('删除 Memo？'),
-            content: const Text('本地会立即移除，联网后将同步删除服务器内容。'),
+            title: Text(context.tr(zh: '删除 Memo？', en: 'Delete memo?')),
+            content: Text(context.tr(
+              zh: '本地会立即移除，联网后将同步删除服务器内容。',
+              en: 'It will be removed locally now and deleted on the server when online.',
+            )),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('删除')),
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
             ],
           ),
         ) ??
@@ -255,6 +260,18 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     return thumbnail ? '$url?thumbnail=true' : url;
   }
 
+  File? _localAttachmentFile(Attachment attachment) {
+    final raw = attachment.externalLink.trim();
+    if (!raw.startsWith('file://')) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    final path = uri.toFilePath();
+    if (path.trim().isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return file;
+  }
+
   Future<void> _togglePlayAudio(String url, {Map<String, String>? headers}) async {
     if (_currentAudioUrl == url) {
       if (_player.playing) {
@@ -271,7 +288,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       await _player.play();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '播放失败：$e', en: 'Playback failed: $e'))),
+      );
     }
   }
 
@@ -374,10 +393,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                       onPressed: () {
                         maybeHaptic();
                         unawaited(ref.read(syncControllerProvider.notifier).syncNow());
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已开始重试同步')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr(zh: '已开始重试同步', en: 'Retry started'))),
+                        );
                       },
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('重试同步'),
+                      label: Text(context.tr(zh: '重试同步', en: 'Retry sync')),
                     ),
                     const SizedBox(width: 8),
                     TextButton.icon(
@@ -385,10 +406,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                         maybeHaptic();
                         await Clipboard.setData(ClipboardData(text: memo.lastError!));
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制错误信息')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr(zh: '已复制错误信息', en: 'Error copied'))),
+                        );
                       },
                       icon: const Icon(Icons.copy, size: 18),
-                      label: const Text('复制'),
+                      label: Text(context.tr(zh: '复制', en: 'Copy')),
                     ),
                   ],
                 ),
@@ -406,10 +429,10 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: Text(isArchived ? '已归档' : 'Memo'),
+        title: Text(isArchived ? context.tr(zh: '已归档', en: 'Archived') : context.tr(zh: '笔记', en: 'Memo')),
         actions: [
           IconButton(
-            tooltip: '编辑',
+            tooltip: context.tr(zh: '编辑', en: 'Edit'),
             onPressed: () {
               maybeHaptic();
               unawaited(_edit());
@@ -417,7 +440,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             icon: const Icon(Icons.edit),
           ),
           IconButton(
-            tooltip: memo.pinned ? '取消置顶' : '置顶',
+            tooltip: memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin'),
             onPressed: () {
               maybeHaptic();
               unawaited(_togglePinned());
@@ -425,7 +448,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             icon: Icon(memo.pinned ? Icons.push_pin : Icons.push_pin_outlined),
           ),
           IconButton(
-            tooltip: isArchived ? '取消归档' : '归档',
+            tooltip: isArchived ? context.tr(zh: '取消归档', en: 'Unarchive') : context.tr(zh: '归档', en: 'Archive'),
             onPressed: () {
               maybeHaptic();
               unawaited(_toggleArchived());
@@ -433,7 +456,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: context.tr(zh: '删除', en: 'Delete'),
             onPressed: () {
               maybeHaptic();
               unawaited(_delete());
@@ -462,18 +485,33 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 header,
+                _MemoRelationsSection(memoUid: memo.uid),
                 if (memo.attachments.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Text('附件', style: Theme.of(context).textTheme.titleMedium),
+                  Text(context.tr(zh: '附件', en: 'Attachments'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   ...memo.attachments.map(
                     (a) {
                       final type = a.type;
                       final isImage = type.startsWith('image/');
                       final isAudio = type.startsWith('audio');
+                      final localFile = _localAttachmentFile(a);
     
                       final url = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: isImage);
                       final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: false);
+    
+                      if (isImage && localFile != null) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              localFile,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        );
+                      }
     
                       if (isImage && baseUrl != null && url.isNotEmpty) {
                         return Padding(
@@ -540,6 +578,286 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         ],
       ),
     );
+  }
+}
+
+class _MemoRelationsSection extends ConsumerWidget {
+  const _MemoRelationsSection({required this.memoUid});
+
+  final String memoUid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final relationsAsync = ref.watch(memoRelationsProvider(memoUid));
+    return relationsAsync.when(
+      data: (relations) {
+        if (relations.isEmpty) return const SizedBox.shrink();
+
+        final currentName = 'memos/$memoUid';
+        final referencing = <_RelationLinkItem>[];
+        final referencedBy = <_RelationLinkItem>[];
+        final seenReferencing = <String>{};
+        final seenReferencedBy = <String>{};
+
+        for (final relation in relations) {
+          final memoName = relation.memo.name.trim();
+          final relatedName = relation.relatedMemo.name.trim();
+
+          if (memoName == currentName && relatedName.isNotEmpty) {
+            if (seenReferencing.add(relatedName)) {
+              referencing.add(
+                _RelationLinkItem(
+                  name: relatedName,
+                  snippet: relation.relatedMemo.snippet,
+                ),
+              );
+            }
+            continue;
+          }
+          if (relatedName == currentName && memoName.isNotEmpty) {
+            if (seenReferencedBy.add(memoName)) {
+              referencedBy.add(
+                _RelationLinkItem(
+                  name: memoName,
+                  snippet: relation.memo.snippet,
+                ),
+              );
+            }
+          }
+        }
+
+        if (referencing.isEmpty && referencedBy.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+        final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
+        final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+        final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
+        final chipBg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+        final total = referencing.length + referencedBy.length;
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.link, size: 16, color: textMuted),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.tr(zh: '双链', en: 'Links'),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('$total', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (referencing.isNotEmpty)
+                _RelationGroup(
+                  title: context.tr(zh: '引用了', en: 'References'),
+                  items: referencing,
+                  isDark: isDark,
+                  borderColor: borderColor,
+                  bg: bg,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  chipBg: chipBg,
+                  onTap: (item) => _openMemo(context, ref, item.name),
+                ),
+              if (referencing.isNotEmpty && referencedBy.isNotEmpty) const SizedBox(height: 10),
+              if (referencedBy.isNotEmpty)
+                _RelationGroup(
+                  title: context.tr(zh: '被引用', en: 'Referenced by'),
+                  items: referencedBy,
+                  isDark: isDark,
+                  borderColor: borderColor,
+                  bg: bg,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  chipBg: chipBg,
+                  onTap: (item) => _openMemo(context, ref, item.name),
+                ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
+    );
+  }
+
+  Future<void> _openMemo(BuildContext context, WidgetRef ref, String rawName) async {
+    final uid = _normalizeMemoUid(rawName);
+    if (uid.isEmpty || uid == memoUid) return;
+
+    final db = ref.read(databaseProvider);
+    final row = await db.getMemoByUid(uid);
+    LocalMemo? memo = row == null ? null : LocalMemo.fromDb(row);
+
+    if (memo == null) {
+      try {
+        final api = ref.read(memosApiProvider);
+        final remote = await api.getMemo(memoUid: uid);
+        final remoteUid = remote.uid.isNotEmpty ? remote.uid : uid;
+        await db.upsertMemo(
+          uid: remoteUid,
+          content: remote.content,
+          visibility: remote.visibility,
+          pinned: remote.pinned,
+          state: remote.state,
+          createTimeSec: remote.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          updateTimeSec: remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          tags: remote.tags,
+          attachments: remote.attachments.map((a) => a.toJson()).toList(growable: false),
+          syncState: 0,
+        );
+        final refreshed = await db.getMemoByUid(remoteUid);
+        if (refreshed != null) {
+          memo = LocalMemo.fromDb(refreshed);
+        }
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+        );
+        return;
+      }
+    }
+
+    if (memo == null) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '本地暂无该笔记', en: 'Memo not found locally'))),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo!)));
+  }
+
+  String _normalizeMemoUid(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('memos/')) return trimmed.substring('memos/'.length);
+    return trimmed;
+  }
+}
+
+class _RelationLinkItem {
+  const _RelationLinkItem({required this.name, required this.snippet});
+
+  final String name;
+  final String snippet;
+}
+
+class _RelationGroup extends StatelessWidget {
+  const _RelationGroup({
+    required this.title,
+    required this.items,
+    required this.isDark,
+    required this.borderColor,
+    required this.bg,
+    required this.textMain,
+    required this.textMuted,
+    required this.chipBg,
+    required this.onTap,
+  });
+
+  final String title;
+  final List<_RelationLinkItem> items;
+  final bool isDark;
+  final Color borderColor;
+  final Color bg;
+  final Color textMain;
+  final Color textMuted;
+  final Color chipBg;
+  final ValueChanged<_RelationLinkItem> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.link, size: 14, color: textMuted),
+              const SizedBox(width: 6),
+              Text(
+                '$title (${items.length})',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...items.map((item) {
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => onTap(item),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: chipBg,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _shortMemoId(item.name),
+                          style: TextStyle(fontSize: 10, color: textMuted),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _relationSnippet(item),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: textMain),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(Icons.chevron_right, size: 16, color: textMuted),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  static String _relationSnippet(_RelationLinkItem item) {
+    final snippet = item.snippet.trim();
+    if (snippet.isNotEmpty) return snippet;
+    final name = item.name.trim();
+    if (name.isNotEmpty) return name;
+    return '';
+  }
+
+  static String _shortMemoId(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '--';
+    final raw = trimmed.startsWith('memos/') ? trimmed.substring('memos/'.length) : trimmed;
+    return raw.length <= 6 ? raw : raw.substring(0, 6);
   }
 }
 
@@ -659,7 +977,7 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
                 }
                 setState(() => _expanded = !_expanded);
               },
-              child: Text(_expanded ? '收起' : '展开'),
+              child: Text(_expanded ? context.tr(zh: '收起', en: 'Collapse') : context.tr(zh: '展开', en: 'Expand')),
             ),
           ),
       ],
@@ -693,7 +1011,9 @@ class _ReferencesSectionState extends State<_ReferencesSection> {
 
     final scheme = Theme.of(context).colorScheme;
     final border = scheme.outlineVariant.withValues(alpha: 0.6);
-    final headerText = widget.lineCount > 0 ? '引用 ${widget.lineCount} 行' : '引用';
+    final headerText = widget.lineCount > 0
+        ? context.tr(zh: '引用 ${widget.lineCount} 行', en: 'Quoted ${widget.lineCount} lines')
+        : context.tr(zh: '引用', en: 'Quotes');
 
     return Container(
       decoration: BoxDecoration(

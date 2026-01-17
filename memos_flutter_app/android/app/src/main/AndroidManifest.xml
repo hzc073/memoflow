@@ -35,6 +35,40 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <receiver
+            android:name=".widgets.DailyReviewWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_daily_review_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_daily_review_info" />
+        </receiver>
+        <receiver
+            android:name=".widgets.QuickInputWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_quick_input_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_input_info" />
+        </receiver>
+        <receiver
+            android:name=".widgets.StatsWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_stats_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_stats_info" />
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

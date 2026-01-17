@@ -7,49 +7,62 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'session_provider.dart';
 
 enum AppLanguage {
-  zhHans('简体中文'),
-  en('English');
+  zhHans('简体中文', 'Chinese (Simplified)'),
+  en('English', 'English');
 
-  const AppLanguage(this.label);
-  final String label;
+  const AppLanguage(this.labelZh, this.labelEn);
+  final String labelZh;
+  final String labelEn;
+
+  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum AppFontSize {
-  standard('标准'),
-  large('大'),
-  small('小');
+  standard('标准', 'Standard'),
+  large('大', 'Large'),
+  small('小', 'Small');
 
-  const AppFontSize(this.label);
-  final String label;
+  const AppFontSize(this.labelZh, this.labelEn);
+  final String labelZh;
+  final String labelEn;
+
+  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum AppLineHeight {
-  classic('经典'),
-  compact('紧凑'),
-  relaxed('舒适');
+  classic('经典', 'Classic'),
+  compact('紧凑', 'Compact'),
+  relaxed('舒适', 'Relaxed');
 
-  const AppLineHeight(this.label);
-  final String label;
+  const AppLineHeight(this.labelZh, this.labelEn);
+  final String labelZh;
+  final String labelEn;
+
+  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum LaunchAction {
-  none('无'),
-  sync('同步'),
-  dailyReview('随机漫步');
+  none('无', 'None'),
+  sync('同步', 'Sync'),
+  dailyReview('随机漫步', 'Random Review');
 
-  const LaunchAction(this.label);
-  final String label;
+  const LaunchAction(this.labelZh, this.labelEn);
+  final String labelZh;
+  final String labelEn;
+
+  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
 }
 
 class AppPreferences {
+  static const Object _unset = Object();
   static const defaults = AppPreferences(
     language: AppLanguage.zhHans,
     fontSize: AppFontSize.standard,
     lineHeight: AppLineHeight.classic,
-    useSystemFont: false,
+    fontFamily: null,
+    fontFile: null,
     collapseLongContent: true,
     collapseReferences: true,
-    uploadOriginalImage: false,
     launchAction: LaunchAction.none,
     hapticsEnabled: true,
     useLegacyApi: true,
@@ -60,10 +73,10 @@ class AppPreferences {
     required this.language,
     required this.fontSize,
     required this.lineHeight,
-    required this.useSystemFont,
+    required this.fontFamily,
+    required this.fontFile,
     required this.collapseLongContent,
     required this.collapseReferences,
-    required this.uploadOriginalImage,
     required this.launchAction,
     required this.hapticsEnabled,
     required this.useLegacyApi,
@@ -73,10 +86,10 @@ class AppPreferences {
   final AppLanguage language;
   final AppFontSize fontSize;
   final AppLineHeight lineHeight;
-  final bool useSystemFont;
+  final String? fontFamily;
+  final String? fontFile;
   final bool collapseLongContent;
   final bool collapseReferences;
-  final bool uploadOriginalImage;
   final LaunchAction launchAction;
   final bool hapticsEnabled;
   final bool useLegacyApi;
@@ -86,10 +99,10 @@ class AppPreferences {
         'language': language.name,
         'fontSize': fontSize.name,
         'lineHeight': lineHeight.name,
-        'useSystemFont': useSystemFont,
+        'fontFamily': fontFamily,
+        'fontFile': fontFile,
         'collapseLongContent': collapseLongContent,
         'collapseReferences': collapseReferences,
-        'uploadOriginalImage': uploadOriginalImage,
         'launchAction': launchAction.name,
         'hapticsEnabled': hapticsEnabled,
         'useLegacyApi': useLegacyApi,
@@ -130,6 +143,38 @@ class AppPreferences {
       return AppPreferences.defaults.lineHeight;
     }
 
+    String? parseFontFamily() {
+      const legacyMap = <String, String?>{
+        'system': null,
+        'misans': 'MiSans',
+        'harmony': 'HarmonyOS Sans',
+        'pingfang': 'PingFang SC',
+        'yahei': 'Microsoft YaHei',
+        'noto': 'Noto Sans SC',
+      };
+      final raw = json['fontFamily'];
+      if (raw is String) {
+        final normalized = raw.trim();
+        if (normalized.isEmpty) return null;
+        if (legacyMap.containsKey(normalized)) return legacyMap[normalized];
+        return normalized;
+      }
+      final legacy = json['useSystemFont'];
+      if (legacy is bool && legacy) {
+        return null;
+      }
+      return null;
+    }
+
+    String? parseFontFile() {
+      final raw = json['fontFile'];
+      if (raw is String) {
+        final trimmed = raw.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }
+      return null;
+    }
+
     LaunchAction parseLaunchAction() {
       final raw = json['launchAction'];
       if (raw is String) {
@@ -148,14 +193,17 @@ class AppPreferences {
       return fallback;
     }
 
+    final parsedFamily = parseFontFamily();
+    final parsedFile = parseFontFile();
+
     return AppPreferences(
       language: parseLanguage(),
       fontSize: parseFontSize(),
       lineHeight: parseLineHeight(),
-      useSystemFont: parseBool('useSystemFont', AppPreferences.defaults.useSystemFont),
+      fontFamily: parsedFamily,
+      fontFile: parsedFamily == null ? null : parsedFile,
       collapseLongContent: parseBool('collapseLongContent', AppPreferences.defaults.collapseLongContent),
       collapseReferences: parseBool('collapseReferences', AppPreferences.defaults.collapseReferences),
-      uploadOriginalImage: parseBool('uploadOriginalImage', AppPreferences.defaults.uploadOriginalImage),
       launchAction: parseLaunchAction(),
       hapticsEnabled: parseBool('hapticsEnabled', AppPreferences.defaults.hapticsEnabled),
       useLegacyApi: parseBool('useLegacyApi', AppPreferences.defaults.useLegacyApi),
@@ -168,10 +216,10 @@ class AppPreferences {
     AppLanguage? language,
     AppFontSize? fontSize,
     AppLineHeight? lineHeight,
-    bool? useSystemFont,
+    Object? fontFamily = _unset,
+    Object? fontFile = _unset,
     bool? collapseLongContent,
     bool? collapseReferences,
-    bool? uploadOriginalImage,
     LaunchAction? launchAction,
     bool? hapticsEnabled,
     bool? useLegacyApi,
@@ -181,10 +229,10 @@ class AppPreferences {
       language: language ?? this.language,
       fontSize: fontSize ?? this.fontSize,
       lineHeight: lineHeight ?? this.lineHeight,
-      useSystemFont: useSystemFont ?? this.useSystemFont,
+      fontFamily: identical(fontFamily, _unset) ? this.fontFamily : fontFamily as String?,
+      fontFile: identical(fontFile, _unset) ? this.fontFile : fontFile as String?,
       collapseLongContent: collapseLongContent ?? this.collapseLongContent,
       collapseReferences: collapseReferences ?? this.collapseReferences,
-      uploadOriginalImage: uploadOriginalImage ?? this.uploadOriginalImage,
       launchAction: launchAction ?? this.launchAction,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
@@ -221,10 +269,11 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setLanguage(AppLanguage v) => _setAndPersist(state.copyWith(language: v));
   void setFontSize(AppFontSize v) => _setAndPersist(state.copyWith(fontSize: v));
   void setLineHeight(AppLineHeight v) => _setAndPersist(state.copyWith(lineHeight: v));
-  void setUseSystemFont(bool v) => _setAndPersist(state.copyWith(useSystemFont: v));
+  void setFontFamily({String? family, String? filePath}) {
+    _setAndPersist(state.copyWith(fontFamily: family, fontFile: filePath));
+  }
   void setCollapseLongContent(bool v) => _setAndPersist(state.copyWith(collapseLongContent: v));
   void setCollapseReferences(bool v) => _setAndPersist(state.copyWith(collapseReferences: v));
-  void setUploadOriginalImage(bool v) => _setAndPersist(state.copyWith(uploadOriginalImage: v));
   void setLaunchAction(LaunchAction v) => _setAndPersist(state.copyWith(launchAction: v));
   void setHapticsEnabled(bool v) => _setAndPersist(state.copyWith(hapticsEnabled: v));
   void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));

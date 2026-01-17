@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/db/app_database.dart';
 import '../../state/database_provider.dart';
@@ -34,21 +35,36 @@ class AccountSecurityScreen extends ConsumerWidget {
     final currentKey = session?.currentKey;
     final currentAccount = session?.currentAccount;
     final currentName = currentAccount == null
-        ? '未登录'
+        ? context.tr(zh: '未登录', en: 'Not signed in')
         : (currentAccount.user.displayName.isNotEmpty
             ? currentAccount.user.displayName
-            : (currentAccount.user.name.isNotEmpty ? currentAccount.user.name : '账号'));
+            : (currentAccount.user.name.isNotEmpty ? currentAccount.user.name : context.tr(zh: '账号', en: 'Account')));
 
     Future<void> removeAccountAndClearCache(String accountKey) async {
       final wasCurrent = accountKey == currentKey;
       final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text(wasCurrent ? '退出账号？' : '移除账号？'),
-              content: const Text('将同时清除该账号的本地缓存（离线数据/草稿/待同步队列）。此操作不可撤销。'),
+              title: Text(
+                wasCurrent
+                    ? context.tr(zh: '退出登录？', en: 'Sign out?')
+                    : context.tr(zh: '移除账号？', en: 'Remove account?'),
+              ),
+              content: Text(
+                context.tr(
+                  zh: '这会同时清除该账号的本地缓存（离线数据/草稿/待同步队列）。此操作无法撤销。',
+                  en: 'This will also clear local cache for this account (offline data/drafts/pending sync queue). This action cannot be undone.',
+                ),
+              ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('确认')),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(context.tr(zh: '确认', en: 'Confirm')),
+                ),
               ],
             ),
           ) ??
@@ -61,13 +77,17 @@ class AccountSecurityScreen extends ConsumerWidget {
         await AppDatabase.deleteDatabaseFile(dbName: dbName);
         await ref.read(personalAccessTokenRepositoryProvider).deleteForAccount(accountKey: accountKey);
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已清除本地缓存')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '本地缓存已清除', en: 'Local cache cleared'))),
+        );
         if (wasCurrent) {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '操作失败：$e', en: 'Action failed: $e'))),
+        );
       }
     }
 
@@ -79,11 +99,11 @@ class AccountSecurityScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('账号与密码'),
+        title: Text(context.tr(zh: '账号与安全', en: 'Account & Security')),
         centerTitle: false,
       ),
       body: Stack(
@@ -121,7 +141,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                 children: [
                   _SettingRow(
                     icon: Icons.person_add,
-                    label: '添加账号',
+                    label: context.tr(zh: '添加账号', en: 'Add Account'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -132,7 +152,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                   if (currentKey != null)
                     _SettingRow(
                       icon: Icons.logout,
-                      label: '退出当前账号',
+                      label: context.tr(zh: '退出登录', en: 'Sign Out'),
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () async {
@@ -144,7 +164,10 @@ class AccountSecurityScreen extends ConsumerWidget {
               ),
               if (accounts.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                Text('账号列表', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted)),
+                Text(
+                  context.tr(zh: '账号', en: 'Accounts'),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                ),
                 const SizedBox(height: 10),
                 _CardGroup(
                   card: card,
@@ -173,7 +196,10 @@ class AccountSecurityScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 16),
               Text(
-                '移除账号/退出账号会清除该账号的本地缓存（离线数据/草稿/待同步队列）。',
+                context.tr(
+                  zh: '移除/退出将清除该账号的本地缓存（离线数据/草稿/待同步队列）。',
+                  en: 'Removing/signing out will clear local cache for this account (offline data/drafts/pending sync queue).',
+                ),
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],
@@ -362,7 +388,7 @@ class _AccountRow extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: '移除',
+                tooltip: context.tr(zh: '移除', en: 'Remove'),
                 icon: Icon(Icons.delete_outline, color: textMuted),
                 onPressed: onDelete,
               ),

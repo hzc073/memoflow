@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 
 class AboutUsScreen extends StatelessWidget {
@@ -22,11 +23,11 @@ class AboutUsScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('关于我们'),
+        title: Text(context.tr(zh: '关于', en: 'About')),
         centerTitle: false,
       ),
       body: Stack(
@@ -71,7 +72,10 @@ class AboutUsScreen extends StatelessWidget {
                     Text('MemoFlow', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
                     const SizedBox(height: 8),
                     Text(
-                      '一个面向 Memos 后端的离线优先客户端。',
+                      context.tr(
+                        zh: '一个基于 Memos 后端的离线优先客户端。',
+                        en: 'An offline-first client for the Memos backend.',
+                      ),
                       style: TextStyle(fontSize: 13, height: 1.4, color: textMuted),
                     ),
                   ],
@@ -84,29 +88,29 @@ class AboutUsScreen extends StatelessWidget {
                 children: [
                   _FeatureRow(
                     icon: Icons.cloud_sync_outlined,
-                    title: '离线同步',
-                    subtitle: '本地库 + Outbox 队列',
+                    title: context.tr(zh: '离线同步', en: 'Offline Sync'),
+                    subtitle: context.tr(zh: '本地数据库 + 待同步队列', en: 'Local DB + outbox queue'),
                     textMain: textMain,
                     textMuted: textMuted,
                   ),
                   _FeatureRow(
                     icon: Icons.auto_awesome,
-                    title: 'AI 报告',
-                    subtitle: '选择范围生成总结',
+                    title: context.tr(zh: 'AI 总结', en: 'AI Reports'),
+                    subtitle: context.tr(zh: '支持按时间范围总结', en: 'Summaries over selected range'),
                     textMain: textMain,
                     textMuted: textMuted,
                   ),
                   _FeatureRow(
                     icon: Icons.graphic_eq,
-                    title: '语音 Memo',
-                    subtitle: '录音后生成 memo（可待同步）',
+                    title: context.tr(zh: '语音备忘', en: 'Voice Memos'),
+                    subtitle: context.tr(zh: '录音生成 memo（可稍后同步）', en: 'Record and create memos (sync later)'),
                     textMain: textMain,
                     textMuted: textMuted,
                   ),
                   _FeatureRow(
                     icon: Icons.search,
-                    title: '全文搜索',
-                    subtitle: '内容 + 标签',
+                    title: context.tr(zh: '全文搜索', en: 'Full-Text Search'),
+                    subtitle: context.tr(zh: '内容 + 标签', en: 'Content + tags'),
                     textMain: textMain,
                     textMuted: textMuted,
                   ),
@@ -115,9 +119,12 @@ class AboutUsScreen extends StatelessWidget {
               const SizedBox(height: 18),
               Column(
                 children: [
-                  Text('版本 v0.8', style: TextStyle(fontSize: 11, color: textMuted)),
+                  Text(context.tr(zh: '?? v0.8', en: 'Version v0.8'), style: TextStyle(fontSize: 11, color: textMuted)),
                   const SizedBox(height: 4),
-                  Text('Made with ♥ for note-taking', style: TextStyle(fontSize: 11, color: textMuted)),
+                  Text(
+                    context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),
+                    style: TextStyle(fontSize: 11, color: textMuted),
+                  ),
                 ],
               ),
             ],
@@ -206,4 +213,3 @@ class _FeatureRow extends StatelessWidget {
     );
   }
 }
-

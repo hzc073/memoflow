@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../data/models/local_memo.dart';
@@ -48,7 +49,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (_saving) return;
     final content = _contentController.text.trimRight();
     if (content.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('内容不能为空')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '内容不能为空', en: 'Content cannot be empty'))),
+      );
       return;
     }
 
@@ -100,7 +103,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+      );
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -116,13 +121,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(existing == null ? '新建 Memo' : '编辑 Memo'),
+        title: Text(existing == null ? context.tr(zh: '新建 Memo', en: 'New Memo') : context.tr(zh: '编辑 Memo', en: 'Edit Memo')),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('保存'),
+                : Text(context.tr(zh: '保存', en: 'Save')),
           ),
         ],
       ),
@@ -136,22 +141,22 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       initialValue: _visibility,
-                      items: const [
-                        DropdownMenuItem(value: 'PRIVATE', child: Text('私密')),
-                        DropdownMenuItem(value: 'PROTECTED', child: Text('受保护')),
-                        DropdownMenuItem(value: 'PUBLIC', child: Text('公开')),
+                      items: [
+                        DropdownMenuItem(value: 'PRIVATE', child: Text(context.tr(zh: '私密', en: 'Private'))),
+                        DropdownMenuItem(value: 'PROTECTED', child: Text(context.tr(zh: '受保护', en: 'Protected'))),
+                        DropdownMenuItem(value: 'PUBLIC', child: Text(context.tr(zh: '公开', en: 'Public'))),
                       ],
                       onChanged: _saving ? null : (v) => _visibility = v ?? 'PRIVATE',
-                      decoration: const InputDecoration(
-                        labelText: '可见性',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: context.tr(zh: '可见性', en: 'Visibility'),
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Column(
                     children: [
-                      const Text('置顶'),
+                      Text(context.tr(zh: '置顶', en: 'Pin')),
                       Switch(
                         value: _pinned,
                         onChanged: _saving ? null : (v) => setState(() => _pinned = v),
@@ -168,9 +173,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                   keyboardType: TextInputType.multiline,
                   maxLines: null,
                   expands: true,
-                  decoration: const InputDecoration(
-                    hintText: '写点什么… 支持 #tag 和待办 [ ] / [x]',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: context.tr(
+                      zh: '写点什么… 支持 #tag 和待办 [ ] / [x]',
+                      en: 'Write something... Supports #tag and tasks [ ] / [x]',
+                    ),
+                    border: const OutlineInputBorder(),
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
@@ -178,7 +186,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text('字数：$count'),
+                  Text(context.tr(zh: '字数：$count', en: 'Count: $count')),
                   const Spacer(),
                   if (existing != null) Text('ID：${existing.uid}'),
                 ],

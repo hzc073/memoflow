@@ -14,6 +14,7 @@ import '../models/memo_relation.dart';
 import '../models/notification_item.dart';
 import '../models/personal_access_token.dart';
 import '../models/user.dart';
+import '../models/user_stats.dart';
 
 class MemosApi {
   MemosApi._(
@@ -203,6 +204,81 @@ class MemosApi {
     return User.fromJson(body);
   }
 
+  Future<UserStatsSummary> getUserStatsSummary({String? userName}) async {
+    try {
+      return await _getUserStatsModernGetStats(userName: userName);
+    } on DioException catch (e) {
+      if (!_shouldFallback(e)) rethrow;
+    }
+
+    try {
+      return await _getUserStatsLegacyStatsPath(userName: userName);
+    } on DioException catch (e) {
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    return await _getUserStatsLegacyMemoStats(userName: userName);
+  }
+
+  Future<UserStatsSummary> _getUserStatsModernGetStats({String? userName}) async {
+    final name = await _resolveUserName(userName: userName);
+    final response = await _dio.get('api/v1/$name:getStats');
+    final body = _expectJsonMap(response.data);
+    return _parseUserStats(body);
+  }
+
+  Future<UserStatsSummary> _getUserStatsLegacyStatsPath({String? userName}) async {
+    final name = await _resolveUserName(userName: userName);
+    final response = await _dio.get('api/v1/$name/stats');
+    final body = _expectJsonMap(response.data);
+    return _parseUserStats(body);
+  }
+
+  Future<UserStatsSummary> _getUserStatsLegacyMemoStats({String? userName}) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final response = await _dio.get(
+      'api/v1/memo/stats',
+      queryParameters: <String, Object?>{
+        'creatorId': numericUserId,
+      },
+    );
+    final list = response.data;
+    final times = <DateTime>[];
+    if (list is List) {
+      for (final item in list) {
+        final dt = _readLegacyTime(item);
+        if (dt.millisecondsSinceEpoch > 0) {
+          times.add(dt.toUtc());
+        }
+      }
+    }
+    return UserStatsSummary(
+      memoDisplayTimes: times,
+      totalMemoCount: times.length,
+    );
+  }
+
+  UserStatsSummary _parseUserStats(Map<String, dynamic> body) {
+    final list = body['memoDisplayTimestamps'] ?? body['memo_display_timestamps'];
+    final times = <DateTime>[];
+    if (list is List) {
+      for (final item in list) {
+        final dt = _readTimestamp(item);
+        if (dt != null && dt.millisecondsSinceEpoch > 0) {
+          times.add(dt.toUtc());
+        }
+      }
+    }
+    var total = _readInt(body['totalMemoCount'] ?? body['total_memo_count']);
+    if (total <= 0) {
+      total = times.length;
+    }
+    return UserStatsSummary(
+      memoDisplayTimes: times,
+      totalMemoCount: total,
+    );
+  }
+
   static String? _tryExtractNumericUserId(String userNameOrId) {
     final raw = userNameOrId.trim();
     if (raw.isEmpty) return null;
@@ -253,6 +329,19 @@ class MemosApi {
       throw FormatException('Unable to determine numeric user id from "$effectiveUserName"');
     }
     return numericUserId!;
+  }
+
+  Future<String> _resolveUserName({String? userName}) async {
+    final raw = (userName ?? '').trim();
+    if (raw.isNotEmpty) {
+      return raw.startsWith('users/') ? raw : 'users/$raw';
+    }
+    final currentUser = await getCurrentUser();
+    final name = currentUser.name.trim();
+    if (name.isEmpty) {
+      throw const FormatException('Unable to determine user name');
+    }
+    return name.startsWith('users/') ? name : 'users/$name';
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})> createPersonalAccessToken({
@@ -1589,6 +1678,29 @@ class MemosApi {
     final seconds = _readInt(value);
     if (seconds <= 0) return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+  }
+
+  static DateTime? _readTimestamp(dynamic value) {
+    if (value is String && value.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(value.trim());
+      return parsed?.toUtc();
+    }
+    if (value is Map) {
+      final seconds = _readInt(value['seconds'] ?? value['Seconds']);
+      final nanos = _readInt(value['nanos'] ?? value['Nanos']);
+      if (seconds <= 0) return null;
+      final millis = seconds * 1000 + (nanos ~/ 1000000);
+      return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+    }
+    if (value is int || value is num) {
+      final raw = _readInt(value);
+      if (raw <= 0) return null;
+      if (raw > 1000000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(raw, isUtc: true);
+      }
+      return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
+    }
+    return null;
   }
 
   static String? _normalizeLegacyRowStatus(String? raw) {

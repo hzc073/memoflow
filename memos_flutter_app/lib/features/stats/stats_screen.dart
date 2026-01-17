@@ -2,9 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../memos/memos_list_screen.dart';
+import '../../state/preferences_provider.dart';
 import '../../state/stats_providers.dart';
 import '../../state/theme_mode_provider.dart';
 
@@ -57,9 +60,12 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         return SafeArea(
           child: ListView(
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(alignment: Alignment.centerLeft, child: Text('选择月份')),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(context.tr(zh: '选择月份', en: 'Select month')),
+                ),
               ),
               ...months.map((m) {
                 final label = _formatMonth(m);
@@ -101,10 +107,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
 
     final statsAsync = ref.watch(localStatsProvider);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _handleBack();
-        return false;
       },
       child: Scaffold(
       backgroundColor: bg,
@@ -116,16 +123,21 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: _handleBack,
         ),
         actions: [
           TextButton(
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享：待实现')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.tr(zh: '分享：待实现', en: 'Share: coming soon'))),
+              );
             },
-            child: Text('分享', style: TextStyle(color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.9 : 1.0))),
+            child: Text(
+              context.tr(zh: '分享', en: 'Share'),
+              style: TextStyle(color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.9 : 1.0)),
+            ),
           ),
         ],
       ),
@@ -151,7 +163,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             data: (monthly) => ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                Text('记录统计', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: textMain)),
+                Text(
+                  context.tr(zh: '记录统计', en: 'Memo stats'),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: textMain),
+                ),
                 const SizedBox(height: 12),
                 _MonthStatsCard(
                   card: card,
@@ -159,7 +174,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   textMuted: textMuted,
                   monthLabel: _formatMonth(DateTime(monthly.year, monthly.month)),
                   onPickMonth: months.isEmpty ? null : () => _pickMonth(months),
-                  onShare: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享：待实现'))),
+                  onShare: () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.tr(zh: '分享：待实现', en: 'Share: coming soon'))),
+                  ),
                   memos: monthly.totalMemos,
                   chars: monthly.totalChars,
                   maxMemosPerDay: monthly.maxMemosPerDay,
@@ -172,8 +189,13 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   card: card,
                   textMain: textMain,
                   textMuted: textMuted,
-                  title: '最近一年记录 $lastYearMemos 条笔记',
-                  onShare: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享：待实现'))),
+                  title: context.tr(
+                    zh: '最近一年记录 $lastYearMemos 条笔记',
+                    en: 'Last year: $lastYearMemos memos',
+                  ),
+                  onShare: () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.tr(zh: '分享：待实现', en: 'Share: coming soon'))),
+                  ),
                   dailyCounts: lastYear,
                   isDark: isDark,
                 ),
@@ -186,8 +208,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                         textMain: textMain,
                         textMuted: textMuted,
                         icon: Icons.local_fire_department_outlined,
-                        label: '当前连击',
-                        value: '$currentStreak 天',
+                        label: context.tr(zh: '当前连击', en: 'Current streak'),
+                        value: context.tr(zh: '$currentStreak 天', en: '$currentStreak days'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -197,8 +219,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                         textMain: textMain,
                         textMuted: textMuted,
                         icon: Icons.calendar_month_outlined,
-                        label: '累计天数',
-                        value: '${stats.activeDays} 天',
+                        label: context.tr(zh: '累计天数', en: 'Active days'),
+                        value: context.tr(zh: '${stats.activeDays} 天', en: '${stats.activeDays} days'),
                       ),
                     ),
                   ],
@@ -206,11 +228,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               ],
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('加载失败：$e')),
+            error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
+        error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
       ),
     ),
     );
@@ -284,7 +306,10 @@ class _MonthStatsCard extends StatelessWidget {
                     children: [
                       Icon(Icons.share, size: 16, color: MemoFlowPalette.primary),
                       const SizedBox(width: 6),
-                      Text('分享', style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary)),
+                      Text(
+                        context.tr(zh: '分享', en: 'Share'),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary),
+                      ),
                     ],
                   ),
                 ),
@@ -299,11 +324,27 @@ class _MonthStatsCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _Metric(value: '$memos', label: '笔记', textMain: textMain, textMuted: textMuted, big: true),
+                    _Metric(
+                      value: '$memos',
+                      label: context.tr(zh: '笔记', en: 'Memos'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      big: true,
+                    ),
                     const SizedBox(height: 14),
-                    _Metric(value: '$maxMemosPerDay', label: '单日最多条数', textMain: textMain, textMuted: textMuted),
+                    _Metric(
+                      value: '$maxMemosPerDay',
+                      label: context.tr(zh: '单日最多条数', en: 'Max per day'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                    ),
                     const SizedBox(height: 14),
-                    _Metric(value: '$activeDays', label: '坚持记录天数', textMain: textMain, textMuted: textMuted),
+                    _Metric(
+                      value: '$activeDays',
+                      label: context.tr(zh: '坚持记录天数', en: 'Days with memos'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                    ),
                   ],
                 ),
               ),
@@ -314,7 +355,7 @@ class _MonthStatsCard extends StatelessWidget {
                   children: [
                     _Metric(
                       value: chars == null ? '—' : _formatNumber(chars!),
-                      label: '字数',
+                      label: context.tr(zh: '字数', en: 'Characters'),
                       textMain: textMain,
                       textMuted: textMuted,
                       big: true,
@@ -322,7 +363,7 @@ class _MonthStatsCard extends StatelessWidget {
                     const SizedBox(height: 14),
                     _Metric(
                       value: maxCharsPerDay == null ? '—' : _formatNumber(maxCharsPerDay!),
-                      label: '单日最多字数',
+                      label: context.tr(zh: '单日最多字数', en: 'Max chars/day'),
                       textMain: textMain,
                       textMuted: textMuted,
                     ),
@@ -565,7 +606,10 @@ class _HeatmapCard extends StatelessWidget {
                 onTap: onShare,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                  child: Text('分享', style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary)),
+                  child: Text(
+                    context.tr(zh: '分享', en: 'Share'),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary),
+                  ),
                 ),
               ),
             ],
@@ -579,12 +623,15 @@ class _HeatmapCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: _monthLabels(dailyCounts.keys)
-                .map(
-                  (m) => Text(
-                    '${m.month}月',
+                .map((m) {
+                  final label = context.appLanguage == AppLanguage.en
+                      ? DateFormat.MMM(Localizations.localeOf(context).toString()).format(DateTime(2000, m.month))
+                      : '${m.month}月';
+                  return Text(
+                    label,
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.35)),
-                  ),
-                )
+                  );
+                })
                 .toList(growable: false),
           ),
         ],

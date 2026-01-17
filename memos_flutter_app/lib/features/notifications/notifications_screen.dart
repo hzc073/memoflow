@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/notification_item.dart';
 import '../../state/memos_providers.dart';
@@ -46,7 +47,11 @@ class NotificationsScreen extends ConsumerWidget {
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => const MemosListScreen(title: '回收站', state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.archived => MemosListScreen(
+          title: context.tr(zh: '回收站', en: 'Archive'),
+          state: 'ARCHIVED',
+          showDrawer: true,
+        ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -84,10 +89,11 @@ class NotificationsScreen extends ConsumerWidget {
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _backToAllMemos(context);
-        return false;
       },
       child: Scaffold(
         drawer: AppDrawer(
@@ -97,9 +103,9 @@ class NotificationsScreen extends ConsumerWidget {
           onOpenNotifications: () => _openNotifications(context),
         ),
         appBar: AppBar(
-          title: const Text('通知'),
+          title: Text(context.tr(zh: '通知', en: 'Notifications')),
           leading: IconButton(
-            tooltip: '返回',
+            tooltip: context.tr(zh: '返回', en: 'Back'),
             icon: const Icon(Icons.arrow_back),
             onPressed: () => _backToAllMemos(context),
           ),
@@ -107,7 +113,7 @@ class NotificationsScreen extends ConsumerWidget {
         body: notificationsAsync.when(
           data: (items) {
             if (items.isEmpty) {
-              return const Center(child: Text('暂无通知'));
+              return Center(child: Text(context.tr(zh: '暂无通知', en: 'No notifications')));
             }
             return RefreshIndicator(
               onRefresh: () async {
@@ -118,8 +124,8 @@ class NotificationsScreen extends ConsumerWidget {
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  final title = _typeLabel(item);
-                  final meta = _metaText(item, dateFmt);
+                  final title = _typeLabel(context, item);
+                  final meta = _metaText(context, item, dateFmt);
 
                   return ListTile(
                     leading: _NotificationBadge(
@@ -135,17 +141,17 @@ class NotificationsScreen extends ConsumerWidget {
                         _StatusPill(status: item.status, isUnread: item.isUnread, isDark: isDark),
                         const SizedBox(width: 6),
                         PopupMenuButton<_NotificationAction>(
-                          tooltip: '操作',
+                          tooltip: context.tr(zh: '操作', en: 'Actions'),
                           onSelected: (action) => _handleAction(context, ref, item, action),
                           itemBuilder: (context) => [
                             if (item.isUnread)
-                              const PopupMenuItem(
+                              PopupMenuItem(
                                 value: _NotificationAction.markRead,
-                                child: Text('标为已读'),
+                                child: Text(context.tr(zh: '标记已读', en: 'Mark as read')),
                               ),
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: _NotificationAction.delete,
-                              child: Text('删除'),
+                              child: Text(context.tr(zh: '删除', en: 'Delete')),
                             ),
                           ],
                         ),
@@ -158,16 +164,16 @@ class NotificationsScreen extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('加载失败：$e')),
+          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
         ),
       ),
     );
   }
 
-  String _metaText(AppNotification item, DateFormat dateFmt) {
+  String _metaText(BuildContext context, AppNotification item, DateFormat dateFmt) {
     final parts = <String>[];
     if (item.sender.trim().isNotEmpty) {
-      parts.add('来自 ${_shortUserName(item.sender)}');
+      parts.add(context.tr(zh: '来自 ${_shortUserName(item.sender)}', en: 'From ${_shortUserName(item.sender)}'));
     }
     parts.add(dateFmt.format(item.createTime.toLocal()));
     return parts.join(' · ');
@@ -180,12 +186,12 @@ class NotificationsScreen extends ConsumerWidget {
     return trimmed.split('/').last;
   }
 
-  String _typeLabel(AppNotification item) {
+  String _typeLabel(BuildContext context, AppNotification item) {
     final type = item.type.toUpperCase();
     return switch (type) {
-      'MEMO_COMMENT' => '有新的评论',
-      'VERSION_UPDATE' => '版本更新',
-      _ => '通知',
+      'MEMO_COMMENT' => context.tr(zh: '新评论', en: 'New comment'),
+      'VERSION_UPDATE' => context.tr(zh: '版本更新', en: 'Version update'),
+      _ => context.tr(zh: '通知', en: 'Notification'),
     };
   }
 
@@ -214,11 +220,15 @@ class NotificationsScreen extends ConsumerWidget {
       }
       ref.invalidate(notificationsProvider);
       if (!context.mounted) return;
-      final message = action == _NotificationAction.markRead ? '已标为已读' : '已删除通知';
+      final message = action == _NotificationAction.markRead
+          ? context.tr(zh: '已标记为已读', en: 'Marked as read')
+          : context.tr(zh: '通知已删除', en: 'Notification deleted');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '操作失败：$e', en: 'Action failed: $e'))),
+      );
     }
   }
 }
@@ -233,7 +243,9 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = isUnread ? MemoFlowPalette.primary : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.45);
-    final label = isUnread ? '未读' : (status.isEmpty ? '已读' : '已读');
+    final label = isUnread
+        ? context.tr(zh: '未读', en: 'Unread')
+        : (status.isEmpty ? context.tr(zh: '已读', en: 'Read') : context.tr(zh: '已读', en: 'Read'));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

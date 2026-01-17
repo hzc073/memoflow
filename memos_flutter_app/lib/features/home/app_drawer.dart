@@ -1,10 +1,13 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/memos_providers.dart';
+import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/stats_providers.dart';
 
@@ -79,11 +82,13 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: '通知',
+                        tooltip: context.tr(zh: '通知', en: 'Notifications'),
                         onPressed: () {
                           final handler = onOpenNotifications;
                           if (handler == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('通知：待实现')));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(context.tr(zh: '通知功能即将上线', en: 'Notifications: coming soon'))),
+                            );
                             return;
                           }
                           handler();
@@ -91,7 +96,7 @@ class AppDrawer extends ConsumerWidget {
                         icon: Icon(Icons.notifications, color: textMuted),
                       ),
                       IconButton(
-                        tooltip: '设置',
+                        tooltip: context.tr(zh: '设置', en: 'Settings'),
                         onPressed: () => onSelect(AppDrawerDestination.settings),
                         icon: Icon(Icons.settings, color: textMuted),
                       ),
@@ -103,20 +108,65 @@ class AppDrawer extends ConsumerWidget {
                       final tagCount = tagsAsync.valueOrNull?.length ?? 0;
                       return Row(
                         children: [
-                          Expanded(child: _DrawerStat(value: '${stats.totalMemos}', label: '笔记', textMain: textMain, textMuted: textMuted)),
-                          Expanded(child: _DrawerStat(value: '$tagCount', label: '标签', textMain: textMain, textMuted: textMuted)),
-                          Expanded(child: _DrawerStat(value: '${stats.daysSinceFirstMemo}', label: '天', textMain: textMain, textMuted: textMuted)),
+                          Expanded(
+                            child: _DrawerStat(
+                              value: '${stats.totalMemos}',
+                              label: context.tr(zh: '笔记', en: 'Memos'),
+                              textMain: textMain,
+                              textMuted: textMuted,
+                            ),
+                          ),
+                          Expanded(
+                            child: _DrawerStat(
+                              value: '$tagCount',
+                              label: context.tr(zh: '标签', en: 'Tags'),
+                              textMain: textMain,
+                              textMuted: textMuted,
+                            ),
+                          ),
+                          Expanded(
+                            child: _DrawerStat(
+                              value: '${stats.daysSinceFirstMemo}',
+                              label: context.tr(zh: '天', en: 'Days'),
+                              textMain: textMain,
+                              textMuted: textMuted,
+                            ),
+                          ),
                         ],
                       );
                     },
                     loading: () => Row(
                       children: [
-                        Expanded(child: _DrawerStat(value: '—', label: '笔记', textMain: textMain, textMuted: textMuted)),
-                        Expanded(child: _DrawerStat(value: '—', label: '标签', textMain: textMain, textMuted: textMuted)),
-                        Expanded(child: _DrawerStat(value: '—', label: '天', textMain: textMain, textMuted: textMuted)),
+                        Expanded(
+                          child: _DrawerStat(
+                            value: '?',
+                            label: context.tr(zh: '笔记', en: 'Memos'),
+                            textMain: textMain,
+                            textMuted: textMuted,
+                          ),
+                        ),
+                        Expanded(
+                          child: _DrawerStat(
+                            value: '?',
+                            label: context.tr(zh: '标签', en: 'Tags'),
+                            textMain: textMain,
+                            textMuted: textMuted,
+                          ),
+                        ),
+                        Expanded(
+                          child: _DrawerStat(
+                            value: '?',
+                            label: context.tr(zh: '天', en: 'Days'),
+                            textMain: textMain,
+                            textMuted: textMuted,
+                          ),
+                        ),
                       ],
                     ),
-                    error: (e, _) => Text('统计加载失败：$e', style: TextStyle(color: textMuted)),
+                    error: (e, _) => Text(
+                      context.tr(zh: '加载统计失败：$e', en: 'Failed to load stats: $e'),
+                      style: TextStyle(color: textMuted),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   statsAsync.when(
@@ -130,7 +180,7 @@ class AppDrawer extends ConsumerWidget {
                   const SizedBox(height: 16),
                   _NavButton(
                     selected: selected == AppDrawerDestination.memos,
-                    label: '全部笔记',
+                    label: context.tr(zh: '全部笔记', en: 'All Memos'),
                     icon: Icons.grid_view,
                     onTap: () => onSelect(AppDrawerDestination.memos),
                     textMain: textMain,
@@ -138,7 +188,7 @@ class AppDrawer extends ConsumerWidget {
                   ),
                   _NavButton(
                     selected: selected == AppDrawerDestination.dailyReview,
-                    label: '随机漫步',
+                    label: context.tr(zh: '随机漫步', en: 'Random Review'),
                     icon: Icons.explore,
                     onTap: () => onSelect(AppDrawerDestination.dailyReview),
                     textMain: textMain,
@@ -146,7 +196,7 @@ class AppDrawer extends ConsumerWidget {
                   ),
                   _NavButton(
                     selected: selected == AppDrawerDestination.aiSummary,
-                    label: 'AI 总结',
+                    label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
                     icon: Icons.track_changes,
                     onTap: () => onSelect(AppDrawerDestination.aiSummary),
                     textMain: textMain,
@@ -154,7 +204,7 @@ class AppDrawer extends ConsumerWidget {
                   ),
                   _NavButton(
                     selected: selected == AppDrawerDestination.resources,
-                    label: '附件资源',
+                    label: context.tr(zh: '附件', en: 'Attachments'),
                     icon: Icons.attach_file,
                     onTap: () => onSelect(AppDrawerDestination.resources),
                     textMain: textMain,
@@ -165,7 +215,7 @@ class AppDrawer extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '全部标签',
+                          context.tr(zh: '全部标签', en: 'All Tags'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -175,7 +225,7 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: '筛选',
+                        tooltip: context.tr(zh: '筛选', en: 'Filter'),
                         onPressed: () => onSelect(AppDrawerDestination.tags),
                         icon: Icon(Icons.tune, color: textMuted, size: 20),
                       ),
@@ -186,7 +236,7 @@ class AppDrawer extends ConsumerWidget {
                       if (tags.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text('暂无标签', style: TextStyle(color: textMuted)),
+                          child: Text(context.tr(zh: '暂无标签', en: 'No tags yet'), style: TextStyle(color: textMuted)),
                         );
                       }
                       final preview = tags.take(4).toList(growable: false);
@@ -222,25 +272,28 @@ class AppDrawer extends ConsumerWidget {
                     },
                     loading: () => Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text('加载中…', style: TextStyle(color: textMuted)),
+                      child: Text(context.tr(zh: '加载中…', en: 'Loading?'), style: TextStyle(color: textMuted)),
                     ),
                     error: (e, _) => Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text('标签加载失败：$e', style: TextStyle(color: textMuted)),
+                      child: Text(
+                        context.tr(zh: '加载标签失败：$e', en: 'Failed to load tags: $e'),
+                        style: TextStyle(color: textMuted),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),
                   Divider(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.08)),
                   const SizedBox(height: 2),
                   _BottomNavRow(
-                    label: '回收站',
+                    label: context.tr(zh: '回收站', en: 'Archive'),
                     icon: Icons.delete,
                     onTap: () => onSelect(AppDrawerDestination.archived),
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
                     hover: hover,
                   ),
                   _BottomNavRow(
-                    label: '关于',
+                    label: context.tr(zh: '关于', en: 'About'),
                     icon: Icons.info,
                     onTap: () => onSelect(AppDrawerDestination.about),
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
@@ -442,9 +495,16 @@ class _DrawerHeatmap extends StatelessWidget {
       }
     }
 
-    String monthLabel(DateTime d) => '${d.toLocal().month}月';
+    String monthLabel(DateTime d) {
+      if (context.appLanguage == AppLanguage.en) {
+        return DateFormat.MMM('en').format(d.toLocal());
+      }
+      return '${d.toLocal().month}?';
+    }
+
     final mid = alignedStart.add(const Duration(days: (weeks * daysPerWeek) ~/ 2));
     final late = alignedStart.add(const Duration(days: (weeks * daysPerWeek) - 1));
+    final labelColor = (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,7 +527,12 @@ class _DrawerHeatmap extends StatelessWidget {
               decoration: BoxDecoration(
                 color: color,
                 borderRadius: BorderRadius.circular(2),
-                border: isToday ? Border.all(color: isDark ? const Color(0xFFE0665B) : MemoFlowPalette.primary, width: 1) : null,
+                border: isToday
+                    ? Border.all(
+                        color: isDark ? const Color(0xFFE0665B) : MemoFlowPalette.primary,
+                        width: 1,
+                      )
+                    : null,
               ),
             );
           },
@@ -476,13 +541,12 @@ class _DrawerHeatmap extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(monthLabel(alignedStart), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35))),
-            Text(monthLabel(mid), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35))),
-            Text(monthLabel(late), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35))),
+            Text(monthLabel(alignedStart), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: labelColor)),
+            Text(monthLabel(mid), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: labelColor)),
+            Text(monthLabel(late), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: labelColor)),
           ],
         ),
       ],
     );
   }
 }
-

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_localization.dart';
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -34,7 +35,11 @@ class AboutScreen extends StatelessWidget {
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => const MemosListScreen(title: '回收站', state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.archived => MemosListScreen(
+          title: context.tr(zh: '回收站', en: 'Archive'),
+          state: 'ARCHIVED',
+          showDrawer: true,
+        ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -66,47 +71,55 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _backToAllMemos(context);
-        return false;
       },
       child: Scaffold(
-      drawer: AppDrawer(
-        selected: AppDrawerDestination.about,
-        onSelect: (d) => _navigate(context, d),
-        onSelectTag: (t) => _openTag(context, t),
-        onOpenNotifications: () => _openNotifications(context),
+        drawer: AppDrawer(
+          selected: AppDrawerDestination.about,
+          onSelect: (d) => _navigate(context, d),
+          onSelectTag: (t) => _openTag(context, t),
+          onOpenNotifications: () => _openNotifications(context),
+        ),
+        appBar: AppBar(title: Text(context.tr(zh: '关于', en: 'About'))),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text('MemoFlow', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text(
+              context.tr(
+                zh: '一个基于 Memos 后端的离线优先客户端。',
+                en: 'An offline-first client for the Memos backend.',
+              ),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: Text(context.tr(zh: '应用锁', en: 'App Lock')),
+              subtitle: Text(context.tr(zh: '计划：进入应用前本地锁定', en: 'Plan: local lock before entering the app')),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: Text(context.tr(zh: 'AI 总结', en: 'AI Summary')),
+              subtitle: Text(
+                context.tr(zh: '计划：按时间范围总结/年报', en: 'Plan: summary/yearly report for selected range'),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_sync_outlined),
+              title: Text(context.tr(zh: '离线同步', en: 'Offline Sync')),
+              subtitle: Text(
+                context.tr(zh: '本地数据库 + 待同步队列，联网后按序同步', en: 'Local DB + outbox queue, sync in order when online'),
+              ),
+            ),
+          ],
+        ),
       ),
-      appBar: AppBar(title: const Text('关于')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text('MemoFlow', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            '一个面向 Memos 后端的离线优先客户端。',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 16),
-          const ListTile(
-            leading: Icon(Icons.lock_outline),
-            title: Text('密码锁'),
-            subtitle: Text('计划：进入 App 前的本地锁'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.auto_awesome),
-            title: Text('AI 总结'),
-            subtitle: Text('计划：选择范围后生成总结/年终报告'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.cloud_sync_outlined),
-            title: Text('离线同步'),
-            subtitle: Text('本地库 + Outbox 队列，联网后按顺序同步'),
-          ),
-        ],
-      ),
-    ),
     );
   }
 }

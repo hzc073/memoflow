@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../state/login_draft_provider.dart';
@@ -45,7 +46,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final token = _tokenController.text.trim();
     final baseUrl = Uri.tryParse(baseUrlRaw);
     if (baseUrl == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('服务器地址不合法')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '服务器地址无效', en: 'Invalid server URL'))),
+      );
       return;
     }
 
@@ -54,7 +57,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _baseUrlController.text = sanitizedBaseUrl.toString();
       ref.read(loginBaseUrlDraftProvider.notifier).state = _baseUrlController.text;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已自动修正服务器地址（移除多余路径）')),
+        SnackBar(
+          content: Text(
+            context.tr(zh: '已规范化服务器地址（移除多余路径）', en: 'Server URL normalized (removed extra path segments)')
+          ),
+        ),
       );
     }
 
@@ -67,7 +74,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (sessionAsync.hasError) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('连接失败：${sessionAsync.error}')),
+        SnackBar(content: Text(context.tr(zh: '连接失败：${sessionAsync.error}', en: 'Connection failed: ${sessionAsync.error}'))),
       );
       return;
     }
@@ -156,11 +163,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       backgroundColor: bg,
       appBar: AppBar(
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back_ios_new),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('连接 Memos'),
+        title: Text(context.tr(zh: '连接 Memos', en: 'Connect to Memos')),
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -173,7 +180,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           children: [
             const SizedBox(height: 6),
             Text(
-              '使用 Personal Access Token 登录。',
+              context.tr(zh: '使用个人访问令牌登录', en: 'Sign in with Personal Access Token'),
               textAlign: TextAlign.center,
               style: TextStyle(color: textMuted, fontWeight: FontWeight.w500),
             ),
@@ -185,7 +192,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   _buildField(
                     controller: _baseUrlController,
-                    label: '服务器地址',
+                    label: context.tr(zh: '服务器地址', en: 'Server URL'),
                     hint: 'http://localhost:5230',
                     enabled: !isBusy,
                     obscureText: false,
@@ -197,10 +204,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onChanged: (v) => ref.read(loginBaseUrlDraftProvider.notifier).state = v,
                     validator: (v) {
                       final raw = (v ?? '').trim();
-                      if (raw.isEmpty) return '请输入服务器地址';
+                      if (raw.isEmpty) return context.tr(zh: '请输入服务器地址', en: 'Please enter server URL');
                       final uri = Uri.tryParse(raw);
                       if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
-                        return '请输入完整地址（含 http/https 和端口）';
+                        return context.tr(
+                          zh: '请输入完整地址（包含 http/https 与端口）',
+                          en: 'Enter full URL (including http/https and port)',
+                        );
                       }
                       return null;
                     },
@@ -217,7 +227,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     textMain: textMain,
                     textMuted: textMuted,
                     validator: (v) {
-                      if ((v ?? '').trim().isEmpty) return '请输入 Token';
+                      if ((v ?? '').trim().isEmpty) return context.tr(zh: '请输入 Token', en: 'Please enter token');
                       return null;
                     },
                   ),
@@ -226,7 +236,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          '兼容模式',
+                          context.tr(zh: '兼容模式', en: 'Compatibility Mode'),
                           style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
                         ),
                       ),
@@ -245,7 +255,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '开启后使用旧版接口（适用于老版本的 Memos）',
+                    context.tr(zh: '使用旧版接口（适配旧版 Memos）', en: 'Use legacy endpoints (for older Memos servers)'),
                     style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                   const SizedBox(height: 24),
@@ -256,7 +266,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       icon: isBusy
                           ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Icon(Icons.link),
-                      label: Text(isBusy ? '连接中…' : '连接'),
+                      label: Text(isBusy ? context.tr(zh: '连接中…', en: 'Connecting?') : context.tr(zh: '连接', en: 'Connect')),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MemoFlowPalette.primary,
                         foregroundColor: Colors.white,

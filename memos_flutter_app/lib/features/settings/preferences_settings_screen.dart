@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/system_fonts.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/system_fonts_provider.dart';
 import '../../state/theme_mode_provider.dart';
 
 class PreferencesSettingsScreen extends ConsumerWidget {
@@ -45,16 +48,87 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _selectFont({
+    required BuildContext context,
+    required WidgetRef ref,
+    required AppPreferences prefs,
+    required List<SystemFontInfo> fonts,
+  }) async {
+    final systemDefault = SystemFontInfo(
+      family: '',
+      displayName: context.tr(zh: '系统默认', en: 'System Default'),
+    );
+    final selectedFamily = prefs.fontFamily?.trim() ?? '';
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(context.tr(zh: '字体', en: 'Font')),
+                ),
+              ),
+              for (final font in [systemDefault, ...fonts])
+                ListTile(
+                  leading: Icon(
+                    font.family == selectedFamily ? Icons.radio_button_checked : Icons.radio_button_off,
+                  ),
+                  title: Text(font.displayName),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    if (font.isSystemDefault) {
+                      ref.read(appPreferencesProvider.notifier).setFontFamily(family: null, filePath: null);
+                      return;
+                    }
+                    await SystemFonts.ensureLoaded(font);
+                    if (!context.mounted) return;
+                    ref.read(appPreferencesProvider.notifier).setFontFamily(
+                          family: font.family,
+                          filePath: font.filePath,
+                        );
+                  },
+                ),
+              if (fonts.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Text(
+                    context.tr(zh: '未找到系统字体', en: 'No system fonts found'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _fontLabel(BuildContext context, AppPreferences prefs, List<SystemFontInfo> fonts) {
+    final family = prefs.fontFamily?.trim() ?? '';
+    if (family.isEmpty) return context.tr(zh: '系统默认', en: 'System Default');
+    for (final font in fonts) {
+      if (font.family == family) return font.displayName;
+    }
+    return family;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(appPreferencesProvider);
 
     final themeMode = ref.watch(appThemeModeProvider);
     final themeModeLabel = switch (themeMode) {
-      ThemeMode.system => '跟随系统',
-      ThemeMode.light => '浅色',
-      ThemeMode.dark => '深色',
+      ThemeMode.system => context.tr(zh: '系统', en: 'System'),
+      ThemeMode.light => context.tr(zh: '浅色', en: 'Light'),
+      ThemeMode.dark => context.tr(zh: '深色', en: 'Dark'),
     };
+    final fontsAsync = ref.watch(systemFontsProvider);
+    final fontLabel = _fontLabel(context, prefs, fontsAsync.valueOrNull ?? const []);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
@@ -71,11 +145,11 @@ class PreferencesSettingsScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('偏好设置'),
+        title: Text(context.tr(zh: '偏好设置', en: 'Preferences')),
         centerTitle: false,
       ),
       body: Stack(
@@ -103,69 +177,83 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 card: card,
                 divider: divider,
                 children: [
-              _SelectRow(
-                label: '语言',
-                value: prefs.language.label,
-                icon: Icons.expand_more,
-                textMain: textMain,
-                textMuted: textMuted,
-                onTap: () => _selectEnum<AppLanguage>(
-                  context: context,
-                  title: '语言',
-                  values: AppLanguage.values,
-                  label: (v) => v.label,
-                  selected: prefs.language,
-                  onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLanguage(v),
-                ),
-              ),
-              _SelectRow(
-                label: '字号',
-                value: prefs.fontSize.label,
-                icon: Icons.chevron_right,
-                textMain: textMain,
-                textMuted: textMuted,
-                onTap: () => _selectEnum<AppFontSize>(
-                  context: context,
-                  title: '字号',
-                  values: AppFontSize.values,
-                  label: (v) => v.label,
-                  selected: prefs.fontSize,
-                  onSelect: (v) => ref.read(appPreferencesProvider.notifier).setFontSize(v),
-                ),
-              ),
-              _SelectRow(
-                label: '行高',
-                value: prefs.lineHeight.label,
-                icon: Icons.chevron_right,
-                textMain: textMain,
-                textMuted: textMuted,
-                onTap: () => _selectEnum<AppLineHeight>(
-                  context: context,
-                  title: '行高',
-                  values: AppLineHeight.values,
-                  label: (v) => v.label,
-                  selected: prefs.lineHeight,
-                  onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLineHeight(v),
-                ),
-              ),
-              _ToggleRow(
-                label: '使用系统字体',
-                value: prefs.useSystemFont,
-                textMain: textMain,
-                onChanged: (v) => ref.read(appPreferencesProvider.notifier).setUseSystemFont(v),
-              ),
-              _ToggleRow(
-                label: '内容过长折叠',
-                value: prefs.collapseLongContent,
-                textMain: textMain,
-                onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseLongContent(v),
-              ),
-              _ToggleRow(
-                label: '引用/被引用折叠',
-                value: prefs.collapseReferences,
-                textMain: textMain,
-                onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseReferences(v),
-              ),
+                  _SelectRow(
+                    label: context.tr(zh: '语言', en: 'Language'),
+                    value: prefs.language.labelFor(prefs.language),
+                    icon: Icons.expand_more,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () => _selectEnum<AppLanguage>(
+                      context: context,
+                      title: context.tr(zh: '语言', en: 'Language'),
+                      values: AppLanguage.values,
+                      label: (v) => v.labelFor(prefs.language),
+                      selected: prefs.language,
+                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLanguage(v),
+                    ),
+                  ),
+                  _SelectRow(
+                    label: context.tr(zh: '字号', en: 'Font Size'),
+                    value: prefs.fontSize.labelFor(prefs.language),
+                    icon: Icons.chevron_right,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () => _selectEnum<AppFontSize>(
+                      context: context,
+                      title: context.tr(zh: '字号', en: 'Font Size'),
+                      values: AppFontSize.values,
+                      label: (v) => v.labelFor(prefs.language),
+                      selected: prefs.fontSize,
+                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setFontSize(v),
+                    ),
+                  ),
+                  _SelectRow(
+                    label: context.tr(zh: '行高', en: 'Line Height'),
+                    value: prefs.lineHeight.labelFor(prefs.language),
+                    icon: Icons.chevron_right,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () => _selectEnum<AppLineHeight>(
+                      context: context,
+                      title: context.tr(zh: '行高', en: 'Line Height'),
+                      values: AppLineHeight.values,
+                      label: (v) => v.labelFor(prefs.language),
+                      selected: prefs.lineHeight,
+                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLineHeight(v),
+                    ),
+                  ),
+                  _SelectRow(
+                    label: context.tr(zh: '字体', en: 'Font'),
+                    value: fontLabel,
+                    icon: Icons.chevron_right,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () async {
+                      try {
+                        final List<SystemFontInfo> fonts =
+                            fontsAsync.valueOrNull ?? await ref.read(systemFontsProvider.future);
+                        if (!context.mounted) return;
+                        await _selectFont(context: context, ref: ref, prefs: prefs, fonts: fonts);
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr(zh: '加载字体失败：$e', en: 'Failed to load fonts: $e'))),
+                        );
+                      }
+                    },
+                  ),
+                  _ToggleRow(
+                    label: context.tr(zh: '折叠长内容', en: 'Collapse Long Content'),
+                    value: prefs.collapseLongContent,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseLongContent(v),
+                  ),
+                  _ToggleRow(
+                    label: context.tr(zh: '折叠引用', en: 'Collapse References'),
+                    value: prefs.collapseReferences,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseReferences(v),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -173,27 +261,21 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 card: card,
                 divider: divider,
                 children: [
-              _ToggleRow(
-                label: '原图上传',
-                value: prefs.uploadOriginalImage,
-                textMain: textMain,
-                onChanged: (v) => ref.read(appPreferencesProvider.notifier).setUploadOriginalImage(v),
-              ),
-              _SelectRow(
-                label: '启动后立即',
-                value: prefs.launchAction.label,
-                icon: Icons.expand_more,
-                textMain: textMain,
-                textMuted: textMuted,
-                onTap: () => _selectEnum<LaunchAction>(
-                  context: context,
-                  title: '启动后立即',
-                  values: LaunchAction.values,
-                  label: (v) => v.label,
-                  selected: prefs.launchAction,
-                  onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLaunchAction(v),
-                ),
-              ),
+                  _SelectRow(
+                    label: context.tr(zh: '启动动作', en: 'Launch Action'),
+                    value: prefs.launchAction.labelFor(prefs.language),
+                    icon: Icons.expand_more,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () => _selectEnum<LaunchAction>(
+                      context: context,
+                      title: context.tr(zh: '启动动作', en: 'Launch Action'),
+                      values: LaunchAction.values,
+                      label: (v) => v.labelFor(prefs.language),
+                      selected: prefs.launchAction,
+                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLaunchAction(v),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -201,31 +283,31 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 card: card,
                 divider: divider,
                 children: [
-              _SelectRow(
-                label: '外观',
-                value: themeModeLabel,
-                icon: Icons.expand_more,
-                textMain: textMain,
-                textMuted: textMuted,
-                onTap: () => _selectEnum<ThemeMode>(
-                  context: context,
-                  title: '外观',
-                  values: const [ThemeMode.system, ThemeMode.light, ThemeMode.dark],
-                  label: (v) => switch (v) {
-                    ThemeMode.system => '跟随系统',
-                    ThemeMode.light => '浅色',
-                    ThemeMode.dark => '深色',
-                  },
-                  selected: themeMode,
-                  onSelect: (v) => ref.read(appThemeModeProvider.notifier).state = v,
-                ),
-              ),
-              _ToggleRow(
-                label: '点击震动',
-                value: prefs.hapticsEnabled,
-                textMain: textMain,
-                onChanged: (v) => ref.read(appPreferencesProvider.notifier).setHapticsEnabled(v),
-              ),
+                  _SelectRow(
+                    label: context.tr(zh: '外观', en: 'Appearance'),
+                    value: themeModeLabel,
+                    icon: Icons.expand_more,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () => _selectEnum<ThemeMode>(
+                      context: context,
+                      title: context.tr(zh: '外观', en: 'Appearance'),
+                      values: const [ThemeMode.system, ThemeMode.light, ThemeMode.dark],
+                      label: (v) => switch (v) {
+                        ThemeMode.system => context.tr(zh: '系统', en: 'System'),
+                        ThemeMode.light => context.tr(zh: '浅色', en: 'Light'),
+                        ThemeMode.dark => context.tr(zh: '深色', en: 'Dark'),
+                      },
+                      selected: themeMode,
+                      onSelect: (v) => ref.read(appThemeModeProvider.notifier).state = v,
+                    ),
+                  ),
+                  _ToggleRow(
+                    label: context.tr(zh: '触感反馈', en: 'Haptics'),
+                    value: prefs.hapticsEnabled,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setHapticsEnabled(v),
+                  ),
                 ],
               ),
             ],

@@ -1,8 +1,13 @@
+import 'dart:convert';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/url.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../memos/memos_list_screen.dart';
@@ -40,6 +45,16 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  String _resolveAvatarUrl(String rawUrl, Uri? baseUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('data:')) return trimmed;
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return trimmed;
+    if (baseUrl == null) return trimmed;
+    return joinBaseUrl(baseUrl, trimmed);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -62,252 +77,262 @@ class SettingsScreen extends ConsumerWidget {
         : (account?.user.name.isNotEmpty ?? false)
             ? account!.user.name
             : 'MemoFlow';
+    final description = (account?.user.description ?? '').trim();
+    final subtitle = description.isNotEmpty
+        ? description
+        : context.tr(zh: '记录每一个瞬间', en: 'Capture every moment you record');
+    final avatarUrl = _resolveAvatarUrl((account?.user.avatarUrl ?? ''), account?.baseUrl);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         _close(context);
-        return false;
       },
       child: Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: '关闭',
-          icon: const Icon(Icons.close),
-          onPressed: () => _close(context),
+        backgroundColor: bg,
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: context.tr(zh: '关闭', en: 'Close'),
+            icon: const Icon(Icons.close),
+            onPressed: () => _close(context),
+          ),
+          title: Text(context.tr(zh: '设置', en: 'Settings')),
+          centerTitle: false,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
         ),
-        title: const Text('设置'),
-        centerTitle: false,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-      ),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+        body: Stack(
+          children: [
+            if (isDark)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF0B0B0B),
+                        bg,
+                        bg,
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
-            children: [
-              _ProfileCard(
-                card: card,
-                textMain: textMain,
-                textMuted: textMuted,
-                name: name,
-                subtitle: '期待每一个记录的时刻',
-                onTap: () {
-                  haptic();
-                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()));
-                },
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ShortcutTile(
-                      card: card,
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+              children: [
+                _ProfileCard(
+                  card: card,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  name: name,
+                  subtitle: subtitle,
+                  avatarUrl: avatarUrl,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()));
+                  },
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ShortcutTile(
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        icon: Icons.calendar_month_outlined,
+                        label: context.tr(zh: '统计', en: 'Stats'),
+                        onTap: () {
+                          haptic();
+                          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ShortcutTile(
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        icon: Icons.widgets_outlined,
+                        label: context.tr(zh: '小组件', en: 'Widgets'),
+                        onTap: () {
+                          haptic();
+                          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WidgetsScreen()));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ShortcutTile(
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        icon: Icons.code,
+                        label: context.tr(zh: 'API 与插件', en: 'API & Plugins'),
+                        onTap: () {
+                          haptic();
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(builder: (_) => const ApiPluginsScreen()),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _CardGroup(
+                  card: card,
+                  divider: divider,
+                  children: [
+                    _SettingRow(
+                      icon: Icons.menu_book_outlined,
+                      label: context.tr(zh: '使用指南', en: 'User Guide'),
                       textMain: textMain,
                       textMuted: textMuted,
-                      icon: Icons.calendar_month_outlined,
-                      label: '记录统计',
                       onTap: () {
                         haptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
+                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const UserGuideScreen()));
                       },
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _ShortcutTile(
-                      card: card,
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _CardGroup(
+                  card: card,
+                  divider: divider,
+                  children: [
+                    _SettingRow(
+                      icon: Icons.person_outline,
+                      label: context.tr(zh: '账号与安全', en: 'Account & Security'),
                       textMain: textMain,
                       textMuted: textMuted,
-                      icon: Icons.widgets_outlined,
-                      label: '小部件',
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WidgetsScreen()));
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _ShortcutTile(
-                      card: card,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      icon: Icons.code,
-                      label: 'API & 插件',
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const ApiPluginsScreen()),
+                          MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()),
                         );
                       },
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _CardGroup(
-                card: card,
-                divider: divider,
-                children: [
-                  _SettingRow(
-                    icon: Icons.menu_book_outlined,
-                    label: '使用指南',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const UserGuideScreen()));
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _CardGroup(
-                card: card,
-                divider: divider,
-                children: [
-                  _SettingRow(
-                    icon: Icons.person_outline,
-                    label: '账号与密码',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()),
-                      );
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.tune,
-                    label: '偏好设置',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const PreferencesSettingsScreen()),
-                      );
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.smart_toy_outlined,
-                    label: 'AI 设置',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const AiSettingsScreen()),
-                      );
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.lock_outline,
-                    label: '密码锁',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const PasswordLockScreen()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _CardGroup(
-                card: card,
-                divider: divider,
-                children: [
-                  _SettingRow(
-                    icon: Icons.science_outlined,
-                    label: '实验室',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const LaboratoryScreen()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _CardGroup(
-                card: card,
-                divider: divider,
-                children: [
-                  _SettingRow(
-                    icon: Icons.chat_bubble_outline,
-                    label: '反馈建议',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
-                      );
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.import_export,
-                    label: '导出/导入',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const ImportExportScreen()),
-                      );
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.info_outline,
-                    label: '关于我们',
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutUsScreen()));
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Column(
-                children: [
-                  Text('版本 v0.8', style: TextStyle(fontSize: 11, color: textMuted)),
+                    _SettingRow(
+                      icon: Icons.tune,
+                      label: context.tr(zh: '偏好设置', en: 'Preferences'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const PreferencesSettingsScreen()),
+                        );
+                      },
+                    ),
+                    _SettingRow(
+                      icon: Icons.smart_toy_outlined,
+                      label: context.tr(zh: 'AI 设置', en: 'AI Settings'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const AiSettingsScreen()),
+                        );
+                      },
+                    ),
+                    _SettingRow(
+                      icon: Icons.lock_outline,
+                      label: context.tr(zh: '应用锁', en: 'App Lock'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const PasswordLockScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _CardGroup(
+                  card: card,
+                  divider: divider,
+                  children: [
+                    _SettingRow(
+                      icon: Icons.science_outlined,
+                      label: context.tr(zh: '实验室', en: 'Laboratory'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const LaboratoryScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _CardGroup(
+                  card: card,
+                  divider: divider,
+                  children: [
+                    _SettingRow(
+                      icon: Icons.chat_bubble_outline,
+                      label: context.tr(zh: '反馈', en: 'Feedback'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
+                        );
+                      },
+                    ),
+                    _SettingRow(
+                      icon: Icons.import_export,
+                      label: context.tr(zh: '导入 / 导出', en: 'Import / Export'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const ImportExportScreen()),
+                        );
+                      },
+                    ),
+                    _SettingRow(
+                      icon: Icons.info_outline,
+                      label: context.tr(zh: '关于', en: 'About'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutUsScreen()));
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Column(
+                  children: [
+                    Text(context.tr(zh: '版本 v0.8', en: 'Version v0.8'), style: TextStyle(fontSize: 11, color: textMuted)),
                   const SizedBox(height: 4),
-                  Text('Made with ♥ for note-taking', style: TextStyle(fontSize: 11, color: textMuted)),
-                ],
-              ),
-            ],
-          ),
-        ],
+                  Text(
+                    context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),
+                    style: TextStyle(fontSize: 11, color: textMuted),
+                  ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 }
@@ -401,6 +426,7 @@ class _ProfileCard extends StatelessWidget {
     required this.textMuted,
     required this.name,
     required this.subtitle,
+    required this.avatarUrl,
     required this.onTap,
   });
 
@@ -409,11 +435,49 @@ class _ProfileCard extends StatelessWidget {
   final Color textMuted;
   final String name;
   final String subtitle;
+  final String avatarUrl;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final avatarFallback = Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+      ),
+      child: Icon(Icons.person, color: textMuted),
+    );
+    Widget avatarWidget = avatarFallback;
+    if (avatarUrl.trim().isNotEmpty) {
+      if (avatarUrl.startsWith('data:')) {
+        final bytes = _tryDecodeDataUri(avatarUrl);
+        if (bytes != null) {
+          avatarWidget = ClipOval(
+            child: Image.memory(
+              bytes,
+              width: 44,
+              height: 44,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => avatarFallback,
+            ),
+          );
+        }
+      } else {
+        avatarWidget = ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: avatarUrl,
+            width: 44,
+            height: 44,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => avatarFallback,
+            errorWidget: (_, __, ___) => avatarFallback,
+          ),
+        );
+      }
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -436,11 +500,7 @@ class _ProfileCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
-                child: Icon(Icons.person, color: textMuted),
-              ),
+              avatarWidget,
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -457,6 +517,18 @@ class _ProfileCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static Uint8List? _tryDecodeDataUri(String raw) {
+    final index = raw.indexOf('base64,');
+    if (index == -1) return null;
+    final data = raw.substring(index + 'base64,'.length).trim();
+    if (data.isEmpty) return null;
+    try {
+      return base64Decode(data);
+    } catch (_) {
+      return null;
+    }
   }
 }
 

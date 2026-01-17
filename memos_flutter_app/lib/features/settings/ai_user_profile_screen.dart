@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
@@ -45,10 +46,14 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
     try {
       await ref.read(aiSettingsProvider.notifier).setUserProfile(_controller.text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '已保存', en: 'Saved'))),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -94,7 +99,10 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('我的信息', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted)),
+                    Text(
+                      context.tr(zh: '我的资料', en: 'My Profile'),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+                    ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: _controller,
@@ -103,7 +111,10 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
                       maxLines: 12,
                       style: TextStyle(fontWeight: FontWeight.w600, color: textMain, height: 1.35),
                       decoration: InputDecoration(
-                        hintText: '例如：我的职业/关注主题/写作风格偏好…',
+                        hintText: context.tr(
+                          zh: '例如：我的角色 / 兴趣主题 / 写作风格偏好',
+                          en: 'e.g., my role / topics of interest / writing style preferences?',
+                        ),
                         hintStyle: TextStyle(color: textMuted),
                         border: InputBorder.none,
                         isDense: true,
@@ -115,7 +126,10 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                '该信息仅用于 AI 总结/报告时作为背景参考，不会同步到后端。',
+                context.tr(
+                  zh: '这些信息仅用于 AI 总结/报告的背景，不会同步到后端。',
+                  en: 'This info is only used as background for AI summaries/reports and is not synced to the backend.',
+                ),
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
             ],
@@ -138,7 +152,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
                   onPressed: _saving ? null : _save,
                   child: _saving
                       ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('保存设置', style: TextStyle(fontWeight: FontWeight.w800)),
+                      : Text(context.tr(zh: '保存设置', en: 'Save Settings'), style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ),
             ),
@@ -155,11 +169,11 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: '返回',
+          tooltip: context.tr(zh: '返回', en: 'Back'),
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: const Text('我的信息'),
+        title: Text(context.tr(zh: '我的资料', en: 'My Profile')),
         centerTitle: false,
       ),
       body: isDark
