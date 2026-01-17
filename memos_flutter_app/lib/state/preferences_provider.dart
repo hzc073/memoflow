@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,7 +35,7 @@ enum AppLineHeight {
 enum LaunchAction {
   none('无'),
   sync('同步'),
-  dailyReview('每日回顾');
+  dailyReview('随机漫步');
 
   const LaunchAction(this.label);
   final String label;
@@ -260,3 +260,4 @@ class AppPreferencesRepository {
     await _storage.delete(key: _kStateKey);
   }
 }
+

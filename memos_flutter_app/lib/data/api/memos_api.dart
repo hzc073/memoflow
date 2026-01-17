@@ -10,6 +10,7 @@ import '../logs/network_log_store.dart';
 import '../models/attachment.dart';
 import '../models/instance_profile.dart';
 import '../models/memo.dart';
+import '../models/notification_item.dart';
 import '../models/personal_access_token.dart';
 import '../models/user.dart';
 
@@ -413,6 +414,182 @@ class MemosApi {
       return bTime.compareTo(aTime);
     });
     return tokens;
+  }
+
+  Future<(List<AppNotification> notifications, String nextPageToken)> listNotifications({
+    int pageSize = 50,
+    String? pageToken,
+    String? userName,
+    String? filter,
+  }) async {
+    if (!useLegacyApi) {
+      return _listNotificationsModern(
+        pageSize: pageSize,
+        pageToken: pageToken,
+        userName: userName,
+        filter: filter,
+      );
+    }
+    try {
+      return await _listNotificationsLegacy(
+        pageSize: pageSize,
+        pageToken: pageToken,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return await _listNotificationsModern(
+          pageSize: pageSize,
+          pageToken: pageToken,
+          userName: userName,
+          filter: filter,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsModern({
+    required int pageSize,
+    String? pageToken,
+    String? userName,
+    String? filter,
+  }) async {
+    final parent = await _resolveNotificationParent(userName);
+    final normalizedToken = (pageToken ?? '').trim();
+    final normalizedFilter = (filter ?? '').trim();
+
+    final response = await _dio.get(
+      'api/v1/$parent/notifications',
+      queryParameters: <String, Object?>{
+        if (pageSize > 0) 'pageSize': pageSize,
+        if (pageSize > 0) 'page_size': pageSize,
+        if (normalizedToken.isNotEmpty) 'pageToken': normalizedToken,
+        if (normalizedToken.isNotEmpty) 'page_token': normalizedToken,
+        if (normalizedFilter.isNotEmpty) 'filter': normalizedFilter,
+      },
+    );
+
+    final body = _expectJsonMap(response.data);
+    final list = body['notifications'];
+    final notifications = <AppNotification>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          notifications.add(AppNotification.fromModernJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    return (notifications, nextToken);
+  }
+
+  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsLegacy({
+    required int pageSize,
+    String? pageToken,
+  }) async {
+    final normalizedToken = (pageToken ?? '').trim();
+    final response = await _dio.get(
+      'api/v1/inboxes',
+      queryParameters: <String, Object?>{
+        if (pageSize > 0) 'pageSize': pageSize,
+        if (pageSize > 0) 'page_size': pageSize,
+        if (normalizedToken.isNotEmpty) 'pageToken': normalizedToken,
+        if (normalizedToken.isNotEmpty) 'page_token': normalizedToken,
+      },
+    );
+
+    final body = _expectJsonMap(response.data);
+    final list = body['inboxes'];
+    final notifications = <AppNotification>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          notifications.add(AppNotification.fromLegacyJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    return (notifications, nextToken);
+  }
+
+  Future<void> updateNotificationStatus({
+    required String name,
+    required String status,
+    required NotificationSource source,
+  }) async {
+    final trimmedName = name.trim();
+    final trimmedStatus = status.trim();
+    if (trimmedName.isEmpty) {
+      throw ArgumentError('updateNotificationStatus requires name');
+    }
+    if (trimmedStatus.isEmpty) {
+      throw ArgumentError('updateNotificationStatus requires status');
+    }
+
+    if (source == NotificationSource.legacy) {
+      await _updateInboxStatus(name: trimmedName, status: trimmedStatus);
+      return;
+    }
+    await _updateUserNotificationStatus(name: trimmedName, status: trimmedStatus);
+  }
+
+  Future<void> deleteNotification({
+    required String name,
+    required NotificationSource source,
+  }) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw ArgumentError('deleteNotification requires name');
+    }
+    if (source == NotificationSource.legacy) {
+      await _dio.delete('api/v1/$trimmedName');
+      return;
+    }
+    await _dio.delete('api/v1/$trimmedName');
+  }
+
+  Future<void> _updateUserNotificationStatus({required String name, required String status}) async {
+    await _dio.patch(
+      'api/v1/$name',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'status',
+        'update_mask': 'status',
+      },
+      data: <String, Object?>{
+        'name': name,
+        'status': status,
+      },
+    );
+  }
+
+  Future<void> _updateInboxStatus({required String name, required String status}) async {
+    await _dio.patch(
+      'api/v1/$name',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'status',
+        'update_mask': 'status',
+      },
+      data: <String, Object?>{
+        'name': name,
+        'status': status,
+      },
+    );
+  }
+
+  Future<String> _resolveNotificationParent(String? userName) async {
+    final raw = (userName ?? '').trim();
+    if (raw.isEmpty) {
+      final currentUser = await getCurrentUser();
+      return currentUser.name;
+    }
+    if (raw.startsWith('users/')) return raw;
+    final numeric = _tryExtractNumericUserId(raw);
+    if (numeric != null) return 'users/$numeric';
+    try {
+      final resolved = await getUser(name: raw);
+      if (resolved.name.trim().isNotEmpty) return resolved.name;
+    } catch (_) {}
+    return raw;
   }
 
   Future<(List<Memo> memos, String nextPageToken)> listMemos({

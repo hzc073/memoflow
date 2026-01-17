@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
@@ -15,6 +16,7 @@ import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import 'memo_editor_screen.dart';
+import 'memo_markdown.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
   const MemoDetailScreen({super.key, required this.initialMemo});
@@ -174,6 +176,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final authHeader = (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
     void maybeHaptic() {
       if (!hapticsEnabled) return;
       HapticFeedback.selectionClick();
@@ -281,7 +285,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     );
 
     return Scaffold(
+      backgroundColor: cardColor,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: Text(isArchived ? '已归档' : 'Memo'),
         actions: [
           IconButton(
@@ -318,85 +327,102 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            header,
-            if (memo.attachments.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text('附件', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              ...memo.attachments.map(
-                (a) {
-                  final type = a.type;
-                  final isImage = type.startsWith('image/');
-                  final isAudio = type.startsWith('audio');
-
-                  final url = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: isImage);
-                  final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: false);
-
-                  if (isImage && baseUrl != null && url.isNotEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => _ImageViewerScreen(
-                                imageUrl: fullUrl,
-                                authHeader: authHeader,
-                                title: a.filename,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: Hero(
+              tag: memo.uid,
+              createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+              flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                final fromHero = fromHeroContext.widget as Hero;
+                final toHero = toHeroContext.widget as Hero;
+                final child = flightDirection == HeroFlightDirection.push ? fromHero.child : toHero.child;
+                return Material(color: Colors.transparent, child: RepaintBoundary(child: child));
+              },
+              child: RepaintBoundary(child: Container(color: cardColor)),
+            ),
+          ),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                header,
+                if (memo.attachments.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text('附件', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  ...memo.attachments.map(
+                    (a) {
+                      final type = a.type;
+                      final isImage = type.startsWith('image/');
+                      final isAudio = type.startsWith('audio');
+    
+                      final url = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: isImage);
+                      final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: false);
+    
+                      if (isImage && baseUrl != null && url.isNotEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => _ImageViewerScreen(
+                                    imageUrl: fullUrl,
+                                    authHeader: authHeader,
+                                    title: a.filename,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: CachedNetworkImage(
+                                imageUrl: url,
+                                httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+                                fit: BoxFit.cover,
+                                placeholder: (context, _) => const SizedBox(
+                                  height: 160,
+                                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    const SizedBox(height: 160, child: Icon(Icons.broken_image)),
                               ),
                             ),
-                          );
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: CachedNetworkImage(
-                            imageUrl: url,
-                            httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
-                            fit: BoxFit.cover,
-                            placeholder: (context, _) => const SizedBox(
-                              height: 160,
-                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
-                            errorWidget: (context, url, error) =>
-                                const SizedBox(height: 160, child: Icon(Icons.broken_image)),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
-                    return StreamBuilder<PlayerState>(
-                      stream: _player.playerStateStream,
-                      builder: (context, snap) {
-                        final playing = _player.playing && _currentAudioUrl == fullUrl;
-                        return ListTile(
-                          leading: Icon(playing ? Icons.pause : Icons.play_arrow),
-                          title: Text(a.filename),
-                          subtitle: Text(a.type),
-                          onTap: () => _togglePlayAudio(
-                            fullUrl,
-                            headers: authHeader == null ? null : {'Authorization': authHeader},
                           ),
                         );
-                      },
-                    );
-                  }
-
-                  return ListTile(
-                    leading: const Icon(Icons.attach_file),
-                    title: Text(a.filename),
-                    subtitle: Text(a.type),
-                  );
-                },
-              ),
-            ],
-          ],
-        ),
+                      }
+    
+                      if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
+                        return StreamBuilder<PlayerState>(
+                          stream: _player.playerStateStream,
+                          builder: (context, snap) {
+                            final playing = _player.playing && _currentAudioUrl == fullUrl;
+                            return ListTile(
+                              leading: Icon(playing ? Icons.pause : Icons.play_arrow),
+                              title: Text(a.filename),
+                              subtitle: Text(a.type),
+                              onTap: () => _togglePlayAudio(
+                                fullUrl,
+                                headers: authHeader == null ? null : {'Authorization': authHeader},
+                              ),
+                            );
+                          },
+                        );
+                      }
+    
+                      return ListTile(
+                        leading: const Icon(Icons.attach_file),
+                        title: Text(a.filename),
+                        subtitle: Text(a.type),
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -454,14 +480,37 @@ class _CollapsibleText extends StatefulWidget {
 
 class _CollapsibleTextState extends State<_CollapsibleText> {
   static const _collapsedLines = 14;
+  static const _collapsedRunes = 420;
 
   var _expanded = false;
 
   bool _isLong(String text) {
     final lines = text.split('\n');
     if (lines.length > _collapsedLines) return true;
-    final compact = text.replaceAll(RegExp(r'\\s+'), '');
-    return compact.runes.length > 420;
+    final compact = text.replaceAll(RegExp(r'\s+'), '');
+    return compact.runes.length > _collapsedRunes;
+  }
+
+  String _collapseText(String text) {
+    var result = text;
+    var truncated = false;
+    final lines = result.split('\n');
+    if (lines.length > _collapsedLines) {
+      result = lines.take(_collapsedLines).join('\n');
+      truncated = true;
+    }
+
+    final compact = result.replaceAll(RegExp(r'\s+'), '');
+    if (compact.runes.length > _collapsedRunes) {
+      result = String.fromCharCodes(result.runes.take(_collapsedRunes));
+      truncated = true;
+    }
+
+    if (truncated) {
+      result = result.trimRight();
+      result = result.endsWith('...') ? result : '$result...';
+    }
+    return result;
   }
 
   @override
@@ -471,19 +520,17 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
 
     final shouldCollapse = widget.collapseEnabled && _isLong(text);
     final showCollapsed = shouldCollapse && !_expanded;
+    final displayText = showCollapsed ? _collapseText(text) : text;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showCollapsed)
-          Text(
-            text,
-            style: widget.style,
-            maxLines: _collapsedLines,
-            overflow: TextOverflow.ellipsis,
-          )
-        else
-          SelectableText(text, style: widget.style),
+        MemoMarkdown(
+          data: displayText,
+          textStyle: widget.style,
+          selectable: !showCollapsed,
+          blockSpacing: 8,
+        ),
         if (shouldCollapse)
           Align(
             alignment: Alignment.centerLeft,
@@ -563,7 +610,12 @@ class _ReferencesSectionState extends State<_ReferencesSection> {
           if (_expanded)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: SelectableText(widget.references.trim(), style: widget.style),
+              child: MemoMarkdown(
+                data: widget.references.trim(),
+                textStyle: widget.style,
+                selectable: true,
+                blockSpacing: 4,
+              ),
             ),
         ],
       ),

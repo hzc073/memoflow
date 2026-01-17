@@ -24,5 +24,5 @@ class MemoFlowPalette {
 
   static const reviewChipOrangeLight = Color(0xFFD48D4D);
   static const reviewChipOrangeDark = Color(0xFFE1A670);
-}
 
+}

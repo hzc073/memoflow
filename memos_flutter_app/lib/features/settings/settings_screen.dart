@@ -28,7 +28,7 @@ class SettingsScreen extends ConsumerWidget {
       Navigator.of(context).pop();
       return;
     }
-    Navigator.of(context).pushReplacement(
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
           title: 'MemoFlow',
@@ -37,6 +37,7 @@ class SettingsScreen extends ConsumerWidget {
           enableCompose: true,
         ),
       ),
+      (route) => false,
     );
   }
 
@@ -63,7 +64,12 @@ class SettingsScreen extends ConsumerWidget {
             ? account!.user.name
             : 'MemoFlow';
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        _close(context);
+        return false;
+      },
+      child: Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
         leading: IconButton(
@@ -303,6 +309,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

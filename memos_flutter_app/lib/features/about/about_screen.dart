@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
@@ -11,6 +12,20 @@ import '../tags/tags_screen.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
+
+  void _backToAllMemos(BuildContext context) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => const MemosListScreen(
+          title: 'MemoFlow',
+          state: 'NORMAL',
+          showDrawer: true,
+          enableCompose: true,
+        ),
+      ),
+      (route) => false,
+    );
+  }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
     Navigator.of(context).pop();
@@ -44,13 +59,24 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
+  void _openNotifications(BuildContext context) {
+    Navigator.of(context).pop();
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        _backToAllMemos(context);
+        return false;
+      },
+      child: Scaffold(
       drawer: AppDrawer(
         selected: AppDrawerDestination.about,
         onSelect: (d) => _navigate(context, d),
         onSelectTag: (t) => _openTag(context, t),
+        onOpenNotifications: () => _openNotifications(context),
       ),
       appBar: AppBar(title: const Text('关于')),
       body: ListView(
@@ -80,6 +106,7 @@ class AboutScreen extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

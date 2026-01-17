@@ -25,6 +25,28 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     _selectedMonth = DateTime(now.year, now.month);
   }
 
+  void _backToAllMemos() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => const MemosListScreen(
+          title: 'MemoFlow',
+          state: 'NORMAL',
+          showDrawer: true,
+          enableCompose: true,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
+  void _handleBack() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _backToAllMemos();
+  }
+
   Future<void> _pickMonth(List<DateTime> months) async {
     if (months.isEmpty) return;
 
@@ -79,7 +101,12 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
 
     final statsAsync = ref.watch(localStatsProvider);
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        _handleBack();
+        return false;
+      },
+      child: Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
         title: const Text('MemoFlow'),
@@ -91,22 +118,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         leading: IconButton(
           tooltip: '返回',
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-              return;
-            }
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(
-                builder: (_) => const MemosListScreen(
-                  title: 'MemoFlow',
-                  state: 'NORMAL',
-                  showDrawer: true,
-                  enableCompose: true,
-                ),
-              ),
-            );
-          },
+          onPressed: _handleBack,
         ),
         actions: [
           TextButton(
@@ -200,6 +212,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('加载失败：$e')),
       ),
+    ),
     );
   }
 }

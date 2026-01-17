@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,7 @@ import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../about/about_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
@@ -21,7 +22,35 @@ import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import 'memo_detail_screen.dart';
+import 'memo_markdown.dart';
 import 'note_input_sheet.dart';
+
+const _maxPreviewLines = 6;
+const _maxPreviewRunes = 220;
+
+String _truncatePreview(String text, {required bool collapseLongContent}) {
+  if (!collapseLongContent) return text;
+
+  var result = text;
+  var truncated = false;
+  final lines = result.split('\n');
+  if (lines.length > _maxPreviewLines) {
+    result = lines.take(_maxPreviewLines).join('\n');
+    truncated = true;
+  }
+
+  final compact = result.replaceAll(RegExp(r'\s+'), '');
+  if (compact.runes.length > _maxPreviewRunes) {
+    result = String.fromCharCodes(result.runes.take(_maxPreviewRunes));
+    truncated = true;
+  }
+
+  if (truncated) {
+    result = result.trimRight();
+    result = result.endsWith('...') ? result : '$result...';
+  }
+  return result;
+}
 
 class MemosListScreen extends ConsumerStatefulWidget {
   const MemosListScreen({
@@ -48,6 +77,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   final _searchController = TextEditingController();
 
   var _searching = false;
+  DateTime? _lastBackPressedAt;
 
   @override
   void initState() {
@@ -58,6 +88,49 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  bool get _isAllMemos {
+    final tag = widget.tag;
+    return widget.state == 'NORMAL' && (tag == null || tag.isEmpty);
+  }
+
+  void _backToAllMemos() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => const MemosListScreen(
+          title: 'MemoFlow',
+          state: 'NORMAL',
+          showDrawer: true,
+          enableCompose: true,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
+  Future<bool> _handleWillPop() async {
+    if (!_isAllMemos) {
+      if (widget.showDrawer) {
+        _backToAllMemos();
+        return false;
+      }
+      return true;
+    }
+
+    final now = DateTime.now();
+    if (_lastBackPressedAt == null || now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {
+      _lastBackPressedAt = now;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('再按一次返回退出'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return false;
+    }
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    return true;
   }
 
   void _navigateDrawer(AppDrawerDestination dest) {
@@ -78,6 +151,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       AppDrawerDestination.about => const AboutScreen(),
     };
     Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+  }
+
+  void _openNotifications() {
+    if (ref.read(appPreferencesProvider).hapticsEnabled) {
+      HapticFeedback.selectionClick();
+    }
+    Navigator.of(context).pop();
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
   }
 
   void _openTagFromDrawer(String tag) {
@@ -213,12 +294,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: _handleWillPop,
+      child: Scaffold(
       drawer: widget.showDrawer
           ? AppDrawer(
               selected: widget.state == 'ARCHIVED' ? AppDrawerDestination.archived : AppDrawerDestination.memos,
               onSelect: _navigateDrawer,
               onSelectTag: _openTagFromDrawer,
+              onOpenNotifications: _openNotifications,
             )
           : null,
       body: memosAsync.when(
@@ -357,7 +441,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               hapticsEnabled: hapticsEnabled,
             )
           : null,
-    );
+    ));
   }
 }
 
@@ -386,7 +470,7 @@ class _PillRow extends StatelessWidget {
           _PillButton(
             icon: Icons.insights,
             iconColor: MemoFlowPalette.primary,
-            label: '每周洞察',
+            label: '每月统计',
             onPressed: onWeeklyInsights,
             backgroundColor: bgColor,
             borderColor: borderColor,
@@ -404,9 +488,9 @@ class _PillRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           _PillButton(
-            icon: Icons.history,
+            icon: Icons.explore,
             iconColor: isDark ? MemoFlowPalette.reviewChipOrangeDark : MemoFlowPalette.reviewChipOrangeLight,
-            label: '每日回顾',
+            label: '随机漫步',
             onPressed: onDailyReview,
             backgroundColor: bgColor,
             borderColor: borderColor,
@@ -526,79 +610,85 @@ class _MemoCard extends StatelessWidget {
 
     final audio = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
     final hasAudio = audio.isNotEmpty;
-    final maxLines = collapseLongContent ? 6 : null;
+    final preview = _truncatePreview(
+      _previewText(memo.content, collapseReferences: collapseReferences),
+      collapseLongContent: collapseLongContent,
+    );
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              BoxShadow(
-                blurRadius: isDark ? 20 : 12,
-                offset: const Offset(0, 4),
-                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.03),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      dateText,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.0,
-                        color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+    return Hero(
+      tag: memo.uid,
+      createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: borderColor),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: isDark ? 20 : 12,
+                  offset: const Offset(0, 4),
+                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.03),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        dateText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.0,
+                          color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+                        ),
                       ),
                     ),
-                  ),
-                  PopupMenuButton<_MemoCardAction>(
-                    tooltip: '更多',
-                    icon: Icon(Icons.more_horiz, size: 20, color: textMain.withValues(alpha: 0.4)),
-                    onSelected: onAction,
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: _MemoCardAction.togglePinned,
-                        child: Text(memo.pinned ? '取消置顶' : '置顶'),
-                      ),
-                      PopupMenuItem(
-                        value: _MemoCardAction.toggleArchived,
-                        child: Text(memo.state == 'ARCHIVED' ? '取消归档' : '归档'),
-                      ),
-                      const PopupMenuDivider(),
-                      const PopupMenuItem(
-                        value: _MemoCardAction.delete,
-                        child: Text('删除'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (hasAudio)
-                _AudioRow(
-                  durationText: _parseVoiceDuration(memo.content) ?? '00:00',
-                  isDark: isDark,
-                )
-              else
-                Text(
-                  _previewText(memo.content, collapseReferences: collapseReferences),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
-                  maxLines: maxLines,
-                  overflow: maxLines == null ? null : TextOverflow.ellipsis,
+                    PopupMenuButton<_MemoCardAction>(
+                      tooltip: '更多',
+                      icon: Icon(Icons.more_horiz, size: 20, color: textMain.withValues(alpha: 0.4)),
+                      onSelected: onAction,
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: _MemoCardAction.togglePinned,
+                          child: Text(memo.pinned ? '取消置顶' : '置顶'),
+                        ),
+                        PopupMenuItem(
+                          value: _MemoCardAction.toggleArchived,
+                          child: Text(memo.state == 'ARCHIVED' ? '取消归档' : '归档'),
+                        ),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          value: _MemoCardAction.delete,
+                          child: Text('删除'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-            ],
+                const SizedBox(height: 12),
+                if (hasAudio)
+                  _AudioRow(
+                    durationText: _parseVoiceDuration(memo.content) ?? '00:00',
+                    isDark: isDark,
+                  )
+                else
+                  MemoMarkdown(
+                    data: preview,
+                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
+                    blockSpacing: 4,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -758,3 +848,5 @@ class _MemoFlowFabState extends State<_MemoFlowFab> {
     );
   }
 }
+
+

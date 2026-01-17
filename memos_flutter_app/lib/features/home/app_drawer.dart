@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,11 +26,13 @@ class AppDrawer extends ConsumerWidget {
     required this.selected,
     required this.onSelect,
     this.onSelectTag,
+    this.onOpenNotifications,
   });
 
   final AppDrawerDestination selected;
   final ValueChanged<AppDrawerDestination> onSelect;
   final ValueChanged<String>? onSelectTag;
+  final VoidCallback? onOpenNotifications;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,7 +81,12 @@ class AppDrawer extends ConsumerWidget {
                       IconButton(
                         tooltip: '通知',
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('通知：待实现')));
+                          final handler = onOpenNotifications;
+                          if (handler == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('通知：待实现')));
+                            return;
+                          }
+                          handler();
                         },
                         icon: Icon(Icons.notifications, color: textMuted),
                       ),
@@ -131,8 +138,8 @@ class AppDrawer extends ConsumerWidget {
                   ),
                   _NavButton(
                     selected: selected == AppDrawerDestination.dailyReview,
-                    label: '每日回顾',
-                    icon: Icons.auto_awesome,
+                    label: '随机漫步',
+                    icon: Icons.explore,
                     onTap: () => onSelect(AppDrawerDestination.dailyReview),
                     textMain: textMain,
                     hover: hover,
@@ -145,7 +152,15 @@ class AppDrawer extends ConsumerWidget {
                     textMain: textMain,
                     hover: hover,
                   ),
-                  const SizedBox(height: 18),
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.resources,
+                    label: '附件资源',
+                    icon: Icons.attach_file,
+                    onTap: () => onSelect(AppDrawerDestination.resources),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Expanded(
@@ -214,9 +229,9 @@ class AppDrawer extends ConsumerWidget {
                       child: Text('标签加载失败：$e', style: TextStyle(color: textMuted)),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 4),
                   Divider(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.08)),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 2),
                   _BottomNavRow(
                     label: '回收站',
                     icon: Icons.delete,
@@ -312,7 +327,7 @@ class _NavButton extends StatelessWidget {
     final fg = selected ? Colors.white : textMain;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
         color: bg,
         borderRadius: BorderRadius.circular(14),
@@ -322,7 +337,7 @@ class _NavButton extends StatelessWidget {
           splashColor: selected ? Colors.white.withValues(alpha: 0.12) : null,
           hoverColor: selected ? null : hover,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
                 Icon(icon, color: fg, size: 22),
@@ -470,3 +485,4 @@ class _DrawerHeatmap extends StatelessWidget {
     );
   }
 }
+

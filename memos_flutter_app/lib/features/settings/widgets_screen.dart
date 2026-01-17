@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../core/memoflow_palette.dart';
 
@@ -19,7 +19,7 @@ class WidgetsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
         children: [
           _Section(
-            title: '每日回顾',
+            title: '随机漫步',
             textMuted: textMuted,
             child: _WidgetCard(
               card: card,
@@ -355,4 +355,5 @@ class _HeatmapPreview extends StatelessWidget {
     );
   }
 }
+
 
