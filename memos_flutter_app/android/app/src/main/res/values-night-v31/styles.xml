@@ -12,6 +12,6 @@
         <item name="postSplashScreenTheme">@style/NormalTheme</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:windowBackground">#F7F5F0</item>
     </style>
 </resources>

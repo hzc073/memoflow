@@ -14,7 +14,6 @@ import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
 import 'features/review/daily_review_screen.dart';
 import 'features/settings/widgets_service.dart';
-import 'features/splash/splash_page.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
@@ -343,7 +342,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           child: AppLockGate(child: child ?? const SizedBox.shrink()),
         );
       },
-      home: SplashPage(nextBuilder: (_) => const MainHomePage()),
+      home: const MainHomePage(),
     );
   }
 
@@ -370,7 +369,10 @@ class MainHomePage extends ConsumerWidget {
         if (session != null) {
           return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
         }
-        return const SplashContent();
+        return ColoredBox(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: const SizedBox.expand(),
+        );
       },
       error: (e, _) {
         if (session != null) {
