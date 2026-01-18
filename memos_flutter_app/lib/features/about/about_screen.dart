@@ -18,7 +18,7 @@ class AboutScreen extends StatelessWidget {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -29,10 +29,10 @@ class AboutScreen extends StatelessWidget {
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
-    Navigator.of(context).pop();
+    context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
@@ -50,7 +50,7 @@ class AboutScreen extends StatelessWidget {
   }
 
   void _openTag(BuildContext context, String tag) {
-    Navigator.of(context).pop();
+    context.safePop();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => MemosListScreen(
@@ -65,7 +65,7 @@ class AboutScreen extends StatelessWidget {
   }
 
   void _openNotifications(BuildContext context) {
-    Navigator.of(context).pop();
+    context.safePop();
     Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
   }
 
@@ -88,7 +88,7 @@ class AboutScreen extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text('MemoFlow', style: Theme.of(context).textTheme.headlineSmall),
+            Text('memoflow', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             Text(
               context.tr(

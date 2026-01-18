@@ -47,15 +47,18 @@ class AppDrawer extends ConsumerWidget {
         ? account!.user.displayName
         : (account?.user.name.isNotEmpty ?? false)
             ? account!.user.name
-            : 'MemoFlow';
+            : 'memoflow';
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);
+    final prefs = ref.watch(appPreferencesProvider);
 
     final bg = isDark ? const Color(0xFF181818) : MemoFlowPalette.backgroundLight;
     final textMain = isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.4 : 0.5);
     final hover = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04);
+    final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
+    const versionLabel = 'V1.0.0';
 
     return Drawer(
       width: width,
@@ -186,30 +189,33 @@ class AppDrawer extends ConsumerWidget {
                     textMain: textMain,
                     hover: hover,
                   ),
-                  _NavButton(
-                    selected: selected == AppDrawerDestination.dailyReview,
-                    label: context.tr(zh: '随机漫步', en: 'Random Review'),
-                    icon: Icons.explore,
-                    onTap: () => onSelect(AppDrawerDestination.dailyReview),
-                    textMain: textMain,
-                    hover: hover,
-                  ),
-                  _NavButton(
-                    selected: selected == AppDrawerDestination.aiSummary,
-                    label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
-                    icon: Icons.track_changes,
-                    onTap: () => onSelect(AppDrawerDestination.aiSummary),
-                    textMain: textMain,
-                    hover: hover,
-                  ),
-                  _NavButton(
-                    selected: selected == AppDrawerDestination.resources,
-                    label: context.tr(zh: '附件', en: 'Attachments'),
-                    icon: Icons.attach_file,
-                    onTap: () => onSelect(AppDrawerDestination.resources),
-                    textMain: textMain,
-                    hover: hover,
-                  ),
+                  if (prefs.showDrawerDailyReview)
+                    _NavButton(
+                      selected: selected == AppDrawerDestination.dailyReview,
+                      label: context.tr(zh: '随机漫步', en: 'Random Review'),
+                      icon: Icons.explore,
+                      onTap: () => onSelect(AppDrawerDestination.dailyReview),
+                      textMain: textMain,
+                      hover: hover,
+                    ),
+                  if (prefs.showDrawerAiSummary)
+                    _NavButton(
+                      selected: selected == AppDrawerDestination.aiSummary,
+                      label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
+                      icon: Icons.track_changes,
+                      onTap: () => onSelect(AppDrawerDestination.aiSummary),
+                      textMain: textMain,
+                      hover: hover,
+                    ),
+                  if (prefs.showDrawerResources)
+                    _NavButton(
+                      selected: selected == AppDrawerDestination.resources,
+                      label: context.tr(zh: '附件', en: 'Attachments'),
+                      icon: Icons.attach_file,
+                      onTap: () => onSelect(AppDrawerDestination.resources),
+                      textMain: textMain,
+                      hover: hover,
+                    ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -303,7 +309,20 @@ class AppDrawer extends ConsumerWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 14, top: 4),
+              padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
+              child: Text(
+                '$versionLabel | $versionDate',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: textMuted.withValues(alpha: 0.9),
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14, top: 2),
               child: Container(
                 width: 128,
                 height: 6,
@@ -496,10 +515,8 @@ class _DrawerHeatmap extends StatelessWidget {
     }
 
     String monthLabel(DateTime d) {
-      if (context.appLanguage == AppLanguage.en) {
-        return DateFormat.MMM('en').format(d.toLocal());
-      }
-      return '${d.toLocal().month}?';
+      final locale = context.appLanguage == AppLanguage.en ? 'en' : 'zh';
+      return DateFormat.MMM(locale).format(d.toLocal());
     }
 
     final mid = alignedStart.add(const Duration(days: (weeks * daysPerWeek) ~/ 2));

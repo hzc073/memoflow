@@ -47,6 +47,7 @@ dependencies:
   crypto: ^3.0.3
   cached_network_image: ^3.4.1
   flutter_markdown: ^0.7.7+1
+  flutter_svg: ^2.0.10
   markdown: ^7.3.0
   appinio_swiper: ^2.1.0
   intl: ^0.20.2
@@ -55,6 +56,7 @@ dependencies:
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
   record: ^6.1.1
+  share_plus: ^12.0.1
   sqflite: ^2.4.2
   archive: ^4.0.4
   flutter_animate: ^4.5.2
@@ -69,6 +71,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.4.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -80,6 +83,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/splash/splash_screen_light.png
+    - assets/splash/splash_logo.png
+    - assets/splash/splash_logo_native.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

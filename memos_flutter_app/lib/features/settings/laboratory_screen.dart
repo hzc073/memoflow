@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
+import 'customize_drawer_screen.dart';
 import 'submit_logs_screen.dart';
 
 class LaboratoryScreen extends ConsumerWidget {
@@ -74,11 +75,7 @@ class LaboratoryScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => _PlaceholderScreen(
-                              title: context.tr(zh: '自定义侧边栏', en: 'Customize Sidebar'),
-                            ),
-                          ),
+                          MaterialPageRoute<void>(builder: (_) => const CustomizeDrawerScreen()),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -99,7 +96,7 @@ class LaboratoryScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       Text(
-                        'MemoFlow',
+                        'memoflow',
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -249,24 +246,3 @@ class _CardRow extends StatelessWidget {
   }
 }
 
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      backgroundColor: isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: Text(title),
-      ),
-      body: Center(child: Text(context.tr(zh: '$title：即将上线', en: '$title: coming soon'))),
-    );
-  }
-}

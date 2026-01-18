@@ -30,8 +30,12 @@ import 'note_input_sheet.dart';
 const _maxPreviewLines = 6;
 const _maxPreviewRunes = 220;
 
-String _truncatePreview(String text, {required bool collapseLongContent}) {
-  if (!collapseLongContent) return text;
+typedef _PreviewResult = ({String text, bool truncated});
+
+_PreviewResult _truncatePreview(String text, {required bool collapseLongContent}) {
+  if (!collapseLongContent) {
+    return (text: text, truncated: false);
+  }
 
   var result = text;
   var truncated = false;
@@ -51,7 +55,7 @@ String _truncatePreview(String text, {required bool collapseLongContent}) {
     result = result.trimRight();
     result = result.endsWith('...') ? result : '$result...';
   }
-  return result;
+  return (text: result, truncated: truncated);
 }
 
 class MemosListScreen extends ConsumerStatefulWidget {
@@ -140,7 +144,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -182,10 +186,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
-    Navigator.of(context).pop();
+    context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived =>
@@ -203,7 +207,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
-    Navigator.of(context).pop();
+    context.safePop();
     Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
   }
 
@@ -211,7 +215,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
-    Navigator.of(context).pop();
+    context.safePop();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => MemosListScreen(
@@ -255,7 +259,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 title: Text(a.user.displayName.isNotEmpty ? a.user.displayName : a.user.name),
                 subtitle: Text(a.baseUrl.toString()),
                 onTap: () async {
-                  Navigator.of(context).pop();
+                  context.safePop();
                   await ref.read(appSessionProvider.notifier).switchAccount(a.key);
                 },
               ),
@@ -303,8 +307,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               en: 'It will be removed locally now and deleted on the server when online.',
             )),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
+              TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+              FilledButton(onPressed: () => context.safePop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
             ],
           ),
         ) ??
@@ -359,7 +363,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         if (didPop) return;
         final shouldPop = await _handleWillPop();
         if (!mounted || !shouldPop) return;
-        Navigator.of(context).pop();
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop();
+        } else {
+          SystemNavigator.pop();
+        }
       },
       child: Scaffold(
       key: _scaffoldKey,
@@ -514,6 +523,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                     itemBuilder: (context, index) {
                       final memo = memos[index];
                       return _MemoCard(
+                        key: ValueKey(memo.uid),
                         memo: memo,
                         dateText: _dateFmt.format(memo.updateTime),
                         collapseLongContent: prefs.collapseLongContent,
@@ -808,8 +818,9 @@ enum _MemoCardAction {
   delete,
 }
 
-class _MemoCard extends StatelessWidget {
+class _MemoCard extends StatefulWidget {
   const _MemoCard({
+    super.key,
     required this.memo,
     required this.dateText,
     required this.collapseLongContent,
@@ -824,6 +835,13 @@ class _MemoCard extends StatelessWidget {
   final bool collapseReferences;
   final VoidCallback onTap;
   final ValueChanged<_MemoCardAction> onAction;
+
+  @override
+  State<_MemoCard> createState() => _MemoCardState();
+}
+
+class _MemoCardState extends State<_MemoCard> {
+  var _expanded = false;
 
   static String _previewText(
     String content, {
@@ -857,7 +875,22 @@ class _MemoCard extends StatelessWidget {
   }
 
   @override
+  void didUpdateWidget(covariant _MemoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.memo.uid != widget.memo.uid) {
+      _expanded = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final memo = widget.memo;
+    final dateText = widget.dateText;
+    final collapseLongContent = widget.collapseLongContent;
+    final collapseReferences = widget.collapseReferences;
+    final onTap = widget.onTap;
+    final onAction = widget.onAction;
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
@@ -866,10 +899,11 @@ class _MemoCard extends StatelessWidget {
     final audio = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
     final hasAudio = audio.isNotEmpty;
     final language = context.appLanguage;
-    final preview = _truncatePreview(
-      _previewText(memo.content, collapseReferences: collapseReferences, language: language),
-      collapseLongContent: collapseLongContent,
-    );
+    final previewText = _previewText(memo.content, collapseReferences: collapseReferences, language: language);
+    final preview = _truncatePreview(previewText, collapseLongContent: collapseLongContent);
+    final showToggle = preview.truncated;
+    final showCollapsed = showToggle && !_expanded;
+    final displayText = showCollapsed ? preview.text : previewText;
 
     return Hero(
       tag: memo.uid,
@@ -942,10 +976,35 @@ class _MemoCard extends StatelessWidget {
                     isDark: isDark,
                   )
                 else
-                  MemoMarkdown(
-                    data: preview,
-                    textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
-                    blockSpacing: 4,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MemoMarkdown(
+                        data: displayText,
+                        textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
+                        blockSpacing: 4,
+                      ),
+                      if (showToggle) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => setState(() => _expanded = !_expanded),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              _expanded
+                                  ? context.tr(zh: '收起', en: 'Collapse')
+                                  : context.tr(zh: '展开', en: 'Expand'),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 _MemoRelationsSection(memoUid: memo.uid),
               ],
@@ -957,7 +1016,7 @@ class _MemoCard extends StatelessWidget {
   }
 
   static String? _parseVoiceDuration(String content) {
-    final m = RegExp(r'[-•]\\s*时长[:：]\\s*(\\d{2}):(\\d{2}):(\\d{2})').firstMatch(content);
+    final m = RegExp(r'[-?]\\s*时长[:：]\\s*(\\d{2}):(\\d{2}):(\\d{2})').firstMatch(content);
     if (m == null) return null;
     final hh = int.tryParse(m.group(1) ?? '') ?? 0;
     final mm = int.tryParse(m.group(2) ?? '') ?? 0;
@@ -966,6 +1025,7 @@ class _MemoCard extends StatelessWidget {
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
   }
 }
+
 
 class _MemoRelationsSection extends ConsumerWidget {
   const _MemoRelationsSection({required this.memoUid});

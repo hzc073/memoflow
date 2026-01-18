@@ -442,7 +442,7 @@ CREATE TABLE IF NOT EXISTS outbox (
     }
 
     final q = _toFtsQuery(searchQuery);
-    final whereClauses = <String>['f MATCH ?'];
+    final whereClauses = <String>['memos_fts MATCH ?'];
     final whereArgs = <Object?>[q];
     if (normalizedState.isNotEmpty) {
       whereClauses.add('m.state = ?');
@@ -458,7 +458,7 @@ CREATE TABLE IF NOT EXISTS outbox (
       '''
 SELECT m.*
 FROM memos m
-JOIN memos_fts f ON f.rowid = m.id
+JOIN memos_fts ON memos_fts.rowid = m.id
 WHERE ${whereClauses.join(' AND ')}
 ORDER BY m.pinned DESC, m.update_time DESC
 LIMIT ?;

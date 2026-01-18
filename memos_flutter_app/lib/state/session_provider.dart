@@ -49,6 +49,8 @@ abstract class AppSessionController extends StateNotifier<AsyncValue<AppSessionS
   Future<void> switchAccount(String accountKey);
 
   Future<void> removeAccount(String accountKey);
+
+  Future<void> refreshCurrentUser({bool ignoreErrors = true});
 }
 
 class AppSessionNotifier extends AppSessionController {
@@ -130,6 +132,37 @@ class AppSessionNotifier extends AppSessionController {
       await _accountsRepository.write(AccountsState(accounts: accounts, currentKey: nextKey));
       return AppSessionState(accounts: accounts, currentKey: nextKey);
     });
+  }
+
+  @override
+  Future<void> refreshCurrentUser({bool ignoreErrors = true}) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    final account = current.currentAccount;
+    if (account == null) return;
+
+    try {
+      final user = await MemosApi.authenticated(
+        baseUrl: account.baseUrl,
+        personalAccessToken: account.personalAccessToken,
+      ).getCurrentUser();
+
+      final updatedAccount = Account(
+        key: account.key,
+        baseUrl: account.baseUrl,
+        personalAccessToken: account.personalAccessToken,
+        user: user,
+        instanceProfile: account.instanceProfile,
+      );
+      final accounts = current.accounts
+          .map((a) => a.key == account.key ? updatedAccount : a)
+          .toList(growable: false);
+      final next = AppSessionState(accounts: accounts, currentKey: current.currentKey);
+      state = AsyncValue.data(next);
+      await _accountsRepository.write(AccountsState(accounts: accounts, currentKey: current.currentKey));
+    } catch (e) {
+      if (!ignoreErrors) rethrow;
+    }
   }
 }
 

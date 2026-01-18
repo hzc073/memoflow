@@ -17,6 +17,18 @@ enum AppLanguage {
   String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
 }
 
+enum AppThemeMode {
+  system('系统', 'System'),
+  light('浅色', 'Light'),
+  dark('深色', 'Dark');
+
+  const AppThemeMode(this.labelZh, this.labelEn);
+  final String labelZh;
+  final String labelEn;
+
+  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
+}
+
 enum AppFontSize {
   standard('标准', 'Standard'),
   large('大', 'Large'),
@@ -67,6 +79,10 @@ class AppPreferences {
     hapticsEnabled: true,
     useLegacyApi: true,
     networkLoggingEnabled: true,
+    themeMode: AppThemeMode.system,
+    showDrawerDailyReview: true,
+    showDrawerAiSummary: true,
+    showDrawerResources: true,
   );
 
   const AppPreferences({
@@ -81,6 +97,10 @@ class AppPreferences {
     required this.hapticsEnabled,
     required this.useLegacyApi,
     required this.networkLoggingEnabled,
+    required this.themeMode,
+    required this.showDrawerDailyReview,
+    required this.showDrawerAiSummary,
+    required this.showDrawerResources,
   });
 
   final AppLanguage language;
@@ -94,6 +114,10 @@ class AppPreferences {
   final bool hapticsEnabled;
   final bool useLegacyApi;
   final bool networkLoggingEnabled;
+  final AppThemeMode themeMode;
+  final bool showDrawerDailyReview;
+  final bool showDrawerAiSummary;
+  final bool showDrawerResources;
 
   Map<String, dynamic> toJson() => {
         'language': language.name,
@@ -107,6 +131,10 @@ class AppPreferences {
         'hapticsEnabled': hapticsEnabled,
         'useLegacyApi': useLegacyApi,
         'networkLoggingEnabled': networkLoggingEnabled,
+        'themeMode': themeMode.name,
+        'showDrawerDailyReview': showDrawerDailyReview,
+        'showDrawerAiSummary': showDrawerAiSummary,
+        'showDrawerResources': showDrawerResources,
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
@@ -130,6 +158,17 @@ class AppPreferences {
         );
       }
       return AppPreferences.defaults.fontSize;
+    }
+
+    AppThemeMode parseThemeMode() {
+      final raw = json['themeMode'];
+      if (raw is String) {
+        return AppThemeMode.values.firstWhere(
+          (e) => e.name == raw,
+          orElse: () => AppPreferences.defaults.themeMode,
+        );
+      }
+      return AppPreferences.defaults.themeMode;
     }
 
     AppLineHeight parseLineHeight() {
@@ -209,6 +248,10 @@ class AppPreferences {
       useLegacyApi: parseBool('useLegacyApi', AppPreferences.defaults.useLegacyApi),
       networkLoggingEnabled:
           parseBool('networkLoggingEnabled', AppPreferences.defaults.networkLoggingEnabled),
+      themeMode: parseThemeMode(),
+      showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
+      showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
+      showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
     );
   }
 
@@ -224,6 +267,10 @@ class AppPreferences {
     bool? hapticsEnabled,
     bool? useLegacyApi,
     bool? networkLoggingEnabled,
+    AppThemeMode? themeMode,
+    bool? showDrawerDailyReview,
+    bool? showDrawerAiSummary,
+    bool? showDrawerResources,
   }) {
     return AppPreferences(
       language: language ?? this.language,
@@ -237,6 +284,10 @@ class AppPreferences {
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
       networkLoggingEnabled: networkLoggingEnabled ?? this.networkLoggingEnabled,
+      themeMode: themeMode ?? this.themeMode,
+      showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
+      showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
+      showDrawerResources: showDrawerResources ?? this.showDrawerResources,
     );
   }
 }
@@ -278,6 +329,10 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setHapticsEnabled(bool v) => _setAndPersist(state.copyWith(hapticsEnabled: v));
   void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));
   void setNetworkLoggingEnabled(bool v) => _setAndPersist(state.copyWith(networkLoggingEnabled: v));
+  void setThemeMode(AppThemeMode v) => _setAndPersist(state.copyWith(themeMode: v));
+  void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
+  void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
+  void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));
 }
 
 class AppPreferencesRepository {

@@ -3,13 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../memos/memos_list_screen.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/stats_providers.dart';
-import '../../state/theme_mode_provider.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
@@ -32,7 +32,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -44,7 +44,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
 
   void _handleBack() {
     if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+      context.safePop();
       return;
     }
     _backToAllMemos();
@@ -74,7 +74,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off),
                   title: Text(label),
                   onTap: () {
-                    Navigator.of(context).pop();
+                    context.safePop();
                     setState(() => _selectedMonth = DateTime(m.year, m.month));
                   },
                 );
@@ -87,14 +87,69 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   }
 
   void _toggleTheme() {
-    final mode = ref.read(appThemeModeProvider);
+    final mode = ref.read(appPreferencesProvider).themeMode;
     final brightness = Theme.of(context).brightness;
     final next = switch (mode) {
-      ThemeMode.light => ThemeMode.dark,
-      ThemeMode.dark => ThemeMode.light,
-      ThemeMode.system => brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark,
+      AppThemeMode.light => AppThemeMode.dark,
+      AppThemeMode.dark => AppThemeMode.light,
+      AppThemeMode.system => brightness == Brightness.dark ? AppThemeMode.light : AppThemeMode.dark,
     };
-    ref.read(appThemeModeProvider.notifier).state = next;
+    ref.read(appPreferencesProvider.notifier).setThemeMode(next);
+  }
+
+  Future<void> _shareText(String text, {String? subject}) async {
+    try {
+      await Share.share(text, subject: subject);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
+      );
+    }
+  }
+
+  String _buildOverviewShareText({
+    required LocalStats stats,
+    required int lastYearMemos,
+    required int currentStreak,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('memoflow');
+    buffer.writeln(context.tr(zh: '统计概览', en: 'Stats overview'));
+    buffer.writeln('${context.tr(zh: '总笔记', en: 'Total memos')}: ${stats.totalMemos}');
+    buffer.writeln('${context.tr(zh: '总字数', en: 'Total characters')}: ${_formatNumber(stats.totalChars)}');
+    buffer.writeln('${context.tr(zh: '活跃天数', en: 'Active days')}: ${stats.activeDays}');
+    buffer.writeln('${context.tr(zh: '当前连击', en: 'Current streak')}: ${context.tr(zh: '$currentStreak 天', en: '$currentStreak days')}');
+    buffer.writeln('${context.tr(zh: '最近一年笔记', en: 'Last year memos')}: $lastYearMemos');
+    return buffer.toString().trim();
+  }
+
+  String _buildMonthlyShareText({
+    required MonthlyStats monthly,
+    required String monthLabel,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('memoflow');
+    buffer.writeln(context.tr(zh: '月度统计', en: 'Monthly stats'));
+    buffer.writeln('${context.tr(zh: '月份', en: 'Month')}: $monthLabel');
+    buffer.writeln('${context.tr(zh: '笔记', en: 'Memos')}: ${monthly.totalMemos}');
+    buffer.writeln('${context.tr(zh: '字数', en: 'Characters')}: ${_formatNumber(monthly.totalChars)}');
+    buffer.writeln('${context.tr(zh: '单日最多笔记', en: 'Max per day')}: ${monthly.maxMemosPerDay}');
+    buffer.writeln('${context.tr(zh: '单日最多字数', en: 'Max chars/day')}: ${_formatNumber(monthly.maxCharsPerDay)}');
+    buffer.writeln('${context.tr(zh: '活跃天数', en: 'Active days')}: ${monthly.activeDays}');
+    return buffer.toString().trim();
+  }
+
+  String _buildHeatmapShareText({required int lastYearMemos}) {
+    final now = DateTime.now();
+    final start = now.subtract(const Duration(days: 364));
+    final fmt = DateFormat('yyyy-MM-dd');
+    final buffer = StringBuffer();
+    buffer.writeln('memoflow');
+    buffer.writeln(context.tr(zh: '近一年记录', en: 'Last year'));
+    buffer.writeln('${context.tr(zh: '时间范围', en: 'Range')}: ${fmt.format(start)} - ${fmt.format(now)}');
+    buffer.writeln('${context.tr(zh: '笔记数量', en: 'Memos')}: $lastYearMemos');
+    return buffer.toString().trim();
   }
 
   @override
@@ -116,7 +171,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('MemoFlow'),
+        title: const Text('memoflow'),
         centerTitle: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -130,9 +185,22 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(context.tr(zh: '分享：待实现', en: 'Share: coming soon'))),
+              final stats = statsAsync.valueOrNull;
+              if (stats == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(context.tr(zh: '统计加载中', en: 'Stats are loading'))),
+                );
+                return;
+              }
+              final lastYear = _lastNDaysCounts(stats.dailyCounts, days: 365);
+              final lastYearMemos = lastYear.values.fold<int>(0, (sum, v) => sum + v);
+              final currentStreak = _currentStreakDays(stats.dailyCounts);
+              final text = _buildOverviewShareText(
+                stats: stats,
+                lastYearMemos: lastYearMemos,
+                currentStreak: currentStreak,
               );
+              _shareText(text, subject: context.tr(zh: '统计概览', en: 'Stats overview'));
             },
             child: Text(
               context.tr(zh: '分享', en: 'Share'),
@@ -160,7 +228,14 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           final currentStreak = _currentStreakDays(stats.dailyCounts);
 
           return monthlyAsync.when(
-            data: (monthly) => ListView(
+            data: (monthly) {
+              final monthLabel = _formatMonth(DateTime(monthly.year, monthly.month));
+              final monthShareText = _buildMonthlyShareText(
+                monthly: monthly,
+                monthLabel: monthLabel,
+              );
+              final heatmapShareText = _buildHeatmapShareText(lastYearMemos: lastYearMemos);
+              return ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
                 Text(
@@ -172,10 +247,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   card: card,
                   textMain: textMain,
                   textMuted: textMuted,
-                  monthLabel: _formatMonth(DateTime(monthly.year, monthly.month)),
+                  monthLabel: monthLabel,
                   onPickMonth: months.isEmpty ? null : () => _pickMonth(months),
-                  onShare: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(context.tr(zh: '分享：待实现', en: 'Share: coming soon'))),
+                  onShare: () => _shareText(
+                    monthShareText,
+                    subject: context.tr(zh: '月度统计', en: 'Monthly stats'),
                   ),
                   memos: monthly.totalMemos,
                   chars: monthly.totalChars,
@@ -193,8 +269,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                     zh: '最近一年记录 $lastYearMemos 条笔记',
                     en: 'Last year: $lastYearMemos memos',
                   ),
-                  onShare: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(context.tr(zh: '分享：待实现', en: 'Share: coming soon'))),
+                  onShare: () => _shareText(
+                    heatmapShareText,
+                    subject: context.tr(zh: '近一年记录', en: 'Last year'),
                   ),
                   dailyCounts: lastYear,
                   isDark: isDark,
@@ -226,7 +303,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   ],
                 ),
               ],
-            ),
+            );
+            },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
           );

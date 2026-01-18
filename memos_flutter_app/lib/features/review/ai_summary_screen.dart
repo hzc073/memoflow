@@ -1,11 +1,19 @@
 ﻿import 'dart:ui';
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/tags.dart';
+import '../../core/uid.dart';
 import '../../data/ai/ai_summary_service.dart';
 import '../about/about_screen.dart';
 import '../home/app_drawer.dart';
@@ -17,6 +25,7 @@ import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import '../../state/ai_settings_provider.dart';
 import '../../state/database_provider.dart';
+import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import 'daily_review_screen.dart';
 
@@ -32,6 +41,7 @@ enum _AiSummaryView { input, report }
 class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   final _promptController = TextEditingController();
   final _aiService = AiSummaryService();
+  final _reportBoundaryKey = GlobalKey();
   var _range = _AiRange.last7Days;
   DateTimeRange? _customRange;
   var _view = _AiSummaryView.input;
@@ -47,10 +57,10 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
-    Navigator.of(context).pop();
+    context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -76,7 +86,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -87,7 +97,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _openTag(BuildContext context, String tag) {
-    Navigator.of(context).pop();
+    context.safePop();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => MemosListScreen(
@@ -102,7 +112,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _openNotifications(BuildContext context) {
-    Navigator.of(context).pop();
+    context.safePop();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
     );
@@ -206,22 +216,154 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     });
   }
 
-  void _shareReport() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '分享功能待实现', en: 'Share is not available yet'))),
-    );
+  String _buildSummaryText({
+    required AiSummaryResult summary,
+    required bool forMemo,
+  }) {
+    final title = context.tr(zh: 'AI 总结报告', en: 'AI Summary Report');
+    final header = forMemo ? '# $title' : title;
+    final insights = summary.insights.isNotEmpty
+        ? summary.insights
+        : [context.tr(zh: '暂无总结结果', en: 'No summary yet')];
+    final moodTrend = summary.moodTrend.isNotEmpty
+        ? summary.moodTrend
+        : context.tr(zh: '暂无情绪趋势', en: 'No mood trend');
+    final keywordText = summary.keywords.isNotEmpty
+        ? summary.keywords.map(_normalizeKeyword).join(' ')
+        : context.tr(zh: '暂无关键词', en: 'No keywords');
+
+    final buffer = StringBuffer();
+    buffer.writeln(header);
+    buffer.writeln('${context.tr(zh: '时间范围', en: 'Range')}: ${_rangeLabel()}');
+    buffer.writeln('');
+    buffer.writeln(context.tr(zh: '核心洞察', en: 'Key insights'));
+    for (final insight in insights) {
+      buffer.writeln('- $insight');
+    }
+    buffer.writeln('');
+    buffer.writeln('${context.tr(zh: '情绪趋势', en: 'Mood trend')}: $moodTrend');
+    buffer.writeln('');
+    buffer.writeln('${context.tr(zh: '关键词', en: 'Keywords')}: $keywordText');
+    return buffer.toString().trim();
   }
 
-  void _sharePoster() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '生成海报功能待实现', en: 'Poster generation is not available yet'))),
-    );
+  Future<void> _shareReport() async {
+    final summary = _summary;
+    if (summary == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '暂无可分享的总结', en: 'No summary to share'))),
+      );
+      return;
+    }
+    final text = _buildSummaryText(summary: summary, forMemo: false);
+    try {
+      await Share.share(
+        text,
+        subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
+      );
+    }
   }
 
-  void _saveAsMemo() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '保存为笔记功能待实现', en: 'Save as memo is not available yet'))),
-    );
+  Future<void> _sharePoster() async {
+    final summary = _summary;
+    if (summary == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '暂无可分享的总结', en: 'No summary to share'))),
+      );
+      return;
+    }
+    final boundary = _reportBoundaryKey.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'))),
+      );
+      return;
+    }
+
+    try {
+      await Future.delayed(const Duration(milliseconds: 30));
+      if (!mounted) return;
+      final pixelRatio = MediaQuery.of(context).devicePixelRatio.clamp(2.0, 3.0);
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '海报生成失败', en: 'Poster generation failed'))),
+        );
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}${Platform.pathSeparator}ai_summary_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: _buildSummaryText(summary: summary, forMemo: false),
+        subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
+      );
+    }
+  }
+
+  Future<void> _saveAsMemo() async {
+    final summary = _summary;
+    if (summary == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '暂无可保存的总结', en: 'No summary to save'))),
+      );
+      return;
+    }
+
+    final content = _buildSummaryText(summary: summary, forMemo: true);
+    final uid = generateUid();
+    final now = DateTime.now();
+    final tags = extractTags(content);
+    final db = ref.read(databaseProvider);
+
+    try {
+      await db.upsertMemo(
+        uid: uid,
+        content: content,
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+        tags: tags,
+        attachments: const [],
+        syncState: 1,
+      );
+      await db.enqueueOutbox(type: 'create_memo', payload: {
+        'uid': uid,
+        'content': content,
+        'visibility': 'PRIVATE',
+        'pinned': false,
+        'has_attachments': false,
+      });
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '已保存为笔记', en: 'Saved as memo'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+      );
+    }
   }
 
   DateTimeRange _effectiveRange() {
@@ -425,6 +567,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
           children: [
             if (isReport)
               _buildReportBody(
+                bg: bg,
                 card: card,
                 border: border,
                 textMain: textMain,
@@ -656,6 +799,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     );
   }
   Widget _buildReportBody({
+    required Color bg,
     required Color card,
     required Color border,
     required Color textMain,
@@ -692,86 +836,63 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       }
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 200),
-      children: [
-        Align(
-          alignment: Alignment.center,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: border.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              _rangeLabel(),
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
-                color: textMain.withValues(alpha: 0.6),
+    return RepaintBoundary(
+      key: _reportBoundaryKey,
+      child: Container(
+        color: bg,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 200),
+          children: [
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: border.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _rangeLabel(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                    color: textMain.withValues(alpha: 0.6),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          decoration: BoxDecoration(
-            color: card,
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: card,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: border),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.auto_awesome,
-                          size: 20,
-                          color: MemoFlowPalette.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          context.tr(zh: '核心洞察', en: 'Key insights'),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: textMain,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    for (var i = 0; i < insights.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 12),
-                      _InsightBullet(
-                        text: insights[i],
-                        bulletColor: MemoFlowPalette.primary,
-                        textColor: insightTextColor,
-                      ),
-                    ],
-                    const SizedBox(height: 28),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.insights, size: 20, color: accentBlue),
+                            const Icon(
+                              Icons.auto_awesome,
+                              size: 20,
+                              color: MemoFlowPalette.primary,
+                            ),
                             const SizedBox(width: 8),
                             Text(
-                              context.tr(zh: '情绪趋势', en: 'Mood trend'),
+                              context.tr(zh: '核心洞察', en: 'Key insights'),
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
@@ -780,68 +901,97 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                             ),
                           ],
                         ),
-                        Text(
-                          moodTrend,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: textMain.withValues(alpha: 0.4),
+                        const SizedBox(height: 16),
+                        for (var i = 0; i < insights.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 12),
+                          _InsightBullet(
+                            text: insights[i],
+                            bulletColor: MemoFlowPalette.primary,
+                            textColor: insightTextColor,
                           ),
+                        ],
+                        const SizedBox(height: 28),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.insights, size: 20, color: accentBlue),
+                                const SizedBox(width: 8),
+                                Text(
+                                  context.tr(zh: '情绪趋势', en: 'Mood trend'),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: textMain,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              moodTrend,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: textMain.withValues(alpha: 0.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _MoodChart(
+                          lineColor: MemoFlowPalette.primary,
+                          background: chipBg,
+                          textColor: textMain,
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            Icon(Icons.label, size: 20, color: accentGreen),
+                            const SizedBox(width: 8),
+                            Text(
+                              context.tr(zh: '关键词', en: 'Keywords'),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: textMain,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final keyword in keywords)
+                              _KeywordChip(
+                                label: keyword.label,
+                                background: keyword.background,
+                                textColor: keyword.textColor,
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    _MoodChart(
-                      lineColor: MemoFlowPalette.primary,
-                      background: chipBg,
-                      textColor: textMain,
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Icon(Icons.label, size: 20, color: accentGreen),
-                        const SizedBox(width: 8),
-                        Text(
-                          context.tr(zh: '关键词', en: 'Keywords'),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: textMain,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final keyword in keywords)
-                          _KeywordChip(
-                            label: keyword.label,
-                            background: keyword.background,
-                            textColor: keyword.textColor,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                height: 6,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      MemoFlowPalette.primary.withValues(alpha: 0.2),
-                      MemoFlowPalette.primary.withValues(alpha: 0.06),
-                      MemoFlowPalette.primary.withValues(alpha: 0.2),
-                    ],
                   ),
-                ),
+                  Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          MemoFlowPalette.primary.withValues(alpha: 0.2),
+                          MemoFlowPalette.primary.withValues(alpha: 0.06),
+                          MemoFlowPalette.primary.withValues(alpha: 0.2),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
   Widget _buildBottomBar({

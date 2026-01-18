@@ -82,6 +82,36 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     return '$header${memo.content.trimRight()}\n';
   }
 
+  Future<Directory?> _tryGetDownloadsDirectory() async {
+    try {
+      return await getDownloadsDirectory();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Directory> _resolveExportDirectory() async {
+    if (Platform.isAndroid) {
+      final candidates = <Directory>[
+        Directory('/storage/emulated/0/Download'),
+        Directory('/storage/emulated/0/Downloads'),
+      ];
+      for (final dir in candidates) {
+        if (await dir.exists()) return dir;
+      }
+
+      final external = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+      if (external != null && external.isNotEmpty) return external.first;
+
+      final fallback = await getExternalStorageDirectory();
+      if (fallback != null) return fallback;
+    }
+
+    final downloads = await _tryGetDownloadsDirectory();
+    if (downloads != null) return downloads;
+    return getApplicationDocumentsDirectory();
+  }
+
   Future<void> _export() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -98,7 +128,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
 
       final archive = Archive();
       final indexLines = <String>[
-        trByLanguage(language: language, zh: '# MemoFlow 导出', en: '# MemoFlow Export'),
+        trByLanguage(language: language, zh: '# memoflow 导出', en: '# memoflow Export'),
         '',
         '${trByLanguage(language: language, zh: '- 导出时间', en: '- Export time')}: ${DateTime.now().toIso8601String()}',
         '${trByLanguage(language: language, zh: '- 时间范围', en: '- Date range')}: ${_formatRange(_range, language)}',
@@ -117,8 +147,8 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
 
       final zipData = ZipEncoder().encode(archive);
 
-      final dir = await getApplicationDocumentsDirectory();
-      final exportDir = Directory(p.join(dir.path, 'exports'));
+      final rootDir = await _resolveExportDirectory();
+      final exportDir = Directory(p.join(rootDir.path, 'exports'));
       if (!exportDir.existsSync()) {
         exportDir.createSync(recursive: true);
       }

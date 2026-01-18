@@ -100,7 +100,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
 
       if (!mounted) return;
-      Navigator.of(context).pop();
+      context.safePop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

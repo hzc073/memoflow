@@ -14,11 +14,11 @@ import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
 import 'features/review/daily_review_screen.dart';
 import 'features/settings/widgets_service.dart';
+import 'features/splash/splash_page.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
 import 'state/session_provider.dart';
-import 'state/theme_mode_provider.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -27,13 +27,15 @@ class App extends ConsumerStatefulWidget {
   ConsumerState<App> createState() => _AppState();
 }
 
-class _AppState extends ConsumerState<App> {
+class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
   HomeWidgetType? _pendingWidgetAction;
   bool _statsWidgetUpdating = false;
   String? _statsWidgetAccountKey;
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
   ProviderSubscription<AppPreferences>? _prefsSubscription;
+  DateTime? _lastResumeSyncAt;
+  DateTime? _lastPauseSyncAt;
 
   static Locale _localeFor(AppLanguage language) {
     return switch (language) {
@@ -55,6 +57,14 @@ class _AppState extends ConsumerState<App> {
       AppLineHeight.classic => 1.55,
       AppLineHeight.compact => 1.35,
       AppLineHeight.relaxed => 1.75,
+    };
+  }
+
+  static ThemeMode _themeModeFor(AppThemeMode mode) {
+    return switch (mode) {
+      AppThemeMode.system => ThemeMode.system,
+      AppThemeMode.light => ThemeMode.light,
+      AppThemeMode.dark => ThemeMode.dark,
     };
   }
 
@@ -108,6 +118,7 @@ class _AppState extends ConsumerState<App> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
     _loadPendingWidgetAction();
     _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
@@ -115,6 +126,9 @@ class _AppState extends ConsumerState<App> {
       final nextKey = next.valueOrNull?.currentKey;
       if (nextKey != null && nextKey != prevKey) {
         _scheduleStatsWidgetUpdate();
+        _lastResumeSyncAt = null;
+        _lastPauseSyncAt = null;
+        _triggerLifecycleSync(isResume: true);
       }
     });
     _prefsSubscription = ref.listenManual<AppPreferences>(appPreferencesProvider, (prev, next) {
@@ -150,12 +164,12 @@ class _AppState extends ConsumerState<App> {
     });
   }
 
-  Future<void> _updateStatsWidgetIfNeeded() async {
+  Future<void> _updateStatsWidgetIfNeeded({bool force = false}) async {
     if (_statsWidgetUpdating) return;
     final session = ref.read(appSessionProvider).valueOrNull;
     final account = session?.currentAccount;
     if (account == null) return;
-    if (_statsWidgetAccountKey == account.key) return;
+    if (!force && _statsWidgetAccountKey == account.key) return;
 
     _statsWidgetUpdating = true;
     try {
@@ -175,6 +189,60 @@ class _AppState extends ConsumerState<App> {
       // Ignore widget updates if the backend isn't reachable.
     } finally {
       _statsWidgetUpdating = false;
+    }
+  }
+
+  Future<void> _syncAndUpdateStatsWidget({required bool forceWidgetUpdate}) async {
+    final session = ref.read(appSessionProvider).valueOrNull;
+    if (session?.currentAccount == null) return;
+
+    try {
+      await ref.read(syncControllerProvider.notifier).syncNow();
+    } catch (_) {
+      // Ignore sync errors here; widget update can still proceed.
+    }
+    await _updateStatsWidgetIfNeeded(force: forceWidgetUpdate);
+  }
+
+  void _triggerLifecycleSync({required bool isResume}) {
+    final session = ref.read(appSessionProvider).valueOrNull;
+    if (session?.currentAccount == null) return;
+
+    final now = DateTime.now();
+    if (isResume) {
+      final last = _lastResumeSyncAt;
+      if (last != null && now.difference(last) < const Duration(seconds: 15)) {
+        return;
+      }
+      _lastResumeSyncAt = now;
+    } else {
+      final last = _lastPauseSyncAt;
+      if (last != null && now.difference(last) < const Duration(seconds: 15)) {
+        return;
+      }
+      _lastPauseSyncAt = now;
+    }
+
+    if (isResume) {
+      unawaited(ref.read(appSessionProvider.notifier).refreshCurrentUser());
+    }
+
+    unawaited(_syncAndUpdateStatsWidget(forceWidgetUpdate: true));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _triggerLifecycleSync(isResume: true);
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        _triggerLifecycleSync(isResume: false);
+        break;
+      case AppLifecycleState.inactive:
+        break;
     }
   }
 
@@ -229,7 +297,7 @@ class _AppState extends ConsumerState<App> {
     navigator.pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -241,10 +309,8 @@ class _AppState extends ConsumerState<App> {
 
   @override
   Widget build(BuildContext context) {
-    final sessionAsync = ref.watch(appSessionProvider);
-    final session = sessionAsync.valueOrNull;
-    final themeMode = ref.watch(appThemeModeProvider);
     final prefs = ref.watch(appPreferencesProvider);
+    final themeMode = _themeModeFor(prefs.themeMode);
     final loggerService = ref.watch(loggerServiceProvider);
     final locale = _localeFor(prefs.language);
     final scale = _textScaleFor(prefs.fontSize);
@@ -254,7 +320,7 @@ class _AppState extends ConsumerState<App> {
     }
 
     return MaterialApp(
-      title: 'Memos',
+      title: 'memoflow',
       theme: _applyPreferencesToTheme(buildAppTheme(Brightness.light), prefs),
       darkTheme: _applyPreferencesToTheme(buildAppTheme(Brightness.dark), prefs),
       themeMode: themeMode,
@@ -277,42 +343,41 @@ class _AppState extends ConsumerState<App> {
           child: AppLockGate(child: child ?? const SizedBox.shrink()),
         );
       },
-      home: sessionAsync.when(
-        data: (session) => session.currentAccount == null ? const LoginScreen() : const HomeScreen(),
-        loading: () {
-          // Keep showing the previous screen while connecting so login inputs don't reset.
-          if (session != null) {
-            return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
-          }
-          return const _SplashScreen();
-        },
-        error: (e, _) {
-          if (session != null) {
-            return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
-          }
-          return LoginScreen(initialError: e.toString());
-        },
-      ),
+      home: SplashPage(nextBuilder: (_) => const MainHomePage()),
     );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sessionSubscription?.close();
     _prefsSubscription?.close();
     super.dispose();
   }
 }
 
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
+class MainHomePage extends ConsumerWidget {
+  const MainHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(),
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionAsync = ref.watch(appSessionProvider);
+    final session = sessionAsync.valueOrNull;
+
+    return sessionAsync.when(
+      data: (session) => session.currentAccount == null ? const LoginScreen() : const HomeScreen(),
+      loading: () {
+        if (session != null) {
+          return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
+        }
+        return const SplashContent();
+      },
+      error: (e, _) {
+        if (session != null) {
+          return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
+        }
+        return LoginScreen(initialError: e.toString());
+      },
     );
   }
 }

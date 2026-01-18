@@ -29,13 +29,13 @@ class SettingsScreen extends ConsumerWidget {
 
   void _close(BuildContext context) {
     if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+      context.safePop();
       return;
     }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -76,7 +76,7 @@ class SettingsScreen extends ConsumerWidget {
         ? account!.user.displayName
         : (account?.user.name.isNotEmpty ?? false)
             ? account!.user.name
-            : 'MemoFlow';
+            : 'memoflow';
     final description = (account?.user.description ?? '').trim();
     final subtitle = description.isNotEmpty
         ? description

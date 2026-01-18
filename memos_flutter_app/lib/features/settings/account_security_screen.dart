@@ -58,11 +58,11 @@ class AccountSecurityScreen extends ConsumerWidget {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
+                  onPressed: () => context.safePop(false),
                   child: Text(context.tr(zh: '取消', en: 'Cancel')),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
+                  onPressed: () => context.safePop(true),
                   child: Text(context.tr(zh: '确认', en: 'Confirm')),
                 ),
               ],

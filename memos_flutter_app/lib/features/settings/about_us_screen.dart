@@ -69,7 +69,7 @@ class AboutUsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('MemoFlow', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
+                    Text('memoflow', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
                     const SizedBox(height: 8),
                     Text(
                       context.tr(

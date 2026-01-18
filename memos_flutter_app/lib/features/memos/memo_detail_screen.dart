@@ -76,7 +76,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       state: next,
     );
     if (!mounted) return;
-    Navigator.of(context).pop();
+    context.safePop();
   }
 
   Future<void> _edit() async {
@@ -101,8 +101,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
               en: 'It will be removed locally now and deleted on the server when online.',
             )),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-              FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
+              TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+              FilledButton(onPressed: () => context.safePop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
             ],
           ),
         ) ??
@@ -115,7 +115,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
 
     if (!mounted) return;
-    Navigator.of(context).pop();
+    context.safePop();
   }
 
   Future<void> _updateLocalAndEnqueue({

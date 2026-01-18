@@ -49,6 +49,7 @@ class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final lockState = ref.watch(appLockProvider);
     return Stack(
+      fit: StackFit.expand,
       children: [
         widget.child,
         if (lockState.locked)

@@ -41,7 +41,7 @@ class PasswordLockScreen extends ConsumerWidget {
                   leading: Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off),
                   title: Text(v.labelFor(context.appLanguage)),
                   onTap: () {
-                    Navigator.of(context).pop();
+                    context.safePop();
                     ref.read(appLockProvider.notifier).setAutoLockTime(v);
                   },
                 );
@@ -232,7 +232,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       setState(() => _error = context.tr(zh: '两次密码不一致', en: 'Passwords do not match'));
       return;
     }
-    Navigator.of(context).pop(p1);
+    context.safePop(p1);
   }
 
   @override
@@ -286,7 +286,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(null), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+        TextButton(onPressed: () => context.safePop(null), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
         FilledButton(onPressed: _submit, child: Text(context.tr(zh: '确定', en: 'OK'))),
       ],
     );

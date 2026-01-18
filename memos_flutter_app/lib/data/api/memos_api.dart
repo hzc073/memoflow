@@ -98,6 +98,7 @@ class MemosApi {
       _getCurrentUserByAuthMe,
       _getCurrentUserByAuthStatusPost,
       _getCurrentUserByAuthStatusGet,
+      _getCurrentUserByAuthStatusV2,
       _getCurrentUserBySessionCurrent,
       _getCurrentUserByUserMeV1,
       _getCurrentUserByUsersMeV1,
@@ -160,6 +161,16 @@ class MemosApi {
 
   Future<User> _getCurrentUserByAuthStatusGet() async {
     final response = await _dio.get('api/v1/auth/status');
+    final body = _expectJsonMap(response.data);
+    final userJson = body['user'];
+    if (userJson is Map) {
+      return User.fromJson(userJson.cast<String, dynamic>());
+    }
+    return User.fromJson(body);
+  }
+
+  Future<User> _getCurrentUserByAuthStatusV2() async {
+    final response = await _dio.post('api/v2/auth/status', data: const <String, Object?>{});
     final body = _expectJsonMap(response.data);
     final userJson = body['user'];
     if (userJson is Map) {

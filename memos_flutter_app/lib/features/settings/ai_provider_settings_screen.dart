@@ -94,7 +94,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
               (m) => ListTile(
                 title: Text(_modelLabel(context, m)),
                 trailing: m == _model ? const Icon(Icons.check) : null,
-                onTap: () => Navigator.of(context).pop(m),
+                onTap: () => context.safePop(m),
               ),
             ),
           ],
@@ -441,7 +441,7 @@ class _CustomModelDialogState extends State<_CustomModelDialog> {
 
   void _close(String? result) {
     FocusScope.of(context).unfocus();
-    Navigator.of(context).pop(result);
+    context.safePop(result);
   }
 
   @override

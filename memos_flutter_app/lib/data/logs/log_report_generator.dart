@@ -134,11 +134,11 @@ class LogReportGenerator {
       final info = await PackageInfo.fromPlatform();
       final version = info.version.trim();
       final build = info.buildNumber.trim();
-      if (version.isEmpty && build.isEmpty) return 'MemoFlow';
-      if (build.isEmpty) return 'MemoFlow v$version';
-      return 'MemoFlow v$version (Build $build)';
+      if (version.isEmpty && build.isEmpty) return 'memoflow';
+      if (build.isEmpty) return 'memoflow v$version';
+      return 'memoflow v$version (Build $build)';
     } catch (_) {
-      return 'MemoFlow';
+      return 'memoflow';
     }
   }
 

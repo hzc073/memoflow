@@ -49,13 +49,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
 
   void _back() {
     if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+      context.safePop();
       return;
     }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
+          title: 'memoflow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,

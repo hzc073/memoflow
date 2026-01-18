@@ -4,6 +4,8 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.memoflow.hzc073.widgets.DailyReviewWidgetProvider
 import com.memoflow.hzc073.widgets.QuickInputWidgetProvider
 import com.memoflow.hzc073.widgets.StatsWidgetProvider
@@ -17,6 +19,23 @@ class MainActivity : FlutterActivity() {
     private val widgetChannelName = "memoflow/widgets"
     private var widgetChannel: MethodChannel? = null
     private var pendingWidgetAction: String? = null
+    private var isFlutterUiReady = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { !isFlutterUiReady }
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        isFlutterUiReady = true
+    }
+
+    override fun onFlutterUiNoLongerDisplayed() {
+        super.onFlutterUiNoLongerDisplayed()
+        isFlutterUiReady = false
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

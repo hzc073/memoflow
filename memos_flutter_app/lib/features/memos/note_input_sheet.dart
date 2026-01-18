@@ -621,7 +621,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         return;
       }
       if (!mounted) return;
-      Navigator.of(context).pop();
+      context.safePop();
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const VoiceRecordScreen()));
       return;
     }
@@ -693,7 +693,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       await ref.read(noteDraftProvider.notifier).clear();
 
       if (!mounted) return;
-      Navigator.of(context).pop();
+      context.safePop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Create failed: $e')));

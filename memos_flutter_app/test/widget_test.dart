@@ -43,4 +43,7 @@ class _TestSessionController extends AppSessionController {
 
   @override
   Future<void> switchAccount(String accountKey) async {}
+
+  @override
+  Future<void> refreshCurrentUser({bool ignoreErrors = true}) async {}
 }

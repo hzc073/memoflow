@@ -107,7 +107,7 @@ String _sanitizeMarkdown(String text) {
     final url = match.group(1)?.trim();
     return url?.isNotEmpty == true ? url! : '';
   });
-  return _escapeEmptyTaskHeadings(stripped);
+  return _normalizeFencedCodeBlocks(_escapeEmptyTaskHeadings(stripped));
 }
 
 String _escapeEmptyTaskHeadings(String text) {
@@ -119,6 +119,30 @@ String _escapeEmptyTaskHeadings(String text) {
     final hashes = match.group(2) ?? '';
     final escaped = List.filled(hashes.length, r'\#').join();
     lines[i] = '$prefix$escaped';
+  }
+  return lines.join('\n');
+}
+
+String _normalizeFencedCodeBlocks(String text) {
+  final lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (line.isEmpty) continue;
+    var index = 0;
+    while (index < line.length) {
+      final codeUnit = line.codeUnitAt(index);
+      if (codeUnit == 0x20 || codeUnit == 0x09 || codeUnit == 0x3000) {
+        index++;
+        continue;
+      }
+      break;
+    }
+    if (index == 0) continue;
+    final trimmed = line.substring(index);
+    if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+      final indent = index > 3 ? 3 : index;
+      lines[i] = '${''.padLeft(indent)}$trimmed';
+    }
   }
   return lines.join('\n');
 }

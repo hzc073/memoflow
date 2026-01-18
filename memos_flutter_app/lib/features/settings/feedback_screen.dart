@@ -44,7 +44,7 @@ class FeedbackScreen extends ConsumerWidget {
     final host = hostRaw.isEmpty ? '' : LogSanitizer.maskUrl(hostRaw);
 
     return [
-      trByLanguage(language: language, zh: 'MemoFlow 诊断信息', en: 'MemoFlow Diagnostics'),
+      trByLanguage(language: language, zh: 'memoflow 诊断信息', en: 'memoflow Diagnostics'),
       '${trByLanguage(language: language, zh: '时间', en: 'Time')}: ${DateTime.now().toIso8601String()}',
       '',
       '${trByLanguage(language: language, zh: '账号', en: 'Account')}: $accountLabel',

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">memoflow</string>
     <string name="widget_daily_review_label">随机漫步</string>
     <string name="widget_quick_input_label">快速输入</string>
     <string name="widget_stats_label">记录统计</string>

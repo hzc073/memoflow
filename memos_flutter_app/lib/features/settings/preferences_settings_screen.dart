@@ -6,7 +6,6 @@ import '../../core/memoflow_palette.dart';
 import '../../core/system_fonts.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/system_fonts_provider.dart';
-import '../../state/theme_mode_provider.dart';
 
 class PreferencesSettingsScreen extends ConsumerWidget {
   const PreferencesSettingsScreen({super.key});
@@ -36,7 +35,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                   leading: Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off),
                   title: Text(label(v)),
                   onTap: () {
-                    Navigator.of(context).pop();
+                    context.safePop();
                     onSelect(v);
                   },
                 );
@@ -80,7 +79,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                   ),
                   title: Text(font.displayName),
                   onTap: () async {
-                    Navigator.of(context).pop();
+                    context.safePop();
                     if (font.isSystemDefault) {
                       ref.read(appPreferencesProvider.notifier).setFontFamily(family: null, filePath: null);
                       return;
@@ -121,12 +120,8 @@ class PreferencesSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(appPreferencesProvider);
 
-    final themeMode = ref.watch(appThemeModeProvider);
-    final themeModeLabel = switch (themeMode) {
-      ThemeMode.system => context.tr(zh: '系统', en: 'System'),
-      ThemeMode.light => context.tr(zh: '浅色', en: 'Light'),
-      ThemeMode.dark => context.tr(zh: '深色', en: 'Dark'),
-    };
+    final themeMode = prefs.themeMode;
+    final themeModeLabel = themeMode.labelFor(prefs.language);
     final fontsAsync = ref.watch(systemFontsProvider);
     final fontLabel = _fontLabel(context, prefs, fontsAsync.valueOrNull ?? const []);
 
@@ -289,17 +284,13 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     icon: Icons.expand_more,
                     textMain: textMain,
                     textMuted: textMuted,
-                    onTap: () => _selectEnum<ThemeMode>(
+                    onTap: () => _selectEnum<AppThemeMode>(
                       context: context,
                       title: context.tr(zh: '外观', en: 'Appearance'),
-                      values: const [ThemeMode.system, ThemeMode.light, ThemeMode.dark],
-                      label: (v) => switch (v) {
-                        ThemeMode.system => context.tr(zh: '系统', en: 'System'),
-                        ThemeMode.light => context.tr(zh: '浅色', en: 'Light'),
-                        ThemeMode.dark => context.tr(zh: '深色', en: 'Dark'),
-                      },
+                      values: const [AppThemeMode.system, AppThemeMode.light, AppThemeMode.dark],
+                      label: (v) => v.labelFor(prefs.language),
                       selected: themeMode,
-                      onSelect: (v) => ref.read(appThemeModeProvider.notifier).state = v,
+                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setThemeMode(v),
                     ),
                   ),
                   _ToggleRow(

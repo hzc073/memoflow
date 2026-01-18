@@ -149,7 +149,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                 ListTile(
                   title: Text(v.label(context)),
                   trailing: v == _expiration ? const Icon(Icons.check) : null,
-                  onTap: () => Navigator.of(context).pop(v),
+                  onTap: () => context.safePop(v),
                 ),
               const SizedBox(height: 10),
             ],
@@ -213,7 +213,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () => context.safePop(),
                       child: Text(context.tr(zh: '完成', en: 'Done')),
                     ),
                   ),

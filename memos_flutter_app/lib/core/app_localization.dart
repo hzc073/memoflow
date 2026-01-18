@@ -32,3 +32,11 @@ extension AppLocalizationX on BuildContext {
     return trByLocale(locale: Localizations.localeOf(this), zh: zh, en: en);
   }
 }
+
+extension NavigatorSafePopX on BuildContext {
+  void safePop<T extends Object?>([T? result]) {
+    final navigator = Navigator.maybeOf(this);
+    if (navigator == null || !navigator.mounted || !navigator.canPop()) return;
+    navigator.pop(result);
+  }
+}

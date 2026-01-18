@@ -44,13 +44,43 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
     await Clipboard.setData(ClipboardData(text: text));
   }
 
+  Future<Directory?> _tryGetDownloadsDirectory() async {
+    try {
+      return await getDownloadsDirectory();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Directory> _resolveExportDirectory() async {
+    if (Platform.isAndroid) {
+      final candidates = <Directory>[
+        Directory('/storage/emulated/0/Download'),
+        Directory('/storage/emulated/0/Downloads'),
+      ];
+      for (final dir in candidates) {
+        if (await dir.exists()) return dir;
+      }
+
+      final external = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+      if (external != null && external.isNotEmpty) return external.first;
+
+      final fallback = await getExternalStorageDirectory();
+      if (fallback != null) return fallback;
+    }
+
+    final downloads = await _tryGetDownloadsDirectory();
+    if (downloads != null) return downloads;
+    return getApplicationDocumentsDirectory();
+  }
+
   Future<void> _exportReport() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
       final text = await _buildReport();
-      final dir = await getApplicationDocumentsDirectory();
-      final logDir = Directory(p.join(dir.path, 'logs'));
+      final rootDir = await _resolveExportDirectory();
+      final logDir = Directory(p.join(rootDir.path, 'logs'));
       if (!logDir.existsSync()) {
         logDir.createSync(recursive: true);
       }

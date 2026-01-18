@@ -1,2 +1,36 @@
 /AGENTS.md
 /参考项目
+# Secrets & signing
+**/key.properties
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pfx
+**/*.pem
+**/*.der
+**/*.crt
+**/*.key
+**/.env
+**/.env.*
+
+# Flutter/Dart
+**/.dart_tool/
+**/.pub/
+**/.pub-cache/
+**/build/
+
+# Android/iOS build artifacts
+**/android/.gradle/
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/**/captures/
+**/ios/Pods/
+**/ios/Flutter/Flutter.framework/
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+
+# IDE/editor
+**/.idea/
+**/.vscode/
+**/*.iml

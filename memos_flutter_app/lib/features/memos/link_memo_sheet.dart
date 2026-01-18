@@ -242,7 +242,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
         final dateLabel = memo.updateTime.millisecondsSinceEpoch > 0 ? fmt.format(memo.updateTime.toLocal()) : '';
 
         return InkWell(
-          onTap: () => Navigator.of(context).pop(memo),
+          onTap: () => context.safePop(memo),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Column(

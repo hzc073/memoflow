@@ -327,7 +327,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         _awaitingConfirm = false;
         _processing = false;
       });
-      Navigator.of(context).pop();
+      context.safePop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(zh: '已创建语音 memo（待同步）', en: 'Voice memo created (pending sync)'))),
       );
