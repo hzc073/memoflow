@@ -32,10 +32,21 @@ flutter run
 ```
 
 ## 截图
-| 登录 | 首页 |
-| --- | --- |
-| ![登录](docs/登录.png) | ![首页](docs/首页.png) |
-| ![导航栏](docs/导航栏.png) | ![设置](docs/设置.png) |
+**登录**
+
+<img src="docs/登录.png" alt="登录" width="320">
+
+**首页**
+
+<img src="docs/首页.png" alt="首页" width="320">
+
+**导航栏**
+
+<img src="docs/导航栏.png" alt="导航栏" width="320">
+
+**设置**
+
+<img src="docs/设置.png" alt="设置" width="320">
 
 ## 数据与隐私
 - PAT 通过 `flutter_secure_storage` 存储。

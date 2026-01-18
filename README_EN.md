@@ -32,10 +32,21 @@ flutter run
 ```
 
 ## Screenshots
-| Login | Home |
-| --- | --- |
-| ![Login](docs/登录.png) | ![Home](docs/首页.png) |
-| ![Navigation](docs/导航栏.png) | ![Settings](docs/设置.png) |
+**Login**
+
+<img src="docs/登录.png" alt="Login" width="320">
+
+**Home**
+
+<img src="docs/首页.png" alt="Home" width="320">
+
+**Navigation**
+
+<img src="docs/导航栏.png" alt="Navigation" width="320">
+
+**Settings**
+
+<img src="docs/设置.png" alt="Settings" width="320">
 
 ## Data and privacy
 - Personal Access Tokens are stored via `flutter_secure_storage`.
