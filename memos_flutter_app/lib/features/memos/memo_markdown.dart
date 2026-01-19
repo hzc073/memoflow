@@ -57,6 +57,7 @@ class MemoMarkdown extends StatelessWidget {
       ),
       listBullet: baseStyle,
     );
+    final codeStyle = styleSheet.code ?? baseStyle.copyWith(fontFamily: 'monospace');
     var taskIndex = 0;
 
     Widget buildCheckbox(bool checked) {
@@ -90,6 +91,10 @@ class MemoMarkdown extends StatelessWidget {
       extensionSet: md.ExtensionSet.gitHubFlavored,
       inlineSyntaxes: [_MemoHighlightInlineSyntax(), _MemoTagInlineSyntax()],
       checkboxBuilder: buildCheckbox,
+      syntaxHighlighter: MemoCodeHighlighter(
+        baseStyle: codeStyle,
+        isDark: theme.brightness == Brightness.dark,
+      ),
       builders: {
         'memohighlight': _MemoHighlightBuilder(_MemoHighlightStyle.resolve(theme)),
         'memotag': _MemoTagBuilder(_MemoTagStyle.resolve(theme)),
@@ -345,4 +350,91 @@ class _MemoHighlightBuilder extends MarkdownElementBuilder {
       ),
     );
   }
+}
+
+class MemoCodeHighlighter extends SyntaxHighlighter {
+  MemoCodeHighlighter({
+    required this.baseStyle,
+    required this.isDark,
+  });
+
+  final TextStyle baseStyle;
+  final bool isDark;
+
+  static final RegExp _commentPattern = RegExp(
+    r'(?:\/\/.*?$)|(?:\/\*[\s\S]*?\*\/)|(?:#.*?$)',
+    multiLine: true,
+  );
+  static final RegExp _stringPattern = RegExp(
+    "(?:'''[\\s\\S]*?'''|\\\"\\\"\\\"[\\s\\S]*?\\\"\\\"\\\"|'(?:\\\\.|[^'\\\\])*'|\\\"(?:\\\\.|[^\\\"\\\\])*\\\")",
+  );
+  static final RegExp _annotationPattern = RegExp(r'@\w+');
+  static final RegExp _keywordPattern = RegExp(
+    r'\b(?:abstract|as|assert|async|await|break|case|catch|class|const|continue|default|defer|do|else|enum|export|extends|'
+    r'extension|external|false|final|finally|for|function|get|if|implements|import|in|interface|is|late|library|mixin|new|null|'
+    r'operator|part|private|protected|public|required|return|sealed|set|static|super|switch|sync|this|throw|true|try|typedef|'
+    r'var|void|while|with|yield)\b',
+  );
+  static final RegExp _numberPattern = RegExp(r'\b\d+(?:\.\d+)?\b');
+
+  @override
+  TextSpan format(String source) {
+    if (source.isEmpty) return const TextSpan(text: '');
+
+    final commentColor = isDark ? const Color(0xFF7C8895) : const Color(0xFF6A737D);
+    final stringColor = isDark ? const Color(0xFF98C379) : const Color(0xFF22863A);
+    final keywordColor = isDark ? const Color(0xFF7AA2F7) : const Color(0xFF005CC5);
+    final numberColor = isDark ? const Color(0xFFD19A66) : const Color(0xFFB45500);
+    final annotationColor = isDark ? const Color(0xFF56B6C2) : const Color(0xFF22863A);
+
+    final rules = <_CodeHighlightRule>[
+      _CodeHighlightRule(_commentPattern, baseStyle.copyWith(color: commentColor, fontStyle: FontStyle.italic)),
+      _CodeHighlightRule(_stringPattern, baseStyle.copyWith(color: stringColor)),
+      _CodeHighlightRule(_annotationPattern, baseStyle.copyWith(color: annotationColor)),
+      _CodeHighlightRule(_keywordPattern, baseStyle.copyWith(color: keywordColor, fontWeight: FontWeight.w600)),
+      _CodeHighlightRule(_numberPattern, baseStyle.copyWith(color: numberColor)),
+    ];
+
+    final spans = <TextSpan>[];
+    final buffer = StringBuffer();
+    var index = 0;
+
+    void flushBuffer() {
+      if (buffer.length == 0) return;
+      spans.add(TextSpan(text: buffer.toString(), style: baseStyle));
+      buffer.clear();
+    }
+
+    while (index < source.length) {
+      _CodeHighlightRule? matchedRule;
+      Match? match;
+      for (final rule in rules) {
+        final candidate = rule.pattern.matchAsPrefix(source, index);
+        if (candidate == null) continue;
+        matchedRule = rule;
+        match = candidate;
+        break;
+      }
+
+      if (match == null || matchedRule == null) {
+        buffer.write(source[index]);
+        index += 1;
+        continue;
+      }
+
+      flushBuffer();
+      spans.add(TextSpan(text: match.group(0), style: matchedRule.style));
+      index = match.end;
+    }
+
+    flushBuffer();
+    return TextSpan(style: baseStyle, children: spans);
+  }
+}
+
+class _CodeHighlightRule {
+  const _CodeHighlightRule(this.pattern, this.style);
+
+  final RegExp pattern;
+  final TextStyle style;
 }

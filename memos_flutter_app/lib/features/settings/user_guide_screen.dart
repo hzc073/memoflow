@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
@@ -8,6 +9,27 @@ import '../../state/preferences_provider.dart';
 
 class UserGuideScreen extends ConsumerWidget {
   const UserGuideScreen({super.key});
+
+  Future<void> _openOfficialDocs(BuildContext context) async {
+    final uri = Uri.parse('https://usememos.com/docs/guides');
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.tr(zh: '无法打开浏览器，请稍后重试', en: 'Unable to open browser. Please try again.')),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr(zh: '打开失败，请稍后重试', en: 'Failed to open. Please try again.')),
+        ),
+      );
+    }
+  }
 
   Future<void> _showInfo(BuildContext context, {required String title, required String body}) async {
     await showModalBottomSheet<void>(
@@ -82,6 +104,17 @@ class UserGuideScreen extends ConsumerWidget {
                 card: card,
                 divider: divider,
                 children: [
+                  _GuideRow(
+                    icon: Icons.menu_book_outlined,
+                    title: context.tr(zh: '官方使用文档', en: 'Official Guide'),
+                    subtitle: 'usememos.com/docs/guides',
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () async {
+                      haptic();
+                      await _openOfficialDocs(context);
+                    },
+                  ),
                   _GuideRow(
                     icon: Icons.refresh,
                     title: context.tr(zh: '下拉刷新', en: 'Pull to Refresh'),

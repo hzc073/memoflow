@@ -11,6 +11,7 @@ import '../data/db/app_database.dart';
 import '../data/logs/sync_status_tracker.dart';
 import '../data/models/attachment.dart';
 import '../data/models/local_memo.dart';
+import '../data/models/memo.dart';
 import '../data/models/memo_relation.dart';
 import '../state/database_provider.dart';
 import '../state/logging_provider.dart';
@@ -22,6 +23,13 @@ typedef MemosQuery = ({
   String searchQuery,
   String state,
   String? tag,
+});
+
+typedef ShortcutMemosQuery = ({
+  String searchQuery,
+  String state,
+  String? tag,
+  String shortcutFilter,
 });
 
 final memosApiProvider = Provider<MemosApi>((ref) {
@@ -55,6 +63,543 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
       )
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
 });
+
+final shortcutMemosProvider = FutureProvider.family<List<LocalMemo>, ShortcutMemosQuery>((ref, query) async {
+  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+  if (account == null) {
+    throw StateError('Not authenticated');
+  }
+
+  final api = ref.watch(memosApiProvider);
+  final db = ref.watch(databaseProvider);
+  final creatorId = _parseUserId(account.user.name);
+  final parent = _buildShortcutParent(creatorId);
+  final filter = _buildShortcutFilter(
+    creatorId: creatorId,
+    searchQuery: query.searchQuery,
+    tag: query.tag,
+    shortcutFilter: query.shortcutFilter,
+    includeCreatorId: parent == null,
+  );
+
+  try {
+    final (memos, _) = await api.listMemos(
+      pageSize: 200,
+      state: query.state,
+      filter: filter,
+      parent: parent,
+    );
+
+    final results = <LocalMemo>[];
+    for (final memo in memos) {
+      final uid = memo.uid.trim();
+      if (uid.isEmpty) continue;
+      final row = await db.getMemoByUid(uid);
+      if (row != null) {
+        results.add(LocalMemo.fromDb(row));
+      } else {
+        results.add(_localMemoFromRemote(memo));
+      }
+    }
+
+    results.sort((a, b) {
+      if (a.pinned != b.pinned) {
+        return a.pinned ? -1 : 1;
+      }
+      return b.updateTime.compareTo(a.updateTime);
+    });
+
+    return results;
+  } on DioException catch (e) {
+    if (_shouldFallbackShortcutFilter(e)) {
+      final local = await _tryListShortcutMemosLocally(
+        db: db,
+        searchQuery: query.searchQuery,
+        state: query.state,
+        tag: query.tag,
+        shortcutFilter: query.shortcutFilter,
+      );
+      if (local != null) return local;
+    }
+    rethrow;
+  }
+});
+
+String? _buildShortcutFilter({
+  required int? creatorId,
+  required String searchQuery,
+  required String? tag,
+  required String shortcutFilter,
+  bool includeCreatorId = true,
+}) {
+  final filters = <String>[];
+  if (includeCreatorId && creatorId != null) {
+    filters.add('creator_id == $creatorId');
+  }
+
+  final normalizedSearch = searchQuery.trim();
+  if (normalizedSearch.isNotEmpty) {
+    filters.add('content.contains("${_escapeFilterValue(normalizedSearch)}")');
+  }
+
+  var normalizedTag = (tag ?? '').trim();
+  if (normalizedTag.startsWith('#')) {
+    normalizedTag = normalizedTag.substring(1);
+  }
+  if (normalizedTag.isNotEmpty) {
+    filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
+  }
+
+  final normalizedShortcut = shortcutFilter.trim();
+  if (normalizedShortcut.isNotEmpty) {
+    filters.add('($normalizedShortcut)');
+  }
+
+  if (filters.isEmpty) return null;
+  return filters.join(' && ');
+}
+
+String? _buildShortcutParent(int? creatorId) {
+  if (creatorId == null) return null;
+  return 'users/$creatorId';
+}
+
+int? _parseUserId(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  final last = trimmed.contains('/') ? trimmed.split('/').last : trimmed;
+  return int.tryParse(last.trim());
+}
+
+String _escapeFilterValue(String raw) {
+  return raw.replaceAll('\\', r'\\').replaceAll('"', r'\"').replaceAll('\n', ' ');
+}
+
+bool _shouldFallbackShortcutFilter(DioException e) {
+  final status = e.response?.statusCode;
+  if (status == null) {
+    return e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.unknown;
+  }
+  return status == 400 || status == 404 || status == 405 || status == 500;
+}
+
+Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
+  required AppDatabase db,
+  required String searchQuery,
+  required String state,
+  required String? tag,
+  required String shortcutFilter,
+}) async {
+  final predicate = _buildShortcutPredicate(shortcutFilter);
+  if (predicate == null) return null;
+
+  final normalizedSearch = searchQuery.trim();
+  final normalizedTag = (tag ?? '').trim();
+  final rows = await db.listMemos(
+    searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
+    state: state,
+    tag: normalizedTag.isEmpty ? null : normalizedTag,
+    limit: 200,
+  );
+
+  final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: false);
+  final results = memos.toList(growable: false);
+  results.sort((a, b) {
+    if (a.pinned != b.pinned) {
+      return a.pinned ? -1 : 1;
+    }
+    return b.updateTime.compareTo(a.updateTime);
+  });
+  return results;
+}
+
+typedef _MemoPredicate = bool Function(LocalMemo memo);
+
+_MemoPredicate? _buildShortcutPredicate(String filter) {
+  final trimmed = filter.trim();
+  if (trimmed.isEmpty) return (_) => true;
+  try {
+    final normalized = _normalizeShortcutFilterForLocal(trimmed);
+    final tokens = _tokenizeShortcutFilter(normalized);
+    final parser = _ShortcutFilterParser(tokens);
+    final predicate = parser.parse();
+    if (predicate == null || !parser.isAtEnd) return null;
+    return predicate;
+  } catch (_) {
+    return null;
+  }
+}
+
+enum _FilterTokenType {
+  identifier,
+  number,
+  string,
+  andOp,
+  orOp,
+  eq,
+  gte,
+  lte,
+  inOp,
+  lParen,
+  rParen,
+  lBracket,
+  rBracket,
+  comma,
+  dot,
+}
+
+class _FilterToken {
+  const _FilterToken(this.type, this.lexeme);
+
+  final _FilterTokenType type;
+  final String lexeme;
+}
+
+List<_FilterToken> _tokenizeShortcutFilter(String input) {
+  final tokens = <_FilterToken>[];
+  var i = 0;
+  while (i < input.length) {
+    final ch = input[i];
+    if (ch.trim().isEmpty) {
+      i++;
+      continue;
+    }
+    if (input.startsWith('&&', i)) {
+      tokens.add(const _FilterToken(_FilterTokenType.andOp, '&&'));
+      i += 2;
+      continue;
+    }
+    if (input.startsWith('||', i)) {
+      tokens.add(const _FilterToken(_FilterTokenType.orOp, '||'));
+      i += 2;
+      continue;
+    }
+    if (input.startsWith('>=', i)) {
+      tokens.add(const _FilterToken(_FilterTokenType.gte, '>='));
+      i += 2;
+      continue;
+    }
+    if (input.startsWith('<=', i)) {
+      tokens.add(const _FilterToken(_FilterTokenType.lte, '<='));
+      i += 2;
+      continue;
+    }
+    if (input.startsWith('==', i)) {
+      tokens.add(const _FilterToken(_FilterTokenType.eq, '=='));
+      i += 2;
+      continue;
+    }
+    switch (ch) {
+      case '(':
+        tokens.add(const _FilterToken(_FilterTokenType.lParen, '('));
+        i++;
+        continue;
+      case ')':
+        tokens.add(const _FilterToken(_FilterTokenType.rParen, ')'));
+        i++;
+        continue;
+      case '[':
+        tokens.add(const _FilterToken(_FilterTokenType.lBracket, '['));
+        i++;
+        continue;
+      case ']':
+        tokens.add(const _FilterToken(_FilterTokenType.rBracket, ']'));
+        i++;
+        continue;
+      case ',':
+        tokens.add(const _FilterToken(_FilterTokenType.comma, ','));
+        i++;
+        continue;
+      case '.':
+        tokens.add(const _FilterToken(_FilterTokenType.dot, '.'));
+        i++;
+        continue;
+      case '"':
+      case '\'':
+        final quote = ch;
+        i++;
+        final buffer = StringBuffer();
+        while (i < input.length) {
+          final c = input[i];
+          if (c == '\\' && i + 1 < input.length) {
+            buffer.write(input[i + 1]);
+            i += 2;
+            continue;
+          }
+          if (c == quote) {
+            i++;
+            break;
+          }
+          buffer.write(c);
+          i++;
+        }
+        tokens.add(_FilterToken(_FilterTokenType.string, buffer.toString()));
+        continue;
+    }
+
+    if (_isDigit(ch)) {
+      final start = i;
+      while (i < input.length && _isDigit(input[i])) {
+        i++;
+      }
+      tokens.add(_FilterToken(_FilterTokenType.number, input.substring(start, i)));
+      continue;
+    }
+
+    if (_isIdentifierStart(ch)) {
+      final start = i;
+      i++;
+      while (i < input.length && _isIdentifierPart(input[i])) {
+        i++;
+      }
+      final text = input.substring(start, i);
+      if (text == 'in') {
+        tokens.add(const _FilterToken(_FilterTokenType.inOp, 'in'));
+      } else {
+        tokens.add(_FilterToken(_FilterTokenType.identifier, text));
+      }
+      continue;
+    }
+
+    throw FormatException('Unexpected filter token: $ch');
+  }
+  return tokens;
+}
+
+bool _isDigit(String ch) => ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57;
+
+bool _isIdentifierStart(String ch) {
+  final code = ch.codeUnitAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || ch == '_';
+}
+
+bool _isIdentifierPart(String ch) {
+  return _isIdentifierStart(ch) || _isDigit(ch);
+}
+
+class _ShortcutFilterParser {
+  _ShortcutFilterParser(this._tokens);
+
+  final List<_FilterToken> _tokens;
+  var _pos = 0;
+
+  bool get isAtEnd => _pos >= _tokens.length;
+
+  _MemoPredicate? parse() {
+    final expr = _parseOr();
+    return expr;
+  }
+
+  _MemoPredicate? _parseOr() {
+    final first = _parseAnd();
+    if (first == null) return null;
+    var left = first;
+    while (_match(_FilterTokenType.orOp)) {
+      final right = _parseAnd();
+      if (right == null) return null;
+      final prev = left;
+      left = (memo) => prev(memo) || right(memo);
+    }
+    return left;
+  }
+
+  _MemoPredicate? _parseAnd() {
+    final first = _parsePrimary();
+    if (first == null) return null;
+    var left = first;
+    while (_match(_FilterTokenType.andOp)) {
+      final right = _parsePrimary();
+      if (right == null) return null;
+      final prev = left;
+      left = (memo) => prev(memo) && right(memo);
+    }
+    return left;
+  }
+
+  _MemoPredicate? _parsePrimary() {
+    if (_match(_FilterTokenType.lParen)) {
+      final expr = _parseOr();
+      if (expr == null || !_match(_FilterTokenType.rParen)) return null;
+      return expr;
+    }
+    return _parseCondition();
+  }
+
+  _MemoPredicate? _parseCondition() {
+    final ident = _consume(_FilterTokenType.identifier);
+    if (ident == null) return null;
+    switch (ident.lexeme) {
+      case 'tag':
+        if (!_match(_FilterTokenType.inOp)) return null;
+        final values = _parseStringList();
+        if (values == null) return null;
+        final expected = values.map(_normalizeFilterTag).where((v) => v.isNotEmpty).toSet();
+        return (memo) {
+          for (final tag in memo.tags) {
+            if (expected.contains(_normalizeFilterTag(tag))) return true;
+          }
+          return false;
+        };
+      case 'visibility':
+        if (_match(_FilterTokenType.eq)) {
+          final value = _consumeString();
+          if (value == null) return null;
+          final target = value.toUpperCase();
+          return (memo) => memo.visibility.toUpperCase() == target;
+        }
+        if (_match(_FilterTokenType.inOp)) {
+          final values = _parseStringList();
+          if (values == null) return null;
+          final set = values.map((v) => v.toUpperCase()).toSet();
+          return (memo) => set.contains(memo.visibility.toUpperCase());
+        }
+        return null;
+      case 'created_ts':
+      case 'updated_ts':
+        final isCreated = ident.lexeme == 'created_ts';
+        if (_match(_FilterTokenType.gte)) {
+          final value = _consumeNumber();
+          if (value == null) return null;
+          return (memo) => _timestampForMemo(memo, isCreated) >= value;
+        }
+        if (_match(_FilterTokenType.lte)) {
+          final value = _consumeNumber();
+          if (value == null) return null;
+          return (memo) => _timestampForMemo(memo, isCreated) <= value;
+        }
+        return null;
+      case 'content':
+        if (!_match(_FilterTokenType.dot)) return null;
+        final method = _consume(_FilterTokenType.identifier);
+        if (method == null || method.lexeme != 'contains') return null;
+        if (!_match(_FilterTokenType.lParen)) return null;
+        final value = _consumeString();
+        if (value == null || !_match(_FilterTokenType.rParen)) return null;
+        return (memo) => memo.content.contains(value);
+      case 'pinned':
+        if (!_match(_FilterTokenType.eq)) return null;
+        final boolValue = _consumeBool();
+        if (boolValue == null) return null;
+        return (memo) => memo.pinned == boolValue;
+      case 'creator_id':
+        if (!_match(_FilterTokenType.eq)) return null;
+        final value = _consumeNumber();
+        if (value == null) return null;
+        return (_) => true;
+      default:
+        return null;
+    }
+  }
+
+  List<String>? _parseStringList() {
+    if (!_match(_FilterTokenType.lBracket)) return null;
+    final values = <String>[];
+    if (_check(_FilterTokenType.rBracket)) {
+      _advance();
+      return values;
+    }
+    while (!isAtEnd) {
+      final value = _consumeString();
+      if (value == null) return null;
+      values.add(value);
+      if (_match(_FilterTokenType.comma)) continue;
+      if (_match(_FilterTokenType.rBracket)) break;
+      return null;
+    }
+    return values;
+  }
+
+  String? _consumeString() {
+    final token = _consume(_FilterTokenType.string);
+    return token?.lexeme;
+  }
+
+  int? _consumeNumber() {
+    final token = _consume(_FilterTokenType.number);
+    if (token == null) return null;
+    return int.tryParse(token.lexeme);
+  }
+
+  bool? _consumeBool() {
+    if (_match(_FilterTokenType.identifier)) {
+      final text = _previous().lexeme.toLowerCase();
+      if (text == 'true') return true;
+      if (text == 'false') return false;
+    }
+    if (_match(_FilterTokenType.number)) {
+      return _previous().lexeme != '0';
+    }
+    return null;
+  }
+
+  bool _match(_FilterTokenType type) {
+    if (_check(type)) {
+      _advance();
+      return true;
+    }
+    return false;
+  }
+
+  bool _check(_FilterTokenType type) {
+    if (isAtEnd) return false;
+    return _tokens[_pos].type == type;
+  }
+
+  _FilterToken _advance() {
+    return _tokens[_pos++];
+  }
+
+  _FilterToken? _consume(_FilterTokenType type) {
+    if (_check(type)) return _advance();
+    return null;
+  }
+
+  _FilterToken _previous() => _tokens[_pos - 1];
+}
+
+int _timestampForMemo(LocalMemo memo, bool created) {
+  final dt = created ? memo.createTime : memo.updateTime;
+  return dt.toUtc().millisecondsSinceEpoch ~/ 1000;
+}
+
+String _normalizeFilterTag(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return '';
+  return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+}
+
+String _normalizeShortcutFilterForLocal(String raw) {
+  final nowSec = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
+  return raw.replaceAllMapped(
+    RegExp(r'(created_ts|updated_ts)\s*>=\s*now\(\)\s*-\s*(\d+)'),
+    (match) {
+      final field = match.group(1) ?? '';
+      final seconds = int.tryParse(match.group(2) ?? '');
+      if (field.isEmpty || seconds == null) return match.group(0) ?? '';
+      final start = nowSec - seconds;
+      return '$field >= $start';
+    },
+  );
+}
+
+LocalMemo _localMemoFromRemote(Memo memo) {
+  return LocalMemo(
+    uid: memo.uid,
+    content: memo.content,
+    visibility: memo.visibility,
+    pinned: memo.pinned,
+    state: memo.state,
+    createTime: memo.createTime.toLocal(),
+    updateTime: memo.updateTime.toLocal(),
+    tags: memo.tags,
+    attachments: memo.attachments,
+    syncState: SyncState.synced,
+    lastError: null,
+  );
+}
 
 final memoRelationsProvider = FutureProvider.family<List<MemoRelation>, String>((ref, memoUid) async {
   final api = ref.watch(memosApiProvider);

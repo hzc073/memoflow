@@ -13,6 +13,7 @@ import '../../state/stats_providers.dart';
 
 enum AppDrawerDestination {
   memos,
+  explore,
   dailyReview,
   aiSummary,
   archived,
@@ -181,15 +182,24 @@ class AppDrawer extends ConsumerWidget {
                     error: (_, _) => const SizedBox(height: 84),
                   ),
                   const SizedBox(height: 16),
-                  _NavButton(
-                    selected: selected == AppDrawerDestination.memos,
-                    label: context.tr(zh: '全部笔记', en: 'All Memos'),
-                    icon: Icons.grid_view,
-                    onTap: () => onSelect(AppDrawerDestination.memos),
-                    textMain: textMain,
-                    hover: hover,
-                  ),
-                  if (prefs.showDrawerDailyReview)
+                    _NavButton(
+                      selected: selected == AppDrawerDestination.memos,
+                      label: context.tr(zh: '全部笔记', en: 'All Memos'),
+                      icon: Icons.grid_view,
+                      onTap: () => onSelect(AppDrawerDestination.memos),
+                      textMain: textMain,
+                      hover: hover,
+                    ),
+                    if (prefs.showDrawerExplore)
+                    _NavButton(
+                      selected: selected == AppDrawerDestination.explore,
+                      label: context.tr(zh: '探索', en: 'Explore'),
+                      icon: Icons.public,
+                      onTap: () => onSelect(AppDrawerDestination.explore),
+                      textMain: textMain,
+                      hover: hover,
+                    ),
+                    if (prefs.showDrawerDailyReview)
                     _NavButton(
                       selected: selected == AppDrawerDestination.dailyReview,
                       label: context.tr(zh: '随机漫步', en: 'Random Review'),

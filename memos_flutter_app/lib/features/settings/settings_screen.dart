@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
@@ -26,6 +27,8 @@ import 'widgets_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  static final Future<PackageInfo> _packageInfoFuture = PackageInfo.fromPlatform();
 
   void _close(BuildContext context) {
     if (Navigator.of(context).canPop()) {
@@ -63,6 +66,7 @@ class SettingsScreen extends ConsumerWidget {
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final versionStyle = TextStyle(fontSize: 11, color: textMuted);
     final hapticsEnabled = ref.watch(appPreferencesProvider.select((p) => p.hapticsEnabled));
 
     void haptic() {
@@ -320,12 +324,21 @@ class SettingsScreen extends ConsumerWidget {
                 const SizedBox(height: 18),
                 Column(
                   children: [
-                    Text(context.tr(zh: '版本 v0.8', en: 'Version v0.8'), style: TextStyle(fontSize: 11, color: textMuted)),
-                  const SizedBox(height: 4),
-                  Text(
-                    context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),
-                    style: TextStyle(fontSize: 11, color: textMuted),
-                  ),
+                    FutureBuilder<PackageInfo>(
+                      future: _packageInfoFuture,
+                      builder: (context, snapshot) {
+                        final version = snapshot.data?.version.trim() ?? '';
+                        final label = version.isEmpty
+                            ? context.tr(zh: '版本', en: 'Version')
+                            : context.tr(zh: '版本 v$version', en: 'Version v$version');
+                        return Text(label, style: versionStyle);
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),
+                      style: versionStyle,
+                    ),
                   ],
                 ),
               ],

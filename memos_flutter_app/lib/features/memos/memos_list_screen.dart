@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'dart:ui';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,17 +10,21 @@ import 'package:intl/intl.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/shortcut.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/search_history_provider.dart';
 import '../../state/session_provider.dart';
+import '../../state/user_settings_provider.dart';
 import '../about/about_screen.dart';
+import '../explore/explore_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
+import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
@@ -84,9 +89,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _searchController = TextEditingController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _titleKey = GlobalKey();
 
   var _searching = false;
   var _openedDrawerOnStart = false;
+  String? _selectedShortcutId;
   DateTime? _lastBackPressedAt;
 
   @override
@@ -133,6 +140,28 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     );
     setState(() {});
     _submitSearch(trimmed);
+  }
+
+  Shortcut? _findShortcutById(List<Shortcut> shortcuts) {
+    final id = _selectedShortcutId;
+    if (id == null || id.isEmpty) return null;
+    for (final shortcut in shortcuts) {
+      if (shortcut.shortcutId == id) return shortcut;
+    }
+    return null;
+  }
+
+  String _formatShortcutLoadError(BuildContext context, Object error) {
+    if (error is UnsupportedError) {
+      return context.tr(zh: '当前服务器不支持快捷筛选', en: 'Shortcuts are not supported on this server.');
+    }
+    if (error is DioException) {
+      final status = error.response?.statusCode ?? 0;
+      if (status == 404 || status == 405) {
+        return context.tr(zh: '当前服务器不支持快捷筛选', en: 'Shortcuts are not supported on this server.');
+      }
+    }
+    return context.tr(zh: '快捷筛选加载失败', en: 'Failed to load shortcuts.');
   }
 
   bool get _isAllMemos {
@@ -187,10 +216,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
     context.safePop();
-    final route = switch (dest) {
-      AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
-      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
+      final route = switch (dest) {
+        AppDrawerDestination.memos =>
+          const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        AppDrawerDestination.explore => const ExploreScreen(),
+        AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived =>
         MemosListScreen(title: context.tr(zh: '回收站', en: 'Archive'), state: 'ARCHIVED', showDrawer: true),
@@ -271,6 +301,96 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     );
   }
 
+  Future<void> _createShortcutFromMenu() async {
+    final result = await Navigator.of(context).push<ShortcutEditorResult>(
+      MaterialPageRoute<ShortcutEditorResult>(
+        builder: (_) => const ShortcutEditorScreen(),
+      ),
+    );
+    if (result == null) return;
+
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    if (account == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '未登录', en: 'Not authenticated'))),
+      );
+      return;
+    }
+    try {
+      final created = await ref.read(memosApiProvider).createShortcut(
+            userName: account.user.name,
+            title: result.title,
+            filter: result.filter,
+          );
+      ref.invalidate(shortcutsProvider);
+      if (!mounted) return;
+      setState(() => _selectedShortcutId = created.shortcutId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '创建失败：$e', en: 'Create failed: $e'))),
+      );
+    }
+  }
+
+  Future<void> _openTitleMenu() async {
+    final session = ref.read(appSessionProvider).valueOrNull;
+    final accounts = session?.accounts ?? const [];
+    final showShortcuts = _isAllMemos;
+    if (!showShortcuts && accounts.length < 2) return;
+
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final titleBox = _titleKey.currentContext?.findRenderObject() as RenderBox?;
+    if (overlay == null || titleBox == null) return;
+
+    final position = titleBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final maxWidth = overlay.size.width - 24;
+    final width = (maxWidth < 220 ? maxWidth : 240).toDouble();
+    final left = position.dx.clamp(12.0, overlay.size.width - width - 12.0);
+    final top = position.dy + titleBox.size.height + 6;
+    final availableHeight = overlay.size.height - top - 16;
+    final menuMaxHeight = availableHeight > 120 ? availableHeight : overlay.size.height * 0.6;
+
+    final action = await showGeneralDialog<_TitleMenuAction>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'title_menu',
+      barrierColor: Colors.transparent,
+      pageBuilder: (context, _, __) => Stack(
+        children: [
+          Positioned(
+            left: left,
+            top: top,
+            width: width,
+            child: _TitleMenuDropdown(
+              selectedShortcutId: _selectedShortcutId,
+              showShortcuts: showShortcuts,
+              showAccountSwitcher: accounts.length > 1,
+              maxHeight: menuMaxHeight,
+              formatShortcutError: _formatShortcutLoadError,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action.type) {
+      case _TitleMenuActionType.selectShortcut:
+        setState(() => _selectedShortcutId = action.shortcutId);
+        break;
+      case _TitleMenuActionType.clearShortcut:
+        setState(() => _selectedShortcutId = null);
+        break;
+      case _TitleMenuActionType.createShortcut:
+        await _createShortcutFromMenu();
+        break;
+      case _TitleMenuActionType.openAccountSwitcher:
+        await _openAccountSwitcher();
+        break;
+    }
+  }
+
   Future<void> _updateMemo(LocalMemo memo, {bool? pinned, String? state}) async {
     final now = DateTime.now();
     final db = ref.read(databaseProvider);
@@ -333,15 +453,28 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
     final syncing = ref.watch(syncControllerProvider).isLoading;
     final searchQuery = _searchController.text;
-    final memosAsync = ref.watch(
-      memosStreamProvider(
-        (
-          searchQuery: searchQuery,
-          state: widget.state,
-          tag: widget.tag,
-        ),
-      ),
+    final shortcutsAsync = ref.watch(shortcutsProvider);
+    final shortcuts = shortcutsAsync.valueOrNull ?? const <Shortcut>[];
+    final selectedShortcut = _findShortcutById(shortcuts);
+    final shortcutFilter = selectedShortcut?.filter ?? '';
+    final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
+    final shortcutQuery = (
+      searchQuery: searchQuery,
+      state: widget.state,
+      tag: widget.tag,
+      shortcutFilter: shortcutFilter,
     );
+    final memosAsync = useShortcutFilter
+        ? ref.watch(shortcutMemosProvider(shortcutQuery))
+        : ref.watch(
+            memosStreamProvider(
+              (
+                searchQuery: searchQuery,
+                state: widget.state,
+                tag: widget.tag,
+              ),
+            ),
+          );
     final searchHistory = ref.watch(searchHistoryProvider);
     final tagStats = ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
     final recommendedTags = [...tagStats]
@@ -382,7 +515,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           : null,
       body: memosAsync.when(
         data: (memos) => RefreshIndicator(
-          onRefresh: () => ref.read(syncControllerProvider.notifier).syncNow(),
+          onRefresh: () async {
+            await ref.read(syncControllerProvider.notifier).syncNow();
+            if (useShortcutFilter) {
+              ref.invalidate(shortcutMemosProvider(shortcutQuery));
+            }
+          },
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
@@ -428,10 +566,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                         ),
                       )
                     : InkWell(
-                        key: const ValueKey('title'),
+                        key: _titleKey,
                         onTap: () {
                           maybeHaptic();
-                          _openAccountSwitcher();
+                          _openTitleMenu();
                         },
                         borderRadius: BorderRadius.circular(12),
                         child: Row(
@@ -620,6 +758,283 @@ class _PillRow extends StatelessWidget {
             textColor: textColor,
           ),
         ],
+      ),
+    );
+  }
+}
+
+enum _TitleMenuActionType {
+  selectShortcut,
+  clearShortcut,
+  createShortcut,
+  openAccountSwitcher,
+}
+
+class _TitleMenuAction {
+  const _TitleMenuAction._(this.type, {this.shortcutId});
+
+  const _TitleMenuAction.selectShortcut(String id)
+      : this._(_TitleMenuActionType.selectShortcut, shortcutId: id);
+  const _TitleMenuAction.clearShortcut() : this._(_TitleMenuActionType.clearShortcut);
+  const _TitleMenuAction.createShortcut() : this._(_TitleMenuActionType.createShortcut);
+  const _TitleMenuAction.openAccountSwitcher() : this._(_TitleMenuActionType.openAccountSwitcher);
+
+  final _TitleMenuActionType type;
+  final String? shortcutId;
+}
+
+class _TitleMenuDropdown extends ConsumerWidget {
+  const _TitleMenuDropdown({
+    required this.selectedShortcutId,
+    required this.showShortcuts,
+    required this.showAccountSwitcher,
+    required this.maxHeight,
+    required this.formatShortcutError,
+  });
+
+  final String? selectedShortcutId;
+  final bool showShortcuts;
+  final bool showAccountSwitcher;
+  final double maxHeight;
+  final String Function(BuildContext, Object) formatShortcutError;
+
+  static const _shortcutIcons = [
+    Icons.folder_outlined,
+    Icons.lightbulb_outline,
+    Icons.edit_note,
+    Icons.bookmark_border,
+    Icons.label_outline,
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final dividerColor = border.withValues(alpha: 0.6);
+
+    final shortcutsAsync = showShortcuts ? ref.watch(shortcutsProvider) : null;
+    final items = <Widget>[];
+
+    void addRow(Widget row) {
+      if (items.isNotEmpty) {
+        items.add(Divider(height: 1, color: dividerColor));
+      }
+      items.add(row);
+    }
+
+    if (showShortcuts && shortcutsAsync != null) {
+      shortcutsAsync.when(
+        data: (shortcuts) {
+          final hasSelection = selectedShortcutId != null &&
+              selectedShortcutId!.isNotEmpty &&
+              shortcuts.any((shortcut) => shortcut.shortcutId == selectedShortcutId);
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.note_outlined,
+              label: context.tr(zh: '全部笔记', en: 'All memos'),
+              selected: !hasSelection,
+              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.clearShortcut()),
+            ),
+          );
+
+          if (shortcuts.isEmpty) {
+            addRow(
+              _TitleMenuItem(
+                icon: Icons.info_outline,
+                label: context.tr(zh: '暂无快捷筛选', en: 'No shortcuts'),
+                enabled: false,
+                textColor: textMuted,
+                iconColor: textMuted,
+              ),
+            );
+          } else {
+            for (var i = 0; i < shortcuts.length; i++) {
+              final shortcut = shortcuts[i];
+              final label = shortcut.title.trim().isNotEmpty
+                  ? shortcut.title.trim()
+                  : context.tr(zh: '未命名', en: 'Untitled');
+              addRow(
+                _TitleMenuItem(
+                  icon: _shortcutIcons[i % _shortcutIcons.length],
+                  label: label,
+                  selected: shortcut.shortcutId == selectedShortcutId,
+                  onTap: () => Navigator.of(context).pop(_TitleMenuAction.selectShortcut(shortcut.shortcutId)),
+                ),
+              );
+            }
+          }
+
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.add_circle_outline,
+              label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
+              accent: true,
+              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.createShortcut()),
+            ),
+          );
+        },
+        loading: () {
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.note_outlined,
+              label: context.tr(zh: '全部笔记', en: 'All memos'),
+              selected: selectedShortcutId == null || selectedShortcutId!.isEmpty,
+              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.clearShortcut()),
+            ),
+          );
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.hourglass_bottom,
+              label: context.tr(zh: '加载中...', en: 'Loading...'),
+              enabled: false,
+              textColor: textMuted,
+              iconColor: textMuted,
+            ),
+          );
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.add_circle_outline,
+              label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
+              accent: true,
+              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.createShortcut()),
+            ),
+          );
+        },
+        error: (error, _) {
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.note_outlined,
+              label: context.tr(zh: '全部笔记', en: 'All memos'),
+              selected: selectedShortcutId == null || selectedShortcutId!.isEmpty,
+              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.clearShortcut()),
+            ),
+          );
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.info_outline,
+              label: formatShortcutError(context, error),
+              enabled: false,
+              textColor: textMuted,
+              iconColor: textMuted,
+            ),
+          );
+          addRow(
+            _TitleMenuItem(
+              icon: Icons.add_circle_outline,
+              label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
+              accent: true,
+              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.createShortcut()),
+            ),
+          );
+        },
+      );
+    }
+
+    if (showAccountSwitcher) {
+      addRow(
+        _TitleMenuItem(
+          icon: Icons.swap_horiz,
+          label: context.tr(zh: '切换账号', en: 'Switch account'),
+          onTap: () => Navigator.of(context).pop(const _TitleMenuAction.openAccountSwitcher()),
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
+            ),
+          ],
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SingleChildScrollView(
+              child: Column(children: items),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TitleMenuItem extends StatelessWidget {
+  const _TitleMenuItem({
+    required this.icon,
+    required this.label,
+    this.selected = false,
+    this.accent = false,
+    this.enabled = true,
+    this.onTap,
+    this.textColor,
+    this.iconColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final bool accent;
+  final bool enabled;
+  final VoidCallback? onTap;
+  final Color? textColor;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final baseMuted = textMain.withValues(alpha: 0.6);
+    final accentColor = MemoFlowPalette.primary;
+    final labelColor = textColor ??
+        (accent
+            ? accentColor
+            : selected
+                ? textMain
+                : baseMuted);
+    final resolvedIconColor = iconColor ??
+        (accent
+            ? accentColor
+            : selected
+                ? accentColor
+                : baseMuted);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: resolvedIconColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: labelColor),
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check, size: 16, color: accentColor)
+              else
+                const SizedBox(width: 16),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1046,6 +1461,10 @@ class _MemoRelationsSection extends ConsumerWidget {
         final seenReferencedBy = <String>{};
 
         for (final relation in relations) {
+          final type = relation.type.trim().toUpperCase();
+          if (type != 'REFERENCE') {
+            continue;
+          }
           final memoName = relation.memo.name.trim();
           final relatedName = relation.relatedMemo.name.trim();
 

@@ -13,9 +13,11 @@ import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/memo.dart';
+import '../../data/models/user_setting.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/note_draft_provider.dart';
+import '../../state/user_settings_provider.dart';
 import 'link_memo_sheet.dart';
 import '../voice/voice_record_screen.dart';
 
@@ -48,6 +50,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _tagMenuKey = GlobalKey();
   final _todoMenuKey = GlobalKey();
   final _moreMenuKey = GlobalKey();
+  final _visibilityMenuKey = GlobalKey();
   final _undoStack = <TextEditingValue>[];
   final _redoStack = <TextEditingValue>[];
   final _imagePicker = ImagePicker();
@@ -55,6 +58,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   var _isApplyingHistory = false;
   static const _maxHistory = 100;
   static const _maxAttachmentBytes = 30 * 1024 * 1024;
+  String _visibility = 'PRIVATE';
+  bool _visibilityTouched = false;
+  ProviderSubscription<AsyncValue<UserGeneralSetting>>? _settingsSubscription;
 
   @override
   void initState() {
@@ -63,9 +69,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _controller.addListener(_scheduleDraftSave);
     _controller.addListener(_trackHistory);
     _applyDraft(ref.read(noteDraftProvider));
+    _applyDefaultVisibility(ref.read(userGeneralSettingProvider));
     _loadTagStats();
     _draftSubscription = ref.listenManual<AsyncValue<String>>(noteDraftProvider, (prev, next) {
       _applyDraft(next);
+    });
+    _settingsSubscription = ref.listenManual<AsyncValue<UserGeneralSetting>>(userGeneralSettingProvider, (prev, next) {
+      _applyDefaultVisibility(next);
     });
   }
 
@@ -73,6 +83,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   void dispose() {
     _draftTimer?.cancel();
     _draftSubscription?.close();
+    _settingsSubscription?.close();
     _controller.removeListener(_scheduleDraftSave);
     _controller.removeListener(_trackHistory);
     unawaited(ref.read(noteDraftProvider.notifier).setDraft(_controller.text));
@@ -89,6 +100,19 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       _controller.selection = TextSelection.collapsed(offset: draft.length);
     }
     _didApplyDraft = true;
+  }
+
+  void _applyDefaultVisibility(AsyncValue<UserGeneralSetting> value) {
+    if (_visibilityTouched) return;
+    final settings = value.valueOrNull;
+    if (settings == null) return;
+    final visibility = (settings.memoVisibility ?? '').trim();
+    if (visibility.isEmpty || visibility == _visibility) return;
+    if (!mounted) {
+      _visibility = visibility;
+      return;
+    }
+    setState(() => _visibility = visibility);
   }
 
   void _scheduleDraftSave() {
@@ -141,6 +165,100 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _controller.value = next;
     _lastValue = next;
     _isApplyingHistory = false;
+  }
+
+  Future<void> _openVisibilityMenuFromKey(GlobalKey key) async {
+    if (_busy) return;
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    await _openVisibilityMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size));
+  }
+
+  Future<void> _openVisibilityMenu(RelativeRect position) async {
+    if (_busy) return;
+    final selection = await showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        PopupMenuItem(
+          value: 'PRIVATE',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock, size: 18),
+              const SizedBox(width: 8),
+              Text(context.tr(zh: '私密', en: 'Private')),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'PROTECTED',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.verified_user, size: 18),
+              const SizedBox(width: 8),
+              Text(context.tr(zh: '受保护', en: 'Protected')),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'PUBLIC',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.public, size: 18),
+              const SizedBox(width: 8),
+              Text(context.tr(zh: '公开', en: 'Public')),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || selection == null) return;
+    setState(() {
+      _visibility = selection;
+      _visibilityTouched = true;
+    });
+  }
+
+  String _normalizedVisibility() {
+    final value = _visibility.trim().toUpperCase();
+    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
+      return value;
+    }
+    return 'PRIVATE';
+  }
+
+  (String label, IconData icon, Color color) _resolveVisibilityStyle(BuildContext context, String raw) {
+    switch (raw.trim().toUpperCase()) {
+      case 'PUBLIC':
+        return (
+          context.tr(zh: '公开', en: 'Public'),
+          Icons.public,
+          const Color(0xFF3B8C52),
+        );
+      case 'PROTECTED':
+        return (
+          context.tr(zh: '受保护', en: 'Protected'),
+          Icons.verified_user,
+          const Color(0xFFB26A2B),
+        );
+      default:
+        return (
+          context.tr(zh: '私密', en: 'Private'),
+          Icons.lock,
+          const Color(0xFF7C7C7C),
+        );
+    }
   }
 
   Future<void> _closeWithDraft() async {
@@ -632,6 +750,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final uid = generateUid();
       final tags = extractTags(content);
       final db = ref.read(databaseProvider);
+      final visibility = _normalizedVisibility();
 
       final attachments = pendingAttachments
           .map(
@@ -656,7 +775,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       await db.upsertMemo(
         uid: uid,
         content: content,
-        visibility: 'PRIVATE',
+        visibility: visibility,
         pinned: false,
         state: 'NORMAL',
         createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
@@ -669,7 +788,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       await db.enqueueOutbox(type: 'create_memo', payload: {
         'uid': uid,
         'content': content,
-        'visibility': 'PRIVATE',
+        'visibility': visibility,
         'pinned': false,
         'has_attachments': hasAttachments,
         if (relations.isNotEmpty) 'relations': relations,
@@ -711,6 +830,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : MemoFlowPalette.audioSurfaceLight;
     final chipText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final chipDelete = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.grey.shade500;
+    final (visibilityLabel, visibilityIcon, visibilityColor) = _resolveVisibilityStyle(context, _visibility);
 
     final tagStats = _tagStatsCache;
 
@@ -837,6 +957,23 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                             tooltip: 'More',
                             onPressed: _busy ? null : _openMoreMenu,
                             icon: Icon(Icons.more_horiz, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                          ),
+                          Tooltip(
+                            message: context.tr(zh: '可见性：$visibilityLabel', en: 'Visibility: $visibilityLabel'),
+                            child: InkResponse(
+                              key: _visibilityMenuKey,
+                              onTap: _busy ? null : () => _openVisibilityMenuFromKey(_visibilityMenuKey),
+                              radius: 18,
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: visibilityColor.withValues(alpha: 0.85), width: 1.6),
+                                ),
+                                child: Icon(visibilityIcon, size: 14, color: visibilityColor),
+                              ),
+                            ),
                           ),
                           const Spacer(),
                           GestureDetector(

@@ -13,7 +13,10 @@ import '../models/memo.dart';
 import '../models/memo_relation.dart';
 import '../models/notification_item.dart';
 import '../models/personal_access_token.dart';
+import '../models/reaction.dart';
+import '../models/shortcut.dart';
 import '../models/user.dart';
+import '../models/user_setting.dart';
 import '../models/user_stats.dart';
 
 class MemosApi {
@@ -588,6 +591,759 @@ class MemosApi {
     return tokens;
   }
 
+  Future<UserGeneralSetting> getUserGeneralSetting({String? userName}) async {
+    final resolvedName = await _resolveUserName(userName: userName);
+    DioException? lastError;
+
+    try {
+      return await _getUserGeneralSettingModern(userName: resolvedName, settingKey: 'GENERAL');
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallback(e)) rethrow;
+    }
+
+    try {
+      return await _getUserGeneralSettingModern(userName: resolvedName, settingKey: 'general');
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallback(e)) rethrow;
+    }
+
+    try {
+      return await _getUserGeneralSettingLegacyV1(userName: resolvedName);
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    try {
+      return await _getUserGeneralSettingLegacyV2(userName: resolvedName);
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    if (lastError != null) throw lastError;
+    throw StateError('Unable to load user general setting');
+  }
+
+  Future<UserGeneralSetting> updateUserGeneralSetting({
+    String? userName,
+    required UserGeneralSetting setting,
+    required List<String> updateMask,
+  }) async {
+    final resolvedName = await _resolveUserName(userName: userName);
+    final mask = _normalizeGeneralSettingMask(updateMask);
+    if (mask.isEmpty) {
+      throw ArgumentError('updateUserGeneralSetting requires updateMask');
+    }
+
+    try {
+      return await _updateUserGeneralSettingModern(
+        userName: resolvedName,
+        settingKey: 'GENERAL',
+        setting: setting,
+        updateMask: mask,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallback(e) || e.response?.statusCode == 400) {
+        try {
+          return await _updateUserGeneralSettingModern(
+            userName: resolvedName,
+            settingKey: 'general',
+            setting: setting,
+            updateMask: mask,
+          );
+        } on DioException catch (inner) {
+          if (!_shouldFallback(inner) && inner.response?.statusCode != 400) rethrow;
+        }
+      } else {
+        rethrow;
+      }
+    }
+
+    final legacyMask = _normalizeLegacyGeneralSettingMask(updateMask);
+
+    try {
+      return await _updateUserGeneralSettingLegacyV1(
+        userName: resolvedName,
+        setting: setting,
+        updateMask: legacyMask,
+      );
+    } on DioException catch (e) {
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    return _updateUserGeneralSettingLegacyV2(
+      userName: resolvedName,
+      setting: setting,
+      updateMask: legacyMask,
+    );
+  }
+
+  Future<List<Shortcut>> listShortcuts({String? userName}) async {
+    final parent = await _resolveUserName(userName: userName);
+    try {
+      return await _listShortcutsModern(parent: parent);
+    } on DioException catch (e) {
+      if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
+        throw UnsupportedError('Shortcuts are not supported on this server');
+      }
+      rethrow;
+    }
+  }
+
+  Future<Shortcut> createShortcut({
+    String? userName,
+    required String title,
+    required String filter,
+  }) async {
+    final parent = await _resolveUserName(userName: userName);
+    final trimmedTitle = title.trim();
+    if (trimmedTitle.isEmpty) {
+      throw ArgumentError('createShortcut requires title');
+    }
+    final response = await _dio.post(
+      'api/v1/$parent/shortcuts',
+      data: <String, Object?>{
+        'title': trimmedTitle,
+        'filter': filter,
+      },
+    );
+    return Shortcut.fromJson(_expectJsonMap(response.data));
+  }
+
+  Future<Shortcut> updateShortcut({
+    String? userName,
+    required Shortcut shortcut,
+    required String title,
+    required String filter,
+  }) async {
+    final parent = await _resolveUserName(userName: userName);
+    final shortcutId = shortcut.shortcutId;
+    if (shortcutId.isEmpty) {
+      throw ArgumentError('updateShortcut requires shortcut id');
+    }
+    final trimmedTitle = title.trim();
+    if (trimmedTitle.isEmpty) {
+      throw ArgumentError('updateShortcut requires title');
+    }
+    final response = await _dio.patch(
+      'api/v1/$parent/shortcuts/$shortcutId',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'title,filter',
+        'update_mask': 'title,filter',
+      },
+      data: <String, Object?>{
+        if (shortcut.name.trim().isNotEmpty) 'name': shortcut.name.trim(),
+        if (shortcut.id.trim().isNotEmpty) 'id': shortcut.id.trim(),
+        'title': trimmedTitle,
+        'filter': filter,
+      },
+    );
+    return Shortcut.fromJson(_expectJsonMap(response.data));
+  }
+
+  Future<void> deleteShortcut({
+    String? userName,
+    required Shortcut shortcut,
+  }) async {
+    final parent = await _resolveUserName(userName: userName);
+    final shortcutId = shortcut.shortcutId;
+    if (shortcutId.isEmpty) {
+      throw ArgumentError('deleteShortcut requires shortcut id');
+    }
+    await _dio.delete('api/v1/$parent/shortcuts/$shortcutId');
+  }
+
+  Future<List<UserWebhook>> listUserWebhooks({String? userName}) async {
+    final resolvedName = await _resolveUserName(userName: userName);
+    DioException? lastError;
+
+    try {
+      return await _listUserWebhooksModern(userName: resolvedName);
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallback(e)) rethrow;
+    }
+
+    try {
+      return await _listUserWebhooksLegacyV1(userName: resolvedName);
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    try {
+      return await _listUserWebhooksLegacyV2(userName: resolvedName);
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    if (lastError != null) throw lastError;
+    throw StateError('Unable to load user webhooks');
+  }
+
+  Future<UserWebhook> createUserWebhook({
+    String? userName,
+    required String displayName,
+    required String url,
+  }) async {
+    final resolvedName = await _resolveUserName(userName: userName);
+    DioException? lastError;
+    final trimmedUrl = url.trim();
+    if (trimmedUrl.isEmpty) {
+      throw ArgumentError('createUserWebhook requires url');
+    }
+
+    try {
+      return await _createUserWebhookModern(
+        userName: resolvedName,
+        displayName: displayName,
+        url: trimmedUrl,
+      );
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallback(e)) rethrow;
+    }
+
+    try {
+      return await _createUserWebhookLegacyV1(
+        userName: resolvedName,
+        displayName: displayName,
+        url: trimmedUrl,
+      );
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    try {
+      return await _createUserWebhookLegacyV2(
+        userName: resolvedName,
+        displayName: displayName,
+        url: trimmedUrl,
+      );
+    } on DioException catch (e) {
+      lastError = e;
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    }
+
+    if (lastError != null) throw lastError;
+    throw StateError('Unable to create webhook');
+  }
+
+  Future<UserWebhook> updateUserWebhook({
+    required UserWebhook webhook,
+    required String displayName,
+    required String url,
+  }) async {
+    final trimmedUrl = url.trim();
+    if (trimmedUrl.isEmpty) {
+      throw ArgumentError('updateUserWebhook requires url');
+    }
+
+    if (webhook.isLegacy) {
+      try {
+        return await _updateUserWebhookLegacyV1(
+          webhook: webhook,
+          displayName: displayName,
+          url: trimmedUrl,
+        );
+      } on DioException catch (e) {
+        if (_shouldFallbackLegacy(e)) {
+          return _updateUserWebhookLegacyV2(
+            webhook: webhook,
+            displayName: displayName,
+            url: trimmedUrl,
+          );
+        }
+        rethrow;
+      }
+    }
+
+    try {
+      return await _updateUserWebhookModern(
+        webhook: webhook,
+        displayName: displayName,
+        url: trimmedUrl,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallback(e)) {
+        try {
+          return await _updateUserWebhookLegacyV1(
+            webhook: webhook,
+            displayName: displayName,
+            url: trimmedUrl,
+          );
+        } on DioException catch (inner) {
+          if (_shouldFallbackLegacy(inner)) {
+            return _updateUserWebhookLegacyV2(
+              webhook: webhook,
+              displayName: displayName,
+              url: trimmedUrl,
+            );
+          }
+          rethrow;
+        }
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> deleteUserWebhook({
+    required UserWebhook webhook,
+  }) async {
+    if (webhook.isLegacy) {
+      try {
+        await _deleteUserWebhookLegacyV1(webhook: webhook);
+      } on DioException catch (e) {
+        if (_shouldFallbackLegacy(e)) {
+          await _deleteUserWebhookLegacyV2(webhook: webhook);
+          return;
+        }
+        rethrow;
+      }
+      return;
+    }
+
+    try {
+      await _deleteUserWebhookModern(webhook: webhook);
+    } on DioException catch (e) {
+      if (_shouldFallback(e)) {
+        try {
+          await _deleteUserWebhookLegacyV1(webhook: webhook);
+        } on DioException catch (inner) {
+          if (_shouldFallbackLegacy(inner)) {
+            await _deleteUserWebhookLegacyV2(webhook: webhook);
+            return;
+          }
+          rethrow;
+        }
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<UserGeneralSetting> _getUserGeneralSettingModern({
+    required String userName,
+    required String settingKey,
+  }) async {
+    final settingName = '$userName/settings/$settingKey';
+    final response = await _dio.get('api/v1/$settingName');
+    final body = _expectJsonMap(response.data);
+    final payload = body['setting'];
+    final json = payload is Map ? payload.cast<String, dynamic>() : body;
+    final setting = UserSetting.fromJson(json);
+    return setting.generalSetting ?? const UserGeneralSetting();
+  }
+
+  Future<UserGeneralSetting> _getUserGeneralSettingLegacyV1({required String userName}) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final name = 'users/$numericUserId/setting';
+    final response = await _dio.get('api/v1/$name');
+    final body = _expectJsonMap(response.data);
+    final payload = body['setting'];
+    final json = payload is Map ? payload.cast<String, dynamic>() : body;
+    final setting = UserSetting.fromJson(json);
+    return setting.generalSetting ?? const UserGeneralSetting();
+  }
+
+  Future<UserGeneralSetting> _getUserGeneralSettingLegacyV2({required String userName}) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final name = 'users/$numericUserId/setting';
+    final response = await _dio.get('api/v2/$name');
+    final body = _expectJsonMap(response.data);
+    final payload = body['setting'];
+    final json = payload is Map ? payload.cast<String, dynamic>() : body;
+    final setting = UserSetting.fromJson(json);
+    return setting.generalSetting ?? const UserGeneralSetting();
+  }
+
+  Future<UserGeneralSetting> _updateUserGeneralSettingModern({
+    required String userName,
+    required String settingKey,
+    required UserGeneralSetting setting,
+    required String updateMask,
+  }) async {
+    final settingName = '$userName/settings/$settingKey';
+    final response = await _dio.patch(
+      'api/v1/$settingName',
+      queryParameters: <String, Object?>{
+        'updateMask': updateMask,
+        'update_mask': updateMask,
+      },
+      data: UserSetting(name: settingName, generalSetting: setting).toJson(),
+    );
+    final body = _expectJsonMap(response.data);
+    final payload = body['setting'];
+    final json = payload is Map ? payload.cast<String, dynamic>() : body;
+    final parsed = UserSetting.fromJson(json);
+    return parsed.generalSetting ?? setting;
+  }
+
+  Future<UserGeneralSetting> _updateUserGeneralSettingLegacyV1({
+    required String userName,
+    required UserGeneralSetting setting,
+    required String updateMask,
+  }) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final settingName = 'users/$numericUserId/setting';
+    final data = _legacyUserSettingPayload(settingName, setting: setting);
+    final response = await _dio.patch(
+      'api/v1/$settingName',
+      queryParameters: <String, Object?>{
+        'updateMask': updateMask,
+        'update_mask': updateMask,
+      },
+      data: data,
+    );
+    final body = _expectJsonMap(response.data);
+    final payload = body['setting'];
+    final json = payload is Map ? payload.cast<String, dynamic>() : body;
+    final parsed = UserSetting.fromJson(json);
+    return parsed.generalSetting ?? setting;
+  }
+
+  Future<UserGeneralSetting> _updateUserGeneralSettingLegacyV2({
+    required String userName,
+    required UserGeneralSetting setting,
+    required String updateMask,
+  }) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final settingName = 'users/$numericUserId/setting';
+    final data = _legacyUserSettingPayload(settingName, setting: setting);
+    final response = await _dio.patch(
+      'api/v2/$settingName',
+      queryParameters: <String, Object?>{
+        'updateMask': updateMask,
+        'update_mask': updateMask,
+      },
+      data: data,
+    );
+    final body = _expectJsonMap(response.data);
+    final payload = body['setting'];
+    final json = payload is Map ? payload.cast<String, dynamic>() : body;
+    final parsed = UserSetting.fromJson(json);
+    return parsed.generalSetting ?? setting;
+  }
+
+  Future<List<Shortcut>> _listShortcutsModern({required String parent}) async {
+    final response = await _dio.get('api/v1/$parent/shortcuts');
+    final body = _expectJsonMap(response.data);
+    final list = body['shortcuts'];
+    final shortcuts = <Shortcut>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          shortcuts.add(Shortcut.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    return shortcuts;
+  }
+
+  Future<List<UserWebhook>> _listUserWebhooksModern({required String userName}) async {
+    final response = await _dio.get('api/v1/$userName/webhooks');
+    final body = _expectJsonMap(response.data);
+    final list = body['webhooks'];
+    return _parseUserWebhooks(list);
+  }
+
+  Future<List<UserWebhook>> _listUserWebhooksLegacyV1({required String userName}) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final creatorName = 'users/$numericUserId';
+    final response = await _dio.get(
+      'api/v1/webhooks',
+      queryParameters: <String, Object?>{'creator': creatorName},
+    );
+    final body = _expectJsonMap(response.data);
+    final list = body['webhooks'];
+    return _parseUserWebhooks(list);
+  }
+
+  Future<List<UserWebhook>> _listUserWebhooksLegacyV2({required String userName}) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final response = await _dio.get(
+      'api/v2/webhooks',
+      queryParameters: <String, Object?>{
+        'creatorId': numericUserId,
+        'creator_id': numericUserId,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final list = body['webhooks'];
+    return _parseUserWebhooks(list);
+  }
+
+  Future<UserWebhook> _createUserWebhookModern({
+    required String userName,
+    required String displayName,
+    required String url,
+  }) async {
+    final response = await _dio.post(
+      'api/v1/$userName/webhooks',
+      data: <String, Object?>{
+        if (displayName.trim().isNotEmpty) 'displayName': displayName.trim(),
+        'url': url,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final json = _unwrapWebhookPayload(body);
+    return UserWebhook.fromJson(json);
+  }
+
+  Future<UserWebhook> _createUserWebhookLegacyV1({
+    required String userName,
+    required String displayName,
+    required String url,
+  }) async {
+    final label = displayName.trim().isNotEmpty ? displayName.trim() : url;
+    final response = await _dio.post(
+      'api/v1/webhooks',
+      data: <String, Object?>{
+        'name': label,
+        'url': url,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final json = _unwrapWebhookPayload(body);
+    return UserWebhook.fromJson(json);
+  }
+
+  Future<UserWebhook> _createUserWebhookLegacyV2({
+    required String userName,
+    required String displayName,
+    required String url,
+  }) async {
+    final label = displayName.trim().isNotEmpty ? displayName.trim() : url;
+    final response = await _dio.post(
+      'api/v2/webhooks',
+      data: <String, Object?>{
+        'name': label,
+        'url': url,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final json = _unwrapWebhookPayload(body);
+    return UserWebhook.fromJson(json);
+  }
+
+  Future<UserWebhook> _updateUserWebhookModern({
+    required UserWebhook webhook,
+    required String displayName,
+    required String url,
+  }) async {
+    final name = webhook.name.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('updateUserWebhook requires webhook name');
+    }
+    final response = await _dio.patch(
+      'api/v1/$name',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'display_name,url',
+        'update_mask': 'display_name,url',
+      },
+      data: <String, Object?>{
+        'name': name,
+        if (displayName.trim().isNotEmpty) 'displayName': displayName.trim(),
+        'url': url,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final json = _unwrapWebhookPayload(body);
+    return UserWebhook.fromJson(json);
+  }
+
+  Future<UserWebhook> _updateUserWebhookLegacyV1({
+    required UserWebhook webhook,
+    required String displayName,
+    required String url,
+  }) async {
+    final id = webhook.legacyId;
+    if (id == null || id <= 0) {
+      throw ArgumentError('updateUserWebhook requires legacy id');
+    }
+    final response = await _dio.patch(
+      'api/v1/webhooks/$id',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'name,url',
+        'update_mask': 'name,url',
+      },
+      data: <String, Object?>{
+        'id': id,
+        'name': displayName.trim().isNotEmpty ? displayName.trim() : webhook.name,
+        'url': url,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final json = _unwrapWebhookPayload(body);
+    return UserWebhook.fromJson(json);
+  }
+
+  Future<UserWebhook> _updateUserWebhookLegacyV2({
+    required UserWebhook webhook,
+    required String displayName,
+    required String url,
+  }) async {
+    final id = webhook.legacyId;
+    if (id == null || id <= 0) {
+      throw ArgumentError('updateUserWebhook requires legacy id');
+    }
+    final response = await _dio.patch(
+      'api/v2/webhooks/$id',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'name,url',
+        'update_mask': 'name,url',
+      },
+      data: <String, Object?>{
+        'id': id,
+        'name': displayName.trim().isNotEmpty ? displayName.trim() : webhook.name,
+        'url': url,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final json = _unwrapWebhookPayload(body);
+    return UserWebhook.fromJson(json);
+  }
+
+  Future<void> _deleteUserWebhookModern({required UserWebhook webhook}) async {
+    final name = webhook.name.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('deleteUserWebhook requires name');
+    }
+    await _dio.delete('api/v1/$name');
+  }
+
+  Future<void> _deleteUserWebhookLegacyV1({
+    required UserWebhook webhook,
+  }) async {
+    final id = webhook.legacyId;
+    if (id == null || id <= 0) {
+      throw ArgumentError('deleteUserWebhook requires legacy id');
+    }
+    await _dio.delete('api/v1/webhooks/$id');
+  }
+
+  Future<void> _deleteUserWebhookLegacyV2({required UserWebhook webhook}) async {
+    final id = webhook.legacyId;
+    if (id == null || id <= 0) {
+      throw ArgumentError('deleteUserWebhook requires legacy id');
+    }
+    await _dio.delete('api/v2/webhooks/$id');
+  }
+
+  List<UserWebhook> _parseUserWebhooks(dynamic list) {
+    final webhooks = <UserWebhook>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          webhooks.add(UserWebhook.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    return webhooks;
+  }
+
+  static Map<String, dynamic> _unwrapWebhookPayload(Map<String, dynamic> body) {
+    final inner = body['webhook'];
+    if (inner is Map) {
+      return inner.cast<String, dynamic>();
+    }
+    return body;
+  }
+
+  static Map<String, dynamic> _legacyUserSettingPayload(String name, {required UserGeneralSetting setting}) {
+    final data = <String, dynamic>{
+      'name': name,
+    };
+    if (setting.locale != null && setting.locale!.trim().isNotEmpty) {
+      data['locale'] = setting.locale!.trim();
+    }
+    if (setting.memoVisibility != null && setting.memoVisibility!.trim().isNotEmpty) {
+      data['memoVisibility'] = setting.memoVisibility!.trim();
+    }
+    if (setting.theme != null && setting.theme!.trim().isNotEmpty) {
+      data['appearance'] = setting.theme!.trim();
+    }
+    return data;
+  }
+
+  static String _normalizeGeneralSettingMask(List<String> fields) {
+    final mapped = <String>{};
+    for (final field in fields) {
+      final trimmed = field.trim();
+      if (trimmed.isEmpty) continue;
+      switch (trimmed) {
+        case 'memoVisibility':
+        case 'memo_visibility':
+        case 'generalSetting.memoVisibility':
+        case 'general_setting.memo_visibility':
+          mapped.add('memo_visibility');
+          break;
+        case 'locale':
+        case 'generalSetting.locale':
+        case 'general_setting.locale':
+          mapped.add('locale');
+          break;
+        case 'theme':
+        case 'appearance':
+        case 'generalSetting.theme':
+        case 'general_setting.theme':
+        case 'generalSetting.appearance':
+        case 'general_setting.appearance':
+          mapped.add('theme');
+          break;
+        default:
+          mapped.add(trimmed);
+      }
+    }
+    return mapped.join(',');
+  }
+
+  static String _normalizeLegacyGeneralSettingMask(List<String> fields) {
+    final mapped = <String>[];
+    for (final field in fields) {
+      final trimmed = field.trim();
+      if (trimmed.isEmpty) continue;
+      switch (trimmed) {
+        case 'theme':
+        case 'appearance':
+        case 'generalSetting.theme':
+        case 'general_setting.theme':
+        case 'generalSetting.appearance':
+        case 'general_setting.appearance':
+          mapped.add('appearance');
+          break;
+        case 'memoVisibility':
+        case 'memo_visibility':
+        case 'generalSetting.memoVisibility':
+        case 'general_setting.memo_visibility':
+          mapped.add('memo_visibility');
+          break;
+        case 'locale':
+        case 'generalSetting.locale':
+        case 'general_setting.locale':
+          mapped.add('locale');
+          break;
+        default:
+          mapped.add(trimmed);
+      }
+    }
+    return mapped.toSet().join(',');
+  }
+
+  static String _normalizeLegacyReactionType(String reactionType) {
+    final trimmed = reactionType.trim();
+    if (trimmed.isEmpty) return 'HEART';
+    if (trimmed == 'HEART' || trimmed == 'THUMBS_UP') return trimmed;
+    if (trimmed == '❤️' || trimmed == '❤' || trimmed == '♥') return 'HEART';
+    if (trimmed == '👍') return 'THUMBS_UP';
+    return 'HEART';
+  }
+
   Future<(List<AppNotification> notifications, String nextPageToken)> listNotifications({
     int pageSize = 50,
     String? pageToken,
@@ -819,6 +1575,35 @@ class MemosApi {
     }
   }
 
+  Future<({List<Memo> memos, String nextPageToken, bool usedLegacyAll})> listExploreMemos({
+    int pageSize = 50,
+    String? pageToken,
+    String? state,
+    String? filter,
+    String? orderBy,
+  }) async {
+    try {
+      final (memos, nextToken) = await _listMemosModern(
+        pageSize: pageSize,
+        pageToken: pageToken,
+        state: state,
+        filter: filter,
+        orderBy: orderBy,
+      );
+      return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
+    } on DioException catch (e) {
+      if (!_shouldFallback(e) && !_shouldFallbackLegacy(e)) {
+        rethrow;
+      }
+    }
+
+    final (memos, nextToken) = await _listMemosAllLegacy(
+      pageSize: pageSize,
+      pageToken: pageToken,
+    );
+    return (memos: memos, nextPageToken: nextToken, usedLegacyAll: true);
+  }
+
   Future<(List<Memo> memos, String nextPageToken)> _listMemosModern({
     required int pageSize,
     String? pageToken,
@@ -858,6 +1643,39 @@ class MemosApi {
       }
     }
     final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    return (memos, nextToken);
+  }
+
+  Future<(List<Memo> memos, String nextPageToken)> _listMemosAllLegacy({
+    required int pageSize,
+    String? pageToken,
+  }) async {
+    final normalizedToken = (pageToken ?? '').trim();
+    final offset = int.tryParse(normalizedToken) ?? 0;
+    final limit = pageSize > 0 ? pageSize : 0;
+    final response = await _dio.get(
+      'api/v1/memo/all',
+      queryParameters: <String, Object?>{
+        if (limit > 0) 'limit': limit,
+        if (offset > 0) 'offset': offset,
+      },
+    );
+
+    final list = _readListPayload(response.data);
+    final memos = <Memo>[];
+    for (final item in list) {
+      if (item is Map) {
+        memos.add(_memoFromLegacy(item.cast<String, dynamic>()));
+      }
+    }
+    if (limit <= 0) {
+      return (memos, '');
+    }
+    if (memos.isEmpty) {
+      return (memos, '');
+    }
+    final nextOffset = offset + memos.length;
+    final nextToken = memos.length < limit ? '' : nextOffset.toString();
     return (memos, nextToken);
   }
 
@@ -1391,6 +2209,370 @@ class MemosApi {
     }
   }
 
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})> listMemoComments({
+    required String memoUid,
+    int pageSize = 30,
+    String? pageToken,
+    String? orderBy,
+  }) async {
+    if (!useLegacyApi) {
+      return _listMemoCommentsModern(
+        memoUid: memoUid,
+        pageSize: pageSize,
+        pageToken: pageToken,
+        orderBy: orderBy,
+      );
+    }
+    try {
+      return await _listMemoCommentsModern(
+        memoUid: memoUid,
+        pageSize: pageSize,
+        pageToken: pageToken,
+        orderBy: orderBy,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return _listMemoCommentsLegacyV2(
+          memoUid: memoUid,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})> _listMemoCommentsModern({
+    required String memoUid,
+    required int pageSize,
+    String? pageToken,
+    String? orderBy,
+  }) async {
+    final response = await _dio.get(
+      'api/v1/memos/$memoUid/comments',
+      queryParameters: <String, Object?>{
+        if (pageSize > 0) 'pageSize': pageSize,
+        if (pageSize > 0) 'page_size': pageSize,
+        if (pageToken != null && pageToken.trim().isNotEmpty) 'pageToken': pageToken,
+        if (pageToken != null && pageToken.trim().isNotEmpty) 'page_token': pageToken,
+        if (orderBy != null && orderBy.trim().isNotEmpty) 'orderBy': orderBy.trim(),
+        if (orderBy != null && orderBy.trim().isNotEmpty) 'order_by': orderBy.trim(),
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final list = body['memos'];
+    final memos = <Memo>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          memos.add(Memo.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    var totalSize = 0;
+    final totalRaw = body['totalSize'] ?? body['total_size'];
+    if (totalRaw is num) {
+      totalSize = totalRaw.toInt();
+    } else if (totalRaw is String) {
+      totalSize = int.tryParse(totalRaw) ?? memos.length;
+    } else {
+      totalSize = memos.length;
+    }
+    return (memos: memos, nextPageToken: nextToken, totalSize: totalSize);
+  }
+
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})> _listMemoCommentsLegacyV2({
+    required String memoUid,
+  }) async {
+    final response = await _dio.get('api/v2/memos/$memoUid/comments');
+    final body = _expectJsonMap(response.data);
+    final list = body['memos'];
+    final memos = <Memo>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          memos.add(Memo.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    return (memos: memos, nextPageToken: '', totalSize: memos.length);
+  }
+
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})> listMemoReactions({
+    required String memoUid,
+    int pageSize = 50,
+    String? pageToken,
+  }) async {
+    if (!useLegacyApi) {
+      return _listMemoReactionsModern(
+        memoUid: memoUid,
+        pageSize: pageSize,
+        pageToken: pageToken,
+      );
+    }
+    try {
+      return await _listMemoReactionsModern(
+        memoUid: memoUid,
+        pageSize: pageSize,
+        pageToken: pageToken,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return _listMemoReactionsLegacyV2(
+          memoUid: memoUid,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})> _listMemoReactionsModern({
+    required String memoUid,
+    required int pageSize,
+    String? pageToken,
+  }) async {
+    final response = await _dio.get(
+      'api/v1/memos/$memoUid/reactions',
+      queryParameters: <String, Object?>{
+        if (pageSize > 0) 'pageSize': pageSize,
+        if (pageSize > 0) 'page_size': pageSize,
+        if (pageToken != null && pageToken.trim().isNotEmpty) 'pageToken': pageToken,
+        if (pageToken != null && pageToken.trim().isNotEmpty) 'page_token': pageToken,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final list = body['reactions'];
+    final reactions = <Reaction>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          reactions.add(Reaction.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    var totalSize = 0;
+    final totalRaw = body['totalSize'] ?? body['total_size'];
+    if (totalRaw is num) {
+      totalSize = totalRaw.toInt();
+    } else if (totalRaw is String) {
+      totalSize = int.tryParse(totalRaw) ?? reactions.length;
+    } else {
+      totalSize = reactions.length;
+    }
+    return (reactions: reactions, nextPageToken: nextToken, totalSize: totalSize);
+  }
+
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})> _listMemoReactionsLegacyV2({
+    required String memoUid,
+  }) async {
+    final response = await _dio.get('api/v2/memos/$memoUid/reactions');
+    final body = _expectJsonMap(response.data);
+    final list = body['reactions'];
+    final reactions = <Reaction>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          reactions.add(Reaction.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    return (reactions: reactions, nextPageToken: '', totalSize: reactions.length);
+  }
+
+  Future<Reaction> upsertMemoReaction({
+    required String memoUid,
+    required String reactionType,
+  }) async {
+    if (!useLegacyApi) {
+      return _upsertMemoReactionModern(
+        memoUid: memoUid,
+        reactionType: reactionType,
+      );
+    }
+    try {
+      return await _upsertMemoReactionModern(
+        memoUid: memoUid,
+        reactionType: reactionType,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return _upsertMemoReactionLegacyV2(
+          memoUid: memoUid,
+          reactionType: reactionType,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<Reaction> _upsertMemoReactionModern({
+    required String memoUid,
+    required String reactionType,
+  }) async {
+    final name = 'memos/$memoUid';
+    final response = await _dio.post(
+      'api/v1/memos/$memoUid/reactions',
+      data: <String, Object?>{
+        'name': name,
+        'reaction': <String, Object?>{
+          'contentId': name,
+          'reactionType': reactionType,
+        },
+      },
+    );
+    return Reaction.fromJson(_expectJsonMap(response.data));
+  }
+
+  Future<Reaction> _upsertMemoReactionLegacyV2({
+    required String memoUid,
+    required String reactionType,
+  }) async {
+    final normalizedType = _normalizeLegacyReactionType(reactionType);
+    final response = await _dio.post(
+      'api/v2/memos/$memoUid/reactions',
+      queryParameters: <String, Object?>{
+        'reaction.contentId': 'memos/$memoUid',
+        'reaction.reactionType': normalizedType,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final reactionJson = body['reaction'];
+    if (reactionJson is Map) {
+      return Reaction.fromJson(reactionJson.cast<String, dynamic>());
+    }
+    return Reaction.fromJson(body);
+  }
+
+  Future<void> deleteMemoReaction({required Reaction reaction}) async {
+    final name = reaction.name.trim();
+    final legacyId = reaction.legacyId;
+
+    if (!useLegacyApi && name.isNotEmpty) {
+      try {
+        await _deleteMemoReactionModern(name: name);
+        return;
+      } on DioException catch (e) {
+        if (_shouldFallbackLegacy(e) && legacyId != null && legacyId > 0) {
+          await _deleteMemoReactionLegacy(reactionId: legacyId);
+          return;
+        }
+        rethrow;
+      }
+    }
+
+    if (legacyId != null && legacyId > 0) {
+      await _deleteMemoReactionLegacy(reactionId: legacyId);
+      return;
+    }
+
+    if (name.isNotEmpty) {
+      await _deleteMemoReactionModern(name: name);
+      return;
+    }
+
+    throw ArgumentError('deleteMemoReaction requires reaction name or legacy id');
+  }
+
+  Future<void> _deleteMemoReactionModern({required String name}) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('deleteMemoReaction requires name');
+    }
+    final path = trimmed.startsWith('memos/') ? 'api/v1/$trimmed' : 'api/v1/memos/$trimmed';
+    await _dio.delete(path);
+  }
+
+  Future<void> _deleteMemoReactionLegacy({required int reactionId}) async {
+    try {
+      await _deleteMemoReactionLegacyV1(reactionId: reactionId);
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        await _deleteMemoReactionLegacyV2(reactionId: reactionId);
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _deleteMemoReactionLegacyV1({required int reactionId}) async {
+    if (reactionId <= 0) {
+      throw ArgumentError('deleteMemoReaction requires legacy id');
+    }
+    await _dio.delete('api/v1/reactions/$reactionId');
+  }
+
+  Future<void> _deleteMemoReactionLegacyV2({required int reactionId}) async {
+    if (reactionId <= 0) {
+      throw ArgumentError('deleteMemoReaction requires legacy id');
+    }
+    await _dio.delete('api/v2/reactions/$reactionId');
+  }
+
+  Future<Memo> createMemoComment({
+    required String memoUid,
+    required String content,
+    String visibility = 'PUBLIC',
+  }) async {
+    if (!useLegacyApi) {
+      return _createMemoCommentModern(
+        memoUid: memoUid,
+        content: content,
+        visibility: visibility,
+      );
+    }
+    try {
+      return await _createMemoCommentModern(
+        memoUid: memoUid,
+        content: content,
+        visibility: visibility,
+      );
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return _createMemoCommentLegacyV2(
+          memoUid: memoUid,
+          content: content,
+          visibility: visibility,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<Memo> _createMemoCommentModern({
+    required String memoUid,
+    required String content,
+    required String visibility,
+  }) async {
+    final response = await _dio.post(
+      'api/v1/memos/$memoUid/comments',
+      data: <String, Object?>{
+        'content': content,
+        'visibility': visibility,
+      },
+    );
+    return Memo.fromJson(_expectJsonMap(response.data));
+  }
+
+  Future<Memo> _createMemoCommentLegacyV2({
+    required String memoUid,
+    required String content,
+    required String visibility,
+  }) async {
+    final response = await _dio.post(
+      'api/v2/memos/$memoUid/comments',
+      queryParameters: <String, Object?>{
+        'comment.content': content,
+        'comment.visibility': visibility,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final memoJson = body['memo'];
+    if (memoJson is Map) {
+      return Memo.fromJson(memoJson.cast<String, dynamic>());
+    }
+    return Memo.fromJson(body);
+  }
+
   Future<(List<Memo> memos, String nextPageToken)> _listMemosLegacy({
     required int pageSize,
     String? pageToken,
@@ -1573,6 +2755,9 @@ class MemosApi {
       updateTime: memo.updateTime,
       tags: memo.tags,
       attachments: memo.attachments,
+      displayTime: memo.displayTime,
+      relations: memo.relations,
+      reactions: memo.reactions,
     );
   }
 

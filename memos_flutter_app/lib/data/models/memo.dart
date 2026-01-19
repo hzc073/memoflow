@@ -1,4 +1,6 @@
 import 'attachment.dart';
+import 'memo_relation.dart';
+import 'reaction.dart';
 
 class Memo {
   const Memo({
@@ -12,6 +14,9 @@ class Memo {
     required this.updateTime,
     required this.tags,
     required this.attachments,
+    this.displayTime,
+    this.relations = const [],
+    this.reactions = const [],
   });
 
   final String name;
@@ -22,8 +27,11 @@ class Memo {
   final String state;
   final DateTime createTime;
   final DateTime updateTime;
+  final DateTime? displayTime;
   final List<String> tags;
   final List<Attachment> attachments;
+  final List<MemoRelation> relations;
+  final List<Reaction> reactions;
 
   String get uid => name.startsWith('memos/') ? name.substring('memos/'.length) : name;
 
@@ -37,8 +45,11 @@ class Memo {
       state: (json['state'] as String?) ?? 'NORMAL',
       createTime: _parseTime(json['createTime']),
       updateTime: _parseTime(json['updateTime']),
+      displayTime: _parseOptionalTime(json['displayTime'] ?? json['display_time']),
       tags: _parseStringList(json['tags']),
       attachments: _parseAttachmentList(json['attachments'] ?? json['resources']),
+      relations: _parseRelations(json['relations']),
+      reactions: _parseReactions(json['reactions']),
     );
   }
 
@@ -52,8 +63,21 @@ class Memo {
       'state': state,
       'createTime': createTime.toUtc().toIso8601String(),
       'updateTime': updateTime.toUtc().toIso8601String(),
+      if (displayTime != null) 'displayTime': displayTime!.toUtc().toIso8601String(),
       'tags': tags,
       'attachments': attachments.map((a) => a.toJson()).toList(),
+      'relations': relations
+          .map(
+            (r) => {
+              'memo': {'name': r.memo.name, 'snippet': r.memo.snippet},
+              'relatedMemo': {'name': r.relatedMemo.name, 'snippet': r.relatedMemo.snippet},
+              'type': r.type,
+            },
+          )
+          .toList(),
+      'reactions': reactions
+          .map((r) => r.toJson())
+          .toList(),
     };
   }
 
@@ -76,6 +100,33 @@ class Memo {
       return v
           .whereType<Map>()
           .map((e) => Attachment.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false);
+    }
+    return const [];
+  }
+
+  static DateTime? _parseOptionalTime(dynamic v) {
+    if (v is String && v.isNotEmpty) {
+      return DateTime.tryParse(v);
+    }
+    return null;
+  }
+
+  static List<MemoRelation> _parseRelations(dynamic v) {
+    if (v is List) {
+      return v
+          .whereType<Map>()
+          .map((e) => MemoRelation.fromJson(e.cast<String, dynamic>()))
+          .toList(growable: false);
+    }
+    return const [];
+  }
+
+  static List<Reaction> _parseReactions(dynamic v) {
+    if (v is List) {
+      return v
+          .whereType<Map>()
+          .map((e) => Reaction.fromJson(e.cast<String, dynamic>()))
           .toList(growable: false);
     }
     return const [];

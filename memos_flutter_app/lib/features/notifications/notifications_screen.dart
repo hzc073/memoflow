@@ -8,6 +8,7 @@ import '../../data/models/notification_item.dart';
 import '../../state/memos_providers.dart';
 import '../../state/notifications_provider.dart';
 import '../about/about_screen.dart';
+import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
 import '../resources/resources_screen.dart';
@@ -45,6 +46,7 @@ class NotificationsScreen extends ConsumerWidget {
     final route = switch (dest) {
       AppDrawerDestination.memos =>
         const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(

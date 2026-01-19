@@ -5,7 +5,9 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
 import 'customize_drawer_screen.dart';
+import 'shortcuts_settings_screen.dart';
 import 'submit_logs_screen.dart';
+import 'webhooks_settings_screen.dart';
 
 class LaboratoryScreen extends ConsumerWidget {
   const LaboratoryScreen({super.key});
@@ -76,6 +78,26 @@ class LaboratoryScreen extends ConsumerWidget {
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(builder: (_) => const CustomizeDrawerScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _CardRow(
+                        card: card,
+                        label: context.tr(zh: '快捷筛选', en: 'Shortcuts'),
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const ShortcutsSettingsScreen()),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _CardRow(
+                        card: card,
+                        label: context.tr(zh: 'Webhooks', en: 'Webhooks'),
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const WebhooksSettingsScreen()),
                         ),
                       ),
                       const SizedBox(height: 12),

@@ -69,6 +69,7 @@ class AppPreferences {
   static const Object _unset = Object();
   static const defaults = AppPreferences(
     language: AppLanguage.zhHans,
+    hasSelectedLanguage: false,
     fontSize: AppFontSize.standard,
     lineHeight: AppLineHeight.classic,
     fontFamily: null,
@@ -80,6 +81,7 @@ class AppPreferences {
     useLegacyApi: true,
     networkLoggingEnabled: true,
     themeMode: AppThemeMode.system,
+    showDrawerExplore: true,
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
     showDrawerResources: true,
@@ -87,6 +89,7 @@ class AppPreferences {
 
   const AppPreferences({
     required this.language,
+    required this.hasSelectedLanguage,
     required this.fontSize,
     required this.lineHeight,
     required this.fontFamily,
@@ -98,12 +101,14 @@ class AppPreferences {
     required this.useLegacyApi,
     required this.networkLoggingEnabled,
     required this.themeMode,
+    required this.showDrawerExplore,
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
     required this.showDrawerResources,
   });
 
   final AppLanguage language;
+  final bool hasSelectedLanguage;
   final AppFontSize fontSize;
   final AppLineHeight lineHeight;
   final String? fontFamily;
@@ -115,12 +120,14 @@ class AppPreferences {
   final bool useLegacyApi;
   final bool networkLoggingEnabled;
   final AppThemeMode themeMode;
+  final bool showDrawerExplore;
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
   final bool showDrawerResources;
 
   Map<String, dynamic> toJson() => {
         'language': language.name,
+        'hasSelectedLanguage': hasSelectedLanguage,
         'fontSize': fontSize.name,
         'lineHeight': lineHeight.name,
         'fontFamily': fontFamily,
@@ -132,6 +139,7 @@ class AppPreferences {
         'useLegacyApi': useLegacyApi,
         'networkLoggingEnabled': networkLoggingEnabled,
         'themeMode': themeMode.name,
+        'showDrawerExplore': showDrawerExplore,
         'showDrawerDailyReview': showDrawerDailyReview,
         'showDrawerAiSummary': showDrawerAiSummary,
         'showDrawerResources': showDrawerResources,
@@ -147,6 +155,14 @@ class AppPreferences {
         );
       }
       return AppPreferences.defaults.language;
+    }
+
+    bool parseHasSelectedLanguage() {
+      if (!json.containsKey('hasSelectedLanguage')) return true;
+      final raw = json['hasSelectedLanguage'];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      return true;
     }
 
     AppFontSize parseFontSize() {
@@ -237,6 +253,7 @@ class AppPreferences {
 
     return AppPreferences(
       language: parseLanguage(),
+      hasSelectedLanguage: parseHasSelectedLanguage(),
       fontSize: parseFontSize(),
       lineHeight: parseLineHeight(),
       fontFamily: parsedFamily,
@@ -249,6 +266,7 @@ class AppPreferences {
       networkLoggingEnabled:
           parseBool('networkLoggingEnabled', AppPreferences.defaults.networkLoggingEnabled),
       themeMode: parseThemeMode(),
+      showDrawerExplore: parseBool('showDrawerExplore', AppPreferences.defaults.showDrawerExplore),
       showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
       showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
       showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
@@ -257,6 +275,7 @@ class AppPreferences {
 
   AppPreferences copyWith({
     AppLanguage? language,
+    bool? hasSelectedLanguage,
     AppFontSize? fontSize,
     AppLineHeight? lineHeight,
     Object? fontFamily = _unset,
@@ -268,12 +287,14 @@ class AppPreferences {
     bool? useLegacyApi,
     bool? networkLoggingEnabled,
     AppThemeMode? themeMode,
+    bool? showDrawerExplore,
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
     bool? showDrawerResources,
   }) {
     return AppPreferences(
       language: language ?? this.language,
+      hasSelectedLanguage: hasSelectedLanguage ?? this.hasSelectedLanguage,
       fontSize: fontSize ?? this.fontSize,
       lineHeight: lineHeight ?? this.lineHeight,
       fontFamily: identical(fontFamily, _unset) ? this.fontFamily : fontFamily as String?,
@@ -285,6 +306,7 @@ class AppPreferences {
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
       networkLoggingEnabled: networkLoggingEnabled ?? this.networkLoggingEnabled,
       themeMode: themeMode ?? this.themeMode,
+      showDrawerExplore: showDrawerExplore ?? this.showDrawerExplore,
       showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
@@ -296,20 +318,32 @@ final appPreferencesRepositoryProvider = Provider<AppPreferencesRepository>((ref
   return AppPreferencesRepository(ref.watch(secureStorageProvider));
 });
 
+final appPreferencesLoadedProvider = StateProvider<bool>((ref) => false);
+
 final appPreferencesProvider = StateNotifierProvider<AppPreferencesController, AppPreferences>((ref) {
-  return AppPreferencesController(ref.watch(appPreferencesRepositoryProvider));
+  final loadedState = ref.read(appPreferencesLoadedProvider.notifier);
+  return AppPreferencesController(
+    ref.watch(appPreferencesRepositoryProvider),
+    onLoaded: () => loadedState.state = true,
+  );
 });
 
 class AppPreferencesController extends StateNotifier<AppPreferences> {
-  AppPreferencesController(this._repo) : super(AppPreferences.defaults) {
+  AppPreferencesController(
+    this._repo, {
+    void Function()? onLoaded,
+  })  : _onLoaded = onLoaded,
+        super(AppPreferences.defaults) {
     unawaited(_loadFromStorage());
   }
 
   final AppPreferencesRepository _repo;
+  final void Function()? _onLoaded;
 
   Future<void> _loadFromStorage() async {
     final stored = await _repo.read();
     state = stored;
+    _onLoaded?.call();
   }
 
   void _setAndPersist(AppPreferences next) {
@@ -318,6 +352,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   }
 
   void setLanguage(AppLanguage v) => _setAndPersist(state.copyWith(language: v));
+  void setHasSelectedLanguage(bool v) => _setAndPersist(state.copyWith(hasSelectedLanguage: v));
   void setFontSize(AppFontSize v) => _setAndPersist(state.copyWith(fontSize: v));
   void setLineHeight(AppLineHeight v) => _setAndPersist(state.copyWith(lineHeight: v));
   void setFontFamily({String? family, String? filePath}) {
@@ -330,6 +365,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));
   void setNetworkLoggingEnabled(bool v) => _setAndPersist(state.copyWith(networkLoggingEnabled: v));
   void setThemeMode(AppThemeMode v) => _setAndPersist(state.copyWith(themeMode: v));
+  void setShowDrawerExplore(bool v) => _setAndPersist(state.copyWith(showDrawerExplore: v));
   void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
   void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));

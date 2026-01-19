@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 
 class AboutUsScreen extends StatelessWidget {
   const AboutUsScreen({super.key});
+
+  static final Future<PackageInfo> _packageInfoFuture = PackageInfo.fromPlatform();
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +122,16 @@ class AboutUsScreen extends StatelessWidget {
               const SizedBox(height: 18),
               Column(
                 children: [
-                  Text(context.tr(zh: '?? v0.8', en: 'Version v0.8'), style: TextStyle(fontSize: 11, color: textMuted)),
+                  FutureBuilder<PackageInfo>(
+                    future: _packageInfoFuture,
+                    builder: (context, snapshot) {
+                      final version = snapshot.data?.version.trim() ?? '';
+                      final label = version.isEmpty
+                          ? context.tr(zh: '版本', en: 'Version')
+                          : context.tr(zh: '版本 v$version', en: 'Version v$version');
+                      return Text(label, style: TextStyle(fontSize: 11, color: textMuted));
+                    },
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),

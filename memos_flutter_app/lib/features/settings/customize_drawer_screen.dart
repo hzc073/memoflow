@@ -58,6 +58,12 @@ class CustomizeDrawerScreen extends ConsumerWidget {
                 divider: divider,
                 children: [
                   _ToggleRow(
+                    label: context.tr(zh: '探索', en: 'Explore'),
+                    value: prefs.showDrawerExplore,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerExplore(v),
+                  ),
+                  _ToggleRow(
                     label: context.tr(zh: '随机漫步', en: 'Random Review'),
                     value: prefs.showDrawerDailyReview,
                     textMain: textMain,

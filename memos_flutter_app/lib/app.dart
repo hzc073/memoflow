@@ -12,6 +12,7 @@ import 'features/home/home_screen.dart';
 import 'features/lock/app_lock_gate.dart';
 import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
+import 'features/onboarding/language_selection_screen.dart';
 import 'features/review/daily_review_screen.dart';
 import 'features/settings/widgets_service.dart';
 import 'state/logging_provider.dart';
@@ -360,6 +361,18 @@ class MainHomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final prefsLoaded = ref.watch(appPreferencesLoadedProvider);
+    final prefs = ref.watch(appPreferencesProvider);
+    if (!prefsLoaded) {
+      return ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: const SizedBox.expand(),
+      );
+    }
+    if (!prefs.hasSelectedLanguage) {
+      return const LanguageSelectionScreen();
+    }
+
     final sessionAsync = ref.watch(appSessionProvider);
     final session = sessionAsync.valueOrNull;
 

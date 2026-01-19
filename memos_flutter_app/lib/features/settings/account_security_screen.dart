@@ -10,6 +10,7 @@ import '../../state/personal_access_token_repository_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';
+import 'user_general_settings_screen.dart';
 
 class AccountSecurityScreen extends ConsumerWidget {
   const AccountSecurityScreen({super.key});
@@ -147,6 +148,18 @@ class AccountSecurityScreen extends ConsumerWidget {
                     onTap: () {
                       haptic();
                       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LoginScreen()));
+                    },
+                  ),
+                  _SettingRow(
+                    icon: Icons.settings_outlined,
+                    label: context.tr(zh: '用户通用设置', en: 'User General Settings'),
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () {
+                      haptic();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => const UserGeneralSettingsScreen()),
+                      );
                     },
                   ),
                   if (currentKey != null)

@@ -14,6 +14,9 @@ import '../../core/tags.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/memo.dart';
+import '../../data/models/reaction.dart';
+import '../../data/models/user.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
@@ -22,9 +25,14 @@ import 'memo_editor_screen.dart';
 import 'memo_markdown.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
-  const MemoDetailScreen({super.key, required this.initialMemo});
+  const MemoDetailScreen({
+    super.key,
+    required this.initialMemo,
+    this.readOnly = false,
+  });
 
   final LocalMemo initialMemo;
+  final bool readOnly;
 
   @override
   ConsumerState<MemoDetailScreen> createState() => _MemoDetailScreenState();
@@ -58,6 +66,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   }
 
   Future<void> _togglePinned() async {
+    if (widget.readOnly) return;
     final memo = _memo;
     if (memo == null) return;
     await _updateLocalAndEnqueue(
@@ -68,6 +77,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   }
 
   Future<void> _toggleArchived() async {
+    if (widget.readOnly) return;
     final memo = _memo;
     if (memo == null) return;
     final next = memo.state == 'ARCHIVED' ? 'NORMAL' : 'ARCHIVED';
@@ -80,6 +90,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   }
 
   Future<void> _edit() async {
+    if (widget.readOnly) return;
     final memo = _memo;
     if (memo == null) return;
     await Navigator.of(context).push(
@@ -89,6 +100,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   }
 
   Future<void> _delete() async {
+    if (widget.readOnly) return;
     final memo = _memo;
     if (memo == null) return;
 
@@ -317,6 +329,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final contentSplit = _MemoContentSplit.fromContent(memo.content);
     final showCollapsedReferences = prefs.collapseReferences && contentSplit.references.isNotEmpty && contentSplit.main.isNotEmpty;
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
+    final canToggleTasks = !widget.readOnly;
 
     final contentWidget = showCollapsedReferences
         ? Column(
@@ -327,10 +340,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                 collapseEnabled: prefs.collapseLongContent,
                 style: contentStyle,
                 hapticsEnabled: hapticsEnabled,
-                onToggleTask: (request) {
-                  maybeHaptic();
-                  unawaited(_toggleTask(request, skipReferenceLines: true));
-                },
+                onToggleTask: canToggleTasks
+                    ? (request) {
+                        maybeHaptic();
+                        unawaited(_toggleTask(request, skipReferenceLines: true));
+                      }
+                    : null,
               ),
               const SizedBox(height: 12),
               _ReferencesSection(
@@ -348,10 +363,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             collapseEnabled: prefs.collapseLongContent,
             style: contentStyle,
             hapticsEnabled: hapticsEnabled,
-            onToggleTask: (request) {
-              maybeHaptic();
-              unawaited(_toggleTask(request, skipReferenceLines: false));
-            },
+            onToggleTask: canToggleTasks
+                ? (request) {
+                    maybeHaptic();
+                    unawaited(_toggleTask(request, skipReferenceLines: false));
+                  }
+                : null,
           );
 
     final header = Column(
@@ -430,40 +447,42 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         title: Text(isArchived ? context.tr(zh: '已归档', en: 'Archived') : context.tr(zh: '笔记', en: 'Memo')),
-        actions: [
-          IconButton(
-            tooltip: context.tr(zh: '编辑', en: 'Edit'),
-            onPressed: () {
-              maybeHaptic();
-              unawaited(_edit());
-            },
-            icon: const Icon(Icons.edit),
-          ),
-          IconButton(
-            tooltip: memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin'),
-            onPressed: () {
-              maybeHaptic();
-              unawaited(_togglePinned());
-            },
-            icon: Icon(memo.pinned ? Icons.push_pin : Icons.push_pin_outlined),
-          ),
-          IconButton(
-            tooltip: isArchived ? context.tr(zh: '取消归档', en: 'Unarchive') : context.tr(zh: '归档', en: 'Archive'),
-            onPressed: () {
-              maybeHaptic();
-              unawaited(_toggleArchived());
-            },
-            icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
-          ),
-          IconButton(
-            tooltip: context.tr(zh: '删除', en: 'Delete'),
-            onPressed: () {
-              maybeHaptic();
-              unawaited(_delete());
-            },
-            icon: const Icon(Icons.delete_outline),
-          ),
-        ],
+        actions: widget.readOnly
+            ? null
+            : [
+                IconButton(
+                  tooltip: context.tr(zh: '编辑', en: 'Edit'),
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_edit());
+                  },
+                  icon: const Icon(Icons.edit),
+                ),
+                IconButton(
+                  tooltip: memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin'),
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_togglePinned());
+                  },
+                  icon: Icon(memo.pinned ? Icons.push_pin : Icons.push_pin_outlined),
+                ),
+                IconButton(
+                  tooltip: isArchived ? context.tr(zh: '取消归档', en: 'Unarchive') : context.tr(zh: '归档', en: 'Archive'),
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_toggleArchived());
+                  },
+                  icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
+                ),
+                IconButton(
+                  tooltip: context.tr(zh: '删除', en: 'Delete'),
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_delete());
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
       ),
       body: Stack(
         children: [
@@ -485,6 +504,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 header,
+                _MemoEngagementSection(memoUid: memo.uid, memoVisibility: memo.visibility),
                 _MemoRelationsSection(memoUid: memo.uid),
                 if (memo.attachments.isNotEmpty) ...[
                   const SizedBox(height: 16),
@@ -581,6 +601,732 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   }
 }
 
+class _MemoEngagementSection extends ConsumerStatefulWidget {
+  const _MemoEngagementSection({
+    required this.memoUid,
+    required this.memoVisibility,
+  });
+
+  final String memoUid;
+  final String memoVisibility;
+
+  @override
+  ConsumerState<_MemoEngagementSection> createState() => _MemoEngagementSectionState();
+}
+
+class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> {
+  final _creatorCache = <String, User>{};
+  final _creatorFetching = <String>{};
+  final _commentController = TextEditingController();
+  final _commentFocusNode = FocusNode();
+
+  List<Reaction> _reactions = [];
+  List<Memo> _comments = [];
+  int _reactionTotal = 0;
+  int _commentTotal = 0;
+  bool _reactionsLoading = false;
+  bool _commentsLoading = false;
+  bool _commenting = false;
+  bool _commentSending = false;
+  String? _reactionsError;
+  String? _commentsError;
+  String? _replyingCommentCreator;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEngagement();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _MemoEngagementSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.memoUid == widget.memoUid) return;
+    _reactions = [];
+    _comments = [];
+    _reactionTotal = 0;
+    _commentTotal = 0;
+    _commenting = false;
+    _commentSending = false;
+    _replyingCommentCreator = null;
+    _commentController.clear();
+    _reactionsError = null;
+    _commentsError = null;
+    _creatorCache.clear();
+    _creatorFetching.clear();
+    _loadEngagement();
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    _commentFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _loadEngagement() {
+    final uid = widget.memoUid.trim();
+    if (uid.isEmpty) return;
+    unawaited(_loadReactions(uid));
+    unawaited(_loadComments(uid));
+  }
+
+  Future<void> _loadReactions(String uid) async {
+    if (_reactionsLoading) return;
+    setState(() {
+      _reactionsLoading = true;
+      _reactionsError = null;
+    });
+    try {
+      final api = ref.read(memosApiProvider);
+      final result = await api.listMemoReactions(memoUid: uid, pageSize: 50);
+      if (!mounted) return;
+      setState(() {
+        _reactions = result.reactions;
+        _reactionTotal = result.totalSize;
+      });
+      unawaited(_prefetchCreators(result.reactions.map((r) => r.creator)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _reactionsError = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _reactionsLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadComments(String uid) async {
+    if (_commentsLoading) return;
+    setState(() {
+      _commentsLoading = true;
+      _commentsError = null;
+    });
+    try {
+      final api = ref.read(memosApiProvider);
+      final result = await api.listMemoComments(memoUid: uid, pageSize: 50);
+      if (!mounted) return;
+      setState(() {
+        _comments = result.memos;
+        _commentTotal = result.totalSize;
+      });
+      unawaited(_prefetchCreators(result.memos.map((m) => m.creator)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _commentsError = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _commentsLoading = false);
+      }
+    }
+  }
+
+  void _toggleCommentComposer() {
+    setState(() {
+      _commenting = !_commenting;
+      if (!_commenting) {
+        _replyingCommentCreator = null;
+        _commentController.clear();
+      }
+    });
+    if (_commenting) {
+      _commentFocusNode.requestFocus();
+    } else {
+      FocusScope.of(context).unfocus();
+    }
+  }
+
+  void _replyToComment(Memo comment) {
+    setState(() {
+      _commenting = true;
+      _replyingCommentCreator = comment.creator;
+    });
+    _commentController.clear();
+    _commentFocusNode.requestFocus();
+  }
+
+  String _commentHint() {
+    final replyCreator = _replyingCommentCreator?.trim() ?? '';
+    if (replyCreator.isNotEmpty) {
+      final creator = _creatorCache[replyCreator];
+      final name = _creatorDisplayName(creator, replyCreator, context);
+      if (name.isNotEmpty) {
+        return context.tr(zh: '回复 $name...', en: 'Reply $name...');
+      }
+    }
+    return context.tr(zh: '写下评论...', en: 'Write a comment...');
+  }
+
+  Future<void> _submitComment() async {
+    final uid = widget.memoUid.trim();
+    if (uid.isEmpty) return;
+    final content = _commentController.text.trim();
+    if (content.isEmpty || _commentSending) return;
+
+    setState(() => _commentSending = true);
+    try {
+      final visibility = widget.memoVisibility.trim().isNotEmpty ? widget.memoVisibility.trim() : 'PUBLIC';
+      final api = ref.read(memosApiProvider);
+      final created = await api.createMemoComment(
+        memoUid: uid,
+        content: content,
+        visibility: visibility,
+      );
+      if (!mounted) return;
+      setState(() {
+        _comments = [created, ..._comments];
+        _commentTotal = _commentTotal > 0 ? _commentTotal + 1 : _comments.length;
+        _commentController.clear();
+        _replyingCommentCreator = null;
+      });
+      unawaited(_prefetchCreators([created.creator]));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '评论失败：$e', en: 'Failed to comment: $e'))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _commentSending = false);
+      }
+    }
+  }
+
+  Widget _buildCommentComposer({
+    required Color textMain,
+    required Color textMuted,
+    required Color cardBg,
+    required Color borderColor,
+    required bool isDark,
+  }) {
+    final inputBg = isDark ? MemoFlowPalette.backgroundDark : const Color(0xFFF7F5F1);
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _commentController,
+                focusNode: _commentFocusNode,
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _submitComment(),
+                style: TextStyle(color: textMain),
+                decoration: InputDecoration(
+                  hintText: _commentHint(),
+                  hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
+                  filled: true,
+                  fillColor: inputBg,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _commentSending ? null : _submitComment,
+              style: TextButton.styleFrom(
+                foregroundColor: MemoFlowPalette.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              child: Text(
+                context.tr(zh: '发送', en: 'Send'),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _prefetchCreators(Iterable<String> creators) async {
+    final api = ref.read(memosApiProvider);
+    final updates = <String, User>{};
+    for (final creator in creators) {
+      final normalized = creator.trim();
+      if (normalized.isEmpty) continue;
+      if (_creatorCache.containsKey(normalized) || _creatorFetching.contains(normalized)) continue;
+      _creatorFetching.add(normalized);
+      try {
+        updates[normalized] = await api.getUser(name: normalized);
+      } catch (_) {
+      } finally {
+        _creatorFetching.remove(normalized);
+      }
+    }
+    if (!mounted) return;
+    if (updates.isNotEmpty) {
+      setState(() => _creatorCache.addAll(updates));
+    }
+  }
+
+  String _creatorDisplayName(User? creator, String fallback, BuildContext context) {
+    final display = creator?.displayName.trim() ?? '';
+    if (display.isNotEmpty) return display;
+    final username = creator?.username.trim() ?? '';
+    if (username.isNotEmpty) return username;
+    final trimmed = fallback.trim();
+    if (trimmed.startsWith('users/')) {
+      return '${context.tr(zh: '用户', en: 'User')} ${trimmed.substring('users/'.length)}';
+    }
+    return trimmed.isEmpty ? context.tr(zh: '未知用户', en: 'Unknown') : trimmed;
+  }
+
+  String _creatorInitial(User? creator, String fallback, BuildContext context) {
+    final display = _creatorDisplayName(creator, fallback, context);
+    if (display.isEmpty) return '?';
+    return display.characters.first.toUpperCase();
+  }
+
+  String _resolveAvatarUrl(String rawUrl, Uri? baseUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+    if (baseUrl == null) return trimmed;
+    return joinBaseUrl(baseUrl, trimmed);
+  }
+
+  static List<Reaction> _uniqueReactions(List<Reaction> reactions) {
+    final seen = <String>{};
+    final unique = <Reaction>[];
+    for (final reaction in reactions) {
+      final creator = reaction.creator.trim();
+      if (creator.isEmpty) continue;
+      if (seen.add(creator)) {
+        unique.add(reaction);
+      }
+    }
+    return unique;
+  }
+
+  static String _commentSnippet(String content) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  bool _isImageAttachment(Attachment attachment) {
+    final type = attachment.type.trim().toLowerCase();
+    return type.startsWith('image');
+  }
+
+  String _resolveCommentAttachmentUrl(Uri? baseUrl, Attachment attachment, {required bool thumbnail}) {
+    final external = attachment.externalLink.trim();
+    if (external.isNotEmpty) return external;
+    if (baseUrl == null) return '';
+    final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
+    return thumbnail ? '$url?thumbnail=true' : url;
+  }
+
+  Widget _buildCommentItem({
+    required Memo comment,
+    required Color textMain,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
+    final images = comment.attachments.where(_isImageAttachment).toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(
+          TextSpan(
+            style: TextStyle(fontSize: 12, color: textMain),
+            children: [
+              TextSpan(
+                text: '${_creatorDisplayName(_creatorCache[comment.creator], comment.creator, context)}: ',
+                style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary),
+              ),
+              TextSpan(
+                text: _commentSnippet(comment.content),
+                style: TextStyle(color: textMain),
+              ),
+            ],
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (images.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final attachment in images)
+                _buildCommentImage(
+                  attachment: attachment,
+                  baseUrl: baseUrl,
+                  authHeader: authHeader,
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCommentImage({
+    required Attachment attachment,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
+    final thumbUrl = _resolveCommentAttachmentUrl(baseUrl, attachment, thumbnail: true);
+    final fullUrl = _resolveCommentAttachmentUrl(baseUrl, attachment, thumbnail: false);
+    final displayUrl = thumbUrl.isNotEmpty ? thumbUrl : fullUrl;
+    if (displayUrl.isEmpty) return const SizedBox.shrink();
+    final viewUrl = fullUrl.isNotEmpty ? fullUrl : displayUrl;
+
+    return GestureDetector(
+      onTap: viewUrl.isEmpty
+          ? null
+          : () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => _ImageViewerScreen(
+                    imageUrl: viewUrl,
+                    authHeader: authHeader,
+                    title: attachment.filename,
+                  ),
+                ),
+              );
+            },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: CachedNetworkImage(
+          imageUrl: displayUrl,
+          httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+          width: 110,
+          height: 80,
+          fit: BoxFit.cover,
+          placeholder: (context, _) => const SizedBox(
+            width: 110,
+            height: 80,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          errorWidget: (context, url, error) => const SizedBox(
+            width: 110,
+            height: 80,
+            child: Icon(Icons.broken_image),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar({
+    required User? creator,
+    required String fallback,
+    required Color textMuted,
+    required Uri? baseUrl,
+    double size = 28,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fallbackWidget = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        _creatorInitial(creator, fallback, context),
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: textMuted),
+      ),
+    );
+
+    final avatarUrl = _resolveAvatarUrl(creator?.avatarUrl ?? '', baseUrl);
+    if (avatarUrl.isEmpty || avatarUrl.startsWith('data:')) return fallbackWidget;
+
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: avatarUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => fallbackWidget,
+        errorWidget: (context, url, error) => fallbackWidget,
+      ),
+    );
+  }
+
+  Widget _buildReactionsRow({
+    required Color textMuted,
+    required Uri? baseUrl,
+  }) {
+    if (_reactionsLoading && _reactions.isEmpty) {
+      return Row(
+        children: [
+          Icon(Icons.favorite, size: 16, color: MemoFlowPalette.primary),
+          const SizedBox(width: 8),
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ],
+      );
+    }
+
+    if (_reactionsError != null && _reactions.isEmpty) {
+      return Text(
+        context.tr(zh: '加载失败', en: 'Failed to load'),
+        style: TextStyle(fontSize: 12, color: textMuted),
+      );
+    }
+
+    if (_reactions.isEmpty) {
+      return Row(
+        children: [
+          Icon(Icons.favorite_border, size: 16, color: textMuted),
+          const SizedBox(width: 8),
+          Text(context.tr(zh: '暂无点赞', en: 'No likes yet'), style: TextStyle(fontSize: 12, color: textMuted)),
+        ],
+      );
+    }
+
+    final total = _reactionTotal > 0 ? _reactionTotal : _reactions.length;
+    final unique = _uniqueReactions(_reactions);
+    final shown = unique.take(3).toList(growable: false);
+    final remaining = total - shown.length;
+    const avatarSize = 28.0;
+    const overlap = 18.0;
+    final width = avatarSize + ((shown.length - 1) * overlap) + (remaining > 0 ? overlap : 0);
+
+    return Row(
+      children: [
+        Icon(Icons.favorite, size: 16, color: MemoFlowPalette.primary),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: avatarSize,
+          width: width < avatarSize ? avatarSize : width,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (var i = 0; i < shown.length; i++)
+                Positioned(
+                  left: i * overlap,
+                  child: _buildAvatar(
+                    creator: _creatorCache[shown[i].creator],
+                    fallback: shown[i].creator,
+                    textMuted: textMuted,
+                    baseUrl: baseUrl,
+                    size: avatarSize,
+                  ),
+                ),
+              if (remaining > 0)
+                Positioned(
+                  left: shown.length * overlap,
+                  child: Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.06),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '+$remaining',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textMuted),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommentsList({
+    required Color textMain,
+    required Color textMuted,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
+    if (_commentsLoading && _comments.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    if (_commentsError != null && _comments.isEmpty) {
+      return Text(
+        context.tr(zh: '加载失败', en: 'Failed to load'),
+        style: TextStyle(fontSize: 12, color: textMuted),
+      );
+    }
+
+    if (_comments.isEmpty) {
+      return Text(
+        context.tr(zh: '暂无评论', en: 'No comments yet'),
+        style: TextStyle(fontSize: 12, color: textMuted),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < _comments.length; i++) ...[
+          GestureDetector(
+            onTap: () => _replyToComment(_comments[i]),
+            child: _buildCommentItem(
+              comment: _comments[i],
+              textMain: textMain,
+              baseUrl: baseUrl,
+              authHeader: authHeader,
+            ),
+          ),
+          if (i != _comments.length - 1) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
+    final cardBg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    final authHeader =
+        (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
+    final reactionCount = _reactionTotal > 0 ? _reactionTotal : _reactions.length;
+    final commentCount = _commentTotal > 0 ? _commentTotal : _comments.length;
+    final currentUser = account?.user.name.trim() ?? '';
+    final hasOwnComment =
+        currentUser.isNotEmpty && _comments.any((comment) => comment.creator.trim() == currentUser);
+    final commentActive = _commenting || hasOwnComment;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _EngagementAction(
+                icon: Icons.favorite,
+                label: context.tr(zh: '点赞', en: 'Like'),
+                count: reactionCount,
+                color: MemoFlowPalette.primary,
+              ),
+              const SizedBox(width: 18),
+              _EngagementAction(
+                icon: commentActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                label: context.tr(zh: '评论', en: 'Comment'),
+                count: commentCount,
+                color: commentActive ? MemoFlowPalette.primary : textMuted,
+                onTap: _toggleCommentComposer,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor.withValues(alpha: 0.6)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildReactionsRow(textMuted: textMuted, baseUrl: baseUrl),
+                const SizedBox(height: 12),
+                Divider(height: 1, color: borderColor.withValues(alpha: 0.6)),
+                const SizedBox(height: 10),
+                _buildCommentsList(
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  baseUrl: baseUrl,
+                  authHeader: authHeader,
+                ),
+              ],
+            ),
+          ),
+          if (_commenting)
+            _buildCommentComposer(
+              textMain: textMain,
+              textMuted: textMuted,
+              cardBg: cardBg,
+              borderColor: borderColor,
+              isDark: isDark,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EngagementAction extends StatelessWidget {
+  const _EngagementAction({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.color,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final int count;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 6),
+        Text(
+          '$label $count',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+        ),
+      ],
+    );
+    if (onTap == null) return content;
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: content,
+      ),
+    );
+  }
+}
+
 class _MemoRelationsSection extends ConsumerWidget {
   const _MemoRelationsSection({required this.memoUid});
 
@@ -600,6 +1346,10 @@ class _MemoRelationsSection extends ConsumerWidget {
         final seenReferencedBy = <String>{};
 
         for (final relation in relations) {
+          final type = relation.type.trim().toUpperCase();
+          if (type != 'REFERENCE') {
+            continue;
+          }
           final memoName = relation.memo.name.trim();
           final relatedName = relation.relatedMemo.name.trim();
 

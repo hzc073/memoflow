@@ -15,38 +15,63 @@ project and is not affiliated with or endorsed by the official Memos project.
 - Multi-account PAT login plus legacy API compatibility mode for older Memos servers.
 - Widgets, app lock, preferences (theme, language, fonts), and Markdown+ZIP export.
 
+## TODO
+- User
+  - Auth
+    - [x] Login with PAT
+    - [ ] Login with password
+  - Account
+    - [x] View account info
+    - [ ] Edit account info
+    - [ ] Webhook management
+- Memos
+  - Basics
+    - [x] Create/edit/search/pin/archive/delete memos
+    - [x] Comment on memos
+  - Markdown
+    - [x] Basic rendering
+    - [x] Task lists
+    - [x] Code blocks with syntax highlighting
+  - Attachments
+    - [x] Browse attachments
+    - [x] Image preview
+    - [x] Audio playback
+    - [ ] Edit attachments
+  - Reactions
+    - [x] Add/remove reactions
+- Misc
+  - [x] Offline-first sync
+  - [x] AI summary
+  - [x] Multi-language (Chinese/English)
+
 ## Compatibility
 - Uses Memos API v1 by default.
 - Enable Compatibility Mode for legacy endpoints when connecting to older servers.
 
-## Requirements
-- Flutter SDK (Dart >= 3.10.4).
-- A running Memos server and a Personal Access Token (PAT).
-
-## Run locally
-The Flutter app lives in `memos_flutter_app/`.
-```sh
-cd memos_flutter_app
-flutter pub get
-flutter run
-```
-
 ## Screenshots
 **Login**
 
-<img src="docs/登录.png" alt="Login" width="320">
+<img src="docs/登录en.png" alt="Login" width="320">
 
 **Home**
 
-<img src="docs/首页.png" alt="Home" width="320">
+<img src="docs/首页en.png" alt="Home" width="320">
 
 **Navigation**
 
-<img src="docs/导航栏.png" alt="Navigation" width="320">
+<img src="docs/导航栏en.png" alt="Navigation" width="320">
 
 **Settings**
 
-<img src="docs/设置.png" alt="Settings" width="320">
+<img src="docs/设置en.png" alt="Settings" width="320">
+
+**Preferences**
+
+<img src="docs/偏好设置en.png" alt="Preferences" width="320">
+
+**Share**
+
+<img src="docs/分享en.png" alt="Share" width="320">
 
 ## Data and privacy
 - Personal Access Tokens are stored via `flutter_secure_storage`.
