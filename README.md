@@ -73,3 +73,6 @@ MemoFlow 是一个面向 Memos 后端的 Flutter 移动端客户端。本项目�
 ## 说明
 - 导出格式为 Markdown 文件打包的 ZIP（暂未支持导入）。
 - 若遇到同步问题，可开启网络日志并在应用内导出诊断信息。
+
+# 致谢
+Memos https://github.com/usememos/memos
