@@ -97,6 +97,7 @@ class MemosApi {
 
   Future<User> getCurrentUser() async {
     DioException? lastDio;
+    FormatException? lastFormat;
     for (final attempt in <Future<User> Function()>[
       _getCurrentUserByAuthMe,
       _getCurrentUserByAuthStatusPost,
@@ -112,9 +113,12 @@ class MemosApi {
       } on DioException catch (e) {
         lastDio = e;
         if (!_shouldFallback(e)) rethrow;
+      } on FormatException catch (e) {
+        lastFormat = e;
       }
     }
 
+    if (lastFormat != null) throw lastFormat;
     if (lastDio != null) throw lastDio;
     throw StateError('Unable to determine current user');
   }
@@ -2933,10 +2937,20 @@ class MemosApi {
   static Map<String, dynamic> _expectJsonMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is String) {
+      final trimmed = value.trimLeft();
+      if (_looksLikeHtml(trimmed)) {
+        throw const FormatException('Unexpected HTML response. Check server URL or reverse proxy.');
+      }
       final decoded = jsonDecode(value);
       if (decoded is Map<String, dynamic>) return decoded;
     }
     throw const FormatException('Expected JSON object');
+  }
+
+  static bool _looksLikeHtml(String text) {
+    if (text.isEmpty) return false;
+    final lower = text.toLowerCase();
+    return lower.startsWith('<!doctype html') || lower.startsWith('<html');
   }
 
   static String _readStringField(Map<String, dynamic> body, String key, String altKey) {

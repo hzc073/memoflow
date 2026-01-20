@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -39,11 +40,72 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  String _normalizeTokenInput(String raw) {
+    var token = raw.trim();
+    if (token.isEmpty) return token;
+    final match = RegExp(r'^(?:authorization:\s*)?bearer\s+', caseSensitive: false).firstMatch(token);
+    if (match != null) {
+      token = token.substring(match.end).trim();
+    }
+    if (token.contains(RegExp(r'\s'))) {
+      token = token.replaceAll(RegExp(r'\s+'), '');
+    }
+    return token;
+  }
+
+  String _extractServerMessage(Object? data) {
+    if (data is Map) {
+      final message = data['message'] ?? data['error'] ?? data['detail'];
+      if (message is String && message.trim().isNotEmpty) return message.trim();
+    } else if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+    return '';
+  }
+
+  String _formatLoginError(Object error, {required String token}) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401) {
+        if (token.startsWith('memos_pat_')) {
+          return context.tr(
+            zh: '认证失败，请确认 Token 是否有效或未过期',
+            en: 'Authentication failed. Check that the token is valid and not expired.',
+          );
+        }
+        return context.tr(
+          zh: '认证失败。新版 Memos 请使用以 memos_pat_ 开头的 PAT（不要粘贴 Bearer 前缀）',
+          en: 'Authentication failed. For new Memos use a PAT starting with memos_pat_ (do not paste the Bearer prefix).',
+        );
+      }
+      final serverMessage = _extractServerMessage(error.response?.data);
+      if (serverMessage.isNotEmpty) {
+        return context.tr(
+          zh: '连接失败：$serverMessage',
+          en: 'Connection failed: $serverMessage',
+        );
+      }
+    } else if (error is FormatException) {
+      final message = error.message.trim();
+      if (message.isNotEmpty) {
+        return context.tr(
+          zh: '连接失败：$message',
+          en: 'Connection failed: $message',
+        );
+      }
+    }
+    return context.tr(zh: '连接失败：$error', en: 'Connection failed: $error');
+  }
+
   Future<void> _connect() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final baseUrlRaw = _baseUrlController.text.trim();
-    final token = _tokenController.text.trim();
+    final tokenRaw = _tokenController.text.trim();
+    final token = _normalizeTokenInput(tokenRaw);
+    if (token != tokenRaw) {
+      _tokenController.text = token;
+    }
     final baseUrl = Uri.tryParse(baseUrlRaw);
     if (baseUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -74,7 +136,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (sessionAsync.hasError) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '连接失败：${sessionAsync.error}', en: 'Connection failed: ${sessionAsync.error}'))),
+        SnackBar(content: Text(_formatLoginError(sessionAsync.error!, token: token))),
       );
       return;
     }
