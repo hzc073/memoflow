@@ -2,7 +2,7 @@
 
 Chinese version: [README.md](README.md)
 
-MemoFlow is a Flutter mobile client for the Memos backend. It is an independent, third-party
+MemoFlow is a Flutter mobile client for the[memos](https://github.com/usememos/memos) backend. It is an independent, third-party
 project and is not affiliated with or endorsed by the official Memos project.
 
 ## Features
