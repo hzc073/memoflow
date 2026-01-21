@@ -38,22 +38,13 @@ if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
 }
 
 if (-not $OutDir) {
-  $OutDir = Join-Path $projectRootResolved "dist"
+  $dateTag = Get-Date -Format "yyyyMMdd"
+  $OutDir = Join-Path $PSScriptRoot $dateTag
 }
 if (-not (Test-Path $OutDir)) {
   New-Item -ItemType Directory -Path $OutDir | Out-Null
 }
 $OutDir = (Resolve-Path $OutDir).Path
-
-$version = "0.0.0+0"
-$versionLine = Get-Content $pubspecPath |
-  Where-Object { $_ -match '^\s*version:\s*([^\s#]+)' } |
-  Select-Object -First 1
-if ($versionLine -match '^\s*version:\s*([^\s#]+)') {
-  $version = $Matches[1]
-}
-$versionTag = $version -replace '\+', '_'
-$appNameSafe = Get-SafeFileName $AppName
 
 if ($Clean) {
   & flutter clean
@@ -91,21 +82,15 @@ if (-not $apkFiles) {
 }
 
 $apkFiles = $apkFiles | Sort-Object -Property FullName -Unique
-$copied = @()
-foreach ($apk in $apkFiles) {
-  $abiTag = ""
-  if ($SplitPerAbi -and $apk.BaseName -match '^app-(.+)-release$') {
-    $abiTag = $Matches[1]
-  }
-  $nameParts = @($appNameSafe, $versionTag)
-  if ($abiTag) {
-    $nameParts += $abiTag
-  }
-  $destName = ($nameParts -join "-") + ".apk"
-  $destPath = Join-Path $OutDir $destName
-  Copy-Item $apk.FullName $destPath -Force
-  $copied += $destPath
+
+$apkToCopy = $null
+if ($SplitPerAbi -and $apkFiles.Count -gt 1) {
+  throw "SplitPerAbi produces multiple APKs, but output name is fixed. Disable -SplitPerAbi."
 }
 
-Write-Host "APK(s) copied to:"
-$copied | ForEach-Object { Write-Host " - $_" }
+$apkToCopy = $apkFiles | Select-Object -First 1
+$destName = "memoflow_release.apk"
+$destPath = Join-Path $OutDir $destName
+Copy-Item $apkToCopy.FullName $destPath -Force
+
+Write-Host "APK copied to: $destPath"

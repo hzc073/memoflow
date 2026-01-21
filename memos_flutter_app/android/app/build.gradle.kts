@@ -1,4 +1,6 @@
 import java.io.FileInputStream
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Properties
 
 plugins {
@@ -68,4 +70,61 @@ flutter {
 
 dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
+}
+
+val copyReleaseApk by tasks.registering {
+    group = "build"
+    description = "Copy release APK to tool/<date>/memoflow_release.apk"
+    doLast {
+        val flutterRoot = rootProject.projectDir.parentFile
+        val dateTag = SimpleDateFormat("yyyyMMdd").format(Date())
+        val outDir = File(flutterRoot, "tool/$dateTag")
+        if (!outDir.exists()) {
+            outDir.mkdirs()
+        }
+
+        val preferredRoots = listOf(
+            File(flutterRoot, "build/app/outputs/flutter-apk"),
+            File(flutterRoot, "build/app/outputs/apk/release")
+        ).filter { it.exists() }
+
+        val preferredApks = preferredRoots.flatMap { dir ->
+            dir.listFiles { file ->
+                file.isFile && file.name.contains("release") && file.extension == "apk"
+            }?.toList() ?: emptyList()
+        }.distinct()
+
+        val apkFiles = if (preferredApks.isNotEmpty()) {
+            preferredApks
+        } else {
+            val fallbackRoot = File(flutterRoot, "build/app/outputs")
+            if (fallbackRoot.exists()) {
+                fallbackRoot.walkTopDown()
+                    .filter { it.isFile && it.name.contains("release") && it.extension == "apk" }
+                    .toList()
+            } else {
+                emptyList()
+            }
+        }
+
+        if (apkFiles.isEmpty()) {
+            throw RuntimeException(
+                "No release APKs found under ${File(flutterRoot, "build/app/outputs").absolutePath}"
+            )
+        }
+
+        val preferredApk = apkFiles.firstOrNull { it.name == "app-release.apk" }
+        val apkToCopy = preferredApk ?: apkFiles.maxByOrNull { it.lastModified() }!!
+        if (preferredApk == null && apkFiles.size > 1) {
+            println("Multiple release APKs found; copying newest: ${apkToCopy.name}")
+        }
+
+        val destFile = File(outDir, "memoflow_release.apk")
+        apkToCopy.copyTo(destFile, overwrite = true)
+        println("APK copied to: ${destFile.absolutePath}")
+    }
+}
+
+tasks.named("assembleRelease") {
+    finalizedBy(copyReleaseApk)
 }
