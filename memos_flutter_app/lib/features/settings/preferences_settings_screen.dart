@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/system_fonts.dart';
+import '../../core/theme_colors.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/system_fonts_provider.dart';
 
@@ -122,6 +123,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
 
     final themeMode = prefs.themeMode;
     final themeModeLabel = themeMode.labelFor(prefs.language);
+    final themeColor = prefs.themeColor;
     final fontsAsync = ref.watch(systemFontsProvider);
     final fontLabel = _fontLabel(context, prefs, fontsAsync.valueOrNull ?? const []);
 
@@ -293,6 +295,13 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                       onSelect: (v) => ref.read(appPreferencesProvider.notifier).setThemeMode(v),
                     ),
                   ),
+                  _ThemeColorRow(
+                    label: context.tr(zh: '主题色', en: 'Theme Color'),
+                    selected: themeColor,
+                    textMain: textMain,
+                    isDark: isDark,
+                    onSelect: (v) => ref.read(appPreferencesProvider.notifier).setThemeColor(v),
+                  ),
                   _ToggleRow(
                     label: context.tr(zh: '触感反馈', en: 'Haptics'),
                     value: prefs.hapticsEnabled,
@@ -431,6 +440,100 @@ class _ToggleRow extends StatelessWidget {
             inactiveThumbColor: inactiveThumb,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeColorRow extends StatelessWidget {
+  const _ThemeColorRow({
+    required this.label,
+    required this.selected,
+    required this.textMain,
+    required this.isDark,
+    required this.onSelect,
+  });
+
+  final String label;
+  final AppThemeColor selected;
+  final Color textMain;
+  final bool isDark;
+  final ValueChanged<AppThemeColor> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final ringColor = textMain.withValues(alpha: isDark ? 0.28 : 0.18);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+            ),
+          ),
+          Row(
+            children: [
+              for (final color in AppThemeColor.values) ...[
+                _ThemeColorDot(
+                  color: color,
+                  selected: color == selected,
+                  ringColor: ringColor,
+                  onTap: () => onSelect(color),
+                ),
+                if (color != AppThemeColor.values.last) const SizedBox(width: 10),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeColorDot extends StatelessWidget {
+  const _ThemeColorDot({
+    required this.color,
+    required this.selected,
+    required this.ringColor,
+    required this.onTap,
+  });
+
+  final AppThemeColor color;
+  final bool selected;
+  final Color ringColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final spec = themeColorSpec(color);
+    final fill = spec.primary;
+    final size = 22.0;
+    final ringPadding = selected ? 2.0 : 0.0;
+
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: EdgeInsets.all(ringPadding),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: selected ? Border.all(color: ringColor, width: 1.4) : null,
+        ),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: fill,
+            shape: BoxShape.circle,
+          ),
+          child: selected
+              ? const Icon(Icons.check, size: 14, color: Colors.white)
+              : null,
+        ),
       ),
     );
   }

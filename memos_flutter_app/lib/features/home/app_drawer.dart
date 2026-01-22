@@ -6,13 +6,16 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/notifications_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/stats_providers.dart';
 
 enum AppDrawerDestination {
   memos,
+  syncQueue,
   explore,
   dailyReview,
   aiSummary,
@@ -23,6 +26,26 @@ enum AppDrawerDestination {
   settings,
   about,
 }
+
+final _pendingOutboxCountProvider = StreamProvider<int>((ref) async* {
+  final db = ref.watch(databaseProvider);
+
+  Future<int> load() async {
+    final sqlite = await db.db;
+    final rows = await sqlite.rawQuery('SELECT COUNT(*) FROM outbox WHERE state IN (0, 2);');
+    if (rows.isEmpty) return 0;
+    final raw = rows.first.values.first;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+    return 0;
+  }
+
+  yield await load();
+  await for (final _ in db.changes) {
+    yield await load();
+  }
+});
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({
@@ -48,18 +71,23 @@ class AppDrawer extends ConsumerWidget {
         ? account!.user.displayName
         : (account?.user.name.isNotEmpty ?? false)
             ? account!.user.name
-            : 'memoflow';
+            : 'MemoFlow';
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);
     final prefs = ref.watch(appPreferencesProvider);
+    final pendingOutboxAsync = ref.watch(_pendingOutboxCountProvider);
+    final pendingOutboxCount = pendingOutboxAsync.valueOrNull ?? 0;
+    final showSyncBadge = pendingOutboxCount > 0;
+    final unreadNotifications = ref.watch(unreadNotificationCountProvider);
+    final showNotificationBadge = unreadNotifications > 0;
 
     final bg = isDark ? const Color(0xFF181818) : MemoFlowPalette.backgroundLight;
     final textMain = isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.4 : 0.5);
     final hover = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04);
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
-    const versionLabel = 'V1.0.1';
+    const versionLabel = 'V1.0.2';
 
     return Drawer(
       width: width,
@@ -86,6 +114,30 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
+                        tooltip: context.tr(zh: '\u540c\u6b65\u961f\u5217', en: 'Sync queue'),
+                        onPressed: () => onSelect(AppDrawerDestination.syncQueue),
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(Icons.sync, color: textMuted),
+                            if (showSyncBadge)
+                              Positioned(
+                                right: -2,
+                                top: -2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: MemoFlowPalette.primary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: bg, width: 1),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
                         tooltip: context.tr(zh: '通知', en: 'Notifications'),
                         onPressed: () {
                           final handler = onOpenNotifications;
@@ -97,7 +149,26 @@ class AppDrawer extends ConsumerWidget {
                           }
                           handler();
                         },
-                        icon: Icon(Icons.notifications, color: textMuted),
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(Icons.notifications, color: textMuted),
+                            if (showNotificationBadge)
+                              Positioned(
+                                right: -2,
+                                top: -2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE05555),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: bg, width: 1),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                       IconButton(
                         tooltip: context.tr(zh: '设置', en: 'Settings'),
@@ -501,17 +572,12 @@ class _DrawerHeatmap extends StatelessWidget {
     Color colorFor(int c) {
       if (c <= 0) return isDark ? const Color(0xFF262626) : Colors.black.withValues(alpha: 0.05);
       final t = maxCount <= 0 ? 0.0 : (c / maxCount).clamp(0.0, 1.0);
+      final accent = MemoFlowPalette.primary;
 
-      if (isDark) {
-        if (t <= 0.33) return const Color(0xFF4A4A4A);
-        if (t <= 0.66) return const Color(0xFFC0564D);
-        return const Color(0xFFE0665B);
-      }
-
-      if (t <= 0.25) return const Color(0xFFD1D8C4);
-      if (t <= 0.5) return const Color(0xFFA3AD90);
-      if (t <= 0.75) return const Color(0xFFD88B83);
-      return MemoFlowPalette.primary;
+      if (t <= 0.25) return accent.withValues(alpha: isDark ? 0.28 : 0.18);
+      if (t <= 0.5) return accent.withValues(alpha: isDark ? 0.48 : 0.35);
+      if (t <= 0.75) return accent.withValues(alpha: isDark ? 0.68 : 0.55);
+      return accent.withValues(alpha: isDark ? 0.9 : 0.85);
     }
 
     final todayUtc = endUtc;
@@ -556,7 +622,7 @@ class _DrawerHeatmap extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
                 border: isToday
                     ? Border.all(
-                        color: isDark ? const Color(0xFFE0665B) : MemoFlowPalette.primary,
+                        color: MemoFlowPalette.primary,
                         width: 1,
                       )
                     : null,

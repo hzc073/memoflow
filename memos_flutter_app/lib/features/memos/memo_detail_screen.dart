@@ -174,7 +174,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     );
     if (updated == null || updated == memo.content) return;
 
-    final now = DateTime.now();
+    final updateTime = memo.updateTime;
     final tags = extractTags(updated);
     final db = ref.read(databaseProvider);
 
@@ -186,7 +186,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         pinned: memo.pinned,
         state: memo.state,
         createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
         syncState: 1,
@@ -199,7 +199,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         'visibility': memo.visibility,
         'pinned': memo.pinned,
       });
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
 
       if (!mounted) return;
       setState(() {
@@ -210,7 +209,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           pinned: memo.pinned,
           state: memo.state,
           createTime: memo.createTime,
-          updateTime: now,
+          updateTime: updateTime,
           tags: tags,
           attachments: memo.attachments,
           syncState: SyncState.pending,
@@ -747,6 +746,16 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
     _commentFocusNode.requestFocus();
   }
 
+  void _exitCommentEditing() {
+    if (_replyingCommentCreator == null) return;
+    setState(() {
+      _commenting = false;
+      _replyingCommentCreator = null;
+      _commentController.clear();
+    });
+    FocusScope.of(context).unfocus();
+  }
+
   String _commentHint() {
     final replyCreator = _replyingCommentCreator?.trim() ?? '';
     if (replyCreator.isNotEmpty) {
@@ -802,62 +811,65 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
     required bool isDark,
   }) {
     final inputBg = isDark ? MemoFlowPalette.backgroundDark : const Color(0xFFF7F5F1);
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 150),
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        margin: const EdgeInsets.only(top: 12),
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-        decoration: BoxDecoration(
-          color: cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor.withValues(alpha: 0.6)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _commentController,
-                focusNode: _commentFocusNode,
-                minLines: 1,
-                maxLines: 3,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _submitComment(),
-                style: TextStyle(color: textMain),
-                decoration: InputDecoration(
-                  hintText: _commentHint(),
-                  hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
-                  filled: true,
-                  fillColor: inputBg,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+    return TapRegion(
+      onTapOutside: _replyingCommentCreator == null ? null : (_) => _exitCommentEditing(),
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor.withValues(alpha: 0.6)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _commentController,
+                  focusNode: _commentFocusNode,
+                  minLines: 1,
+                  maxLines: 3,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _submitComment(),
+                  style: TextStyle(color: textMain),
+                  decoration: InputDecoration(
+                    hintText: _commentHint(),
+                    hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
+                    filled: true,
+                    fillColor: inputBg,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: _commentSending ? null : _submitComment,
-              style: TextButton.styleFrom(
-                foregroundColor: MemoFlowPalette.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: _commentSending ? null : _submitComment,
+                style: TextButton.styleFrom(
+                  foregroundColor: MemoFlowPalette.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                child: Text(
+                  context.tr(zh: '发送', en: 'Send'),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
-              child: Text(
-                context.tr(zh: '发送', en: 'Send'),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

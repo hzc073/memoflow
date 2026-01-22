@@ -1,11 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:markdown/markdown.dart' as md;
 
 final RegExp _tagTokenPattern = RegExp(
   r'^#(?!#|\s)[\p{L}\p{N}\p{S}_/\-]{1,100}$',
   unicode: true,
 );
+final RegExp _tagInlinePattern = RegExp(
+  r'#(?!#|\s)([\p{L}\p{N}\p{S}_/\-]{1,100})',
+  unicode: true,
+);
+
+const Set<String> _htmlBlockTags = {
+  'p',
+  'blockquote',
+  'ul',
+  'ol',
+  'dl',
+  'table',
+  'pre',
+  'hr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+};
 
 typedef TaskToggleHandler = void Function(TaskToggleRequest request);
 
@@ -21,6 +43,7 @@ class MemoMarkdown extends StatelessWidget {
     super.key,
     required this.data,
     this.textStyle,
+    this.normalizeHeadings = false,
     this.selectable = false,
     this.blockSpacing = 6,
     this.shrinkWrap = true,
@@ -29,6 +52,7 @@ class MemoMarkdown extends StatelessWidget {
 
   final String data;
   final TextStyle? textStyle;
+  final bool normalizeHeadings;
   final bool selectable;
   final double blockSpacing;
   final bool shrinkWrap;
@@ -40,73 +64,160 @@ class MemoMarkdown extends StatelessWidget {
     final sanitized = _sanitizeMarkdown(normalized);
     final trimmed = sanitized.trim();
     if (trimmed.isEmpty) return const SizedBox.shrink();
+    final tagged = _decorateTagsForHtml(trimmed);
 
     final theme = Theme.of(context);
     final baseStyle = textStyle ?? theme.textTheme.bodyMedium ?? const TextStyle();
     final fontSize = baseStyle.fontSize;
-    final styleSheet = MarkdownStyleSheet.fromTheme(theme).copyWith(
-      p: baseStyle,
-      blockSpacing: blockSpacing,
-      code: baseStyle.copyWith(
-        fontFamily: 'monospace',
-        backgroundColor: theme.cardTheme.color,
-        fontSize: fontSize == null ? null : fontSize * 0.9,
-      ),
-      blockquote: baseStyle.copyWith(
-        color: baseStyle.color?.withValues(alpha: 0.7),
-      ),
-      listBullet: baseStyle,
+    final codeStyle = baseStyle.copyWith(
+      fontFamily: 'monospace',
+      fontSize: fontSize == null ? null : fontSize * 0.9,
     );
-    final codeStyle = styleSheet.code ?? baseStyle.copyWith(fontFamily: 'monospace');
-    var taskIndex = 0;
+    final tagStyle = _MemoTagStyle.resolve(theme);
+    final highlightStyle = _MemoHighlightStyle.resolve(theme);
+    final inlineCodeBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
+    final codeBlockBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
+    final quoteColor = (baseStyle.color ?? theme.colorScheme.onSurface).withValues(alpha: 0.7);
+    final checkboxSize = (fontSize ?? 14) * 1.25;
+    final checkboxTapSize = checkboxSize + 6;
+    final checkboxColor = baseStyle.color ?? theme.colorScheme.onSurface;
+    final spacingPx = blockSpacing > 0 ? _formatCssPx(blockSpacing) : null;
 
-    Widget buildCheckbox(bool checked) {
-      final handler = onToggleTask;
-      final currentIndex = taskIndex++;
-      final onTap = handler == null
-          ? null
-          : () => handler(TaskToggleRequest(taskIndex: currentIndex, checked: checked));
-      final icon = Icon(
-        checked ? Icons.check_box : Icons.check_box_outline_blank,
-        size: styleSheet.checkbox?.fontSize,
-        color: styleSheet.checkbox?.color,
-      );
-      final child = onTap == null
-          ? icon
-          : InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(4),
-              child: icon,
-            );
-      return Padding(
-        padding: styleSheet.listBulletPadding ?? EdgeInsets.zero,
-        child: child,
-      );
+    final html = _renderMarkdownToHtml(tagged);
+
+    var taskIndex = 0;
+    Widget? customWidgetBuilder(dom.Element element) {
+      final localName = element.localName;
+      if (localName == 'input') {
+        final type = element.attributes['type']?.toLowerCase();
+        if (type != 'checkbox') return null;
+        final checked = element.attributes.containsKey('checked');
+        final handler = onToggleTask;
+        final currentIndex = taskIndex++;
+        final onTap = handler == null
+            ? null
+            : () => handler(TaskToggleRequest(taskIndex: currentIndex, checked: checked));
+        final icon = Icon(
+          checked ? Icons.check_box : Icons.check_box_outline_blank,
+          size: checkboxSize,
+          color: checkboxColor,
+        );
+        final hitBox = SizedBox.square(
+          dimension: checkboxTapSize,
+          child: Center(child: icon),
+        );
+        final checkbox = onTap == null
+            ? Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: hitBox,
+              )
+            : Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(4),
+                  child: hitBox,
+                ),
+              );
+        return InlineCustomWidget(
+          alignment: PlaceholderAlignment.middle,
+          child: checkbox,
+        );
+      }
+      if (localName == 'pre') {
+        final code = element.text;
+        if (code.trim().isEmpty) return null;
+        return _buildHtmlCodeBlock(
+          code: code,
+          baseStyle: codeStyle,
+          isDark: theme.brightness == Brightness.dark,
+          background: codeBlockBg,
+        );
+      }
+      return null;
     }
 
-    return MarkdownBody(
-      data: trimmed,
-      selectable: selectable,
-      styleSheet: styleSheet,
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-      inlineSyntaxes: [_MemoHighlightInlineSyntax(), _MemoTagInlineSyntax()],
-      checkboxBuilder: buildCheckbox,
-      syntaxHighlighter: MemoCodeHighlighter(
-        baseStyle: codeStyle,
-        isDark: theme.brightness == Brightness.dark,
-      ),
-      builders: {
-        'memohighlight': _MemoHighlightBuilder(_MemoHighlightStyle.resolve(theme)),
-        'memotag': _MemoTagBuilder(_MemoTagStyle.resolve(theme)),
-      },
-      shrinkWrap: shrinkWrap,
-      softLineBreak: true,
+    Map<String, String>? customStylesBuilder(dom.Element element) {
+      final localName = element.localName;
+      if (localName == null) return null;
+      final styles = <String, String>{};
+      if (localName == 'span') {
+        if (element.classes.contains('memotag')) {
+          styles.addAll({
+            'background-color': _cssColor(tagStyle.background),
+            'color': _cssColor(tagStyle.textColor),
+            'border': '1px solid ${_cssColor(tagStyle.borderColor)}',
+            'border-radius': '999px',
+            'padding': '1px 8px',
+            'font-weight': '600',
+            'display': 'inline-block',
+            'line-height': '1.1',
+            'font-size': '0.95em',
+          });
+        } else if (element.classes.contains('memohighlight')) {
+          styles.addAll({
+            'background-color': _cssColor(highlightStyle.background),
+            'border': '1px solid ${_cssColor(highlightStyle.borderColor)}',
+            'border-radius': '4px',
+            'padding': '1px 4px',
+            'display': 'inline-block',
+          });
+        }
+      }
+      if (localName == 'code' && element.parent?.localName != 'pre') {
+        styles.addAll({
+          'font-family': 'monospace',
+          'background-color': _cssColor(inlineCodeBg),
+          'padding': '0 3px',
+          'border-radius': '4px',
+          'font-size': '0.95em',
+        });
+      }
+      if (localName == 'blockquote') {
+        styles['color'] = _cssColor(quoteColor);
+      }
+      if (localName == 'p' && element.parent?.classes.contains('task-list-item') == true) {
+        styles['display'] = 'inline';
+        styles['margin'] = '0';
+      }
+      if (localName == 'li' && element.classes.contains('task-list-item')) {
+        styles['list-style-type'] = 'none';
+      }
+      if ((localName == 'ul' || localName == 'ol') && element.classes.contains('contains-task-list')) {
+        styles.addAll({
+          'list-style-type': 'none',
+          'padding-left': '0',
+        });
+      }
+      if (normalizeHeadings && _isHeadingTag(localName)) {
+        styles['font-size'] = '1em';
+        styles['font-weight'] = '700';
+      }
+      if (spacingPx != null && _htmlBlockTags.contains(localName)) {
+        final isTaskParagraph = localName == 'p' && element.parent?.classes.contains('task-list-item') == true;
+        if (!isTaskParagraph) {
+          styles['margin'] = '0 0 $spacingPx 0';
+        }
+      }
+      return styles.isEmpty ? null : styles;
+    }
+
+    final renderMode = shrinkWrap ? RenderMode.column : const ListViewMode(shrinkWrap: false);
+    final content = HtmlWidget(
+      html,
+      renderMode: renderMode,
+      textStyle: baseStyle,
+      customWidgetBuilder: customWidgetBuilder,
+      customStylesBuilder: customStylesBuilder,
     );
+
+    if (!selectable) return content;
+    return SelectionArea(child: content);
   }
 }
 
 String _sanitizeMarkdown(String text) {
-  // Avoid empty markdown links that can leave the inline stack open in flutter_markdown.
+  // Avoid empty markdown links that can leave the inline stack open.
   final emptyLink = RegExp(r'\[\s*\]\(([^)]*)\)');
   final stripped = text.replaceAllMapped(emptyLink, (match) {
     final url = match.group(1)?.trim();
@@ -190,50 +301,229 @@ bool _isTagOnlyLine(String line) {
   return true;
 }
 
-class _MemoHighlightInlineSyntax extends md.InlineSyntax {
-  _MemoHighlightInlineSyntax() : super(r'==([^\n]+?)==', startCharacter: 0x3D);
+String _decorateTagsForHtml(String text) {
+  final lines = text.split('\n');
+  int? firstLine;
+  int? lastLine;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].trim().isEmpty) continue;
+    firstLine ??= i;
+    lastLine = i;
+  }
+  if (firstLine == null || lastLine == null) return text;
+
+  lines[firstLine] = _replaceTagsInLine(lines[firstLine]);
+  if (lastLine != firstLine) {
+    lines[lastLine] = _replaceTagsInLine(lines[lastLine]);
+  }
+
+  return lines.join('\n');
+}
+
+String _replaceTagsInLine(String line) {
+  final matches = _tagInlinePattern.allMatches(line);
+  if (matches.isEmpty) return line;
+
+  final buffer = StringBuffer();
+  var last = 0;
+  for (final match in matches) {
+    buffer.write(line.substring(last, match.start));
+    final tag = match.group(1);
+    if (tag == null || tag.isEmpty) {
+      buffer.write(match.group(0));
+    } else {
+      final escaped = _escapeHtmlAttribute(tag);
+      buffer.write('<span class="memotag" data-tag="$escaped">#$tag</span>');
+    }
+    last = match.end;
+  }
+  buffer.write(line.substring(last));
+  return buffer.toString();
+}
+
+String _escapeHtmlAttribute(String value) {
+  return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+}
+
+String _renderMarkdownToHtml(String text) {
+  return md.markdownToHtml(
+    text,
+    extensionSet: md.ExtensionSet.gitHubFlavored,
+    inlineSyntaxes: [
+      _HtmlSoftLineBreakSyntax(),
+      _HtmlHighlightInlineSyntax(),
+    ],
+    encodeHtml: false,
+  );
+}
+
+Widget _buildHtmlCodeBlock({
+  required String code,
+  required TextStyle baseStyle,
+  required bool isDark,
+  required Color background,
+}) {
+  final highlighter = MemoCodeHighlighter(baseStyle: baseStyle, isDark: isDark);
+  final span = highlighter.format(code);
+  return Container(
+    width: double.infinity,
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    padding: const EdgeInsets.all(8),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: RichText(
+        text: span,
+        softWrap: false,
+      ),
+    ),
+  );
+}
+
+String _cssColor(Color color) {
+  int toChannel(double value) => (value * 255).round().clamp(0, 255);
+
+  final r = toChannel(color.r);
+  final g = toChannel(color.g);
+  final b = toChannel(color.b);
+  final alpha = color.a.clamp(0.0, 1.0);
+
+  if (alpha >= 1.0) {
+    return '#'
+        '${r.toRadixString(16).padLeft(2, '0')}'
+        '${g.toRadixString(16).padLeft(2, '0')}'
+        '${b.toRadixString(16).padLeft(2, '0')}';
+  }
+  final opacity = alpha.clamp(0.0, 1.0).toStringAsFixed(2);
+  return 'rgba($r, $g, $b, $opacity)';
+}
+
+String _formatCssPx(double value) {
+  final rounded = value.roundToDouble();
+  if (rounded == value) {
+    return '${value.toInt()}px';
+  }
+  return '${value.toStringAsFixed(2)}px';
+}
+
+class TaskStats {
+  const TaskStats({required this.total, required this.checked});
+
+  final int total;
+  final int checked;
+}
+
+TaskStats countTaskStats(String content, {bool skipQuotedLines = false}) {
+  final fenceRegex = RegExp(r'^\s*(```|~~~)');
+  final taskRegex = RegExp(r'^\s*[-*+]\s+\[( |x|X)\]');
+
+  var inFence = false;
+  var total = 0;
+  var checked = 0;
+
+  for (final line in content.split('\n')) {
+    if (fenceRegex.hasMatch(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    // Ignore task markers inside fenced code blocks or filtered quote lines.
+    if (inFence) continue;
+    if (skipQuotedLines && line.trimLeft().startsWith('>')) continue;
+
+    final match = taskRegex.firstMatch(line);
+    if (match == null) continue;
+    total++;
+    final mark = match.group(1) ?? '';
+    if (mark.toLowerCase() == 'x') {
+      checked++;
+    }
+  }
+
+  return TaskStats(total: total, checked: checked);
+}
+
+double calculateProgress(String content, {bool skipQuotedLines = false}) {
+  final stats = countTaskStats(content, skipQuotedLines: skipQuotedLines);
+  if (stats.total == 0) return 0.0;
+  return stats.checked / stats.total;
+}
+
+String toggleCheckbox(String rawContent, int checkboxIndex, {bool skipQuotedLines = false}) {
+  final fenceRegex = RegExp(r'^\s*(```|~~~)');
+  final taskRegex = RegExp(r'^(\s*[-*+]\s+)\[( |x|X)\]');
+
+  var inFence = false;
+  var index = 0;
+  var offset = 0;
+  final lines = rawContent.split('\n');
+
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (fenceRegex.hasMatch(line)) {
+      inFence = !inFence;
+      offset += line.length + (i == lines.length - 1 ? 0 : 1);
+      continue;
+    }
+
+    final skipLine = inFence || (skipQuotedLines && line.trimLeft().startsWith('>'));
+    if (!skipLine) {
+      final match = taskRegex.firstMatch(line);
+      if (match != null) {
+        // Count only task markers in visible, non-code lines to match UI order.
+        if (index == checkboxIndex) {
+          final leading = match.group(1)!;
+          final mark = match.group(2) ?? ' ';
+          final newMark = mark.toLowerCase() == 'x' ? ' ' : 'x';
+          // Mark position: offset + leading + '['.
+          final markOffset = offset + match.start + leading.length + 1;
+          return rawContent.replaceRange(markOffset, markOffset + 1, newMark);
+        }
+        index++;
+      }
+    }
+
+    offset += line.length + (i == lines.length - 1 ? 0 : 1);
+  }
+
+  return rawContent;
+}
+
+bool _isHeadingTag(String tag) {
+  if (tag.length != 2 || tag[0] != 'h') return false;
+  final unit = tag.codeUnitAt(1);
+  return unit >= 0x31 && unit <= 0x36;
+}
+
+class _HtmlSoftLineBreakSyntax extends md.InlineSyntax {
+  _HtmlSoftLineBreakSyntax() : super(r'\n', startCharacter: 0x0A);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    parser.addNode(md.Element.empty('br'));
+    return true;
+  }
+}
+
+class _HtmlHighlightInlineSyntax extends md.InlineSyntax {
+  _HtmlHighlightInlineSyntax() : super(r'==([^\n]+?)==', startCharacter: 0x3D);
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
     final text = match.group(1);
     if (text == null || text.trim().isEmpty) return false;
-    parser.addNode(md.Element.text('memohighlight', text));
+    final element = md.Element('span', [md.Text(text)]);
+    element.attributes['class'] = 'memohighlight';
+    parser.addNode(element);
     return true;
   }
 }
 
-class _MemoTagInlineSyntax extends md.InlineSyntax {
-  _MemoTagInlineSyntax() : super(r'#', startCharacter: 0x23);
-
-  static final RegExp _pattern = RegExp(
-    r'#(?!#|\s)([\p{L}\p{N}\p{S}_/\-]{1,100})',
-    unicode: true,
-  );
-
-  @override
-  bool tryMatch(md.InlineParser parser, [int? startMatchPos]) {
-    startMatchPos ??= parser.pos;
-    if (parser.source.codeUnitAt(startMatchPos) != 0x23) return false;
-    if (startMatchPos > 0 && parser.source.codeUnitAt(startMatchPos - 1) == 0x23) {
-      return false;
-    }
-    final match = _pattern.matchAsPrefix(parser.source, startMatchPos);
-    if (match == null) return false;
-    parser.writeText();
-    if (onMatch(parser, match)) {
-      parser.consume(match.group(0)!.length);
-    }
-    return true;
-  }
-
-  @override
-  bool onMatch(md.InlineParser parser, Match match) {
-    final tag = match.group(1);
-    if (tag == null || tag.isEmpty) return false;
-    parser.addNode(md.Element.text('memotag', tag));
-    return true;
-  }
-}
 
 class _MemoTagStyle {
   const _MemoTagStyle({
@@ -277,82 +567,7 @@ class _MemoHighlightStyle {
   }
 }
 
-class _MemoTagBuilder extends MarkdownElementBuilder {
-  _MemoTagBuilder(this.style);
-
-  final _MemoTagStyle style;
-
-  @override
-  Widget? visitElementAfterWithContext(
-    BuildContext context,
-    md.Element element,
-    TextStyle? preferredStyle,
-    TextStyle? parentStyle,
-  ) {
-    final tag = element.textContent;
-    if (tag.isEmpty) return null;
-
-    final baseStyle = preferredStyle ?? parentStyle ?? DefaultTextStyle.of(context).style;
-    final textStyle = baseStyle.copyWith(
-      color: style.textColor,
-      fontWeight: FontWeight.w600,
-      height: 1.1,
-    );
-    final fontSize = textStyle.fontSize;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: style.background,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: style.borderColor),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-          child: Text(
-            '#$tag',
-            style: fontSize == null ? textStyle : textStyle.copyWith(fontSize: fontSize * 0.95),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MemoHighlightBuilder extends MarkdownElementBuilder {
-  _MemoHighlightBuilder(this.style);
-
-  final _MemoHighlightStyle style;
-
-  @override
-  Widget? visitElementAfterWithContext(
-    BuildContext context,
-    md.Element element,
-    TextStyle? preferredStyle,
-    TextStyle? parentStyle,
-  ) {
-    final text = element.textContent;
-    if (text.isEmpty) return null;
-
-    final baseStyle = preferredStyle ?? parentStyle ?? DefaultTextStyle.of(context).style;
-    final textStyle = baseStyle.copyWith(height: 1.2);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: style.background,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: style.borderColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        child: Text(text, style: textStyle),
-      ),
-    );
-  }
-}
-
-class MemoCodeHighlighter extends SyntaxHighlighter {
+class MemoCodeHighlighter {
   MemoCodeHighlighter({
     required this.baseStyle,
     required this.isDark,
@@ -377,7 +592,6 @@ class MemoCodeHighlighter extends SyntaxHighlighter {
   );
   static final RegExp _numberPattern = RegExp(r'\b\d+(?:\.\d+)?\b');
 
-  @override
   TextSpan format(String source) {
     if (source.isEmpty) return const TextSpan(text: '');
 

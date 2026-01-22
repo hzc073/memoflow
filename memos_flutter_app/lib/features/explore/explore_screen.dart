@@ -29,6 +29,7 @@ import '../review/daily_review_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
+import '../sync/sync_queue_screen.dart';
 
 const _pageSize = 30;
 const _orderBy = 'display_time desc';
@@ -107,10 +108,20 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final _reactionLoading = <String>{};
   final _reactionUpdating = <String>{};
   final _commentedByMe = <String>{};
+  ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
+  String? _activeAccountKey;
+  int _requestId = 0;
 
   @override
   void initState() {
     super.initState();
+    _activeAccountKey = ref.read(appSessionProvider).valueOrNull?.currentKey;
+    _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
+      final prevKey = prev?.valueOrNull?.currentKey;
+      final nextKey = next.valueOrNull?.currentKey;
+      if (prevKey == nextKey) return;
+      _handleAccountChange(nextKey);
+    });
     _scrollController.addListener(_handleScroll);
     _searchController.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
@@ -119,6 +130,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _sessionSubscription?.close();
     _searchController.dispose();
     _searchFocus.dispose();
     _commentController.dispose();
@@ -131,7 +143,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -145,7 +157,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
@@ -223,6 +236,35 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     await _fetchPage(reset: true);
   }
 
+  void _handleAccountChange(String? nextKey) {
+    _activeAccountKey = nextKey;
+    _requestId++;
+    _loading = false;
+    _nextPageToken = '';
+    _error = null;
+    _legacySearchLimited = false;
+    _memos = [];
+    _creatorCache.clear();
+    _creatorFetching.clear();
+    _commentCache.clear();
+    _commentTotals.clear();
+    _commentErrors.clear();
+    _commentLoading.clear();
+    _reactionCache.clear();
+    _reactionTotals.clear();
+    _reactionErrors.clear();
+    _reactionLoading.clear();
+    _reactionUpdating.clear();
+    _commentedByMe.clear();
+    _commentingMemoUid = null;
+    _replyingMemoUid = null;
+    _replyingCommentCreator = null;
+    _commentController.clear();
+    if (!mounted) return;
+    setState(() {});
+    _refresh();
+  }
+
   Future<void> _fetchPage({bool reset = false}) async {
     if (_loading) return;
     if (!reset && _nextPageToken.isEmpty) return;
@@ -234,6 +276,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       return;
     }
 
+    final accountKey = account.key;
+    _activeAccountKey ??= accountKey;
+    final requestId = ++_requestId;
     final query = _searchController.text.trim();
     final includeProtected = account.personalAccessToken.trim().isNotEmpty;
     final filter = _buildFilter(query, includeProtected: includeProtected);
@@ -268,7 +313,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         filter: filter,
         orderBy: _orderBy,
       );
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId || _activeAccountKey != accountKey) return;
       setState(() {
         if (reset) {
           _memos = result.memos;
@@ -282,7 +327,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _seedReactionCache(result.memos);
       unawaited(_prefetchCreators(result.memos));
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId || _activeAccountKey != accountKey) return;
       setState(() {
         if (reset) {
           _error = e.toString();
@@ -295,7 +340,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         );
       }
     } finally {
-      if (mounted) {
+      if (mounted && requestId == _requestId && _activeAccountKey == accountKey) {
         setState(() => _loading = false);
       }
     }
@@ -485,6 +530,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
   }
 
+  void _exitCommentEditing() {
+    if (_replyingCommentCreator == null) return;
+    setState(() {
+      _commentingMemoUid = null;
+      _replyingMemoUid = null;
+      _replyingCommentCreator = null;
+    });
+    _commentController.clear();
+    FocusScope.of(context).unfocus();
+  }
+
   Future<void> _loadComments(Memo memo) async {
     final uid = memo.uid;
     if (uid.isEmpty || _commentLoading.contains(uid)) return;
@@ -671,96 +727,99 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }) {
     final surface = isDark ? MemoFlowPalette.cardDark : Colors.white;
     final inputBg = isDark ? MemoFlowPalette.backgroundDark : const Color(0xFFF7F5F1);
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 150),
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: SafeArea(
-          top: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              boxShadow: isDark
-                  ? null
-                  : [
-                      BoxShadow(
-                        blurRadius: 24,
-                        offset: const Offset(0, -6),
-                        color: Colors.black.withValues(alpha: 0.08),
+    return TapRegion(
+      onTapOutside: _replyingCommentCreator == null ? null : (_) => _exitCommentEditing(),
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: isDark
+                    ? null
+                    : [
+                        BoxShadow(
+                          blurRadius: 24,
+                          offset: const Offset(0, -6),
+                          color: Colors.black.withValues(alpha: 0.08),
+                        ),
+                      ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.emoji_emotions_outlined, color: textMuted),
+                        onPressed: () {},
+                        splashRadius: 16,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: Icon(Icons.image_outlined, color: textMuted),
+                        onPressed: () {},
+                        splashRadius: 16,
+                        visualDensity: VisualDensity.compact,
                       ),
                     ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.emoji_emotions_outlined, color: textMuted),
-                      onPressed: () {},
-                      splashRadius: 16,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(Icons.image_outlined, color: textMuted),
-                      onPressed: () {},
-                      splashRadius: 16,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _commentController,
-                        focusNode: _commentFocusNode,
-                        minLines: 1,
-                        maxLines: 3,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _submitComment(),
-                        style: TextStyle(color: textMain),
-                        decoration: InputDecoration(
-                          hintText: hint,
-                          hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
-                          filled: true,
-                          fillColor: inputBg,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _commentController,
+                          focusNode: _commentFocusNode,
+                          minLines: 1,
+                          maxLines: 3,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _submitComment(),
+                          style: TextStyle(color: textMain),
+                          decoration: InputDecoration(
+                            hintText: hint,
+                            hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
+                            filled: true,
+                            fillColor: inputBg,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: _commentSending ? null : _submitComment,
-                      style: TextButton.styleFrom(
-                        foregroundColor: MemoFlowPalette.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _commentSending ? null : _submitComment,
+                        style: TextButton.styleFrom(
+                          foregroundColor: MemoFlowPalette.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        child: Text(
+                          context.tr(zh: '发送', en: 'Send'),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
-                      child: Text(
-                        context.tr(zh: '发送', en: 'Send'),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1178,7 +1237,13 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
   }
 
   static ({String title, String body}) _splitTitleAndBody(String content) {
-    final lines = content.split('\n').where((l) => !_isTagOnlyLine(l)).toList(growable: false);
+    final rawLines = content.split('\n');
+    final tagBounds = _tagLineBounds(rawLines);
+    final lines = <String>[];
+    for (var i = 0; i < rawLines.length; i++) {
+      if (i == tagBounds.first || i == tagBounds.last) continue;
+      lines.add(rawLines[i]);
+    }
     final nonEmpty = lines.where((l) => l.trim().isNotEmpty).toList(growable: false);
     if (nonEmpty.length < 2) {
       return (title: '', body: lines.join('\n').trim());
@@ -1194,6 +1259,19 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     }
     final body = lines.sublist(titleIndex + 1).join('\n').trim();
     return (title: title, body: body);
+  }
+
+  static ({int? first, int? last}) _tagLineBounds(List<String> lines) {
+    int? firstNonEmpty;
+    int? lastNonEmpty;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim().isEmpty) continue;
+      firstNonEmpty ??= i;
+      lastNonEmpty = i;
+    }
+    final firstTag = (firstNonEmpty != null && _isTagOnlyLine(lines[firstNonEmpty])) ? firstNonEmpty : null;
+    final lastTag = (lastNonEmpty != null && _isTagOnlyLine(lines[lastNonEmpty])) ? lastNonEmpty : null;
+    return (first: firstTag, last: lastTag);
   }
 
   static bool _isTagOnlyLine(String line) {
@@ -1500,6 +1578,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   data: displayText,
                   textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain, height: 1.5),
                   blockSpacing: 4,
+                  normalizeHeadings: true,
                 ),
               ] else if (title.isEmpty) ...[
                 const SizedBox(height: 6),

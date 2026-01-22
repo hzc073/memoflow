@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../../core/log_sanitizer.dart';
 import 'breadcrumb_store.dart';
+import 'log_manager.dart';
 import 'network_log_buffer.dart';
 import 'network_log_store.dart';
 
@@ -13,12 +14,15 @@ class NetworkLogInterceptor extends Interceptor {
     this.maxBodyLength = 4000,
     NetworkLogBuffer? buffer,
     BreadcrumbStore? breadcrumbStore,
+    LogManager? logManager,
   })  : _buffer = buffer,
-        _breadcrumbs = breadcrumbStore;
+        _breadcrumbs = breadcrumbStore,
+        _logManager = logManager;
 
-  final NetworkLogStore _store;
+  final NetworkLogStore? _store;
   final NetworkLogBuffer? _buffer;
   final BreadcrumbStore? _breadcrumbs;
+  final LogManager? _logManager;
   final int maxBodyLength;
 
   @override
@@ -35,7 +39,7 @@ class NetworkLogInterceptor extends Interceptor {
       body: _stringifyBody(_normalizeRequestData(options.data)),
     );
 
-    if (_store.enabled) {
+    if (_store?.enabled ?? false) {
       final entry = NetworkLogEntry(
         timestamp: now,
         type: 'request',
@@ -45,19 +49,19 @@ class NetworkLogInterceptor extends Interceptor {
         body: _stringifyBody(_normalizeRequestData(options.data)),
         requestId: requestId,
       );
-      unawaited(_store.add(entry));
+      unawaited(_store!.add(entry));
     }
     handler.next(options);
   }
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    if (_store.enabled) {
-      final now = DateTime.now().toUtc();
-      final started = response.requestOptions.extra[_logStartKey];
-      final durationMs =
-          started is DateTime ? now.difference(started).inMilliseconds : null;
-      final requestId = response.requestOptions.extra[_logIdKey]?.toString();
+    final now = DateTime.now().toUtc();
+    final started = response.requestOptions.extra[_logStartKey];
+    final durationMs =
+        started is DateTime ? now.difference(started).inMilliseconds : null;
+    final requestId = response.requestOptions.extra[_logIdKey]?.toString();
+    if (_store?.enabled ?? false) {
       final entry = NetworkLogEntry(
         timestamp: now,
         type: 'response',
@@ -69,8 +73,17 @@ class NetworkLogInterceptor extends Interceptor {
         body: _stringifyBody(response.data),
         requestId: requestId,
       );
-      unawaited(_store.add(entry));
+      unawaited(_store!.add(entry));
     }
+    _logManager?.info(
+      'HTTP ${response.requestOptions.method.toUpperCase()} ${LogSanitizer.maskUrl(response.requestOptions.uri.toString())}',
+      context: {
+        'status': response.statusCode,
+        'durationMs': durationMs,
+        'summary': _summarizeResponse(response.data),
+        if (requestId != null) 'requestId': requestId,
+      },
+    );
     _appendBufferEntry(
       requestOptions: response.requestOptions,
       statusCode: response.statusCode,
@@ -83,12 +96,12 @@ class NetworkLogInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    if (_store.enabled) {
-      final now = DateTime.now().toUtc();
-      final started = err.requestOptions.extra[_logStartKey];
-      final durationMs =
-          started is DateTime ? now.difference(started).inMilliseconds : null;
-      final requestId = err.requestOptions.extra[_logIdKey]?.toString();
+    final now = DateTime.now().toUtc();
+    final started = err.requestOptions.extra[_logStartKey];
+    final durationMs =
+        started is DateTime ? now.difference(started).inMilliseconds : null;
+    final requestId = err.requestOptions.extra[_logIdKey]?.toString();
+    if (_store?.enabled ?? false) {
       final entry = NetworkLogEntry(
         timestamp: now,
         type: 'error',
@@ -101,8 +114,19 @@ class NetworkLogInterceptor extends Interceptor {
         error: LogSanitizer.sanitizeText(err.message ?? 'request failed'),
         requestId: requestId,
       );
-      unawaited(_store.add(entry));
+      unawaited(_store!.add(entry));
     }
+    _logManager?.error(
+      'HTTP ${err.requestOptions.method.toUpperCase()} ${LogSanitizer.maskUrl(err.requestOptions.uri.toString())} failed',
+      error: err,
+      stackTrace: err.stackTrace,
+      context: {
+        'status': err.response?.statusCode,
+        'durationMs': durationMs,
+        'response': _stringifyBody(err.response?.data),
+        if (requestId != null) 'requestId': requestId,
+      },
+    );
     final sanitizedError = LogSanitizer.sanitizeText(err.message ?? 'request failed');
     _appendBufferEntry(
       requestOptions: err.requestOptions,
@@ -298,6 +322,28 @@ class NetworkLogInterceptor extends Interceptor {
   static const _logStartKey = 'log_start';
   static const _logIdKey = 'log_id';
   static const _logMetaKey = 'log_meta';
+
+  String _summarizeResponse(Object? data) {
+    if (data == null) return 'null';
+    if (data is List<int>) return 'bytes(${data.length})';
+    if (data is String) return 'text(${data.length} chars)';
+    if (data is List) return 'list(${data.length})';
+    if (data is Map) {
+      final memosCount = _listCount(data, 'memos') ?? _listCount(data, 'memoList');
+      if (memosCount != null) return 'memos=$memosCount';
+      final listCount = _listCount(data, 'data');
+      if (listCount != null) return 'list=$listCount';
+      return 'map(${data.length} keys)';
+    }
+    return data.runtimeType.toString();
+  }
+
+  int? _listCount(Map data, String key) {
+    if (!data.containsKey(key)) return null;
+    final value = data[key];
+    if (value is List) return value.length;
+    return null;
+  }
 }
 
 class _PaginationInfo {

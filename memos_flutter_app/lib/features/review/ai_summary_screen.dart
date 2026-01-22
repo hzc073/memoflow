@@ -24,6 +24,7 @@ import '../resources/resources_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
+import '../sync/sync_queue_screen.dart';
 import '../../state/ai_settings_provider.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
@@ -61,11 +62,12 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
         ),
+      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
@@ -88,7 +90,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -887,7 +889,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.auto_awesome,
                               size: 20,
                               color: MemoFlowPalette.primary,
@@ -1113,7 +1115,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                           height: 48,
                           child: CircularProgressIndicator(
                             strokeWidth: 3,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
+                            valueColor: AlwaysStoppedAnimation<Color>(
                               MemoFlowPalette.primary,
                             ),
                             backgroundColor:

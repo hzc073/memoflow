@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/app_localization.dart';
 import 'core/app_theme.dart';
+import 'core/memoflow_palette.dart';
 import 'core/system_fonts.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
@@ -119,6 +120,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ref.read(logManagerProvider);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
     _loadPendingWidgetAction();
     _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
@@ -297,7 +299,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     navigator.pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -310,6 +312,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final prefs = ref.watch(appPreferencesProvider);
+    MemoFlowPalette.applyThemeColor(prefs.themeColor);
     final themeMode = _themeModeFor(prefs.themeMode);
     final loggerService = ref.watch(loggerServiceProvider);
     final locale = _localeFor(prefs.language);
@@ -320,7 +323,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
 
     return MaterialApp(
-      title: 'memoflow',
+      title: 'MemoFlow',
       theme: _applyPreferencesToTheme(buildAppTheme(Brightness.light), prefs),
       darkTheme: _applyPreferencesToTheme(buildAppTheme(Brightness.dark), prefs),
       themeMode: themeMode,

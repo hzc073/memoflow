@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/markdown_editing.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -40,6 +41,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
 
 class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _controller = TextEditingController();
+  late final SmartEnterController _smartEnterController;
   var _busy = false;
   Timer? _draftTimer;
   ProviderSubscription<AsyncValue<String>>? _draftSubscription;
@@ -66,6 +68,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   void initState() {
     super.initState();
     _lastValue = _controller.value;
+    _smartEnterController = SmartEnterController(_controller);
     _controller.addListener(_scheduleDraftSave);
     _controller.addListener(_trackHistory);
     _applyDraft(ref.read(noteDraftProvider));
@@ -86,6 +89,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _settingsSubscription?.close();
     _controller.removeListener(_scheduleDraftSave);
     _controller.removeListener(_trackHistory);
+    _smartEnterController.dispose();
     unawaited(ref.read(noteDraftProvider.notifier).setDraft(_controller.text));
     _controller.dispose();
     super.dispose();

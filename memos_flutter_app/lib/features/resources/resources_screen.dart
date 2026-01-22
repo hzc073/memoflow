@@ -27,6 +27,7 @@ import '../review/daily_review_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
+import '../sync/sync_queue_screen.dart';
 
 class ResourcesScreen extends ConsumerWidget {
   const ResourcesScreen({super.key});
@@ -124,7 +125,7 @@ class ResourcesScreen extends ConsumerWidget {
 
     try {
       final rootDir = await _resolveDownloadDirectory();
-      final outDir = Directory(p.join(rootDir.path, 'memoflow_attachments'));
+      final outDir = Directory(p.join(rootDir.path, 'MemoFlow_attachments'));
       if (!outDir.existsSync()) {
         outDir.createSync(recursive: true);
       }
@@ -228,7 +229,7 @@ class ResourcesScreen extends ConsumerWidget {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -242,7 +243,8 @@ class ResourcesScreen extends ConsumerWidget {
     context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),

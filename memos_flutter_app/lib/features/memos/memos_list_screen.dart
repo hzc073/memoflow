@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/tags.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/shortcut.dart';
 import '../../features/home/app_drawer.dart';
@@ -26,9 +27,11 @@ import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
 import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
+import '../sync/sync_queue_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import 'memo_detail_screen.dart';
+import 'memo_editor_screen.dart';
 import 'memo_markdown.dart';
 import 'note_input_sheet.dart';
 
@@ -95,6 +98,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   var _openedDrawerOnStart = false;
   String? _selectedShortcutId;
   DateTime? _lastBackPressedAt;
+  OverlayEntry? _syncBubbleEntry;
+  Timer? _syncBubbleTimer;
 
   @override
   void initState() {
@@ -104,6 +109,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   @override
   void dispose() {
+    _syncBubbleTimer?.cancel();
+    _syncBubbleEntry?.remove();
     _searchController.dispose();
     super.dispose();
   }
@@ -173,7 +180,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -216,9 +223,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
     context.safePop();
-      final route = switch (dest) {
+    final route = switch (dest) {
         AppDrawerDestination.memos =>
-          const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        AppDrawerDestination.syncQueue => const SyncQueueScreen(),
         AppDrawerDestination.explore => const ExploreScreen(),
         AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
@@ -417,6 +425,56 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
+  Future<void> _updateMemoContent(
+    LocalMemo memo,
+    String content, {
+    bool preserveUpdateTime = false,
+    bool triggerSync = true,
+  }) async {
+    if (content == memo.content) return;
+    final updateTime = preserveUpdateTime ? memo.updateTime : DateTime.now();
+    final db = ref.read(databaseProvider);
+    final tags = extractTags(content);
+
+    await db.upsertMemo(
+      uid: memo.uid,
+      content: content,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      tags: tags,
+      attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      syncState: 1,
+      lastError: null,
+    );
+
+    await db.enqueueOutbox(type: 'update_memo', payload: {
+      'uid': memo.uid,
+      'content': content,
+      'visibility': memo.visibility,
+    });
+    if (triggerSync) {
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    }
+  }
+
+  Future<void> _toggleMemoCheckbox(LocalMemo memo, int checkboxIndex, {required bool skipQuotedLines}) async {
+    final updated = toggleCheckbox(
+      memo.content,
+      checkboxIndex,
+      skipQuotedLines: skipQuotedLines,
+    );
+    if (updated == memo.content) return;
+    await _updateMemoContent(
+      memo,
+      updated,
+      preserveUpdateTime: true,
+      triggerSync: false,
+    );
+  }
+
   Future<void> _deleteMemo(LocalMemo memo) async {
     final confirmed = await showDialog<bool>(
           context: context,
@@ -441,12 +499,129 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
+  void _dismissSyncBubble() {
+    _syncBubbleTimer?.cancel();
+    _syncBubbleTimer = null;
+    _syncBubbleEntry?.remove();
+    _syncBubbleEntry = null;
+  }
+
+  void _showSyncBubble({
+    required String message,
+    required IconData icon,
+    required Color accent,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = accent.withValues(alpha: isDark ? 0.28 : 0.14);
+    final foreground = isDark ? Colors.white : accent;
+    _dismissSyncBubble();
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    if (overlay == null) return;
+    final size = MediaQuery.sizeOf(context);
+    final maxWidth = size.width - 48;
+    final top = MediaQuery.paddingOf(context).top + kToolbarHeight + 60;
+
+    _syncBubbleEntry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          left: 16,
+          right: 16,
+          top: top,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: background,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.12),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 14, color: foreground),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          message,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: foreground),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    overlay.insert(_syncBubbleEntry!);
+    _syncBubbleTimer = Timer(duration, _dismissSyncBubble);
+  }
+
+  String _formatSyncError(Object error) {
+    final raw = error.toString().trim();
+    if (raw.isEmpty) return '';
+    const max = 80;
+    if (raw.length <= max) return raw;
+    return '${raw.substring(0, max - 3)}...';
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(syncControllerProvider, (prev, next) {
-      if (next.hasError && prev?.error != next.error) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '同步失败：${next.error}', en: 'Sync failed: ${next.error}'))),
+      final wasLoading = prev?.isLoading ?? false;
+      final isLoading = next.isLoading;
+      if (!wasLoading && isLoading) {
+        _showSyncBubble(
+          message: context.tr(zh: '同步中…', en: 'Syncing...'),
+          icon: Icons.sync,
+          accent: MemoFlowPalette.primary,
+          duration: const Duration(seconds: 2),
+        );
+        return;
+      }
+      if (wasLoading && !isLoading) {
+        if (next.hasError) {
+          final detail = next.error == null ? '' : _formatSyncError(next.error!);
+          final suffix = detail.isEmpty ? '' : '：$detail';
+          _showSyncBubble(
+            message: context.tr(zh: '同步失败$suffix', en: 'Sync failed$suffix'),
+            icon: Icons.error_outline,
+            accent: const Color(0xFFE05656),
+            duration: const Duration(seconds: 3),
+          );
+        } else {
+          _showSyncBubble(
+            message: context.tr(zh: '同步完成', en: 'Sync complete'),
+            icon: Icons.check_circle_outline,
+            accent: const Color(0xFF3B8C52),
+          );
+        }
+      } else if (next.hasError && prev?.error != next.error) {
+        final detail = next.error == null ? '' : _formatSyncError(next.error!);
+        final suffix = detail.isEmpty ? '' : '：$detail';
+        _showSyncBubble(
+          message: context.tr(zh: '同步失败$suffix', en: 'Sync failed$suffix'),
+          icon: Icons.error_outline,
+          accent: const Color(0xFFE05656),
+          duration: const Duration(seconds: 3),
         );
       }
     });
@@ -666,6 +841,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                         dateText: _dateFmt.format(memo.updateTime),
                         collapseLongContent: prefs.collapseLongContent,
                         collapseReferences: prefs.collapseReferences,
+                        onToggleTask: (index) {
+                          unawaited(
+                            _toggleMemoCheckbox(
+                              memo,
+                              index,
+                              skipQuotedLines: prefs.collapseReferences,
+                            ),
+                          );
+                        },
                         onTap: () {
                           maybeHaptic();
                           Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo)));
@@ -675,8 +859,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                             case _MemoCardAction.togglePinned:
                               await _updateMemo(memo, pinned: !memo.pinned);
                               return;
-                            case _MemoCardAction.toggleArchived:
-                              await _updateMemo(memo, state: memo.state == 'ARCHIVED' ? 'NORMAL' : 'ARCHIVED');
+                            case _MemoCardAction.edit:
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
+                              );
                               return;
                             case _MemoCardAction.delete:
                               await _deleteMemo(memo);
@@ -1229,7 +1415,7 @@ class _PillButton extends StatelessWidget {
 
 enum _MemoCardAction {
   togglePinned,
-  toggleArchived,
+  edit,
   delete,
 }
 
@@ -1240,6 +1426,7 @@ class _MemoCard extends StatefulWidget {
     required this.dateText,
     required this.collapseLongContent,
     required this.collapseReferences,
+    required this.onToggleTask,
     required this.onTap,
     required this.onAction,
   });
@@ -1248,6 +1435,7 @@ class _MemoCard extends StatefulWidget {
   final String dateText;
   final bool collapseLongContent;
   final bool collapseReferences;
+  final ValueChanged<int> onToggleTask;
   final VoidCallback onTap;
   final ValueChanged<_MemoCardAction> onAction;
 
@@ -1303,6 +1491,7 @@ class _MemoCardState extends State<_MemoCard> {
     final dateText = widget.dateText;
     final collapseLongContent = widget.collapseLongContent;
     final collapseReferences = widget.collapseReferences;
+    final onToggleTask = widget.onToggleTask;
     final onTap = widget.onTap;
     final onAction = widget.onAction;
 
@@ -1310,6 +1499,8 @@ class _MemoCardState extends State<_MemoCard> {
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final menuColor = isDark ? const Color(0xFF2B2523) : const Color(0xFFF6E7E3);
+    final deleteColor = isDark ? const Color(0xFFFF7A7A) : const Color(0xFFE05656);
 
     final audio = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
     final hasAudio = audio.isNotEmpty;
@@ -1319,6 +1510,9 @@ class _MemoCardState extends State<_MemoCard> {
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
     final displayText = showCollapsed ? preview.text : previewText;
+    final taskStats = countTaskStats(memo.content, skipQuotedLines: collapseReferences);
+    final showProgress = !hasAudio && taskStats.total > 0;
+    final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
 
     return Hero(
       tag: memo.uid,
@@ -1362,29 +1556,35 @@ class _MemoCardState extends State<_MemoCard> {
                       tooltip: context.tr(zh: '更多', en: 'More'),
                       icon: Icon(Icons.more_horiz, size: 20, color: textMain.withValues(alpha: 0.4)),
                       onSelected: onAction,
+                      color: menuColor,
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       itemBuilder: (context) => [
                         PopupMenuItem(
                           value: _MemoCardAction.togglePinned,
                           child: Text(memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin')),
                         ),
                         PopupMenuItem(
-                          value: _MemoCardAction.toggleArchived,
-                          child: Text(
-                            memo.state == 'ARCHIVED'
-                                ? context.tr(zh: '取消归档', en: 'Unarchive')
-                                : context.tr(zh: '归档', en: 'Archive'),
-                          ),
+                          value: _MemoCardAction.edit,
+                          child: Text(context.tr(zh: '编辑', en: 'Edit')),
                         ),
                         const PopupMenuDivider(),
                         PopupMenuItem(
                           value: _MemoCardAction.delete,
-                          child: Text(context.tr(zh: '删除', en: 'Delete')),
+                          child: Text(
+                            context.tr(zh: '删除', en: 'Delete'),
+                            style: TextStyle(color: deleteColor, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
+                if (showProgress) ...[
+                  _TaskProgressBar(progress: progress, isDark: isDark),
+                  const SizedBox(height: 12),
+                ],
                 if (hasAudio)
                   _AudioRow(
                     durationText: _parseVoiceDuration(memo.content) ?? '00:00',
@@ -1398,6 +1598,8 @@ class _MemoCardState extends State<_MemoCard> {
                         data: displayText,
                         textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
                         blockSpacing: 4,
+                        normalizeHeadings: true,
+                        onToggleTask: (request) => onToggleTask(request.taskIndex),
                       ),
                       if (showToggle) ...[
                         const SizedBox(height: 4),
@@ -1623,6 +1825,27 @@ class _RelationItem {
 
   final String name;
   final String snippet;
+}
+
+class _TaskProgressBar extends StatelessWidget {
+  const _TaskProgressBar({required this.progress, required this.isDark});
+
+  final double progress;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: LinearProgressIndicator(
+        value: progress.clamp(0.0, 1.0),
+        minHeight: 6,
+        backgroundColor: bg,
+        valueColor: AlwaysStoppedAnimation(MemoFlowPalette.primary),
+      ),
+    );
+  }
 }
 
 class _AudioRow extends StatelessWidget {

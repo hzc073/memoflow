@@ -10,6 +10,7 @@ import '../../core/memoflow_palette.dart';
 import '../../state/database_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
+import 'submit_logs_screen.dart';
 
 class FeedbackScreen extends ConsumerWidget {
   const FeedbackScreen({super.key});
@@ -44,7 +45,7 @@ class FeedbackScreen extends ConsumerWidget {
     final host = hostRaw.isEmpty ? '' : LogSanitizer.maskUrl(hostRaw);
 
     return [
-      trByLanguage(language: language, zh: 'memoflow 诊断信息', en: 'memoflow Diagnostics'),
+      trByLanguage(language: language, zh: 'MemoFlow 诊断信息', en: 'MemoFlow Diagnostics'),
       '${trByLanguage(language: language, zh: '时间', en: 'Time')}: ${DateTime.now().toIso8601String()}',
       '',
       '${trByLanguage(language: language, zh: '账号', en: 'Account')}: $accountLabel',
@@ -131,13 +132,15 @@ class FeedbackScreen extends ConsumerWidget {
                 divider: divider,
                 children: [
                   _ActionRow(
-                    icon: Icons.content_copy,
-                    label: context.tr(zh: '复制诊断信息', en: 'Copy diagnostics'),
+                    icon: Icons.bug_report_outlined,
+                    label: context.tr(zh: '提交日志', en: 'Submit Logs'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
                       haptic();
-                      unawaited(copyDiagnostics());
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => const SubmitLogsScreen()),
+                      );
                     },
                   ),
                   _ActionRow(
@@ -161,18 +164,26 @@ class FeedbackScreen extends ConsumerWidget {
                               const SizedBox(height: 12),
                               Text(
                                 context.tr(
-                                  zh: '请提供以下信息：\n'
-                                      '1) 复现步骤\n'
-                                      '2) 截图 / 录屏\n'
-                                      '3) 已复制的诊断信息\n'
-                                      '\n'
-                                      '若包含敏感信息，请先打码。',
-                                  en: 'Please include:\n'
-                                      '1) Steps to reproduce\n'
-                                      '2) Screenshot / screen recording\n'
-                                      '3) Copied diagnostics\n'
-                                      '\n'
-                                      'If it contains sensitive info, redact it before submitting.',
+                                  zh: '如果您在使用 MemoFlow 时遇到问题（如同步失败、崩溃等），请按照以下步骤向我们反馈，这将帮助开发者快速定位并修复问题。\n\n'
+                                      '获取日志：点击本页面的“提交日志”按钮，将日志文件（.zip 或 .txt）保存到您的手机存储中。(注：日志已自动去除敏感信息，请放心发送)\n\n'
+                                      '前往反馈中心：点击下方链接访问我们的 GitHub Issues 页面：\n\n'
+                                      '🔗 https://github.com/hzc073/MemoFlow/issues\n\n'
+                                      '提交反馈：\n\n'
+                                      '点击右上角的绿色 "New Issue" 按钮。\n\n'
+                                      '简要描述您遇到的问题。\n\n'
+                                      '重要： 将第 1 步保存的日志文件直接拖入输入框，或点击输入框下方的回形针图标上传。\n\n'
+                                      '点击 "Submit new issue" 提交。\n\n'
+                                      '非常感谢您帮助 MemoFlow 变得更好！❤️',
+                                  en: 'If you run into issues in MemoFlow (e.g. sync failures, crashes), please follow the steps below to help us diagnose and fix the problem faster.\n\n'
+                                      'Get logs: Tap the "Submit Logs" button on this page to save the log file (.zip or .txt) to your device storage. (Note: logs are already sanitized; it is safe to share.)\n\n'
+                                      'Go to the feedback center: open our GitHub Issues page:\n\n'
+                                      '🔗 https://github.com/hzc073/MemoFlow/issues\n\n'
+                                      'Submit your report:\n\n'
+                                      'Click the green "New Issue" button in the top-right corner.\n\n'
+                                      'Briefly describe the problem you encountered.\n\n'
+                                      'Important: Drag the log file saved in step 1 into the input area, or click the paperclip icon below the input box to upload it.\n\n'
+                                      'Click "Submit new issue".\n\n'
+                                      'Thank you for helping MemoFlow get better! ❤️',
                                 ),
                                 style: const TextStyle(height: 1.5),
                               ),

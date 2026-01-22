@@ -85,7 +85,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
         logDir.createSync(recursive: true);
       }
       final now = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final outPath = p.join(logDir.path, 'memoflow_log_$now.txt');
+      final outPath = p.join(logDir.path, 'MemoFlow_log_$now.txt');
       await File(outPath).writeAsString(text, flush: true);
       if (!mounted) return;
       setState(() => _lastPath = outPath);
@@ -309,8 +309,8 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
               const SizedBox(height: 16),
               Text(
                 context.tr(
-                  zh: '提示：日志包含服务器地址、同步状态、错误信息等。如含敏感数据，请提交前自行处理。',
-                  en: 'Note: logs include server address, sync status, error info, etc. If it contains sensitive data, review or redact before submitting.',
+                  zh: '提示：日志已自动去除敏感信息，如仍包含敏感数据，请提交前自行处理。',
+                  en: 'Note: logs are sanitized automatically. If sensitive data remains, redact before submitting.',
                 ),
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.75)),
               ),

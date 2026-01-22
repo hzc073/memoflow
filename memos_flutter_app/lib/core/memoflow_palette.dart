@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'theme_colors.dart';
+
 class MemoFlowPalette {
-  static const primary = Color(0xFFC0564D);
-  static const primaryDark = Color(0xFFD16A61);
+  static Color primary = themeColorSpec(AppThemeColor.brickRed).primary;
+  static Color primaryDark = themeColorSpec(AppThemeColor.brickRed).primaryDark;
+
+  static void applyThemeColor(AppThemeColor color) {
+    final spec = themeColorSpec(color);
+    primary = spec.primary;
+    primaryDark = spec.primaryDark;
+  }
 
   static const backgroundLight = Color(0xFFF5F2ED);
   static const backgroundDark = Color(0xFF121212);

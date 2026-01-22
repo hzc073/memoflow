@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS outbox (
       'payload': jsonEncode(payload),
       'state': 0,
       'attempts': 0,
-      'created_time': DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000,
+      'created_time': DateTime.now().toUtc().millisecondsSinceEpoch,
     });
     _notifyChanged();
     return id;

@@ -43,6 +43,10 @@ class AccountSecurityScreen extends ConsumerWidget {
 
     Future<void> removeAccountAndClearCache(String accountKey) async {
       final wasCurrent = accountKey == currentKey;
+      final isLastAccount = accounts.length == 1 && accounts.first.key == accountKey;
+      final shouldPopBeforeRemoval = wasCurrent && isLastAccount;
+      final sessionNotifier = ref.read(appSessionProvider.notifier);
+      final tokenRepo = ref.read(personalAccessTokenRepositoryProvider);
       final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -73,11 +77,14 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!confirmed) return;
 
       final dbName = databaseNameForAccountKey(accountKey);
+      if (shouldPopBeforeRemoval) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
       try {
-        await ref.read(appSessionProvider.notifier).removeAccount(accountKey);
+        await sessionNotifier.removeAccount(accountKey);
         await AppDatabase.deleteDatabaseFile(dbName: dbName);
-        await ref.read(personalAccessTokenRepositoryProvider).deleteForAccount(accountKey: accountKey);
-        if (!context.mounted) return;
+        await tokenRepo.deleteForAccount(accountKey: accountKey);
+        if (!context.mounted || shouldPopBeforeRemoval) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(zh: '本地缓存已清除', en: 'Local cache cleared'))),
         );
@@ -85,7 +92,7 @@ class AccountSecurityScreen extends ConsumerWidget {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
-        if (!context.mounted) return;
+        if (!context.mounted || shouldPopBeforeRemoval) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(zh: '操作失败：$e', en: 'Action failed: $e'))),
         );

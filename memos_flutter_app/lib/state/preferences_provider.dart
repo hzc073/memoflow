@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/theme_colors.dart';
 import 'session_provider.dart';
 
 enum AppLanguage {
@@ -81,6 +82,7 @@ class AppPreferences {
     useLegacyApi: true,
     networkLoggingEnabled: true,
     themeMode: AppThemeMode.system,
+    themeColor: AppThemeColor.brickRed,
     showDrawerExplore: true,
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
@@ -101,6 +103,7 @@ class AppPreferences {
     required this.useLegacyApi,
     required this.networkLoggingEnabled,
     required this.themeMode,
+    required this.themeColor,
     required this.showDrawerExplore,
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
@@ -120,6 +123,7 @@ class AppPreferences {
   final bool useLegacyApi;
   final bool networkLoggingEnabled;
   final AppThemeMode themeMode;
+  final AppThemeColor themeColor;
   final bool showDrawerExplore;
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
@@ -139,6 +143,7 @@ class AppPreferences {
         'useLegacyApi': useLegacyApi,
         'networkLoggingEnabled': networkLoggingEnabled,
         'themeMode': themeMode.name,
+        'themeColor': themeColor.name,
         'showDrawerExplore': showDrawerExplore,
         'showDrawerDailyReview': showDrawerDailyReview,
         'showDrawerAiSummary': showDrawerAiSummary,
@@ -185,6 +190,17 @@ class AppPreferences {
         );
       }
       return AppPreferences.defaults.themeMode;
+    }
+
+    AppThemeColor parseThemeColor() {
+      final raw = json['themeColor'];
+      if (raw is String) {
+        return AppThemeColor.values.firstWhere(
+          (e) => e.name == raw,
+          orElse: () => AppPreferences.defaults.themeColor,
+        );
+      }
+      return AppPreferences.defaults.themeColor;
     }
 
     AppLineHeight parseLineHeight() {
@@ -266,6 +282,7 @@ class AppPreferences {
       networkLoggingEnabled:
           parseBool('networkLoggingEnabled', AppPreferences.defaults.networkLoggingEnabled),
       themeMode: parseThemeMode(),
+      themeColor: parseThemeColor(),
       showDrawerExplore: parseBool('showDrawerExplore', AppPreferences.defaults.showDrawerExplore),
       showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
       showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
@@ -287,6 +304,7 @@ class AppPreferences {
     bool? useLegacyApi,
     bool? networkLoggingEnabled,
     AppThemeMode? themeMode,
+    AppThemeColor? themeColor,
     bool? showDrawerExplore,
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
@@ -306,6 +324,7 @@ class AppPreferences {
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
       networkLoggingEnabled: networkLoggingEnabled ?? this.networkLoggingEnabled,
       themeMode: themeMode ?? this.themeMode,
+      themeColor: themeColor ?? this.themeColor,
       showDrawerExplore: showDrawerExplore ?? this.showDrawerExplore,
       showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
@@ -365,6 +384,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));
   void setNetworkLoggingEnabled(bool v) => _setAndPersist(state.copyWith(networkLoggingEnabled: v));
   void setThemeMode(AppThemeMode v) => _setAndPersist(state.copyWith(themeMode: v));
+  void setThemeColor(AppThemeColor v) => _setAndPersist(state.copyWith(themeColor: v));
   void setShowDrawerExplore(bool v) => _setAndPersist(state.copyWith(showDrawerExplore: v));
   void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));

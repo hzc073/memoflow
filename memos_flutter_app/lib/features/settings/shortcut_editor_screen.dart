@@ -153,7 +153,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
           onPressed: () => context.safePop(),
           child: Text(
             context.tr(zh: '取消', en: 'Cancel'),
-            style: const TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
+            style: TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
           ),
         ),
         title: Text(
@@ -861,7 +861,7 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
                   onPressed: () => context.safePop(),
                   child: Text(
                     context.tr(zh: '取消', en: 'Cancel'),
-                    style: const TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
                   ),
                 ),
                 const Spacer(),
@@ -874,7 +874,7 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
                   onPressed: () => context.safePop(_selected),
                   child: Text(
                     context.tr(zh: '完成', en: 'Done'),
-                    style: const TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],

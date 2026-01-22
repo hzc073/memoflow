@@ -11,6 +11,7 @@ import '../review/daily_review_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
+import '../sync/sync_queue_screen.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -19,7 +20,7 @@ class AboutScreen extends StatelessWidget {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -33,7 +34,8 @@ class AboutScreen extends StatelessWidget {
     context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'memoflow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
@@ -90,7 +92,7 @@ class AboutScreen extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text('memoflow', style: Theme.of(context).textTheme.headlineSmall),
+            Text('MemoFlow', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             Text(
               context.tr(

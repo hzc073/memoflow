@@ -128,7 +128,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
 
       final archive = Archive();
       final indexLines = <String>[
-        trByLanguage(language: language, zh: '# memoflow 导出', en: '# memoflow Export'),
+        trByLanguage(language: language, zh: '# MemoFlow 导出', en: '# MemoFlow Export'),
         '',
         '${trByLanguage(language: language, zh: '- 导出时间', en: '- Export time')}: ${DateTime.now().toIso8601String()}',
         '${trByLanguage(language: language, zh: '- 时间范围', en: '- Date range')}: ${_formatRange(_range, language)}',
@@ -153,7 +153,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         exportDir.createSync(recursive: true);
       }
       final now = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final outPath = p.join(exportDir.path, 'memoflow_export_$now.zip');
+      final outPath = p.join(exportDir.path, 'MemoFlow_export_$now.zip');
       await File(outPath).writeAsBytes(zipData, flush: true);
 
       if (!mounted) return;

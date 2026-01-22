@@ -6,7 +6,6 @@ import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
-import 'submit_logs_screen.dart';
 import 'webhooks_settings_screen.dart';
 
 class LaboratoryScreen extends ConsumerWidget {
@@ -100,16 +99,6 @@ class LaboratoryScreen extends ConsumerWidget {
                           MaterialPageRoute<void>(builder: (_) => const WebhooksSettingsScreen()),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      _CardRow(
-                        card: card,
-                        label: context.tr(zh: '提交日志', en: 'Submit Logs'),
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const SubmitLogsScreen()),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -118,7 +107,7 @@ class LaboratoryScreen extends ConsumerWidget {
                   child: Column(
                     children: [
                       Text(
-                        'memoflow',
+                        'MemoFlow',
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -128,7 +117,7 @@ class LaboratoryScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'VERSION 2.4.0',
+                        'VERSION 1.0.2',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,

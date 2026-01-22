@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/api/memos_api.dart';
+import '../data/logs/log_manager.dart';
 import '../data/models/account.dart';
 import '../data/models/instance_profile.dart';
 import '../data/settings/accounts_repository.dart';
@@ -75,7 +76,10 @@ class AppSessionNotifier extends AppSessionController {
     state = await AsyncValue.guard(() async {
       InstanceProfile instanceProfile;
       try {
-        instanceProfile = await MemosApi.unauthenticated(baseUrl).getInstanceProfile();
+        instanceProfile = await MemosApi.unauthenticated(
+          baseUrl,
+          logManager: LogManager.instance,
+        ).getInstanceProfile();
       } catch (_) {
         instanceProfile = const InstanceProfile.empty();
       }
@@ -83,6 +87,7 @@ class AppSessionNotifier extends AppSessionController {
       final user = await MemosApi.authenticated(
         baseUrl: baseUrl,
         personalAccessToken: personalAccessToken,
+        logManager: LogManager.instance,
       ).getCurrentUser();
 
       final normalizedBaseUrl = sanitizeUserBaseUrl(baseUrl);
@@ -145,6 +150,7 @@ class AppSessionNotifier extends AppSessionController {
       final user = await MemosApi.authenticated(
         baseUrl: account.baseUrl,
         personalAccessToken: account.personalAccessToken,
+        logManager: LogManager.instance,
       ).getCurrentUser();
 
       final updatedAccount = Account(

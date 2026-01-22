@@ -74,7 +74,7 @@ dependencies {
 
 val copyReleaseApk by tasks.registering {
     group = "build"
-    description = "Copy release APK to tool/<date>/memoflow_release.apk"
+    description = "Copy release APK to tool/<date>/MemoFlow_release.apk"
     doLast {
         val flutterRoot = rootProject.projectDir.parentFile
         val dateTag = SimpleDateFormat("yyyyMMdd").format(Date())
@@ -119,12 +119,12 @@ val copyReleaseApk by tasks.registering {
             println("Multiple release APKs found; copying newest: ${apkToCopy.name}")
         }
 
-        val destFile = File(outDir, "memoflow_release.apk")
+        val destFile = File(outDir, "MemoFlow_release.apk")
         apkToCopy.copyTo(destFile, overwrite = true)
         println("APK copied to: ${destFile.absolutePath}")
     }
 }
 
-tasks.named("assembleRelease") {
+tasks.matching { it.name == "assembleRelease" }.configureEach {
     finalizedBy(copyReleaseApk)
 }

@@ -55,7 +55,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -308,6 +308,7 @@ class _RandomWalkCard extends StatelessWidget {
                                 child: MemoMarkdown(
                                   data: content,
                                   textStyle: contentStyle,
+                                  normalizeHeadings: true,
                                 ),
                               ),
                             ),

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/logs/breadcrumb_store.dart';
+import '../data/logs/log_manager.dart';
 import '../data/logs/logger_service.dart';
 import '../data/logs/log_report_generator.dart';
 import '../data/logs/network_log_buffer.dart';
@@ -13,6 +16,12 @@ final breadcrumbStoreProvider = Provider<BreadcrumbStore>((ref) {
 
 final networkLogBufferProvider = Provider<NetworkLogBuffer>((ref) {
   return NetworkLogBuffer();
+});
+
+final logManagerProvider = Provider<LogManager>((ref) {
+  final manager = LogManager.instance;
+  unawaited(manager.init());
+  return manager;
 });
 
 final syncStatusTrackerProvider = Provider<SyncStatusTracker>((ref) {

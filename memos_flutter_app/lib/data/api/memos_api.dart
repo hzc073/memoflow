@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../../core/url.dart';
 import '../logs/breadcrumb_store.dart';
+import '../logs/log_manager.dart';
 import '../logs/network_log_buffer.dart';
 import '../logs/network_log_interceptor.dart';
 import '../logs/network_log_store.dart';
@@ -26,13 +27,15 @@ class MemosApi {
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
     BreadcrumbStore? breadcrumbStore,
+    LogManager? logManager,
   }) {
-    if (logStore != null) {
+    if (logStore != null || logManager != null || logBuffer != null || breadcrumbStore != null) {
       _dio.interceptors.add(
         NetworkLogInterceptor(
           logStore,
           buffer: logBuffer,
           breadcrumbStore: breadcrumbStore,
+          logManager: logManager,
         ),
       );
     }
@@ -47,6 +50,7 @@ class MemosApi {
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
     BreadcrumbStore? breadcrumbStore,
+    LogManager? logManager,
   }) {
     return MemosApi._(
       Dio(
@@ -60,6 +64,7 @@ class MemosApi {
       logStore: logStore,
       logBuffer: logBuffer,
       breadcrumbStore: breadcrumbStore,
+      logManager: logManager,
     );
   }
 
@@ -70,6 +75,7 @@ class MemosApi {
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
     BreadcrumbStore? breadcrumbStore,
+    LogManager? logManager,
   }) {
     final dio = Dio(
       BaseOptions(
@@ -87,6 +93,7 @@ class MemosApi {
       logStore: logStore,
       logBuffer: logBuffer,
       breadcrumbStore: breadcrumbStore,
+      logManager: logManager,
     );
   }
 

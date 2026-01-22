@@ -41,6 +41,7 @@ final memosApiProvider = Provider<MemosApi>((ref) {
   final logStore = ref.watch(networkLogStoreProvider);
   final logBuffer = ref.watch(networkLogBufferProvider);
   final breadcrumbStore = ref.watch(breadcrumbStoreProvider);
+  final logManager = ref.watch(logManagerProvider);
   return MemosApi.authenticated(
     baseUrl: account.baseUrl,
     personalAccessToken: account.personalAccessToken,
@@ -48,6 +49,7 @@ final memosApiProvider = Provider<MemosApi>((ref) {
     logStore: logStore,
     logBuffer: logBuffer,
     breadcrumbStore: breadcrumbStore,
+    logManager: logManager,
   );
 });
 
@@ -908,9 +910,9 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
           parent: useParent ? memoParent : null,
         );
 
-        final strictOwnerCheck = !useParent && !usedServerFilter;
         for (final memo in memos) {
-          if (strictOwnerCheck && !creatorMatchesCurrentUser(memo.creator)) {
+          final creator = memo.creator.trim();
+          if (creator.isNotEmpty && !creatorMatchesCurrentUser(creator)) {
             continue;
           }
 

@@ -10,8 +10,8 @@ import '../../state/preferences_provider.dart';
 class UserGuideScreen extends ConsumerWidget {
   const UserGuideScreen({super.key});
 
-  Future<void> _openOfficialDocs(BuildContext context) async {
-    final uri = Uri.parse('https://usememos.com/docs/guides');
+  Future<void> _openBackendDocs(BuildContext context) async {
+    final uri = Uri.parse('https://usememos.com/docs');
     try {
       final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!launched && context.mounted) {
@@ -106,13 +106,13 @@ class UserGuideScreen extends ConsumerWidget {
                 children: [
                   _GuideRow(
                     icon: Icons.menu_book_outlined,
-                    title: context.tr(zh: '官方使用文档', en: 'Official Guide'),
-                    subtitle: 'usememos.com/docs/guides',
+                    title: context.tr(zh: 'memos后端使用文档', en: 'Memos Backend Docs'),
+                    subtitle: 'usememos.com/docs',
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
                       haptic();
-                      await _openOfficialDocs(context);
+                      await _openBackendDocs(context);
                     },
                   ),
                   _GuideRow(

@@ -32,7 +32,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
-          title: 'memoflow',
+          title: 'MemoFlow',
           state: 'NORMAL',
           showDrawer: true,
           enableCompose: true,
@@ -114,7 +114,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     required int currentStreak,
   }) {
     final buffer = StringBuffer();
-    buffer.writeln('memoflow');
+    buffer.writeln('MemoFlow');
     buffer.writeln(context.tr(zh: '统计概览', en: 'Stats overview'));
     buffer.writeln('${context.tr(zh: '总笔记', en: 'Total memos')}: ${stats.totalMemos}');
     buffer.writeln('${context.tr(zh: '总字数', en: 'Total characters')}: ${_formatNumber(stats.totalChars)}');
@@ -129,7 +129,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     required String monthLabel,
   }) {
     final buffer = StringBuffer();
-    buffer.writeln('memoflow');
+    buffer.writeln('MemoFlow');
     buffer.writeln(context.tr(zh: '月度统计', en: 'Monthly stats'));
     buffer.writeln('${context.tr(zh: '月份', en: 'Month')}: $monthLabel');
     buffer.writeln('${context.tr(zh: '笔记', en: 'Memos')}: ${monthly.totalMemos}');
@@ -145,7 +145,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final start = now.subtract(const Duration(days: 364));
     final fmt = DateFormat('yyyy-MM-dd');
     final buffer = StringBuffer();
-    buffer.writeln('memoflow');
+    buffer.writeln('MemoFlow');
     buffer.writeln(context.tr(zh: '近一年记录', en: 'Last year'));
     buffer.writeln('${context.tr(zh: '时间范围', en: 'Range')}: ${fmt.format(start)} - ${fmt.format(now)}');
     buffer.writeln('${context.tr(zh: '笔记数量', en: 'Memos')}: $lastYearMemos');
@@ -171,7 +171,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('memoflow'),
+        title: const Text('MemoFlow'),
         centerTitle: false,
         backgroundColor: Colors.transparent,
         elevation: 0,

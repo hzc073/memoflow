@@ -52,7 +52,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return MemosListScreen(
-      title: 'memoflow',
+      title: 'MemoFlow',
       state: 'NORMAL',
       showDrawer: true,
       enableCompose: true,

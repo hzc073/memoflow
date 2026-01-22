@@ -12,7 +12,29 @@ List<String> extractTags(String content) {
   final tags = <String>{};
   if (content.isEmpty) return const [];
 
-  final runes = content.runes.toList(growable: false);
+  final lines = content.split('\n');
+  int? firstLine;
+  int? lastLine;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].trim().isEmpty) continue;
+    firstLine ??= i;
+    lastLine = i;
+  }
+  if (firstLine == null || lastLine == null) return const [];
+
+  _extractTagsFromLine(lines[firstLine], tags);
+  if (lastLine != firstLine) {
+    _extractTagsFromLine(lines[lastLine], tags);
+  }
+
+  final list = tags.toList(growable: false);
+  list.sort();
+  return list;
+}
+
+void _extractTagsFromLine(String line, Set<String> tags) {
+  if (line.isEmpty) return;
+  final runes = line.runes.toList(growable: false);
   for (var i = 0; i < runes.length; i++) {
     if (runes[i] != 0x23) continue;
     if (i + 1 >= runes.length) continue;
@@ -30,8 +52,4 @@ List<String> extractTags(String content) {
     final tag = String.fromCharCodes(runes.sublist(i + 1, j));
     if (tag.isNotEmpty) tags.add(tag);
   }
-
-  final list = tags.toList(growable: false);
-  list.sort();
-  return list;
 }

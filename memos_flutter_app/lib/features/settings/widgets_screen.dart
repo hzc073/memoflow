@@ -71,7 +71,7 @@ class WidgetsScreen extends StatelessWidget {
           const SizedBox(height: 18),
           Center(
             child: Text(
-              'MEMOFLOW · v0.8',
+              'MemoFlow · v0.8',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -127,7 +127,7 @@ class WidgetsScreen extends StatelessWidget {
   static Future<void> _handleAdd(BuildContext context, HomeWidgetType type) async {
     if (defaultTargetPlatform != TargetPlatform.android) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: 'iOS 请长按桌面添加 memoflow 小组件', en: 'On iOS, long-press the home screen to add memoflow widgets'))),
+        SnackBar(content: Text(context.tr(zh: 'iOS 请长按桌面添加 MemoFlow 小组件', en: 'On iOS, long-press the home screen to add MemoFlow widgets'))),
       );
       return;
     }

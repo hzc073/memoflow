@@ -201,7 +201,7 @@ class LogSanitizer {
   }
 
   static bool _isContentKey(String key) {
-    return key == 'content';
+    return key == 'content' || key == 'snippet';
   }
 
   static bool _isUserKey(String key) {
