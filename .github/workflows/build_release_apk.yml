@@ -1,0 +1,55 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.19.0"
+          channel: "stable"
+
+      - name: Get dependencies
+        working-directory: memos_flutter_app
+        run: flutter pub get
+
+      - name: Decode keystore
+        working-directory: memos_flutter_app/android
+        run: |
+          mkdir -p app/keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/keystore/release.jks
+
+      - name: Create key.properties
+        working-directory: memos_flutter_app/android
+        run: |
+          cat > key.properties <<'EOF'
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=keystore/release.jks
+          EOF
+
+      - name: Build APK
+        working-directory: memos_flutter_app
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Create release and upload APK
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "memos_flutter_app/build/app/outputs/**/app-release.apk"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: true
