@@ -272,7 +272,6 @@ class SyncQueueScreen extends ConsumerWidget {
                         border: border,
                         textMain: textMain,
                         textMuted: textMuted,
-                        syncing: syncing,
                         onDelete: () => _confirmDelete(context, ref, item),
                         onSync: syncing ? null : () => _syncAll(ref),
                       ),
@@ -537,7 +536,6 @@ class _SyncQueueItemCard extends StatelessWidget {
     required this.border,
     required this.textMain,
     required this.textMuted,
-    required this.syncing,
     required this.onDelete,
     required this.onSync,
   });
@@ -549,7 +547,6 @@ class _SyncQueueItemCard extends StatelessWidget {
   final Color border;
   final Color textMain;
   final Color textMuted;
-  final bool syncing;
   final VoidCallback onDelete;
   final VoidCallback? onSync;
 
@@ -623,7 +620,7 @@ class _SyncQueueItemCard extends StatelessWidget {
               const Spacer(),
               IconButton(
                 tooltip: context.tr(zh: '\u5220\u9664', en: 'Delete'),
-                onPressed: syncing ? null : onDelete,
+                onPressed: onDelete,
                 icon: Icon(Icons.delete_outline, color: textMuted),
               ),
               OutlinedButton(

@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -73,11 +73,46 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 ''');
 
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS import_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  file_md5 TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  memo_count INTEGER NOT NULL DEFAULT 0,
+  attachment_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 0,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL,
+  error TEXT,
+  UNIQUE(source, file_md5)
+);
+''');
+
           await _ensureFts(db, rebuild: true);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 3) {
             await _recreateFts(db);
+          }
+          if (oldVersion < 4) {
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS import_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  file_md5 TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  memo_count INTEGER NOT NULL DEFAULT 0,
+  attachment_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 0,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL,
+  error TEXT,
+  UNIQUE(source, file_md5)
+);
+''');
           }
         },
         onOpen: (db) async {
@@ -365,6 +400,78 @@ CREATE TABLE IF NOT EXISTS outbox (
     _notifyChanged();
   }
 
+  Future<Map<String, dynamic>?> getImportHistory({
+    required String source,
+    required String fileMd5,
+  }) async {
+    final db = await this.db;
+    final rows = await db.query(
+      'import_history',
+      where: 'source = ? AND file_md5 = ?',
+      whereArgs: [source, fileMd5],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<int> upsertImportHistory({
+    required String source,
+    required String fileMd5,
+    required String fileName,
+    required int status,
+    required int memoCount,
+    required int attachmentCount,
+    required int failedCount,
+    String? error,
+  }) async {
+    final db = await this.db;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final id = await db.insert(
+      'import_history',
+      {
+        'source': source,
+        'file_md5': fileMd5,
+        'file_name': fileName,
+        'memo_count': memoCount,
+        'attachment_count': attachmentCount,
+        'failed_count': failedCount,
+        'status': status,
+        'created_time': now,
+        'updated_time': now,
+        'error': error,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    _notifyChanged();
+    return id;
+  }
+
+  Future<void> updateImportHistory({
+    required int id,
+    required int status,
+    required int memoCount,
+    required int attachmentCount,
+    required int failedCount,
+    String? error,
+  }) async {
+    final db = await this.db;
+    await db.update(
+      'import_history',
+      {
+        'status': status,
+        'memo_count': memoCount,
+        'attachment_count': attachmentCount,
+        'failed_count': failedCount,
+        'updated_time': DateTime.now().toUtc().millisecondsSinceEpoch,
+        'error': error,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    _notifyChanged();
+  }
+
   Future<void> deleteMemoByUid(String uid) async {
     final db = await this.db;
     await db.transaction((txn) async {
@@ -436,7 +543,7 @@ CREATE TABLE IF NOT EXISTS outbox (
         'memos',
         where: whereClauses.isEmpty ? null : whereClauses.join(' AND '),
         whereArgs: whereArgs.isEmpty ? null : whereArgs,
-        orderBy: 'pinned DESC, update_time DESC',
+        orderBy: 'pinned DESC, create_time DESC',
         limit: limit,
       );
     }
@@ -460,7 +567,7 @@ SELECT m.*
 FROM memos m
 JOIN memos_fts ON memos_fts.rowid = m.id
 WHERE ${whereClauses.join(' AND ')}
-ORDER BY m.pinned DESC, m.update_time DESC
+ORDER BY m.pinned DESC, m.create_time DESC
 LIMIT ?;
 ''',
       whereArgs,

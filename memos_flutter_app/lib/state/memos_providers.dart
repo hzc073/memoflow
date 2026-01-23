@@ -932,7 +932,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             visibility: memo.visibility,
             pinned: memo.pinned,
             state: memo.state,
-            createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            createTimeSec: (memo.displayTime ?? memo.createTime).toUtc().millisecondsSinceEpoch ~/ 1000,
             updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
             tags: tags,
             attachments: mergedAttachments,
@@ -1074,6 +1074,9 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final content = payload['content'] as String?;
     final visibility = payload['visibility'] as String? ?? 'PRIVATE';
     final pinned = payload['pinned'] as bool? ?? false;
+    final displayTime = _parsePayloadTime(
+      payload['display_time'] ?? payload['displayTime'] ?? payload['create_time'] ?? payload['createTime'],
+    );
     final relationsRaw = payload['relations'];
     final relations = <Map<String, dynamic>>[];
     if (relationsRaw is List) {
@@ -1097,6 +1100,16 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
         await db.renameMemoUid(oldUid: uid, newUid: remoteUid);
         await db.rewriteOutboxMemoUids(oldUid: uid, newUid: remoteUid);
       }
+      if (displayTime != null) {
+        try {
+          await api.updateMemo(memoUid: targetUid, displayTime: displayTime);
+        } on DioException catch (e) {
+          final status = e.response?.statusCode ?? 0;
+          if (status != 400 && status != 404 && status != 405) {
+            rethrow;
+          }
+        }
+      }
       return targetUid;
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
@@ -1106,6 +1119,27 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       }
       rethrow;
     }
+  }
+
+  DateTime? _parsePayloadTime(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is DateTime) return raw.toUtc();
+    if (raw is int) return _epochToDateTime(raw);
+    if (raw is double) return _epochToDateTime(raw.round());
+    if (raw is String) {
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) return null;
+      final asInt = int.tryParse(trimmed);
+      if (asInt != null) return _epochToDateTime(asInt);
+      final parsed = DateTime.tryParse(trimmed);
+      if (parsed != null) return parsed.isUtc ? parsed : parsed.toUtc();
+    }
+    return null;
+  }
+
+  DateTime _epochToDateTime(int value) {
+    final ms = value > 1000000000000 ? value : value * 1000;
+    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
   }
 
   Future<void> _handleUpdateMemo(Map<String, dynamic> payload) async {

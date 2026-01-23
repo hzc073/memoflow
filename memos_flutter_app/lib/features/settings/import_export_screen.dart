@@ -14,6 +14,7 @@ import '../../core/memoflow_palette.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/database_provider.dart';
 import '../../state/preferences_provider.dart';
+import '../import/import_flow_screens.dart';
 
 class ImportExportScreen extends ConsumerStatefulWidget {
   const ImportExportScreen({super.key});
@@ -346,7 +347,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
               ],
               const SizedBox(height: 18),
               Text(
-                context.tr(zh: '导入（即将上线）', en: 'Import (coming soon)'),
+                context.tr(zh: '导入', en: 'Import'),
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -357,13 +358,13 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                   _SelectRow(
                     icon: Icons.file_upload_outlined,
                     label: context.tr(zh: '从文件导入', en: 'Import from file'),
-                    value: context.tr(zh: '暂不支持', en: 'Not supported'),
+                    value: context.tr(zh: 'HTML / ZIP', en: 'HTML / ZIP'),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
                       haptic();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(context.tr(zh: '导入功能即将上线', en: 'Import: coming soon'))),
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => const ImportSourceScreen()),
                       );
                     },
                   ),

@@ -12,6 +12,7 @@ import '../../state/notifications_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/stats_providers.dart';
+import '../tags/tag_tree.dart';
 
 enum AppDrawerDestination {
   memos,
@@ -87,7 +88,7 @@ class AppDrawer extends ConsumerWidget {
     final textMuted = textMain.withValues(alpha: isDark ? 0.4 : 0.5);
     final hover = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04);
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
-    const versionLabel = 'V1.0.2';
+    const versionLabel = 'V1.0.3';
 
     return Drawer(
       width: width,
@@ -327,34 +328,22 @@ class AppDrawer extends ConsumerWidget {
                         );
                       }
                       final preview = tags.take(4).toList(growable: false);
-                      return Column(
-                        children: [
-                          for (final t in preview)
-                            InkWell(
-                              borderRadius: BorderRadius.circular(14),
-                              onTap: () {
-                                final cb = onSelectTag;
-                                if (cb != null) {
-                                  cb(t.tag);
-                                } else {
-                                  onSelect(AppDrawerDestination.tags);
-                                }
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.tag, size: 20, color: textMuted),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(t.tag, style: TextStyle(fontWeight: FontWeight.w600, color: textMain)),
-                                    ),
-                                    Icon(Icons.chevron_right, color: textMuted),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
+                      final nodes = buildTagTree(preview);
+                      return TagTreeList(
+                        nodes: nodes,
+                        onSelect: (tag) {
+                          final cb = onSelectTag;
+                          if (cb != null) {
+                            cb(tag);
+                          } else {
+                            onSelect(AppDrawerDestination.tags);
+                          }
+                        },
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        showCount: false,
+                        initiallyExpanded: true,
+                        compact: true,
                       );
                     },
                     loading: () => Padding(

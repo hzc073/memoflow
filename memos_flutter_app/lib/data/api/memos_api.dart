@@ -467,38 +467,92 @@ class MemosApi {
       return (personalAccessToken: personalAccessToken, token: token);
     }
 
-    final expiresOptional = expiresInDays == 0;
-
-    try {
-      return await request(includeParent: true, useSnakeCaseExpires: false, includeExpires: true);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 400) rethrow;
-
-      final message = tryExtractErrorMessage(e);
-      final unknownExpires = message.contains('expiresInDays') && message.toLowerCase().contains('unknown');
-
-      if (expiresOptional) {
-        try {
-          return await request(includeParent: true, useSnakeCaseExpires: false, includeExpires: false);
-        } on DioException catch (_) {}
-      }
-
-      if (unknownExpires) {
-        try {
-          return await request(includeParent: true, useSnakeCaseExpires: true, includeExpires: true);
-        } on DioException catch (_) {}
-      }
+    Future<({PersonalAccessToken personalAccessToken, String token})> createViaPersonalAccessTokens() async {
+      final expiresOptional = expiresInDays == 0;
 
       try {
-        return await request(includeParent: false, useSnakeCaseExpires: false, includeExpires: true);
-      } on DioException catch (_) {}
+        return await request(includeParent: true, useSnakeCaseExpires: false, includeExpires: true);
+      } on DioException catch (e) {
+        final status = e.response?.statusCode ?? 0;
+        if (status != 400) rethrow;
 
-      if (unknownExpires) {
-        return await request(includeParent: false, useSnakeCaseExpires: true, includeExpires: true);
+        final message = tryExtractErrorMessage(e);
+        final unknownExpires = message.contains('expiresInDays') && message.toLowerCase().contains('unknown');
+
+        if (expiresOptional) {
+          try {
+            return await request(includeParent: true, useSnakeCaseExpires: false, includeExpires: false);
+          } on DioException catch (_) {}
+        }
+
+        if (unknownExpires) {
+          try {
+            return await request(includeParent: true, useSnakeCaseExpires: true, includeExpires: true);
+          } on DioException catch (_) {}
+        }
+
+        try {
+          return await request(includeParent: false, useSnakeCaseExpires: false, includeExpires: true);
+        } on DioException catch (_) {}
+
+        if (unknownExpires) {
+          return await request(includeParent: false, useSnakeCaseExpires: true, includeExpires: true);
+        }
+        rethrow;
+      }
+    }
+
+    try {
+      return await createViaPersonalAccessTokens();
+    } on DioException catch (e) {
+      if (_shouldFallback(e)) {
+        return await _createUserAccessTokenCompat(
+          parent: parent,
+          description: trimmedDescription,
+          expiresInDays: expiresInDays,
+        );
       }
       rethrow;
     }
+  }
+
+  Future<({PersonalAccessToken personalAccessToken, String token})> _createUserAccessTokenCompat({
+    required String parent,
+    required String description,
+    required int expiresInDays,
+  }) async {
+    final expiresAt = expiresInDays > 0 ? DateTime.now().toUtc().add(Duration(days: expiresInDays)) : null;
+
+    Future<({PersonalAccessToken personalAccessToken, String token})> request({required bool useSnakeCaseExpires}) async {
+      final data = <String, Object?>{
+        'description': description,
+        if (expiresAt != null) (useSnakeCaseExpires ? 'expires_at' : 'expiresAt'): expiresAt.toIso8601String(),
+      };
+      final response = await _dio.post(
+        'api/v1/$parent/accessTokens',
+        data: data,
+      );
+      final body = _expectJsonMap(response.data);
+      final tokenValue = _readString(body['accessToken'] ?? body['access_token'] ?? body['token']);
+      if (tokenValue.isEmpty) {
+        throw const FormatException('Token missing in response');
+      }
+      final personalAccessToken = _personalAccessTokenFromAccessTokensJson(body, tokenValue: tokenValue);
+      return (personalAccessToken: personalAccessToken, token: tokenValue);
+    }
+
+    if (expiresAt == null) {
+      return request(useSnakeCaseExpires: false);
+    }
+
+    try {
+      return await request(useSnakeCaseExpires: false);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status != 400) rethrow;
+    }
+
+    return request(useSnakeCaseExpires: true);
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})> _createPersonalAccessTokenLegacy({
@@ -552,20 +606,50 @@ class MemosApi {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final parent = 'users/$numericUserId';
 
+    try {
+      final response = await _dio.get(
+        'api/v1/$parent/personalAccessTokens',
+        queryParameters: const <String, Object?>{'pageSize': 1000},
+      );
+      final body = _expectJsonMap(response.data);
+      final list = body['personalAccessTokens'] ?? body['personal_access_tokens'];
+      final tokens = <PersonalAccessToken>[];
+      if (list is List) {
+        for (final item in list) {
+          if (item is Map) {
+            tokens.add(PersonalAccessToken.fromJson(item.cast<String, dynamic>()));
+          }
+        }
+      }
+      tokens.sort((a, b) {
+        final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime);
+      });
+      return tokens;
+    } on DioException catch (e) {
+      if (!_shouldFallback(e)) rethrow;
+    }
+
+    return _listPersonalAccessTokensAccessTokens(parent: parent);
+  }
+
+  Future<List<PersonalAccessToken>> _listPersonalAccessTokensAccessTokens({required String parent}) async {
     final response = await _dio.get(
-      'api/v1/$parent/personalAccessTokens',
+      'api/v1/$parent/accessTokens',
       queryParameters: const <String, Object?>{'pageSize': 1000},
     );
     final body = _expectJsonMap(response.data);
-    final list = body['personalAccessTokens'] ?? body['personal_access_tokens'];
+    final list = body['accessTokens'] ?? body['access_tokens'];
     final tokens = <PersonalAccessToken>[];
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          tokens.add(PersonalAccessToken.fromJson(item.cast<String, dynamic>()));
+          tokens.add(_personalAccessTokenFromAccessTokensJson(item.cast<String, dynamic>()));
         }
       }
     }
+
     tokens.sort((a, b) {
       final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
       final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
@@ -1772,6 +1856,7 @@ class MemosApi {
     String? visibility,
     bool? pinned,
     String? state,
+    DateTime? displayTime,
   }) async {
     if (!useLegacyApi) {
       return _updateMemoModern(
@@ -1780,6 +1865,7 @@ class MemosApi {
         visibility: visibility,
         pinned: pinned,
         state: state,
+        displayTime: displayTime,
       );
     }
     try {
@@ -1789,6 +1875,7 @@ class MemosApi {
         visibility: visibility,
         pinned: pinned,
         state: state,
+        displayTime: displayTime,
       );
     } on DioException catch (e) {
       if (_shouldFallbackLegacy(e)) {
@@ -1798,6 +1885,7 @@ class MemosApi {
           visibility: visibility,
           pinned: pinned,
           state: state,
+          displayTime: displayTime,
         );
       }
       rethrow;
@@ -1810,6 +1898,7 @@ class MemosApi {
     String? visibility,
     bool? pinned,
     String? state,
+    DateTime? displayTime,
   }) async {
     final updateMask = <String>[];
     final data = <String, Object?>{
@@ -1831,13 +1920,20 @@ class MemosApi {
       updateMask.add('state');
       data['state'] = state;
     }
+    if (displayTime != null) {
+      updateMask.add('display_time');
+      data['displayTime'] = displayTime.toUtc().toIso8601String();
+    }
     if (updateMask.isEmpty) {
       throw ArgumentError('updateMemo requires at least one field');
     }
 
     final response = await _dio.patch(
       'api/v1/memos/$memoUid',
-      queryParameters: <String, Object?>{'updateMask': updateMask.join(',')},
+      queryParameters: <String, Object?>{
+        'updateMask': updateMask.join(','),
+        'update_mask': updateMask.join(','),
+      },
       data: data,
     );
     return Memo.fromJson(_expectJsonMap(response.data));
@@ -2662,7 +2758,9 @@ class MemosApi {
     String? visibility,
     bool? pinned,
     String? state,
+    DateTime? displayTime,
   }) async {
+    final _ = displayTime;
     if (pinned != null) {
       await _dio.post(
         'api/v1/memo/$memoUid/organizer',
@@ -2968,6 +3066,24 @@ class MemosApi {
     if (alt is String) return alt;
     if (alt is num) return alt.toString();
     return '';
+  }
+
+  static PersonalAccessToken _personalAccessTokenFromAccessTokensJson(
+    Map<String, dynamic> json, {
+    String? tokenValue,
+  }) {
+    final name = _readString(json['name']);
+    final description = _readString(json['description']);
+    final issuedAt = _readString(json['issuedAt'] ?? json['issued_at']);
+    final expiresAt = _readString(json['expiresAt'] ?? json['expires_at']);
+    final token = tokenValue ?? _readString(json['accessToken'] ?? json['access_token']);
+    final resolvedName = name.isNotEmpty ? name : token;
+    return PersonalAccessToken.fromJson({
+      'name': resolvedName,
+      'description': description,
+      if (issuedAt.isNotEmpty) 'createdAt': issuedAt,
+      if (expiresAt.isNotEmpty) 'expiresAt': expiresAt,
+    });
   }
 
   static PersonalAccessToken _personalAccessTokenFromLegacyJson(Map<String, dynamic> json, {required String tokenValue}) {

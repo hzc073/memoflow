@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:markdown/markdown.dart' as md;
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/app_localization.dart';
 
 final RegExp _tagTokenPattern = RegExp(
   r'^#(?!#|\s)[\p{L}\p{N}\p{S}_/\-]{1,100}$',
@@ -78,6 +81,10 @@ class MemoMarkdown extends StatelessWidget {
     final inlineCodeBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
     final codeBlockBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
     final quoteColor = (baseStyle.color ?? theme.colorScheme.onSurface).withValues(alpha: 0.7);
+    final quoteBorder = theme.colorScheme.primary.withValues(alpha: theme.brightness == Brightness.dark ? 0.45 : 0.35);
+    final tableBorder = theme.dividerColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.35 : 0.5);
+    final tableHeaderBg = theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7);
+    final tableCellBg = theme.colorScheme.surface.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 1.0);
     final checkboxSize = (fontSize ?? 14) * 1.25;
     final checkboxTapSize = checkboxSize + 6;
     final checkboxColor = baseStyle.color ?? theme.colorScheme.onSurface;
@@ -86,6 +93,68 @@ class MemoMarkdown extends StatelessWidget {
     final html = _renderMarkdownToHtml(tagged);
 
     var taskIndex = 0;
+    Widget? buildTableWidget(dom.Element element) {
+      final rows = element.querySelectorAll('tr');
+      if (rows.isEmpty) return null;
+
+      final parsedRows = <({List<dom.Element> cells, bool header})>[];
+      var maxColumns = 0;
+
+      for (final row in rows) {
+        final cells = row.children
+            .where((c) => c.localName == 'th' || c.localName == 'td')
+            .toList(growable: false);
+        if (cells.isEmpty) continue;
+        final header = row.parent?.localName == 'thead' || cells.every((c) => c.localName == 'th');
+        if (cells.length > maxColumns) {
+          maxColumns = cells.length;
+        }
+        parsedRows.add((cells: cells, header: header));
+      }
+
+      if (parsedRows.isEmpty || maxColumns == 0) return null;
+
+      final table = Table(
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+        border: TableBorder.all(color: tableBorder, width: 1),
+        columnWidths: {
+          for (var i = 0; i < maxColumns; i++) i: const FlexColumnWidth(),
+        },
+        children: [
+          for (final row in parsedRows)
+            TableRow(
+              decoration: row.header ? BoxDecoration(color: tableHeaderBg) : BoxDecoration(color: tableCellBg),
+              children: [
+                for (var i = 0; i < maxColumns; i++)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: Text(
+                      i < row.cells.length ? row.cells[i].text.trim() : '',
+                      style: baseStyle.copyWith(
+                        fontWeight: row.header ? FontWeight.w700 : baseStyle.fontWeight,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      );
+
+      final wrapped = SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 320),
+          child: table,
+        ),
+      );
+
+      if (blockSpacing <= 0) return wrapped;
+      return Padding(
+        padding: EdgeInsets.only(bottom: blockSpacing),
+        child: wrapped,
+      );
+    }
+
     Widget? customWidgetBuilder(dom.Element element) {
       final localName = element.localName;
       if (localName == 'input') {
@@ -134,6 +203,9 @@ class MemoMarkdown extends StatelessWidget {
           background: codeBlockBg,
         );
       }
+      if (localName == 'table') {
+        return buildTableWidget(element);
+      }
       return null;
     }
 
@@ -148,11 +220,12 @@ class MemoMarkdown extends StatelessWidget {
             'color': _cssColor(tagStyle.textColor),
             'border': '1px solid ${_cssColor(tagStyle.borderColor)}',
             'border-radius': '999px',
-            'padding': '1px 8px',
+            'padding': '2px 10px',
             'font-weight': '600',
             'display': 'inline-block',
-            'line-height': '1.1',
-            'font-size': '0.95em',
+            'line-height': '1.2',
+            'font-size': '0.92em',
+            'vertical-align': 'middle',
           });
         } else if (element.classes.contains('memohighlight')) {
           styles.addAll({
@@ -175,6 +248,8 @@ class MemoMarkdown extends StatelessWidget {
       }
       if (localName == 'blockquote') {
         styles['color'] = _cssColor(quoteColor);
+        styles['border-left'] = '3px solid ${_cssColor(quoteBorder)}';
+        styles['padding-left'] = '10px';
       }
       if (localName == 'p' && element.parent?.classes.contains('task-list-item') == true) {
         styles['display'] = 'inline';
@@ -209,6 +284,24 @@ class MemoMarkdown extends StatelessWidget {
       textStyle: baseStyle,
       customWidgetBuilder: customWidgetBuilder,
       customStylesBuilder: customStylesBuilder,
+      onTapUrl: (url) async {
+        final uri = Uri.tryParse(url);
+        if (uri == null) return true;
+        final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (!launched && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                context.tr(
+                  zh: '无法打开浏览器，请检查是否安装了浏览器',
+                  en: 'Unable to open browser. Please install a browser app.',
+                ),
+              ),
+            ),
+          );
+        }
+        return true;
+      },
     );
 
     if (!selectable) return content;

@@ -27,6 +27,8 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
 
 class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with TickerProviderStateMixin {
   static const _maxDuration = Duration(minutes: 60);
+  static const double _silenceGate = 0.08;
+  static const int _maxVisualizerBars = 21;
 
   final _recorder = AudioRecorder();
   final _filenameFmt = DateFormat('yyyyMMdd_HHmmss');
@@ -45,6 +47,8 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
   bool _paused = false;
   double _ampLevel = 0.0;
   double _ampPeak = 0.0;
+  final List<double> _visualizerSamples = List<double>.filled(_maxVisualizerBars, 0.0);
+  int _visualizerCursor = 0;
   bool _awaitingConfirm = false;
   bool _processing = false;
 
@@ -76,6 +80,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       ..stop()
       ..reset();
     _stopMeter();
+    _resetVisualizer();
     if (!mounted) return;
     setState(() {
       _recording = false;
@@ -89,6 +94,28 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       _ampLevel = 0.0;
       _ampPeak = 0.0;
     });
+  }
+
+  void _resetVisualizer() {
+    for (var i = 0; i < _visualizerSamples.length; i++) {
+      _visualizerSamples[i] = 0.0;
+    }
+    _visualizerCursor = 0;
+  }
+
+  void _pushVisualizerSample(double value) {
+    if (_visualizerSamples.isEmpty) return;
+    _visualizerSamples[_visualizerCursor] = value;
+    _visualizerCursor = (_visualizerCursor + 1) % _visualizerSamples.length;
+  }
+
+  double _visualizerSampleAt(int index, int totalCount) {
+    if (_visualizerSamples.isEmpty) return 0.0;
+    final len = _visualizerSamples.length;
+    var start = _visualizerCursor - totalCount;
+    var idx = (start + index) % len;
+    if (idx < 0) idx += len;
+    return _visualizerSamples[idx];
   }
 
   Future<void> _start() async {
@@ -139,6 +166,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       return;
     }
 
+    _resetVisualizer();
     setState(() {
       _recording = true;
       _ampLevel = 0.0;
@@ -269,12 +297,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       final content = trByLanguage(
         language: language,
         zh: '🎙️ 语音记录\n'
-            '#voice\n'
             '\n'
             '- 时长：$durationText\n'
             '- 创建：$createdAt\n',
         en: '🎙️ Voice memo\n'
-            '#voice\n'
             '\n'
             '- Duration: $durationText\n'
             '- Created: $createdAt\n',
@@ -286,7 +312,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
           filename: fileName,
           type: 'audio/mp4',
           size: size,
-          externalLink: '',
+          externalLink: Uri.file(filePath).toString(),
         ).toJson(),
       ];
 
@@ -299,7 +325,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         state: 'NORMAL',
         createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-        tags: const ['voice'],
+        tags: const [],
         attachments: attachments,
         syncState: 1,
       );
@@ -388,12 +414,16 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       (amp) {
         if (!_recording || _paused) return;
         final level = _normalizeDbfs(amp.current);
-        final smoothed = _ampLevel * 0.7 + level * 0.3;
+        final gated = level < _silenceGate ? 0.0 : level;
+        final smoothed = _ampLevel * 0.7 + gated * 0.3;
         final peak = math.max(_ampPeak * 0.92, smoothed);
+        final nextLevel = smoothed < _silenceGate ? 0.0 : smoothed;
+        final nextPeak = peak < _silenceGate ? 0.0 : peak;
         if (mounted) {
+          _pushVisualizerSample(nextLevel);
           setState(() {
-            _ampLevel = smoothed;
-            _ampPeak = peak;
+            _ampLevel = nextLevel;
+            _ampPeak = nextPeak;
           });
         }
       },
@@ -406,6 +436,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     _amplitudeSub = null;
     _ampLevel = 0.0;
     _ampPeak = 0.0;
+    _resetVisualizer();
   }
 
   @override
@@ -496,15 +527,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                                     ),
                                   ),
                                   const SizedBox(height: 24),
-                                  Text(
-                                    context.tr(zh: '波形随音量动态跳动', en: 'Waveform reacts to volume'),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      letterSpacing: 0.6,
-                                      color: textMuted.withValues(alpha: 0.8),
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
@@ -741,15 +763,24 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         ? const Color(0xFF8E8E8E).withValues(alpha: 0.2)
         : MemoFlowPalette.textLight.withValues(alpha: 0.1);
 
-    double scaleFor(double base, double minScale, double maxScale) {
-      final scale = minScale + (maxScale - minScale) * level.clamp(0.0, 1.0);
-      return math.max(0.1, base * scale);
+    double scaleFor(double base, double sampleLevel, double minScale, double maxScale) {
+      final scale = minScale + (maxScale - minScale) * sampleLevel.clamp(0.0, 1.0);
+      return math.max(4.0, base * scale);
     }
 
     final bars = <Widget>[];
+    final totalBars = leftBars.length + centerBars.length + rightBars.length;
+    var sampleIndex = 0;
+    double nextSample() {
+      final value = _visualizerSampleAt(sampleIndex, totalBars);
+      sampleIndex += 1;
+      return value;
+    }
+
     void addBars(List<double> heights, Color color, double minScale, double maxScale) {
       for (final h in heights) {
-        final scaled = math.max(4.0, scaleFor(h, minScale, maxScale));
+        final sample = nextSample();
+        final scaled = scaleFor(h, sample, minScale, maxScale);
         bars.add(_buildWaveBar(height: scaled, color: color));
         bars.add(const SizedBox(width: 4));
       }

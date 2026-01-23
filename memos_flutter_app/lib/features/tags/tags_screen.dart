@@ -14,6 +14,7 @@ import '../review/daily_review_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../sync/sync_queue_screen.dart';
+import 'tag_tree.dart';
 
 class TagsScreen extends ConsumerWidget {
   const TagsScreen({super.key});
@@ -96,29 +97,29 @@ class TagsScreen extends ConsumerWidget {
         body: tagsAsync.when(
           data: (tags) => tags.isEmpty
               ? Center(child: Text(context.tr(zh: '暂无标签', en: 'No tags yet')))
-              : ListView.separated(
-                  itemBuilder: (context, index) {
-                    final t = tags[index];
-                    return ListTile(
-                      leading: const Icon(Icons.tag),
-                      title: Text('#${t.tag}'),
-                      trailing: Text('${t.count}'),
-                      onTap: () {
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                  children: [
+                    TagTreeList(
+                      nodes: buildTagTree(tags),
+                      onSelect: (tag) {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => MemosListScreen(
                               title: context.tr(zh: '标签', en: 'Tags'),
                               state: 'NORMAL',
-                              tag: t.tag,
+                              tag: tag,
                               showDrawer: true,
                             ),
                           ),
                         );
                       },
-                    );
-                  },
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemCount: tags.length,
+                      textMain: Theme.of(context).colorScheme.onSurface,
+                      textMuted: Theme.of(context).colorScheme.onSurfaceVariant,
+                      showCount: true,
+                      initiallyExpanded: true,
+                    ),
+                  ],
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),

@@ -9,12 +9,12 @@ String databaseNameForAccountKey(String accountKey) {
 }
 
 final databaseProvider = Provider<AppDatabase>((ref) {
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  if (account == null) {
+  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
+  if (accountKey == null) {
     throw StateError('Not authenticated');
   }
 
-  final dbName = databaseNameForAccountKey(account.key);
+  final dbName = databaseNameForAccountKey(accountKey);
   final db = AppDatabase(dbName: dbName);
   ref.onDispose(db.close);
   return db;

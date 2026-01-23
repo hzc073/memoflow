@@ -1,19 +1,26 @@
 ﻿import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
+import '../../core/url.dart';
+import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/shortcut.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/database_provider.dart';
+import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/search_history_provider.dart';
@@ -75,6 +82,11 @@ class MemosListScreen extends ConsumerStatefulWidget {
     this.showDrawer = false,
     this.enableCompose = false,
     this.openDrawerOnStart = false,
+    this.enableSearch = true,
+    this.enableTitleMenu = true,
+    this.showPillActions = true,
+    this.showFilterTagChip = false,
+    this.showTagFilters = false,
   });
 
   final String title;
@@ -83,6 +95,11 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final bool showDrawer;
   final bool enableCompose;
   final bool openDrawerOnStart;
+  final bool enableSearch;
+  final bool enableTitleMenu;
+  final bool showPillActions;
+  final bool showFilterTagChip;
+  final bool showTagFilters;
 
   @override
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
@@ -93,10 +110,32 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   final _searchController = TextEditingController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _titleKey = GlobalKey();
+  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
 
   var _searching = false;
   var _openedDrawerOnStart = false;
   String? _selectedShortcutId;
+  String? _activeTagFilter;
+  List<LocalMemo> _animatedMemos = [];
+  String _listSignature = '';
+  final Set<String> _pendingRemovedUids = <String>{};
+  final _audioPlayer = AudioPlayer();
+  final _audioPositionNotifier = ValueNotifier(Duration.zero);
+  final _audioDurationNotifier = ValueNotifier<Duration?>(null);
+  StreamSubscription<PlayerState>? _audioStateSub;
+  StreamSubscription<Duration>? _audioPositionSub;
+  StreamSubscription<Duration?>? _audioDurationSub;
+  Timer? _audioProgressTimer;
+  DateTime? _audioProgressStart;
+  Duration _audioProgressBase = Duration.zero;
+  Duration _audioProgressLast = Duration.zero;
+  DateTime? _lastAudioProgressLogAt;
+  Duration _lastAudioProgressLogPosition = Duration.zero;
+  Duration? _lastAudioLoggedDuration;
+  bool _audioDurationMissingLogged = false;
+  String? _playingMemoUid;
+  String? _playingAudioUrl;
+  bool _audioLoading = false;
   DateTime? _lastBackPressedAt;
   OverlayEntry? _syncBubbleEntry;
   Timer? _syncBubbleTimer;
@@ -104,15 +143,411 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   @override
   void initState() {
     super.initState();
+    _activeTagFilter = _normalizeTag(widget.tag);
+    _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
+      if (!mounted) return;
+      if (state.playing) {
+        _startAudioProgressTimer();
+        if (_audioLoading) {
+          setState(() => _audioLoading = false);
+        }
+      } else {
+        _stopAudioProgressTimer();
+      }
+      if (state.processingState == ProcessingState.completed) {
+        final memoUid = _playingMemoUid;
+        if (memoUid != null) {
+          _logAudioAction(
+            'completed memo=${_shortMemoUid(memoUid)} pos=${_formatDuration(_audioPlayer.position)}',
+            context: {
+              'memo': memoUid,
+              'positionMs': _audioPlayer.position.inMilliseconds,
+            },
+          );
+        }
+        _resetAudioLogState();
+        _stopAudioProgressTimer();
+        unawaited(_audioPlayer.seek(Duration.zero));
+        unawaited(_audioPlayer.pause());
+        _audioPositionNotifier.value = Duration.zero;
+        _audioDurationNotifier.value = null;
+        setState(() {
+          _playingMemoUid = null;
+          _playingAudioUrl = null;
+          _audioLoading = false;
+        });
+        return;
+      }
+      setState(() {});
+    });
+    _audioPositionSub = _audioPlayer.positionStream.listen((position) {
+      if (!mounted || _playingMemoUid == null) return;
+      if (_audioPlayer.playing && position <= _audioProgressLast) {
+        return;
+      }
+      _audioProgressBase = position;
+      _audioProgressLast = position;
+      _audioProgressStart = DateTime.now();
+      _audioPositionNotifier.value = position;
+    });
+    _audioDurationSub = _audioPlayer.durationStream.listen((duration) {
+      if (!mounted || _playingMemoUid == null) return;
+      _audioDurationNotifier.value = duration;
+      if (duration == null || duration <= Duration.zero) {
+        if (!_audioDurationMissingLogged) {
+          _audioDurationMissingLogged = true;
+          _logAudioBreadcrumb(
+            'duration missing memo=${_shortMemoUid(_playingMemoUid!)}',
+            context: {'memo': _playingMemoUid!, 'durationMs': duration?.inMilliseconds},
+          );
+        }
+        return;
+      }
+      if (_lastAudioLoggedDuration == duration) return;
+      _lastAudioLoggedDuration = duration;
+      _logAudioBreadcrumb(
+        'duration memo=${_shortMemoUid(_playingMemoUid!)} dur=${_formatDuration(duration)}',
+        context: {'memo': _playingMemoUid!, 'durationMs': duration.inMilliseconds},
+      );
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _openDrawerIfNeeded());
+  }
+
+  @override
+  void didUpdateWidget(covariant MemosListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tag != widget.tag) {
+      _activeTagFilter = _normalizeTag(widget.tag);
+    }
   }
 
   @override
   void dispose() {
     _syncBubbleTimer?.cancel();
     _syncBubbleEntry?.remove();
+    _audioStateSub?.cancel();
+    _audioPositionSub?.cancel();
+    _audioDurationSub?.cancel();
+    _audioProgressTimer?.cancel();
+    _audioPositionNotifier.dispose();
+    _audioDurationNotifier.dispose();
+    _audioPlayer.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  String? _normalizeTag(String? raw) {
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+  }
+
+  void _selectTagFilter(String? tag) {
+    setState(() => _activeTagFilter = _normalizeTag(tag));
+  }
+
+  Attachment? _firstImageAttachment(LocalMemo memo) {
+    for (final attachment in memo.attachments) {
+      if (attachment.type.startsWith('image/')) return attachment;
+    }
+    return null;
+  }
+
+  void _resetAudioLogState() {
+    _lastAudioProgressLogAt = null;
+    _lastAudioProgressLogPosition = Duration.zero;
+    _lastAudioLoggedDuration = null;
+    _audioDurationMissingLogged = false;
+  }
+
+  void _logAudioAction(String message, {Map<String, Object?>? context}) {
+    if (!mounted) return;
+    ref.read(loggerServiceProvider).recordAction('Audio $message');
+    ref.read(logManagerProvider).info('Audio $message', context: context);
+  }
+
+  void _logAudioBreadcrumb(String message, {Map<String, Object?>? context}) {
+    if (!mounted) return;
+    ref.read(loggerServiceProvider).recordBreadcrumb('Audio: $message');
+    ref.read(logManagerProvider).info('Audio $message', context: context);
+  }
+
+  void _logAudioError(String message, Object error, StackTrace stackTrace) {
+    if (!mounted) return;
+    ref.read(loggerServiceProvider).recordError('Audio $message');
+    ref.read(logManagerProvider).error('Audio $message', error: error, stackTrace: stackTrace);
+  }
+
+  void _maybeLogAudioProgress(Duration position) {
+    final memoUid = _playingMemoUid;
+    if (!mounted || memoUid == null) return;
+    final now = DateTime.now();
+    final lastAt = _lastAudioProgressLogAt;
+    if (lastAt != null && now.difference(lastAt) < const Duration(seconds: 4)) {
+      return;
+    }
+    final lastPos = _lastAudioProgressLogPosition;
+    final duration = _audioDurationNotifier.value;
+    final message = position <= lastPos && lastAt != null
+        ? 'progress stalled memo=${_shortMemoUid(memoUid)} pos=${_formatDuration(position)} dur=${_formatDuration(duration)}'
+        : 'progress memo=${_shortMemoUid(memoUid)} pos=${_formatDuration(position)} dur=${_formatDuration(duration)}';
+    _logAudioBreadcrumb(
+      message,
+      context: {
+        'memo': memoUid,
+        'positionMs': position.inMilliseconds,
+        'durationMs': duration?.inMilliseconds,
+        'playing': _audioPlayer.playing,
+        'state': _audioPlayer.processingState.toString(),
+      },
+    );
+    _lastAudioProgressLogAt = now;
+    _lastAudioProgressLogPosition = position;
+  }
+
+  String _shortMemoUid(String uid) {
+    final trimmed = uid.trim();
+    if (trimmed.isEmpty) return '--';
+    return trimmed.length <= 6 ? trimmed : trimmed.substring(0, 6);
+  }
+
+  String _formatDuration(Duration? value) {
+    if (value == null) return '--:--';
+    final totalSeconds = value.inSeconds;
+    final hh = totalSeconds ~/ 3600;
+    final mm = (totalSeconds % 3600) ~/ 60;
+    final ss = totalSeconds % 60;
+    if (hh <= 0) {
+      return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+    }
+    return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+  }
+
+  void _startAudioProgressTimer() {
+    if (_audioProgressTimer != null) return;
+    _audioProgressBase = _audioPlayer.position;
+    _audioProgressLast = _audioProgressBase;
+    _audioProgressStart = DateTime.now();
+    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted || _playingMemoUid == null) return;
+      final now = DateTime.now();
+      var position = _audioPlayer.position;
+      if (_audioProgressStart != null && position <= _audioProgressLast) {
+        position = _audioProgressBase + now.difference(_audioProgressStart!);
+      } else {
+        _audioProgressBase = position;
+        _audioProgressStart = now;
+      }
+      _audioProgressLast = position;
+      _audioPositionNotifier.value = position;
+      _maybeLogAudioProgress(position);
+    });
+  }
+
+  void _stopAudioProgressTimer() {
+    _audioProgressTimer?.cancel();
+    _audioProgressTimer = null;
+    _audioProgressStart = null;
+  }
+
+  Future<void> _seekAudioPosition(LocalMemo memo, Duration target) async {
+    if (_playingMemoUid != memo.uid) return;
+    final duration = _audioDurationNotifier.value;
+    if (duration == null || duration <= Duration.zero) return;
+    var clamped = target;
+    if (clamped < Duration.zero) {
+      clamped = Duration.zero;
+    } else if (clamped > duration) {
+      clamped = duration;
+    }
+    await _audioPlayer.seek(clamped);
+    _audioProgressBase = clamped;
+    _audioProgressLast = clamped;
+    _audioProgressStart = DateTime.now();
+    _audioPositionNotifier.value = clamped;
+  }
+
+  String? _localAttachmentPath(Attachment attachment) {
+    final raw = attachment.externalLink.trim();
+    if (!raw.startsWith('file://')) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    final path = uri.toFilePath();
+    if (path.trim().isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return path;
+  }
+
+  String _appendThumbnailQuery(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return '$url?thumbnail=true';
+    final params = Map<String, String>.from(uri.queryParameters);
+    params['thumbnail'] = 'true';
+    return uri.replace(queryParameters: params).toString();
+  }
+
+  ({String url, String? localPath, Map<String, String>? headers})? _resolveAudioSource(Attachment attachment) {
+    final rawLink = attachment.externalLink.trim();
+    if (rawLink.isNotEmpty) {
+      final localPath = _localAttachmentPath(attachment);
+      if (localPath != null) {
+        return (url: Uri.file(localPath).toString(), localPath: localPath, headers: null);
+      }
+      return (url: rawLink, localPath: null, headers: null);
+    }
+
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    if (baseUrl == null) return null;
+    final name = attachment.name.trim();
+    final filename = attachment.filename.trim();
+    if (name.isEmpty || filename.isEmpty) return null;
+    final url = joinBaseUrl(baseUrl, 'file/$name/$filename');
+    final token = account?.personalAccessToken ?? '';
+    final headers = token.trim().isEmpty ? null : {'Authorization': 'Bearer $token'};
+    return (url: url, localPath: null, headers: headers);
+  }
+
+  ({String url, String? localPath, Map<String, String>? headers})? _resolveImagePreviewSource(Attachment attachment) {
+    final rawLink = attachment.externalLink.trim();
+    if (rawLink.isNotEmpty) {
+      final localPath = _localAttachmentPath(attachment);
+      if (localPath != null) {
+        return (url: Uri.file(localPath).toString(), localPath: localPath, headers: null);
+      }
+      return (url: rawLink, localPath: null, headers: null);
+    }
+
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    if (baseUrl == null) return null;
+    final name = attachment.name.trim();
+    final filename = attachment.filename.trim();
+    if (name.isEmpty || filename.isEmpty) return null;
+    final rawUrl = joinBaseUrl(baseUrl, 'file/$name/$filename');
+    final url = _appendThumbnailQuery(rawUrl);
+    final token = account?.personalAccessToken ?? '';
+    final headers = token.trim().isEmpty ? null : {'Authorization': 'Bearer $token'};
+    return (url: url, localPath: null, headers: headers);
+  }
+
+  Future<void> _toggleAudioPlayback(LocalMemo memo) async {
+    if (_audioLoading) return;
+    final audioAttachments = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    if (audioAttachments.isEmpty) return;
+    final attachment = audioAttachments.first;
+    final source = _resolveAudioSource(attachment);
+    if (source == null) {
+      _logAudioBreadcrumb('source missing memo=${_shortMemoUid(memo.uid)}');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '无法读取音频资源', en: 'Unable to load audio source.'))),
+      );
+      return;
+    }
+
+    final url = source.url;
+    final sourceLabel = source.localPath != null ? 'local' : 'remote';
+    final sameTarget = _playingMemoUid == memo.uid && _playingAudioUrl == url;
+    if (sameTarget) {
+      if (_audioPlayer.playing) {
+        await _audioPlayer.pause();
+        _stopAudioProgressTimer();
+        _logAudioAction(
+          'pause memo=${_shortMemoUid(memo.uid)} pos=${_formatDuration(_audioPlayer.position)}',
+          context: {
+            'memo': memo.uid,
+            'positionMs': _audioPlayer.position.inMilliseconds,
+            'source': sourceLabel,
+          },
+        );
+      } else {
+        _startAudioProgressTimer();
+        _lastAudioProgressLogAt = null;
+        _logAudioAction(
+          'resume memo=${_shortMemoUid(memo.uid)} pos=${_formatDuration(_audioPlayer.position)}',
+          context: {
+            'memo': memo.uid,
+            'positionMs': _audioPlayer.position.inMilliseconds,
+            'source': sourceLabel,
+          },
+        );
+        await _audioPlayer.play();
+      }
+      _audioPositionNotifier.value = _audioPlayer.position;
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+
+    _resetAudioLogState();
+    _logAudioAction(
+      'load start memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
+      context: {'memo': memo.uid, 'source': sourceLabel},
+    );
+    setState(() {
+      _audioLoading = true;
+      _playingMemoUid = memo.uid;
+      _playingAudioUrl = url;
+    });
+    _audioPositionNotifier.value = Duration.zero;
+    _audioDurationNotifier.value = null;
+
+    try {
+      await _audioPlayer.stop();
+      Duration? loadedDuration;
+      if (source.localPath != null) {
+        loadedDuration = await _audioPlayer.setFilePath(source.localPath!);
+      } else {
+        loadedDuration = await _audioPlayer.setUrl(url, headers: source.headers);
+      }
+      final resolvedDuration = loadedDuration ?? _audioPlayer.duration;
+      _audioDurationNotifier.value = resolvedDuration;
+      if (resolvedDuration == null || resolvedDuration <= Duration.zero) {
+        _audioDurationMissingLogged = true;
+        _logAudioBreadcrumb(
+          'duration missing memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
+          context: {'memo': memo.uid, 'durationMs': resolvedDuration?.inMilliseconds, 'source': sourceLabel},
+        );
+      } else {
+        _lastAudioLoggedDuration = resolvedDuration;
+        _logAudioBreadcrumb(
+          'duration memo=${_shortMemoUid(memo.uid)} dur=${_formatDuration(resolvedDuration)} source=$sourceLabel',
+          context: {'memo': memo.uid, 'durationMs': resolvedDuration.inMilliseconds, 'source': sourceLabel},
+        );
+      }
+      _logAudioAction(
+        'play memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
+        context: {'memo': memo.uid, 'source': sourceLabel},
+      );
+      _startAudioProgressTimer();
+      if (mounted) {
+        setState(() => _audioLoading = false);
+      }
+      await _audioPlayer.play();
+    } catch (e, stackTrace) {
+      _logAudioError(
+        'playback failed memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
+        e,
+        stackTrace,
+      );
+      if (!mounted) return;
+      setState(() {
+        _audioLoading = false;
+        _playingMemoUid = null;
+        _playingAudioUrl = null;
+      });
+      _stopAudioProgressTimer();
+      _audioPositionNotifier.value = Duration.zero;
+      _audioDurationNotifier.value = null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '播放失败: $e', en: 'Playback failed: $e'))),
+      );
+      return;
+    }
   }
 
   void _openDrawerIfNeeded() {
@@ -172,7 +607,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   }
 
   bool get _isAllMemos {
-    final tag = widget.tag;
+    final tag = _activeTagFilter;
     return widget.state == 'NORMAL' && (tag == null || tag.isEmpty);
   }
 
@@ -493,10 +928,149 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         false;
     if (!confirmed) return;
 
+    _removeMemoWithAnimation(memo);
     final db = ref.read(databaseProvider);
     await db.deleteMemoByUid(memo.uid);
     await db.enqueueOutbox(type: 'delete_memo', payload: {'uid': memo.uid, 'force': false});
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+  }
+
+  Future<void> _handleMemoAction(LocalMemo memo, _MemoCardAction action) async {
+    switch (action) {
+      case _MemoCardAction.togglePinned:
+        await _updateMemo(memo, pinned: !memo.pinned);
+        return;
+      case _MemoCardAction.edit:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
+        );
+        return;
+      case _MemoCardAction.delete:
+        await _deleteMemo(memo);
+        return;
+    }
+  }
+
+  void _removeMemoWithAnimation(LocalMemo memo) {
+    final index = _animatedMemos.indexWhere((m) => m.uid == memo.uid);
+    if (index < 0) return;
+    final removed = _animatedMemos.removeAt(index);
+    _pendingRemovedUids.add(removed.uid);
+
+    _listKey.currentState?.removeItem(
+      index,
+      (context, animation) => _buildAnimatedMemoItem(
+        context: context,
+        memo: removed,
+        animation: animation,
+        prefs: ref.read(appPreferencesProvider),
+        removing: true,
+      ),
+      duration: const Duration(milliseconds: 380),
+    );
+    setState(() {});
+  }
+
+  void _syncAnimatedMemos(List<LocalMemo> memos, String signature) {
+    if (_pendingRemovedUids.isNotEmpty) {
+      final memoIds = memos.map((m) => m.uid).toSet();
+      _pendingRemovedUids.removeWhere((uid) => !memoIds.contains(uid));
+    }
+    final filtered = memos.where((m) => !_pendingRemovedUids.contains(m.uid)).toList(growable: true);
+    if (_listSignature != signature || !_sameMemoList(_animatedMemos, filtered)) {
+      _listSignature = signature;
+      _animatedMemos = filtered;
+      _listKey = GlobalKey<AnimatedListState>();
+    }
+  }
+
+  static bool _sameMemoList(List<LocalMemo> a, List<LocalMemo> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].uid != b[i].uid) return false;
+    }
+    return true;
+  }
+
+  Widget _buildAnimatedMemoItem({
+    required BuildContext context,
+    required LocalMemo memo,
+    required Animation<double> animation,
+    required AppPreferences prefs,
+    required bool removing,
+  }) {
+    final curved = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+    return SizeTransition(
+      sizeFactor: curved,
+      axis: Axis.vertical,
+      axisAlignment: 0.0,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: _buildMemoCard(
+          context,
+          memo,
+          prefs: prefs,
+          removing: removing,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemoCard(
+    BuildContext context,
+    LocalMemo memo, {
+    required AppPreferences prefs,
+    required bool removing,
+  }) {
+    final displayTime = memo.createTime.millisecondsSinceEpoch > 0 ? memo.createTime : memo.updateTime;
+    final isAudioActive = _playingMemoUid == memo.uid;
+    final isAudioPlaying = isAudioActive && _audioPlayer.playing;
+    final isAudioLoading = isAudioActive && _audioLoading;
+    final audioPositionListenable = isAudioActive ? _audioPositionNotifier : null;
+    final audioDurationListenable = isAudioActive ? _audioDurationNotifier : null;
+    final imageAttachment = _firstImageAttachment(memo);
+    final imageSource = imageAttachment == null ? null : _resolveImagePreviewSource(imageAttachment);
+    final hapticsEnabled = prefs.hapticsEnabled;
+
+    void maybeHaptic() {
+      if (hapticsEnabled) {
+        HapticFeedback.selectionClick();
+      }
+    }
+
+    return _MemoCard(
+      key: ValueKey(memo.uid),
+      memo: memo,
+      dateText: _dateFmt.format(displayTime),
+      collapseLongContent: prefs.collapseLongContent,
+      collapseReferences: prefs.collapseReferences,
+      isAudioPlaying: removing ? false : isAudioPlaying,
+      isAudioLoading: removing ? false : isAudioLoading,
+      audioPositionListenable: removing ? null : audioPositionListenable,
+      audioDurationListenable: removing ? null : audioDurationListenable,
+      imageSource: imageSource,
+      onAudioSeek: removing || !isAudioActive ? null : (pos) => _seekAudioPosition(memo, pos),
+      onAudioTap: removing ? null : () => _toggleAudioPlayback(memo),
+      onToggleTask: removing
+          ? (_) {}
+          : (index) {
+              unawaited(
+                _toggleMemoCheckbox(
+                  memo,
+                  index,
+                  skipQuotedLines: prefs.collapseReferences,
+                ),
+              );
+            },
+      onTap: removing
+          ? () {}
+          : () {
+              maybeHaptic();
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo)));
+            },
+      onAction: removing ? (_) {} : (action) async => _handleMemoAction(memo, action),
+    );
   }
 
   void _dismissSyncBubble() {
@@ -633,10 +1207,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final selectedShortcut = _findShortcutById(shortcuts);
     final shortcutFilter = selectedShortcut?.filter ?? '';
     final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
+    final resolvedTag = _activeTagFilter;
     final shortcutQuery = (
       searchQuery: searchQuery,
       state: widget.state,
-      tag: widget.tag,
+      tag: resolvedTag,
       shortcutFilter: shortcutFilter,
     );
     final memosAsync = useShortcutFilter
@@ -646,7 +1221,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               (
                 searchQuery: searchQuery,
                 state: widget.state,
-                tag: widget.tag,
+                tag: resolvedTag,
               ),
             ),
           );
@@ -689,16 +1264,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
             )
           : null,
       body: memosAsync.when(
-        data: (memos) => RefreshIndicator(
-          onRefresh: () async {
-            await ref.read(syncControllerProvider.notifier).syncNow();
-            if (useShortcutFilter) {
-              ref.invalidate(shortcutMemosProvider(shortcutQuery));
-            }
-          },
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
+        data: (memos) {
+          final listSignature = '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
+              '${useShortcutFilter ? 1 : 0}';
+          _syncAnimatedMemos(memos, listSignature);
+          final visibleMemos = _animatedMemos;
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await ref.read(syncControllerProvider.notifier).syncNow();
+              if (useShortcutFilter) {
+                ref.invalidate(shortcutMemosProvider(shortcutQuery));
+              }
+            },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
               SliverAppBar(
                 pinned: true,
                 backgroundColor: headerBg,
@@ -740,42 +1321,52 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                           onSubmitted: _submitSearch,
                         ),
                       )
-                    : InkWell(
-                        key: _titleKey,
-                        onTap: () {
-                          maybeHaptic();
-                          _openTitleMenu();
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            const SizedBox(width: 4),
-                            Icon(Icons.expand_more, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
-                          ],
-                        ),
-                      ),
-                actions: _searching
-                    ? [
-                        TextButton(
-                          onPressed: _closeSearch,
-                          child: Text(
-                            context.tr(zh: '取消', en: 'Cancel'),
-                            style: TextStyle(
-                              color: MemoFlowPalette.primary,
-                              fontWeight: FontWeight.w600,
+                    : (widget.enableTitleMenu
+                        ? InkWell(
+                            key: _titleKey,
+                            onTap: () {
+                              maybeHaptic();
+                              _openTitleMenu();
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.expand_more,
+                                  size: 18,
+                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                                ),
+                              ],
                             ),
-                          ),
-                        ),
-                      ]
-                    : [
-                        IconButton(
-                          tooltip: context.tr(zh: '搜索', en: 'Search'),
-                          onPressed: _openSearch,
-                          icon: const Icon(Icons.search),
-                        ),
-                      ],
+                          )
+                        : Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700))),
+                actions: _searching
+                    ? (widget.enableSearch
+                        ? [
+                            TextButton(
+                              onPressed: _closeSearch,
+                              child: Text(
+                                context.tr(zh: '取消', en: 'Cancel'),
+                                style: TextStyle(
+                                  color: MemoFlowPalette.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ]
+                        : null)
+                    : (widget.enableSearch
+                        ? [
+                            IconButton(
+                              tooltip: context.tr(zh: '搜索', en: 'Search'),
+                              onPressed: _openSearch,
+                              icon: const Icon(Icons.search),
+                            ),
+                          ]
+                        : null),
                 flexibleSpace: ClipRect(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
@@ -784,27 +1375,53 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 ),
                 bottom: _searching
                     ? null
-                    : PreferredSize(
-                        preferredSize: const Size.fromHeight(56),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: _PillRow(
-                            onWeeklyInsights: () {
-                              maybeHaptic();
-                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
-                            },
-                            onAiSummary: () {
-                              maybeHaptic();
-                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AiSummaryScreen()));
-                            },
-                            onDailyReview: () {
-                              maybeHaptic();
-                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
-                            },
-                          ),
-                        ),
-                      ),
+                    : (widget.showPillActions
+                        ? PreferredSize(
+                            preferredSize: const Size.fromHeight(56),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                              child: _PillRow(
+                                onWeeklyInsights: () {
+                                  maybeHaptic();
+                                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
+                                },
+                                onAiSummary: () {
+                                  maybeHaptic();
+                                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AiSummaryScreen()));
+                                },
+                                onDailyReview: () {
+                                  maybeHaptic();
+                                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
+                                },
+                              ),
+                            ),
+                          )
+                        : (widget.showFilterTagChip && (resolvedTag?.trim().isNotEmpty ?? false)
+                            ? PreferredSize(
+                                preferredSize: const Size.fromHeight(48),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _FilterTagChip(
+                                      label: '#${resolvedTag!.trim()}',
+                                      onClear: widget.showTagFilters
+                                          ? () => _selectTagFilter(null)
+                                          : (widget.showDrawer ? _backToAllMemos : () => context.safePop()),
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : null)),
               ),
+              if (widget.showTagFilters && !_searching && recommendedTags.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _TagFilterBar(
+                    tags: recommendedTags.take(12).map((e) => e.tag).toList(growable: false),
+                    selectedTag: resolvedTag,
+                    onSelectTag: _selectTagFilter,
+                  ),
+                ),
               if (showSearchLanding)
                 SliverToBoxAdapter(
                   child: _SearchLanding(
@@ -816,7 +1433,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                     onSelectTag: _applySearchQuery,
                   ),
                 )
-              else if (memos.isEmpty)
+              else if (visibleMemos.isEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 140),
@@ -832,52 +1449,29 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               else
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
-                  sliver: SliverList.separated(
-                    itemBuilder: (context, index) {
-                      final memo = memos[index];
-                      return _MemoCard(
-                        key: ValueKey(memo.uid),
-                        memo: memo,
-                        dateText: _dateFmt.format(memo.updateTime),
-                        collapseLongContent: prefs.collapseLongContent,
-                        collapseReferences: prefs.collapseReferences,
-                        onToggleTask: (index) {
-                          unawaited(
-                            _toggleMemoCheckbox(
-                              memo,
-                              index,
-                              skipQuotedLines: prefs.collapseReferences,
-                            ),
-                          );
-                        },
-                        onTap: () {
-                          maybeHaptic();
-                          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo)));
-                        },
-                        onAction: (action) async {
-                          switch (action) {
-                            case _MemoCardAction.togglePinned:
-                              await _updateMemo(memo, pinned: !memo.pinned);
-                              return;
-                            case _MemoCardAction.edit:
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
-                              );
-                              return;
-                            case _MemoCardAction.delete:
-                              await _deleteMemo(memo);
-                              return;
-                          }
-                        },
-                      );
-                    },
-                    separatorBuilder: (context, index) => const SizedBox(height: 14),
-                    itemCount: memos.length,
+                  sliver: SliverToBoxAdapter(
+                    child: AnimatedList(
+                      key: _listKey,
+                      initialItemCount: visibleMemos.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemBuilder: (context, index, animation) {
+                        final memo = visibleMemos[index];
+                        return _buildAnimatedMemoItem(
+                          context: context,
+                          memo: memo,
+                          animation: animation,
+                          prefs: prefs,
+                          removing: false,
+                        );
+                      },
+                    ),
                   ),
                 ),
             ],
           ),
-        ),
+        );
+        },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
       ),
@@ -1364,6 +1958,141 @@ class _SearchLanding extends StatelessWidget {
   }
 }
 
+class _TagFilterBar extends StatelessWidget {
+  const _TagFilterBar({
+    required this.tags,
+    required this.selectedTag,
+    required this.onSelectTag,
+  });
+
+  final List<String> tags;
+  final String? selectedTag;
+  final ValueChanged<String?> onSelectTag;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final accent = MemoFlowPalette.primary;
+    final chipBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final selectedBg = accent.withValues(alpha: isDark ? 0.22 : 0.14);
+    final selectedBorder = accent.withValues(alpha: isDark ? 0.55 : 0.6);
+    final normalizedSelected = (selectedTag ?? '').trim();
+
+    Widget buildChip(String label, {required bool selected, required VoidCallback onTap}) {
+      final bg = selected ? selectedBg : chipBg;
+      final chipBorder = selected ? selectedBorder : border;
+      final textColor = selected ? accent : textMuted;
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: chipBorder),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: 0.06),
+                    ),
+                  ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.tr(zh: '标签筛选', en: 'Filter by tags'),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              buildChip(
+                context.tr(zh: '全部', en: 'All'),
+                selected: normalizedSelected.isEmpty,
+                onTap: () => onSelectTag(null),
+              ),
+              for (final tag in tags)
+                buildChip(
+                  '#${tag.trim()}',
+                  selected: normalizedSelected == tag.trim(),
+                  onTap: () => onSelectTag(tag),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterTagChip extends StatelessWidget {
+  const _FilterTagChip({
+    required this.label,
+    this.onClear,
+  });
+
+  final String label;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = MemoFlowPalette.primary;
+    final bg = accent.withValues(alpha: isDark ? 0.22 : 0.14);
+    final border = accent.withValues(alpha: isDark ? 0.55 : 0.6);
+    final textColor = accent;
+
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textColor)),
+          if (onClear != null) ...[
+            const SizedBox(width: 6),
+            Icon(Icons.close, size: 14, color: textColor),
+          ],
+        ],
+      ),
+    );
+
+    if (onClear == null) return chip;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onClear,
+        borderRadius: BorderRadius.circular(999),
+        child: chip,
+      ),
+    );
+  }
+}
+
 class _PillButton extends StatelessWidget {
   const _PillButton({
     required this.icon,
@@ -1426,6 +2155,13 @@ class _MemoCard extends StatefulWidget {
     required this.dateText,
     required this.collapseLongContent,
     required this.collapseReferences,
+    required this.isAudioPlaying,
+    required this.isAudioLoading,
+    required this.audioPositionListenable,
+    required this.audioDurationListenable,
+    required this.imageSource,
+    required this.onAudioSeek,
+    required this.onAudioTap,
     required this.onToggleTask,
     required this.onTap,
     required this.onAction,
@@ -1435,6 +2171,13 @@ class _MemoCard extends StatefulWidget {
   final String dateText;
   final bool collapseLongContent;
   final bool collapseReferences;
+  final bool isAudioPlaying;
+  final bool isAudioLoading;
+  final ValueListenable<Duration>? audioPositionListenable;
+  final ValueListenable<Duration?>? audioDurationListenable;
+  final ({String url, String? localPath, Map<String, String>? headers})? imageSource;
+  final ValueChanged<Duration>? onAudioSeek;
+  final VoidCallback? onAudioTap;
   final ValueChanged<int> onToggleTask;
   final VoidCallback onTap;
   final ValueChanged<_MemoCardAction> onAction;
@@ -1494,6 +2237,13 @@ class _MemoCardState extends State<_MemoCard> {
     final onToggleTask = widget.onToggleTask;
     final onTap = widget.onTap;
     final onAction = widget.onAction;
+    final onAudioTap = widget.onAudioTap;
+    final audioPlaying = widget.isAudioPlaying;
+    final audioLoading = widget.isAudioLoading;
+    final audioPositionListenable = widget.audioPositionListenable;
+    final audioDurationListenable = widget.audioDurationListenable;
+    final onAudioSeek = widget.onAudioSeek;
+    final imageSource = widget.imageSource;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
@@ -1505,7 +2255,7 @@ class _MemoCardState extends State<_MemoCard> {
     final audio = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
     final hasAudio = audio.isNotEmpty;
     final language = context.appLanguage;
-    final previewText = _previewText(memo.content, collapseReferences: collapseReferences, language: language);
+    final previewText = _previewText(memo.content, collapseReferences: false, language: language);
     final preview = _truncatePreview(previewText, collapseLongContent: collapseLongContent);
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
@@ -1513,6 +2263,114 @@ class _MemoCardState extends State<_MemoCard> {
     final taskStats = countTaskStats(memo.content, skipQuotedLines: collapseReferences);
     final showProgress = !hasAudio && taskStats.total > 0;
     final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
+    final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
+    final audioDurationFallback = _parseVoiceDurationValue(memo.content);
+
+    Widget buildImagePreview() {
+      if (imageSource == null) return const SizedBox.shrink();
+      const previewWidth = 120.0;
+      const previewHeight = 80.0;
+      final previewBorder = Border.all(color: borderColor.withValues(alpha: 0.7));
+      final previewBg = isDark
+          ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
+          : MemoFlowPalette.audioSurfaceLight;
+
+      Widget image;
+      if (imageSource.localPath != null) {
+        image = Image.file(
+          File(imageSource.localPath!),
+          width: previewWidth,
+          height: previewHeight,
+          fit: BoxFit.cover,
+        );
+      } else {
+        image = CachedNetworkImage(
+          imageUrl: imageSource.url,
+          httpHeaders: imageSource.headers,
+          width: previewWidth,
+          height: previewHeight,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            width: previewWidth,
+            height: previewHeight,
+            color: previewBg,
+            alignment: Alignment.center,
+            child: Icon(Icons.image_outlined, size: 18, color: textMain.withValues(alpha: 0.5)),
+          ),
+          errorWidget: (context, url, error) => Container(
+            width: previewWidth,
+            height: previewHeight,
+            color: previewBg,
+            alignment: Alignment.center,
+            child: Icon(Icons.broken_image_outlined, size: 18, color: textMain.withValues(alpha: 0.5)),
+          ),
+        );
+      }
+
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          width: previewWidth,
+          height: previewHeight,
+          decoration: BoxDecoration(
+            color: previewBg,
+            borderRadius: BorderRadius.circular(12),
+            border: previewBorder,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: image,
+        ),
+      );
+    }
+
+    String formatDuration(Duration value) {
+      final totalSeconds = value.inSeconds;
+      final hh = totalSeconds ~/ 3600;
+      final mm = (totalSeconds % 3600) ~/ 60;
+      final ss = totalSeconds % 60;
+      if (hh <= 0) {
+        return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+      }
+      return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+    }
+
+    Widget buildAudioRow(Duration position, Duration? duration) {
+      final effectiveDuration = duration ?? audioDurationFallback;
+      final clampedPosition =
+          effectiveDuration != null && position > effectiveDuration ? effectiveDuration : position;
+      final totalText = effectiveDuration != null ? formatDuration(effectiveDuration) : audioDurationText;
+      final showPosition = clampedPosition > Duration.zero || audioPlaying;
+      final displayText = effectiveDuration != null && showPosition
+          ? '${formatDuration(clampedPosition)} / $totalText'
+          : (showPosition ? formatDuration(clampedPosition) : totalText);
+
+      return _AudioRow(
+        durationText: displayText,
+        isDark: isDark,
+        playing: audioPlaying,
+        loading: audioLoading,
+        position: clampedPosition,
+        duration: duration,
+        durationFallback: audioDurationFallback,
+        onSeek: onAudioSeek,
+        onTap: onAudioTap,
+      );
+    }
+
+    Widget audioRow = buildAudioRow(Duration.zero, null);
+    if (audioPositionListenable != null && audioDurationListenable != null) {
+      audioRow = ValueListenableBuilder<Duration>(
+        valueListenable: audioPositionListenable,
+        builder: (context, position, _) {
+          return ValueListenableBuilder<Duration?>(
+            valueListenable: audioDurationListenable,
+            builder: (context, duration, __) {
+              return buildAudioRow(position, duration);
+            },
+          );
+        },
+      );
+    }
 
     return Hero(
       tag: memo.uid,
@@ -1585,44 +2443,46 @@ class _MemoCardState extends State<_MemoCard> {
                   _TaskProgressBar(progress: progress, isDark: isDark),
                   const SizedBox(height: 12),
                 ],
-                if (hasAudio)
-                  _AudioRow(
-                    durationText: _parseVoiceDuration(memo.content) ?? '00:00',
-                    isDark: isDark,
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      MemoMarkdown(
-                        data: displayText,
-                        textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
-                        blockSpacing: 4,
-                        normalizeHeadings: true,
-                        onToggleTask: (request) => onToggleTask(request.taskIndex),
-                      ),
-                      if (showToggle) ...[
-                        const SizedBox(height: 4),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () => setState(() => _expanded = !_expanded),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: Text(
-                              _expanded
-                                  ? context.tr(zh: '收起', en: 'Collapse')
-                                  : context.tr(zh: '展开', en: 'Expand'),
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
-                            ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MemoMarkdown(
+                      data: displayText,
+                      textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
+                      blockSpacing: 4,
+                      normalizeHeadings: true,
+                      onToggleTask: (request) => onToggleTask(request.taskIndex),
+                    ),
+                    if (showToggle) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => setState(() => _expanded = !_expanded),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            _expanded
+                                ? context.tr(zh: '收起', en: 'Collapse')
+                                : context.tr(zh: '展开', en: 'Expand'),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
                           ),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                    if (imageSource != null) ...[
+                      const SizedBox(height: 12),
+                      buildImagePreview(),
+                    ],
+                    if (hasAudio) ...[
+                      const SizedBox(height: 12),
+                      audioRow,
+                    ],
+                  ],
+                ),
                 _MemoRelationsSection(memoUid: memo.uid),
               ],
             ),
@@ -1633,13 +2493,38 @@ class _MemoCardState extends State<_MemoCard> {
   }
 
   static String? _parseVoiceDuration(String content) {
-    final m = RegExp(r'[-?]\\s*时长[:：]\\s*(\\d{2}):(\\d{2}):(\\d{2})').firstMatch(content);
-    if (m == null) return null;
-    final hh = int.tryParse(m.group(1) ?? '') ?? 0;
-    final mm = int.tryParse(m.group(2) ?? '') ?? 0;
-    final ss = int.tryParse(m.group(3) ?? '') ?? 0;
+    final value = _parseVoiceDurationValue(content);
+    if (value == null) return null;
+    final totalSeconds = value.inSeconds;
+    final hh = totalSeconds ~/ 3600;
+    final mm = (totalSeconds % 3600) ~/ 60;
+    final ss = totalSeconds % 60;
     if (hh <= 0) return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+  }
+
+  static Duration? _parseVoiceDurationValue(String content) {
+    final linePattern = RegExp(r'^[-*+•·]?\s*', unicode: true);
+    final valuePattern = RegExp(
+      r'^(时长|Duration)\s*[:：]\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$',
+      caseSensitive: false,
+      unicode: true,
+    );
+
+    for (final rawLine in content.split('\n')) {
+      final trimmed = rawLine.trim();
+      if (trimmed.isEmpty) continue;
+      final line = trimmed.replaceFirst(linePattern, '');
+      final m = valuePattern.firstMatch(line);
+      if (m == null) continue;
+      final hh = int.tryParse(m.group(2) ?? '') ?? 0;
+      final mm = int.tryParse(m.group(3) ?? '') ?? 0;
+      final ss = int.tryParse(m.group(4) ?? '') ?? 0;
+      if (hh == 0 && mm == 0 && ss == 0) return null;
+      return Duration(hours: hh, minutes: mm, seconds: ss);
+    }
+
+    return null;
   }
 }
 
@@ -1852,10 +2737,24 @@ class _AudioRow extends StatelessWidget {
   const _AudioRow({
     required this.durationText,
     required this.isDark,
+    required this.playing,
+    required this.loading,
+    required this.position,
+    required this.duration,
+    required this.durationFallback,
+    required this.onSeek,
+    this.onTap,
   });
 
   final String durationText;
   final bool isDark;
+  final bool playing;
+  final bool loading;
+  final Duration position;
+  final Duration? duration;
+  final Duration? durationFallback;
+  final ValueChanged<Duration>? onSeek;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1863,7 +2762,55 @@ class _AudioRow extends StatelessWidget {
     final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
     final text = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: isDark ? 0.4 : 0.6);
 
-    return Container(
+    final icon = !playing && loading
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(MemoFlowPalette.primary),
+            ),
+          )
+        : Icon(playing ? Icons.pause : Icons.play_arrow, size: 20);
+    final effectiveDuration = duration ?? durationFallback;
+    final durationMs = effectiveDuration?.inMilliseconds ?? 0;
+    final positionMs = position.inMilliseconds;
+    final progress = durationMs > 0 ? positionMs / durationMs : 0.0;
+    final progressClamped = progress.clamp(0.0, 1.0).toDouble();
+
+    Widget progressBar = ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: LinearProgressIndicator(
+        value: progressClamped,
+        minHeight: 4,
+        backgroundColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
+        valueColor: AlwaysStoppedAnimation(MemoFlowPalette.primary),
+      ),
+    );
+
+    if (onSeek != null && durationMs > 0) {
+      final baseProgressBar = progressBar;
+      progressBar = LayoutBuilder(
+        builder: (context, constraints) {
+          void seekTo(double dx) {
+            final width = constraints.maxWidth;
+            if (width <= 0) return;
+            final ratio = (dx / width).clamp(0.0, 1.0);
+            final targetMs = (durationMs * ratio).round();
+            onSeek!(Duration(milliseconds: targetMs));
+          }
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => seekTo(details.localPosition.dx),
+            onPanUpdate: (details) => seekTo(details.localPosition.dx),
+            child: baseProgressBar,
+          );
+        },
+      );
+    }
+
+    final content = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: bg,
@@ -1888,25 +2835,10 @@ class _AudioRow extends StatelessWidget {
                       ),
                     ],
             ),
-            child: const Icon(Icons.play_arrow, size: 20),
+            child: Center(child: icon),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: Container(
-                height: 4,
-                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: FractionallySizedBox(
-                    widthFactor: 0.2,
-                    child: ColoredBox(color: MemoFlowPalette.primary),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: progressBar),
           const SizedBox(width: 10),
           Text(
             durationText,
@@ -1917,16 +2849,15 @@ class _AudioRow extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          const SizedBox(width: 10),
-          Row(
-            children: [
-              Icon(Icons.refresh, size: 14, color: text.withValues(alpha: 0.7)),
-              const SizedBox(width: 4),
-              Text(context.tr(zh: '无内容', en: 'No content'), style: TextStyle(fontSize: 11, color: text)),
-            ],
-          ),
         ],
       ),
+    );
+
+    if (onTap == null) return content;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: content,
     );
   }
 }

@@ -325,56 +325,28 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     }
 
     final isArchived = memo.state == 'ARCHIVED';
-    final contentSplit = _MemoContentSplit.fromContent(memo.content);
-    final showCollapsedReferences = prefs.collapseReferences && contentSplit.references.isNotEmpty && contentSplit.main.isNotEmpty;
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
     final canToggleTasks = !widget.readOnly;
 
-    final contentWidget = showCollapsedReferences
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _CollapsibleText(
-                text: contentSplit.main,
-                collapseEnabled: prefs.collapseLongContent,
-                style: contentStyle,
-                hapticsEnabled: hapticsEnabled,
-                onToggleTask: canToggleTasks
-                    ? (request) {
-                        maybeHaptic();
-                        unawaited(_toggleTask(request, skipReferenceLines: true));
-                      }
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              _ReferencesSection(
-                references: contentSplit.references,
-                lineCount: contentSplit.referenceLineCount,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                hapticsEnabled: hapticsEnabled,
-              ),
-            ],
-          )
-        : _CollapsibleText(
-            text: memo.content,
-            collapseEnabled: prefs.collapseLongContent,
-            style: contentStyle,
-            hapticsEnabled: hapticsEnabled,
-            onToggleTask: canToggleTasks
-                ? (request) {
-                    maybeHaptic();
-                    unawaited(_toggleTask(request, skipReferenceLines: false));
-                  }
-                : null,
-          );
+    final contentWidget = _CollapsibleText(
+      text: memo.content,
+      collapseEnabled: prefs.collapseLongContent,
+      style: contentStyle,
+      hapticsEnabled: hapticsEnabled,
+      onToggleTask: canToggleTasks
+          ? (request) {
+              maybeHaptic();
+              unawaited(_toggleTask(request, skipReferenceLines: prefs.collapseReferences));
+            }
+          : null,
+    );
 
+    final displayTime = memo.createTime.millisecondsSinceEpoch > 0 ? memo.createTime : memo.updateTime;
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _dateFmt.format(memo.updateTime),
+          _dateFmt.format(displayTime),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
@@ -1623,39 +1595,6 @@ class _RelationGroup extends StatelessWidget {
   }
 }
 
-class _MemoContentSplit {
-  const _MemoContentSplit({
-    required this.main,
-    required this.references,
-    required this.referenceLineCount,
-  });
-
-  final String main;
-  final String references;
-  final int referenceLineCount;
-
-  factory _MemoContentSplit.fromContent(String content) {
-    final trimmed = content.trim();
-    final lines = trimmed.split('\n');
-    final mainLines = <String>[];
-    final referenceLines = <String>[];
-
-    for (final line in lines) {
-      if (line.trimLeft().startsWith('>')) {
-        referenceLines.add(line.replaceFirst(RegExp(r'^\\s*>\\s?'), ''));
-        continue;
-      }
-      mainLines.add(line);
-    }
-
-    return _MemoContentSplit(
-      main: mainLines.join('\n').trim(),
-      references: referenceLines.join('\n').trim(),
-      referenceLineCount: referenceLines.length,
-    );
-  }
-}
-
 class _CollapsibleText extends StatefulWidget {
   const _CollapsibleText({
     required this.text,
@@ -1743,82 +1682,6 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _ReferencesSection extends StatefulWidget {
-  const _ReferencesSection({
-    required this.references,
-    required this.lineCount,
-    required this.style,
-    required this.hapticsEnabled,
-  });
-
-  final String references;
-  final int lineCount;
-  final TextStyle? style;
-  final bool hapticsEnabled;
-
-  @override
-  State<_ReferencesSection> createState() => _ReferencesSectionState();
-}
-
-class _ReferencesSectionState extends State<_ReferencesSection> {
-  var _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.references.trim().isEmpty) return const SizedBox.shrink();
-
-    final scheme = Theme.of(context).colorScheme;
-    final border = scheme.outlineVariant.withValues(alpha: 0.6);
-    final headerText = widget.lineCount > 0
-        ? context.tr(zh: '引用 ${widget.lineCount} 行', en: 'Quoted ${widget.lineCount} lines')
-        : context.tr(zh: '引用', en: 'Quotes');
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () {
-                if (widget.hapticsEnabled) {
-                  HapticFeedback.selectionClick();
-                }
-                setState(() => _expanded = !_expanded);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(headerText, style: Theme.of(context).textTheme.labelLarge)),
-                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: scheme.onSurfaceVariant),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: MemoMarkdown(
-                data: widget.references.trim(),
-                textStyle: widget.style,
-                selectable: true,
-                blockSpacing: 4,
-              ),
-            ),
-        ],
-      ),
     );
   }
 }
