@@ -1233,6 +1233,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final headerBg = (isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight).withValues(alpha: 0.9);
+    final listTopPadding = widget.showPillActions ? 8.0 : 16.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
     void maybeHaptic() {
@@ -1377,9 +1378,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                     ? null
                     : (widget.showPillActions
                         ? PreferredSize(
-                            preferredSize: const Size.fromHeight(56),
+                            preferredSize: const Size.fromHeight(52),
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                               child: _PillRow(
                                 onWeeklyInsights: () {
                                   maybeHaptic();
@@ -1448,7 +1449,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
+                  padding: EdgeInsets.fromLTRB(16, listTopPadding, 16, 140),
                   sliver: SliverToBoxAdapter(
                     child: AnimatedList(
                       key: _listKey,

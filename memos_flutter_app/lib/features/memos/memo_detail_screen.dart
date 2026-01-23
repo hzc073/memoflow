@@ -465,7 +465,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                 final fromHero = fromHeroContext.widget as Hero;
                 final toHero = toHeroContext.widget as Hero;
                 final child = flightDirection == HeroFlightDirection.push ? fromHero.child : toHero.child;
-                return Material(color: Colors.transparent, child: RepaintBoundary(child: child));
+                final safeChild = SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: child,
+                );
+                return Material(color: Colors.transparent, child: RepaintBoundary(child: safeChild));
               },
               child: RepaintBoundary(child: Container(color: cardColor)),
             ),
