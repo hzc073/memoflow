@@ -51,7 +51,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _pendingAttachments = <_PendingAttachment>[];
   final _tagMenuKey = GlobalKey();
   final _todoMenuKey = GlobalKey();
-  final _moreMenuKey = GlobalKey();
   final _visibilityMenuKey = GlobalKey();
   final _undoStack = <TextEditingValue>[];
   final _redoStack = <TextEditingValue>[];
@@ -62,6 +61,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   static const _maxAttachmentBytes = 30 * 1024 * 1024;
   String _visibility = 'PRIVATE';
   bool _visibilityTouched = false;
+  bool _isMoreToolbarOpen = false;
   ProviderSubscription<AsyncValue<UserGeneralSetting>>? _settingsSubscription;
 
   @override
@@ -428,124 +428,101 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     await _openTodoShortcutMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size));
   }
 
-  Future<void> _openMoreMenu() async {
+  void _toggleMoreToolbar() {
     if (_busy) return;
-    final target = _moreMenuKey.currentContext;
-    if (target == null) return;
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final box = target.findRenderObject();
-    if (overlay is! RenderBox || box is! RenderBox) return;
+    setState(() => _isMoreToolbarOpen = !_isMoreToolbarOpen);
+  }
 
-    const iconCount = 6;
-    const iconButtonSize = 32.0;
+  void _closeMoreToolbar() {
+    if (!_isMoreToolbarOpen) return;
+    setState(() => _isMoreToolbarOpen = false);
+  }
+
+  Widget _buildMoreToolbar(BuildContext context, bool isDark) {
+    final iconColor = isDark ? Colors.white70 : Colors.black54;
+    final disabledColor = iconColor.withValues(alpha: 0.45);
     const gap = 6.0;
     const horizontalPadding = 10.0;
     const verticalPadding = 6.0;
-    final menuWidth = iconCount * iconButtonSize + (iconCount - 1) * gap + horizontalPadding * 2;
-    final menuHeight = iconButtonSize + verticalPadding * 2;
+    const iconButtonSize = 32.0;
+    final canEdit = !_busy;
 
-    final overlaySize = overlay.size;
-    final anchor = box.localToGlobal(Offset.zero, ancestor: overlay);
-    var left = anchor.dx + box.size.width / 2 - menuWidth / 2;
-    left = left.clamp(8.0, overlaySize.width - menuWidth - 8.0);
-    var top = anchor.dy - menuHeight - 12;
-    if (top < 8.0) {
-      top = anchor.dy + box.size.height + 12;
+    Widget actionButton({
+      required IconData icon,
+      required VoidCallback onPressed,
+      bool enabled = true,
+    }) {
+      return IconButton(
+        icon: Icon(icon, size: 20, color: enabled ? iconColor : disabledColor),
+        onPressed: enabled
+            ? () {
+                _closeMoreToolbar();
+                onPressed();
+              }
+            : null,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: iconButtonSize, height: iconButtonSize),
+        splashRadius: 18,
+      );
     }
 
-    await showDialog<void>(
-      context: context,
-      barrierColor: Colors.transparent,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
-        final iconColor = isDark ? Colors.white70 : Colors.black54;
-        final disabledColor = iconColor.withValues(alpha: 0.35);
-        Widget actionButton({
-          required IconData icon,
-          required VoidCallback onPressed,
-          bool enabled = true,
-        }) {
-          return IconButton(
-            icon: Icon(icon, size: 20, color: enabled ? iconColor : disabledColor),
-            onPressed: enabled ? onPressed : null,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: iconButtonSize, height: iconButtonSize),
-            splashRadius: 18,
-          );
-        }
-
-        void closeMenuAnd(VoidCallback action) {
-          Navigator.of(dialogContext).pop();
-          action();
-        }
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(dialogContext).pop(),
-          child: Stack(
-            children: [
-              Positioned(
-                left: left,
-                top: top,
-                child: Material(
-                  color: Colors.transparent,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF2B2B2B) : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        actionButton(
-                          icon: Icons.format_bold,
-                          onPressed: () => closeMenuAnd(_toggleBold),
-                        ),
-                        const SizedBox(width: gap),
-                        actionButton(
-                          icon: Icons.format_list_bulleted,
-                          onPressed: () => closeMenuAnd(() => _insertText('- ')),
-                        ),
-                        const SizedBox(width: gap),
-                        actionButton(
-                          icon: Icons.format_underlined,
-                          onPressed: () => closeMenuAnd(_toggleUnderline),
-                        ),
-                        const SizedBox(width: gap),
-                        actionButton(
-                          icon: Icons.photo_camera_outlined,
-                          onPressed: () => closeMenuAnd(_capturePhoto),
-                        ),
-                        const SizedBox(width: gap),
-                        actionButton(
-                          icon: Icons.undo,
-                          enabled: _undoStack.isNotEmpty,
-                          onPressed: () => closeMenuAnd(_undo),
-                        ),
-                        const SizedBox(width: gap),
-                        actionButton(
-                          icon: Icons.redo,
-                          enabled: _redoStack.isNotEmpty,
-                          onPressed: () => closeMenuAnd(_redo),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2B2B2B) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
-        );
-      },
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            actionButton(
+              icon: Icons.format_bold,
+              enabled: canEdit,
+              onPressed: _toggleBold,
+            ),
+            const SizedBox(width: gap),
+            actionButton(
+              icon: Icons.format_list_bulleted,
+              enabled: canEdit,
+              onPressed: () => _insertText('- '),
+            ),
+            const SizedBox(width: gap),
+            actionButton(
+              icon: Icons.format_underlined,
+              enabled: canEdit,
+              onPressed: _toggleUnderline,
+            ),
+            const SizedBox(width: gap),
+            actionButton(
+              icon: Icons.photo_camera_outlined,
+              enabled: canEdit,
+              onPressed: _capturePhoto,
+            ),
+            const SizedBox(width: gap),
+            actionButton(
+              icon: Icons.undo,
+              enabled: canEdit && _undoStack.isNotEmpty,
+              onPressed: _undo,
+            ),
+            const SizedBox(width: gap),
+            actionButton(
+              icon: Icons.redo,
+              enabled: canEdit && _redoStack.isNotEmpty,
+              onPressed: _redo,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -834,6 +811,8 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : MemoFlowPalette.audioSurfaceLight;
     final chipText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final chipDelete = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.grey.shade500;
+    final moreBg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    final moreBorder = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08);
     final (visibilityLabel, visibilityIcon, visibilityColor) = _resolveVisibilityStyle(context, _visibility);
 
     final tagStats = _tagStatsCache;
@@ -924,62 +903,121 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                               .toList(growable: false),
                         ),
                       ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) {
+                        return SizeTransition(
+                          sizeFactor: animation,
+                          axisAlignment: -1,
+                          child: FadeTransition(opacity: animation, child: child),
+                        );
+                      },
+                      child: _isMoreToolbarOpen
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _buildMoreToolbar(context, isDark),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
                       child: Row(
                         children: [
-                          IconButton(
-                            key: _tagMenuKey,
-                            tooltip: 'Tag',
-                            onPressed: _busy
-                                ? null
-                                : () async {
-                                    _insertText('#');
-                                    await _openTagMenuFromKey(_tagMenuKey, tagStats);
-                                  },
-                            icon: Icon(Icons.tag, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                          ),
-                          IconButton(
-                            tooltip: 'Attachment',
-                            onPressed: _busy ? null : _pickAttachments,
-                            icon: Icon(Icons.attach_file, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                          ),
-                          IconButton(
-                            key: _todoMenuKey,
-                            tooltip: 'Todo',
-                            onPressed: _busy ? null : () => _openTodoShortcutMenuFromKey(_todoMenuKey),
-                            icon: Icon(Icons.playlist_add_check, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                          ),
-                          IconButton(
-                            tooltip: 'Link',
-                            onPressed: _busy ? null : _openLinkMemoSheet,
-                            icon: Icon(Icons.alternate_email_rounded, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                          ),
-                          Container(width: 1, height: 20, color: dividerColor),
-                          IconButton(
-                            key: _moreMenuKey,
-                            tooltip: 'More',
-                            onPressed: _busy ? null : _openMoreMenu,
-                            icon: Icon(Icons.more_horiz, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                          ),
-                          Tooltip(
-                            message: context.tr(zh: '可见性：$visibilityLabel', en: 'Visibility: $visibilityLabel'),
-                            child: InkResponse(
-                              key: _visibilityMenuKey,
-                              onTap: _busy ? null : () => _openVisibilityMenuFromKey(_visibilityMenuKey),
-                              radius: 18,
-                              child: Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: visibilityColor.withValues(alpha: 0.85), width: 1.6),
-                                ),
-                                child: Icon(visibilityIcon, size: 14, color: visibilityColor),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                    key: _tagMenuKey,
+                                    tooltip: 'Tag',
+                                    onPressed: _busy
+                                        ? null
+                                        : () async {
+                                            _closeMoreToolbar();
+                                            _insertText('#');
+                                            await _openTagMenuFromKey(_tagMenuKey, tagStats);
+                                          },
+                                    icon: Icon(Icons.tag, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Attachment',
+                                    onPressed: _busy
+                                        ? null
+                                        : () async {
+                                            _closeMoreToolbar();
+                                            await _pickAttachments();
+                                          },
+                                    icon: Icon(Icons.attach_file, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                  ),
+                                  IconButton(
+                                    key: _todoMenuKey,
+                                    tooltip: 'Todo',
+                                    onPressed: _busy
+                                        ? null
+                                        : () async {
+                                            _closeMoreToolbar();
+                                            await _openTodoShortcutMenuFromKey(_todoMenuKey);
+                                          },
+                                    icon: Icon(Icons.playlist_add_check, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Link',
+                                    onPressed: _busy
+                                        ? null
+                                        : () async {
+                                            _closeMoreToolbar();
+                                            await _openLinkMemoSheet();
+                                          },
+                                    icon: Icon(Icons.alternate_email_rounded, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                  ),
+                                  Container(width: 1, height: 20, color: dividerColor),
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 160),
+                                    decoration: BoxDecoration(
+                                      color: _isMoreToolbarOpen ? moreBg : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: _isMoreToolbarOpen ? Border.all(color: moreBorder, width: 1) : null,
+                                    ),
+                                    child: IconButton(
+                                      tooltip: 'More',
+                                      onPressed: _busy ? null : _toggleMoreToolbar,
+                                      icon: Icon(Icons.more_horiz, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                    ),
+                                  ),
+                                  Tooltip(
+                                    message: context.tr(zh: '可见性：$visibilityLabel', en: 'Visibility: $visibilityLabel'),
+                                    child: InkResponse(
+                                      key: _visibilityMenuKey,
+                                      onTap: _busy
+                                          ? null
+                                          : () {
+                                              _closeMoreToolbar();
+                                              _openVisibilityMenuFromKey(_visibilityMenuKey);
+                                            },
+                                      radius: 18,
+                                      child: Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: visibilityColor.withValues(alpha: 0.85), width: 1.6),
+                                        ),
+                                        child: Icon(visibilityIcon, size: 14, color: visibilityColor),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 8),
                           GestureDetector(
                             onTap: _busy ? null : _submitOrVoice,
                             child: AnimatedScale(

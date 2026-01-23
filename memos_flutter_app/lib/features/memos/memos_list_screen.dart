@@ -47,7 +47,10 @@ const _maxPreviewRunes = 220;
 
 typedef _PreviewResult = ({String text, bool truncated});
 
-_PreviewResult _truncatePreview(String text, {required bool collapseLongContent}) {
+_PreviewResult _truncatePreview(
+  String text, {
+  required bool collapseLongContent,
+}) {
   if (!collapseLongContent) {
     return (text: text, truncated: false);
   }
@@ -198,7 +201,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           _audioDurationMissingLogged = true;
           _logAudioBreadcrumb(
             'duration missing memo=${_shortMemoUid(_playingMemoUid!)}',
-            context: {'memo': _playingMemoUid!, 'durationMs': duration?.inMilliseconds},
+            context: {
+              'memo': _playingMemoUid!,
+              'durationMs': duration?.inMilliseconds,
+            },
           );
         }
         return;
@@ -207,7 +213,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       _lastAudioLoggedDuration = duration;
       _logAudioBreadcrumb(
         'duration memo=${_shortMemoUid(_playingMemoUid!)} dur=${_formatDuration(duration)}',
-        context: {'memo': _playingMemoUid!, 'durationMs': duration.inMilliseconds},
+        context: {
+          'memo': _playingMemoUid!,
+          'durationMs': duration.inMilliseconds,
+        },
       );
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _openDrawerIfNeeded());
@@ -276,7 +285,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   void _logAudioError(String message, Object error, StackTrace stackTrace) {
     if (!mounted) return;
     ref.read(loggerServiceProvider).recordError('Audio $message');
-    ref.read(logManagerProvider).error('Audio $message', error: error, stackTrace: stackTrace);
+    ref
+        .read(logManagerProvider)
+        .error('Audio $message', error: error, stackTrace: stackTrace);
   }
 
   void _maybeLogAudioProgress(Duration position) {
@@ -329,7 +340,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     _audioProgressBase = _audioPlayer.position;
     _audioProgressLast = _audioProgressBase;
     _audioProgressStart = DateTime.now();
-    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (
+      _,
+    ) {
       if (!mounted || _playingMemoUid == null) return;
       final now = DateTime.now();
       var position = _audioPlayer.position;
@@ -388,12 +401,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     return uri.replace(queryParameters: params).toString();
   }
 
-  ({String url, String? localPath, Map<String, String>? headers})? _resolveAudioSource(Attachment attachment) {
+  ({String url, String? localPath, Map<String, String>? headers})?
+  _resolveAudioSource(Attachment attachment) {
     final rawLink = attachment.externalLink.trim();
     if (rawLink.isNotEmpty) {
       final localPath = _localAttachmentPath(attachment);
       if (localPath != null) {
-        return (url: Uri.file(localPath).toString(), localPath: localPath, headers: null);
+        return (
+          url: Uri.file(localPath).toString(),
+          localPath: localPath,
+          headers: null,
+        );
       }
       return (url: rawLink, localPath: null, headers: null);
     }
@@ -406,16 +424,23 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (name.isEmpty || filename.isEmpty) return null;
     final url = joinBaseUrl(baseUrl, 'file/$name/$filename');
     final token = account?.personalAccessToken ?? '';
-    final headers = token.trim().isEmpty ? null : {'Authorization': 'Bearer $token'};
+    final headers = token.trim().isEmpty
+        ? null
+        : {'Authorization': 'Bearer $token'};
     return (url: url, localPath: null, headers: headers);
   }
 
-  ({String url, String? localPath, Map<String, String>? headers})? _resolveImagePreviewSource(Attachment attachment) {
+  ({String url, String? localPath, Map<String, String>? headers})?
+  _resolveImagePreviewSource(Attachment attachment) {
     final rawLink = attachment.externalLink.trim();
     if (rawLink.isNotEmpty) {
       final localPath = _localAttachmentPath(attachment);
       if (localPath != null) {
-        return (url: Uri.file(localPath).toString(), localPath: localPath, headers: null);
+        return (
+          url: Uri.file(localPath).toString(),
+          localPath: localPath,
+          headers: null,
+        );
       }
       return (url: rawLink, localPath: null, headers: null);
     }
@@ -429,13 +454,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final rawUrl = joinBaseUrl(baseUrl, 'file/$name/$filename');
     final url = _appendThumbnailQuery(rawUrl);
     final token = account?.personalAccessToken ?? '';
-    final headers = token.trim().isEmpty ? null : {'Authorization': 'Bearer $token'};
+    final headers = token.trim().isEmpty
+        ? null
+        : {'Authorization': 'Bearer $token'};
     return (url: url, localPath: null, headers: headers);
   }
 
   Future<void> _toggleAudioPlayback(LocalMemo memo) async {
     if (_audioLoading) return;
-    final audioAttachments = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    final audioAttachments = memo.attachments
+        .where((a) => a.type.startsWith('audio'))
+        .toList(growable: false);
     if (audioAttachments.isEmpty) return;
     final attachment = audioAttachments.first;
     final source = _resolveAudioSource(attachment);
@@ -443,7 +472,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       _logAudioBreadcrumb('source missing memo=${_shortMemoUid(memo.uid)}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法读取音频资源', en: 'Unable to load audio source.'))),
+        SnackBar(
+          content: Text(
+            context.tr(zh: '无法读取音频资源', en: 'Unable to load audio source.'),
+          ),
+        ),
       );
       return;
     }
@@ -502,7 +535,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (source.localPath != null) {
         loadedDuration = await _audioPlayer.setFilePath(source.localPath!);
       } else {
-        loadedDuration = await _audioPlayer.setUrl(url, headers: source.headers);
+        loadedDuration = await _audioPlayer.setUrl(
+          url,
+          headers: source.headers,
+        );
       }
       final resolvedDuration = loadedDuration ?? _audioPlayer.duration;
       _audioDurationNotifier.value = resolvedDuration;
@@ -510,13 +546,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         _audioDurationMissingLogged = true;
         _logAudioBreadcrumb(
           'duration missing memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
-          context: {'memo': memo.uid, 'durationMs': resolvedDuration?.inMilliseconds, 'source': sourceLabel},
+          context: {
+            'memo': memo.uid,
+            'durationMs': resolvedDuration?.inMilliseconds,
+            'source': sourceLabel,
+          },
         );
       } else {
         _lastAudioLoggedDuration = resolvedDuration;
         _logAudioBreadcrumb(
           'duration memo=${_shortMemoUid(memo.uid)} dur=${_formatDuration(resolvedDuration)} source=$sourceLabel',
-          context: {'memo': memo.uid, 'durationMs': resolvedDuration.inMilliseconds, 'source': sourceLabel},
+          context: {
+            'memo': memo.uid,
+            'durationMs': resolvedDuration.inMilliseconds,
+            'source': sourceLabel,
+          },
         );
       }
       _logAudioAction(
@@ -544,14 +588,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       _audioPositionNotifier.value = Duration.zero;
       _audioDurationNotifier.value = null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '播放失败: $e', en: 'Playback failed: $e'))),
+        SnackBar(
+          content: Text(context.tr(zh: '播放失败: $e', en: 'Playback failed: $e')),
+        ),
       );
       return;
     }
   }
 
   void _openDrawerIfNeeded() {
-    if (!mounted || _openedDrawerOnStart || !widget.openDrawerOnStart || !widget.showDrawer) {
+    if (!mounted ||
+        _openedDrawerOnStart ||
+        !widget.openDrawerOnStart ||
+        !widget.showDrawer) {
       return;
     }
     _openedDrawerOnStart = true;
@@ -595,12 +644,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   String _formatShortcutLoadError(BuildContext context, Object error) {
     if (error is UnsupportedError) {
-      return context.tr(zh: '当前服务器不支持快捷筛选', en: 'Shortcuts are not supported on this server.');
+      return context.tr(
+        zh: '当前服务器不支持快捷筛选',
+        en: 'Shortcuts are not supported on this server.',
+      );
     }
     if (error is DioException) {
       final status = error.response?.statusCode ?? 0;
       if (status == 404 || status == 405) {
-        return context.tr(zh: '当前服务器不支持快捷筛选', en: 'Shortcuts are not supported on this server.');
+        return context.tr(
+          zh: '当前服务器不支持快捷筛选',
+          en: 'Shortcuts are not supported on this server.',
+        );
       }
     }
     return context.tr(zh: '快捷筛选加载失败', en: 'Failed to load shortcuts.');
@@ -639,11 +694,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     }
 
     final now = DateTime.now();
-    if (_lastBackPressedAt == null || now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {
+    if (_lastBackPressedAt == null ||
+        now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {
       _lastBackPressedAt = now;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '再按一次返回退出', en: 'Press back again to exit')),
+          content: Text(
+            context.tr(zh: '再按一次返回退出', en: 'Press back again to exit'),
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -659,21 +717,30 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     }
     context.safePop();
     final route = switch (dest) {
-        AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
-        AppDrawerDestination.syncQueue => const SyncQueueScreen(),
-        AppDrawerDestination.explore => const ExploreScreen(),
-        AppDrawerDestination.dailyReview => const DailyReviewScreen(),
+      AppDrawerDestination.memos => const MemosListScreen(
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
+      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
+      AppDrawerDestination.explore => const ExploreScreen(),
+      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived =>
-        MemosListScreen(title: context.tr(zh: '回收站', en: 'Archive'), state: 'ARCHIVED', showDrawer: true),
+      AppDrawerDestination.archived => MemosListScreen(
+        title: context.tr(zh: '回收站', en: 'Archive'),
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
     };
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
   }
 
   void _openNotifications() {
@@ -681,7 +748,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
     context.safePop();
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
+    );
   }
 
   void _openTagFromDrawer(String tag) {
@@ -728,12 +797,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
             ),
             ...accounts.map(
               (a) => ListTile(
-                leading: Icon(a.key == session?.currentKey ? Icons.radio_button_checked : Icons.radio_button_off),
-                title: Text(a.user.displayName.isNotEmpty ? a.user.displayName : a.user.name),
+                leading: Icon(
+                  a.key == session?.currentKey
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: Text(
+                  a.user.displayName.isNotEmpty
+                      ? a.user.displayName
+                      : a.user.name,
+                ),
                 subtitle: Text(a.baseUrl.toString()),
                 onTap: () async {
                   context.safePop();
-                  await ref.read(appSessionProvider.notifier).switchAccount(a.key);
+                  await ref
+                      .read(appSessionProvider.notifier)
+                      .switchAccount(a.key);
                 },
               ),
             ),
@@ -756,12 +835,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (account == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '未登录', en: 'Not authenticated'))),
+        SnackBar(
+          content: Text(context.tr(zh: '未登录', en: 'Not authenticated')),
+        ),
       );
       return;
     }
     try {
-      final created = await ref.read(memosApiProvider).createShortcut(
+      final created = await ref
+          .read(memosApiProvider)
+          .createShortcut(
             userName: account.user.name,
             title: result.title,
             filter: result.filter,
@@ -772,7 +855,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '创建失败：$e', en: 'Create failed: $e'))),
+        SnackBar(
+          content: Text(context.tr(zh: '创建失败：$e', en: 'Create failed: $e')),
+        ),
       );
     }
   }
@@ -783,7 +868,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final showShortcuts = _isAllMemos;
     if (!showShortcuts && accounts.length < 2) return;
 
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
     final titleBox = _titleKey.currentContext?.findRenderObject() as RenderBox?;
     if (overlay == null || titleBox == null) return;
 
@@ -793,7 +879,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final left = position.dx.clamp(12.0, overlay.size.width - width - 12.0);
     final top = position.dy + titleBox.size.height + 6;
     final availableHeight = overlay.size.height - top - 16;
-    final menuMaxHeight = availableHeight > 120 ? availableHeight : overlay.size.height * 0.6;
+    final menuMaxHeight = availableHeight > 120
+        ? availableHeight
+        : overlay.size.height * 0.6;
 
     final action = await showGeneralDialog<_TitleMenuAction>(
       context: context,
@@ -834,7 +922,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     }
   }
 
-  Future<void> _updateMemo(LocalMemo memo, {bool? pinned, String? state}) async {
+  Future<void> _updateMemo(
+    LocalMemo memo, {
+    bool? pinned,
+    String? state,
+  }) async {
     final now = DateTime.now();
     final db = ref.read(databaseProvider);
 
@@ -847,16 +939,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
-      attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      attachments: memo.attachments
+          .map((a) => a.toJson())
+          .toList(growable: false),
       syncState: 1,
       lastError: null,
     );
 
-    await db.enqueueOutbox(type: 'update_memo', payload: {
-      'uid': memo.uid,
-      if (pinned != null) 'pinned': pinned,
-      if (state != null) 'state': state,
-    });
+    await db.enqueueOutbox(
+      type: 'update_memo',
+      payload: {
+        'uid': memo.uid,
+        if (pinned != null) 'pinned': pinned,
+        if (state != null) 'state': state,
+      },
+    );
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
@@ -880,22 +977,31 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: tags,
-      attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      attachments: memo.attachments
+          .map((a) => a.toJson())
+          .toList(growable: false),
       syncState: 1,
       lastError: null,
     );
 
-    await db.enqueueOutbox(type: 'update_memo', payload: {
-      'uid': memo.uid,
-      'content': content,
-      'visibility': memo.visibility,
-    });
+    await db.enqueueOutbox(
+      type: 'update_memo',
+      payload: {
+        'uid': memo.uid,
+        'content': content,
+        'visibility': memo.visibility,
+      },
+    );
     if (triggerSync) {
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
     }
   }
 
-  Future<void> _toggleMemoCheckbox(LocalMemo memo, int checkboxIndex, {required bool skipQuotedLines}) async {
+  Future<void> _toggleMemoCheckbox(
+    LocalMemo memo,
+    int checkboxIndex, {
+    required bool skipQuotedLines,
+  }) async {
     final updated = toggleCheckbox(
       memo.content,
       checkboxIndex,
@@ -911,17 +1017,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   }
 
   Future<void> _deleteMemo(LocalMemo memo) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.tr(zh: '删除 Memo？', en: 'Delete memo?')),
-            content: Text(context.tr(
-              zh: '本地会立即移除，联网后将同步删除服务器内容。',
-              en: 'It will be removed locally now and deleted on the server when online.',
-            )),
+            content: Text(
+              context.tr(
+                zh: '本地会立即移除，联网后将同步删除服务器内容。',
+                en: 'It will be removed locally now and deleted on the server when online.',
+              ),
+            ),
             actions: [
-              TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-              FilledButton(onPressed: () => context.safePop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
+              TextButton(
+                onPressed: () => context.safePop(false),
+                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () => context.safePop(true),
+                child: Text(context.tr(zh: '删除', en: 'Delete')),
+              ),
             ],
           ),
         ) ??
@@ -931,7 +1046,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     _removeMemoWithAnimation(memo);
     final db = ref.read(databaseProvider);
     await db.deleteMemoByUid(memo.uid);
-    await db.enqueueOutbox(type: 'delete_memo', payload: {'uid': memo.uid, 'force': false});
+    await db.enqueueOutbox(
+      type: 'delete_memo',
+      payload: {'uid': memo.uid, 'force': false},
+    );
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
@@ -942,7 +1060,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         return;
       case _MemoCardAction.edit:
         await Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
+          MaterialPageRoute<void>(
+            builder: (_) => MemoEditorScreen(existing: memo),
+          ),
         );
         return;
       case _MemoCardAction.delete:
@@ -976,8 +1096,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       final memoIds = memos.map((m) => m.uid).toSet();
       _pendingRemovedUids.removeWhere((uid) => !memoIds.contains(uid));
     }
-    final filtered = memos.where((m) => !_pendingRemovedUids.contains(m.uid)).toList(growable: true);
-    if (_listSignature != signature || !_sameMemoList(_animatedMemos, filtered)) {
+    final filtered = memos
+        .where((m) => !_pendingRemovedUids.contains(m.uid))
+        .toList(growable: true);
+    if (_listSignature != signature ||
+        !_sameMemoList(_animatedMemos, filtered)) {
       _listSignature = signature;
       _animatedMemos = filtered;
       _listKey = GlobalKey<AnimatedListState>();
@@ -1006,13 +1129,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       axis: Axis.vertical,
       axisAlignment: 0.0,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: _buildMemoCard(
-          context,
-          memo,
-          prefs: prefs,
-          removing: removing,
-        ),
+        padding: const EdgeInsets.only(bottom: 10),
+        child: _buildMemoCard(context, memo, prefs: prefs, removing: removing),
       ),
     );
   }
@@ -1023,14 +1141,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     required AppPreferences prefs,
     required bool removing,
   }) {
-    final displayTime = memo.createTime.millisecondsSinceEpoch > 0 ? memo.createTime : memo.updateTime;
+    final displayTime = memo.createTime.millisecondsSinceEpoch > 0
+        ? memo.createTime
+        : memo.updateTime;
     final isAudioActive = _playingMemoUid == memo.uid;
     final isAudioPlaying = isAudioActive && _audioPlayer.playing;
     final isAudioLoading = isAudioActive && _audioLoading;
-    final audioPositionListenable = isAudioActive ? _audioPositionNotifier : null;
-    final audioDurationListenable = isAudioActive ? _audioDurationNotifier : null;
+    final audioPositionListenable = isAudioActive
+        ? _audioPositionNotifier
+        : null;
+    final audioDurationListenable = isAudioActive
+        ? _audioDurationNotifier
+        : null;
     final imageAttachment = _firstImageAttachment(memo);
-    final imageSource = imageAttachment == null ? null : _resolveImagePreviewSource(imageAttachment);
+    final imageSource = imageAttachment == null
+        ? null
+        : _resolveImagePreviewSource(imageAttachment);
     final hapticsEnabled = prefs.hapticsEnabled;
 
     void maybeHaptic() {
@@ -1050,7 +1176,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       audioPositionListenable: removing ? null : audioPositionListenable,
       audioDurationListenable: removing ? null : audioDurationListenable,
       imageSource: imageSource,
-      onAudioSeek: removing || !isAudioActive ? null : (pos) => _seekAudioPosition(memo, pos),
+      onAudioSeek: removing || !isAudioActive
+          ? null
+          : (pos) => _seekAudioPosition(memo, pos),
       onAudioTap: removing ? null : () => _toggleAudioPlayback(memo),
       onToggleTask: removing
           ? (_) {}
@@ -1067,9 +1195,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           ? () {}
           : () {
               maybeHaptic();
-              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo)));
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => MemoDetailScreen(initialMemo: memo),
+                ),
+              );
             },
-      onAction: removing ? (_) {} : (action) async => _handleMemoAction(memo, action),
+      onAction: removing
+          ? (_) {}
+          : (action) async => _handleMemoAction(memo, action),
     );
   }
 
@@ -1111,13 +1245,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: background,
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.12),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.25 : 0.12,
+                        ),
                         blurRadius: 12,
                         offset: const Offset(0, 6),
                       ),
@@ -1133,7 +1272,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                           message,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: foreground),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: foreground,
+                          ),
                         ),
                       ),
                     ],
@@ -1173,7 +1316,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       }
       if (wasLoading && !isLoading) {
         if (next.hasError) {
-          final detail = next.error == null ? '' : _formatSyncError(next.error!);
+          final detail = next.error == null
+              ? ''
+              : _formatSyncError(next.error!);
           final suffix = detail.isEmpty ? '' : '：$detail';
           _showSyncBubble(
             message: context.tr(zh: '同步失败$suffix', en: 'Sync failed$suffix'),
@@ -1217,23 +1362,27 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final memosAsync = useShortcutFilter
         ? ref.watch(shortcutMemosProvider(shortcutQuery))
         : ref.watch(
-            memosStreamProvider(
-              (
-                searchQuery: searchQuery,
-                state: widget.state,
-                tag: resolvedTag,
-              ),
-            ),
+            memosStreamProvider((
+              searchQuery: searchQuery,
+              state: widget.state,
+              tag: resolvedTag,
+            )),
           );
     final searchHistory = ref.watch(searchHistoryProvider);
-    final tagStats = ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
+    final tagStats =
+        ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
     final recommendedTags = [...tagStats]
       ..sort((a, b) => b.count.compareTo(a.count));
     final showSearchLanding = _searching && searchQuery.trim().isEmpty;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final headerBg = (isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight).withValues(alpha: 0.9);
-    final listTopPadding = widget.showPillActions ? 8.0 : 16.0;
+    final headerBg =
+        (isDark
+                ? MemoFlowPalette.backgroundDark
+                : MemoFlowPalette.backgroundLight)
+            .withValues(alpha: 0.9);
+    final listTopPadding = widget.showPillActions ? 0.0 : 16.0;
+    final listVisualOffset = widget.showPillActions ? 6.0 : 0.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
     void maybeHaptic() {
@@ -1255,235 +1404,312 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         }
       },
       child: Scaffold(
-      key: _scaffoldKey,
-      drawer: widget.showDrawer
-          ? AppDrawer(
-              selected: widget.state == 'ARCHIVED' ? AppDrawerDestination.archived : AppDrawerDestination.memos,
-              onSelect: _navigateDrawer,
-              onSelectTag: _openTagFromDrawer,
-              onOpenNotifications: _openNotifications,
-            )
-          : null,
-      body: memosAsync.when(
-        data: (memos) {
-          final listSignature = '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
-              '${useShortcutFilter ? 1 : 0}';
-          _syncAnimatedMemos(memos, listSignature);
-          final visibleMemos = _animatedMemos;
+        key: _scaffoldKey,
+        drawer: widget.showDrawer
+            ? AppDrawer(
+                selected: widget.state == 'ARCHIVED'
+                    ? AppDrawerDestination.archived
+                    : AppDrawerDestination.memos,
+                onSelect: _navigateDrawer,
+                onSelectTag: _openTagFromDrawer,
+                onOpenNotifications: _openNotifications,
+              )
+            : null,
+        body: memosAsync.when(
+          data: (memos) {
+            final listSignature =
+                '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
+                '${useShortcutFilter ? 1 : 0}';
+            _syncAnimatedMemos(memos, listSignature);
+            final visibleMemos = _animatedMemos;
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              await ref.read(syncControllerProvider.notifier).syncNow();
-              if (useShortcutFilter) {
-                ref.invalidate(shortcutMemosProvider(shortcutQuery));
-              }
-            },
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-              SliverAppBar(
-                pinned: true,
-                backgroundColor: headerBg,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
-                automaticallyImplyLeading: !_searching,
-                leading: _searching
-                    ? IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new),
-                        onPressed: _closeSearch,
-                      )
-                    : null,
-                title: _searching
-                    ? Container(
-                        key: const ValueKey('search'),
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isDark
-                                ? MemoFlowPalette.borderDark.withValues(alpha: 0.7)
-                                : MemoFlowPalette.borderLight,
-                          ),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          autofocus: true,
-                          textInputAction: TextInputAction.search,
-                          decoration: InputDecoration(
-                            hintText: context.tr(zh: '搜索', en: 'Search'),
-                            border: InputBorder.none,
-                            isDense: true,
-                            prefixIcon: const Icon(Icons.search, size: 18),
-                          ),
-                          onChanged: (_) => setState(() {}),
-                          onSubmitted: _submitSearch,
-                        ),
-                      )
-                    : (widget.enableTitleMenu
-                        ? InkWell(
-                            key: _titleKey,
-                            onTap: () {
-                              maybeHaptic();
-                              _openTitleMenu();
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.expand_more,
-                                  size: 18,
-                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                                ),
-                              ],
-                            ),
+            return RefreshIndicator(
+              onRefresh: () async {
+                await ref.read(syncControllerProvider.notifier).syncNow();
+                if (useShortcutFilter) {
+                  ref.invalidate(shortcutMemosProvider(shortcutQuery));
+                }
+              },
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverAppBar(
+                    pinned: true,
+                    backgroundColor: headerBg,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    automaticallyImplyLeading: !_searching,
+                    leading: _searching
+                        ? IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new),
+                            onPressed: _closeSearch,
                           )
-                        : Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700))),
-                actions: _searching
-                    ? (widget.enableSearch
-                        ? [
-                            TextButton(
-                              onPressed: _closeSearch,
-                              child: Text(
-                                context.tr(zh: '取消', en: 'Cancel'),
-                                style: TextStyle(
-                                  color: MemoFlowPalette.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        : null,
+                    title: _searching
+                        ? Container(
+                            key: const ValueKey('search'),
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? MemoFlowPalette.cardDark
+                                  : MemoFlowPalette.cardLight,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: isDark
+                                    ? MemoFlowPalette.borderDark.withValues(
+                                        alpha: 0.7,
+                                      )
+                                    : MemoFlowPalette.borderLight,
                               ),
                             ),
-                          ]
-                        : null)
-                    : (widget.enableSearch
-                        ? [
-                            IconButton(
-                              tooltip: context.tr(zh: '搜索', en: 'Search'),
-                              onPressed: _openSearch,
-                              icon: const Icon(Icons.search),
-                            ),
-                          ]
-                        : null),
-                flexibleSpace: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(color: headerBg),
-                  ),
-                ),
-                bottom: _searching
-                    ? null
-                    : (widget.showPillActions
-                        ? PreferredSize(
-                            preferredSize: const Size.fromHeight(52),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                              child: _PillRow(
-                                onWeeklyInsights: () {
-                                  maybeHaptic();
-                                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
-                                },
-                                onAiSummary: () {
-                                  maybeHaptic();
-                                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AiSummaryScreen()));
-                                },
-                                onDailyReview: () {
-                                  maybeHaptic();
-                                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
-                                },
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              textInputAction: TextInputAction.search,
+                              decoration: InputDecoration(
+                                hintText: context.tr(zh: '搜索', en: 'Search'),
+                                border: InputBorder.none,
+                                isDense: true,
+                                prefixIcon: const Icon(Icons.search, size: 18),
                               ),
+                              onChanged: (_) => setState(() {}),
+                              onSubmitted: _submitSearch,
                             ),
                           )
-                        : (widget.showFilterTagChip && (resolvedTag?.trim().isNotEmpty ?? false)
-                            ? PreferredSize(
-                                preferredSize: const Size.fromHeight(48),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: _FilterTagChip(
-                                      label: '#${resolvedTag!.trim()}',
-                                      onClear: widget.showTagFilters
-                                          ? () => _selectTagFilter(null)
-                                          : (widget.showDrawer ? _backToAllMemos : () => context.safePop()),
+                        : (widget.enableTitleMenu
+                              ? InkWell(
+                                  key: _titleKey,
+                                  onTap: () {
+                                    maybeHaptic();
+                                    _openTitleMenu();
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        widget.title,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        Icons.expand_more,
+                                        size: 18,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.4),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Text(
+                                  widget.title,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                )),
+                    actions: _searching
+                        ? (widget.enableSearch
+                              ? [
+                                  TextButton(
+                                    onPressed: _closeSearch,
+                                    child: Text(
+                                      context.tr(zh: '取消', en: 'Cancel'),
+                                      style: TextStyle(
+                                        color: MemoFlowPalette.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              )
-                            : null)),
-              ),
-              if (widget.showTagFilters && !_searching && recommendedTags.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: _TagFilterBar(
-                    tags: recommendedTags.take(12).map((e) => e.tag).toList(growable: false),
-                    selectedTag: resolvedTag,
-                    onSelectTag: _selectTagFilter,
-                  ),
-                ),
-              if (showSearchLanding)
-                SliverToBoxAdapter(
-                  child: _SearchLanding(
-                    history: searchHistory,
-                    onClearHistory: () => ref.read(searchHistoryProvider.notifier).clear(),
-                    onRemoveHistory: (value) => ref.read(searchHistoryProvider.notifier).remove(value),
-                    onSelectHistory: _applySearchQuery,
-                    tags: recommendedTags.take(6).map((e) => e.tag).toList(growable: false),
-                    onSelectTag: _applySearchQuery,
-                  ),
-                )
-              else if (visibleMemos.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 140),
-                    child: Center(
-                      child: Text(
-                        _searching
-                            ? context.tr(zh: '未找到相关内容', en: 'No results found')
-                            : context.tr(zh: '暂无内容', en: 'No content yet'),
+                                ]
+                              : null)
+                        : (widget.enableSearch
+                              ? [
+                                  IconButton(
+                                    tooltip: context.tr(zh: '搜索', en: 'Search'),
+                                    onPressed: _openSearch,
+                                    icon: const Icon(Icons.search),
+                                  ),
+                                ]
+                              : null),
+                    flexibleSpace: ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                        child: Container(color: headerBg),
                       ),
                     ),
+                    bottom: _searching
+                        ? null
+                        : (widget.showPillActions
+                              ? PreferredSize(
+                                  preferredSize: const Size.fromHeight(46),
+                                  child: Align(
+                                    alignment: Alignment.bottomLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        0,
+                                        16,
+                                        0,
+                                      ),
+                                      child: _PillRow(
+                                        onWeeklyInsights: () {
+                                          maybeHaptic();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const StatsScreen(),
+                                            ),
+                                          );
+                                        },
+                                        onAiSummary: () {
+                                          maybeHaptic();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const AiSummaryScreen(),
+                                            ),
+                                          );
+                                        },
+                                        onDailyReview: () {
+                                          maybeHaptic();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const DailyReviewScreen(),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : (widget.showFilterTagChip &&
+                                        (resolvedTag?.trim().isNotEmpty ??
+                                            false)
+                                    ? PreferredSize(
+                                        preferredSize: const Size.fromHeight(
+                                          48,
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            0,
+                                            16,
+                                            10,
+                                          ),
+                                          child: Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: _FilterTagChip(
+                                              label: '#${resolvedTag!.trim()}',
+                                              onClear: widget.showTagFilters
+                                                  ? () => _selectTagFilter(null)
+                                                  : (widget.showDrawer
+                                                        ? _backToAllMemos
+                                                        : () => context
+                                                              .safePop()),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : null)),
                   ),
-                )
-              else
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, listTopPadding, 16, 140),
-                  sliver: SliverToBoxAdapter(
-                    child: AnimatedList(
-                      key: _listKey,
-                      initialItemCount: visibleMemos.length,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemBuilder: (context, index, animation) {
-                        final memo = visibleMemos[index];
-                        return _buildAnimatedMemoItem(
-                          context: context,
-                          memo: memo,
-                          animation: animation,
-                          prefs: prefs,
-                          removing: false,
-                        );
-                      },
+                  if (widget.showTagFilters &&
+                      !_searching &&
+                      recommendedTags.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _TagFilterBar(
+                        tags: recommendedTags
+                            .take(12)
+                            .map((e) => e.tag)
+                            .toList(growable: false),
+                        selectedTag: resolvedTag,
+                        onSelectTag: _selectTagFilter,
+                      ),
                     ),
-                  ),
-                ),
-            ],
+                  if (showSearchLanding)
+                    SliverToBoxAdapter(
+                      child: _SearchLanding(
+                        history: searchHistory,
+                        onClearHistory: () =>
+                            ref.read(searchHistoryProvider.notifier).clear(),
+                        onRemoveHistory: (value) => ref
+                            .read(searchHistoryProvider.notifier)
+                            .remove(value),
+                        onSelectHistory: _applySearchQuery,
+                        tags: recommendedTags
+                            .take(6)
+                            .map((e) => e.tag)
+                            .toList(growable: false),
+                        onSelectTag: _applySearchQuery,
+                      ),
+                    )
+                  else if (visibleMemos.isEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 140),
+                        child: Center(
+                          child: Text(
+                            _searching
+                                ? context.tr(
+                                    zh: '未找到相关内容',
+                                    en: 'No results found',
+                                  )
+                                : context.tr(zh: '暂无内容', en: 'No content yet'),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(16, listTopPadding, 16, 140),
+                      sliver: SliverToBoxAdapter(
+                        child: Transform.translate(
+                          offset: Offset(0, listVisualOffset),
+                          child: AnimatedList(
+                            key: _listKey,
+                            initialItemCount: visibleMemos.length,
+                            shrinkWrap: true,
+                            primary: false,
+                            padding: EdgeInsets.zero,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemBuilder: (context, index, animation) {
+                              final memo = visibleMemos[index];
+                              return _buildAnimatedMemoItem(
+                                context: context,
+                                memo: memo,
+                                animation: animation,
+                                prefs: prefs,
+                                removing: false,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(
+            child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e')),
           ),
-        );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        floatingActionButton: widget.enableCompose && !_searching
+            ? _MemoFlowFab(
+                onPressed: syncing ? null : _openNoteInput,
+                hapticsEnabled: hapticsEnabled,
+              )
+            : null,
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: widget.enableCompose && !_searching
-          ? _MemoFlowFab(
-              onPressed: syncing ? null : _openNoteInput,
-              hapticsEnabled: hapticsEnabled,
-            )
-          : null,
-    ));
+    );
   }
 }
 
@@ -1501,45 +1727,66 @@ class _PillRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final bgColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final bgColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _PillButton(
-            icon: Icons.insights,
-            iconColor: MemoFlowPalette.primary,
-            label: context.tr(zh: '每月统计', en: 'Monthly stats'),
-            onPressed: onWeeklyInsights,
-            backgroundColor: bgColor,
-            borderColor: borderColor,
-            textColor: textColor,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Align(
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _PillButton(
+                    icon: Icons.insights,
+                    iconColor: MemoFlowPalette.primary,
+                    label: context.tr(zh: '每月统计', en: 'Monthly stats'),
+                    onPressed: onWeeklyInsights,
+                    backgroundColor: bgColor,
+                    borderColor: borderColor,
+                    textColor: textColor,
+                  ),
+                  const SizedBox(width: 10),
+                  _PillButton(
+                    icon: Icons.auto_awesome,
+                    iconColor: isDark
+                        ? MemoFlowPalette.aiChipBlueDark
+                        : MemoFlowPalette.aiChipBlueLight,
+                    label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
+                    onPressed: onAiSummary,
+                    backgroundColor: bgColor,
+                    borderColor: borderColor,
+                    textColor: textColor,
+                  ),
+                  const SizedBox(width: 10),
+                  _PillButton(
+                    icon: Icons.explore,
+                    iconColor: isDark
+                        ? MemoFlowPalette.reviewChipOrangeDark
+                        : MemoFlowPalette.reviewChipOrangeLight,
+                    label: context.tr(zh: '随机漫步', en: 'Random Review'),
+                    onPressed: onDailyReview,
+                    backgroundColor: bgColor,
+                    borderColor: borderColor,
+                    textColor: textColor,
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: 10),
-          _PillButton(
-            icon: Icons.auto_awesome,
-            iconColor: isDark ? MemoFlowPalette.aiChipBlueDark : MemoFlowPalette.aiChipBlueLight,
-            label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
-            onPressed: onAiSummary,
-            backgroundColor: bgColor,
-            borderColor: borderColor,
-            textColor: textColor,
-          ),
-          const SizedBox(width: 10),
-          _PillButton(
-            icon: Icons.explore,
-            iconColor: isDark ? MemoFlowPalette.reviewChipOrangeDark : MemoFlowPalette.reviewChipOrangeLight,
-            label: context.tr(zh: '随机漫步', en: 'Random Review'),
-            onPressed: onDailyReview,
-            backgroundColor: bgColor,
-            borderColor: borderColor,
-            textColor: textColor,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1555,10 +1802,13 @@ class _TitleMenuAction {
   const _TitleMenuAction._(this.type, {this.shortcutId});
 
   const _TitleMenuAction.selectShortcut(String id)
-      : this._(_TitleMenuActionType.selectShortcut, shortcutId: id);
-  const _TitleMenuAction.clearShortcut() : this._(_TitleMenuActionType.clearShortcut);
-  const _TitleMenuAction.createShortcut() : this._(_TitleMenuActionType.createShortcut);
-  const _TitleMenuAction.openAccountSwitcher() : this._(_TitleMenuActionType.openAccountSwitcher);
+    : this._(_TitleMenuActionType.selectShortcut, shortcutId: id);
+  const _TitleMenuAction.clearShortcut()
+    : this._(_TitleMenuActionType.clearShortcut);
+  const _TitleMenuAction.createShortcut()
+    : this._(_TitleMenuActionType.createShortcut);
+  const _TitleMenuAction.openAccountSwitcher()
+    : this._(_TitleMenuActionType.openAccountSwitcher);
 
   final _TitleMenuActionType type;
   final String? shortcutId;
@@ -1591,8 +1841,12 @@ class _TitleMenuDropdown extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final dividerColor = border.withValues(alpha: 0.6);
 
@@ -1609,15 +1863,20 @@ class _TitleMenuDropdown extends ConsumerWidget {
     if (showShortcuts && shortcutsAsync != null) {
       shortcutsAsync.when(
         data: (shortcuts) {
-          final hasSelection = selectedShortcutId != null &&
+          final hasSelection =
+              selectedShortcutId != null &&
               selectedShortcutId!.isNotEmpty &&
-              shortcuts.any((shortcut) => shortcut.shortcutId == selectedShortcutId);
+              shortcuts.any(
+                (shortcut) => shortcut.shortcutId == selectedShortcutId,
+              );
           addRow(
             _TitleMenuItem(
               icon: Icons.note_outlined,
               label: context.tr(zh: '全部笔记', en: 'All memos'),
               selected: !hasSelection,
-              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.clearShortcut()),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(const _TitleMenuAction.clearShortcut()),
             ),
           );
 
@@ -1642,7 +1901,9 @@ class _TitleMenuDropdown extends ConsumerWidget {
                   icon: _shortcutIcons[i % _shortcutIcons.length],
                   label: label,
                   selected: shortcut.shortcutId == selectedShortcutId,
-                  onTap: () => Navigator.of(context).pop(_TitleMenuAction.selectShortcut(shortcut.shortcutId)),
+                  onTap: () => Navigator.of(
+                    context,
+                  ).pop(_TitleMenuAction.selectShortcut(shortcut.shortcutId)),
                 ),
               );
             }
@@ -1653,7 +1914,9 @@ class _TitleMenuDropdown extends ConsumerWidget {
               icon: Icons.add_circle_outline,
               label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
               accent: true,
-              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.createShortcut()),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(const _TitleMenuAction.createShortcut()),
             ),
           );
         },
@@ -1662,8 +1925,11 @@ class _TitleMenuDropdown extends ConsumerWidget {
             _TitleMenuItem(
               icon: Icons.note_outlined,
               label: context.tr(zh: '全部笔记', en: 'All memos'),
-              selected: selectedShortcutId == null || selectedShortcutId!.isEmpty,
-              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.clearShortcut()),
+              selected:
+                  selectedShortcutId == null || selectedShortcutId!.isEmpty,
+              onTap: () => Navigator.of(
+                context,
+              ).pop(const _TitleMenuAction.clearShortcut()),
             ),
           );
           addRow(
@@ -1680,7 +1946,9 @@ class _TitleMenuDropdown extends ConsumerWidget {
               icon: Icons.add_circle_outline,
               label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
               accent: true,
-              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.createShortcut()),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(const _TitleMenuAction.createShortcut()),
             ),
           );
         },
@@ -1689,8 +1957,11 @@ class _TitleMenuDropdown extends ConsumerWidget {
             _TitleMenuItem(
               icon: Icons.note_outlined,
               label: context.tr(zh: '全部笔记', en: 'All memos'),
-              selected: selectedShortcutId == null || selectedShortcutId!.isEmpty,
-              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.clearShortcut()),
+              selected:
+                  selectedShortcutId == null || selectedShortcutId!.isEmpty,
+              onTap: () => Navigator.of(
+                context,
+              ).pop(const _TitleMenuAction.clearShortcut()),
             ),
           );
           addRow(
@@ -1707,7 +1978,9 @@ class _TitleMenuDropdown extends ConsumerWidget {
               icon: Icons.add_circle_outline,
               label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
               accent: true,
-              onTap: () => Navigator.of(context).pop(const _TitleMenuAction.createShortcut()),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(const _TitleMenuAction.createShortcut()),
             ),
           );
         },
@@ -1719,7 +1992,9 @@ class _TitleMenuDropdown extends ConsumerWidget {
         _TitleMenuItem(
           icon: Icons.swap_horiz,
           label: context.tr(zh: '切换账号', en: 'Switch account'),
-          onTap: () => Navigator.of(context).pop(const _TitleMenuAction.openAccountSwitcher()),
+          onTap: () => Navigator.of(
+            context,
+          ).pop(const _TitleMenuAction.openAccountSwitcher()),
         ),
       );
     }
@@ -1743,9 +2018,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: SingleChildScrollView(
-              child: Column(children: items),
-            ),
+            child: SingleChildScrollView(child: Column(children: items)),
           ),
         ),
       ),
@@ -1777,21 +2050,25 @@ class _TitleMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final baseMuted = textMain.withValues(alpha: 0.6);
     final accentColor = MemoFlowPalette.primary;
-    final labelColor = textColor ??
+    final labelColor =
+        textColor ??
         (accent
             ? accentColor
             : selected
-                ? textMain
-                : baseMuted);
-    final resolvedIconColor = iconColor ??
+            ? textMain
+            : baseMuted);
+    final resolvedIconColor =
+        iconColor ??
         (accent
             ? accentColor
             : selected
-                ? accentColor
-                : baseMuted);
+            ? accentColor
+            : baseMuted);
 
     return Material(
       color: Colors.transparent,
@@ -1806,7 +2083,10 @@ class _TitleMenuItem extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: labelColor),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: labelColor,
+                  ),
                 ),
               ),
               if (selected)
@@ -1841,10 +2121,16 @@ class _SearchLanding extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final chipBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final chipBg = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
     final accent = MemoFlowPalette.primary;
 
     return Padding(
@@ -1856,7 +2142,10 @@ class _SearchLanding extends StatelessWidget {
             children: [
               Text(
                 context.tr(zh: '最近搜索', en: 'Recent searches'),
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const Spacer(),
               if (history.isNotEmpty)
@@ -1908,11 +2197,18 @@ class _SearchLanding extends StatelessWidget {
           const SizedBox(height: 18),
           Text(
             context.tr(zh: '推荐标签', en: 'Suggested tags'),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: textMain,
+            ),
           ),
           const SizedBox(height: 10),
           if (tags.isEmpty)
-            Text(context.tr(zh: '暂无标签', en: 'No tags'), style: TextStyle(fontSize: 12, color: textMuted))
+            Text(
+              context.tr(zh: '暂无标签', en: 'No tags'),
+              style: TextStyle(fontSize: 12, color: textMuted),
+            )
           else
             Wrap(
               spacing: 10,
@@ -1923,7 +2219,10 @@ class _SearchLanding extends StatelessWidget {
                     onTap: () => onSelectTag('#${tag.trim()}'),
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: chipBg,
                         borderRadius: BorderRadius.circular(12),
@@ -1940,7 +2239,11 @@ class _SearchLanding extends StatelessWidget {
                       ),
                       child: Text(
                         '#${tag.trim()}',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: accent),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: accent,
+                        ),
                       ),
                     ),
                   ),
@@ -1949,7 +2252,10 @@ class _SearchLanding extends StatelessWidget {
           const SizedBox(height: 28),
           Center(
             child: Text(
-              context.tr(zh: '您可以搜索标题、内容或标签', en: 'Search by title, content, or tags'),
+              context.tr(
+                zh: '您可以搜索标题、内容或标签',
+                en: 'Search by title, content, or tags',
+              ),
               style: TextStyle(fontSize: 12, color: textMuted),
             ),
           ),
@@ -1973,16 +2279,26 @@ class _TagFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final accent = MemoFlowPalette.primary;
-    final chipBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final chipBg = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
     final selectedBg = accent.withValues(alpha: isDark ? 0.22 : 0.14);
     final selectedBorder = accent.withValues(alpha: isDark ? 0.55 : 0.6);
     final normalizedSelected = (selectedTag ?? '').trim();
 
-    Widget buildChip(String label, {required bool selected, required VoidCallback onTap}) {
+    Widget buildChip(
+      String label, {
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
       final bg = selected ? selectedBg : chipBg;
       final chipBorder = selected ? selectedBorder : border;
       final textColor = selected ? accent : textMuted;
@@ -2007,7 +2323,11 @@ class _TagFilterBar extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
           ),
         ),
       );
@@ -2020,7 +2340,11 @@ class _TagFilterBar extends StatelessWidget {
         children: [
           Text(
             context.tr(zh: '标签筛选', en: 'Filter by tags'),
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: textMain,
+            ),
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -2047,10 +2371,7 @@ class _TagFilterBar extends StatelessWidget {
 }
 
 class _FilterTagChip extends StatelessWidget {
-  const _FilterTagChip({
-    required this.label,
-    this.onClear,
-  });
+  const _FilterTagChip({required this.label, this.onClear});
 
   final String label;
   final VoidCallback? onClear;
@@ -2073,7 +2394,14 @@ class _FilterTagChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textColor)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
+          ),
           if (onClear != null) ...[
             const SizedBox(width: 6),
             Icon(Icons.close, size: 14, color: textColor),
@@ -2122,14 +2450,21 @@ class _PillButton extends StatelessWidget {
           BoxShadow(
             blurRadius: 8,
             offset: const Offset(0, 2),
-            color: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.05),
+            color: Colors.black.withValues(
+              alpha: Theme.of(context).brightness == Brightness.dark
+                  ? 0.2
+                  : 0.05,
+            ),
           ),
         ],
       ),
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 18, color: iconColor),
-        label: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+        label: Text(
+          label,
+          style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
+        ),
         style: OutlinedButton.styleFrom(
           backgroundColor: backgroundColor,
           foregroundColor: textColor,
@@ -2143,11 +2478,7 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-enum _MemoCardAction {
-  togglePinned,
-  edit,
-  delete,
-}
+enum _MemoCardAction { togglePinned, edit, delete }
 
 class _MemoCard extends StatefulWidget {
   const _MemoCard({
@@ -2176,7 +2507,8 @@ class _MemoCard extends StatefulWidget {
   final bool isAudioLoading;
   final ValueListenable<Duration>? audioPositionListenable;
   final ValueListenable<Duration?>? audioDurationListenable;
-  final ({String url, String? localPath, Map<String, String>? headers})? imageSource;
+  final ({String url, String? localPath, Map<String, String>? headers})?
+  imageSource;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
   final ValueChanged<int> onToggleTask;
@@ -2247,21 +2579,43 @@ class _MemoCardState extends State<_MemoCard> {
     final imageSource = widget.imageSource;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-    final menuColor = isDark ? const Color(0xFF2B2523) : const Color(0xFFF6E7E3);
-    final deleteColor = isDark ? const Color(0xFFFF7A7A) : const Color(0xFFE05656);
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final cardColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final menuColor = isDark
+        ? const Color(0xFF2B2523)
+        : const Color(0xFFF6E7E3);
+    final deleteColor = isDark
+        ? const Color(0xFFFF7A7A)
+        : const Color(0xFFE05656);
 
-    final audio = memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    final audio = memo.attachments
+        .where((a) => a.type.startsWith('audio'))
+        .toList(growable: false);
     final hasAudio = audio.isNotEmpty;
     final language = context.appLanguage;
-    final previewText = _previewText(memo.content, collapseReferences: false, language: language);
-    final preview = _truncatePreview(previewText, collapseLongContent: collapseLongContent);
+    final previewText = _previewText(
+      memo.content,
+      collapseReferences: false,
+      language: language,
+    );
+    final preview = _truncatePreview(
+      previewText,
+      collapseLongContent: collapseLongContent,
+    );
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
     final displayText = showCollapsed ? preview.text : previewText;
-    final taskStats = countTaskStats(memo.content, skipQuotedLines: collapseReferences);
+    final taskStats = countTaskStats(
+      memo.content,
+      skipQuotedLines: collapseReferences,
+    );
     final showProgress = !hasAudio && taskStats.total > 0;
     final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
@@ -2271,7 +2625,9 @@ class _MemoCardState extends State<_MemoCard> {
       if (imageSource == null) return const SizedBox.shrink();
       const previewWidth = 120.0;
       const previewHeight = 80.0;
-      final previewBorder = Border.all(color: borderColor.withValues(alpha: 0.7));
+      final previewBorder = Border.all(
+        color: borderColor.withValues(alpha: 0.7),
+      );
       final previewBg = isDark
           ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
           : MemoFlowPalette.audioSurfaceLight;
@@ -2296,14 +2652,22 @@ class _MemoCardState extends State<_MemoCard> {
             height: previewHeight,
             color: previewBg,
             alignment: Alignment.center,
-            child: Icon(Icons.image_outlined, size: 18, color: textMain.withValues(alpha: 0.5)),
+            child: Icon(
+              Icons.image_outlined,
+              size: 18,
+              color: textMain.withValues(alpha: 0.5),
+            ),
           ),
           errorWidget: (context, url, error) => Container(
             width: previewWidth,
             height: previewHeight,
             color: previewBg,
             alignment: Alignment.center,
-            child: Icon(Icons.broken_image_outlined, size: 18, color: textMain.withValues(alpha: 0.5)),
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 18,
+              color: textMain.withValues(alpha: 0.5),
+            ),
           ),
         );
       }
@@ -2338,8 +2702,12 @@ class _MemoCardState extends State<_MemoCard> {
     Widget buildAudioRow(Duration position, Duration? duration) {
       final effectiveDuration = duration ?? audioDurationFallback;
       final clampedPosition =
-          effectiveDuration != null && position > effectiveDuration ? effectiveDuration : position;
-      final totalText = effectiveDuration != null ? formatDuration(effectiveDuration) : audioDurationText;
+          effectiveDuration != null && position > effectiveDuration
+          ? effectiveDuration
+          : position;
+      final totalText = effectiveDuration != null
+          ? formatDuration(effectiveDuration)
+          : audioDurationText;
       final showPosition = clampedPosition > Duration.zero || audioPlaying;
       final displayText = effectiveDuration != null && showPosition
           ? '${formatDuration(clampedPosition)} / $totalText'
@@ -2375,7 +2743,8 @@ class _MemoCardState extends State<_MemoCard> {
 
     return Hero(
       tag: memo.uid,
-      createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+      createRectTween: (begin, end) =>
+          MaterialRectArcTween(begin: begin, end: end),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -2413,15 +2782,25 @@ class _MemoCardState extends State<_MemoCard> {
                     ),
                     PopupMenuButton<_MemoCardAction>(
                       tooltip: context.tr(zh: '更多', en: 'More'),
-                      icon: Icon(Icons.more_horiz, size: 20, color: textMain.withValues(alpha: 0.4)),
+                      icon: Icon(
+                        Icons.more_horiz,
+                        size: 20,
+                        color: textMain.withValues(alpha: 0.4),
+                      ),
                       onSelected: onAction,
                       color: menuColor,
                       surfaceTintColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       itemBuilder: (context) => [
                         PopupMenuItem(
                           value: _MemoCardAction.togglePinned,
-                          child: Text(memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin')),
+                          child: Text(
+                            memo.pinned
+                                ? context.tr(zh: '取消置顶', en: 'Unpin')
+                                : context.tr(zh: '置顶', en: 'Pin'),
+                          ),
                         ),
                         PopupMenuItem(
                           value: _MemoCardAction.edit,
@@ -2432,7 +2811,10 @@ class _MemoCardState extends State<_MemoCard> {
                           value: _MemoCardAction.delete,
                           child: Text(
                             context.tr(zh: '删除', en: 'Delete'),
-                            style: TextStyle(color: deleteColor, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              color: deleteColor,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -2449,19 +2831,26 @@ class _MemoCardState extends State<_MemoCard> {
                   children: [
                     MemoMarkdown(
                       data: displayText,
-                      textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain),
+                      textStyle: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: textMain),
                       blockSpacing: 4,
                       normalizeHeadings: true,
-                      onToggleTask: (request) => onToggleTask(request.taskIndex),
+                      onToggleTask: (request) =>
+                          onToggleTask(request.taskIndex),
                     ),
                     if (showToggle) ...[
                       const SizedBox(height: 4),
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () => setState(() => _expanded = !_expanded),
+                          onPressed: () =>
+                              setState(() => _expanded = !_expanded),
                           style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
@@ -2469,7 +2858,11 @@ class _MemoCardState extends State<_MemoCard> {
                             _expanded
                                 ? context.tr(zh: '收起', en: 'Collapse')
                                 : context.tr(zh: '展开', en: 'Expand'),
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: MemoFlowPalette.primary,
+                            ),
                           ),
                         ),
                       ),
@@ -2478,10 +2871,7 @@ class _MemoCardState extends State<_MemoCard> {
                       const SizedBox(height: 12),
                       buildImagePreview(),
                     ],
-                    if (hasAudio) ...[
-                      const SizedBox(height: 12),
-                      audioRow,
-                    ],
+                    if (hasAudio) ...[const SizedBox(height: 12), audioRow],
                   ],
                 ),
                 _MemoRelationsSection(memoUid: memo.uid),
@@ -2500,7 +2890,8 @@ class _MemoCardState extends State<_MemoCard> {
     final hh = totalSeconds ~/ 3600;
     final mm = (totalSeconds % 3600) ~/ 60;
     final ss = totalSeconds % 60;
-    if (hh <= 0) return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+    if (hh <= 0)
+      return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
   }
 
@@ -2528,7 +2919,6 @@ class _MemoCardState extends State<_MemoCard> {
     return null;
   }
 }
-
 
 class _MemoRelationsSection extends ConsumerWidget {
   const _MemoRelationsSection({required this.memoUid});
@@ -2570,10 +2960,7 @@ class _MemoRelationsSection extends ConsumerWidget {
           if (relatedName == currentName && memoName.isNotEmpty) {
             if (seenReferencedBy.add(memoName)) {
               referencedBy.add(
-                _RelationItem(
-                  name: memoName,
-                  snippet: relation.memo.snippet,
-                ),
+                _RelationItem(name: memoName, snippet: relation.memo.snippet),
               );
             }
           }
@@ -2595,7 +2982,8 @@ class _MemoRelationsSection extends ConsumerWidget {
                   items: referencing,
                   isDark: isDark,
                 ),
-              if (referencing.isNotEmpty && referencedBy.isNotEmpty) const SizedBox(height: 8),
+              if (referencing.isNotEmpty && referencedBy.isNotEmpty)
+                const SizedBox(height: 8),
               if (referencedBy.isNotEmpty)
                 _RelationGroup(
                   title: 'Referenced by',
@@ -2625,11 +3013,19 @@ class _RelationGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final bg = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final headerColor = textMain.withValues(alpha: isDark ? 0.7 : 0.8);
-    final chipBg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    final chipBg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
@@ -2647,7 +3043,11 @@ class _RelationGroup extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 '$title (${items.length})',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: headerColor),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: headerColor,
+                ),
               ),
             ],
           ),
@@ -2659,7 +3059,10 @@ class _RelationGroup extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: chipBg,
                       borderRadius: BorderRadius.circular(8),
@@ -2698,16 +3101,15 @@ class _RelationGroup extends StatelessWidget {
   static String _shortMemoId(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return '--';
-    final raw = trimmed.startsWith('memos/') ? trimmed.substring('memos/'.length) : trimmed;
+    final raw = trimmed.startsWith('memos/')
+        ? trimmed.substring('memos/'.length)
+        : trimmed;
     return raw.length <= 6 ? raw : raw.substring(0, 6);
   }
 }
 
 class _RelationItem {
-  const _RelationItem({
-    required this.name,
-    required this.snippet,
-  });
+  const _RelationItem({required this.name, required this.snippet});
 
   final String name;
   final String snippet;
@@ -2721,7 +3123,9 @@ class _TaskProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    final bg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: LinearProgressIndicator(
@@ -2759,9 +3163,14 @@ class _AudioRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight.withValues(alpha: 0.5);
-    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final text = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: isDark ? 0.4 : 0.6);
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight.withValues(alpha: 0.5);
+    final bg = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final text = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
+        .withValues(alpha: isDark ? 0.4 : 0.6);
 
     final icon = !playing && loading
         ? SizedBox(
@@ -2784,7 +3193,9 @@ class _AudioRow extends StatelessWidget {
       child: LinearProgressIndicator(
         value: progressClamped,
         minHeight: 4,
-        backgroundColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
+        backgroundColor: (isDark ? Colors.white : Colors.black).withValues(
+          alpha: 0.1,
+        ),
         valueColor: AlwaysStoppedAnimation(MemoFlowPalette.primary),
       ),
     );
@@ -2912,7 +3323,11 @@ class _MemoFlowFabState extends State<_MemoFlowFab> {
               BoxShadow(
                 blurRadius: 24,
                 offset: const Offset(0, 10),
-                color: MemoFlowPalette.primary.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.3),
+                color: MemoFlowPalette.primary.withValues(
+                  alpha: Theme.of(context).brightness == Brightness.dark
+                      ? 0.2
+                      : 0.3,
+                ),
               ),
             ],
           ),
@@ -2922,5 +3337,3 @@ class _MemoFlowFabState extends State<_MemoFlowFab> {
     );
   }
 }
-
-
