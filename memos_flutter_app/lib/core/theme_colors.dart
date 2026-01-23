@@ -19,8 +19,8 @@ class AppThemeColorSpec {
 
 const Map<AppThemeColor, AppThemeColorSpec> _themeColorSpecs = {
   AppThemeColor.brickRed: AppThemeColorSpec(
-    primary: Color(0xFF0C8918),
-    primaryDark: Color(0xFF0C8918),
+    primary: Color(0xFFC0564D),
+    primaryDark: Color(0xFFD16A61),
   ),
   AppThemeColor.ochre: AppThemeColorSpec(
     primary: Color(0xFFD48D4D),
