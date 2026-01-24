@@ -113,7 +113,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   final _searchController = TextEditingController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _titleKey = GlobalKey();
-  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  GlobalKey<SliverAnimatedListState> _listKey =
+      GlobalKey<SliverAnimatedListState>();
 
   var _searching = false;
   var _openedDrawerOnStart = false;
@@ -1103,7 +1104,20 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         !_sameMemoList(_animatedMemos, filtered)) {
       _listSignature = signature;
       _animatedMemos = filtered;
-      _listKey = GlobalKey<AnimatedListState>();
+      _listKey = GlobalKey<SliverAnimatedListState>();
+      return;
+    }
+
+    var changed = false;
+    final next = List<LocalMemo>.from(_animatedMemos);
+    for (var i = 0; i < filtered.length; i++) {
+      if (!_sameMemoData(_animatedMemos[i], filtered[i])) {
+        next[i] = filtered[i];
+        changed = true;
+      }
+    }
+    if (changed) {
+      _animatedMemos = next;
     }
   }
 
@@ -1112,6 +1126,37 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
       if (a[i].uid != b[i].uid) return false;
+    }
+    return true;
+  }
+
+  static bool _sameMemoData(LocalMemo a, LocalMemo b) {
+    if (identical(a, b)) return true;
+    if (a.uid != b.uid) return false;
+    if (a.content != b.content) return false;
+    if (a.visibility != b.visibility) return false;
+    if (a.pinned != b.pinned) return false;
+    if (a.state != b.state) return false;
+    if (a.createTime != b.createTime) return false;
+    if (a.updateTime != b.updateTime) return false;
+    if (a.syncState != b.syncState) return false;
+    if (a.lastError != b.lastError) return false;
+    if (!listEquals(a.tags, b.tags)) return false;
+    if (!_sameAttachments(a.attachments, b.attachments)) return false;
+    return true;
+  }
+
+  static bool _sameAttachments(List<Attachment> a, List<Attachment> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.name != right.name) return false;
+      if (left.filename != right.filename) return false;
+      if (left.type != right.type) return false;
+      if (left.size != right.size) return false;
+      if (left.externalLink != right.externalLink) return false;
     }
     return true;
   }
@@ -1537,12 +1582,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                   ),
                                 ]
                               : null),
-                    flexibleSpace: ClipRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                        child: Container(color: headerBg),
-                      ),
-                    ),
                     bottom: _searching
                         ? null
                         : (widget.showPillActions
@@ -1667,29 +1706,25 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                     )
                   else
                     SliverPadding(
-                      padding: EdgeInsets.fromLTRB(16, listTopPadding, 16, 140),
-                      sliver: SliverToBoxAdapter(
-                        child: Transform.translate(
-                          offset: Offset(0, listVisualOffset),
-                          child: AnimatedList(
-                            key: _listKey,
-                            initialItemCount: visibleMemos.length,
-                            shrinkWrap: true,
-                            primary: false,
-                            padding: EdgeInsets.zero,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemBuilder: (context, index, animation) {
-                              final memo = visibleMemos[index];
-                              return _buildAnimatedMemoItem(
-                                context: context,
-                                memo: memo,
-                                animation: animation,
-                                prefs: prefs,
-                                removing: false,
-                              );
-                            },
-                          ),
-                        ),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        listTopPadding + listVisualOffset,
+                        16,
+                        140,
+                      ),
+                      sliver: SliverAnimatedList(
+                        key: _listKey,
+                        initialItemCount: visibleMemos.length,
+                        itemBuilder: (context, index, animation) {
+                          final memo = visibleMemos[index];
+                          return _buildAnimatedMemoItem(
+                            context: context,
+                            memo: memo,
+                            animation: animation,
+                            prefs: prefs,
+                            removing: false,
+                          );
+                        },
                       ),
                     ),
                 ],
