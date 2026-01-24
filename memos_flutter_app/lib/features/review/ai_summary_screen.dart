@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ import '../../data/settings/ai_settings_repository.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
@@ -54,6 +56,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   var _isQuickPromptEditing = false;
   var _requestId = 0;
   AiSummaryResult? _summary;
+  var _insightExpanded = false;
 
   @override
   void dispose() {
@@ -264,14 +267,53 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         _summary = result;
         _view = _AiSummaryView.report;
         _isLoading = false;
+        _insightExpanded = false;
       });
     } catch (e) {
       if (!mounted || requestId != _requestId) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: 'AI 总结失败：$e', en: 'AI summary failed: $e'))),
+        SnackBar(content: Text(context.tr(zh: 'AI 总结失败：${_formatSummaryError(e)}', en: 'AI summary failed: ${_formatSummaryError(e)}'))),
       );
     }
+  }
+
+  String _formatSummaryError(Object error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+          return context.tr(zh: '连接超时，请检查网络或 API URL', en: 'Connection timeout. Check network or API URL.');
+        case DioExceptionType.sendTimeout:
+          return context.tr(zh: '请求发送超时，请稍后重试', en: 'Request send timeout. Try again.');
+        case DioExceptionType.receiveTimeout:
+          return context.tr(zh: '服务器响应超时，请稍后重试', en: 'Server response timeout. Try again.');
+        case DioExceptionType.badResponse:
+          final code = error.response?.statusCode;
+          if (code == 401 || code == 403) {
+            return context.tr(zh: 'API Key 无效或无权限', en: 'Invalid API key or insufficient permissions.');
+          }
+          if (code == 404) {
+            return context.tr(zh: 'API URL 不正确', en: 'API URL is incorrect.');
+          }
+          if (code == 429) {
+            return context.tr(zh: '请求过于频繁，请稍后重试', en: 'Too many requests. Try again later.');
+          }
+          if (code != null) {
+            return context.tr(zh: '服务返回错误（$code）', en: 'Server returned error ($code).');
+          }
+          return context.tr(zh: '服务响应异常', en: 'Server response error.');
+        case DioExceptionType.connectionError:
+          return context.tr(zh: '网络连接失败，请检查网络', en: 'Network connection failed.');
+        case DioExceptionType.cancel:
+          return context.tr(zh: '请求已取消', en: 'Request cancelled.');
+        case DioExceptionType.badCertificate:
+          return context.tr(zh: '证书校验失败', en: 'Bad SSL certificate.');
+        case DioExceptionType.unknown:
+          break;
+      }
+      return error.message ?? error.toString();
+    }
+    return error.toString();
   }
 
   void _cancelSummary() {
@@ -456,6 +498,63 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     return '${fmt.format(range.start)} - ${fmt.format(range.end)}';
   }
 
+  String _reportTitle() {
+    final range = _effectiveRange();
+    final days = range.end.difference(range.start).inDays + 1;
+    if (_range == _AiRange.last7Days || days <= 7) {
+      return context.tr(zh: '本周回顾', en: 'This Week');
+    }
+    if (_range == _AiRange.last30Days || days <= 31) {
+      return context.tr(zh: '本月回顾', en: 'This Month');
+    }
+    return context.tr(zh: '阶段回顾', en: 'Period Review');
+  }
+
+  String _reportRangeLabel() {
+    final range = _effectiveRange();
+    final locale = Localizations.localeOf(context).toString();
+    final sameYear = range.start.year == range.end.year;
+    final sameMonth = sameYear && range.start.month == range.end.month;
+    if (context.appLanguage == AppLanguage.en) {
+      final startFmt = DateFormat(sameYear ? 'MMM d' : 'yyyy MMM d', locale);
+      final endFmt = DateFormat(
+        sameMonth ? 'd' : (sameYear ? 'MMM d' : 'yyyy MMM d'),
+        locale,
+      );
+      return '${startFmt.format(range.start)} - ${endFmt.format(range.end)}';
+    }
+    final startFmt = DateFormat(sameYear ? 'M月d日' : 'yyyy年M月d日', locale);
+    final endFmt = DateFormat(
+      sameMonth ? 'd日' : (sameYear ? 'M月d日' : 'yyyy年M月d日'),
+      locale,
+    );
+    return '${startFmt.format(range.start)} - ${endFmt.format(range.end)}';
+  }
+
+  String _buildInsightMarkdown(AiSummaryResult summary) {
+    final insights = summary.insights.isNotEmpty
+        ? summary.insights
+        : [context.tr(zh: '暂无总结结果', en: 'No summary yet')];
+    final moodTrend = summary.moodTrend.isNotEmpty
+        ? summary.moodTrend
+        : context.tr(zh: '暂无情绪趋势', en: 'No mood trend');
+    final buffer = StringBuffer();
+    buffer.writeln('### ${context.tr(zh: '核心洞察', en: 'Key insights')}');
+    buffer.writeln('');
+    buffer.writeln('> ${context.tr(zh: '引言', en: 'Intro')}: $moodTrend');
+    buffer.writeln('');
+    for (var i = 0; i < insights.length; i++) {
+      final text = insights[i].trim();
+      if (text.isEmpty) continue;
+      if (i == 0) {
+        buffer.writeln('- **$text**');
+      } else {
+        buffer.writeln('- $text');
+      }
+    }
+    return buffer.toString().trim();
+  }
+
   Future<_MemoSource> _buildMemoSource() async {
     final range = _effectiveRange();
     final start = DateTime(range.start.year, range.start.month, range.start.day);
@@ -562,23 +661,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         ? MemoFlowPalette.audioSurfaceDark
         : MemoFlowPalette.audioSurfaceLight;
     final inputBg = chipBg;
-    final accentBlue = isDark
-        ? MemoFlowPalette.aiChipBlueDark
-        : MemoFlowPalette.aiChipBlueLight;
-    final accentGreen = isDark ? const Color(0xFF86AD86) : const Color(0xFF6B8E6B);
-    final primaryChip = isDark
-        ? Color.alphaBlend(
-            MemoFlowPalette.primary.withValues(alpha: 0.2),
-            card,
-          )
-        : const Color(0xFFFDF1F0);
-    final blueChip = isDark
-        ? Color.alphaBlend(accentBlue.withValues(alpha: 0.18), card)
-        : const Color(0xFFE8F1F8);
-    final greenChip = isDark
-        ? Color.alphaBlend(accentGreen.withValues(alpha: 0.18), card)
-        : const Color(0xFFF1F6F1);
-    final neutralChipText = textMain.withValues(alpha: 0.7);
     final isReport = _view == _AiSummaryView.report;
     final quickPrompts =
         ref.watch(aiSettingsProvider.select((s) => s.quickPrompts));
@@ -612,13 +694,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                 card: card,
                 border: border,
                 textMain: textMain,
-                chipBg: chipBg,
-                accentBlue: accentBlue,
-                accentGreen: accentGreen,
-                primaryChip: primaryChip,
-                blueChip: blueChip,
-                greenChip: greenChip,
-                neutralChipText: neutralChipText,
+                textMuted: textMuted,
                 summary: _summary ?? AiSummaryResult.empty,
               )
             else
@@ -893,186 +969,266 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color card,
     required Color border,
     required Color textMain,
-    required Color chipBg,
-    required Color accentBlue,
-    required Color accentGreen,
-    required Color primaryChip,
-    required Color blueChip,
-    required Color greenChip,
-    required Color neutralChipText,
+    required Color textMuted,
     required AiSummaryResult summary,
   }) {
-    final insightTextColor = textMain.withValues(alpha: 0.9);
-    final insights = summary.insights.isNotEmpty
-        ? summary.insights
-        : [context.tr(zh: '暂无总结结果', en: 'No summary yet')];
-    final moodTrend = summary.moodTrend.isNotEmpty
-        ? summary.moodTrend
-        : context.tr(zh: '暂无情绪趋势', en: 'No mood trend');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final reportBg = isDark ? bg : const Color(0xFFF7F2EA);
+    final reportCard = isDark ? card : const Color(0xFFFFFFFF);
+    final cardBorder = isDark ? border : border.withValues(alpha: 0.7);
+    final moodWarm = const Color(0xFFF2A167);
+    final moodDeep = const Color(0xFFE98157);
+    final moodLight = const Color(0xFFF7C796);
+    final moodChipBg = moodWarm.withValues(alpha: isDark ? 0.25 : 0.2);
+    final moodChipBorder = moodWarm.withValues(alpha: isDark ? 0.45 : 0.35);
+    final moodChipText = isDark
+        ? textMain.withValues(alpha: 0.9)
+        : const Color(0xFF6B5344);
+    final title = _reportTitle();
+    final dateLabel = _reportRangeLabel();
     final rawKeywords = summary.keywords.isNotEmpty
         ? summary.keywords
-        : [context.tr(zh: '暂无关键词', en: 'No keywords')];
-    final keywords = <_KeywordData>[];
-    for (var i = 0; i < rawKeywords.length; i++) {
-      final label = _normalizeKeyword(rawKeywords[i]);
-      if (i == 0) {
-        keywords.add(_KeywordData(label, primaryChip, MemoFlowPalette.primary));
-      } else if (i == 3) {
-        keywords.add(_KeywordData(label, blueChip, accentBlue));
-      } else if (i == 5) {
-        keywords.add(_KeywordData(label, greenChip, accentGreen));
-      } else {
-        keywords.add(_KeywordData(label, chipBg, neutralChipText));
-      }
-    }
+        : [context.tr(zh: '#暂无关键词', en: '#No keywords')];
+    final keywords =
+        rawKeywords.map(_normalizeKeyword).toList(growable: false);
+    final insightMarkdown = _buildInsightMarkdown(summary);
+    final shouldCollapse = insightMarkdown.length > 260;
+    final showCollapsed = shouldCollapse && !_insightExpanded;
+    final insightStyle = TextStyle(
+      fontSize: 14,
+      height: 1.7,
+      color: textMain.withValues(alpha: isDark ? 0.85 : 0.82),
+    );
+    final headerTextColor =
+        isDark ? MemoFlowPalette.textLight : textMain;
+    final headerTextMuted = headerTextColor.withValues(alpha: 0.6);
 
     return RepaintBoundary(
       key: _reportBoundaryKey,
       child: Container(
-        color: bg,
+        color: reportBg,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 200),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 200),
           children: [
-            Align(
-              alignment: Alignment.center,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: border.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  _rangeLabel(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                    color: textMain.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
             Container(
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: border),
+                color: reportCard,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: cardBorder),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
                     blurRadius: 24,
-                    offset: const Offset(0, 8),
+                    offset: const Offset(0, 10),
                   ),
                 ],
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  SizedBox(
+                    height: 190,
+                    child: Stack(
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.auto_awesome,
-                              size: 20,
-                              color: MemoFlowPalette.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              context.tr(zh: '核心洞察', en: 'Key insights'),
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: textMain,
+                        const Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Color(0xFFFFF4E8),
+                                  Color(0xFFFFE7D6),
+                                ],
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        for (var i = 0; i < insights.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 12),
-                          _InsightBullet(
-                            text: insights[i],
-                            bulletColor: MemoFlowPalette.primary,
-                            textColor: insightTextColor,
                           ),
-                        ],
-                        const SizedBox(height: 28),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.insights, size: 20, color: accentBlue),
-                                const SizedBox(width: 8),
-                                Text(
-                                  context.tr(zh: '情绪趋势', en: 'Mood trend'),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: textMain,
-                                  ),
+                        ),
+                        Align(
+                          alignment: Alignment.center,
+                          child: Container(
+                            width: 170,
+                            height: 170,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(
+                                center: Alignment(-0.2, -0.2),
+                                radius: 0.9,
+                                colors: [
+                                  Color(0xFFFBD7B1),
+                                  Color(0xFFF4A96F),
+                                  Color(0xFFE97B57),
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: moodWarm.withValues(alpha: 0.4),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 8),
                                 ),
                               ],
                             ),
-                            Text(
-                              moodTrend,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: textMain.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        Positioned(
+                          left: 30,
+                          top: 24,
+                          child: Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  moodLight.withValues(alpha: 0.9),
+                                  moodWarm.withValues(alpha: 0.4),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        _MoodChart(
-                          lineColor: MemoFlowPalette.primary,
-                          background: chipBg,
-                          textColor: textMain,
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            Icon(Icons.label, size: 20, color: accentGreen),
-                            const SizedBox(width: 8),
-                            Text(
-                              context.tr(zh: '关键词', en: 'Keywords'),
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: textMain,
+                        Positioned(
+                          right: 28,
+                          bottom: 26,
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: [
+                                  moodWarm.withValues(alpha: 0.8),
+                                  moodDeep.withValues(alpha: 0.5),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final keyword in keywords)
-                              _KeywordChip(
-                                label: keyword.label,
-                                background: keyword.background,
-                                textColor: keyword.textColor,
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: headerTextColor,
+                                  letterSpacing: 0.2,
+                                ),
                               ),
-                          ],
+                              const SizedBox(height: 6),
+                              Text(
+                                dateLabel,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: headerTextMuted,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    height: 6,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          MemoFlowPalette.primary.withValues(alpha: 0.2),
-                          MemoFlowPalette.primary.withValues(alpha: 0.06),
-                          MemoFlowPalette.primary.withValues(alpha: 0.2),
-                        ],
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final keyword in keywords)
+                          _KeywordChip(
+                            label: keyword,
+                            background: moodChipBg,
+                            textColor: moodChipText,
+                            borderColor: moodChipBorder,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 6, 24, 0),
+                    child: Stack(
+                      children: [
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOut,
+                          child: ClipRect(
+                            child: ConstrainedBox(
+                              constraints: showCollapsed
+                                  ? const BoxConstraints(maxHeight: 260)
+                                  : const BoxConstraints(),
+                              child: MemoMarkdown(
+                                data: insightMarkdown,
+                                textStyle: insightStyle,
+                                blockSpacing: 10,
+                                shrinkWrap: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (showCollapsed)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              height: 70,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    reportCard.withValues(alpha: 0.0),
+                                    reportCard,
+                                  ],
+                                ),
+                              ),
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: TextButton.icon(
+                                  onPressed: () {
+                                    setState(() => _insightExpanded = true);
+                                  },
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_down,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    context.tr(zh: '展开更多', en: 'Expand'),
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: textMain.withValues(alpha: 0.65),
+                                    textStyle: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                    child: Center(
+                      child: Text(
+                        context.tr(
+                          zh: '由 AI 生成 · MemoFlow',
+                          en: 'Generated by AI · MemoFlow',
+                        ),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: textMuted.withValues(alpha: 0.6),
+                        ),
                       ),
                     ),
                   ),
@@ -1507,170 +1663,18 @@ class _QuickPromptAddChip extends StatelessWidget {
   }
 }
 
-class _InsightBullet extends StatelessWidget {
-  const _InsightBullet({
-    required this.text,
-    required this.bulletColor,
-    required this.textColor,
-  });
-
-  final String text;
-  final Color bulletColor;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          margin: const EdgeInsets.only(top: 7),
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(color: bulletColor, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 15,
-              height: 1.55,
-              color: textColor,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MoodChart extends StatelessWidget {
-  const _MoodChart({
-    required this.lineColor,
-    required this.background,
-    required this.textColor,
-  });
-
-  final Color lineColor;
-  final Color background;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 128,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 1400),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return CustomPaint(
-                  painter: _MoodChartPainter(
-                    progress: value,
-                    color: lineColor,
-                  ),
-                  child: const SizedBox.expand(),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                context.tr(zh: '周一', en: 'Mon'),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: textColor.withValues(alpha: 0.3),
-                ),
-              ),
-              Text(
-                context.tr(zh: '周四', en: 'Thu'),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: textColor.withValues(alpha: 0.3),
-                ),
-              ),
-              Text(
-                context.tr(zh: '周末', en: 'Weekend'),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: textColor.withValues(alpha: 0.3),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MoodChartPainter extends CustomPainter {
-  _MoodChartPainter({required this.progress, required this.color});
-
-  final double progress;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-
-    final w = size.width;
-    final h = size.height;
-    final path = Path()
-      ..moveTo(0, h * 0.8)
-      ..quadraticBezierTo(w * 0.17, h * 0.9, w * 0.33, h * 0.5)
-      ..quadraticBezierTo(w * 0.5, h * 0.1, w * 0.67, h * 0.3)
-      ..quadraticBezierTo(w * 0.83, h * 0.5, w, h * 0.6);
-
-    for (final metric in path.computeMetrics()) {
-      final extract = metric.extractPath(0, metric.length * progress);
-      canvas.drawPath(extract, paint);
-    }
-
-    final dot = Offset(w * 0.67, h * 0.3);
-    canvas.drawCircle(dot, 4, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(covariant _MoodChartPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
-  }
-}
-
-class _KeywordData {
-  const _KeywordData(this.label, this.background, this.textColor);
-
-  final String label;
-  final Color background;
-  final Color textColor;
-}
-
 class _KeywordChip extends StatelessWidget {
   const _KeywordChip({
     required this.label,
     required this.background,
     required this.textColor,
+    this.borderColor,
   });
 
   final String label;
   final Color background;
   final Color textColor;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1678,7 +1682,8 @@ class _KeywordChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(999),
+        border: borderColor == null ? null : Border.all(color: borderColor!),
       ),
       child: Text(
         label,

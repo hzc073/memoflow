@@ -1035,13 +1035,11 @@ String _formatNumber(int n) {
 }
 
 class _PaperTexturePainter extends CustomPainter {
-  const _PaperTexturePainter({this.seed = 37});
-
-  final int seed;
+  const _PaperTexturePainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rand = math.Random(seed);
+    final rand = math.Random(37);
     final base = const Color(0xFFB7AEA1);
     final area = size.width * size.height;
     final dotCount = (area / 3600).clamp(180, 900).toInt();
