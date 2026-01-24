@@ -1,8 +1,12 @@
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_localization.dart';
@@ -20,6 +24,7 @@ class StatsScreen extends ConsumerStatefulWidget {
 
 class _StatsScreenState extends ConsumerState<StatsScreen> {
   late DateTime _selectedMonth;
+  final _posterBoundaryKey = GlobalKey();
 
   @override
   void initState() {
@@ -86,70 +91,174 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     );
   }
 
-  void _toggleTheme() {
-    final mode = ref.read(appPreferencesProvider).themeMode;
-    final brightness = Theme.of(context).brightness;
-    final next = switch (mode) {
-      AppThemeMode.light => AppThemeMode.dark,
-      AppThemeMode.dark => AppThemeMode.light,
-      AppThemeMode.system => brightness == Brightness.dark ? AppThemeMode.light : AppThemeMode.dark,
-    };
-    ref.read(appPreferencesProvider.notifier).setThemeMode(next);
-  }
+  Future<void> _sharePoster() async {
+    final boundary = _posterBoundaryKey.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '??????', en: 'Poster is not ready yet'))),
+      );
+      return;
+    }
 
-  Future<void> _shareText(String text, {String? subject}) async {
     try {
-      await Share.share(text, subject: subject);
+      await Future.delayed(const Duration(milliseconds: 30));
+      if (!mounted) return;
+      final pixelRatio = MediaQuery.of(context).devicePixelRatio.clamp(2.0, 3.0);
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '??????', en: 'Poster generation failed'))),
+        );
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}${Platform.pathSeparator}stats_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      await Share.shareXFiles([XFile(file.path)]);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
+        SnackBar(content: Text(context.tr(zh: '?????$e', en: 'Share failed: $e'))),
       );
     }
   }
 
-  String _buildOverviewShareText({
+  Widget _buildSharePoster({
     required LocalStats stats,
+    required MonthlyStats monthly,
+    required String monthLabel,
+    required Map<DateTime, int> lastYear,
     required int lastYearMemos,
     required int currentStreak,
   }) {
-    final buffer = StringBuffer();
-    buffer.writeln('MemoFlow');
-    buffer.writeln(context.tr(zh: '统计概览', en: 'Stats overview'));
-    buffer.writeln('${context.tr(zh: '总笔记', en: 'Total memos')}: ${stats.totalMemos}');
-    buffer.writeln('${context.tr(zh: '总字数', en: 'Total characters')}: ${_formatNumber(stats.totalChars)}');
-    buffer.writeln('${context.tr(zh: '活跃天数', en: 'Active days')}: ${stats.activeDays}');
-    buffer.writeln('${context.tr(zh: '当前连击', en: 'Current streak')}: ${context.tr(zh: '$currentStreak 天', en: '$currentStreak days')}');
-    buffer.writeln('${context.tr(zh: '最近一年笔记', en: 'Last year memos')}: $lastYearMemos');
-    return buffer.toString().trim();
-  }
+    final size = MediaQuery.sizeOf(context);
+    final posterBg = const Color(0xFFF9F7F2);
+    final card = MemoFlowPalette.cardLight;
+    final textMain = MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: 0.6);
 
-  String _buildMonthlyShareText({
-    required MonthlyStats monthly,
-    required String monthLabel,
-  }) {
-    final buffer = StringBuffer();
-    buffer.writeln('MemoFlow');
-    buffer.writeln(context.tr(zh: '月度统计', en: 'Monthly stats'));
-    buffer.writeln('${context.tr(zh: '月份', en: 'Month')}: $monthLabel');
-    buffer.writeln('${context.tr(zh: '笔记', en: 'Memos')}: ${monthly.totalMemos}');
-    buffer.writeln('${context.tr(zh: '字数', en: 'Characters')}: ${_formatNumber(monthly.totalChars)}');
-    buffer.writeln('${context.tr(zh: '单日最多笔记', en: 'Max per day')}: ${monthly.maxMemosPerDay}');
-    buffer.writeln('${context.tr(zh: '单日最多字数', en: 'Max chars/day')}: ${_formatNumber(monthly.maxCharsPerDay)}');
-    buffer.writeln('${context.tr(zh: '活跃天数', en: 'Active days')}: ${monthly.activeDays}');
-    return buffer.toString().trim();
-  }
-
-  String _buildHeatmapShareText({required int lastYearMemos}) {
-    final now = DateTime.now();
-    final start = now.subtract(const Duration(days: 364));
-    final fmt = DateFormat('yyyy-MM-dd');
-    final buffer = StringBuffer();
-    buffer.writeln('MemoFlow');
-    buffer.writeln(context.tr(zh: '近一年记录', en: 'Last year'));
-    buffer.writeln('${context.tr(zh: '时间范围', en: 'Range')}: ${fmt.format(start)} - ${fmt.format(now)}');
-    buffer.writeln('${context.tr(zh: '笔记数量', en: 'Memos')}: $lastYearMemos');
-    return buffer.toString().trim();
+    return Theme(
+      data: Theme.of(context).copyWith(brightness: Brightness.light),
+      child: RepaintBoundary(
+        key: _posterBoundaryKey,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: posterBg),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _PaperTexturePainter(),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'MemoFlow',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: textMain,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            context.tr(zh: '记录统计', en: 'Memo stats'),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _MonthStatsCard(
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        monthLabel: monthLabel,
+                        onPickMonth: null,
+                        onShare: null,
+                        memos: monthly.totalMemos,
+                        chars: monthly.totalChars,
+                        maxMemosPerDay: monthly.maxMemosPerDay,
+                        maxCharsPerDay: monthly.maxCharsPerDay,
+                        activeDays: monthly.activeDays,
+                        dailyCounts: _toMonthSeries(DateTime(monthly.year, monthly.month), monthly.dailyCounts),
+                      ),
+                      const SizedBox(height: 12),
+                      _HeatmapCard(
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        title: context.tr(
+                          zh: '最近一年记录 $lastYearMemos 条笔记',
+                          en: 'Last year: $lastYearMemos memos',
+                        ),
+                        onShare: null,
+                        dailyCounts: lastYear,
+                        isDark: false,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MiniStatCard(
+                              card: card,
+                              textMain: textMain,
+                              textMuted: textMuted,
+                              icon: Icons.local_fire_department_outlined,
+                              label: context.tr(zh: '当前连击', en: 'Current streak'),
+                              value: context.tr(zh: '$currentStreak 天', en: '$currentStreak days'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _MiniStatCard(
+                              card: card,
+                              textMain: textMain,
+                              textMuted: textMuted,
+                              icon: Icons.calendar_month_outlined,
+                              label: context.tr(zh: '累计天数', en: 'Active days'),
+                              value: context.tr(zh: '${stats.activeDays} 天', en: '${stats.activeDays} days'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  right: 20,
+                  bottom: 12,
+                  child: Text(
+                    context.tr(zh: '由 MemoFlow 生成', en: 'Generated by MemoFlow'),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: textMuted.withValues(alpha: 0.6),
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -169,150 +278,148 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         _handleBack();
       },
       child: Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        title: const Text('MemoFlow'),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _handleBack,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              final stats = statsAsync.valueOrNull;
-              if (stats == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(context.tr(zh: '统计加载中', en: 'Stats are loading'))),
-                );
-                return;
-              }
-              final lastYear = _lastNDaysCounts(stats.dailyCounts, days: 365);
-              final lastYearMemos = lastYear.values.fold<int>(0, (sum, v) => sum + v);
-              final currentStreak = _currentStreakDays(stats.dailyCounts);
-              final text = _buildOverviewShareText(
-                stats: stats,
-                lastYearMemos: lastYearMemos,
-                currentStreak: currentStreak,
-              );
-              _shareText(text, subject: context.tr(zh: '统计概览', en: 'Stats overview'));
-            },
-            child: Text(
-              context.tr(zh: '分享', en: 'Share'),
-              style: TextStyle(color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.9 : 1.0)),
-            ),
+        backgroundColor: bg,
+        appBar: AppBar(
+          title: const Text('MemoFlow'),
+          centerTitle: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          leading: IconButton(
+            tooltip: context.tr(zh: '返回', en: 'Back'),
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _handleBack,
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.small(
-        backgroundColor: isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight,
-        elevation: isDark ? 0 : 6,
-        onPressed: _toggleTheme,
-        child: Icon(isDark ? Icons.wb_sunny_rounded : Icons.nightlight_round, color: MemoFlowPalette.primary),
-      ),
-      body: statsAsync.when(
-        data: (stats) {
-          final months = _deriveMonths(stats.dailyCounts);
-          final selected = _selectedMonth;
-          final effectiveMonth = months.isNotEmpty && !months.any((m) => m.year == selected.year && m.month == selected.month) ? months.first : selected;
-          final monthlyAsync = ref.watch(monthlyStatsProvider((year: effectiveMonth.year, month: effectiveMonth.month)));
+          actions: [
+            TextButton(
+              onPressed: () {
+                final stats = statsAsync.valueOrNull;
+                if (stats == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.tr(zh: '?????', en: 'Stats are loading'))),
+                  );
+                  return;
+                }
+                _sharePoster();
+              },
+              child: Text(
+                context.tr(zh: '分享', en: 'Share'),
+                style: TextStyle(color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.9 : 1.0)),
+              ),
+            ),
+          ],
+        ),
+        body: statsAsync.when(
+          data: (stats) {
+            final months = _deriveMonths(stats.dailyCounts);
+            final selected = _selectedMonth;
+            final effectiveMonth = months.isNotEmpty && !months.any((m) => m.year == selected.year && m.month == selected.month) ? months.first : selected;
+            final monthlyAsync = ref.watch(monthlyStatsProvider((year: effectiveMonth.year, month: effectiveMonth.month)));
 
-          final lastYear = _lastNDaysCounts(stats.dailyCounts, days: 365);
-          final lastYearMemos = lastYear.values.fold<int>(0, (sum, v) => sum + v);
+            final lastYear = _lastNDaysCounts(stats.dailyCounts, days: 365);
+            final lastYearMemos = lastYear.values.fold<int>(0, (sum, v) => sum + v);
 
-          final currentStreak = _currentStreakDays(stats.dailyCounts);
+            final currentStreak = _currentStreakDays(stats.dailyCounts);
 
-          return monthlyAsync.when(
-            data: (monthly) {
-              final monthLabel = _formatMonth(DateTime(monthly.year, monthly.month));
-              final monthShareText = _buildMonthlyShareText(
-                monthly: monthly,
-                monthLabel: monthLabel,
-              );
-              final heatmapShareText = _buildHeatmapShareText(lastYearMemos: lastYearMemos);
-              return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              children: [
-                Text(
-                  context.tr(zh: '记录统计', en: 'Memo stats'),
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: textMain),
-                ),
-                const SizedBox(height: 12),
-                _MonthStatsCard(
-                  card: card,
-                  textMain: textMain,
-                  textMuted: textMuted,
-                  monthLabel: monthLabel,
-                  onPickMonth: months.isEmpty ? null : () => _pickMonth(months),
-                  onShare: () => _shareText(
-                    monthShareText,
-                    subject: context.tr(zh: '月度统计', en: 'Monthly stats'),
-                  ),
-                  memos: monthly.totalMemos,
-                  chars: monthly.totalChars,
-                  maxMemosPerDay: monthly.maxMemosPerDay,
-                  maxCharsPerDay: monthly.maxCharsPerDay,
-                  activeDays: monthly.activeDays,
-                  dailyCounts: _toMonthSeries(DateTime(monthly.year, monthly.month), monthly.dailyCounts),
-                ),
-                const SizedBox(height: 14),
-                _HeatmapCard(
-                  card: card,
-                  textMain: textMain,
-                  textMuted: textMuted,
-                  title: context.tr(
-                    zh: '最近一年记录 $lastYearMemos 条笔记',
-                    en: 'Last year: $lastYearMemos memos',
-                  ),
-                  onShare: () => _shareText(
-                    heatmapShareText,
-                    subject: context.tr(zh: '近一年记录', en: 'Last year'),
-                  ),
-                  dailyCounts: lastYear,
-                  isDark: isDark,
-                ),
-                const SizedBox(height: 14),
-                Row(
+            return monthlyAsync.when(
+              data: (monthly) {
+                final monthLabel = _formatMonth(DateTime(monthly.year, monthly.month));
+                return Stack(
                   children: [
-                    Expanded(
-                      child: _MiniStatCard(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        icon: Icons.local_fire_department_outlined,
-                        label: context.tr(zh: '当前连击', en: 'Current streak'),
-                        value: context.tr(zh: '$currentStreak 天', en: '$currentStreak days'),
-                      ),
+                    ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      children: [
+                        Text(
+                          context.tr(zh: '记录统计', en: 'Memo stats'),
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: textMain),
+                        ),
+                        const SizedBox(height: 12),
+                        _MonthStatsCard(
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          monthLabel: monthLabel,
+                          onPickMonth: months.isEmpty ? null : () => _pickMonth(months),
+                          onShare: _sharePoster,
+                          memos: monthly.totalMemos,
+                          chars: monthly.totalChars,
+                          maxMemosPerDay: monthly.maxMemosPerDay,
+                          maxCharsPerDay: monthly.maxCharsPerDay,
+                          activeDays: monthly.activeDays,
+                          dailyCounts: _toMonthSeries(DateTime(monthly.year, monthly.month), monthly.dailyCounts),
+                        ),
+                        const SizedBox(height: 14),
+                        _HeatmapCard(
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          title: context.tr(
+                            zh: '最近一年记录 $lastYearMemos 条笔记',
+                            en: 'Last year: $lastYearMemos memos',
+                          ),
+                          onShare: _sharePoster,
+                          dailyCounts: lastYear,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _MiniStatCard(
+                                card: card,
+                                textMain: textMain,
+                                textMuted: textMuted,
+                                icon: Icons.local_fire_department_outlined,
+                                label: context.tr(zh: '当前连击', en: 'Current streak'),
+                                value: context.tr(zh: '$currentStreak 天', en: '$currentStreak days'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _MiniStatCard(
+                                card: card,
+                                textMain: textMain,
+                                textMuted: textMuted,
+                                icon: Icons.calendar_month_outlined,
+                                label: context.tr(zh: '累计天数', en: 'Active days'),
+                                value: context.tr(zh: '${stats.activeDays} 天', en: '${stats.activeDays} days'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MiniStatCard(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        icon: Icons.calendar_month_outlined,
-                        label: context.tr(zh: '累计天数', en: 'Active days'),
-                        value: context.tr(zh: '${stats.activeDays} 天', en: '${stats.activeDays} days'),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Opacity(
+                          // Keep opacity above zero so the boundary paints for toImage.
+                          opacity: 0.01,
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: _buildSharePoster(
+                              stats: stats,
+                              monthly: monthly,
+                              monthLabel: monthLabel,
+                              lastYear: lastYear,
+                              lastYearMemos: lastYearMemos,
+                              currentStreak: currentStreak,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
-                ),
-              ],
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
             );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+        ),
       ),
-    ),
     );
   }
 }
@@ -324,7 +431,7 @@ class _MonthStatsCard extends StatelessWidget {
     required this.textMuted,
     required this.monthLabel,
     required this.onPickMonth,
-    required this.onShare,
+    this.onShare,
     required this.memos,
     required this.chars,
     required this.maxMemosPerDay,
@@ -338,7 +445,7 @@ class _MonthStatsCard extends StatelessWidget {
   final Color textMuted;
   final String monthLabel;
   final VoidCallback? onPickMonth;
-  final VoidCallback onShare;
+  final VoidCallback? onShare;
   final int memos;
   final int? chars;
   final int maxMemosPerDay;
@@ -375,7 +482,8 @@ class _MonthStatsCard extends StatelessWidget {
                 onTap: onPickMonth,
               ),
               const Spacer(),
-              InkWell(
+              if (onShare != null)
+                InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: onShare,
                 child: Padding(
@@ -644,7 +752,7 @@ class _HeatmapCard extends StatelessWidget {
     required this.textMain,
     required this.textMuted,
     required this.title,
-    required this.onShare,
+    this.onShare,
     required this.dailyCounts,
     required this.isDark,
   });
@@ -653,7 +761,7 @@ class _HeatmapCard extends StatelessWidget {
   final Color textMain;
   final Color textMuted;
   final String title;
-  final VoidCallback onShare;
+  final VoidCallback? onShare;
   final Map<DateTime, int> dailyCounts;
   final bool isDark;
 
@@ -679,7 +787,8 @@ class _HeatmapCard extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.w800, color: textMain))),
-              InkWell(
+              if (onShare != null)
+                InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: onShare,
                 child: Padding(
@@ -704,7 +813,7 @@ class _HeatmapCard extends StatelessWidget {
                 .map((m) {
                   final label = context.appLanguage == AppLanguage.en
                       ? DateFormat.MMM(Localizations.localeOf(context).toString()).format(DateTime(2000, m.month))
-                      : '${m.month}月';
+                      : '${m.month}\u6708';
                   return Text(
                     label,
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.35)),
@@ -923,4 +1032,46 @@ String _formatNumber(int n) {
     }
   }
   return buf.toString();
+}
+
+class _PaperTexturePainter extends CustomPainter {
+  const _PaperTexturePainter({this.seed = 37});
+
+  final int seed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rand = math.Random(seed);
+    final base = const Color(0xFFB7AEA1);
+    final area = size.width * size.height;
+    final dotCount = (area / 3600).clamp(180, 900).toInt();
+
+    for (var i = 0; i < dotCount; i++) {
+      final dx = rand.nextDouble() * size.width;
+      final dy = rand.nextDouble() * size.height;
+      final radius = rand.nextDouble() * 0.7 + 0.2;
+      final alpha = 0.02 + rand.nextDouble() * 0.05;
+      final paint = Paint()..color = base.withValues(alpha: alpha);
+      canvas.drawCircle(Offset(dx, dy), radius, paint);
+    }
+
+    final linePaint = Paint()
+      ..color = base.withValues(alpha: 0.04)
+      ..strokeWidth = 0.6;
+    final lineCount = (size.height / 14).clamp(24, 120).toInt();
+    for (var i = 0; i < lineCount; i++) {
+      final x = rand.nextDouble() * size.width;
+      final y = rand.nextDouble() * size.height;
+      final length = size.width * (0.08 + rand.nextDouble() * 0.18);
+      final angle = (rand.nextDouble() - 0.5) * 0.12;
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(angle);
+      canvas.drawLine(Offset.zero, Offset(length, 0), linePaint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PaperTexturePainter oldDelegate) => false;
 }
