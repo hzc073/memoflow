@@ -74,11 +74,27 @@ dependencies {
 
 val copyReleaseApk by tasks.registering {
     group = "build"
-    description = "Copy release APK to tool/<date>/MemoFlow_release.apk"
+    description = "Copy release APK to tool/<date>/MemoFlow_v<version>-release.apk"
     doLast {
         val flutterRoot = rootProject.projectDir.parentFile
         val dateTag = SimpleDateFormat("yyyyMMdd").format(Date())
         val outDir = File(flutterRoot, "tool/$dateTag")
+        val versionLabel = run {
+            val pubspecFile = File(flutterRoot, "pubspec.yaml")
+            if (!pubspecFile.exists()) {
+                "0.0.0"
+            } else {
+                val rawVersion = pubspecFile.useLines { lines ->
+                    lines.map { it.trim() }
+                        .firstOrNull { it.startsWith("version:") }
+                        ?.substringAfter("version:")
+                        ?.trim()
+                }
+                val cleaned = rawVersion?.split(" ")?.firstOrNull()?.ifBlank { null }
+                val versionName = cleaned?.substringBefore("+") ?: "0.0.0"
+                versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            }
+        }
         if (!outDir.exists()) {
             outDir.mkdirs()
         }
@@ -119,7 +135,7 @@ val copyReleaseApk by tasks.registering {
             println("Multiple release APKs found; copying newest: ${apkToCopy.name}")
         }
 
-        val destFile = File(outDir, "MemoFlow_release.apk")
+        val destFile = File(outDir, "MemoFlow_v${versionLabel}-release.apk")
         apkToCopy.copyTo(destFile, overwrite = true)
         println("APK copied to: ${destFile.absolutePath}")
     }
