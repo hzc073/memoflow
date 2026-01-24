@@ -46,9 +46,28 @@ jobs:
         working-directory: memos_flutter_app
         run: flutter build apk --release --no-tree-shake-icons
 
+      - name: Rename release APK
+        working-directory: memos_flutter_app
+        run: |
+          set -euo pipefail
+          version=$(awk '/^version:/ {print $2; exit}' pubspec.yaml)
+          version=${version%%+*}
+          src="build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -f "$src" ]; then
+            src=$(find build/app/outputs -type f -name "*release*.apk" | head -n 1 || true)
+          fi
+          if [ -z "$src" ] || [ ! -f "$src" ]; then
+            echo "Release APK not found under build/app/outputs" >&2
+            exit 1
+          fi
+          dest="build/app/outputs/flutter-apk/MemoFlow_v${version}-release.apk"
+          mkdir -p "$(dirname "$dest")"
+          cp "$src" "$dest"
+          echo "APK copied to $dest"
+
       - name: Create release and upload APK
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "memos_flutter_app/build/app/outputs/**/MemoFlow-release.apk"
+          artifacts: "memos_flutter_app/build/app/outputs/**/MemoFlow_v*-release.apk"
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
