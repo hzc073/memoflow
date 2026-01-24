@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'content_fingerprint.dart';
 import 'attachment.dart';
 
 enum SyncState {
@@ -12,6 +13,7 @@ class LocalMemo {
   const LocalMemo({
     required this.uid,
     required this.content,
+    required this.contentFingerprint,
     required this.visibility,
     required this.pinned,
     required this.state,
@@ -25,6 +27,7 @@ class LocalMemo {
 
   final String uid;
   final String content;
+  final String contentFingerprint;
   final String visibility;
   final bool pinned;
   final String state;
@@ -36,6 +39,7 @@ class LocalMemo {
   final String? lastError;
 
   factory LocalMemo.fromDb(Map<String, dynamic> row) {
+    final content = (row['content'] as String?) ?? '';
     final tagsText = (row['tags'] as String?) ?? '';
     final attachmentsJson = (row['attachments_json'] as String?) ?? '[]';
 
@@ -58,9 +62,12 @@ class LocalMemo {
       _ => SyncState.synced,
     };
 
+    final contentFingerprint = computeContentFingerprint(content);
+
     return LocalMemo(
       uid: (row['uid'] as String?) ?? '',
-      content: (row['content'] as String?) ?? '',
+      content: content,
+      contentFingerprint: contentFingerprint,
       visibility: (row['visibility'] as String?) ?? 'PRIVATE',
       pinned: ((row['pinned'] as int?) ?? 0) == 1,
       state: (row['state'] as String?) ?? 'NORMAL',

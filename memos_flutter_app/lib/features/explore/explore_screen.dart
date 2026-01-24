@@ -663,6 +663,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       name: memo.name,
       creator: memo.creator,
       content: memo.content,
+      contentFingerprint: memo.contentFingerprint,
       visibility: memo.visibility,
       pinned: memo.pinned,
       state: memo.state,
@@ -831,6 +832,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     return LocalMemo(
       uid: memo.uid,
       content: memo.content,
+      contentFingerprint: memo.contentFingerprint,
       visibility: memo.visibility,
       pinned: memo.pinned,
       state: memo.state,

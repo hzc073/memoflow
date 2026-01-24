@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:ui';
 
@@ -46,6 +47,71 @@ const _maxPreviewLines = 6;
 const _maxPreviewRunes = 220;
 
 typedef _PreviewResult = ({String text, bool truncated});
+
+class _LruCache<K, V> {
+  _LruCache({required int capacity}) : _capacity = capacity;
+
+  final int _capacity;
+  final _map = LinkedHashMap<K, V>();
+
+  V? get(K key) {
+    final value = _map.remove(key);
+    if (value == null) return null;
+    _map[key] = value;
+    return value;
+  }
+
+  void set(K key, V value) {
+    if (_capacity <= 0) return;
+    _map.remove(key);
+    _map[key] = value;
+    if (_map.length > _capacity) {
+      _map.remove(_map.keys.first);
+    }
+  }
+
+  void removeWhere(bool Function(K key) test) {
+    final keys = _map.keys.where(test).toList(growable: false);
+    for (final key in keys) {
+      _map.remove(key);
+    }
+  }
+}
+
+class _MemoRenderCacheEntry {
+  const _MemoRenderCacheEntry({
+    required this.previewText,
+    required this.preview,
+    required this.taskStats,
+  });
+
+  final String previewText;
+  final _PreviewResult preview;
+  final TaskStats taskStats;
+}
+
+final _memoRenderCache =
+    _LruCache<String, _MemoRenderCacheEntry>(capacity: 120);
+
+String _memoRenderCacheKey(
+  LocalMemo memo, {
+  required bool collapseLongContent,
+  required bool collapseReferences,
+  required AppLanguage language,
+}) {
+  return '${memo.uid}|'
+      '${memo.contentFingerprint}|'
+      '${collapseLongContent ? 1 : 0}|'
+      '${collapseReferences ? 1 : 0}|'
+      '${language.name}';
+}
+
+void _invalidateMemoRenderCacheForUid(String memoUid) {
+  final trimmed = memoUid.trim();
+  if (trimmed.isEmpty) return;
+  _memoRenderCache.removeWhere((key) => key.startsWith('$trimmed|'));
+}
+
 
 _PreviewResult _truncatePreview(
   String text, {
@@ -1009,6 +1075,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       skipQuotedLines: skipQuotedLines,
     );
     if (updated == memo.content) return;
+    _invalidateMemoRenderCacheForUid(memo.uid);
+    invalidateMemoMarkdownCacheForUid(memo.uid);
     await _updateMemoContent(
       memo,
       updated,
@@ -2635,22 +2703,46 @@ class _MemoCardState extends State<_MemoCard> {
         .toList(growable: false);
     final hasAudio = audio.isNotEmpty;
     final language = context.appLanguage;
-    final previewText = _previewText(
-      memo.content,
-      collapseReferences: false,
+    final cacheKey = _memoRenderCacheKey(
+      memo,
+      collapseLongContent: collapseLongContent,
+      collapseReferences: collapseReferences,
       language: language,
     );
-    final preview = _truncatePreview(
-      previewText,
-      collapseLongContent: collapseLongContent,
-    );
+    final cached = _memoRenderCache.get(cacheKey);
+    final previewText =
+        cached?.previewText ??
+        _previewText(
+          memo.content,
+          collapseReferences: false,
+          language: language,
+        );
+    final preview =
+        cached?.preview ??
+        _truncatePreview(
+          previewText,
+          collapseLongContent: collapseLongContent,
+        );
+    final taskStats =
+        cached?.taskStats ??
+        countTaskStats(
+          memo.content,
+          skipQuotedLines: collapseReferences,
+        );
+    if (cached == null) {
+      _memoRenderCache.set(
+        cacheKey,
+        _MemoRenderCacheEntry(
+          previewText: previewText,
+          preview: preview,
+          taskStats: taskStats,
+        ),
+      );
+    }
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
     final displayText = showCollapsed ? preview.text : previewText;
-    final taskStats = countTaskStats(
-      memo.content,
-      skipQuotedLines: collapseReferences,
-    );
+    final markdownCacheKey = '$cacheKey|${showCollapsed ? 1 : 0}|md';
     final showProgress = !hasAudio && taskStats.total > 0;
     final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
@@ -2865,6 +2957,7 @@ class _MemoCardState extends State<_MemoCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MemoMarkdown(
+                      cacheKey: markdownCacheKey,
                       data: displayText,
                       textStyle: Theme.of(
                         context,

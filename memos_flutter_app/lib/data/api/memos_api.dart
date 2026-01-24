@@ -9,6 +9,7 @@ import '../logs/network_log_buffer.dart';
 import '../logs/network_log_interceptor.dart';
 import '../logs/network_log_store.dart';
 import '../models/attachment.dart';
+import '../models/content_fingerprint.dart';
 import '../models/instance_profile.dart';
 import '../models/memo.dart';
 import '../models/memo_relation.dart';
@@ -2842,6 +2843,7 @@ class MemosApi {
       name: name,
       creator: '',
       content: '',
+      contentFingerprint: computeContentFingerprint(''),
       visibility: 'PRIVATE',
       pinned: pinned,
       state: 'NORMAL',
@@ -2857,6 +2859,7 @@ class MemosApi {
       name: memo.name,
       creator: memo.creator,
       content: memo.content,
+      contentFingerprint: memo.contentFingerprint,
       visibility: memo.visibility,
       pinned: pinned,
       state: memo.state,
@@ -2890,10 +2893,13 @@ class MemosApi {
 
     final attachments = _readLegacyAttachments(json['resourceList'] ?? json['resources'] ?? json['attachments']);
 
+    final content = _readString(json['content']);
+
     return Memo(
       name: name,
       creator: creator,
-      content: _readString(json['content']),
+      content: content,
+      contentFingerprint: computeContentFingerprint(content),
       visibility: _readString(json['visibility']).isNotEmpty ? _readString(json['visibility']) : 'PRIVATE',
       pinned: _readBool(json['pinned']),
       state: state,

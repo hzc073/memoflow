@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
@@ -32,6 +34,45 @@ const Set<String> _htmlBlockTags = {
   'h6',
 };
 
+class _LruCache<K, V> {
+  _LruCache({required int capacity}) : _capacity = capacity;
+
+  final int _capacity;
+  final _map = LinkedHashMap<K, V>();
+
+  V? get(K key) {
+    final value = _map.remove(key);
+    if (value == null) return null;
+    _map[key] = value;
+    return value;
+  }
+
+  void set(K key, V value) {
+    if (_capacity <= 0) return;
+    _map.remove(key);
+    _map[key] = value;
+    if (_map.length > _capacity) {
+      _map.remove(_map.keys.first);
+    }
+  }
+
+  void removeWhere(bool Function(K key) test) {
+    final keys = _map.keys.where(test).toList(growable: false);
+    for (final key in keys) {
+      _map.remove(key);
+    }
+  }
+}
+
+final _markdownHtmlCache = _LruCache<String, String>(capacity: 80);
+
+void invalidateMemoMarkdownCacheForUid(String memoUid) {
+  final trimmed = memoUid.trim();
+  if (trimmed.isEmpty) return;
+  _markdownHtmlCache.removeWhere((key) => key.startsWith('$trimmed|'));
+}
+
+
 typedef TaskToggleHandler = void Function(TaskToggleRequest request);
 
 class TaskToggleRequest {
@@ -45,6 +86,7 @@ class MemoMarkdown extends StatelessWidget {
   const MemoMarkdown({
     super.key,
     required this.data,
+    this.cacheKey,
     this.textStyle,
     this.normalizeHeadings = false,
     this.selectable = false,
@@ -54,6 +96,7 @@ class MemoMarkdown extends StatelessWidget {
   });
 
   final String data;
+  final String? cacheKey;
   final TextStyle? textStyle;
   final bool normalizeHeadings;
   final bool selectable;
@@ -90,7 +133,12 @@ class MemoMarkdown extends StatelessWidget {
     final checkboxColor = baseStyle.color ?? theme.colorScheme.onSurface;
     final spacingPx = blockSpacing > 0 ? _formatCssPx(blockSpacing) : null;
 
-    final html = _renderMarkdownToHtml(tagged);
+    final cacheKey = this.cacheKey;
+    final cachedHtml = cacheKey == null ? null : _markdownHtmlCache.get(cacheKey);
+    final html = cachedHtml ?? _renderMarkdownToHtml(tagged);
+    if (cacheKey != null && cachedHtml == null) {
+      _markdownHtmlCache.set(cacheKey, html);
+    }
 
     var taskIndex = 0;
     Widget? buildTableWidget(dom.Element element) {

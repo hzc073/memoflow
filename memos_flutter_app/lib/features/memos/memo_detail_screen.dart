@@ -13,6 +13,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/content_fingerprint.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/reaction.dart';
@@ -205,6 +206,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         _memo = LocalMemo(
           uid: memo.uid,
           content: updated,
+          contentFingerprint: computeContentFingerprint(updated),
           visibility: memo.visibility,
           pinned: memo.pinned,
           state: memo.state,

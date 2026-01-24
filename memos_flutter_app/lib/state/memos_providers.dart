@@ -591,6 +591,7 @@ LocalMemo _localMemoFromRemote(Memo memo) {
   return LocalMemo(
     uid: memo.uid,
     content: memo.content,
+    contentFingerprint: memo.contentFingerprint,
     visibility: memo.visibility,
     pinned: memo.pinned,
     state: memo.state,

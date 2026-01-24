@@ -1,3 +1,4 @@
+import 'content_fingerprint.dart';
 import 'attachment.dart';
 import 'memo_relation.dart';
 import 'reaction.dart';
@@ -7,6 +8,7 @@ class Memo {
     required this.name,
     required this.creator,
     required this.content,
+    required this.contentFingerprint,
     required this.visibility,
     required this.pinned,
     required this.state,
@@ -22,6 +24,7 @@ class Memo {
   final String name;
   final String creator;
   final String content;
+  final String contentFingerprint;
   final String visibility;
   final bool pinned;
   final String state;
@@ -36,10 +39,13 @@ class Memo {
   String get uid => name.startsWith('memos/') ? name.substring('memos/'.length) : name;
 
   factory Memo.fromJson(Map<String, dynamic> json) {
+    final content = (json['content'] as String?) ?? '';
+    final contentFingerprint = computeContentFingerprint(content);
     return Memo(
       name: (json['name'] as String?) ?? '',
       creator: (json['creator'] as String?) ?? '',
-      content: (json['content'] as String?) ?? '',
+      content: content,
+      contentFingerprint: contentFingerprint,
       visibility: (json['visibility'] as String?) ?? 'PRIVATE',
       pinned: (json['pinned'] as bool?) ?? false,
       state: (json['state'] as String?) ?? 'NORMAL',
