@@ -16,6 +16,7 @@ class AiProviderSettingsScreen extends ConsumerStatefulWidget {
 class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScreen> {
   static const _kCustomModelOption = '__custom__';
   static const _kModelOptions = <String>[
+    'deepseek-chat',
     'Claude 3.5 Sonnet',
     'Claude 3.5 Haiku',
     'Claude 3 Opus',

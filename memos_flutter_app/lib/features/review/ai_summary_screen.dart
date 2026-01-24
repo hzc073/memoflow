@@ -15,6 +15,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../data/ai/ai_summary_service.dart';
+import '../../data/settings/ai_settings_repository.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
@@ -30,6 +31,7 @@ import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import 'daily_review_screen.dart';
+import 'quick_prompt_editor_screen.dart';
 
 class AiSummaryScreen extends ConsumerStatefulWidget {
   const AiSummaryScreen({super.key});
@@ -49,6 +51,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   var _view = _AiSummaryView.input;
   var _isLoading = false;
   var _allowPrivate = false;
+  var _isQuickPromptEditing = false;
   var _requestId = 0;
   AiSummaryResult? _summary;
 
@@ -127,6 +130,65 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     _promptController.selection = TextSelection.fromPosition(
       TextPosition(offset: _promptController.text.length),
     );
+  }
+
+  void _enterQuickPromptEditing() {
+    if (_isQuickPromptEditing) return;
+    setState(() => _isQuickPromptEditing = true);
+  }
+
+  void _exitQuickPromptEditing() {
+    if (!_isQuickPromptEditing) return;
+    setState(() => _isQuickPromptEditing = false);
+  }
+
+  Future<void> _addQuickPrompt() async {
+    FocusScope.of(context).unfocus();
+    final created = await Navigator.of(context).push<AiQuickPrompt>(
+      MaterialPageRoute<AiQuickPrompt>(
+        builder: (_) => const QuickPromptEditorScreen(),
+      ),
+    );
+    if (!mounted || created == null) return;
+    final settings = ref.read(aiSettingsProvider);
+    final next = [...settings.quickPrompts];
+    final key =
+        '${created.title}|${created.content}|${created.iconKey}'.toLowerCase();
+    final exists = next.any(
+      (p) =>
+          '${p.title}|${p.content}|${p.iconKey}'.toLowerCase() == key,
+    );
+    if (!exists) {
+      next.add(created);
+      await ref
+          .read(aiSettingsProvider.notifier)
+          .setAll(settings.copyWith(quickPrompts: next));
+    }
+    if (!mounted) return;
+    final content = created.content.trim().isNotEmpty
+        ? created.content.trim()
+        : created.title.trim();
+    if (content.isNotEmpty) {
+      _applyPrompt(content);
+    }
+  }
+
+  Future<void> _removeQuickPrompt(AiQuickPrompt prompt) async {
+    final settings = ref.read(aiSettingsProvider);
+    bool same(AiQuickPrompt a, AiQuickPrompt b) {
+      return a.title == b.title &&
+          a.content == b.content &&
+          a.iconKey == b.iconKey;
+    }
+
+    final next = settings.quickPrompts.where((p) => !same(p, prompt)).toList();
+    await ref
+        .read(aiSettingsProvider.notifier)
+        .setAll(settings.copyWith(quickPrompts: next));
+    if (!mounted) return;
+    if (next.isEmpty) {
+      setState(() => _isQuickPromptEditing = false);
+    }
   }
 
   Future<DateTimeRange?> _pickCustomRange() {
@@ -518,33 +580,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         : const Color(0xFFF1F6F1);
     final neutralChipText = textMain.withValues(alpha: 0.7);
     final isReport = _view == _AiSummaryView.report;
-
-    final quickPrompts = <_PromptOption>[
-      _PromptOption(
-        icon: Icons.mood,
-        label: context.tr(zh: '最近一周我的情绪变化', en: 'My mood changes last week'),
-        lightColor: MemoFlowPalette.aiChipBlueLight,
-        darkColor: MemoFlowPalette.aiChipBlueDark,
-      ),
-      _PromptOption(
-        icon: Icons.lightbulb,
-        label: context.tr(zh: '今年内我重复提到的想法', en: 'Ideas I repeated this year'),
-        lightColor: MemoFlowPalette.reviewChipOrangeLight,
-        darkColor: MemoFlowPalette.reviewChipOrangeDark,
-      ),
-      _PromptOption(
-        icon: Icons.assignment,
-        label: context.tr(zh: '总结我关于项目的灵感', en: 'Summarize my project ideas'),
-        lightColor: const Color(0xFF6B8E6B),
-        darkColor: const Color(0xFF86AD86),
-      ),
-      _PromptOption(
-        icon: Icons.trending_up,
-        label: context.tr(zh: '分析我的学习进度', en: 'Analyze my learning progress'),
-        lightColor: const Color(0xFFA67EB7),
-        darkColor: const Color(0xFFBF9BD1),
-      ),
-    ];
+    final quickPrompts =
+        ref.watch(aiSettingsProvider.select((s) => s.quickPrompts));
 
     return PopScope(
       canPop: false,
@@ -620,7 +657,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color textMuted,
     required Color chipBg,
     required Color inputBg,
-    required List<_PromptOption> quickPrompts,
+    required List<AiQuickPrompt> quickPrompts,
     required bool allowPrivate,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -771,32 +808,81 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
           ),
         ),
         const SizedBox(height: 28),
-        Text(
-          context.tr(zh: '快速尝试', en: 'Quick prompts'),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.6,
-            color: textMuted,
-          ),
+        Row(
+          children: [
+            Text(
+              context.tr(zh: '快速提示词', en: 'Quick prompts'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.6,
+                color: textMuted,
+              ),
+            ),
+            const Spacer(),
+            if (quickPrompts.isNotEmpty && !_isQuickPromptEditing)
+              TextButton(
+                onPressed: _enterQuickPromptEditing,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  context.tr(zh: '管理', en: 'Manage'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: MemoFlowPalette.primary,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            for (final option in quickPrompts)
-              _PromptChip(
-                label: option.label,
-                icon: option.icon,
-                iconColor: option.color(
-                  Theme.of(context).brightness == Brightness.dark,
-                ),
+            for (final prompt in quickPrompts)
+              _QuickPromptChip(
+                label: prompt.title.trim().isNotEmpty
+                    ? prompt.title.trim()
+                    : prompt.content.trim(),
                 background: card,
                 borderColor: border,
                 textColor: textMain,
-                onTap: () => _applyPrompt(option.label),
+                accent: MemoFlowPalette.primary,
+                icon: QuickPromptIconCatalog.resolve(prompt.iconKey),
+                editing: _isQuickPromptEditing,
+                onDelete: _isQuickPromptEditing
+                    ? () => _removeQuickPrompt(prompt)
+                    : null,
+                onLongPress: _enterQuickPromptEditing,
+                onTap: () {
+                  final content = prompt.content.trim().isNotEmpty
+                      ? prompt.content.trim()
+                      : prompt.title.trim();
+                  if (content.isNotEmpty) {
+                    _applyPrompt(content);
+                  }
+                },
               ),
+            _QuickPromptAddChip(
+              borderColor: border,
+              textColor:
+                  _isQuickPromptEditing ? MemoFlowPalette.primary : textMuted,
+              label: _isQuickPromptEditing
+                  ? context.tr(zh: '完成', en: 'Done')
+                  : context.tr(zh: '添加', en: 'Add'),
+              icon: _isQuickPromptEditing ? Icons.check : Icons.add,
+              onTap: _isQuickPromptEditing
+                  ? _exitQuickPromptEditing
+                  : _addQuickPrompt,
+            ),
           ],
         ),
       ],
@@ -1202,22 +1288,6 @@ class _MemoSource {
         included = 0;
 }
 
-class _PromptOption {
-  const _PromptOption({
-    required this.icon,
-    required this.label,
-    required this.lightColor,
-    required this.darkColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color lightColor;
-  final Color darkColor;
-
-  Color color(bool isDark) => isDark ? darkColor : lightColor;
-}
-
 class _AiRangeButton extends StatelessWidget {
   const _AiRangeButton({
     required this.label,
@@ -1268,67 +1338,164 @@ class _AiRangeButton extends StatelessWidget {
   }
 }
 
-class _PromptChip extends StatelessWidget {
-  const _PromptChip({
+class _QuickPromptChip extends StatelessWidget {
+  const _QuickPromptChip({
     required this.label,
-    required this.icon,
-    required this.iconColor,
     required this.background,
     required this.borderColor,
     required this.textColor,
+    required this.accent,
+    required this.icon,
+    required this.editing,
+    required this.onDelete,
+    required this.onLongPress,
     required this.onTap,
   });
 
   final String label;
-  final IconData icon;
-  final Color iconColor;
   final Color background;
   final Color borderColor;
   final Color textColor;
+  final Color accent;
+  final IconData icon;
+  final bool editing;
+  final VoidCallback? onDelete;
+  final VoidCallback? onLongPress;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 200),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: accent),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final decorated = editing
+        ? Stack(
+            clipBehavior: Clip.none,
+            children: [
+              content,
+              if (onDelete != null)
+                Positioned(
+                  right: -6,
+                  top: -6,
+                  child: GestureDetector(
+                    onTap: onDelete,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE05656),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.close,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          )
+        : content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: editing ? null : onTap,
+        onLongPress: editing ? null : onLongPress,
+        borderRadius: BorderRadius.circular(16),
+        child: decorated,
+      ),
+    );
+  }
+}
+
+class _QuickPromptAddChip extends StatelessWidget {
+  const _QuickPromptAddChip({
+    required this.borderColor,
+    required this.textColor,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final Color borderColor;
+  final Color textColor;
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: borderColor),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.16),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 13, color: iconColor),
-              ),
-              const SizedBox(width: 8),
+              Icon(icon, size: 14, color: textColor),
+              const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: textColor,
                 ),
               ),

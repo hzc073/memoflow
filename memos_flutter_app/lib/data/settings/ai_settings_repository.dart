@@ -2,13 +2,68 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+class AiQuickPrompt {
+  const AiQuickPrompt({
+    required this.title,
+    required this.content,
+    required this.iconKey,
+  });
+
+  static const defaultIconKey = 'sparkle';
+
+  final String title;
+  final String content;
+  final String iconKey;
+
+  AiQuickPrompt copyWith({
+    String? title,
+    String? content,
+    String? iconKey,
+  }) {
+    return AiQuickPrompt(
+      title: title ?? this.title,
+      content: content ?? this.content,
+      iconKey: iconKey ?? this.iconKey,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'content': content,
+        'iconKey': iconKey,
+      };
+
+  factory AiQuickPrompt.fromJson(Map<String, dynamic> json) {
+    String readString(String key, String fallback) {
+      final raw = json[key];
+      if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+      return fallback;
+    }
+
+    final title = readString('title', '');
+    final content = readString('content', title);
+    final iconKey = readString('iconKey', defaultIconKey);
+    return AiQuickPrompt(title: title, content: content, iconKey: iconKey);
+  }
+
+  static AiQuickPrompt fromLegacy(String raw) {
+    final trimmed = raw.trim();
+    return AiQuickPrompt(
+      title: trimmed,
+      content: trimmed,
+      iconKey: defaultIconKey,
+    );
+  }
+}
+
 class AiSettings {
   static const defaults = AiSettings(
-    apiUrl: 'https://api.anthropic.com/v1',
+    apiUrl: 'https://api.deepseek.com',
     apiKey: '',
-    model: 'Claude 3.5 Sonnet',
+    model: 'deepseek-chat',
     prompt: '你是一位极简主义的笔记助手，擅长提炼核心观点并以优雅的格式排版。在回复时，请保持专业、温和且简洁的语气。尽量使用列表和简短的段落。',
     userProfile: '',
+    quickPrompts: const <AiQuickPrompt>[],
   );
 
   const AiSettings({
@@ -17,6 +72,7 @@ class AiSettings {
     required this.model,
     required this.prompt,
     required this.userProfile,
+    required this.quickPrompts,
   });
 
   final String apiUrl;
@@ -24,6 +80,7 @@ class AiSettings {
   final String model;
   final String prompt;
   final String userProfile;
+  final List<AiQuickPrompt> quickPrompts;
 
   AiSettings copyWith({
     String? apiUrl,
@@ -31,6 +88,7 @@ class AiSettings {
     String? model,
     String? prompt,
     String? userProfile,
+    List<AiQuickPrompt>? quickPrompts,
   }) {
     return AiSettings(
       apiUrl: apiUrl ?? this.apiUrl,
@@ -38,16 +96,18 @@ class AiSettings {
       model: model ?? this.model,
       prompt: prompt ?? this.prompt,
       userProfile: userProfile ?? this.userProfile,
+      quickPrompts: quickPrompts ?? this.quickPrompts,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'apiUrl': apiUrl,
-        'apiKey': apiKey,
-        'model': model,
-        'prompt': prompt,
-        'userProfile': userProfile,
-      };
+    'apiUrl': apiUrl,
+    'apiKey': apiKey,
+    'model': model,
+    'prompt': prompt,
+    'userProfile': userProfile,
+    'quickPrompts': quickPrompts.map((p) => p.toJson()).toList(growable: false),
+  };
 
   factory AiSettings.fromJson(Map<String, dynamic> json) {
     String readString(String key, String fallback) {
@@ -56,12 +116,51 @@ class AiSettings {
       return fallback;
     }
 
+    List<AiQuickPrompt> readQuickPrompts(
+      String key,
+      List<AiQuickPrompt> fallback,
+    ) {
+      final raw = json[key];
+      if (raw is! List) return fallback;
+      final prompts = <AiQuickPrompt>[];
+      final seen = <String>{};
+      for (final item in raw) {
+        AiQuickPrompt? prompt;
+        if (item is String) {
+          final trimmed = item.trim();
+          if (trimmed.isNotEmpty) {
+            prompt = AiQuickPrompt.fromLegacy(trimmed);
+          }
+        } else if (item is Map) {
+          prompt = AiQuickPrompt.fromJson(item.cast<String, dynamic>());
+        }
+        if (prompt == null) continue;
+        if (prompt.title.trim().isEmpty && prompt.content.trim().isEmpty) {
+          continue;
+        }
+        final key = '${prompt.title}|${prompt.content}|${prompt.iconKey}';
+        if (seen.add(key)) {
+          prompts.add(prompt);
+        }
+      }
+      if (prompts.isEmpty) return fallback;
+      return prompts.toList(growable: false);
+    }
+
     return AiSettings(
       apiUrl: readString('apiUrl', AiSettings.defaults.apiUrl),
-      apiKey: (json['apiKey'] is String) ? (json['apiKey'] as String).trim() : AiSettings.defaults.apiKey,
+      apiKey: (json['apiKey'] is String)
+          ? (json['apiKey'] as String).trim()
+          : AiSettings.defaults.apiKey,
       model: readString('model', AiSettings.defaults.model),
       prompt: readString('prompt', AiSettings.defaults.prompt),
-      userProfile: (json['userProfile'] is String) ? (json['userProfile'] as String).trim() : AiSettings.defaults.userProfile,
+      userProfile: (json['userProfile'] is String)
+          ? (json['userProfile'] as String).trim()
+          : AiSettings.defaults.userProfile,
+      quickPrompts: readQuickPrompts(
+        'quickPrompts',
+        AiSettings.defaults.quickPrompts,
+      ),
     );
   }
 }
@@ -94,4 +193,3 @@ class AiSettingsRepository {
     await _storage.delete(key: _kKey);
   }
 }
-
