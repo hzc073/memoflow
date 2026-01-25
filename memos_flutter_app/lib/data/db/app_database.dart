@@ -385,6 +385,17 @@ CREATE TABLE IF NOT EXISTS import_history (
     );
   }
 
+  Future<List<Map<String, dynamic>>> listOutboxPendingByType(String type) async {
+    final db = await this.db;
+    return db.query(
+      'outbox',
+      columns: const ['id', 'payload'],
+      where: 'state IN (0, 2) AND type = ?',
+      whereArgs: [type],
+      orderBy: 'id ASC',
+    );
+  }
+
   Future<void> markOutboxError(int id, {required String error}) async {
     final db = await this.db;
     await db.rawUpdate(

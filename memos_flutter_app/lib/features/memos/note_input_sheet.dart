@@ -669,6 +669,129 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     }
   }
 
+  void _removePendingAttachment(String uid) {
+    setState(() => _pendingAttachments.removeWhere((a) => a.uid == uid));
+  }
+
+  bool _isImageMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase().startsWith('image/');
+  }
+
+  File? _resolvePendingAttachmentFile(_PendingAttachment attachment) {
+    final path = attachment.filePath.trim();
+    if (path.isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return file;
+  }
+
+  Widget _buildAttachmentPreview(bool isDark) {
+    if (_pendingAttachments.isEmpty) return const SizedBox.shrink();
+    const tileSize = 62.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SizedBox(
+        height: tileSize,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            children: [
+              for (var i = 0; i < _pendingAttachments.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                _buildAttachmentTile(_pendingAttachments[i], isDark: isDark, size: tileSize),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentTile(_PendingAttachment attachment, {required bool isDark, required double size}) {
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final surfaceColor = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
+    final iconColor = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: 0.6);
+    final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
+    final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
+    final isImage = _isImageMimeType(attachment.mimeType);
+    final file = _resolvePendingAttachmentFile(attachment);
+
+    Widget content;
+    if (isImage && file != null) {
+      content = Image.file(
+        file,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true);
+        },
+      );
+    } else {
+      content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+            boxShadow: [
+              BoxShadow(
+                color: shadowColor,
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: content,
+          ),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: _busy ? null : () => _removePendingAttachment(attachment.uid),
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: removeBg,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.close, size: 12, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _attachmentFallback({
+    required Color iconColor,
+    required Color surfaceColor,
+    required bool isImage,
+  }) {
+    return Container(
+      color: surfaceColor,
+      alignment: Alignment.center,
+      child: Icon(
+        isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
+        size: 22,
+        color: iconColor,
+      ),
+    );
+  }
+
   Set<String> get _linkedMemoNames => _linkedMemos.map((m) => m.name).toSet();
 
   void _addLinkedMemo(Memo memo) {
@@ -867,18 +990,25 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 160, maxHeight: 340),
-                        child: TextField(
-                          controller: _controller,
-                          autofocus: true,
-                          maxLines: null,
-                          keyboardType: TextInputType.multiline,
-                          style: TextStyle(fontSize: 17, height: 1.35, color: textColor),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            border: InputBorder.none,
-                            hintText: context.tr(zh: '写下你的想法...', en: 'Write down your thoughts...'),
-                            hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
-                          ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildAttachmentPreview(isDark),
+                            TextField(
+                              controller: _controller,
+                              autofocus: true,
+                              maxLines: null,
+                              keyboardType: TextInputType.multiline,
+                              style: TextStyle(fontSize: 17, height: 1.35, color: textColor),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: context.tr(zh: '写下你的想法...', en: 'Write down your thoughts...'),
+                                hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),

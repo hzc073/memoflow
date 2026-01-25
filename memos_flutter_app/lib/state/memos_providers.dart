@@ -1036,9 +1036,9 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             await db.deleteOutbox(id);
             break;
           case 'upload_attachment':
-            await _handleUploadAttachment(payload);
+            final isFinalized = await _handleUploadAttachment(payload);
             final memoUid = payload['memo_uid'] as String?;
-            if (memoUid != null && memoUid.isNotEmpty) {
+            if (isFinalized && memoUid != null && memoUid.isNotEmpty) {
               await db.updateMemoSyncState(memoUid, syncState: 0);
             }
             await db.deleteOutbox(id);
@@ -1176,7 +1176,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  Future<void> _handleUploadAttachment(Map<String, dynamic> payload) async {
+  Future<bool> _handleUploadAttachment(Map<String, dynamic> payload) async {
     final uid = payload['uid'] as String?;
     final memoUid = payload['memo_uid'] as String?;
     final filePath = payload['file_path'] as String?;
@@ -1193,13 +1193,6 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final bytes = await file.readAsBytes();
 
     if (api.useLegacyApi) {
-      List<String> existingNames;
-      try {
-        final existing = await api.listMemoAttachments(memoUid: memoUid);
-        existingNames = existing.map((a) => a.name).where((n) => n.trim().isNotEmpty).toList(growable: false);
-      } catch (_) {
-        existingNames = await _listLocalAttachmentNames(memoUid);
-      }
       final created = await _createAttachmentWith409Recovery(
         attachmentId: uid,
         filename: filename,
@@ -1215,13 +1208,27 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
         remote: created,
       );
 
+      final shouldFinalize = await _isLastPendingAttachmentUpload(memoUid);
+      if (!shouldFinalize) {
+        return false;
+      }
+
+      List<String> existingNames = const [];
+      try {
+        final existing = await api.listMemoAttachments(memoUid: memoUid);
+        existingNames = existing.map((a) => a.name).where((n) => n.trim().isNotEmpty).toList(growable: false);
+      } catch (_) {}
+
+      final localNames = await _listLocalAttachmentNames(memoUid);
       final names = <String>{
         ...existingNames,
-        created.name,
+        ...localNames,
       }.where((n) => n.trim().isNotEmpty).toList(growable: false);
 
-      await api.setMemoAttachments(memoUid: memoUid, attachmentNames: names);
-      return;
+      if (names.isNotEmpty) {
+        await api.setMemoAttachments(memoUid: memoUid, attachmentNames: names);
+      }
+      return true;
     }
 
     List<String>? existingRemoteNames;
@@ -1253,13 +1260,45 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       remote: created,
     );
 
-    if (supportsSetAttachments) {
-      final names = <String>{
-        ...?existingRemoteNames,
-        created.name,
-      }.where((n) => n.trim().isNotEmpty).toList(growable: false);
+    final shouldFinalize = await _isLastPendingAttachmentUpload(memoUid);
+    if (!supportsSetAttachments || !shouldFinalize) {
+      return shouldFinalize;
+    }
+
+    final localNames = await _listLocalAttachmentNames(memoUid);
+    final names = <String>{
+      ...?existingRemoteNames,
+      ...localNames,
+    }.where((n) => n.trim().isNotEmpty).toList(growable: false);
+
+    if (names.isNotEmpty) {
       await api.setMemoAttachments(memoUid: memoUid, attachmentNames: names);
     }
+    return true;
+  }
+
+  Future<int> _countPendingAttachmentUploads(String memoUid) async {
+    final rows = await db.listOutboxPendingByType('upload_attachment');
+    var count = 0;
+    for (final row in rows) {
+      final payloadRaw = row['payload'];
+      if (payloadRaw is! String) continue;
+      try {
+        final decoded = jsonDecode(payloadRaw);
+        if (decoded is! Map) continue;
+        final payload = decoded.cast<String, dynamic>();
+        final targetMemoUid = payload['memo_uid'];
+        if (targetMemoUid is String && targetMemoUid.trim() == memoUid) {
+          count++;
+        }
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  Future<bool> _isLastPendingAttachmentUpload(String memoUid) async {
+    final pending = await _countPendingAttachmentUploads(memoUid);
+    return pending <= 1;
   }
 
   Future<List<String>> _listLocalAttachmentNames(String memoUid) async {
