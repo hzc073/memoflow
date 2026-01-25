@@ -4,7 +4,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/app_localization.dart';
@@ -55,6 +54,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _undoStack = <TextEditingValue>[];
   final _redoStack = <TextEditingValue>[];
   final _imagePicker = ImagePicker();
+  final _pickedImages = <XFile>[];
   TextEditingValue _lastValue = const TextEditingValue();
   var _isApplyingHistory = false;
   static const _maxHistory = 100;
@@ -576,17 +576,19 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _pickAttachments() async {
     if (_busy) return;
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-      if (!mounted || result == null) return;
+      final files = await _imagePicker.pickMultiImage();
+      if (!mounted) return;
+      if (files.isEmpty) return;
 
       final added = <_PendingAttachment>[];
+      final accepted = <XFile>[];
       var tooLargeCount = 0;
-      for (final file in result.files) {
+      for (final file in files) {
         final path = file.path;
-        if (path == null || path.trim().isEmpty) continue;
+        if (path.trim().isEmpty) continue;
         final handle = File(path);
         if (!handle.existsSync()) continue;
-        final size = file.size > 0 ? file.size : handle.lengthSync();
+        final size = handle.lengthSync();
         if (size > _maxAttachmentBytes) {
           tooLargeCount++;
           continue;
@@ -602,23 +604,27 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             size: size,
           ),
         );
+        accepted.add(file);
       }
 
       if (added.isEmpty) {
-        final msg = tooLargeCount > 0 ? 'File too large (max 30 MB).' : 'No files selected.';
+        final msg = tooLargeCount > 0 ? 'Image too large (max 30 MB).' : 'No images selected.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
         return;
       }
 
-      setState(() => _pendingAttachments.addAll(added));
+      setState(() {
+        _pendingAttachments.addAll(added);
+        _pickedImages.addAll(accepted);
+      });
       final suffix = added.length == 1 ? '' : 's';
       final summary = tooLargeCount > 0
-          ? 'Added ${added.length} attachment$suffix. Skipped $tooLargeCount over 30 MB.'
-          : 'Added ${added.length} attachment$suffix.';
+          ? 'Added ${added.length} image$suffix. Skipped $tooLargeCount over 30 MB.'
+          : 'Added ${added.length} image$suffix.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Attachment failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image selection failed: $e')));
     }
   }
 
@@ -661,6 +667,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             size: size,
           ),
         );
+        _pickedImages.add(photo);
       });
       messenger.showSnackBar(const SnackBar(content: Text('Added photo attachment.')));
     } catch (e) {
@@ -670,7 +677,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   }
 
   void _removePendingAttachment(String uid) {
-    setState(() => _pendingAttachments.removeWhere((a) => a.uid == uid));
+    final index = _pendingAttachments.indexWhere((a) => a.uid == uid);
+    if (index < 0) return;
+    final removed = _pendingAttachments[index];
+    setState(() {
+      _pendingAttachments.removeAt(index);
+      _pickedImages.removeWhere((x) => x.path == removed.filePath);
+    });
   }
 
   bool _isImageMimeType(String mimeType) {
@@ -913,6 +926,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       _controller.clear();
       _clearLinkedMemos();
       _pendingAttachments.clear();
+      _pickedImages.clear();
       await ref.read(noteDraftProvider.notifier).clear();
 
       if (!mounted) return;
@@ -995,17 +1009,20 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _buildAttachmentPreview(isDark),
-                            TextField(
-                              controller: _controller,
-                              autofocus: true,
-                              maxLines: null,
-                              keyboardType: TextInputType.multiline,
-                              style: TextStyle(fontSize: 17, height: 1.35, color: textColor),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                border: InputBorder.none,
+                            Flexible(
+                              fit: FlexFit.loose,
+                              child: TextField(
+                                controller: _controller,
+                                autofocus: true,
+                                maxLines: null,
+                                keyboardType: TextInputType.multiline,
+                                style: TextStyle(fontSize: 17, height: 1.35, color: textColor),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  border: InputBorder.none,
                                 hintText: context.tr(zh: '写下你的想法...', en: 'Write down your thoughts...'),
-                                hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
+                                  hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
+                                ),
                               ),
                             ),
                           ],

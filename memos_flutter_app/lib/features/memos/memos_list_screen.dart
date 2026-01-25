@@ -323,13 +323,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     setState(() => _activeTagFilter = _normalizeTag(tag));
   }
 
-  Attachment? _firstImageAttachment(LocalMemo memo) {
-    for (final attachment in memo.attachments) {
-      if (attachment.type.startsWith('image/')) return attachment;
-    }
-    return null;
-  }
-
   void _resetAudioLogState() {
     _lastAudioProgressLogAt = null;
     _lastAudioProgressLogPosition = Duration.zero;
@@ -1266,10 +1259,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final audioDurationListenable = isAudioActive
         ? _audioDurationNotifier
         : null;
-    final imageAttachment = _firstImageAttachment(memo);
-    final imageSource = imageAttachment == null
-        ? null
-        : _resolveImagePreviewSource(imageAttachment);
+    final imageSources =
+        <({String url, String? localPath, Map<String, String>? headers})>[];
+    for (final attachment in memo.attachments) {
+      if (!attachment.type.startsWith('image/')) continue;
+      final source = _resolveImagePreviewSource(attachment);
+      if (source == null) continue;
+      imageSources.add(source);
+      if (imageSources.length >= 9) break;
+    }
     final hapticsEnabled = prefs.hapticsEnabled;
 
     void maybeHaptic() {
@@ -1288,7 +1286,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       isAudioLoading: removing ? false : isAudioLoading,
       audioPositionListenable: removing ? null : audioPositionListenable,
       audioDurationListenable: removing ? null : audioDurationListenable,
-      imageSource: imageSource,
+      imageSources: imageSources,
       onAudioSeek: removing || !isAudioActive
           ? null
           : (pos) => _seekAudioPosition(memo, pos),
@@ -2594,7 +2592,7 @@ class _MemoCard extends StatefulWidget {
     required this.isAudioLoading,
     required this.audioPositionListenable,
     required this.audioDurationListenable,
-    required this.imageSource,
+    required this.imageSources,
     required this.onAudioSeek,
     required this.onAudioTap,
     required this.onToggleTask,
@@ -2610,8 +2608,8 @@ class _MemoCard extends StatefulWidget {
   final bool isAudioLoading;
   final ValueListenable<Duration>? audioPositionListenable;
   final ValueListenable<Duration?>? audioDurationListenable;
-  final ({String url, String? localPath, Map<String, String>? headers})?
-  imageSource;
+  final List<({String url, String? localPath, Map<String, String>? headers})>
+  imageSources;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
   final ValueChanged<int> onToggleTask;
@@ -2679,7 +2677,7 @@ class _MemoCardState extends State<_MemoCard> {
     final audioPositionListenable = widget.audioPositionListenable;
     final audioDurationListenable = widget.audioDurationListenable;
     final onAudioSeek = widget.onAudioSeek;
-    final imageSource = widget.imageSource;
+    final imageSources = widget.imageSources;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark
@@ -2748,70 +2746,67 @@ class _MemoCardState extends State<_MemoCard> {
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
     final audioDurationFallback = _parseVoiceDurationValue(memo.content);
 
-    Widget buildImagePreview() {
-      if (imageSource == null) return const SizedBox.shrink();
-      const previewWidth = 120.0;
-      const previewHeight = 80.0;
-      final previewBorder = Border.all(
-        color: borderColor.withValues(alpha: 0.7),
-      );
+    Widget buildImageGrid() {
+      if (imageSources.isEmpty) return const SizedBox.shrink();
+      const gridSpacing = 8.0;
+      const gridRadius = 10.0;
+      final previewBorder = borderColor.withValues(alpha: 0.65);
       final previewBg = isDark
           ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
           : MemoFlowPalette.audioSurfaceLight;
 
-      Widget image;
-      if (imageSource.localPath != null) {
-        image = Image.file(
-          File(imageSource.localPath!),
-          width: previewWidth,
-          height: previewHeight,
-          fit: BoxFit.cover,
+      Widget placeholder(IconData icon) {
+        return Container(
+          color: Colors.transparent,
+          alignment: Alignment.center,
+          child: Icon(icon, size: 18, color: textMain.withValues(alpha: 0.45)),
         );
-      } else {
-        image = CachedNetworkImage(
-          imageUrl: imageSource.url,
-          httpHeaders: imageSource.headers,
-          width: previewWidth,
-          height: previewHeight,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            width: previewWidth,
-            height: previewHeight,
-            color: previewBg,
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.image_outlined,
-              size: 18,
-              color: textMain.withValues(alpha: 0.5),
+      }
+
+      Widget buildTile(({String url, String? localPath, Map<String, String>? headers}) source) {
+        Widget image;
+        if (source.localPath != null) {
+          image = Image.file(
+            File(source.localPath!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return placeholder(Icons.broken_image_outlined);
+            },
+          );
+        } else {
+          image = CachedNetworkImage(
+            imageUrl: source.url,
+            httpHeaders: source.headers,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => placeholder(Icons.image_outlined),
+            errorWidget: (context, url, error) => placeholder(Icons.broken_image_outlined),
+          );
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(gridRadius),
+          child: Container(
+            decoration: BoxDecoration(
+              color: previewBg,
+              borderRadius: BorderRadius.circular(gridRadius),
+              border: Border.all(color: previewBorder),
             ),
-          ),
-          errorWidget: (context, url, error) => Container(
-            width: previewWidth,
-            height: previewHeight,
-            color: previewBg,
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.broken_image_outlined,
-              size: 18,
-              color: textMain.withValues(alpha: 0.5),
-            ),
+            child: image,
           ),
         );
       }
 
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          width: previewWidth,
-          height: previewHeight,
-          decoration: BoxDecoration(
-            color: previewBg,
-            borderRadius: BorderRadius.circular(12),
-            border: previewBorder,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: image,
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: gridSpacing,
+          mainAxisSpacing: gridSpacing,
+          childAspectRatio: 1,
         ),
+        itemCount: imageSources.length,
+        itemBuilder: (context, index) => buildTile(imageSources[index]),
       );
     }
 
@@ -2995,9 +2990,9 @@ class _MemoCardState extends State<_MemoCard> {
                         ),
                       ),
                     ],
-                    if (imageSource != null) ...[
+                    if (imageSources.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      buildImagePreview(),
+                      buildImageGrid(),
                     ],
                     if (hasAudio) ...[const SizedBox(height: 12), audioRow],
                   ],

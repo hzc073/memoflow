@@ -307,6 +307,95 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     }
   }
 
+  Widget _buildImageAttachmentGrid({
+    required BuildContext context,
+    required List<Attachment> attachments,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+    const gridSpacing = 8.0;
+    const gridRadius = 12.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final previewBg =
+        isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+
+    Widget placeholder(IconData icon) {
+      return Container(
+        color: previewBg,
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18, color: textMain.withValues(alpha: 0.5)),
+      );
+    }
+
+    Widget buildTile(Attachment attachment) {
+      final localFile = _localAttachmentFile(attachment);
+      final thumbUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: true);
+      final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: false);
+
+      Widget image;
+      if (localFile != null) {
+        image = Image.file(
+          localFile,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => placeholder(Icons.broken_image_outlined),
+        );
+      } else if (thumbUrl.isNotEmpty) {
+        image = CachedNetworkImage(
+          imageUrl: thumbUrl,
+          httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+          fit: BoxFit.cover,
+          placeholder: (context, _) => placeholder(Icons.image_outlined),
+          errorWidget: (context, url, error) => placeholder(Icons.broken_image_outlined),
+        );
+      } else {
+        image = placeholder(Icons.image_outlined);
+      }
+
+      final tile = Container(
+        decoration: BoxDecoration(
+          color: previewBg,
+          borderRadius: BorderRadius.circular(gridRadius),
+          border: Border.all(color: borderColor.withValues(alpha: 0.65)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: image,
+      );
+
+      if (fullUrl.isEmpty || baseUrl == null) return tile;
+      return GestureDetector(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => _ImageViewerScreen(
+                imageUrl: fullUrl,
+                authHeader: authHeader,
+                title: attachment.filename,
+              ),
+            ),
+          );
+        },
+        child: tile,
+      );
+    }
+
+    return GridView.builder(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: gridSpacing,
+        mainAxisSpacing: gridSpacing,
+        childAspectRatio: 1,
+      ),
+      itemCount: attachments.length,
+      itemBuilder: (context, index) => buildTile(attachments[index]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final memo = _memo;
@@ -488,84 +577,57 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                   const SizedBox(height: 16),
                   Text(context.tr(zh: '附件', en: 'Attachments'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  ...memo.attachments.map(
-                    (a) {
-                      final type = a.type;
-                      final isImage = type.startsWith('image/');
-                      final isAudio = type.startsWith('audio');
-                      final localFile = _localAttachmentFile(a);
-    
-                      final url = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: isImage);
-                      final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: false);
-    
-                      if (isImage && localFile != null) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              localFile,
-                              fit: BoxFit.cover,
+                  Builder(
+                    builder: (context) {
+                      final images = memo.attachments
+                          .where((a) => a.type.startsWith('image/'))
+                          .toList(growable: false);
+                      final others = memo.attachments
+                          .where((a) => !a.type.startsWith('image/'))
+                          .toList(growable: false);
+                  
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (images.isNotEmpty)
+                            _buildImageAttachmentGrid(
+                              context: context,
+                              attachments: images,
+                              baseUrl: baseUrl,
+                              authHeader: authHeader,
                             ),
-                          ),
-                        );
-                      }
-    
-                      if (isImage && baseUrl != null && url.isNotEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => _ImageViewerScreen(
-                                    imageUrl: fullUrl,
-                                    authHeader: authHeader,
-                                    title: a.filename,
-                                  ),
-                                ),
+                          if (images.isNotEmpty && others.isNotEmpty) const SizedBox(height: 8),
+                          ...others.map(
+                            (a) {
+                              final isAudio = a.type.startsWith('audio');
+                              final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: false);
+                  
+                              if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
+                                return StreamBuilder<PlayerState>(
+                                  stream: _player.playerStateStream,
+                                  builder: (context, snap) {
+                                    final playing = _player.playing && _currentAudioUrl == fullUrl;
+                                    return ListTile(
+                                      leading: Icon(playing ? Icons.pause : Icons.play_arrow),
+                                      title: Text(a.filename),
+                                      subtitle: Text(a.type),
+                                      onTap: () => _togglePlayAudio(
+                                        fullUrl,
+                                        headers: authHeader == null ? null : {'Authorization': authHeader},
+                                      ),
+                                    );
+                                  },
+                                );
+                              }
+                  
+                              return ListTile(
+                                leading: const Icon(Icons.attach_file),
+                                title: Text(a.filename),
+                                subtitle: Text(a.type),
                               );
                             },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: CachedNetworkImage(
-                                imageUrl: url,
-                                httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
-                                fit: BoxFit.cover,
-                                placeholder: (context, _) => const SizedBox(
-                                  height: 160,
-                                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                ),
-                                errorWidget: (context, url, error) =>
-                                    const SizedBox(height: 160, child: Icon(Icons.broken_image)),
-                              ),
-                            ),
                           ),
-                        );
-                      }
-    
-                      if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
-                        return StreamBuilder<PlayerState>(
-                          stream: _player.playerStateStream,
-                          builder: (context, snap) {
-                            final playing = _player.playing && _currentAudioUrl == fullUrl;
-                            return ListTile(
-                              leading: Icon(playing ? Icons.pause : Icons.play_arrow),
-                              title: Text(a.filename),
-                              subtitle: Text(a.type),
-                              onTap: () => _togglePlayAudio(
-                                fullUrl,
-                                headers: authHeader == null ? null : {'Authorization': authHeader},
-                              ),
-                            );
-                          },
-                        );
-                      }
-    
-                      return ListTile(
-                        leading: const Icon(Icons.attach_file),
-                        title: Text(a.filename),
-                        subtitle: Text(a.type),
+                        ],
                       );
                     },
                   ),

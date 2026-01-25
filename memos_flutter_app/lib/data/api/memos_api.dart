@@ -44,6 +44,14 @@ class MemosApi {
 
   final Dio _dio;
   final bool useLegacyApi;
+  static const Duration _attachmentTimeout = Duration(seconds: 120);
+
+  Options _attachmentOptions() {
+    return Options(
+      sendTimeout: _attachmentTimeout,
+      receiveTimeout: _attachmentTimeout,
+    );
+  }
 
   factory MemosApi.unauthenticated(
     Uri baseUrl, {
@@ -2048,6 +2056,7 @@ class MemosApi {
         'api/v1/attachments',
         queryParameters: <String, Object?>{'attachmentId': attachmentId},
         data: data,
+        options: _attachmentOptions(),
       );
       return Attachment.fromJson(_expectJsonMap(response.data));
     } on DioException catch (e) {
@@ -2060,6 +2069,7 @@ class MemosApi {
       'api/v1/resources',
       queryParameters: <String, Object?>{'resourceId': attachmentId},
       data: data,
+      options: _attachmentOptions(),
     );
     return Attachment.fromJson(_expectJsonMap(response.data));
   }
@@ -2084,6 +2094,7 @@ class MemosApi {
         'api/v1/resources',
         queryParameters: <String, Object?>{'resourceId': attachmentId},
         data: data,
+        options: _attachmentOptions(),
       );
       return Attachment.fromJson(_expectJsonMap(response.data));
     } on DioException catch (e) {
@@ -2096,6 +2107,7 @@ class MemosApi {
       'api/v1/attachments',
       queryParameters: <String, Object?>{'attachmentId': attachmentId},
       data: data,
+      options: _attachmentOptions(),
     );
     return Attachment.fromJson(_expectJsonMap(response.data));
   }
@@ -2243,6 +2255,7 @@ class MemosApi {
         'name': 'memos/$memoUid',
         'attachments': attachmentNames.map((n) => <String, Object?>{'name': n}).toList(growable: false),
       },
+      options: _attachmentOptions(),
     );
   }
 
@@ -2253,6 +2266,7 @@ class MemosApi {
         'name': 'memos/$memoUid',
         'resources': attachmentNames.map((n) => <String, Object?>{'name': n}).toList(growable: false),
       },
+      options: _attachmentOptions(),
     );
   }
 
@@ -2798,7 +2812,11 @@ class MemosApi {
     final formData = FormData.fromMap({
       'file': MultipartFile.fromBytes(bytes, filename: filename),
     });
-    final response = await _dio.post('api/v1/resource/blob', data: formData);
+    final response = await _dio.post(
+      'api/v1/resource/blob',
+      data: formData,
+      options: _attachmentOptions(),
+    );
     return _attachmentFromLegacy(_expectJsonMap(response.data));
   }
 
@@ -2833,6 +2851,7 @@ class MemosApi {
         'id': _legacyMemoIdValue(memoUid),
         'resourceIdList': resourceIds,
       },
+      options: _attachmentOptions(),
     );
   }
 
