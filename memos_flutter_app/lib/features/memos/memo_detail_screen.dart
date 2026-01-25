@@ -333,6 +333,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final contentWidget = _CollapsibleText(
       text: memo.content,
       collapseEnabled: prefs.collapseLongContent,
+      initiallyExpanded: true,
       style: contentStyle,
       hapticsEnabled: hapticsEnabled,
       onToggleTask: canToggleTasks
@@ -1607,6 +1608,7 @@ class _CollapsibleText extends StatefulWidget {
     required this.collapseEnabled,
     required this.style,
     required this.hapticsEnabled,
+    this.initiallyExpanded = false,
     this.onToggleTask,
   });
 
@@ -1614,6 +1616,7 @@ class _CollapsibleText extends StatefulWidget {
   final bool collapseEnabled;
   final TextStyle? style;
   final bool hapticsEnabled;
+  final bool initiallyExpanded;
   final ValueChanged<TaskToggleRequest>? onToggleTask;
 
   @override
@@ -1624,7 +1627,13 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
   static const _collapsedLines = 14;
   static const _collapsedRunes = 420;
 
-  var _expanded = false;
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
 
   bool _isLong(String text) {
     final lines = text.split('\n');
