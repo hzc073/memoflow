@@ -343,6 +343,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         'file_path': filePath,
         'filename': fileName,
         'mime_type': 'audio/mp4',
+        'file_size': size,
       });
 
       // Try best-effort sync in background (manual refresh still available).

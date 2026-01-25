@@ -15,7 +15,7 @@ final breadcrumbStoreProvider = Provider<BreadcrumbStore>((ref) {
 });
 
 final networkLogBufferProvider = Provider<NetworkLogBuffer>((ref) {
-  return NetworkLogBuffer();
+  return NetworkLogBuffer(maxEntries: 200);
 });
 
 final logManagerProvider = Provider<LogManager>((ref) {

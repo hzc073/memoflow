@@ -918,6 +918,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           'file_path': attachment.filePath,
           'filename': attachment.filename,
           'mime_type': attachment.mimeType,
+          'file_size': attachment.size,
         });
       }
 

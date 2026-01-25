@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -6,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../core/log_sanitizer.dart';
 import '../db/app_database.dart';
 import 'breadcrumb_store.dart';
 import 'logger_service.dart';
@@ -33,7 +35,10 @@ class LogReportGenerator {
 
   Future<String> buildReport({
     int breadcrumbLimit = 15,
-    int networkLimit = 10,
+    int networkLimit = 30,
+    int errorLimit = 12,
+    int outboxLimit = 10,
+    int memoErrorLimit = 8,
   }) async {
     final now = DateTime.now();
     final reportTime = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(now);
@@ -44,13 +49,22 @@ class LogReportGenerator {
     final sqlite = await _db.db;
     final totalMemos = await _count(sqlite, 'SELECT COUNT(*) FROM memos;');
     final pendingQueue = await _count(sqlite, 'SELECT COUNT(*) FROM outbox WHERE state IN (0,2);');
+    final failedQueue = await _count(sqlite, 'SELECT COUNT(*) FROM outbox WHERE state = 2;');
+    final outboxTypeCounts = await _loadOutboxTypeCounts(sqlite);
+    final pendingOutboxItems = await _loadOutboxItems(sqlite, state: 0, limit: outboxLimit);
+    final failedOutboxItems = await _loadOutboxItems(sqlite, state: 2, limit: outboxLimit);
+    final memoSyncErrors = await _loadMemoSyncErrors(sqlite, limit: memoErrorLimit);
 
     final lifecycle = LoggerService.formatLifecycle(_loggerService.lifecycleState);
     final syncLine = _formatSyncLine(_syncStatusTracker.snapshot);
+    final syncErrorLine = _formatSyncErrorLine(_syncStatusTracker.snapshot);
     final pendingLine = _formatPendingQueue(pendingQueue);
+    final outboxLine = _formatOutboxCounts(pendingQueue, failedQueue, outboxTypeCounts);
 
     final breadcrumbs = _breadcrumbStore.list(limit: breadcrumbLimit);
-    final networkLogs = _networkLogBuffer.list(limit: networkLimit);
+    final allNetworkLogs = _networkLogBuffer.listAll();
+    final networkLogs = _tail(allNetworkLogs, networkLimit);
+    final networkErrors = _tail(_filterNetworkErrors(allNetworkLogs), errorLimit);
 
     final buffer = StringBuffer()
       ..writeln('[REPORT HEAD]')
@@ -62,8 +76,46 @@ class LogReportGenerator {
       ..writeln('[APP STATE SNAPSHOT]')
       ..writeln('Lifecycle: $lifecycle')
       ..writeln(syncLine)
+      ..writeln(syncErrorLine)
       ..writeln(pendingLine)
+      ..writeln(outboxLine)
       ..writeln('Local DB: $totalMemos memos')
+      ..writeln('')
+      ..writeln('[OUTBOX PENDING] (Last ${pendingOutboxItems.length})');
+
+    if (pendingOutboxItems.isEmpty) {
+      buffer.writeln('1. (none)');
+    } else {
+      for (var i = 0; i < pendingOutboxItems.length; i++) {
+        buffer.writeln('${i + 1}. ${_formatOutboxItem(pendingOutboxItems[i])}');
+      }
+    }
+
+    buffer
+      ..writeln('')
+      ..writeln('[OUTBOX FAILED] (Last ${failedOutboxItems.length})');
+
+    if (failedOutboxItems.isEmpty) {
+      buffer.writeln('1. (none)');
+    } else {
+      for (var i = 0; i < failedOutboxItems.length; i++) {
+        buffer.writeln('${i + 1}. ${_formatOutboxItem(failedOutboxItems[i])}');
+      }
+    }
+
+    buffer
+      ..writeln('')
+      ..writeln('[MEMO SYNC ERRORS] (Last ${memoSyncErrors.length})');
+
+    if (memoSyncErrors.isEmpty) {
+      buffer.writeln('1. (none)');
+    } else {
+      for (var i = 0; i < memoSyncErrors.length; i++) {
+        buffer.writeln('${i + 1}. ${_formatMemoSyncError(memoSyncErrors[i])}');
+      }
+    }
+
+    buffer
       ..writeln('')
       ..writeln('[USER BREADCRUMBS] (Last ${breadcrumbs.length})');
 
@@ -78,6 +130,18 @@ class LogReportGenerator {
 
     buffer
       ..writeln('')
+      ..writeln('[NETWORK ERRORS] (Last ${networkErrors.length})');
+
+    if (networkErrors.isEmpty) {
+      buffer
+        ..writeln('------------------------------------------------')
+        ..writeln('1. [--] (no errors)');
+    } else {
+      _appendNetworkEntries(buffer, networkErrors);
+    }
+
+    buffer
+      ..writeln('')
       ..writeln('[NETWORK LOGS] (Last ${networkLogs.length})');
 
     if (networkLogs.isEmpty) {
@@ -87,36 +151,7 @@ class LogReportGenerator {
       return buffer.toString();
     }
 
-    for (var i = 0; i < networkLogs.length; i++) {
-      final entry = networkLogs[i];
-      buffer.writeln('------------------------------------------------');
-      buffer.writeln('${i + 1}. [${entry.method}] ${entry.path} (${_statusLabel(entry)}) - ${_latencyLabel(entry)}');
-
-      final query = entry.query;
-      if (query != null && query.trim().isNotEmpty) {
-        buffer.writeln('   Query: $query');
-      }
-
-      final payload = entry.requestBody;
-      if (payload != null && payload.trim().isNotEmpty) {
-        buffer.writeln('   Payload: $payload');
-      }
-
-      final paginationLine = _formatPaginationLine(entry);
-      if (paginationLine != null) {
-        buffer.writeln(paginationLine);
-      }
-
-      final responseBody = entry.responseBody;
-      if (responseBody != null && responseBody.trim().isNotEmpty) {
-        buffer.writeln('   Response: $responseBody');
-      }
-
-      final errorMessage = entry.errorMessage;
-      if (errorMessage != null && errorMessage.trim().isNotEmpty) {
-        buffer.writeln('   Error: $errorMessage');
-      }
-    }
+    _appendNetworkEntries(buffer, networkLogs);
 
     return buffer.toString();
   }
@@ -233,6 +268,311 @@ class LogReportGenerator {
     return 'Pending Queue: $count tasks$suffix <--- CRITICAL INFO';
   }
 
+  String _formatSyncErrorLine(SyncStatusSnapshot snapshot) {
+    if (snapshot.lastFailure == null && (snapshot.lastError?.trim().isEmpty ?? true)) {
+      return 'Sync Error: -';
+    }
+    final failureTime = snapshot.lastFailure == null
+        ? '-'
+        : DateFormat('h:mm a').format(snapshot.lastFailure!);
+    final error = (snapshot.lastError ?? '').trim();
+    if (error.isEmpty) {
+      return 'Sync Error: (Last failure: $failureTime)';
+    }
+    return 'Sync Error: ${LogSanitizer.sanitizeText(error)} (Last failure: $failureTime)';
+  }
+
+  String _formatOutboxCounts(
+    int pendingQueue,
+    int failedQueue,
+    Map<String, _OutboxCounts> counts,
+  ) {
+    if (pendingQueue == 0 && failedQueue == 0) {
+      return 'Outbox: pending=0 failed=0';
+    }
+    final parts = <String>[];
+    final keys = counts.keys.toList()..sort();
+    for (final key in keys) {
+      final entry = counts[key]!;
+      parts.add('$key(pending=${entry.pending}, failed=${entry.failed})');
+    }
+    final detail = parts.isEmpty ? '' : ' | ${parts.join('; ')}';
+    return 'Outbox: pending=$pendingQueue failed=$failedQueue$detail';
+  }
+
+  void _appendNetworkEntries(StringBuffer buffer, List<NetworkRequestLog> entries) {
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      buffer.writeln('------------------------------------------------');
+      buffer.writeln('${i + 1}. [${entry.method}] ${entry.path} (${_statusLabel(entry)}) - ${_latencyLabel(entry)}');
+
+      final query = entry.query;
+      if (query != null && query.trim().isNotEmpty) {
+        buffer.writeln('   Query: $query');
+      }
+
+      final payload = entry.requestBody;
+      if (payload != null && payload.trim().isNotEmpty) {
+        buffer.writeln('   Payload: $payload');
+      }
+
+      final paginationLine = _formatPaginationLine(entry);
+      if (paginationLine != null) {
+        buffer.writeln(paginationLine);
+      }
+
+      final responseBody = entry.responseBody;
+      if (responseBody != null && responseBody.trim().isNotEmpty) {
+        buffer.writeln('   Response: $responseBody');
+      }
+
+      final errorMessage = entry.errorMessage;
+      if (errorMessage != null && errorMessage.trim().isNotEmpty) {
+        buffer.writeln('   Error: $errorMessage');
+      }
+    }
+  }
+
+  Future<Map<String, _OutboxCounts>> _loadOutboxTypeCounts(DatabaseExecutor sqlite) async {
+    final rows = await sqlite.rawQuery('''
+SELECT type, state, COUNT(*) AS count
+FROM outbox
+WHERE state IN (0, 2)
+GROUP BY type, state;
+''');
+    final out = <String, _OutboxCounts>{};
+    for (final row in rows) {
+      final type = (row['type'] as String?)?.trim();
+      final state = _readInt(row['state']);
+      final count = _readInt(row['count']);
+      if (type == null || type.isEmpty || count == null || count <= 0 || state == null) {
+        continue;
+      }
+      final entry = out.putIfAbsent(type, () => _OutboxCounts());
+      if (state == 2) {
+        entry.failed += count;
+      } else {
+        entry.pending += count;
+      }
+    }
+    return out;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadOutboxItems(
+    DatabaseExecutor sqlite, {
+    required int state,
+    required int limit,
+  }) async {
+    if (limit <= 0) return const [];
+    final rows = await sqlite.query(
+      'outbox',
+      where: 'state = ?',
+      whereArgs: [state],
+      orderBy: 'id DESC',
+      limit: limit,
+    );
+    return rows.map((row) => row.map((key, value) => MapEntry(key, value))).toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> _loadMemoSyncErrors(
+    DatabaseExecutor sqlite, {
+    required int limit,
+  }) async {
+    if (limit <= 0) return const [];
+    final rows = await sqlite.query(
+      'memos',
+      columns: const ['uid', 'last_error', 'update_time'],
+      where: 'sync_state = 2',
+      orderBy: 'update_time DESC',
+      limit: limit,
+    );
+    return rows.map((row) => row.map((key, value) => MapEntry(key, value))).toList(growable: false);
+  }
+
+  String _formatOutboxItem(Map<String, dynamic> row) {
+    final id = row['id'];
+    final type = (row['type'] as String?)?.trim() ?? 'unknown';
+    final attempts = _readInt(row['attempts']) ?? 0;
+    final created = _formatEpochMs(row['created_time']);
+    final lastError = LogSanitizer.sanitizeText((row['last_error'] as String?) ?? '').trim();
+    final payloadSummary = _summarizeOutboxPayload(type, row['payload']);
+    final parts = <String>[
+      '#$id',
+      type,
+      'attempts=$attempts',
+      'at=$created',
+    ];
+    if (payloadSummary.isNotEmpty) {
+      parts.add(payloadSummary);
+    }
+    if (lastError.isNotEmpty) {
+      parts.add('error=$lastError');
+    }
+    return parts.join(' | ');
+  }
+
+  String _formatMemoSyncError(Map<String, dynamic> row) {
+    final uid = (row['uid'] as String?)?.trim() ?? '';
+    final updated = _formatEpochSec(row['update_time']);
+    final lastError = LogSanitizer.sanitizeText((row['last_error'] as String?) ?? '').trim();
+    if (lastError.isEmpty) {
+      return 'uid=$uid at=$updated';
+    }
+    return 'uid=$uid at=$updated | error=$lastError';
+  }
+
+  String _summarizeOutboxPayload(String type, Object? payloadRaw) {
+    final payload = _decodePayload(payloadRaw);
+    if (payload == null) return '';
+    switch (type) {
+      case 'upload_attachment':
+        return _summarizeUploadAttachmentPayload(payload);
+      case 'create_memo':
+        return _summarizeCreateMemoPayload(payload);
+      case 'update_memo':
+        return _summarizeUpdateMemoPayload(payload);
+      case 'delete_memo':
+        return _summarizeDeleteMemoPayload(payload);
+      default:
+        final sanitized = LogSanitizer.sanitizeJson(payload);
+        return LogSanitizer.stringify(sanitized, maxLength: 200);
+    }
+  }
+
+  Map<String, dynamic>? _decodePayload(Object? raw) {
+    if (raw is Map) {
+      return raw.cast<String, dynamic>();
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return decoded.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String _summarizeUploadAttachmentPayload(Map<String, dynamic> payload) {
+    final memoUid = _readString(payload['memo_uid']);
+    final uid = _readString(payload['uid']);
+    final filename = _readString(payload['filename']);
+    final mimeType = _readString(payload['mime_type']);
+    final size = _readInt(payload['file_size']);
+    final parts = <String>[];
+    if (memoUid.isNotEmpty) parts.add('memo=$memoUid');
+    if (uid.isNotEmpty) parts.add('uid=$uid');
+    if (filename.isNotEmpty) parts.add('file=${LogSanitizer.sanitizeText(filename)}');
+    if (mimeType.isNotEmpty) parts.add('mime=${LogSanitizer.sanitizeText(mimeType)}');
+    if (size != null && size > 0) parts.add('size=${_formatBytes(size)}');
+    return parts.join(', ');
+  }
+
+  String _summarizeCreateMemoPayload(Map<String, dynamic> payload) {
+    final uid = _readString(payload['uid']);
+    final visibility = _readString(payload['visibility']);
+    final pinned = _readBool(payload['pinned']);
+    final hasAttachments = _readBool(payload['has_attachments']);
+    final relations = payload['relations'] is List ? (payload['relations'] as List).length : null;
+    final contentLength = payload['content'] is String ? (payload['content'] as String).length : null;
+    final parts = <String>[];
+    if (uid.isNotEmpty) parts.add('uid=$uid');
+    if (visibility.isNotEmpty) parts.add('vis=$visibility');
+    if (pinned != null) parts.add('pinned=$pinned');
+    if (hasAttachments != null) parts.add('attachments=$hasAttachments');
+    if (contentLength != null) parts.add('content_len=$contentLength');
+    if (relations != null) parts.add('relations=$relations');
+    return parts.join(', ');
+  }
+
+  String _summarizeUpdateMemoPayload(Map<String, dynamic> payload) {
+    final uid = _readString(payload['uid']);
+    final fields = <String>[];
+    for (final key in const ['content', 'visibility', 'pinned', 'state', 'display_time', 'displayTime', 'relations']) {
+      if (payload.containsKey(key)) {
+        fields.add(key);
+      }
+    }
+    final parts = <String>[];
+    if (uid.isNotEmpty) parts.add('uid=$uid');
+    if (fields.isNotEmpty) parts.add('fields=${fields.join('/')}');
+    final contentLength = payload['content'] is String ? (payload['content'] as String).length : null;
+    if (contentLength != null) parts.add('content_len=$contentLength');
+    return parts.join(', ');
+  }
+
+  String _summarizeDeleteMemoPayload(Map<String, dynamic> payload) {
+    final uid = _readString(payload['uid']);
+    final force = _readBool(payload['force']);
+    if (force == null) return uid.isEmpty ? '' : 'uid=$uid';
+    return 'uid=$uid, force=$force';
+  }
+
+  String _formatEpochMs(dynamic value) {
+    final ms = _readInt(value);
+    if (ms == null || ms <= 0) return '-';
+    final time = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
+    return DateFormat('HH:mm:ss').format(time);
+  }
+
+  String _formatEpochSec(dynamic value) {
+    final seconds = _readInt(value);
+    if (seconds == null || seconds <= 0) return '-';
+    final time = DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true).toLocal();
+    return DateFormat('HH:mm:ss').format(time);
+  }
+
+  int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+
+  bool? _readBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final v = value.trim().toLowerCase();
+      if (v == 'true' || v == '1') return true;
+      if (v == 'false' || v == '0') return false;
+    }
+    return null;
+  }
+
+  String _readString(dynamic value) {
+    if (value is String) return value.trim();
+    if (value == null) return '';
+    return value.toString().trim();
+  }
+
+  String _formatBytes(int size) {
+    if (size < 1024) return '${size}B';
+    final kb = size / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)}KB';
+    final mb = kb / 1024;
+    if (mb < 1024) return '${mb.toStringAsFixed(1)}MB';
+    final gb = mb / 1024;
+    return '${gb.toStringAsFixed(1)}GB';
+  }
+
+  List<NetworkRequestLog> _filterNetworkErrors(List<NetworkRequestLog> entries) {
+    final out = <NetworkRequestLog>[];
+    for (final entry in entries) {
+      final status = entry.statusCode;
+      final hasError = entry.errorMessage != null && entry.errorMessage!.trim().isNotEmpty;
+      if (status == null || status >= 400 || hasError) {
+        out.add(entry);
+      }
+    }
+    return out;
+  }
+
+  List<NetworkRequestLog> _tail(List<NetworkRequestLog> entries, int limit) {
+    if (limit <= 0 || entries.isEmpty) return const [];
+    final start = entries.length > limit ? entries.length - limit : 0;
+    return List<NetworkRequestLog>.unmodifiable(entries.sublist(start));
+  }
+
   String _formatBreadcrumbTime(DateTime time) {
     return DateFormat('HH:mm:ss').format(time);
   }
@@ -291,4 +631,9 @@ class LogReportGenerator {
 
 extension _FirstOrNullLogExt<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+class _OutboxCounts {
+  int pending = 0;
+  int failed = 0;
 }

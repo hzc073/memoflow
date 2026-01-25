@@ -135,9 +135,11 @@ class NetworkLogInterceptor extends Interceptor {
       responseBody: err.response?.data,
       errorMessage: sanitizedError,
     );
-    if (sanitizedError.trim().isNotEmpty) {
-      _breadcrumbs?.add('Error: $sanitizedError');
-    }
+    final method = err.requestOptions.method.toUpperCase();
+    final path = _resolvePath(err.requestOptions);
+    final statusLabel = err.response?.statusCode?.toString() ?? '?';
+    final detail = sanitizedError.trim().isEmpty ? '' : ' - $sanitizedError';
+    _breadcrumbs?.add('Error: $method $path (HTTP $statusLabel)$detail');
     handler.next(err);
   }
 

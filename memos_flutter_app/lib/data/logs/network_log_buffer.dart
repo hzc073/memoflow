@@ -45,6 +45,10 @@ class NetworkLogBuffer {
     }
   }
 
+  List<NetworkRequestLog> listAll() {
+    return List<NetworkRequestLog>.unmodifiable(_entries);
+  }
+
   List<NetworkRequestLog> list({int limit = 10}) {
     if (limit <= 0 || _entries.isEmpty) return const [];
     final start = _entries.length > limit ? _entries.length - limit : 0;

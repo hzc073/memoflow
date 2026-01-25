@@ -357,6 +357,7 @@ class FlomoImportService {
             filePath: file.localPath,
             filename: file.filename,
             mimeType: file.mimeType,
+            size: file.size,
           ),
         );
       }
@@ -390,6 +391,7 @@ class FlomoImportService {
           'file_path': attachment.filePath,
           'filename': attachment.filename,
           'mime_type': attachment.mimeType,
+          'file_size': attachment.size,
         });
         counters.setAttachmentCount(counters.attachmentCount() + 1);
       }
@@ -795,6 +797,7 @@ class _QueuedAttachment {
     required this.filePath,
     required this.filename,
     required this.mimeType,
+    required this.size,
   });
 
   final String uid;
@@ -802,6 +805,7 @@ class _QueuedAttachment {
   final String filePath;
   final String filename;
   final String mimeType;
+  final int size;
 }
 
 class _ImportCounters {
