@@ -16,6 +16,24 @@ val hasKeystoreProperties = keystorePropertiesFile.exists()
 if (hasKeystoreProperties) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val releaseSigningReady = if (hasKeystoreProperties) {
+    val keyAlias = keystoreProperties.getProperty("keyAlias")?.trim()
+    val keyPassword = keystoreProperties.getProperty("keyPassword")?.trim()
+    val storePassword = keystoreProperties.getProperty("storePassword")?.trim()
+    val storeFilePath = keystoreProperties.getProperty("storeFile")?.trim()
+    if (keyAlias.isNullOrEmpty() ||
+        keyPassword.isNullOrEmpty() ||
+        storePassword.isNullOrEmpty() ||
+        storeFilePath.isNullOrEmpty()
+    ) {
+        false
+    } else {
+        val storeFile = file(storeFilePath)
+        storeFile.isFile && storeFile.length() > 0
+    }
+} else {
+    false
+}
 
 android {
     namespace = "com.memoflow.hzc073"
@@ -44,18 +62,18 @@ android {
 
     signingConfigs {
         create("release") {
-            if (hasKeystoreProperties) {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
+            if (releaseSigningReady) {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(requireNotNull(keystoreProperties.getProperty("storeFile")))
+                storePassword = keystoreProperties.getProperty("storePassword")
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = if (hasKeystoreProperties) {
+            signingConfig = if (releaseSigningReady) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")

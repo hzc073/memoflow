@@ -24,18 +24,16 @@ subprojects {
 
 subprojects {
     plugins.withId("com.android.library") {
-        afterEvaluate {
-            val androidExt = extensions.findByName("android") ?: return@afterEvaluate
-            val setter = androidExt.javaClass.methods.firstOrNull { it.name == "setNamespace" && it.parameterCount == 1 }
-            val getter = androidExt.javaClass.methods.firstOrNull { it.name == "getNamespace" && it.parameterCount == 0 }
-            if (setter != null && getter != null) {
-                val current = getter.invoke(androidExt) as? String
-                if (current.isNullOrBlank()) {
-                    val rawGroup = project.group.toString().trim()
-                    val groupValue = rawGroup.takeIf { it.isNotEmpty() && it != "unspecified" }
-                    val fallback = "com.memoflow.autonamespace.${project.name.replace('-', '_')}"
-                    setter.invoke(androidExt, groupValue ?: fallback)
-                }
+        val androidExt = extensions.findByName("android") ?: return@withId
+        val setter = androidExt.javaClass.methods.firstOrNull { it.name == "setNamespace" && it.parameterCount == 1 }
+        val getter = androidExt.javaClass.methods.firstOrNull { it.name == "getNamespace" && it.parameterCount == 0 }
+        if (setter != null && getter != null) {
+            val current = getter.invoke(androidExt) as? String
+            if (current.isNullOrBlank()) {
+                val rawGroup = project.group.toString().trim()
+                val groupValue = rawGroup.takeIf { it.isNotEmpty() && it != "unspecified" }
+                val fallback = "com.memoflow.autonamespace.${project.name.replace('-', '_')}"
+                setter.invoke(androidExt, groupValue ?: fallback)
             }
         }
     }
