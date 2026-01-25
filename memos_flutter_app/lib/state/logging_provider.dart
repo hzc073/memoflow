@@ -9,6 +9,7 @@ import '../data/logs/log_report_generator.dart';
 import '../data/logs/network_log_buffer.dart';
 import '../data/logs/sync_status_tracker.dart';
 import 'database_provider.dart';
+import 'session_provider.dart';
 
 final breadcrumbStoreProvider = Provider<BreadcrumbStore>((ref) {
   return BreadcrumbStore();
@@ -39,11 +40,13 @@ final loggerServiceProvider = Provider<LoggerService>((ref) {
 });
 
 final logReportGeneratorProvider = Provider<LogReportGenerator>((ref) {
+  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   return LogReportGenerator(
     db: ref.watch(databaseProvider),
     loggerService: ref.watch(loggerServiceProvider),
     breadcrumbStore: ref.watch(breadcrumbStoreProvider),
     networkLogBuffer: ref.watch(networkLogBufferProvider),
     syncStatusTracker: ref.watch(syncStatusTrackerProvider),
+    currentAccount: account,
   );
 });

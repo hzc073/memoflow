@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../core/log_sanitizer.dart';
 import '../db/app_database.dart';
+import '../models/account.dart';
 import 'breadcrumb_store.dart';
 import 'logger_service.dart';
 import 'network_log_buffer.dart';
@@ -21,17 +22,20 @@ class LogReportGenerator {
     required BreadcrumbStore breadcrumbStore,
     required NetworkLogBuffer networkLogBuffer,
     required SyncStatusTracker syncStatusTracker,
+    Account? currentAccount,
   })  : _db = db,
         _loggerService = loggerService,
         _breadcrumbStore = breadcrumbStore,
         _networkLogBuffer = networkLogBuffer,
-        _syncStatusTracker = syncStatusTracker;
+        _syncStatusTracker = syncStatusTracker,
+        _currentAccount = currentAccount;
 
   final AppDatabase _db;
   final LoggerService _loggerService;
   final BreadcrumbStore _breadcrumbStore;
   final NetworkLogBuffer _networkLogBuffer;
   final SyncStatusTracker _syncStatusTracker;
+  final Account? _currentAccount;
 
   Future<String> buildReport({
     int breadcrumbLimit = 15,
@@ -45,6 +49,7 @@ class LogReportGenerator {
     final appLabel = await _loadAppLabel();
     final deviceLabel = await _loadDeviceLabel();
     final networkLabel = await _loadNetworkLabel();
+    final serverLine = _formatServerLine(_currentAccount);
 
     final sqlite = await _db.db;
     final totalMemos = await _count(sqlite, 'SELECT COUNT(*) FROM memos;');
@@ -72,6 +77,7 @@ class LogReportGenerator {
       ..writeln('App: $appLabel')
       ..writeln('Device: $deviceLabel')
       ..writeln('Network: $networkLabel')
+      ..writeln(serverLine)
       ..writeln('')
       ..writeln('[APP STATE SNAPSHOT]')
       ..writeln('Lifecycle: $lifecycle')
@@ -266,6 +272,28 @@ class LogReportGenerator {
   String _formatPendingQueue(int count) {
     final suffix = count > 0 ? ' (Waiting for upload)' : '';
     return 'Pending Queue: $count tasks$suffix <--- CRITICAL INFO';
+  }
+
+  String _formatServerLine(Account? account) {
+    if (account == null) return 'Server: -';
+    final baseUrl = account.baseUrl.toString().trim();
+    final profile = account.instanceProfile;
+    final instanceUrl = profile.instanceUrl.trim();
+    final label = baseUrl.isNotEmpty
+        ? LogSanitizer.maskUrl(baseUrl)
+        : (instanceUrl.isNotEmpty ? LogSanitizer.maskUrl(instanceUrl) : '-');
+
+    final parts = <String>[];
+    final version = profile.version.trim();
+    if (version.isNotEmpty) parts.add('version=$version');
+    final mode = profile.mode.trim();
+    if (mode.isNotEmpty) parts.add('mode=$mode');
+    if (instanceUrl.isNotEmpty) parts.add('instanceUrl=${LogSanitizer.maskUrl(instanceUrl)}');
+    final owner = profile.owner.trim();
+    if (owner.isNotEmpty) parts.add('owner=${LogSanitizer.maskUserLabel(owner)}');
+
+    if (parts.isEmpty) return 'Server: $label';
+    return 'Server: $label (${parts.join(', ')})';
   }
 
   String _formatSyncErrorLine(SyncStatusSnapshot snapshot) {
