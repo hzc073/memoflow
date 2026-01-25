@@ -88,6 +88,7 @@ class AppPreferences {
     showDrawerAiSummary: true,
     showDrawerResources: true,
     supporterCrownEnabled: false,
+    thirdPartyShareEnabled: true,
   );
 
   const AppPreferences({
@@ -110,6 +111,7 @@ class AppPreferences {
     required this.showDrawerAiSummary,
     required this.showDrawerResources,
     required this.supporterCrownEnabled,
+    required this.thirdPartyShareEnabled,
   });
 
   final AppLanguage language;
@@ -131,6 +133,7 @@ class AppPreferences {
   final bool showDrawerAiSummary;
   final bool showDrawerResources;
   final bool supporterCrownEnabled;
+  final bool thirdPartyShareEnabled;
 
   Map<String, dynamic> toJson() => {
         'language': language.name,
@@ -152,6 +155,7 @@ class AppPreferences {
         'showDrawerAiSummary': showDrawerAiSummary,
         'showDrawerResources': showDrawerResources,
         'supporterCrownEnabled': supporterCrownEnabled,
+        'thirdPartyShareEnabled': thirdPartyShareEnabled,
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
@@ -293,6 +297,8 @@ class AppPreferences {
       showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
       supporterCrownEnabled:
           parseBool('supporterCrownEnabled', AppPreferences.defaults.supporterCrownEnabled),
+      thirdPartyShareEnabled:
+          parseBool('thirdPartyShareEnabled', AppPreferences.defaults.thirdPartyShareEnabled),
     );
   }
 
@@ -316,6 +322,7 @@ class AppPreferences {
     bool? showDrawerAiSummary,
     bool? showDrawerResources,
     bool? supporterCrownEnabled,
+    bool? thirdPartyShareEnabled,
   }) {
     return AppPreferences(
       language: language ?? this.language,
@@ -337,6 +344,7 @@ class AppPreferences {
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
       supporterCrownEnabled: supporterCrownEnabled ?? this.supporterCrownEnabled,
+      thirdPartyShareEnabled: thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
     );
   }
 }
@@ -398,6 +406,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
   void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));
   void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));
+  void setThirdPartyShareEnabled(bool v) => _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
 }
 
 class AppPreferencesRepository {

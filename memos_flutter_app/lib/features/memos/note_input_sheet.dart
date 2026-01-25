@@ -22,15 +22,37 @@ import 'link_memo_sheet.dart';
 import '../voice/voice_record_screen.dart';
 
 class NoteInputSheet extends ConsumerStatefulWidget {
-  const NoteInputSheet({super.key});
+  const NoteInputSheet({
+    super.key,
+    this.initialText,
+    this.initialSelection,
+    this.initialAttachmentPaths = const [],
+    this.ignoreDraft = false,
+  });
 
-  static Future<void> show(BuildContext context) {
+  final String? initialText;
+  final TextSelection? initialSelection;
+  final List<String> initialAttachmentPaths;
+  final bool ignoreDraft;
+
+  static Future<void> show(
+    BuildContext context, {
+    String? initialText,
+    TextSelection? initialSelection,
+    List<String> initialAttachmentPaths = const [],
+    bool ignoreDraft = false,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.05),
-      builder: (context) => const NoteInputSheet(),
+      builder: (context) => NoteInputSheet(
+        initialText: initialText,
+        initialSelection: initialSelection,
+        initialAttachmentPaths: initialAttachmentPaths,
+        ignoreDraft: ignoreDraft,
+      ),
     );
   }
 
@@ -39,12 +61,13 @@ class NoteInputSheet extends ConsumerStatefulWidget {
 }
 
 class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   late final SmartEnterController _smartEnterController;
   var _busy = false;
   Timer? _draftTimer;
   ProviderSubscription<AsyncValue<String>>? _draftSubscription;
   var _didApplyDraft = false;
+  var _didSeedInitialAttachments = false;
   List<TagStat> _tagStatsCache = const [];
   final _linkedMemos = <_LinkedMemo>[];
   final _pendingAttachments = <_PendingAttachment>[];
@@ -67,6 +90,16 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   @override
   void initState() {
     super.initState();
+    _controller = TextEditingController(text: widget.initialText ?? '');
+    final selection = widget.initialSelection;
+    if (selection != null) {
+      _controller.selection = _normalizeSelection(selection, _controller.text.length);
+    }
+    if (widget.ignoreDraft ||
+        _controller.text.trim().isNotEmpty ||
+        widget.initialAttachmentPaths.isNotEmpty) {
+      _didApplyDraft = true;
+    }
     _lastValue = _controller.value;
     _smartEnterController = SmartEnterController(_controller);
     _controller.addListener(_scheduleDraftSave);
@@ -74,6 +107,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _applyDraft(ref.read(noteDraftProvider));
     _applyDefaultVisibility(ref.read(userGeneralSettingProvider));
     _loadTagStats();
+    unawaited(_seedInitialAttachments());
     _draftSubscription = ref.listenManual<AsyncValue<String>>(noteDraftProvider, (prev, next) {
       _applyDraft(next);
     });
@@ -106,6 +140,17 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _didApplyDraft = true;
   }
 
+  TextSelection _normalizeSelection(TextSelection selection, int length) {
+    if (!selection.isValid) {
+      return TextSelection.collapsed(offset: length);
+    }
+    int clampOffset(int offset) => offset.clamp(0, length).toInt();
+    return selection.copyWith(
+      baseOffset: clampOffset(selection.baseOffset),
+      extentOffset: clampOffset(selection.extentOffset),
+    );
+  }
+
   void _applyDefaultVisibility(AsyncValue<UserGeneralSetting> value) {
     if (_visibilityTouched) return;
     final settings = value.valueOrNull;
@@ -117,6 +162,39 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       return;
     }
     setState(() => _visibility = visibility);
+  }
+
+  Future<void> _seedInitialAttachments() async {
+    if (_didSeedInitialAttachments) return;
+    _didSeedInitialAttachments = true;
+    final paths = widget.initialAttachmentPaths;
+    if (paths.isEmpty) return;
+
+    final added = <_PendingAttachment>[];
+    for (final raw in paths) {
+      final path = raw.trim();
+      if (path.isEmpty) continue;
+      final file = File(path);
+      if (!file.existsSync()) continue;
+      final size = file.lengthSync();
+      if (size > _maxAttachmentBytes) continue;
+      final filename = path.split(Platform.pathSeparator).last;
+      final mimeType = _guessMimeType(filename);
+      added.add(
+        _PendingAttachment(
+          uid: generateUid(),
+          filePath: path,
+          filename: filename,
+          mimeType: mimeType,
+          size: size,
+        ),
+      );
+    }
+
+    if (!mounted || added.isEmpty) return;
+    setState(() {
+      _pendingAttachments.addAll(added);
+    });
   }
 
   void _scheduleDraftSave() {

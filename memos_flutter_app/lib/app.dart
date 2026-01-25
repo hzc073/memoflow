@@ -15,6 +15,7 @@ import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
 import 'features/onboarding/language_selection_screen.dart';
 import 'features/review/daily_review_screen.dart';
+import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
@@ -31,6 +32,8 @@ class App extends ConsumerStatefulWidget {
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
   HomeWidgetType? _pendingWidgetAction;
+  SharePayload? _pendingSharePayload;
+  bool _shareHandlingScheduled = false;
   bool _statsWidgetUpdating = false;
   String? _statsWidgetAccountKey;
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
@@ -123,6 +126,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     ref.read(logManagerProvider);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
     _loadPendingWidgetAction();
+    ShareHandlerService.setShareHandler(_handleShareLaunch);
+    _loadPendingShare();
     _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
       final prevKey = prev?.valueOrNull?.currentKey;
       final nextKey = next.valueOrNull?.currentKey;
@@ -131,6 +136,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _lastResumeSyncAt = null;
         _lastPauseSyncAt = null;
         _triggerLifecycleSync(isResume: true);
+      }
+      if (next.valueOrNull?.currentAccount != null) {
+        _scheduleShareHandling();
       }
     });
     _prefsSubscription = ref.listenManual<AppPreferences>(appPreferencesProvider, (prev, next) {
@@ -147,15 +155,37 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _scheduleWidgetHandling();
   }
 
+  Future<void> _loadPendingShare() async {
+    final payload = await ShareHandlerService.consumePendingShare();
+    if (!mounted || payload == null) return;
+    _pendingSharePayload = payload;
+    _scheduleShareHandling();
+  }
+
   Future<void> _handleWidgetLaunch(HomeWidgetType type) async {
     _pendingWidgetAction = type;
     _scheduleWidgetHandling();
+  }
+
+  Future<void> _handleShareLaunch(SharePayload payload) async {
+    _pendingSharePayload = payload;
+    _scheduleShareHandling();
   }
 
   void _scheduleWidgetHandling() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _handlePendingWidgetAction();
+    });
+  }
+
+  void _scheduleShareHandling() {
+    if (_shareHandlingScheduled) return;
+    _shareHandlingScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _shareHandlingScheduled = false;
+      if (!mounted) return;
+      _handlePendingShare();
     });
   }
 
@@ -295,6 +325,81 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
   }
 
+  void _handlePendingShare() {
+    final payload = _pendingSharePayload;
+    if (payload == null) return;
+    if (!ref.read(appPreferencesLoadedProvider)) {
+      _scheduleShareHandling();
+      return;
+    }
+    final prefs = ref.read(appPreferencesProvider);
+    if (!prefs.thirdPartyShareEnabled) {
+      _pendingSharePayload = null;
+      _notifyShareDisabled();
+      return;
+    }
+    final session = ref.read(appSessionProvider).valueOrNull;
+    if (session?.currentAccount == null) return;
+    final navigator = _navigatorKey.currentState;
+    final context = _navigatorKey.currentContext;
+    if (navigator == null || context == null) return;
+
+    _pendingSharePayload = null;
+    _openAllMemos(navigator);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final sheetContext = _navigatorKey.currentContext;
+      if (sheetContext == null) return;
+      _openShareComposer(sheetContext, payload);
+    });
+  }
+
+  void _openShareComposer(BuildContext context, SharePayload payload) {
+    if (payload.type == SharePayloadType.images) {
+      if (payload.paths.isEmpty) return;
+      NoteInputSheet.show(
+        context,
+        initialAttachmentPaths: payload.paths,
+        initialSelection: const TextSelection.collapsed(offset: 0),
+        ignoreDraft: true,
+      );
+      return;
+    }
+
+    final rawText = (payload.text ?? '').trim();
+    final url = _extractShareUrl(rawText);
+    final text = url == null ? rawText : '[]($url)';
+    final selectionOffset = url == null ? text.length : 1;
+    NoteInputSheet.show(
+      context,
+      initialText: text,
+      initialSelection: TextSelection.collapsed(offset: selectionOffset),
+      ignoreDraft: true,
+    );
+  }
+
+  String? _extractShareUrl(String raw) {
+    final match = RegExp(r'https?://[^\s]+').firstMatch(raw);
+    final url = match?.group(0);
+    if (url == null || url.isEmpty) return null;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+    return url;
+  }
+
+  void _notifyShareDisabled() {
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          context.tr(zh: '第三方分享未开启', en: 'Third-party share is disabled'),
+        ),
+      ),
+    );
+  }
+
   void _openAllMemos(NavigatorState navigator) {
     navigator.pushAndRemoveUntil(
       MaterialPageRoute<void>(
@@ -320,6 +425,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     if (_pendingWidgetAction != null) {
       _scheduleWidgetHandling();
+    }
+    if (_pendingSharePayload != null) {
+      _scheduleShareHandling();
     }
 
     return MaterialApp(

@@ -17,12 +17,12 @@ import 'about_us_screen.dart';
 import 'account_security_screen.dart';
 import 'ai_settings_screen.dart';
 import 'api_plugins_screen.dart';
+import 'components_settings_screen.dart';
 import 'donation_dialog.dart';
 import 'feedback_screen.dart';
 import 'import_export_screen.dart';
 import 'laboratory_screen.dart';
 import 'password_lock_screen.dart';
-import 'placeholder_settings_screen.dart';
 import 'preferences_settings_screen.dart';
 import 'user_guide_screen.dart';
 import 'widgets_screen.dart';
@@ -291,14 +291,7 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const SettingsPlaceholderScreen(
-                              titleZh: '功能组件',
-                              titleEn: 'Components',
-                              messageZh: '功能组件正在准备中，敬请期待。',
-                              messageEn: 'Components are on the way. Stay tuned.',
-                            ),
-                          ),
+                          MaterialPageRoute<void>(builder: (_) => const ComponentsSettingsScreen()),
                         );
                       },
                     ),
