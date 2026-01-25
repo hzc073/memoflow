@@ -1496,6 +1496,8 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final showCollapsed = showToggle && !_expanded;
     final displayText = showCollapsed ? preview.text : previewText;
     final hasBody = displayText.trim().isNotEmpty;
+    final showLike = widget.reactionCount > 0 || widget.isLiked;
+    final showComment = widget.commentCount > 0 || widget.hasOwnComment;
 
     final shadow = widget.commentingMode
         ? null
@@ -1612,19 +1614,21 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  _buildAction(
-                    icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
-                    count: widget.reactionCount,
-                    color: widget.isLiked ? MemoFlowPalette.primary : textMuted,
-                    onTap: widget.onToggleLike,
-                  ),
-                  const SizedBox(width: 10),
-                  _buildAction(
-                    icon: widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
-                    count: widget.commentCount,
-                    color: widget.hasOwnComment ? MemoFlowPalette.primary : textMuted,
-                    onTap: widget.onToggleComment,
-                  ),
+                  if (showLike)
+                    _buildAction(
+                      icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                      count: widget.reactionCount,
+                      color: widget.isLiked ? MemoFlowPalette.primary : textMuted,
+                      onTap: widget.onToggleLike,
+                    ),
+                  if (showLike && showComment) const SizedBox(width: 10),
+                  if (showComment)
+                    _buildAction(
+                      icon: widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                      count: widget.commentCount,
+                      color: widget.hasOwnComment ? MemoFlowPalette.primary : textMuted,
+                      onTap: widget.onToggleComment,
+                    ),
                   const Spacer(),
                   IconButton(
                     icon: Icon(Icons.more_horiz, size: 18, color: textMuted),

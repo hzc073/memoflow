@@ -1152,6 +1152,17 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final visibility = payload['visibility'] as String?;
     final pinned = payload['pinned'] as bool?;
     final state = payload['state'] as String?;
+    final syncAttachments = payload['sync_attachments'] as bool? ?? false;
+    final hasPendingAttachments = payload['has_pending_attachments'] as bool? ?? false;
+    final relationsRaw = payload['relations'];
+    final relations = <Map<String, dynamic>>[];
+    if (relationsRaw is List) {
+      for (final item in relationsRaw) {
+        if (item is Map) {
+          relations.add(item.cast<String, dynamic>());
+        }
+      }
+    }
     await api.updateMemo(
       memoUid: uid,
       content: content,
@@ -1159,6 +1170,76 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       pinned: pinned,
       state: state,
     );
+    if (relations.isNotEmpty) {
+      await _applyMemoRelations(uid, relations);
+    }
+    if (syncAttachments && !hasPendingAttachments) {
+      await _syncMemoAttachments(uid);
+    }
+  }
+
+  Future<void> _applyMemoRelations(String memoUid, List<Map<String, dynamic>> relations) async {
+    if (relations.isEmpty) return;
+    final trimmedUid = memoUid.trim();
+    final normalizedUid = trimmedUid.startsWith('memos/') ? trimmedUid.substring('memos/'.length) : trimmedUid;
+    if (normalizedUid.isEmpty) return;
+    final memoName = 'memos/$normalizedUid';
+
+    final newNames = <String>{};
+    for (final relation in relations) {
+      final name = _readRelationRelatedMemoName(relation);
+      if (name.isEmpty || name == memoName) continue;
+      newNames.add(name);
+    }
+    if (newNames.isEmpty) return;
+
+    final existingNames = <String>{};
+    try {
+      String? pageToken;
+      do {
+        final (items, nextToken) = await api.listMemoRelations(
+          memoUid: normalizedUid,
+          pageSize: 200,
+          pageToken: pageToken,
+        );
+        for (final relation in items) {
+          if (relation.type.trim().toUpperCase() != 'REFERENCE') continue;
+          if (relation.memo.name.trim() != memoName) continue;
+          final name = relation.relatedMemo.name.trim();
+          if (name.isNotEmpty && name != memoName) {
+            existingNames.add(name);
+          }
+        }
+        pageToken = nextToken.trim().isEmpty ? null : nextToken;
+      } while (pageToken != null);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status == 404 || status == 405) {
+        return;
+      }
+      rethrow;
+    }
+
+    final mergedNames = <String>{...existingNames, ...newNames};
+    if (mergedNames.isEmpty) return;
+    final mergedRelations = mergedNames
+        .map(
+          (name) => <String, dynamic>{
+            'relatedMemo': {'name': name},
+            'type': 'REFERENCE',
+          },
+        )
+        .toList(growable: false);
+    await api.setMemoRelations(memoUid: normalizedUid, relations: mergedRelations);
+  }
+
+  String _readRelationRelatedMemoName(Map<String, dynamic> relation) {
+    final relatedRaw = relation['relatedMemo'] ?? relation['related_memo'];
+    if (relatedRaw is Map) {
+      final name = relatedRaw['name'];
+      if (name is String) return name.trim();
+    }
+    return '';
   }
 
   Future<void> _handleDeleteMemo(Map<String, dynamic> payload) async {
@@ -1213,29 +1294,13 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
         return false;
       }
 
-      List<String> existingNames = const [];
-      try {
-        final existing = await api.listMemoAttachments(memoUid: memoUid);
-        existingNames = existing.map((a) => a.name).where((n) => n.trim().isNotEmpty).toList(growable: false);
-      } catch (_) {}
-
-      final localNames = await _listLocalAttachmentNames(memoUid);
-      final names = <String>{
-        ...existingNames,
-        ...localNames,
-      }.where((n) => n.trim().isNotEmpty).toList(growable: false);
-
-      if (names.isNotEmpty) {
-        await api.setMemoAttachments(memoUid: memoUid, attachmentNames: names);
-      }
+      await _syncMemoAttachments(memoUid);
       return true;
     }
 
-    List<String>? existingRemoteNames;
     var supportsSetAttachments = true;
     try {
-      final existing = await api.listMemoAttachments(memoUid: memoUid);
-      existingRemoteNames = existing.map((a) => a.name).where((n) => n.trim().isNotEmpty).toList(growable: false);
+      await api.listMemoAttachments(memoUid: memoUid);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status == 404 || status == 405) {
@@ -1265,16 +1330,24 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       return shouldFinalize;
     }
 
-    final localNames = await _listLocalAttachmentNames(memoUid);
-    final names = <String>{
-      ...?existingRemoteNames,
-      ...localNames,
-    }.where((n) => n.trim().isNotEmpty).toList(growable: false);
-
-    if (names.isNotEmpty) {
-      await api.setMemoAttachments(memoUid: memoUid, attachmentNames: names);
-    }
+    await _syncMemoAttachments(memoUid);
     return true;
+  }
+
+  Future<void> _syncMemoAttachments(String memoUid) async {
+    final trimmedUid = memoUid.trim();
+    final normalizedUid = trimmedUid.startsWith('memos/') ? trimmedUid.substring('memos/'.length) : trimmedUid;
+    if (normalizedUid.isEmpty) return;
+    final localNames = await _listLocalAttachmentNames(normalizedUid);
+    try {
+      await api.setMemoAttachments(memoUid: normalizedUid, attachmentNames: localNames);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status == 404 || status == 405) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<int> _countPendingAttachmentUploads(String memoUid) async {

@@ -30,10 +30,12 @@ class MemoDetailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.initialMemo,
     this.readOnly = false,
+    this.showEngagement = false,
   });
 
   final LocalMemo initialMemo;
   final bool readOnly;
+  final bool showEngagement;
 
   @override
   ConsumerState<MemoDetailScreen> createState() => _MemoDetailScreenState();
@@ -571,7 +573,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 header,
-                _MemoEngagementSection(memoUid: memo.uid, memoVisibility: memo.visibility),
+                if (widget.showEngagement)
+                  _MemoEngagementSection(memoUid: memo.uid, memoVisibility: memo.visibility),
                 _MemoRelationsSection(memoUid: memo.uid),
                 if (memo.attachments.isNotEmpty) ...[
                   const SizedBox(height: 16),
