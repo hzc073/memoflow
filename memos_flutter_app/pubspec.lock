@@ -520,10 +520,9 @@ packages:
   image_gallery_saver:
     dependency: "direct main"
     description:
-      name: image_gallery_saver
-      sha256: "0aba74216a4d9b0561510cb968015d56b701ba1bd94aace26aacdd8ae5761816"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/image_gallery_saver"
+      relative: true
+    source: path
     version: "2.0.3"
   image_picker:
     dependency: "direct main"

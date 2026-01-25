@@ -78,6 +78,10 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_native_splash: ^2.4.4
 
+dependency_overrides:
+  image_gallery_saver:
+    path: third_party/image_gallery_saver
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
