@@ -48,6 +48,82 @@ const _maxPreviewRunes = 220;
 
 typedef _PreviewResult = ({String text, bool truncated});
 
+final RegExp _markdownLinkPattern = RegExp(r'\[([^\]]*)\]\(([^)]+)\)');
+final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
+
+int _compactRuneCount(String text) {
+  if (text.isEmpty) return 0;
+  final compact = text.replaceAll(_whitespaceCollapsePattern, '');
+  return compact.runes.length;
+}
+
+bool _isWhitespaceRune(int rune) {
+  switch (rune) {
+    case 0x09:
+    case 0x0A:
+    case 0x0B:
+    case 0x0C:
+    case 0x0D:
+    case 0x20:
+      return true;
+    default:
+      return String.fromCharCode(rune).trim().isEmpty;
+  }
+}
+
+int _cutIndexByCompactRunes(String text, int maxCompactRunes) {
+  if (text.isEmpty || maxCompactRunes <= 0) return 0;
+  var count = 0;
+  final iterator = RuneIterator(text);
+  while (iterator.moveNext()) {
+    final rune = iterator.current;
+    if (!_isWhitespaceRune(rune)) {
+      count++;
+      if (count >= maxCompactRunes) {
+        return iterator.rawIndex + iterator.currentSize;
+      }
+    }
+  }
+  return text.length;
+}
+
+String _truncatePreviewText(String text, int maxCompactRunes) {
+  var count = 0;
+  var index = 0;
+
+  for (final match in _markdownLinkPattern.allMatches(text)) {
+    final prefix = text.substring(index, match.start);
+    final prefixCount = _compactRuneCount(prefix);
+    if (count + prefixCount >= maxCompactRunes) {
+      final remaining = maxCompactRunes - count;
+      final cutOffset = _cutIndexByCompactRunes(prefix, remaining);
+      return text.substring(0, index + cutOffset);
+    }
+    count += prefixCount;
+
+    final label = match.group(1) ?? '';
+    final labelCount = _compactRuneCount(label);
+    if (count + labelCount >= maxCompactRunes) {
+      if (count >= maxCompactRunes) {
+        return text.substring(0, match.start);
+      }
+      return text.substring(0, match.end);
+    }
+    count += labelCount;
+    index = match.end;
+  }
+
+  final tail = text.substring(index);
+  final tailCount = _compactRuneCount(tail);
+  if (count + tailCount >= maxCompactRunes) {
+    final remaining = maxCompactRunes - count;
+    final cutOffset = _cutIndexByCompactRunes(tail, remaining);
+    return text.substring(0, index + cutOffset);
+  }
+
+  return text;
+}
+
 class _LruCache<K, V> {
   _LruCache({required int capacity}) : _capacity = capacity;
 
@@ -129,9 +205,9 @@ _PreviewResult _truncatePreview(
     truncated = true;
   }
 
-  final compact = result.replaceAll(RegExp(r'\s+'), '');
-  if (compact.runes.length > _maxPreviewRunes) {
-    result = String.fromCharCodes(result.runes.take(_maxPreviewRunes));
+  final truncatedText = _truncatePreviewText(result, _maxPreviewRunes);
+  if (truncatedText != result) {
+    result = truncatedText;
     truncated = true;
   }
 
