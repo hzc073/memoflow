@@ -87,6 +87,7 @@ class AppPreferences {
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
     showDrawerResources: true,
+    supporterCrownEnabled: false,
   );
 
   const AppPreferences({
@@ -108,6 +109,7 @@ class AppPreferences {
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
     required this.showDrawerResources,
+    required this.supporterCrownEnabled,
   });
 
   final AppLanguage language;
@@ -128,6 +130,7 @@ class AppPreferences {
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
   final bool showDrawerResources;
+  final bool supporterCrownEnabled;
 
   Map<String, dynamic> toJson() => {
         'language': language.name,
@@ -148,6 +151,7 @@ class AppPreferences {
         'showDrawerDailyReview': showDrawerDailyReview,
         'showDrawerAiSummary': showDrawerAiSummary,
         'showDrawerResources': showDrawerResources,
+        'supporterCrownEnabled': supporterCrownEnabled,
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
@@ -287,6 +291,8 @@ class AppPreferences {
       showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
       showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
       showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
+      supporterCrownEnabled:
+          parseBool('supporterCrownEnabled', AppPreferences.defaults.supporterCrownEnabled),
     );
   }
 
@@ -309,6 +315,7 @@ class AppPreferences {
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
     bool? showDrawerResources,
+    bool? supporterCrownEnabled,
   }) {
     return AppPreferences(
       language: language ?? this.language,
@@ -329,6 +336,7 @@ class AppPreferences {
       showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
+      supporterCrownEnabled: supporterCrownEnabled ?? this.supporterCrownEnabled,
     );
   }
 }
@@ -389,6 +397,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
   void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));
+  void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));
 }
 
 class AppPreferencesRepository {

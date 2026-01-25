@@ -17,10 +17,12 @@ import 'about_us_screen.dart';
 import 'account_security_screen.dart';
 import 'ai_settings_screen.dart';
 import 'api_plugins_screen.dart';
+import 'donation_dialog.dart';
 import 'feedback_screen.dart';
 import 'import_export_screen.dart';
 import 'laboratory_screen.dart';
 import 'password_lock_screen.dart';
+import 'placeholder_settings_screen.dart';
 import 'preferences_settings_screen.dart';
 import 'user_guide_screen.dart';
 import 'widgets_screen.dart';
@@ -68,6 +70,8 @@ class SettingsScreen extends ConsumerWidget {
     final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
     final versionStyle = TextStyle(fontSize: 11, color: textMuted);
     final hapticsEnabled = ref.watch(appPreferencesProvider.select((p) => p.hapticsEnabled));
+    final supporterCrownEnabled =
+        ref.watch(appPreferencesProvider.select((p) => p.supporterCrownEnabled));
 
     void haptic() {
       if (hapticsEnabled) {
@@ -136,6 +140,7 @@ class SettingsScreen extends ConsumerWidget {
                   name: name,
                   subtitle: subtitle,
                   avatarUrl: avatarUrl,
+                  showCrown: supporterCrownEnabled,
                   onTap: () {
                     haptic();
                     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()));
@@ -278,6 +283,25 @@ class SettingsScreen extends ConsumerWidget {
                         );
                       },
                     ),
+                    _SettingRow(
+                      icon: Icons.extension_outlined,
+                      label: context.tr(zh: '功能组件', en: 'Components'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SettingsPlaceholderScreen(
+                              titleZh: '功能组件',
+                              titleEn: 'Components',
+                              messageZh: '功能组件正在准备中，敬请期待。',
+                              messageEn: 'Components are on the way. Stay tuned.',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -295,6 +319,16 @@ class SettingsScreen extends ConsumerWidget {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
                         );
+                      },
+                    ),
+                    _SettingRow(
+                      icon: Icons.bolt_outlined,
+                      label: context.tr(zh: '充电站', en: 'Charging Station'),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        DonationDialog.show(context);
                       },
                     ),
                     _SettingRow(
@@ -440,6 +474,7 @@ class _ProfileCard extends StatelessWidget {
     required this.name,
     required this.subtitle,
     required this.avatarUrl,
+    required this.showCrown,
     required this.onTap,
   });
 
@@ -449,6 +484,7 @@ class _ProfileCard extends StatelessWidget {
   final String name;
   final String subtitle;
   final String avatarUrl;
+  final bool showCrown;
   final VoidCallback onTap;
 
   @override
@@ -490,6 +526,41 @@ class _ProfileCard extends StatelessWidget {
           ),
         );
       }
+    }
+    if (showCrown) {
+      final badgeColor = isDark ? const Color(0xFFF2C879) : const Color(0xFFE1A670);
+      final badgeBg = isDark ? const Color(0xFF2C2520) : Colors.white;
+      avatarWidget = SizedBox(
+        width: 44,
+        height: 44,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(child: avatarWidget),
+            Positioned(
+              right: -4,
+              top: -4,
+              child: Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: badgeColor.withValues(alpha: 0.8)),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.2),
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.workspace_premium_rounded, size: 12, color: badgeColor),
+              ),
+            ),
+          ],
+        ),
+      );
     }
     return Material(
       color: Colors.transparent,

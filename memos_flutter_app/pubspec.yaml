@@ -63,6 +63,8 @@ dependencies:
   flutter_animate: ^4.5.2
   url_launcher: ^6.3.0
   flutter_widget_from_html: ^0.17.1
+  confetti: ^0.7.0
+  image_gallery_saver: ^2.0.3
 
 dev_dependencies:
   flutter_test:
@@ -91,6 +93,7 @@ flutter:
     - assets/splash/splash_screen_light.png
     - assets/splash/splash_logo.png
     - assets/splash/splash_logo_native.png
+    - assets/images/donation_qr.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
