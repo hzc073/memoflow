@@ -43,6 +43,7 @@ class _SyncQueueItem {
     required this.preview,
     required this.filename,
     required this.lastError,
+    required this.memoUid,
   });
 
   final int id;
@@ -53,6 +54,7 @@ class _SyncQueueItem {
   final String? preview;
   final String? filename;
   final String? lastError;
+  final String? memoUid;
 }
 
 Future<_SyncQueueItem?> _buildQueueItem(AppDatabase db, Map<String, dynamic> row) async {
@@ -96,6 +98,7 @@ Future<_SyncQueueItem?> _buildQueueItem(AppDatabase db, Map<String, dynamic> row
     preview: preview,
     filename: filename,
     lastError: lastError,
+    memoUid: memoUid,
   );
 }
 
@@ -125,6 +128,30 @@ String? _firstNonEmptyLine(String? raw) {
     if (trimmed.isNotEmpty) return trimmed;
   }
   return null;
+}
+
+Future<void> _discardLocalChangesForMemo(AppDatabase db, String memoUid) async {
+  final trimmed = memoUid.trim();
+  if (trimmed.isEmpty) return;
+
+  await db.deleteMemoByUid(trimmed);
+
+  final sqlite = await db.db;
+  final rows = await sqlite.query(
+    'outbox',
+    columns: const ['id', 'type', 'payload'],
+    where: 'state IN (0, 2)',
+  );
+  for (final row in rows) {
+    final id = row['id'];
+    final type = row['type'];
+    if (id is! int || type is! String) continue;
+    final payload = _decodePayload(row['payload']);
+    final uid = _extractMemoUid(type, payload);
+    if (uid == null || uid.trim().isEmpty) continue;
+    if (uid.trim() != trimmed) continue;
+    await db.deleteOutbox(id);
+  }
 }
 
 class SyncQueueScreen extends ConsumerWidget {
@@ -158,8 +185,8 @@ class SyncQueueScreen extends ConsumerWidget {
           builder: (context) => AlertDialog(
             title: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
             content: Text(context.tr(
-              zh: '\u786e\u5b9a\u8981\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\u5417\uff1f',
-              en: 'Delete this sync task?',
+              zh: '\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\u5e76\u4e22\u5f03\u672c\u5730\u6539\u52a8\uff1f',
+              en: 'Delete this sync task and discard local changes?',
             )),
             actions: [
               TextButton(
@@ -177,6 +204,11 @@ class SyncQueueScreen extends ConsumerWidget {
     if (!confirmed) return;
 
     final db = ref.read(databaseProvider);
+    final memoUid = item.memoUid?.trim();
+    if (memoUid != null && memoUid.isNotEmpty) {
+      await _discardLocalChangesForMemo(db, memoUid);
+      return;
+    }
     await db.deleteOutbox(item.id);
   }
 
