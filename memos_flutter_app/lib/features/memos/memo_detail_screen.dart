@@ -22,6 +22,7 @@ import '../../data/models/user.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/reminder_scheduler.dart';
 import '../../state/session_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
@@ -127,10 +128,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         false;
     if (!confirmed) return;
 
-    final db = ref.read(databaseProvider);
-    await db.deleteMemoByUid(memo.uid);
-    await db.enqueueOutbox(type: 'delete_memo', payload: {'uid': memo.uid, 'force': false});
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      final db = ref.read(databaseProvider);
+      await db.deleteMemoByUid(memo.uid);
+      await db.enqueueOutbox(type: 'delete_memo', payload: {'uid': memo.uid, 'force': false});
+      await ref.read(reminderSchedulerProvider).rescheduleAll();
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
 
     if (!mounted) return;
     context.safePop();

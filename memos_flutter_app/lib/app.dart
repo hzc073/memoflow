@@ -23,6 +23,8 @@ import 'features/updates/version_announcement_dialog.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
+import 'state/reminder_scheduler.dart';
+import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
 
 class App extends ConsumerStatefulWidget {
@@ -41,8 +43,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   String? _statsWidgetAccountKey;
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
   ProviderSubscription<AppPreferences>? _prefsSubscription;
+  ProviderSubscription<ReminderSettings>? _reminderSettingsSubscription;
   DateTime? _lastResumeSyncAt;
   DateTime? _lastPauseSyncAt;
+  DateTime? _lastReminderRescheduleAt;
   bool _versionAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
 
@@ -201,6 +205,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _lastResumeSyncAt = null;
         _lastPauseSyncAt = null;
         _triggerLifecycleSync(isResume: true);
+        unawaited(ref.read(reminderSchedulerProvider).rescheduleAll(force: true));
       }
       if (next.valueOrNull?.currentAccount != null) {
         _scheduleShareHandling();
@@ -209,6 +214,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _prefsSubscription = ref.listenManual<AppPreferences>(appPreferencesProvider, (prev, next) {
       if (prev?.fontFamily == next.fontFamily && prev?.fontFile == next.fontFile) return;
       unawaited(_ensureFontLoaded(next));
+    });
+    final reminderScheduler = ref.read(reminderSchedulerProvider);
+    reminderScheduler.bindNavigator(_navigatorKey);
+    unawaited(reminderScheduler.initialize());
+    _reminderSettingsSubscription = ref.listenManual<ReminderSettings>(reminderSettingsProvider, (prev, next) {
+      if (!ref.read(reminderSettingsLoadedProvider)) return;
+      unawaited(reminderScheduler.rescheduleAll());
     });
     _scheduleStatsWidgetUpdate();
   }
@@ -377,11 +389,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     unawaited(_syncAndUpdateStatsWidget(forceWidgetUpdate: true));
   }
 
+  void _rescheduleRemindersIfNeeded() {
+    final now = DateTime.now();
+    final last = _lastReminderRescheduleAt;
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return;
+    }
+    _lastReminderRescheduleAt = now;
+    unawaited(ref.read(reminderSchedulerProvider).rescheduleAll());
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
         _triggerLifecycleSync(isResume: true);
+        _rescheduleRemindersIfNeeded();
         break;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
@@ -583,6 +606,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _sessionSubscription?.close();
     _prefsSubscription?.close();
+    _reminderSettingsSubscription?.close();
     super.dispose();
   }
 }

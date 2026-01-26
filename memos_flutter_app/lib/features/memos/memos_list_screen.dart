@@ -25,12 +25,17 @@ import '../../state/database_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/reminder_providers.dart';
+import '../../state/reminder_scheduler.dart';
+import '../../state/reminder_settings_provider.dart';
 import '../../state/search_history_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/user_settings_provider.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../reminders/memo_reminder_editor_screen.dart';
+import '../reminders/reminder_utils.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
@@ -553,6 +558,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
     }
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+  }
+
+  String _formatReminderTime(DateTime time, AppLanguage language) {
+    final datePart = DateFormat('MM/dd').format(time);
+    final timePart = DateFormat('HH:mm').format(time);
+    if (language == AppLanguage.en) {
+      return '$datePart $timePart';
+    }
+    return '$datePart日 $timePart';
   }
 
   void _startAudioProgressTimer() {
@@ -1274,33 +1288,41 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         false;
     if (!confirmed) return;
 
-    _removeMemoWithAnimation(memo);
-    final db = ref.read(databaseProvider);
-    await db.deleteMemoByUid(memo.uid);
-    await db.enqueueOutbox(
-      type: 'delete_memo',
-      payload: {'uid': memo.uid, 'force': false},
-    );
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
-  }
-
-  Future<void> _handleMemoAction(LocalMemo memo, _MemoCardAction action) async {
-    switch (action) {
-      case _MemoCardAction.togglePinned:
-        await _updateMemo(memo, pinned: !memo.pinned);
-        return;
-      case _MemoCardAction.edit:
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => MemoEditorScreen(existing: memo),
-          ),
-        );
-        return;
-      case _MemoCardAction.delete:
-        await _deleteMemo(memo);
-        return;
+      _removeMemoWithAnimation(memo);
+      final db = ref.read(databaseProvider);
+      await db.deleteMemoByUid(memo.uid);
+      await db.enqueueOutbox(
+        type: 'delete_memo',
+        payload: {'uid': memo.uid, 'force': false},
+      );
+      await ref.read(reminderSchedulerProvider).rescheduleAll();
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
     }
-  }
+
+    Future<void> _handleMemoAction(LocalMemo memo, _MemoCardAction action) async {
+      switch (action) {
+        case _MemoCardAction.togglePinned:
+          await _updateMemo(memo, pinned: !memo.pinned);
+          return;
+        case _MemoCardAction.edit:
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => MemoEditorScreen(existing: memo),
+            ),
+          );
+          return;
+        case _MemoCardAction.reminder:
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => MemoReminderEditorScreen(memo: memo),
+            ),
+          );
+          return;
+        case _MemoCardAction.delete:
+          await _deleteMemo(memo);
+          return;
+      }
+    }
 
   void _removeMemoWithAnimation(LocalMemo memo) {
     final index = _animatedMemos.indexWhere((m) => m.uid == memo.uid);
@@ -1447,7 +1469,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       imageSources.add(source);
       if (imageSources.length >= 9) break;
     }
-    final hapticsEnabled = prefs.hapticsEnabled;
+      final hapticsEnabled = prefs.hapticsEnabled;
 
     void maybeHaptic() {
       if (hapticsEnabled) {
@@ -1455,13 +1477,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       }
     }
 
-    final syncStatus = _resolveMemoSyncStatus(memo, outboxStatus);
+      final syncStatus = _resolveMemoSyncStatus(memo, outboxStatus);
+      final reminderMap = ref.watch(memoReminderMapProvider);
+      final reminderSettings = ref.watch(reminderSettingsProvider);
+      final reminder = reminderMap[memo.uid];
+      final nextReminderTime = reminder == null
+          ? null
+          : nextEffectiveReminderTime(
+              now: DateTime.now(),
+              times: reminder.times,
+              settings: reminderSettings,
+            );
+      final reminderText =
+          nextReminderTime == null ? null : _formatReminderTime(nextReminderTime, prefs.language);
 
-    return _MemoCard(
-      key: ValueKey(memo.uid),
-      memo: memo,
-      dateText: _dateFmt.format(displayTime),
-      collapseLongContent: prefs.collapseLongContent,
+      return _MemoCard(
+        key: ValueKey(memo.uid),
+        memo: memo,
+        dateText: _dateFmt.format(displayTime),
+        reminderText: reminderText,
+        collapseLongContent: prefs.collapseLongContent,
       collapseReferences: prefs.collapseReferences,
       isAudioPlaying: removing ? false : isAudioPlaying,
       isAudioLoading: removing ? false : isAudioLoading,
@@ -2629,17 +2664,18 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-enum _MemoCardAction { togglePinned, edit, delete }
+enum _MemoCardAction { togglePinned, edit, reminder, delete }
 
-class _MemoCard extends StatefulWidget {
-  const _MemoCard({
-    super.key,
-    required this.memo,
-    required this.dateText,
-    required this.collapseLongContent,
-    required this.collapseReferences,
-    required this.isAudioPlaying,
-    required this.isAudioLoading,
+  class _MemoCard extends StatefulWidget {
+    const _MemoCard({
+      super.key,
+      required this.memo,
+      required this.dateText,
+      required this.reminderText,
+      required this.collapseLongContent,
+      required this.collapseReferences,
+      required this.isAudioPlaying,
+      required this.isAudioLoading,
     required this.audioPositionListenable,
     required this.audioDurationListenable,
     required this.imageSources,
@@ -2650,10 +2686,11 @@ class _MemoCard extends StatefulWidget {
     required this.onToggleTask,
     required this.onTap,
     required this.onAction,
-  });
+    });
 
-  final LocalMemo memo;
-  final String dateText;
+    final LocalMemo memo;
+    final String dateText;
+    final String? reminderText;
   final bool collapseLongContent;
   final bool collapseReferences;
   final bool isAudioPlaying;
@@ -2716,11 +2753,12 @@ class _MemoCardState extends State<_MemoCard> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final memo = widget.memo;
-    final dateText = widget.dateText;
-    final collapseLongContent = widget.collapseLongContent;
+    @override
+    Widget build(BuildContext context) {
+      final memo = widget.memo;
+      final dateText = widget.dateText;
+      final reminderText = widget.reminderText;
+      final collapseLongContent = widget.collapseLongContent;
     final collapseReferences = widget.collapseReferences;
     final onToggleTask = widget.onToggleTask;
     final onTap = widget.onTap;
@@ -2953,22 +2991,45 @@ class _MemoCardState extends State<_MemoCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        dateText,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.0,
-                          color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          dateText,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.0,
+                            color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+                          ),
                         ),
                       ),
-                    ),
-                    if (showSyncStatus)
-                      IconButton(
-                        onPressed: onSyncStatusTap,
+                      if (reminderText != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.notifications_active_outlined,
+                                size: 14,
+                                color: MemoFlowPalette.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                reminderText,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: MemoFlowPalette.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (showSyncStatus)
+                        IconButton(
+                          onPressed: onSyncStatusTap,
                         icon: Icon(syncIcon, size: 16, color: syncColor),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints.tightFor(
@@ -2999,13 +3060,17 @@ class _MemoCardState extends State<_MemoCard> {
                                 : context.tr(zh: '置顶', en: 'Pin'),
                           ),
                         ),
-                        PopupMenuItem(
-                          value: _MemoCardAction.edit,
-                          child: Text(context.tr(zh: '编辑', en: 'Edit')),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: _MemoCardAction.delete,
+                      PopupMenuItem(
+                        value: _MemoCardAction.edit,
+                        child: Text(context.tr(zh: '编辑', en: 'Edit')),
+                      ),
+                      PopupMenuItem(
+                        value: _MemoCardAction.reminder,
+                        child: Text(context.tr(zh: '提醒', en: 'Reminder')),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: _MemoCardAction.delete,
                           child: Text(
                             context.tr(zh: '删除', en: 'Delete'),
                             style: TextStyle(

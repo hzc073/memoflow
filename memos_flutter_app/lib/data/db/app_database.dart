@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 4;
+  static const _dbVersion = 5;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -42,6 +42,18 @@ CREATE TABLE IF NOT EXISTS memos (
   attachments_json TEXT NOT NULL DEFAULT '[]',
   sync_state INTEGER NOT NULL DEFAULT 0,
   last_error TEXT
+);
+''');
+
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memo_uid TEXT NOT NULL UNIQUE,
+  mode TEXT NOT NULL,
+  times_json TEXT NOT NULL,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL,
+  FOREIGN KEY (memo_uid) REFERENCES memos(uid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 ''');
 
@@ -111,6 +123,19 @@ CREATE TABLE IF NOT EXISTS import_history (
   updated_time INTEGER NOT NULL,
   error TEXT,
   UNIQUE(source, file_md5)
+);
+''');
+          }
+          if (oldVersion < 5) {
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memo_uid TEXT NOT NULL UNIQUE,
+  mode TEXT NOT NULL,
+  times_json TEXT NOT NULL,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL,
+  FOREIGN KEY (memo_uid) REFERENCES memos(uid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 ''');
           }
@@ -293,6 +318,12 @@ CREATE TABLE IF NOT EXISTS import_history (
         'memos',
         {'uid': newUid},
         where: 'uid = ?',
+        whereArgs: [oldUid],
+      );
+      await txn.update(
+        'memo_reminders',
+        {'memo_uid': newUid},
+        where: 'memo_uid = ?',
         whereArgs: [oldUid],
       );
       await txn.update(
@@ -493,6 +524,64 @@ CREATE TABLE IF NOT EXISTS import_history (
         await txn.delete('memos_fts', where: 'rowid = ?', whereArgs: [rowId]);
       }
     });
+    _notifyChanged();
+  }
+
+  Future<Map<String, dynamic>?> getMemoReminderByUid(String memoUid) async {
+    final db = await this.db;
+    final rows = await db.query('memo_reminders', where: 'memo_uid = ?', whereArgs: [memoUid], limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> listMemoReminders() async {
+    final db = await this.db;
+    return db.query('memo_reminders', orderBy: 'updated_time DESC');
+  }
+
+  Stream<List<Map<String, dynamic>>> watchMemoReminders() async* {
+    yield await listMemoReminders();
+    await for (final _ in changes) {
+      yield await listMemoReminders();
+    }
+  }
+
+  Future<void> upsertMemoReminder({
+    required String memoUid,
+    required String mode,
+    required String timesJson,
+  }) async {
+    final db = await this.db;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final updated = await db.update(
+      'memo_reminders',
+      {
+        'mode': mode,
+        'times_json': timesJson,
+        'updated_time': now,
+      },
+      where: 'memo_uid = ?',
+      whereArgs: [memoUid],
+    );
+    if (updated == 0) {
+      await db.insert(
+        'memo_reminders',
+        {
+          'memo_uid': memoUid,
+          'mode': mode,
+          'times_json': timesJson,
+          'created_time': now,
+          'updated_time': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    }
+    _notifyChanged();
+  }
+
+  Future<void> deleteMemoReminder(String memoUid) async {
+    final db = await this.db;
+    await db.delete('memo_reminders', where: 'memo_uid = ?', whereArgs: [memoUid]);
     _notifyChanged();
   }
 

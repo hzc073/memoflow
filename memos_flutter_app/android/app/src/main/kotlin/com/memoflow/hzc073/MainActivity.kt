@@ -1,13 +1,18 @@
 package com.memoflow.hzc073
 
+import android.app.Activity
+import android.app.AlarmManager
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
 import android.database.Cursor
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.memoflow.hzc073.widgets.DailyReviewWidgetProvider
@@ -28,6 +33,12 @@ class MainActivity : FlutterActivity() {
     private val shareChannelName = "memoflow/share"
     private var shareChannel: MethodChannel? = null
     private var pendingSharePayload: SharePayload? = null
+    private val ringtoneChannelName = "memoflow/ringtone"
+    private var ringtoneChannel: MethodChannel? = null
+    private var pendingRingtoneResult: MethodChannel.Result? = null
+    private val ringtoneRequestCode = 1001
+    private val settingsChannelName = "memoflow/system_settings"
+    private var settingsChannel: MethodChannel? = null
     private var isFlutterUiReady = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -130,6 +141,52 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        val ringtoneChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ringtoneChannelName)
+        this.ringtoneChannel = ringtoneChannel
+        ringtoneChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickRingtone" -> {
+                    if (pendingRingtoneResult != null) {
+                        result.error("PICKING", "Ringtone picker already active", null)
+                        return@setMethodCallHandler
+                    }
+                    val currentUri = call.argument<String>("currentUri")?.trim()
+                    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, Settings.System.DEFAULT_NOTIFICATION_URI)
+                        if (!currentUri.isNullOrBlank()) {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(currentUri))
+                        }
+                    }
+                    pendingRingtoneResult = result
+                    startActivityForResult(intent, ringtoneRequestCode)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        val settingsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, settingsChannelName)
+        this.settingsChannel = settingsChannel
+        settingsChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openAppSettings" -> result.success(openAppSettings())
+                "openNotificationSettings" -> result.success(openNotificationSettings())
+                "openNotificationChannelSettings" -> {
+                    val channelId = call.argument<String>("channelId")
+                    result.success(openNotificationChannelSettings(channelId))
+                }
+                "canScheduleExactAlarms" -> result.success(canScheduleExactAlarms())
+                "requestExactAlarmsPermission" -> result.success(requestExactAlarmsPermission())
+                "openExactAlarmSettings" -> result.success(openExactAlarmSettings())
+                "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
+                "requestIgnoreBatteryOptimizations" -> result.success(requestIgnoreBatteryOptimizations())
+                "openBatteryOptimizationSettings" -> result.success(openBatteryOptimizationSettings())
+                else -> result.notImplemented()
+            }
+        }
+
         pendingWidgetAction?.let { action ->
             pendingWidgetAction = null
             dispatchWidgetAction(action)
@@ -147,6 +204,37 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         handleWidgetIntent(intent)
         handleShareIntent(intent)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != ringtoneRequestCode) return
+        val pending = pendingRingtoneResult ?: return
+        pendingRingtoneResult = null
+        if (resultCode != Activity.RESULT_OK) {
+            pending.success(null)
+            return
+        }
+        val uri = data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        if (uri == null) {
+            pending.success(
+                mapOf(
+                    "isSilent" to true,
+                    "isDefault" to false,
+                ),
+            )
+            return
+        }
+        val title = RingtoneManager.getRingtone(this, uri)?.getTitle(this) ?: ""
+        val isDefault = uri == Settings.System.DEFAULT_NOTIFICATION_URI
+        pending.success(
+            mapOf(
+                "uri" to uri.toString(),
+                "title" to title,
+                "isSilent" to false,
+                "isDefault" to isDefault,
+            ),
+        )
     }
 
     private fun handleWidgetIntent(intent: Intent?) {
@@ -322,6 +410,95 @@ class MainActivity : FlutterActivity() {
         intent.removeExtra(Intent.EXTRA_TEXT)
         intent.removeExtra(Intent.EXTRA_STREAM)
         intent.clipData = null
+    }
+
+    private fun openAppSettings(): Boolean {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+        return startActivitySafe(intent)
+    }
+
+    private fun openNotificationSettings(): Boolean {
+        val opened = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            }
+            startActivitySafe(intent)
+        } else {
+            val intent = Intent("android.settings.APP_NOTIFICATION_SETTINGS").apply {
+                putExtra("app_package", packageName)
+                putExtra("app_uid", applicationInfo.uid)
+            }
+            startActivitySafe(intent)
+        }
+        return opened || openAppSettings()
+    }
+
+    private fun openNotificationChannelSettings(channelId: String?): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return openNotificationSettings()
+        }
+        if (channelId.isNullOrBlank()) {
+            return openNotificationSettings()
+        }
+        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
+        }
+        return startActivitySafe(intent) || openNotificationSettings()
+    }
+
+    private fun openExactAlarmSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return openAppSettings()
+        }
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        return startActivitySafe(intent) || openAppSettings()
+    }
+
+    private fun canScheduleExactAlarms(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val alarmManager = getSystemService(AlarmManager::class.java)
+        return alarmManager.canScheduleExactAlarms()
+    }
+
+    private fun requestExactAlarmsPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        return startActivitySafe(intent)
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val powerManager = getSystemService(PowerManager::class.java)
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestIgnoreBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        return startActivitySafe(intent)
+    }
+
+    private fun openBatteryOptimizationSettings(): Boolean {
+        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        return startActivitySafe(intent) || openAppSettings()
+    }
+
+    private fun startActivitySafe(intent: Intent): Boolean {
+        return try {
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun extractFirstUrl(raw: String): String? {
