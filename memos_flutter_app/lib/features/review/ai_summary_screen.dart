@@ -52,7 +52,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   DateTimeRange? _customRange;
   var _view = _AiSummaryView.input;
   var _isLoading = false;
-  var _allowPrivate = false;
   var _isQuickPromptEditing = false;
   var _requestId = 0;
   AiSummaryResult? _summary;
@@ -560,6 +559,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final start = DateTime(range.start.year, range.start.month, range.start.day);
     final endExclusive = DateTime(range.end.year, range.end.month, range.end.day)
         .add(const Duration(days: 1));
+    final allowPrivate = ref.read(appPreferencesProvider).aiSummaryAllowPrivateMemos;
     final db = ref.read(databaseProvider);
     final rows = await db.listMemosForExport(
       startTimeSec: start.toUtc().millisecondsSinceEpoch ~/ 1000,
@@ -574,7 +574,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     var included = 0;
     for (final row in rows) {
       final visibility = (row['visibility'] as String?)?.trim() ?? 'PRIVATE';
-      if (!_allowPrivate && visibility.toUpperCase() == 'PRIVATE') {
+      if (!allowPrivate && visibility.toUpperCase() == 'PRIVATE') {
         continue;
       }
       final content = (row['content'] as String?)?.trim() ?? '';
@@ -664,6 +664,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final isReport = _view == _AiSummaryView.report;
     final quickPrompts =
         ref.watch(aiSettingsProvider.select((s) => s.quickPrompts));
+    final allowPrivate = ref.watch(
+      appPreferencesProvider.select((p) => p.aiSummaryAllowPrivateMemos),
+    );
 
     return PopScope(
       canPop: false,
@@ -706,7 +709,10 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                 chipBg: chipBg,
                 inputBg: inputBg,
                 quickPrompts: quickPrompts,
-                allowPrivate: _allowPrivate,
+                allowPrivate: allowPrivate,
+                onAllowPrivateChanged: (v) => ref
+                    .read(appPreferencesProvider.notifier)
+                    .setAiSummaryAllowPrivateMemos(v),
               ),
             _buildBottomBar(
               isReport: isReport,
@@ -735,6 +741,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color inputBg,
     required List<AiQuickPrompt> quickPrompts,
     required bool allowPrivate,
+    required ValueChanged<bool> onAllowPrivateChanged,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inactiveTrack = border.withValues(alpha: isDark ? 0.6 : 1);
@@ -870,7 +877,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     scale: 0.9,
                     child: Switch(
                       value: allowPrivate,
-                      onChanged: (v) => setState(() => _allowPrivate = v),
+                      onChanged: onAllowPrivateChanged,
                       activeColor: Colors.white,
                       activeTrackColor: MemoFlowPalette.primary,
                       inactiveThumbColor: Colors.white,

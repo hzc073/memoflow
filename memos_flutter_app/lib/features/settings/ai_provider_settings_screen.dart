@@ -14,17 +14,6 @@ class AiProviderSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScreen> {
-  static const _kCustomModelOption = '__custom__';
-  static const _kModelOptions = <String>[
-    'deepseek-chat',
-    'Claude 3.5 Sonnet',
-    'Claude 3.5 Haiku',
-    'Claude 3 Opus',
-    'GPT-4o mini',
-    'GPT-4o',
-    _kCustomModelOption,
-  ];
-
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _apiUrlController;
   late final TextEditingController _apiKeyController;
@@ -34,6 +23,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
   var _model = '';
   var _dirty = false;
   var _saving = false;
+  var _modelOptions = <String>[];
 
   @override
   void initState() {
@@ -43,15 +33,17 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     _apiKeyController = TextEditingController(text: settings.apiKey);
     _promptController = TextEditingController(text: settings.prompt);
     _model = settings.model;
+    _modelOptions = List<String>.from(settings.modelOptions);
 
     _settingsSubscription = ref.listenManual<AiSettings>(aiSettingsProvider, (prev, next) {
       if (_dirty || !mounted) return;
       _apiUrlController.text = next.apiUrl;
       _apiKeyController.text = next.apiKey;
       _promptController.text = next.prompt;
-      if (_model != next.model) {
-        setState(() => _model = next.model);
-      }
+      setState(() {
+        _model = next.model;
+        _modelOptions = List<String>.from(next.modelOptions);
+      });
     });
   }
 
@@ -69,10 +61,55 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     setState(() => _dirty = true);
   }
 
-  String _modelLabel(BuildContext context, String value) {
-    if (value == _kCustomModelOption) {
-      return context.tr(zh: '自定义', en: 'Custom');
+  bool _isSameModel(String a, String b) {
+    return a.trim().toLowerCase() == b.trim().toLowerCase();
+  }
+
+  bool _containsModel(List<String> options, String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    return options.any((option) => option.trim().toLowerCase() == normalized);
+  }
+
+  List<String> _normalizeModelOptions(Iterable<String> options) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final option in options) {
+      final trimmed = option.trim();
+      if (trimmed.isEmpty) continue;
+      final normalized = trimmed.toLowerCase();
+      if (seen.add(normalized)) {
+        result.add(trimmed);
+      }
     }
+    return result;
+  }
+
+  void _setModelOptions(List<String> next, {bool adjustModel = true}) {
+    if (!mounted) return;
+    final normalized = _normalizeModelOptions(next);
+    setState(() {
+      _modelOptions = normalized;
+      _dirty = true;
+      if (adjustModel && !_containsModel(normalized, _model)) {
+        _model = normalized.isNotEmpty ? normalized.first : '';
+      }
+    });
+  }
+
+  void _setModel(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || !mounted) return;
+    setState(() {
+      _model = trimmed;
+      _dirty = true;
+      if (!_containsModel(_modelOptions, trimmed)) {
+        _modelOptions = _normalizeModelOptions([trimmed, ..._modelOptions]);
+      }
+    });
+  }
+
+  String _modelLabel(BuildContext context, String value) {
     return value;
   }
 
@@ -81,46 +118,84 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     final selected = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(context.tr(zh: '模型', en: 'Model')),
-                ),
+      builder: (context) {
+        var isEditing = false;
+        var options = List<String>.from(_modelOptions);
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void syncOptions(List<String> next, {bool adjustModel = true}) {
+              options = _normalizeModelOptions(next);
+              setModalState(() {});
+              _setModelOptions(options, adjustModel: adjustModel);
+            }
+
+            Future<void> addCustomModel() async {
+              final custom = await _askCustomModel();
+              if (!mounted) return;
+              final trimmed = custom?.trim() ?? '';
+              if (trimmed.isEmpty) return;
+              if (!_containsModel(options, trimmed)) {
+                syncOptions([trimmed, ...options], adjustModel: false);
+              }
+              if (!context.mounted) return;
+              Navigator.of(context).pop(trimmed);
+            }
+
+            void deleteModel(String model) {
+              final next = options.where((m) => !_isSameModel(m, model)).toList();
+              syncOptions(next);
+            }
+
+            return SafeArea(
+              child: ListView(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(context.tr(zh: '模型', en: 'Model')),
+                        TextButton(
+                          onPressed: () => setModalState(() => isEditing = !isEditing),
+                          child: Text(
+                            isEditing
+                                ? context.tr(zh: '完成', en: 'Done')
+                                : context.tr(zh: '编辑', en: 'Edit'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...options.map(
+                    (m) => ListTile(
+                      title: Text(_modelLabel(context, m)),
+                      trailing: isEditing
+                          ? IconButton(
+                              tooltip: context.tr(zh: '删除', en: 'Delete'),
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => deleteModel(m),
+                            )
+                          : (_isSameModel(m, _model) ? const Icon(Icons.check) : null),
+                      onTap: isEditing ? null : () => Navigator.of(context).pop(m),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.add),
+                    title: Text(context.tr(zh: '添加自定义模型', en: 'Add custom model')),
+                    onTap: addCustomModel,
+                  ),
+                ],
               ),
-            ..._kModelOptions.map(
-              (m) => ListTile(
-                title: Text(_modelLabel(context, m)),
-                trailing: m == _model ? const Icon(Icons.check) : null,
-                onTap: () => context.safePop(m),
-              ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
 
     if (selected == null) return;
     if (!mounted) return;
-
-    if (selected == _kCustomModelOption) {
-      final custom = await _askCustomModel();
-      if (!mounted) return;
-      if (custom == null || custom.trim().isEmpty) return;
-      setState(() {
-        _model = custom.trim();
-        _dirty = true;
-      });
-      return;
-    }
-
-    setState(() {
-      _model = selected;
-      _dirty = true;
-    });
+    _setModel(selected);
   }
 
   Future<String?> _askCustomModel() async {
@@ -137,10 +212,16 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
     setState(() => _saving = true);
     try {
       final current = ref.read(aiSettingsProvider);
+      final model = _model.trim();
+      final normalizedOptions = _normalizeModelOptions(_modelOptions);
+      final options = _containsModel(normalizedOptions, model) || model.isEmpty
+          ? normalizedOptions
+          : _normalizeModelOptions([model, ...normalizedOptions]);
       final next = current.copyWith(
         apiUrl: _apiUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
-        model: _model.trim(),
+        model: model,
+        modelOptions: options,
         prompt: _promptController.text.trim(),
       );
       await ref.read(aiSettingsProvider.notifier).setAll(next);
