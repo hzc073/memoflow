@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
@@ -50,6 +51,93 @@ typedef _PreviewResult = ({String text, bool truncated});
 
 final RegExp _markdownLinkPattern = RegExp(r'\[([^\]]*)\]\(([^)]+)\)');
 final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
+
+enum _MemoSyncStatus { none, pending, failed }
+
+class _OutboxMemoStatus {
+  const _OutboxMemoStatus({required this.pending, required this.failed});
+  const _OutboxMemoStatus.empty()
+      : pending = const <String>{},
+        failed = const <String>{};
+
+  final Set<String> pending;
+  final Set<String> failed;
+}
+
+final _outboxMemoStatusProvider = StreamProvider<_OutboxMemoStatus>((ref) async* {
+  final db = ref.watch(databaseProvider);
+
+  Future<_OutboxMemoStatus> load() async {
+    final sqlite = await db.db;
+    final rows = await sqlite.query(
+      'outbox',
+      columns: const ['type', 'payload', 'state'],
+      where: 'state IN (0, 2)',
+      orderBy: 'id ASC',
+    );
+    final pending = <String>{};
+    final failed = <String>{};
+
+    for (final row in rows) {
+      final type = row['type'];
+      final payload = row['payload'];
+      final state = row['state'];
+      if (type is! String || payload is! String) continue;
+
+      final decoded = _decodeOutboxPayload(payload);
+      final uid = _extractOutboxMemoUid(type, decoded);
+      if (uid == null || uid.trim().isEmpty) continue;
+      final normalized = uid.trim();
+
+      if (state == 2) {
+        failed.add(normalized);
+        pending.remove(normalized);
+      } else {
+        if (!failed.contains(normalized)) {
+          pending.add(normalized);
+        }
+      }
+    }
+
+    return _OutboxMemoStatus(pending: pending, failed: failed);
+  }
+
+  yield await load();
+  await for (final _ in db.changes) {
+    yield await load();
+  }
+});
+
+Map<String, dynamic> _decodeOutboxPayload(Object? raw) {
+  if (raw is! String || raw.trim().isEmpty) return <String, dynamic>{};
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) {
+      return decoded.cast<String, dynamic>();
+    }
+  } catch (_) {}
+  return <String, dynamic>{};
+}
+
+String? _extractOutboxMemoUid(String type, Map<String, dynamic> payload) {
+  return switch (type) {
+    'create_memo' || 'update_memo' || 'delete_memo' => payload['uid'] as String?,
+    'upload_attachment' => payload['memo_uid'] as String?,
+    _ => null,
+  };
+}
+
+_MemoSyncStatus _resolveMemoSyncStatus(LocalMemo memo, _OutboxMemoStatus status) {
+  final uid = memo.uid.trim();
+  if (uid.isEmpty) return _MemoSyncStatus.none;
+  if (status.failed.contains(uid)) return _MemoSyncStatus.failed;
+  if (status.pending.contains(uid)) return _MemoSyncStatus.pending;
+  return switch (memo.syncState) {
+    SyncState.error => _MemoSyncStatus.failed,
+    SyncState.pending => _MemoSyncStatus.pending,
+    _ => _MemoSyncStatus.none,
+  };
+}
 
 int _compactRuneCount(String text) {
   if (text.isEmpty) return 0;
@@ -283,8 +371,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   String? _playingAudioUrl;
   bool _audioLoading = false;
   DateTime? _lastBackPressedAt;
-  OverlayEntry? _syncBubbleEntry;
-  Timer? _syncBubbleTimer;
 
   @override
   void initState() {
@@ -375,8 +461,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   @override
   void dispose() {
-    _syncBubbleTimer?.cancel();
-    _syncBubbleEntry?.remove();
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
     _audioDurationSub?.cancel();
@@ -889,6 +973,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     );
   }
 
+  void _openSyncQueue() {
+    if (ref.read(appPreferencesProvider).hapticsEnabled) {
+      HapticFeedback.selectionClick();
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SyncQueueScreen()),
+    );
+  }
+
   void _openTagFromDrawer(String tag) {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
@@ -1214,6 +1307,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (index < 0) return;
     final removed = _animatedMemos.removeAt(index);
     _pendingRemovedUids.add(removed.uid);
+    final outboxStatus = ref.read(_outboxMemoStatusProvider).valueOrNull ?? const _OutboxMemoStatus.empty();
 
     _listKey.currentState?.removeItem(
       index,
@@ -1222,6 +1316,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         memo: removed,
         animation: animation,
         prefs: ref.read(appPreferencesProvider),
+        outboxStatus: outboxStatus,
         removing: true,
       ),
       duration: const Duration(milliseconds: 380),
@@ -1303,6 +1398,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     required LocalMemo memo,
     required Animation<double> animation,
     required AppPreferences prefs,
+    required _OutboxMemoStatus outboxStatus,
     required bool removing,
   }) {
     final curved = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
@@ -1312,7 +1408,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       axisAlignment: 0.0,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: _buildMemoCard(context, memo, prefs: prefs, removing: removing),
+        child: _buildMemoCard(
+          context,
+          memo,
+          prefs: prefs,
+          outboxStatus: outboxStatus,
+          removing: removing,
+        ),
       ),
     );
   }
@@ -1321,6 +1423,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     BuildContext context,
     LocalMemo memo, {
     required AppPreferences prefs,
+    required _OutboxMemoStatus outboxStatus,
     required bool removing,
   }) {
     final displayTime = memo.createTime.millisecondsSinceEpoch > 0
@@ -1352,6 +1455,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       }
     }
 
+    final syncStatus = _resolveMemoSyncStatus(memo, outboxStatus);
+
     return _MemoCard(
       key: ValueKey(memo.uid),
       memo: memo,
@@ -1367,6 +1472,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           ? null
           : (pos) => _seekAudioPosition(memo, pos),
       onAudioTap: removing ? null : () => _toggleAudioPlayback(memo),
+      syncStatus: syncStatus,
+      onSyncStatusTap: syncStatus == _MemoSyncStatus.none
+          ? null
+          : _openSyncQueue,
       onToggleTask: removing
           ? (_) {}
           : (index) {
@@ -1394,145 +1503,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     );
   }
 
-  void _dismissSyncBubble() {
-    _syncBubbleTimer?.cancel();
-    _syncBubbleTimer = null;
-    _syncBubbleEntry?.remove();
-    _syncBubbleEntry = null;
-  }
-
-  void _showSyncBubble({
-    required String message,
-    required IconData icon,
-    required Color accent,
-    Duration duration = const Duration(seconds: 2),
-  }) {
-    if (!mounted) return;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final background = accent.withValues(alpha: isDark ? 0.28 : 0.14);
-    final foreground = isDark ? Colors.white : accent;
-    _dismissSyncBubble();
-
-    final overlay = Overlay.of(context, rootOverlay: true);
-    if (overlay == null) return;
-    final size = MediaQuery.sizeOf(context);
-    final maxWidth = size.width - 48;
-    final top = MediaQuery.paddingOf(context).top + kToolbarHeight + 60;
-
-    _syncBubbleEntry = OverlayEntry(
-      builder: (context) {
-        return Positioned(
-          left: 16,
-          right: 16,
-          top: top,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: background,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.25 : 0.12,
-                        ),
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(icon, size: 14, color: foreground),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          message,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: foreground,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    overlay.insert(_syncBubbleEntry!);
-    _syncBubbleTimer = Timer(duration, _dismissSyncBubble);
-  }
-
-  String _formatSyncError(Object error) {
-    final raw = error.toString().trim();
-    if (raw.isEmpty) return '';
-    const max = 80;
-    if (raw.length <= max) return raw;
-    return '${raw.substring(0, max - 3)}...';
-  }
-
   @override
   Widget build(BuildContext context) {
-    ref.listen(syncControllerProvider, (prev, next) {
-      final wasLoading = prev?.isLoading ?? false;
-      final isLoading = next.isLoading;
-      if (!wasLoading && isLoading) {
-        _showSyncBubble(
-          message: context.tr(zh: '同步中…', en: 'Syncing...'),
-          icon: Icons.sync,
-          accent: MemoFlowPalette.primary,
-          duration: const Duration(seconds: 2),
-        );
-        return;
-      }
-      if (wasLoading && !isLoading) {
-        if (next.hasError) {
-          final detail = next.error == null
-              ? ''
-              : _formatSyncError(next.error!);
-          final suffix = detail.isEmpty ? '' : '：$detail';
-          _showSyncBubble(
-            message: context.tr(zh: '同步失败$suffix', en: 'Sync failed$suffix'),
-            icon: Icons.error_outline,
-            accent: const Color(0xFFE05656),
-            duration: const Duration(seconds: 3),
-          );
-        } else {
-          _showSyncBubble(
-            message: context.tr(zh: '同步完成', en: 'Sync complete'),
-            icon: Icons.check_circle_outline,
-            accent: const Color(0xFF3B8C52),
-          );
-        }
-      } else if (next.hasError && prev?.error != next.error) {
-        final detail = next.error == null ? '' : _formatSyncError(next.error!);
-        final suffix = detail.isEmpty ? '' : '：$detail';
-        _showSyncBubble(
-          message: context.tr(zh: '同步失败$suffix', en: 'Sync failed$suffix'),
-          icon: Icons.error_outline,
-          accent: const Color(0xFFE05656),
-          duration: const Duration(seconds: 3),
-        );
-      }
-    });
-
-    final syncing = ref.watch(syncControllerProvider).isLoading;
     final searchQuery = _searchController.text;
     final shortcutsAsync = ref.watch(shortcutsProvider);
     final shortcuts = shortcutsAsync.valueOrNull ?? const <Shortcut>[];
@@ -1555,6 +1527,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               tag: resolvedTag,
             )),
           );
+    final outboxStatus = ref.watch(_outboxMemoStatusProvider).valueOrNull ?? const _OutboxMemoStatus.empty();
     final searchHistory = ref.watch(searchHistoryProvider);
     final tagStats =
         ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
@@ -1864,6 +1837,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                             memo: memo,
                             animation: animation,
                             prefs: prefs,
+                            outboxStatus: outboxStatus,
                             removing: false,
                           );
                         },
@@ -1881,7 +1855,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         floatingActionButton: widget.enableCompose && !_searching
             ? _MemoFlowFab(
-                onPressed: syncing ? null : _openNoteInput,
+                onPressed: _openNoteInput,
                 hapticsEnabled: hapticsEnabled,
               )
             : null,
@@ -2671,6 +2645,8 @@ class _MemoCard extends StatefulWidget {
     required this.imageSources,
     required this.onAudioSeek,
     required this.onAudioTap,
+    required this.syncStatus,
+    this.onSyncStatusTap,
     required this.onToggleTask,
     required this.onTap,
     required this.onAction,
@@ -2688,6 +2664,8 @@ class _MemoCard extends StatefulWidget {
   imageSources;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
+  final _MemoSyncStatus syncStatus;
+  final VoidCallback? onSyncStatusTap;
   final ValueChanged<int> onToggleTask;
   final VoidCallback onTap;
   final ValueChanged<_MemoCardAction> onAction;
@@ -2754,6 +2732,8 @@ class _MemoCardState extends State<_MemoCard> {
     final audioDurationListenable = widget.audioDurationListenable;
     final onAudioSeek = widget.onAudioSeek;
     final imageSources = widget.imageSources;
+    final syncStatus = widget.syncStatus;
+    final onSyncStatusTap = widget.onSyncStatusTap;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark
@@ -2771,6 +2751,14 @@ class _MemoCardState extends State<_MemoCard> {
     final deleteColor = isDark
         ? const Color(0xFFFF7A7A)
         : const Color(0xFFE05656);
+    final pendingColor = textMain.withValues(alpha: isDark ? 0.45 : 0.35);
+    final showSyncStatus = syncStatus != _MemoSyncStatus.none;
+    final syncIcon = syncStatus == _MemoSyncStatus.failed
+        ? Icons.error_outline
+        : Icons.cloud_upload_outlined;
+    final syncColor = syncStatus == _MemoSyncStatus.failed
+        ? deleteColor
+        : pendingColor;
 
     final audio = memo.attachments
         .where((a) => a.type.startsWith('audio'))
@@ -2978,6 +2966,17 @@ class _MemoCardState extends State<_MemoCard> {
                         ),
                       ),
                     ),
+                    if (showSyncStatus)
+                      IconButton(
+                        onPressed: onSyncStatusTap,
+                        icon: Icon(syncIcon, size: 16, color: syncColor),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 32,
+                          height: 32,
+                        ),
+                        splashRadius: 16,
+                      ),
                     PopupMenuButton<_MemoCardAction>(
                       tooltip: context.tr(zh: '更多', en: 'More'),
                       icon: Icon(
