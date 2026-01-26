@@ -61,7 +61,7 @@ jobs:
             exit 0
           fi
           mkdir -p app/keystore
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/keystore/release.jks
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/keystore/release.jks
 
       - name: Create key.properties
         working-directory: memos_flutter_app/android
@@ -76,7 +76,7 @@ jobs:
             echo "Keystore secrets missing; skip key.properties."
             exit 0
           fi
-          cat > key.properties <<'EOF'
+          cat > key.properties <<EOF
           storePassword=${ANDROID_KEYSTORE_PASSWORD}
           keyPassword=${ANDROID_KEY_PASSWORD}
           keyAlias=${ANDROID_KEY_ALIAS}
