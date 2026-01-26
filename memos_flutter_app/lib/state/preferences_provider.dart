@@ -87,8 +87,10 @@ class AppPreferences {
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
     showDrawerResources: true,
+    aiSummaryAllowPrivateMemos: false,
     supporterCrownEnabled: false,
     thirdPartyShareEnabled: true,
+    lastSeenAppVersion: '',
   );
 
   const AppPreferences({
@@ -110,8 +112,10 @@ class AppPreferences {
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
     required this.showDrawerResources,
+    required this.aiSummaryAllowPrivateMemos,
     required this.supporterCrownEnabled,
     required this.thirdPartyShareEnabled,
+    required this.lastSeenAppVersion,
   });
 
   final AppLanguage language;
@@ -132,8 +136,10 @@ class AppPreferences {
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
   final bool showDrawerResources;
+  final bool aiSummaryAllowPrivateMemos;
   final bool supporterCrownEnabled;
   final bool thirdPartyShareEnabled;
+  final String lastSeenAppVersion;
 
   Map<String, dynamic> toJson() => {
         'language': language.name,
@@ -154,8 +160,10 @@ class AppPreferences {
         'showDrawerDailyReview': showDrawerDailyReview,
         'showDrawerAiSummary': showDrawerAiSummary,
         'showDrawerResources': showDrawerResources,
+        'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
         'supporterCrownEnabled': supporterCrownEnabled,
         'thirdPartyShareEnabled': thirdPartyShareEnabled,
+        'lastSeenAppVersion': lastSeenAppVersion,
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
@@ -272,6 +280,12 @@ class AppPreferences {
       return fallback;
     }
 
+    String parseLastSeenAppVersion() {
+      final raw = json['lastSeenAppVersion'];
+      if (raw is String) return raw;
+      return '';
+    }
+
     final parsedFamily = parseFontFamily();
     final parsedFile = parseFontFile();
 
@@ -295,10 +309,13 @@ class AppPreferences {
       showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
       showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
       showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
+      aiSummaryAllowPrivateMemos:
+          parseBool('aiSummaryAllowPrivateMemos', AppPreferences.defaults.aiSummaryAllowPrivateMemos),
       supporterCrownEnabled:
           parseBool('supporterCrownEnabled', AppPreferences.defaults.supporterCrownEnabled),
       thirdPartyShareEnabled:
           parseBool('thirdPartyShareEnabled', AppPreferences.defaults.thirdPartyShareEnabled),
+      lastSeenAppVersion: parseLastSeenAppVersion(),
     );
   }
 
@@ -321,8 +338,10 @@ class AppPreferences {
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
     bool? showDrawerResources,
+    bool? aiSummaryAllowPrivateMemos,
     bool? supporterCrownEnabled,
     bool? thirdPartyShareEnabled,
+    String? lastSeenAppVersion,
   }) {
     return AppPreferences(
       language: language ?? this.language,
@@ -343,8 +362,10 @@ class AppPreferences {
       showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
+      aiSummaryAllowPrivateMemos: aiSummaryAllowPrivateMemos ?? this.aiSummaryAllowPrivateMemos,
       supporterCrownEnabled: supporterCrownEnabled ?? this.supporterCrownEnabled,
       thirdPartyShareEnabled: thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
+      lastSeenAppVersion: lastSeenAppVersion ?? this.lastSeenAppVersion,
     );
   }
 }
@@ -405,8 +426,11 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
   void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));
+  void setAiSummaryAllowPrivateMemos(bool v) =>
+      _setAndPersist(state.copyWith(aiSummaryAllowPrivateMemos: v));
   void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));
   void setThirdPartyShareEnabled(bool v) => _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
+  void setLastSeenAppVersion(String v) => _setAndPersist(state.copyWith(lastSeenAppVersion: v));
 }
 
 class AppPreferencesRepository {

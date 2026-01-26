@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/app_localization.dart';
 import 'core/app_theme.dart';
@@ -17,6 +18,7 @@ import 'features/onboarding/language_selection_screen.dart';
 import 'features/review/daily_review_screen.dart';
 import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
+import 'features/updates/version_announcement_dialog.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
@@ -40,6 +42,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   ProviderSubscription<AppPreferences>? _prefsSubscription;
   DateTime? _lastResumeSyncAt;
   DateTime? _lastPauseSyncAt;
+  bool _versionAnnouncementChecked = false;
+  Future<String?>? _appVersionFuture;
 
   static Locale _localeFor(AppLanguage language) {
     return switch (language) {
@@ -194,6 +198,56 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       if (!mounted) return;
       _updateStatsWidgetIfNeeded();
     });
+  }
+
+  Future<String?> _fetchAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.version.trim();
+      return version.isEmpty ? null : version;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _resolveAppVersion() {
+    return _appVersionFuture ??= _fetchAppVersion();
+  }
+
+  void _scheduleVersionAnnouncementIfNeeded() {
+    if (_versionAnnouncementChecked) return;
+    _versionAnnouncementChecked = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_maybeShowVersionAnnouncement());
+    });
+  }
+
+  Future<void> _maybeShowVersionAnnouncement() async {
+    final version = await _resolveAppVersion();
+    if (!mounted || version == null || version.isEmpty) return;
+
+    final prefs = ref.read(appPreferencesProvider);
+    final lastSeen = prefs.lastSeenAppVersion.trim();
+    if (!prefs.hasSelectedLanguage) {
+      if (lastSeen.isEmpty) {
+        ref.read(appPreferencesProvider.notifier).setLastSeenAppVersion(version);
+      }
+      return;
+    }
+    if (lastSeen == version) return;
+
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+
+    final acknowledged = await VersionAnnouncementDialog.show(
+      context,
+      version: version,
+      items: VersionAnnouncementContent.forVersion(version),
+    );
+    if (acknowledged == true && mounted) {
+      ref.read(appPreferencesProvider.notifier).setLastSeenAppVersion(version);
+    }
   }
 
   Future<void> _updateStatsWidgetIfNeeded({bool force = false}) async {
@@ -417,6 +471,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final prefs = ref.watch(appPreferencesProvider);
+    final prefsLoaded = ref.watch(appPreferencesLoadedProvider);
     MemoFlowPalette.applyThemeColor(prefs.themeColor);
     final themeMode = _themeModeFor(prefs.themeMode);
     final loggerService = ref.watch(loggerServiceProvider);
@@ -428,6 +483,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
     if (_pendingSharePayload != null) {
       _scheduleShareHandling();
+    }
+    if (prefsLoaded) {
+      _scheduleVersionAnnouncementIfNeeded();
     }
 
     return MaterialApp(

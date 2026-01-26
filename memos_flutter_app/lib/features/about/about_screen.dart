@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/memoflow_palette.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
@@ -8,6 +9,7 @@ import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
+import '../settings/about_us_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
@@ -75,6 +77,8 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
@@ -82,47 +86,27 @@ class AboutScreen extends StatelessWidget {
         _backToAllMemos(context);
       },
       child: Scaffold(
+        backgroundColor: bg,
         drawer: AppDrawer(
           selected: AppDrawerDestination.about,
           onSelect: (d) => _navigate(context, d),
           onSelectTag: (t) => _openTag(context, t),
           onOpenNotifications: () => _openNotifications(context),
         ),
-        appBar: AppBar(title: Text(context.tr(zh: '关于', en: 'About'))),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text('MemoFlow', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              context.tr(
-                zh: '一个基于 Memos 后端的离线优先客户端。',
-                en: 'An offline-first client for the Memos backend.',
-              ),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.lock_outline),
-              title: Text(context.tr(zh: '应用锁', en: 'App Lock')),
-              subtitle: Text(context.tr(zh: '计划：进入应用前本地锁定', en: 'Plan: local lock before entering the app')),
-            ),
-            ListTile(
-              leading: const Icon(Icons.auto_awesome),
-              title: Text(context.tr(zh: 'AI 总结', en: 'AI Summary')),
-              subtitle: Text(
-                context.tr(zh: '计划：按时间范围总结/年报', en: 'Plan: summary/yearly report for selected range'),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_sync_outlined),
-              title: Text(context.tr(zh: '离线同步', en: 'Offline Sync')),
-              subtitle: Text(
-                context.tr(zh: '本地数据库 + 待同步队列，联网后按序同步', en: 'Local DB + outbox queue, sync in order when online'),
-              ),
-            ),
-          ],
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          leading: IconButton(
+            tooltip: context.tr(zh: '返回', en: 'Back'),
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _backToAllMemos(context),
+          ),
+          title: Text(context.tr(zh: '关于', en: 'About')),
+          centerTitle: false,
         ),
+        body: const AboutUsContent(),
       ),
     );
   }
