@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
+import '../../core/uid.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/content_fingerprint.dart';
@@ -22,6 +23,7 @@ import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
+import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_markdown.dart';
 
@@ -44,6 +46,7 @@ class MemoDetailScreen extends ConsumerStatefulWidget {
 class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _player = AudioPlayer();
+  static const _maxAttachmentBytes = 30 * 1024 * 1024;
 
   LocalMemo? _memo;
   String? _currentAudioUrl;
@@ -287,6 +290,115 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     return file;
   }
 
+  List<AttachmentImageSource> _buildAttachmentSources({
+    required List<Attachment> attachments,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
+    return attachments
+        .map(
+          (attachment) {
+            final localFile = _localAttachmentFile(attachment);
+            final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: false);
+            return AttachmentImageSource(
+              id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
+              title: attachment.filename,
+              mimeType: attachment.type,
+              localFile: localFile,
+              imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
+              headers: authHeader == null ? null : {'Authorization': authHeader},
+            );
+          },
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> _replaceMemoAttachment(EditedImageResult result) async {
+    final memo = _memo;
+    if (memo == null) return;
+    final index = memo.attachments.indexWhere((a) => a.name == result.sourceId || a.uid == result.sourceId);
+    if (index < 0) return;
+    if (result.size > _maxAttachmentBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '图片过大（最大 30 MB）', en: 'Image too large (max 30 MB).'))),
+      );
+      return;
+    }
+
+    final oldAttachment = memo.attachments[index];
+    final newUid = generateUid();
+    final newAttachment = Attachment(
+      name: 'attachments/$newUid',
+      filename: result.filename,
+      type: result.mimeType,
+      size: result.size,
+      externalLink: Uri.file(result.filePath).toString(),
+    );
+    final updatedAttachments = [...memo.attachments];
+    updatedAttachments[index] = newAttachment;
+
+    final db = ref.read(databaseProvider);
+    final now = DateTime.now();
+    await db.upsertMemo(
+      uid: memo.uid,
+      content: memo.content,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+      tags: memo.tags,
+      attachments: updatedAttachments.map((a) => a.toJson()).toList(growable: false),
+      syncState: 1,
+      lastError: null,
+    );
+
+    await db.enqueueOutbox(type: 'update_memo', payload: {
+      'uid': memo.uid,
+      'content': memo.content,
+      'visibility': memo.visibility,
+      'pinned': memo.pinned,
+      'sync_attachments': true,
+      'has_pending_attachments': true,
+    });
+    await db.enqueueOutbox(type: 'upload_attachment', payload: {
+      'uid': newUid,
+      'memo_uid': memo.uid,
+      'file_path': result.filePath,
+      'filename': result.filename,
+      'mime_type': result.mimeType,
+      'file_size': result.size,
+    });
+    final oldName = oldAttachment.name.isNotEmpty ? oldAttachment.name : oldAttachment.uid;
+    if (oldName.isNotEmpty) {
+      await db.enqueueOutbox(type: 'delete_attachment', payload: {
+        'attachment_name': oldName,
+        'memo_uid': memo.uid,
+      });
+    }
+
+    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+
+    if (!mounted) return;
+    setState(() {
+      _memo = LocalMemo(
+        uid: memo.uid,
+        content: memo.content,
+        contentFingerprint: memo.contentFingerprint,
+        visibility: memo.visibility,
+        pinned: memo.pinned,
+        state: memo.state,
+        createTime: memo.createTime,
+        updateTime: now,
+        tags: memo.tags,
+        attachments: updatedAttachments,
+        syncState: SyncState.pending,
+        lastError: null,
+      );
+    });
+  }
+
   Future<void> _togglePlayAudio(String url, {Map<String, String>? headers}) async {
     if (_currentAudioUrl == url) {
       if (_player.playing) {
@@ -314,6 +426,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     required List<Attachment> attachments,
     required Uri? baseUrl,
     required String? authHeader,
+    required bool allowEdit,
   }) {
     if (attachments.isEmpty) return const SizedBox.shrink();
     const gridSpacing = 8.0;
@@ -323,6 +436,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final previewBg =
         isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final sources = _buildAttachmentSources(
+      attachments: attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
 
     Widget placeholder(IconData icon) {
       return Container(
@@ -332,11 +450,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       );
     }
 
-    Widget buildTile(Attachment attachment) {
+    Widget buildTile(Attachment attachment, int index) {
       final localFile = _localAttachmentFile(attachment);
       final thumbUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: true);
-      final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: false);
-
       Widget image;
       if (localFile != null) {
         image = Image.file(
@@ -366,15 +482,15 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         child: image,
       );
 
-      if (fullUrl.isEmpty || baseUrl == null) return tile;
       return GestureDetector(
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => _ImageViewerScreen(
-                imageUrl: fullUrl,
-                authHeader: authHeader,
-                title: attachment.filename,
+              builder: (_) => AttachmentGalleryScreen(
+                images: sources,
+                initialIndex: index,
+                onReplace: allowEdit ? _replaceMemoAttachment : null,
+                enableDownload: true,
               ),
             ),
           );
@@ -394,7 +510,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         childAspectRatio: 1,
       ),
       itemCount: attachments.length,
-      itemBuilder: (context, index) => buildTile(attachments[index]),
+      itemBuilder: (context, index) => buildTile(attachments[index], index),
     );
   }
 
@@ -418,6 +534,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     }
 
     final isArchived = memo.state == 'ARCHIVED';
+    final canEditAttachments = !widget.readOnly && !isArchived;
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
     final canToggleTasks = !widget.readOnly;
 
@@ -598,6 +715,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                               attachments: images,
                               baseUrl: baseUrl,
                               authHeader: authHeader,
+                              allowEdit: canEditAttachments,
                             ),
                           if (images.isNotEmpty && others.isNotEmpty) const SizedBox(height: 8),
                           ...others.map(
@@ -998,6 +1116,28 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
     return thumbnail ? '$url?thumbnail=true' : url;
   }
 
+  List<AttachmentImageSource> _buildCommentSources({
+    required List<Attachment> attachments,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
+    return attachments
+        .map(
+          (attachment) {
+            final fullUrl = _resolveCommentAttachmentUrl(baseUrl, attachment, thumbnail: false);
+            return AttachmentImageSource(
+              id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
+              title: attachment.filename,
+              mimeType: attachment.type,
+              localFile: null,
+              imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
+              headers: authHeader == null ? null : {'Authorization': authHeader},
+            );
+          },
+        )
+        .toList(growable: false);
+  }
+
   Widget _buildCommentItem({
     required Memo comment,
     required Color textMain,
@@ -1031,9 +1171,11 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final attachment in images)
+              for (var i = 0; i < images.length; i++)
                 _buildCommentImage(
-                  attachment: attachment,
+                  attachment: images[i],
+                  attachments: images,
+                  index: i,
                   baseUrl: baseUrl,
                   authHeader: authHeader,
                 ),
@@ -1046,6 +1188,8 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
 
   Widget _buildCommentImage({
     required Attachment attachment,
+    required List<Attachment> attachments,
+    required int index,
     required Uri? baseUrl,
     required String? authHeader,
   }) {
@@ -1054,6 +1198,11 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
     final displayUrl = thumbUrl.isNotEmpty ? thumbUrl : fullUrl;
     if (displayUrl.isEmpty) return const SizedBox.shrink();
     final viewUrl = fullUrl.isNotEmpty ? fullUrl : displayUrl;
+    final sources = _buildCommentSources(
+      attachments: attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
 
     return GestureDetector(
       onTap: viewUrl.isEmpty
@@ -1061,10 +1210,10 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
           : () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => _ImageViewerScreen(
-                    imageUrl: viewUrl,
-                    authHeader: authHeader,
-                    title: attachment.filename,
+                  builder: (_) => AttachmentGalleryScreen(
+                    images: sources,
+                    initialIndex: index,
+                    enableDownload: true,
                   ),
                 ),
               );
@@ -1766,33 +1915,3 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
   }
 }
 
-class _ImageViewerScreen extends StatelessWidget {
-  const _ImageViewerScreen({
-    required this.imageUrl,
-    required this.authHeader,
-    required this.title,
-  });
-
-  final String imageUrl;
-  final String? authHeader;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: SafeArea(
-        child: InteractiveViewer(
-          child: Center(
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              httpHeaders: authHeader == null ? null : {'Authorization': authHeader!},
-              placeholder: (context, _) => const Center(child: CircularProgressIndicator()),
-              errorWidget: (context, url, error) => const Icon(Icons.broken_image),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

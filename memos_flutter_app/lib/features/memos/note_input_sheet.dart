@@ -18,6 +18,7 @@ import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/note_draft_provider.dart';
 import '../../state/user_settings_provider.dart';
+import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
 import '../voice/voice_record_screen.dart';
 
@@ -776,6 +777,70 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     return file;
   }
 
+  String _pendingSourceId(String uid) => 'pending:$uid';
+
+  List<({AttachmentImageSource source, _PendingAttachment attachment, File file})> _pendingImageSources() {
+    final items = <({AttachmentImageSource source, _PendingAttachment attachment, File file})>[];
+    for (final attachment in _pendingAttachments) {
+      if (!_isImageMimeType(attachment.mimeType)) continue;
+      final file = _resolvePendingAttachmentFile(attachment);
+      if (file == null) continue;
+      items.add((
+        source: AttachmentImageSource(
+          id: _pendingSourceId(attachment.uid),
+          title: attachment.filename,
+          mimeType: attachment.mimeType,
+          localFile: file,
+        ),
+        attachment: attachment,
+        file: file,
+      ));
+    }
+    return items;
+  }
+
+  Future<void> _openAttachmentViewer(_PendingAttachment attachment) async {
+    final items = _pendingImageSources();
+    if (items.isEmpty) return;
+    final index = items.indexWhere((item) => item.attachment.uid == attachment.uid);
+    if (index < 0) return;
+    final sources = items.map((item) => item.source).toList(growable: false);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AttachmentGalleryScreen(
+          images: sources,
+          initialIndex: index,
+          onReplace: _replacePendingAttachment,
+          enableDownload: true,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _replacePendingAttachment(EditedImageResult result) async {
+    final id = result.sourceId;
+    if (!id.startsWith('pending:')) return;
+    if (result.size > _maxAttachmentBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '图片过大（最大 30 MB）', en: 'Image too large (max 30 MB).'))),
+      );
+      return;
+    }
+    final uid = id.substring('pending:'.length);
+    final index = _pendingAttachments.indexWhere((a) => a.uid == uid);
+    if (index < 0) return;
+    setState(() {
+      _pendingAttachments[index] = _PendingAttachment(
+        uid: uid,
+        filePath: result.filePath,
+        filename: result.filename,
+        mimeType: result.mimeType,
+        size: result.size,
+      );
+    });
+  }
+
   Widget _buildAttachmentPreview(bool isDark) {
     if (_pendingAttachments.isEmpty) return const SizedBox.shrink();
     const tileSize = 62.0;
@@ -823,28 +888,33 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
     }
 
+    final tile = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: content,
+      ),
+    );
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: surfaceColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-            boxShadow: [
-              BoxShadow(
-                color: shadowColor,
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: content,
-          ),
+        GestureDetector(
+          onTap: (isImage && file != null) ? () => _openAttachmentViewer(attachment) : null,
+          child: tile,
         ),
         Positioned(
           top: 4,

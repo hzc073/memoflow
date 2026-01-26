@@ -13,12 +13,14 @@ class ImageGallerySaver {
   static FutureOr<dynamic> saveImage(Uint8List imageBytes,
       {int quality = 80,
       String? name,
+      String? albumName,
       bool isReturnImagePathOfIOS = false}) async {
     final result =
         await _channel.invokeMethod('saveImageToGallery', <String, dynamic>{
       'imageBytes': imageBytes,
       'quality': quality,
       'name': name,
+      'albumName': albumName,
       'isReturnImagePathOfIOS': isReturnImagePathOfIOS
     });
     return result;
@@ -26,11 +28,12 @@ class ImageGallerySaver {
 
   /// Save the PNG，JPG，JPEG image or video located at [file] to the local device media gallery.
   static Future saveFile(String file,
-      {String? name, bool isReturnPathOfIOS = false}) async {
+      {String? name, String? albumName, bool isReturnPathOfIOS = false}) async {
     final result = await _channel.invokeMethod(
         'saveFileToGallery', <String, dynamic>{
       'file': file,
       'name': name,
+      'albumName': albumName,
       'isReturnPathOfIOS': isReturnPathOfIOS
     });
     return result;

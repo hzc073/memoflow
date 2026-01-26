@@ -23,15 +23,21 @@ public class SwiftImageGallerySaverPlugin: NSObject, FlutterPlugin {
             let _ = arguments["name"],
             let isReturnImagePath = arguments["isReturnImagePathOfIOS"] as? Bool
             else { return }
+        let albumName = arguments["albumName"] as? String
         let newImage = image.jpegData(compressionQuality: CGFloat(quality / 100))!
-        saveImage(UIImage(data: newImage) ?? image, isReturnImagePath: isReturnImagePath)
+        saveImage(
+            UIImage(data: newImage) ?? image,
+            isReturnImagePath: isReturnImagePath,
+            albumName: albumName
+        )
       } else if (call.method == "saveFileToGallery") {
         guard let arguments = call.arguments as? [String: Any],
               let path = arguments["file"] as? String,
               let _ = arguments["name"],
               let isReturnFilePath = arguments["isReturnPathOfIOS"] as? Bool else { return }
+        let albumName = arguments["albumName"] as? String
         if (isImageFile(filename: path)) {
-            saveImageAtFileUrl(path, isReturnImagePath: isReturnFilePath)
+            saveImageAtFileUrl(path, isReturnImagePath: isReturnFilePath, albumName: albumName)
         } else {
             if (UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(path)) {
                 saveVideo(path, isReturnImagePath: isReturnFilePath)
@@ -75,7 +81,11 @@ public class SwiftImageGallerySaverPlugin: NSObject, FlutterPlugin {
         })
     }
     
-    func saveImage(_ image: UIImage, isReturnImagePath: Bool) {
+    func saveImage(_ image: UIImage, isReturnImagePath: Bool, albumName: String?) {
+        if let album = albumName, !album.isEmpty {
+            saveImageToAlbum(image, albumName: album)
+            return
+        }
         if !isReturnImagePath {
             UIImageWriteToSavedPhotosAlbum(image, self, #selector(didFinishSavingImage(image:error:contextInfo:)), nil)
             return
@@ -110,7 +120,11 @@ public class SwiftImageGallerySaverPlugin: NSObject, FlutterPlugin {
         })
     }
     
-    func saveImageAtFileUrl(_ url: String, isReturnImagePath: Bool) {
+    func saveImageAtFileUrl(_ url: String, isReturnImagePath: Bool, albumName: String?) {
+        if let album = albumName, !album.isEmpty {
+            saveImageAtFileUrlToAlbum(url, albumName: album)
+            return
+        }
         if !isReturnImagePath {
             if let image = UIImage(contentsOfFile: url) {
                 UIImageWriteToSavedPhotosAlbum(image, self, #selector(didFinishSavingImage(image:error:contextInfo:)), nil)
@@ -145,6 +159,82 @@ public class SwiftImageGallerySaverPlugin: NSObject, FlutterPlugin {
                 }
             }
         })
+    }
+
+    func saveImageToAlbum(_ image: UIImage, albumName: String) {
+        fetchOrCreateAlbum(albumName) { [weak self] collection in
+            guard let self = self, let collection = collection else {
+                self?.saveResult(isSuccess: false, error: self?.errorMessage)
+                return
+            }
+
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+                if let placeholder = request.placeholderForCreatedAsset {
+                    let albumChange = PHAssetCollectionChangeRequest(for: collection)
+                    albumChange?.addAssets([placeholder] as NSArray)
+                }
+            }, completionHandler: { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        self.saveResult(isSuccess: true, error: nil)
+                    } else {
+                        self.saveResult(isSuccess: false, error: error?.localizedDescription ?? self.errorMessage)
+                    }
+                }
+            })
+        }
+    }
+
+    func saveImageAtFileUrlToAlbum(_ url: String, albumName: String) {
+        fetchOrCreateAlbum(albumName) { [weak self] collection in
+            guard let self = self, let collection = collection else {
+                self?.saveResult(isSuccess: false, error: self?.errorMessage)
+                return
+            }
+
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: URL(fileURLWithPath: url))
+                if let placeholder = request?.placeholderForCreatedAsset {
+                    let albumChange = PHAssetCollectionChangeRequest(for: collection)
+                    albumChange?.addAssets([placeholder] as NSArray)
+                }
+            }, completionHandler: { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        self.saveResult(isSuccess: true, error: nil)
+                    } else {
+                        self.saveResult(isSuccess: false, error: error?.localizedDescription ?? self.errorMessage)
+                    }
+                }
+            })
+        }
+    }
+
+    func fetchOrCreateAlbum(_ name: String, completion: @escaping (PHAssetCollection?) -> Void) {
+        if let existing = fetchAlbum(name) {
+            completion(existing)
+            return
+        }
+
+        var placeholder: PHObjectPlaceholder?
+        PHPhotoLibrary.shared().performChanges({
+            let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+            placeholder = request.placeholderForCreatedAssetCollection
+        }, completionHandler: { success, _ in
+            if success, let id = placeholder?.localIdentifier {
+                let collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil).firstObject
+                completion(collection)
+            } else {
+                completion(nil)
+            }
+        })
+    }
+
+    func fetchAlbum(_ name: String) -> PHAssetCollection? {
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "title = %@", name)
+        return PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: options).firstObject
     }
     
     /// finish saving，if has error，parameters error will not nill

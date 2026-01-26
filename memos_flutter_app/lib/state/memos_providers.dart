@@ -1043,6 +1043,14 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             }
             await db.deleteOutbox(id);
             break;
+          case 'delete_attachment':
+            await _handleDeleteAttachment(payload);
+            final memoUid = payload['memo_uid'] as String?;
+            if (memoUid != null && memoUid.isNotEmpty) {
+              await db.updateMemoSyncState(memoUid, syncState: 0);
+            }
+            await db.deleteOutbox(id);
+            break;
           default:
             await db.markOutboxError(id, error: 'Unknown op type: $type');
             await db.deleteOutbox(id);
@@ -1054,6 +1062,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
         final memoUid = switch (type) {
           'create_memo' => payload['uid'] as String?,
           'upload_attachment' => payload['memo_uid'] as String?,
+          'delete_attachment' => payload['memo_uid'] as String?,
           _ => null,
         };
         if (memoUid != null && memoUid.isNotEmpty) {
@@ -1346,6 +1355,21 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       if (status == 404 || status == 405) {
         return;
       }
+      rethrow;
+    }
+  }
+
+  Future<void> _handleDeleteAttachment(Map<String, dynamic> payload) async {
+    final name =
+        payload['attachment_name'] as String? ?? payload['attachmentName'] as String? ?? payload['name'] as String?;
+    if (name == null || name.trim().isEmpty) {
+      throw const FormatException('delete_attachment missing name');
+    }
+    try {
+      await api.deleteAttachment(attachmentName: name);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status == 404) return;
       rethrow;
     }
   }

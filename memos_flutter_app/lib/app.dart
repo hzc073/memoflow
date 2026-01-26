@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_editor_plus/image_editor_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/app_localization.dart';
@@ -44,6 +45,66 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   DateTime? _lastPauseSyncAt;
   bool _versionAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
+
+  static const Map<String, String> _imageEditorI18nZh = {
+    'Crop': '裁剪',
+    'Brush': '涂鸦',
+    'Text': '文字',
+    'Link': '链接',
+    'Flip': '翻转',
+    'Rotate left': '向左旋转',
+    'Rotate right': '向右旋转',
+    'Blur': '模糊',
+    'Filter': '滤镜',
+    'Emoji': '贴纸',
+    'Select Emoji': '选择贴纸',
+    'Size Adjust': '大小调整',
+    'Remove': '删除',
+    'Size': '大小',
+    'Color': '颜色',
+    'Background Color': '背景颜色',
+    'Background Opacity': '背景透明度',
+    'Slider Filter Color': '滤镜颜色',
+    'Slider Color': '颜色',
+    'Slider Opicity': '透明度',
+    'Reset': '重置',
+    'Blur Radius': '模糊半径',
+    'Color Opacity': '颜色透明度',
+    'Insert Your Message': '输入文字',
+    'https://example.com': '输入链接',
+  };
+
+  static const Map<String, String> _imageEditorI18nEn = {
+    'Crop': 'Crop',
+    'Brush': 'Brush',
+    'Text': 'Text',
+    'Link': 'Link',
+    'Flip': 'Flip',
+    'Rotate left': 'Rotate left',
+    'Rotate right': 'Rotate right',
+    'Blur': 'Blur',
+    'Filter': 'Filter',
+    'Emoji': 'Emoji',
+    'Select Emoji': 'Select Emoji',
+    'Size Adjust': 'Size Adjust',
+    'Remove': 'Remove',
+    'Size': 'Size',
+    'Color': 'Color',
+    'Background Color': 'Background Color',
+    'Background Opacity': 'Background Opacity',
+    'Slider Filter Color': 'Slider Filter Color',
+    'Slider Color': 'Slider Color',
+    'Slider Opicity': 'Slider Opicity',
+    'Reset': 'Reset',
+    'Blur Radius': 'Blur Radius',
+    'Color Opacity': 'Color Opacity',
+    'Insert Your Message': 'Insert Your Message',
+    'https://example.com': 'https://example.com',
+  };
+
+  static void _applyImageEditorI18n(AppLanguage language) {
+    ImageEditor.setI18n(language == AppLanguage.en ? _imageEditorI18nEn : _imageEditorI18nZh);
+  }
 
   static Locale _localeFor(AppLanguage language) {
     return switch (language) {
@@ -477,6 +538,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final loggerService = ref.watch(loggerServiceProvider);
     final locale = _localeFor(prefs.language);
     final scale = _textScaleFor(prefs.fontSize);
+    _applyImageEditorI18n(prefs.language);
 
     if (_pendingWidgetAction != null) {
       _scheduleWidgetHandling();

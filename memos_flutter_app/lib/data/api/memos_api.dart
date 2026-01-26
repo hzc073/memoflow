@@ -1998,6 +1998,17 @@ class MemosApi {
     return trimmed;
   }
 
+  static String _normalizeAttachmentUid(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('attachments/')) {
+      return trimmed.substring('attachments/'.length);
+    }
+    if (trimmed.startsWith('resources/')) {
+      return trimmed.substring('resources/'.length);
+    }
+    return trimmed;
+  }
+
   Future<Attachment> createAttachment({
     required String attachmentId,
     required String filename,
@@ -2154,6 +2165,59 @@ class MemosApi {
     // 0.25+ uses /attachments/{id}.
     final response = await _dio.get('api/v1/attachments/$attachmentUid');
     return Attachment.fromJson(_expectJsonMap(response.data));
+  }
+
+  Future<void> deleteAttachment({required String attachmentName}) async {
+    final attachmentUid = _normalizeAttachmentUid(attachmentName);
+    if (!useLegacyApi) {
+      await _deleteAttachmentModern(attachmentUid);
+      return;
+    }
+    try {
+      await _deleteAttachmentCompat(attachmentUid);
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        await _deleteAttachmentLegacy(attachmentUid);
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _deleteAttachmentModern(String attachmentUid) async {
+    // Newer builds use /attachments/{id}.
+    try {
+      await _dio.delete('api/v1/attachments/$attachmentUid');
+      return;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status != 404) rethrow;
+    }
+
+    // Older builds use /resources/{id}.
+    await _dio.delete('api/v1/resources/$attachmentUid');
+  }
+
+  Future<void> _deleteAttachmentCompat(String attachmentUid) async {
+    // 0.24 uses /resources/{id}.
+    try {
+      await _dio.delete('api/v1/resources/$attachmentUid');
+      return;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status != 404) rethrow;
+    }
+
+    // 0.25+ uses /attachments/{id}.
+    await _dio.delete('api/v1/attachments/$attachmentUid');
+  }
+
+  Future<void> _deleteAttachmentLegacy(String attachmentUid) async {
+    final targetId = _tryParseLegacyResourceId(attachmentUid);
+    if (targetId == null) {
+      throw FormatException('Invalid legacy attachment id: $attachmentUid');
+    }
+    await _dio.delete('api/v1/resource/$targetId');
   }
 
   Future<List<Attachment>> listMemoAttachments({

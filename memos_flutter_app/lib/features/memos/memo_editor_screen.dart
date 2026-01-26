@@ -18,6 +18,7 @@ import '../../data/models/memo.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/session_provider.dart';
+import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
 
 class MemoEditorScreen extends ConsumerStatefulWidget {
@@ -74,6 +75,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   final _existingAttachments = <Attachment>[];
   late final Set<String> _initialAttachmentNames;
   final _pendingAttachments = <_PendingAttachment>[];
+  final _attachmentsToDelete = <Attachment>[];
   final _undoStack = <TextEditingValue>[];
   final _redoStack = <TextEditingValue>[];
   final _imagePicker = ImagePicker();
@@ -256,11 +258,20 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           'mime_type': attachment.mimeType,
         });
       }
+      for (final attachment in _attachmentsToDelete) {
+        final name = attachment.name.isNotEmpty ? attachment.name : attachment.uid;
+        if (name.isEmpty) continue;
+        await db.enqueueOutbox(type: 'delete_attachment', payload: {
+          'attachment_name': name,
+          'memo_uid': uid,
+        });
+      }
 
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
 
       _pendingAttachments.clear();
       _pickedImages.clear();
+      _attachmentsToDelete.clear();
       _clearLinkedMemos();
 
       if (!mounted) return;
@@ -748,6 +759,113 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (!file.existsSync()) return null;
     return file;
   }
+
+  String _pendingSourceId(String uid) => 'pending:$uid';
+  String _existingSourceId(Attachment attachment) =>
+      'existing:${attachment.name.isNotEmpty ? attachment.name : attachment.uid}';
+
+  List<AttachmentImageSource> _editorImageSources(Uri? baseUrl, String? authHeader) {
+    final sources = <AttachmentImageSource>[];
+    for (final attachment in _existingAttachments) {
+      if (!_isImageMimeType(attachment.type)) continue;
+      final localFile = _localExistingAttachmentFile(attachment);
+      final fullUrl = _existingAttachmentUrl(attachment, thumbnail: false, baseUrl: baseUrl);
+      sources.add(
+        AttachmentImageSource(
+          id: _existingSourceId(attachment),
+          title: attachment.filename,
+          mimeType: attachment.type,
+          localFile: localFile,
+          imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
+          headers: authHeader == null ? null : {'Authorization': authHeader},
+        ),
+      );
+    }
+
+    for (final attachment in _pendingAttachments) {
+      if (!_isImageMimeType(attachment.mimeType)) continue;
+      final file = _resolvePendingAttachmentFile(attachment);
+      if (file == null) continue;
+      sources.add(
+        AttachmentImageSource(
+          id: _pendingSourceId(attachment.uid),
+          title: attachment.filename,
+          mimeType: attachment.mimeType,
+          localFile: file,
+        ),
+      );
+    }
+    return sources;
+  }
+
+  Future<void> _openAttachmentViewer(
+    String sourceId, {
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) async {
+    final sources = _editorImageSources(baseUrl, authHeader);
+    final index = sources.indexWhere((source) => source.id == sourceId);
+    if (index < 0) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AttachmentGalleryScreen(
+          images: sources,
+          initialIndex: index,
+          onReplace: _replaceEditedAttachment,
+          enableDownload: true,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _replaceEditedAttachment(EditedImageResult result) async {
+    if (result.size > _maxAttachmentBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '图片过大（最大 30 MB）', en: 'Image too large (max 30 MB).'))),
+      );
+      return;
+    }
+    final id = result.sourceId;
+    if (id.startsWith('pending:')) {
+      final uid = id.substring('pending:'.length);
+      final index = _pendingAttachments.indexWhere((a) => a.uid == uid);
+      if (index < 0) return;
+      setState(() {
+        _pendingAttachments[index] = _PendingAttachment(
+          uid: uid,
+          filePath: result.filePath,
+          filename: result.filename,
+          mimeType: result.mimeType,
+          size: result.size,
+        );
+      });
+      return;
+    }
+
+    if (!id.startsWith('existing:')) return;
+    final name = id.substring('existing:'.length);
+    final index = _existingAttachments.indexWhere((a) => a.name == name || a.uid == name);
+    if (index < 0) return;
+    final removed = _existingAttachments[index];
+    final newUid = generateUid();
+    setState(() {
+      _existingAttachments.removeAt(index);
+      if (!_attachmentsToDelete.any((a) => a.name == removed.name)) {
+        _attachmentsToDelete.add(removed);
+      }
+      _pendingAttachments.add(
+        _PendingAttachment(
+          uid: newUid,
+          filePath: result.filePath,
+          filename: result.filename,
+          mimeType: result.mimeType,
+          size: result.size,
+        ),
+      );
+    });
+  }
+
   Widget _buildAttachmentPreview(bool isDark, Uri? baseUrl, String? authHeader) {
     if (_pendingAttachments.isEmpty && _existingAttachments.isEmpty) {
       return const SizedBox.shrink();
@@ -768,7 +886,15 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     }
     for (final attachment in _pendingAttachments) {
       if (tiles.isNotEmpty) tiles.add(const SizedBox(width: 10));
-      tiles.add(_buildAttachmentTile(attachment, isDark: isDark, size: tileSize));
+      tiles.add(
+        _buildAttachmentTile(
+          attachment,
+          isDark: isDark,
+          size: tileSize,
+          baseUrl: baseUrl,
+          authHeader: authHeader,
+        ),
+      );
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -783,7 +909,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     );
   }
 
-  Widget _buildAttachmentTile(_PendingAttachment attachment, {required bool isDark, required double size}) {
+  Widget _buildAttachmentTile(
+    _PendingAttachment attachment, {
+    required bool isDark,
+    required double size,
+    required Uri? baseUrl,
+    required String? authHeader,
+  }) {
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final surfaceColor = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
     final iconColor = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: 0.6);
@@ -807,28 +939,39 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
     }
 
+    final tile = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: content,
+      ),
+    );
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: surfaceColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-            boxShadow: [
-              BoxShadow(
-                color: shadowColor,
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: content,
-          ),
+        GestureDetector(
+          onTap: (isImage && file != null)
+              ? () => _openAttachmentViewer(
+                    _pendingSourceId(attachment.uid),
+                    baseUrl: baseUrl,
+                    authHeader: authHeader,
+                  )
+              : null,
+          child: tile,
         ),
         Positioned(
           top: 4,
@@ -892,26 +1035,37 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
     }
 
+    final tile = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: content,
+    );
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: surfaceColor,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-            boxShadow: [
-              BoxShadow(
-                color: shadowColor,
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: content,
+        GestureDetector(
+          onTap: isImage
+              ? () => _openAttachmentViewer(
+                    _existingSourceId(attachment),
+                    baseUrl: baseUrl,
+                    authHeader: authHeader,
+                  )
+              : null,
+          child: tile,
         ),
         Positioned(
           top: 4,
