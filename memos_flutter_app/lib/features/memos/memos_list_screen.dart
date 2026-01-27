@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -46,6 +45,7 @@ import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
+import 'memo_image_grid.dart';
 import 'memo_markdown.dart';
 import 'note_input_sheet.dart';
 
@@ -627,14 +627,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     return path;
   }
 
-  String _appendThumbnailQuery(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return '$url?thumbnail=true';
-    final params = Map<String, String>.from(uri.queryParameters);
-    params['thumbnail'] = 'true';
-    return uri.replace(queryParameters: params).toString();
-  }
-
   ({String url, String? localPath, Map<String, String>? headers})?
   _resolveAudioSource(Attachment attachment) {
     final rawLink = attachment.externalLink.trim();
@@ -657,36 +649,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final filename = attachment.filename.trim();
     if (name.isEmpty || filename.isEmpty) return null;
     final url = joinBaseUrl(baseUrl, 'file/$name/$filename');
-    final token = account?.personalAccessToken ?? '';
-    final headers = token.trim().isEmpty
-        ? null
-        : {'Authorization': 'Bearer $token'};
-    return (url: url, localPath: null, headers: headers);
-  }
-
-  ({String url, String? localPath, Map<String, String>? headers})?
-  _resolveImagePreviewSource(Attachment attachment) {
-    final rawLink = attachment.externalLink.trim();
-    if (rawLink.isNotEmpty) {
-      final localPath = _localAttachmentPath(attachment);
-      if (localPath != null) {
-        return (
-          url: Uri.file(localPath).toString(),
-          localPath: localPath,
-          headers: null,
-        );
-      }
-      return (url: rawLink, localPath: null, headers: null);
-    }
-
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final baseUrl = account?.baseUrl;
-    if (baseUrl == null) return null;
-    final name = attachment.name.trim();
-    final filename = attachment.filename.trim();
-    if (name.isEmpty || filename.isEmpty) return null;
-    final rawUrl = joinBaseUrl(baseUrl, 'file/$name/$filename');
-    final url = _appendThumbnailQuery(rawUrl);
     final token = account?.personalAccessToken ?? '';
     final headers = token.trim().isEmpty
         ? null
@@ -1460,15 +1422,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final audioDurationListenable = isAudioActive
         ? _audioDurationNotifier
         : null;
-    final imageSources =
-        <({String url, String? localPath, Map<String, String>? headers})>[];
-    for (final attachment in memo.attachments) {
-      if (!attachment.type.startsWith('image/')) continue;
-      final source = _resolveImagePreviewSource(attachment);
-      if (source == null) continue;
-      imageSources.add(source);
-      if (imageSources.length >= 9) break;
-    }
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    final token = account?.personalAccessToken ?? '';
+    final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
+    final imageEntries = collectMemoImageEntries(
+      content: memo.content,
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
       final hapticsEnabled = prefs.hapticsEnabled;
 
     void maybeHaptic() {
@@ -1502,7 +1465,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       isAudioLoading: removing ? false : isAudioLoading,
       audioPositionListenable: removing ? null : audioPositionListenable,
       audioDurationListenable: removing ? null : audioDurationListenable,
-      imageSources: imageSources,
+      imageEntries: imageEntries,
       onAudioSeek: removing || !isAudioActive
           ? null
           : (pos) => _seekAudioPosition(memo, pos),
@@ -2678,7 +2641,7 @@ enum _MemoCardAction { togglePinned, edit, reminder, delete }
       required this.isAudioLoading,
     required this.audioPositionListenable,
     required this.audioDurationListenable,
-    required this.imageSources,
+    required this.imageEntries,
     required this.onAudioSeek,
     required this.onAudioTap,
     required this.syncStatus,
@@ -2697,8 +2660,7 @@ enum _MemoCardAction { togglePinned, edit, reminder, delete }
   final bool isAudioLoading;
   final ValueListenable<Duration>? audioPositionListenable;
   final ValueListenable<Duration?>? audioDurationListenable;
-  final List<({String url, String? localPath, Map<String, String>? headers})>
-  imageSources;
+  final List<MemoImageEntry> imageEntries;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
   final _MemoSyncStatus syncStatus;
@@ -2769,7 +2731,7 @@ class _MemoCardState extends State<_MemoCard> {
     final audioPositionListenable = widget.audioPositionListenable;
     final audioDurationListenable = widget.audioDurationListenable;
     final onAudioSeek = widget.onAudioSeek;
-    final imageSources = widget.imageSources;
+    final imageEntries = widget.imageEntries;
     final syncStatus = widget.syncStatus;
     final onSyncStatusTap = widget.onSyncStatusTap;
 
@@ -2849,66 +2811,24 @@ class _MemoCardState extends State<_MemoCard> {
     final audioDurationFallback = _parseVoiceDurationValue(memo.content);
 
     Widget buildImageGrid() {
-      if (imageSources.isEmpty) return const SizedBox.shrink();
-      const gridSpacing = 8.0;
-      const gridRadius = 10.0;
+      if (imageEntries.isEmpty) return const SizedBox.shrink();
       final previewBorder = borderColor.withValues(alpha: 0.65);
       final previewBg = isDark
           ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
           : MemoFlowPalette.audioSurfaceLight;
+      final maxHeight = MediaQuery.of(context).size.height * 0.4;
 
-      Widget placeholder(IconData icon) {
-        return Container(
-          color: Colors.transparent,
-          alignment: Alignment.center,
-          child: Icon(icon, size: 18, color: textMain.withValues(alpha: 0.45)),
-        );
-      }
-
-      Widget buildTile(({String url, String? localPath, Map<String, String>? headers}) source) {
-        Widget image;
-        if (source.localPath != null) {
-          image = Image.file(
-            File(source.localPath!),
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        } else {
-          image = CachedNetworkImage(
-            imageUrl: source.url,
-            httpHeaders: source.headers,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => placeholder(Icons.image_outlined),
-            errorWidget: (context, url, error) => placeholder(Icons.broken_image_outlined),
-          );
-        }
-
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(gridRadius),
-          child: Container(
-            decoration: BoxDecoration(
-              color: previewBg,
-              borderRadius: BorderRadius.circular(gridRadius),
-              border: Border.all(color: previewBorder),
-            ),
-            child: image,
-          ),
-        );
-      }
-
-      return GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: gridSpacing,
-          mainAxisSpacing: gridSpacing,
-          childAspectRatio: 1,
-        ),
-        itemCount: imageSources.length,
-        itemBuilder: (context, index) => buildTile(imageSources[index]),
+      return MemoImageGrid(
+        images: imageEntries,
+        columns: 3,
+        maxCount: 9,
+        maxHeight: maxHeight,
+        radius: 10,
+        spacing: 8,
+        borderColor: previewBorder,
+        backgroundColor: previewBg,
+        textColor: textMain,
+        enableDownload: true,
       );
     }
 
@@ -3099,6 +3019,7 @@ class _MemoCardState extends State<_MemoCard> {
                       ).textTheme.bodyMedium?.copyWith(color: textMain),
                       blockSpacing: 4,
                       normalizeHeadings: true,
+                      renderImages: false,
                       onToggleTask: (request) =>
                           onToggleTask(request.taskIndex),
                     ),
@@ -3130,7 +3051,7 @@ class _MemoCardState extends State<_MemoCard> {
                         ),
                       ),
                     ],
-                    if (imageSources.isNotEmpty) ...[
+                    if (imageEntries.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       buildImageGrid(),
                     ],

@@ -9,7 +9,9 @@ import '../../core/memoflow_palette.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/session_provider.dart';
 import '../memos/memo_detail_screen.dart';
+import '../memos/memo_image_grid.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
 
@@ -102,6 +104,10 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    final token = account?.personalAccessToken ?? '';
+    final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
 
     final memosAsync = ref.watch(_memosProvider);
 
@@ -189,6 +195,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                         textMain: textMain,
                         textMuted: textMuted,
                         isDark: isDark,
+                        baseUrl: baseUrl,
+                        authHeader: authHeader,
                       );
                     },
                   ),
@@ -213,6 +221,8 @@ class _RandomWalkCard extends StatelessWidget {
     required this.textMain,
     required this.textMuted,
     required this.isDark,
+    required this.baseUrl,
+    required this.authHeader,
   });
 
   final LocalMemo memo;
@@ -220,6 +230,8 @@ class _RandomWalkCard extends StatelessWidget {
   final Color textMain;
   final Color textMuted;
   final bool isDark;
+  final Uri? baseUrl;
+  final String? authHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +243,16 @@ class _RandomWalkCard extends StatelessWidget {
         ? context.tr(zh: '（空内容）', en: '(Empty content)')
         : memo.content.trim();
     final contentStyle = TextStyle(fontSize: 16, height: 1.6, fontWeight: FontWeight.w600, color: textMain);
+    final imageEntries = collectMemoImageEntries(
+      content: memo.content,
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final imageBg =
+        isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
+    final maxGridHeight = MediaQuery.of(context).size.height * 0.4;
 
     return GestureDetector(
       onTap: () {
@@ -258,7 +280,7 @@ class _RandomWalkCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: card,
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight),
+              border: Border.all(color: borderColor),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.1),
@@ -305,10 +327,31 @@ class _RandomWalkCard extends StatelessWidget {
                               width: double.infinity,
                               child: SingleChildScrollView(
                                 physics: const NeverScrollableScrollPhysics(),
-                                child: MemoMarkdown(
-                                  data: content,
-                                  textStyle: contentStyle,
-                                  normalizeHeadings: true,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    MemoMarkdown(
+                                      data: content,
+                                      textStyle: contentStyle,
+                                      normalizeHeadings: true,
+                                      renderImages: false,
+                                    ),
+                                    if (imageEntries.isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      MemoImageGrid(
+                                        images: imageEntries,
+                                        columns: 3,
+                                        maxCount: 9,
+                                        maxHeight: maxGridHeight,
+                                        radius: 10,
+                                        spacing: 8,
+                                        borderColor: borderColor.withValues(alpha: 0.65),
+                                        backgroundColor: imageBg,
+                                        textColor: textMain,
+                                        enableDownload: true,
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             ),

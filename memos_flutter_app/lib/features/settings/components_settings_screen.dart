@@ -7,10 +7,12 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../state/image_bed_settings_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
 import '../reminders/reminder_settings_screen.dart';
+import 'image_bed_settings_screen.dart';
 
 class ComponentsSettingsScreen extends ConsumerWidget {
   const ComponentsSettingsScreen({super.key});
@@ -19,6 +21,7 @@ class ComponentsSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(appPreferencesProvider);
     final reminderSettings = ref.watch(reminderSettingsProvider);
+    final imageBedSettings = ref.watch(imageBedSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
@@ -96,6 +99,22 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                 textMuted: textMuted,
                 onChanged: (v) =>
                     ref.read(appPreferencesProvider.notifier).setThirdPartyShareEnabled(v),
+              ),
+              const SizedBox(height: 12),
+              _ToggleCard(
+                card: card,
+                label: context.tr(zh: '图床', en: 'Image Bed'),
+                description: context.tr(
+                  zh: '开启后自动将图片上传到图床，并在文末插入图片链接。',
+                  en: 'Upload images to the image bed and append links to the memo.',
+                ),
+                value: imageBedSettings.enabled,
+                textMain: textMain,
+                textMuted: textMuted,
+                onChanged: (v) => ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const ImageBedSettingsScreen()),
+                ),
               ),
             ],
           ),

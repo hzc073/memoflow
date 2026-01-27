@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/db/app_database.dart';
+import '../../data/settings/image_bed_settings_repository.dart';
 import '../../state/database_provider.dart';
 import '../../state/personal_access_token_repository_provider.dart';
 import '../../state/preferences_provider.dart';
@@ -47,6 +48,10 @@ class AccountSecurityScreen extends ConsumerWidget {
       final shouldPopBeforeRemoval = wasCurrent && isLastAccount;
       final sessionNotifier = ref.read(appSessionProvider.notifier);
       final tokenRepo = ref.read(personalAccessTokenRepositoryProvider);
+      final imageBedRepo = ImageBedSettingsRepository(
+        ref.read(secureStorageProvider),
+        accountKey: accountKey,
+      );
       final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -84,6 +89,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         await sessionNotifier.removeAccount(accountKey);
         await AppDatabase.deleteDatabaseFile(dbName: dbName);
         await tokenRepo.deleteForAccount(accountKey: accountKey);
+        await imageBedRepo.clear();
         if (!context.mounted || shouldPopBeforeRemoval) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(context.tr(zh: '本地缓存已清除', en: 'Local cache cleared'))),

@@ -20,6 +20,7 @@ import '../../state/session_provider.dart';
 import '../about/about_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memo_detail_screen.dart';
+import '../memos/memo_image_grid.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -1574,6 +1575,12 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final hasBody = displayText.trim().isNotEmpty;
     final showLike = widget.reactionCount > 0 || widget.isLiked;
     final showComment = widget.commentCount > 0 || widget.hasOwnComment;
+    final imageEntries = collectMemoImageEntries(
+      content: memo.content,
+      attachments: memo.attachments,
+      baseUrl: widget.baseUrl,
+      authHeader: widget.authHeader,
+    );
 
     final shadow = widget.commentingMode
         ? null
@@ -1659,6 +1666,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain, height: 1.5),
                   blockSpacing: 4,
                   normalizeHeadings: true,
+                  renderImages: false,
                 ),
               ] else if (title.isEmpty) ...[
                 const SizedBox(height: 6),
@@ -1683,6 +1691,23 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
                     ),
                   ),
+                ),
+              ],
+              if (imageEntries.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                MemoImageGrid(
+                  images: imageEntries,
+                  columns: 3,
+                  maxCount: 9,
+                  maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  radius: 10,
+                  spacing: 8,
+                  borderColor: borderColor.withValues(alpha: 0.65),
+                  backgroundColor: isDark
+                      ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
+                      : MemoFlowPalette.audioSurfaceLight,
+                  textColor: textMain,
+                  enableDownload: true,
                 ),
               ],
               const SizedBox(height: 10),

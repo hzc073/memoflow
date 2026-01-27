@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +25,7 @@ import '../../state/reminder_scheduler.dart';
 import '../../state/session_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
+import 'memo_image_grid.dart';
 import 'memo_markdown.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
@@ -280,41 +280,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     return thumbnail ? '$url?thumbnail=true' : url;
   }
 
-  File? _localAttachmentFile(Attachment attachment) {
-    final raw = attachment.externalLink.trim();
-    if (!raw.startsWith('file://')) return null;
-    final uri = Uri.tryParse(raw);
-    if (uri == null) return null;
-    final path = uri.toFilePath();
-    if (path.trim().isEmpty) return null;
-    final file = File(path);
-    if (!file.existsSync()) return null;
-    return file;
-  }
-
-  List<AttachmentImageSource> _buildAttachmentSources({
-    required List<Attachment> attachments,
-    required Uri? baseUrl,
-    required String? authHeader,
-  }) {
-    return attachments
-        .map(
-          (attachment) {
-            final localFile = _localAttachmentFile(attachment);
-            final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: false);
-            return AttachmentImageSource(
-              id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
-              title: attachment.filename,
-              mimeType: attachment.type,
-              localFile: localFile,
-              imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
-              headers: authHeader == null ? null : {'Authorization': authHeader},
-            );
-          },
-        )
-        .toList(growable: false);
-  }
-
   Future<void> _replaceMemoAttachment(EditedImageResult result) async {
     final memo = _memo;
     if (memo == null) return;
@@ -423,105 +388,13 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     }
   }
 
-  Widget _buildImageAttachmentGrid({
-    required BuildContext context,
-    required List<Attachment> attachments,
-    required Uri? baseUrl,
-    required String? authHeader,
-    required bool allowEdit,
-  }) {
-    if (attachments.isEmpty) return const SizedBox.shrink();
-    const gridSpacing = 8.0;
-    const gridRadius = 12.0;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final previewBg =
-        isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-    final sources = _buildAttachmentSources(
-      attachments: attachments,
-      baseUrl: baseUrl,
-      authHeader: authHeader,
-    );
-
-    Widget placeholder(IconData icon) {
-      return Container(
-        color: previewBg,
-        alignment: Alignment.center,
-        child: Icon(icon, size: 18, color: textMain.withValues(alpha: 0.5)),
-      );
-    }
-
-    Widget buildTile(Attachment attachment, int index) {
-      final localFile = _localAttachmentFile(attachment);
-      final thumbUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: true);
-      Widget image;
-      if (localFile != null) {
-        image = Image.file(
-          localFile,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => placeholder(Icons.broken_image_outlined),
-        );
-      } else if (thumbUrl.isNotEmpty) {
-        image = CachedNetworkImage(
-          imageUrl: thumbUrl,
-          httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
-          fit: BoxFit.cover,
-          placeholder: (context, _) => placeholder(Icons.image_outlined),
-          errorWidget: (context, url, error) => placeholder(Icons.broken_image_outlined),
-        );
-      } else {
-        image = placeholder(Icons.image_outlined);
-      }
-
-      final tile = Container(
-        decoration: BoxDecoration(
-          color: previewBg,
-          borderRadius: BorderRadius.circular(gridRadius),
-          border: Border.all(color: borderColor.withValues(alpha: 0.65)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: image,
-      );
-
-      return GestureDetector(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => AttachmentGalleryScreen(
-                images: sources,
-                initialIndex: index,
-                onReplace: allowEdit ? _replaceMemoAttachment : null,
-                enableDownload: true,
-              ),
-            ),
-          );
-        },
-        child: tile,
-      );
-    }
-
-    return GridView.builder(
-      padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: gridSpacing,
-        mainAxisSpacing: gridSpacing,
-        childAspectRatio: 1,
-      ),
-      itemCount: attachments.length,
-      itemBuilder: (context, index) => buildTile(attachments[index], index),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final memo = _memo;
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
-    final authHeader = (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
+    final token = account?.personalAccessToken ?? '';
+    final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -537,6 +410,22 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
     final isArchived = memo.state == 'ARCHIVED';
     final canEditAttachments = !widget.readOnly && !isArchived;
+    final imageEntries = collectMemoImageEntries(
+      content: memo.content,
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
+    final allowImageEdit = canEditAttachments &&
+        imageEntries.any((entry) => entry.isAttachment) &&
+        !imageEntries.any((entry) => !entry.isAttachment);
+    final nonImageAttachments = memo.attachments
+        .where((attachment) => !attachment.type.startsWith('image/'))
+        .toList(growable: false);
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final imageBg =
+        isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
     final canToggleTasks = !widget.readOnly;
 
@@ -565,6 +454,20 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         const SizedBox(height: 8),
         contentWidget,
         const SizedBox(height: 12),
+        if (imageEntries.isNotEmpty) ...[
+          MemoImageGrid(
+            images: imageEntries,
+            columns: 3,
+            borderColor: borderColor.withValues(alpha: 0.65),
+            backgroundColor: imageBg,
+            textColor: textMain,
+            radius: 12,
+            spacing: 8,
+            onReplace: allowImageEdit ? _replaceMemoAttachment : null,
+            enableDownload: true,
+          ),
+          const SizedBox(height: 12),
+        ],
         if (memo.tags.isNotEmpty)
           Wrap(
             spacing: 8,
@@ -695,64 +598,46 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                 if (widget.showEngagement)
                   _MemoEngagementSection(memoUid: memo.uid, memoVisibility: memo.visibility),
                 _MemoRelationsSection(memoUid: memo.uid),
-                if (memo.attachments.isNotEmpty) ...[
+                if (nonImageAttachments.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   Text(context.tr(zh: '附件', en: 'Attachments'), style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Builder(
-                    builder: (context) {
-                      final images = memo.attachments
-                          .where((a) => a.type.startsWith('image/'))
-                          .toList(growable: false);
-                      final others = memo.attachments
-                          .where((a) => !a.type.startsWith('image/'))
-                          .toList(growable: false);
-                  
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (images.isNotEmpty)
-                            _buildImageAttachmentGrid(
-                              context: context,
-                              attachments: images,
-                              baseUrl: baseUrl,
-                              authHeader: authHeader,
-                              allowEdit: canEditAttachments,
-                            ),
-                          if (images.isNotEmpty && others.isNotEmpty) const SizedBox(height: 8),
-                          ...others.map(
-                            (a) {
-                              final isAudio = a.type.startsWith('audio');
-                              final fullUrl = (baseUrl == null) ? '' : _attachmentUrl(baseUrl, a, thumbnail: false);
-                  
-                              if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
-                                return StreamBuilder<PlayerState>(
-                                  stream: _player.playerStateStream,
-                                  builder: (context, snap) {
-                                    final playing = _player.playing && _currentAudioUrl == fullUrl;
-                                    return ListTile(
-                                      leading: Icon(playing ? Icons.pause : Icons.play_arrow),
-                                      title: Text(a.filename),
-                                      subtitle: Text(a.type),
-                                      onTap: () => _togglePlayAudio(
-                                        fullUrl,
-                                        headers: authHeader == null ? null : {'Authorization': authHeader},
-                                      ),
-                                    );
-                                  },
-                                );
-                              }
-                  
-                              return ListTile(
-                                leading: const Icon(Icons.attach_file),
-                                title: Text(a.filename),
-                                subtitle: Text(a.type),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final attachment in nonImageAttachments)
+                        Builder(
+                          builder: (context) {
+                            final isAudio = attachment.type.startsWith('audio');
+                            final fullUrl =
+                                (baseUrl == null) ? '' : _attachmentUrl(baseUrl, attachment, thumbnail: false);
+                
+                            if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
+                              return StreamBuilder<PlayerState>(
+                                stream: _player.playerStateStream,
+                                builder: (context, snap) {
+                                  final playing = _player.playing && _currentAudioUrl == fullUrl;
+                                  return ListTile(
+                                    leading: Icon(playing ? Icons.pause : Icons.play_arrow),
+                                    title: Text(attachment.filename),
+                                    subtitle: Text(attachment.type),
+                                    onTap: () => _togglePlayAudio(
+                                      fullUrl,
+                                      headers: authHeader == null ? null : {'Authorization': authHeader},
+                                    ),
+                                  );
+                                },
                               );
-                            },
-                          ),
-                        ],
-                      );
-                    },
+                            }
+                
+                            return ListTile(
+                              leading: const Icon(Icons.attach_file),
+                              title: Text(attachment.filename),
+                              subtitle: Text(attachment.type),
+                            );
+                          },
+                        ),
+                    ],
                   ),
                 ],
               ],
@@ -1897,6 +1782,7 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
           textStyle: widget.style,
           selectable: !showCollapsed,
           blockSpacing: 8,
+          renderImages: false,
           onToggleTask: showCollapsed ? null : widget.onToggleTask,
         ),
         if (shouldCollapse)

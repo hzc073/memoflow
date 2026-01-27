@@ -16,6 +16,8 @@ final RegExp _tagInlinePattern = RegExp(
   r'#(?!#|\s)([\p{L}\p{N}\p{S}_/\-]{1,100})',
   unicode: true,
 );
+final RegExp _markdownImagePattern = RegExp(r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)');
+final RegExp _codeFencePattern = RegExp(r'^\s*(```|~~~)');
 
 const Set<String> _htmlBlockTags = {
   'p',
@@ -74,6 +76,53 @@ void invalidateMemoMarkdownCacheForUid(String memoUid) {
   _markdownHtmlCache.removeWhere((key) => key.startsWith('$trimmed|'));
 }
 
+String normalizeMarkdownImageSrc(String value) => _normalizeImageSrc(value);
+
+List<String> extractMarkdownImageUrls(String text) {
+  if (text.trim().isEmpty) return const [];
+  final urls = <String>[];
+  var inFence = false;
+  for (final line in text.split('\n')) {
+    if (_codeFencePattern.hasMatch(line.trimLeft())) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    for (final match in _markdownImagePattern.allMatches(line)) {
+      var url = (match.group(1) ?? '').trim();
+      if (url.startsWith('<') && url.endsWith('>') && url.length > 2) {
+        url = url.substring(1, url.length - 1).trim();
+      }
+      url = normalizeMarkdownImageSrc(url);
+      if (url.isEmpty) continue;
+      urls.add(url);
+    }
+  }
+  return urls;
+}
+
+String stripMarkdownImages(String text) {
+  if (text.trim().isEmpty) return text;
+  final lines = text.split('\n');
+  final out = <String>[];
+  var inFence = false;
+  for (final line in lines) {
+    if (_codeFencePattern.hasMatch(line.trimLeft())) {
+      inFence = !inFence;
+      out.add(line);
+      continue;
+    }
+    if (inFence) {
+      out.add(line);
+      continue;
+    }
+    final cleaned = line.replaceAll(_markdownImagePattern, '').trimRight();
+    if (cleaned.trim().isEmpty) continue;
+    out.add(cleaned);
+  }
+  return out.join('\n');
+}
+
 
 typedef TaskToggleHandler = void Function(TaskToggleRequest request);
 
@@ -94,6 +143,7 @@ class MemoMarkdown extends StatelessWidget {
     this.selectable = false,
     this.blockSpacing = 6,
     this.shrinkWrap = true,
+    this.renderImages = true,
     this.onToggleTask,
   });
 
@@ -104,12 +154,16 @@ class MemoMarkdown extends StatelessWidget {
   final bool selectable;
   final double blockSpacing;
   final bool shrinkWrap;
+  final bool renderImages;
   final TaskToggleHandler? onToggleTask;
 
   @override
   Widget build(BuildContext context) {
     final normalized = _normalizeTagSpacing(data);
-    final sanitized = _sanitizeMarkdown(normalized);
+    var sanitized = _sanitizeMarkdown(normalized);
+    if (!renderImages) {
+      sanitized = stripMarkdownImages(sanitized);
+    }
     final trimmed = sanitized.trim();
     if (trimmed.isEmpty) return const SizedBox.shrink();
     final tagged = _decorateTagsForHtml(trimmed);
@@ -281,6 +335,12 @@ class MemoMarkdown extends StatelessWidget {
         );
       }
       if (localName == 'img') {
+        if (!renderImages) {
+          return const InlineCustomWidget(
+            alignment: PlaceholderAlignment.middle,
+            child: SizedBox.shrink(),
+          );
+        }
         final rawSrc = element.attributes['src'];
         if (rawSrc == null) return null;
         final src = _normalizeImageSrc(rawSrc);
@@ -425,11 +485,13 @@ class MemoMarkdown extends StatelessWidget {
         });
       }
       if (localName == 'img') {
-        styles.addAll({
-          'max-width': '100%',
-          'max-height': maxImageHeightPx,
-          'height': 'auto',
-        });
+        if (renderImages) {
+          styles.addAll({
+            'max-width': '100%',
+            'max-height': maxImageHeightPx,
+            'height': 'auto',
+          });
+        }
       }
       if (normalizeHeadings && _isHeadingTag(localName)) {
         styles['font-size'] = '1em';

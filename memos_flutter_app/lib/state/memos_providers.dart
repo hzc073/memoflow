@@ -5,15 +5,20 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/app_localization.dart';
+import '../core/image_bed_url.dart';
 import '../core/tags.dart';
 import '../data/api/memos_api.dart';
+import '../data/api/image_bed_api.dart';
 import '../data/db/app_database.dart';
 import '../data/logs/sync_status_tracker.dart';
 import '../data/models/attachment.dart';
+import '../data/models/image_bed_settings.dart';
 import '../data/models/local_memo.dart';
 import '../data/models/memo.dart';
 import '../data/models/memo_relation.dart';
+import '../data/settings/image_bed_settings_repository.dart';
 import '../state/database_provider.dart';
+import '../state/image_bed_settings_provider.dart';
 import '../state/logging_provider.dart';
 import '../state/network_log_provider.dart';
 import '../state/preferences_provider.dart';
@@ -625,6 +630,7 @@ final syncControllerProvider = StateNotifierProvider<SyncController, AsyncValue<
     currentUserName: account.user.name,
     syncStatusTracker: ref.read(syncStatusTrackerProvider),
     language: language,
+    imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
   );
 });
 
@@ -725,6 +731,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     required this.currentUserName,
     required this.syncStatusTracker,
     required this.language,
+    required this.imageBedRepository,
   }) : super(const AsyncValue.data(null));
 
   final AppDatabase db;
@@ -732,6 +739,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
   final String currentUserName;
   final SyncStatusTracker syncStatusTracker;
   final AppLanguage language;
+  final ImageBedSettingsRepository imageBedRepository;
 
   static int? _parseUserId(String userName) {
     final raw = userName.trim();
@@ -1282,6 +1290,23 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     }
     final bytes = await file.readAsBytes();
 
+    if (_isImageMimeType(mimeType)) {
+      final settings = await imageBedRepository.read();
+      if (settings.enabled) {
+        final url = await _uploadImageToImageBed(
+          settings: settings,
+          bytes: bytes,
+          filename: filename,
+        );
+        await _appendImageBedLink(
+          memoUid: memoUid,
+          localAttachmentUid: uid,
+          imageUrl: url,
+        );
+        return false;
+      }
+    }
+
     if (api.useLegacyApi) {
       final created = await _createAttachmentWith409Recovery(
         attachmentId: uid,
@@ -1341,6 +1366,182 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
 
     await _syncMemoAttachments(memoUid);
     return true;
+  }
+
+  bool _isImageMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase().startsWith('image/');
+  }
+
+  Uri _resolveImageBedBaseUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException('Image bed URL is required');
+    }
+    final parsed = Uri.tryParse(trimmed);
+    if (parsed == null || parsed.host.isEmpty) {
+      throw const FormatException('Invalid image bed URL');
+    }
+    return sanitizeImageBedBaseUrl(parsed);
+  }
+
+  Future<String> _uploadImageToImageBed({
+    required ImageBedSettings settings,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final baseUrl = _resolveImageBedBaseUrl(settings.baseUrl);
+    final maxAttempts = (settings.retryCount < 0 ? 0 : settings.retryCount) + 1;
+    var lastError = Object();
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await _uploadImageToLsky(
+          baseUrl: baseUrl,
+          settings: settings,
+          bytes: bytes,
+          filename: filename,
+        );
+      } catch (e) {
+        lastError = e;
+        if (!_shouldRetryImageBedError(e) || attempt == maxAttempts - 1) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+    }
+    throw lastError;
+  }
+
+  bool _shouldRetryImageBedError(Object error) {
+    if (error is ImageBedRequestException) {
+      final status = error.statusCode;
+      if (status == null) return true;
+      if (status == 401 || status == 403 || status == 404 || status == 405 || status == 422) return false;
+      if (status == 429) return true;
+      return status >= 500;
+    }
+    return false;
+  }
+
+  Future<String> _uploadImageToLsky({
+    required Uri baseUrl,
+    required ImageBedSettings settings,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final email = settings.email.trim();
+    final password = settings.password;
+    final strategyId = settings.strategyId?.trim();
+    String? token = settings.authToken?.trim();
+    if (token != null && token.isEmpty) {
+      token = null;
+    }
+
+    Future<String?> fetchToken() async {
+      if (email.isEmpty || password.isEmpty) return null;
+      final newToken = await ImageBedApi.createLskyToken(
+        baseUrl: baseUrl,
+        email: email,
+        password: password,
+      );
+      await imageBedRepository.write(settings.copyWith(authToken: newToken));
+      return newToken;
+    }
+
+    token ??= await fetchToken();
+
+    Future<String> uploadLegacy(String? authToken) {
+      return ImageBedApi.uploadLskyLegacy(
+        baseUrl: baseUrl,
+        bytes: bytes,
+        filename: filename,
+        token: authToken,
+        strategyId: strategyId,
+      );
+    }
+
+    try {
+      return await uploadLegacy(token);
+    } on ImageBedRequestException catch (e) {
+      if (e.statusCode == 401 && email.isNotEmpty && password.isNotEmpty) {
+        await imageBedRepository.write(settings.copyWith(authToken: null));
+        final refreshed = await fetchToken();
+        if (refreshed != null) {
+          return await uploadLegacy(refreshed);
+        }
+      }
+
+      final isUnsupported = e.statusCode == 404 || e.statusCode == 405;
+      if (isUnsupported && strategyId != null && strategyId.isNotEmpty) {
+        return ImageBedApi.uploadLskyModern(
+          baseUrl: baseUrl,
+          bytes: bytes,
+          filename: filename,
+          storageId: strategyId,
+        );
+      }
+
+      if (e.statusCode == 401 && (token?.isNotEmpty ?? false)) {
+        return await uploadLegacy(null);
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<void> _appendImageBedLink({
+    required String memoUid,
+    required String localAttachmentUid,
+    required String imageUrl,
+  }) async {
+    final row = await db.getMemoByUid(memoUid);
+    if (row == null) {
+      throw StateError('Memo not found: $memoUid');
+    }
+    final memo = LocalMemo.fromDb(row);
+    final updatedContent = _appendImageMarkdown(memo.content, imageUrl);
+
+    final expectedNames = <String>{
+      'attachments/$localAttachmentUid',
+      'resources/$localAttachmentUid',
+    };
+    final remainingAttachments = memo.attachments
+        .where((a) => !expectedNames.contains(a.name) && a.uid != localAttachmentUid)
+        .map((a) => a.toJson())
+        .toList(growable: false);
+
+    final tags = extractTags(updatedContent);
+    final now = DateTime.now().toUtc();
+    await db.upsertMemo(
+      uid: memo.uid,
+      content: updatedContent,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+      tags: tags,
+      attachments: remainingAttachments,
+      syncState: 1,
+      lastError: null,
+    );
+
+    await db.enqueueOutbox(type: 'update_memo', payload: {
+      'uid': memo.uid,
+      'content': updatedContent,
+      'visibility': memo.visibility,
+      'pinned': memo.pinned,
+    });
+  }
+
+  String _appendImageMarkdown(String content, String url) {
+    final trimmedUrl = url.trim();
+    if (trimmedUrl.isEmpty) return content;
+    final buffer = StringBuffer(content);
+    if (buffer.isNotEmpty && !content.endsWith('\n')) {
+      buffer.write('\n');
+    }
+    buffer.write('![]($trimmedUrl)\n');
+    return buffer.toString();
   }
 
   Future<void> _syncMemoAttachments(String memoUid) async {
