@@ -627,28 +627,37 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     final db = await this.db;
     final normalizedTag = (tag ?? '').trim();
     final normalizedState = (state ?? '').trim();
+    final normalizedSearch = (searchQuery ?? '').trim();
 
-    if (searchQuery == null || searchQuery.trim().isEmpty) {
-      final whereClauses = <String>[];
-      final whereArgs = <Object?>[];
-      if (normalizedState.isNotEmpty) {
-        whereClauses.add('state = ?');
-        whereArgs.add(normalizedState);
-      }
-      if (normalizedTag.isNotEmpty) {
-        whereClauses.add("(' ' || tags || ' ') LIKE ?");
-        whereArgs.add('% $normalizedTag %');
-      }
+    final baseWhereClauses = <String>[];
+    final baseWhereArgs = <Object?>[];
+    if (normalizedState.isNotEmpty) {
+      baseWhereClauses.add('state = ?');
+      baseWhereArgs.add(normalizedState);
+    }
+    if (normalizedTag.isNotEmpty) {
+      baseWhereClauses.add("(' ' || tags || ' ') LIKE ?");
+      baseWhereArgs.add('% $normalizedTag %');
+    }
+
+    Future<List<Map<String, dynamic>>> listBase() {
       return db.query(
         'memos',
-        where: whereClauses.isEmpty ? null : whereClauses.join(' AND '),
-        whereArgs: whereArgs.isEmpty ? null : whereArgs,
+        where: baseWhereClauses.isEmpty ? null : baseWhereClauses.join(' AND '),
+        whereArgs: baseWhereArgs.isEmpty ? null : baseWhereArgs,
         orderBy: 'pinned DESC, create_time DESC',
         limit: limit,
       );
     }
 
-    final q = _toFtsQuery(searchQuery);
+    if (normalizedSearch.isEmpty) {
+      return listBase();
+    }
+
+    final q = _toFtsQuery(normalizedSearch);
+    if (q.trim().isEmpty) {
+      return listBase();
+    }
     final whereClauses = <String>['memos_fts MATCH ?'];
     final whereArgs = <Object?>[q];
     if (normalizedState.isNotEmpty) {
@@ -661,8 +670,9 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     }
     whereArgs.add(limit);
 
-    return db.rawQuery(
-      '''
+    try {
+      return await db.rawQuery(
+        '''
 SELECT m.*
 FROM memos m
 JOIN memos_fts ON memos_fts.rowid = m.id
@@ -670,8 +680,27 @@ WHERE ${whereClauses.join(' AND ')}
 ORDER BY m.pinned DESC, m.create_time DESC
 LIMIT ?;
 ''',
-      whereArgs,
-    );
+        whereArgs,
+      );
+    } on DatabaseException {
+      final like = '%$normalizedSearch%';
+      final fallbackClauses = <String>[
+        ...baseWhereClauses,
+        '(content LIKE ? OR tags LIKE ?)',
+      ];
+      final fallbackArgs = <Object?>[
+        ...baseWhereArgs,
+        like,
+        like,
+      ];
+      return db.query(
+        'memos',
+        where: fallbackClauses.join(' AND '),
+        whereArgs: fallbackArgs,
+        orderBy: 'pinned DESC, create_time DESC',
+        limit: limit,
+      );
+    }
   }
 
   Future<List<Map<String, dynamic>>> listMemoUidSyncStates({String? state}) async {

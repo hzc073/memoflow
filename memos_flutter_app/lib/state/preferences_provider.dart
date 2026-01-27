@@ -83,6 +83,9 @@ class AppPreferences {
     networkLoggingEnabled: true,
     themeMode: AppThemeMode.system,
     themeColor: AppThemeColor.brickRed,
+    customTheme: CustomThemeSettings.defaults,
+    accountThemeColors: const {},
+    accountCustomThemes: const {},
     showDrawerExplore: true,
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
@@ -108,6 +111,9 @@ class AppPreferences {
     required this.networkLoggingEnabled,
     required this.themeMode,
     required this.themeColor,
+    required this.customTheme,
+    required this.accountThemeColors,
+    required this.accountCustomThemes,
     required this.showDrawerExplore,
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
@@ -132,6 +138,9 @@ class AppPreferences {
   final bool networkLoggingEnabled;
   final AppThemeMode themeMode;
   final AppThemeColor themeColor;
+  final CustomThemeSettings customTheme;
+  final Map<String, AppThemeColor> accountThemeColors;
+  final Map<String, CustomThemeSettings> accountCustomThemes;
   final bool showDrawerExplore;
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
@@ -140,6 +149,22 @@ class AppPreferences {
   final bool supporterCrownEnabled;
   final bool thirdPartyShareEnabled;
   final String lastSeenAppVersion;
+
+  AppThemeColor resolveThemeColor(String? accountKey) {
+    if (accountKey != null) {
+      final stored = accountThemeColors[accountKey];
+      if (stored != null) return stored;
+    }
+    return themeColor;
+  }
+
+  CustomThemeSettings resolveCustomTheme(String? accountKey) {
+    if (accountKey != null) {
+      final stored = accountCustomThemes[accountKey];
+      if (stored != null) return stored;
+    }
+    return customTheme;
+  }
 
   Map<String, dynamic> toJson() => {
         'language': language.name,
@@ -156,6 +181,9 @@ class AppPreferences {
         'networkLoggingEnabled': networkLoggingEnabled,
         'themeMode': themeMode.name,
         'themeColor': themeColor.name,
+        'customTheme': customTheme.toJson(),
+        'accountThemeColors': accountThemeColors.map((key, value) => MapEntry(key, value.name)),
+        'accountCustomThemes': accountCustomThemes.map((key, value) => MapEntry(key, value.toJson())),
         'showDrawerExplore': showDrawerExplore,
         'showDrawerDailyReview': showDrawerDailyReview,
         'showDrawerAiSummary': showDrawerAiSummary,
@@ -217,6 +245,46 @@ class AppPreferences {
         );
       }
       return AppPreferences.defaults.themeColor;
+    }
+
+    CustomThemeSettings parseCustomTheme() {
+      final raw = json['customTheme'];
+      if (raw is Map) {
+        return CustomThemeSettings.fromJson(raw.cast<String, dynamic>());
+      }
+      return AppPreferences.defaults.customTheme;
+    }
+
+    Map<String, AppThemeColor> parseAccountThemeColors() {
+      final raw = json['accountThemeColors'];
+      if (raw is Map) {
+        final parsed = <String, AppThemeColor>{};
+        raw.forEach((key, value) {
+          if (key is String && value is String) {
+            final color = AppThemeColor.values.firstWhere(
+              (e) => e.name == value,
+              orElse: () => AppPreferences.defaults.themeColor,
+            );
+            parsed[key] = color;
+          }
+        });
+        return parsed;
+      }
+      return const {};
+    }
+
+    Map<String, CustomThemeSettings> parseAccountCustomThemes() {
+      final raw = json['accountCustomThemes'];
+      if (raw is Map) {
+        final parsed = <String, CustomThemeSettings>{};
+        raw.forEach((key, value) {
+          if (key is String && value is Map) {
+            parsed[key] = CustomThemeSettings.fromJson(value.cast<String, dynamic>());
+          }
+        });
+        return parsed;
+      }
+      return const {};
     }
 
     AppLineHeight parseLineHeight() {
@@ -288,6 +356,9 @@ class AppPreferences {
 
     final parsedFamily = parseFontFamily();
     final parsedFile = parseFontFile();
+    final parsedCustomTheme = parseCustomTheme();
+    final parsedAccountThemeColors = parseAccountThemeColors();
+    final parsedAccountCustomThemes = parseAccountCustomThemes();
 
     return AppPreferences(
       language: parseLanguage(),
@@ -305,6 +376,9 @@ class AppPreferences {
           parseBool('networkLoggingEnabled', AppPreferences.defaults.networkLoggingEnabled),
       themeMode: parseThemeMode(),
       themeColor: parseThemeColor(),
+      customTheme: parsedCustomTheme,
+      accountThemeColors: parsedAccountThemeColors,
+      accountCustomThemes: parsedAccountCustomThemes,
       showDrawerExplore: parseBool('showDrawerExplore', AppPreferences.defaults.showDrawerExplore),
       showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
       showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
@@ -334,6 +408,9 @@ class AppPreferences {
     bool? networkLoggingEnabled,
     AppThemeMode? themeMode,
     AppThemeColor? themeColor,
+    CustomThemeSettings? customTheme,
+    Map<String, AppThemeColor>? accountThemeColors,
+    Map<String, CustomThemeSettings>? accountCustomThemes,
     bool? showDrawerExplore,
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
@@ -358,6 +435,9 @@ class AppPreferences {
       networkLoggingEnabled: networkLoggingEnabled ?? this.networkLoggingEnabled,
       themeMode: themeMode ?? this.themeMode,
       themeColor: themeColor ?? this.themeColor,
+      customTheme: customTheme ?? this.customTheme,
+      accountThemeColors: accountThemeColors ?? this.accountThemeColors,
+      accountCustomThemes: accountCustomThemes ?? this.accountCustomThemes,
       showDrawerExplore: showDrawerExplore ?? this.showDrawerExplore,
       showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
@@ -421,7 +501,46 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));
   void setNetworkLoggingEnabled(bool v) => _setAndPersist(state.copyWith(networkLoggingEnabled: v));
   void setThemeMode(AppThemeMode v) => _setAndPersist(state.copyWith(themeMode: v));
-  void setThemeColor(AppThemeColor v) => _setAndPersist(state.copyWith(themeColor: v));
+  void setThemeColor(AppThemeColor v) => setThemeColorForAccount(accountKey: null, color: v);
+  void setThemeColorForAccount({required String? accountKey, required AppThemeColor color}) {
+    if (accountKey == null || accountKey.trim().isEmpty) {
+      _setAndPersist(state.copyWith(themeColor: color));
+      return;
+    }
+    final next = Map<String, AppThemeColor>.from(state.accountThemeColors);
+    next[accountKey] = color;
+    _setAndPersist(state.copyWith(accountThemeColors: next));
+  }
+  void setCustomThemeForAccount({required String? accountKey, required CustomThemeSettings settings}) {
+    if (accountKey == null || accountKey.trim().isEmpty) {
+      _setAndPersist(state.copyWith(customTheme: settings));
+      return;
+    }
+    final next = Map<String, CustomThemeSettings>.from(state.accountCustomThemes);
+    next[accountKey] = settings;
+    _setAndPersist(state.copyWith(accountCustomThemes: next));
+  }
+  void ensureAccountThemeDefaults(String accountKey) {
+    final key = accountKey.trim();
+    if (key.isEmpty) return;
+    final hasThemeColor = state.accountThemeColors.containsKey(key);
+    final hasCustomTheme = state.accountCustomThemes.containsKey(key);
+    if (hasThemeColor && hasCustomTheme) return;
+    final nextThemeColors = Map<String, AppThemeColor>.from(state.accountThemeColors);
+    final nextCustomThemes = Map<String, CustomThemeSettings>.from(state.accountCustomThemes);
+    if (!hasThemeColor) {
+      nextThemeColors[key] = state.themeColor;
+    }
+    if (!hasCustomTheme) {
+      nextCustomThemes[key] = state.customTheme;
+    }
+    _setAndPersist(
+      state.copyWith(
+        accountThemeColors: nextThemeColors,
+        accountCustomThemes: nextCustomThemes,
+      ),
+    );
+  }
   void setShowDrawerExplore(bool v) => _setAndPersist(state.copyWith(showDrawerExplore: v));
   void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));

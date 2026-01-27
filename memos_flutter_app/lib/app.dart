@@ -44,11 +44,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
   ProviderSubscription<AppPreferences>? _prefsSubscription;
   ProviderSubscription<ReminderSettings>? _reminderSettingsSubscription;
+  ProviderSubscription<bool>? _prefsLoadedSubscription;
   DateTime? _lastResumeSyncAt;
   DateTime? _lastPauseSyncAt;
   DateTime? _lastReminderRescheduleAt;
   bool _versionAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
+  String? _pendingThemeAccountKey;
 
   static const Map<String, String> _imageEditorI18nZh = {
     'Crop': '裁剪',
@@ -207,6 +209,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _triggerLifecycleSync(isResume: true);
         unawaited(ref.read(reminderSchedulerProvider).rescheduleAll(force: true));
       }
+      if (nextKey != null) {
+        if (ref.read(appPreferencesLoadedProvider)) {
+          ref.read(appPreferencesProvider.notifier).ensureAccountThemeDefaults(nextKey);
+        } else {
+          _pendingThemeAccountKey = nextKey;
+        }
+      }
       if (next.valueOrNull?.currentAccount != null) {
         _scheduleShareHandling();
       }
@@ -214,6 +223,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _prefsSubscription = ref.listenManual<AppPreferences>(appPreferencesProvider, (prev, next) {
       if (prev?.fontFamily == next.fontFamily && prev?.fontFile == next.fontFile) return;
       unawaited(_ensureFontLoaded(next));
+    });
+    _prefsLoadedSubscription = ref.listenManual<bool>(appPreferencesLoadedProvider, (prev, next) {
+      if (!next) return;
+      final key = _pendingThemeAccountKey ?? ref.read(appSessionProvider).valueOrNull?.currentKey;
+      if (key != null) {
+        ref.read(appPreferencesProvider.notifier).ensureAccountThemeDefaults(key);
+      }
+      _pendingThemeAccountKey = null;
     });
     final reminderScheduler = ref.read(reminderSchedulerProvider);
     reminderScheduler.bindNavigator(_navigatorKey);
@@ -556,7 +573,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final prefs = ref.watch(appPreferencesProvider);
     final prefsLoaded = ref.watch(appPreferencesLoadedProvider);
-    MemoFlowPalette.applyThemeColor(prefs.themeColor);
+    final session = ref.watch(appSessionProvider).valueOrNull;
+    final accountKey = session?.currentKey;
+    final themeColor = prefs.resolveThemeColor(accountKey);
+    final customTheme = prefs.resolveCustomTheme(accountKey);
+    MemoFlowPalette.applyThemeColor(themeColor, customTheme: customTheme);
     final themeMode = _themeModeFor(prefs.themeMode);
     final loggerService = ref.watch(loggerServiceProvider);
     final locale = _localeFor(prefs.language);
@@ -606,6 +627,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _sessionSubscription?.close();
     _prefsSubscription?.close();
+    _prefsLoadedSubscription?.close();
     _reminderSettingsSubscription?.close();
     super.dispose();
   }
