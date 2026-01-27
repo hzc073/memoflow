@@ -79,6 +79,11 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // Ensure R8 keeps generic signatures used by Gson when shrinking is enabled.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
