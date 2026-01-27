@@ -66,6 +66,8 @@ class _LruCache<K, V> {
 
 final _markdownHtmlCache = _LruCache<String, String>(capacity: 80);
 
+const int _markdownImageMaxDecodePx = 2048;
+
 void invalidateMemoMarkdownCacheForUid(String memoUid) {
   final trimmed = memoUid.trim();
   if (trimmed.isEmpty) return;
@@ -131,7 +133,44 @@ class MemoMarkdown extends StatelessWidget {
     final checkboxSize = (fontSize ?? 14) * 1.25;
     final checkboxTapSize = checkboxSize + 6;
     final checkboxColor = baseStyle.color ?? theme.colorScheme.onSurface;
+    final imagePlaceholderBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
+    final imagePlaceholderFg = (baseStyle.color ?? theme.colorScheme.onSurface).withValues(alpha: 0.6);
     final spacingPx = blockSpacing > 0 ? _formatCssPx(blockSpacing) : null;
+    final maxImageHeight = _resolveImageMaxHeight(context);
+    final maxImageHeightPx = _formatCssPx(maxImageHeight);
+
+    Widget imagePlaceholder() {
+      return Container(
+        color: imagePlaceholderBg,
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: imagePlaceholderFg,
+          ),
+        ),
+      );
+    }
+
+    Widget imageError() {
+      return Container(
+        color: imagePlaceholderBg,
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: imagePlaceholderFg,
+        ),
+      );
+    }
+
+    void logImageError(String url, Object error) {
+      assert(() {
+        debugPrint('MemoMarkdown image failed: $url error=$error');
+        return true;
+      }());
+    }
 
     final cacheKey = this.cacheKey;
     final cachedHtml = cacheKey == null ? null : _markdownHtmlCache.get(cacheKey);
@@ -241,6 +280,79 @@ class MemoMarkdown extends StatelessWidget {
           child: checkbox,
         );
       }
+      if (localName == 'img') {
+        final rawSrc = element.attributes['src'];
+        if (rawSrc == null) return null;
+        final src = _normalizeImageSrc(rawSrc);
+        if (src.isEmpty) return null;
+
+        final uri = Uri.tryParse(src);
+        final scheme = uri?.scheme.toLowerCase() ?? '';
+        if (scheme.isNotEmpty && scheme != 'http' && scheme != 'https') {
+          return null;
+        }
+
+        final widthAttr = _parseHtmlDimension(element.attributes['width']);
+        final heightAttr = _parseHtmlDimension(element.attributes['height']);
+
+        return InlineCustomWidget(
+          alignment: PlaceholderAlignment.middle,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = _resolveImageMaxWidth(constraints, context);
+              final maxHeight = maxImageHeight;
+              double? targetWidth = widthAttr;
+              double? targetHeight = heightAttr;
+
+              if (targetWidth != null && targetWidth > 0 && targetHeight != null && targetHeight > 0) {
+                final widthScale = maxWidth / targetWidth;
+                final heightScale = maxHeight / targetHeight;
+                final scale = [1.0, widthScale, heightScale].reduce((a, b) => a < b ? a : b);
+                targetWidth = targetWidth * scale;
+                targetHeight = targetHeight * scale;
+              } else {
+                if (targetWidth != null && targetWidth > 0) {
+                  if (targetWidth > maxWidth) targetWidth = maxWidth;
+                } else {
+                  targetWidth = null;
+                }
+                if (targetHeight != null && targetHeight > 0) {
+                  if (targetHeight > maxHeight) targetHeight = maxHeight;
+                } else {
+                  targetHeight = null;
+                }
+              }
+
+              final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+              final cacheWidth = _resolveCacheExtent(targetWidth ?? maxWidth, pixelRatio);
+
+              final image = Image.network(
+                src,
+                width: targetWidth,
+                height: targetHeight,
+                fit: BoxFit.contain,
+                cacheWidth: cacheWidth,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return imagePlaceholder();
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  logImageError(src, error);
+                  return imageError();
+                },
+              );
+
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: image,
+                ),
+              );
+            },
+          ),
+        );
+      }
       if (localName == 'pre') {
         final code = element.text;
         if (code.trim().isEmpty) return null;
@@ -312,6 +424,13 @@ class MemoMarkdown extends StatelessWidget {
           'padding-left': '0',
         });
       }
+      if (localName == 'img') {
+        styles.addAll({
+          'max-width': '100%',
+          'max-height': maxImageHeightPx,
+          'height': 'auto',
+        });
+      }
       if (normalizeHeadings && _isHeadingTag(localName)) {
         styles['font-size'] = '1em';
         styles['font-weight'] = '700';
@@ -361,6 +480,10 @@ String _sanitizeMarkdown(String text) {
   // Avoid empty markdown links that can leave the inline stack open.
   final emptyLink = RegExp(r'\[\s*\]\(([^)]*)\)');
   final stripped = text.replaceAllMapped(emptyLink, (match) {
+    final start = match.start;
+    if (start > 0 && text.codeUnitAt(start - 1) == 0x21) {
+      return match.group(0) ?? '';
+    }
     final url = match.group(1)?.trim();
     return url?.isNotEmpty == true ? url! : '';
   });
@@ -551,6 +674,46 @@ String _formatCssPx(double value) {
     return '${value.toInt()}px';
   }
   return '${value.toStringAsFixed(2)}px';
+}
+
+String _normalizeImageSrc(String value) {
+  final trimmed = value.trim();
+  if (trimmed.startsWith('//')) {
+    return 'https:$trimmed';
+  }
+  return trimmed;
+}
+
+double? _parseHtmlDimension(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final match = RegExp(r'^\d+(?:\.\d+)?').firstMatch(trimmed);
+  if (match == null) return null;
+  return double.tryParse(match.group(0)!);
+}
+
+double _resolveImageMaxWidth(BoxConstraints constraints, BuildContext context) {
+  final maxWidth = constraints.maxWidth;
+  if (maxWidth.isFinite && maxWidth > 0) return maxWidth;
+  final screenWidth = MediaQuery.of(context).size.width;
+  if (screenWidth > 0) return screenWidth;
+  return 320;
+}
+
+int? _resolveCacheExtent(double logicalExtent, double devicePixelRatio) {
+  if (logicalExtent <= 0) return null;
+  final pixels = (logicalExtent * devicePixelRatio).round();
+  if (pixels <= 0) return null;
+  return pixels > _markdownImageMaxDecodePx ? _markdownImageMaxDecodePx : pixels;
+}
+
+double _resolveImageMaxHeight(BuildContext context) {
+  final screenHeight = MediaQuery.of(context).size.height;
+  if (screenHeight <= 0) return 360;
+  final suggested = (screenHeight * 0.45).clamp(300.0, 400.0);
+  final maxAllowed = screenHeight * 0.5;
+  return suggested > maxAllowed ? maxAllowed : suggested;
 }
 
 class TaskStats {
