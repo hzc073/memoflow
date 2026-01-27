@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -3022,7 +3022,12 @@ class _MemoCardState extends State<_MemoCard> {
                 ),
                 const SizedBox(height: 12),
                 if (showProgress) ...[
-                  _TaskProgressBar(progress: progress, isDark: isDark),
+                  _TaskProgressBar(
+                    progress: progress, 
+                    isDark: isDark,
+                    total: taskStats.total,
+                    checked: taskStats.checked,
+                  ),
                   const SizedBox(height: 12),
                 ],
                 Column(
@@ -3316,25 +3321,127 @@ class _RelationItem {
   final String snippet;
 }
 
-class _TaskProgressBar extends StatelessWidget {
-  const _TaskProgressBar({required this.progress, required this.isDark});
+class _TaskProgressBar extends StatefulWidget {
+  const _TaskProgressBar({required this.progress, required this.isDark, required this.total, required this.checked});
 
   final double progress;
   final bool isDark;
+  final int total;
+  final int checked;
+
+  @override
+  State<_TaskProgressBar> createState() => _TaskProgressBarState();
+}
+
+class _TaskProgressBarState extends State<_TaskProgressBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    final targetValue = widget.progress.clamp(0.0, 1.0);
+    _animation = Tween<double>(
+      begin: targetValue,
+      end: targetValue,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+    _controller.value = 1.0; // 直接跳到目标值，不播放动画
+  }
+
+  @override
+  void didUpdateWidget(_TaskProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.progress != widget.progress) {
+      final targetValue = widget.progress.clamp(0.0, 1.0);
+      final currentValue = _animation.value;
+      final difference = (targetValue - currentValue).abs();
+      
+      // 根据进度差距调整动画时长：差距越大，动画时间越长
+      final animationDuration = Duration(
+        milliseconds: (400 + difference * 500).round(),
+      );
+      
+      _controller.duration = animationDuration;
+      
+      _animation = Tween<double>(
+        begin: currentValue,
+        end: targetValue,
+      ).animate(CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ));
+      
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark
+    final bg = widget.isDark
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.black.withValues(alpha: 0.06);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
-      child: LinearProgressIndicator(
-        value: progress.clamp(0.0, 1.0),
-        minHeight: 6,
-        backgroundColor: bg,
-        valueColor: AlwaysStoppedAnimation(MemoFlowPalette.primary),
-      ),
+    final textColor = widget.isDark ? Colors.white70 : Colors.black54;
+    
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        final percentage = (_animation.value * 100).round();
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${context.tr(zh: '完成进度', en: 'Progress')} (${widget.checked}/${widget.total})',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: textColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    '$percentage%',
+                    key: ValueKey(percentage),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: textColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: _animation.value,
+                minHeight: 8,
+                backgroundColor: bg,
+                valueColor: AlwaysStoppedAnimation(MemoFlowPalette.primary),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
