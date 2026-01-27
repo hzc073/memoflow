@@ -104,6 +104,7 @@ flutter:
     - assets/splash/splash_logo.png
     - assets/splash/splash_logo_native.png
     - assets/images/donation_qr.png
+    - assets/images/default_avatar.webp
 
   # To add assets to your application, add an assets section, like this:
   # assets:

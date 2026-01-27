@@ -94,6 +94,8 @@ class AppPreferences {
     supporterCrownEnabled: false,
     thirdPartyShareEnabled: true,
     lastSeenAppVersion: '',
+    lastSeenAnnouncementVersion: '',
+    lastSeenAnnouncementId: 0,
   );
 
   const AppPreferences({
@@ -122,6 +124,8 @@ class AppPreferences {
     required this.supporterCrownEnabled,
     required this.thirdPartyShareEnabled,
     required this.lastSeenAppVersion,
+    required this.lastSeenAnnouncementVersion,
+    required this.lastSeenAnnouncementId,
   });
 
   final AppLanguage language;
@@ -149,6 +153,8 @@ class AppPreferences {
   final bool supporterCrownEnabled;
   final bool thirdPartyShareEnabled;
   final String lastSeenAppVersion;
+  final String lastSeenAnnouncementVersion;
+  final int lastSeenAnnouncementId;
 
   AppThemeColor resolveThemeColor(String? accountKey) {
     if (accountKey != null) {
@@ -192,6 +198,8 @@ class AppPreferences {
         'supporterCrownEnabled': supporterCrownEnabled,
         'thirdPartyShareEnabled': thirdPartyShareEnabled,
         'lastSeenAppVersion': lastSeenAppVersion,
+        'lastSeenAnnouncementVersion': lastSeenAnnouncementVersion,
+        'lastSeenAnnouncementId': lastSeenAnnouncementId,
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
@@ -354,6 +362,20 @@ class AppPreferences {
       return '';
     }
 
+    String parseLastSeenAnnouncementVersion() {
+      final raw = json['lastSeenAnnouncementVersion'];
+      if (raw is String) return raw;
+      return '';
+    }
+
+    int parseLastSeenAnnouncementId() {
+      final raw = json['lastSeenAnnouncementId'];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+      return 0;
+    }
+
     final parsedFamily = parseFontFamily();
     final parsedFile = parseFontFile();
     final parsedCustomTheme = parseCustomTheme();
@@ -390,6 +412,8 @@ class AppPreferences {
       thirdPartyShareEnabled:
           parseBool('thirdPartyShareEnabled', AppPreferences.defaults.thirdPartyShareEnabled),
       lastSeenAppVersion: parseLastSeenAppVersion(),
+      lastSeenAnnouncementVersion: parseLastSeenAnnouncementVersion(),
+      lastSeenAnnouncementId: parseLastSeenAnnouncementId(),
     );
   }
 
@@ -419,6 +443,8 @@ class AppPreferences {
     bool? supporterCrownEnabled,
     bool? thirdPartyShareEnabled,
     String? lastSeenAppVersion,
+    String? lastSeenAnnouncementVersion,
+    int? lastSeenAnnouncementId,
   }) {
     return AppPreferences(
       language: language ?? this.language,
@@ -446,6 +472,8 @@ class AppPreferences {
       supporterCrownEnabled: supporterCrownEnabled ?? this.supporterCrownEnabled,
       thirdPartyShareEnabled: thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
       lastSeenAppVersion: lastSeenAppVersion ?? this.lastSeenAppVersion,
+      lastSeenAnnouncementVersion: lastSeenAnnouncementVersion ?? this.lastSeenAnnouncementVersion,
+      lastSeenAnnouncementId: lastSeenAnnouncementId ?? this.lastSeenAnnouncementId,
     );
   }
 }
@@ -550,6 +578,14 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));
   void setThirdPartyShareEnabled(bool v) => _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
   void setLastSeenAppVersion(String v) => _setAndPersist(state.copyWith(lastSeenAppVersion: v));
+  void setLastSeenAnnouncement({required String version, required int announcementId}) {
+    _setAndPersist(
+      state.copyWith(
+        lastSeenAnnouncementVersion: version,
+        lastSeenAnnouncementId: announcementId,
+      ),
+    );
+  }
 }
 
 class AppPreferencesRepository {

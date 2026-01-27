@@ -1,8 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/updates/update_config.dart';
+import '../../state/update_config_provider.dart';
+import '../updates/donors_wall_screen.dart';
+import '../updates/update_announcement_dialog.dart';
 import '../updates/version_announcement_dialog.dart';
 import '../updates/release_notes_screen.dart';
 
@@ -35,8 +41,37 @@ class AboutUsScreen extends StatelessWidget {
   }
 }
 
-class AboutUsContent extends StatelessWidget {
+class AboutUsContent extends ConsumerStatefulWidget {
   const AboutUsContent({super.key});
+
+  @override
+  ConsumerState<AboutUsContent> createState() => _AboutUsContentState();
+}
+
+class _AboutUsContentState extends ConsumerState<AboutUsContent> {
+  late final Future<UpdateAnnouncementConfig?> _updateConfigFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateConfigFuture = ref.read(updateConfigServiceProvider).fetchLatest();
+  }
+
+  Future<void> _showDebugAnnouncement(BuildContext context) async {
+    final config = await ref.read(updateConfigServiceProvider).fetchLatest();
+    if (!context.mounted) return;
+    if (config == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(zh: '未获取到公告配置', en: 'Failed to load announcement config'),
+          ),
+        ),
+      );
+      return;
+    }
+    await UpdateAnnouncementDialog.show(context, config: config);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +204,54 @@ class AboutUsContent extends StatelessWidget {
                 );
               },
             ),
+            FutureBuilder<UpdateAnnouncementConfig?>(
+              future: _updateConfigFuture,
+              builder: (context, snapshot) {
+                final donors = snapshot.data?.donors ?? const <UpdateDonor>[];
+                if (donors.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 12),
+                    _CardGroup(
+                      card: card,
+                      divider: divider,
+                      children: [
+                        _LinkRow(
+                          icon: Icons.favorite_border,
+                          label: context.tr(zh: '贡献与致谢', en: 'Contributors'),
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(builder: (_) => const DonorsWallScreen()),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+            if (kDebugMode) ...[
+              const SizedBox(height: 12),
+              _CardGroup(
+                card: card,
+                divider: divider,
+                children: [
+                  _LinkRow(
+                    icon: Icons.bug_report_outlined,
+                    label: context.tr(zh: '调试：预览更新公告', en: 'Debug: Preview update dialog'),
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () => _showDebugAnnouncement(context),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 18),
             Column(
               children: [
@@ -270,6 +353,45 @@ class _FeatureRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LinkRow extends StatelessWidget {
+  const _LinkRow({
+    required this.icon,
+    required this.label,
+    required this.textMain,
+    required this.textMuted,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color textMain;
+  final Color textMuted;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: textMuted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+              ),
+              Icon(Icons.chevron_right, size: 20, color: textMuted),
+            ],
+          ),
+        ),
       ),
     );
   }

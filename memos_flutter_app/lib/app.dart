@@ -19,13 +19,14 @@ import 'features/onboarding/language_selection_screen.dart';
 import 'features/review/daily_review_screen.dart';
 import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
-import 'features/updates/version_announcement_dialog.dart';
+import 'features/updates/update_announcement_dialog.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
 import 'state/reminder_scheduler.dart';
 import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
+import 'state/update_config_provider.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -48,7 +49,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   DateTime? _lastResumeSyncAt;
   DateTime? _lastPauseSyncAt;
   DateTime? _lastReminderRescheduleAt;
-  bool _versionAnnouncementChecked = false;
+  bool _updateAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
 
@@ -304,39 +305,73 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return _appVersionFuture ??= _fetchAppVersion();
   }
 
-  void _scheduleVersionAnnouncementIfNeeded() {
-    if (_versionAnnouncementChecked) return;
-    _versionAnnouncementChecked = true;
+  int _compareVersionTriplets(String remote, String local) {
+    final remoteParts = _parseVersionTriplet(remote);
+    final localParts = _parseVersionTriplet(local);
+    for (var i = 0; i < 3; i++) {
+      final diff = remoteParts[i].compareTo(localParts[i]);
+      if (diff != 0) return diff;
+    }
+    return 0;
+  }
+
+  List<int> _parseVersionTriplet(String version) {
+    if (version.trim().isEmpty) return const [0, 0, 0];
+    final trimmed = version.split(RegExp(r'[-+]')).first;
+    final parts = trimmed.split('.');
+    final values = <int>[0, 0, 0];
+    for (var i = 0; i < 3; i++) {
+      if (i >= parts.length) break;
+      final match = RegExp(r'\d+').firstMatch(parts[i]);
+      if (match == null) continue;
+      values[i] = int.tryParse(match.group(0) ?? '') ?? 0;
+    }
+    return values;
+  }
+
+  void _scheduleUpdateAnnouncementIfNeeded() {
+    if (_updateAnnouncementChecked) return;
+    _updateAnnouncementChecked = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_maybeShowVersionAnnouncement());
+      unawaited(_maybeShowUpdateAnnouncement());
     });
   }
 
-  Future<void> _maybeShowVersionAnnouncement() async {
+  Future<void> _maybeShowUpdateAnnouncement() async {
     final version = await _resolveAppVersion();
     if (!mounted || version == null || version.isEmpty) return;
 
     final prefs = ref.read(appPreferencesProvider);
-    final lastSeen = prefs.lastSeenAppVersion.trim();
-    if (!prefs.hasSelectedLanguage) {
-      if (lastSeen.isEmpty) {
-        ref.read(appPreferencesProvider.notifier).setLastSeenAppVersion(version);
-      }
-      return;
-    }
-    if (lastSeen == version) return;
+    if (!prefs.hasSelectedLanguage) return;
 
-    final context = _navigatorKey.currentContext;
-    if (context == null) return;
+    final config = await ref.read(updateConfigServiceProvider).fetchLatest();
+    if (!mounted || config == null) return;
+    final remoteVersion = config.versionInfo.latestVersion.trim();
+    if (remoteVersion.isEmpty) return;
+    if (_compareVersionTriplets(remoteVersion, version) <= 0) return;
 
-    final acknowledged = await VersionAnnouncementDialog.show(
-      context,
-      version: version,
-      items: VersionAnnouncementContent.forVersion(version),
+    final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();
+    final lastSeenAnnouncementId = prefs.lastSeenAnnouncementId;
+    final shouldShow =
+        config.versionInfo.isForce ||
+        lastSeenVersion != remoteVersion ||
+        lastSeenAnnouncementId != config.announcement.id;
+    if (!shouldShow) return;
+
+    final dialogContext = _navigatorKey.currentContext;
+    if (dialogContext == null || !dialogContext.mounted) return;
+
+    final action = await UpdateAnnouncementDialog.show(
+      dialogContext,
+      config: config,
     );
-    if (acknowledged == true && mounted) {
-      ref.read(appPreferencesProvider.notifier).setLastSeenAppVersion(version);
+    if (!mounted || config.versionInfo.isForce) return;
+    if (action == AnnouncementAction.update || action == AnnouncementAction.later) {
+      ref.read(appPreferencesProvider.notifier).setLastSeenAnnouncement(
+        version: remoteVersion,
+        announcementId: config.announcement.id,
+      );
     }
   }
 
@@ -591,7 +626,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       _scheduleShareHandling();
     }
     if (prefsLoaded) {
-      _scheduleVersionAnnouncementIfNeeded();
+      _scheduleUpdateAnnouncementIfNeeded();
     }
 
     return MaterialApp(
