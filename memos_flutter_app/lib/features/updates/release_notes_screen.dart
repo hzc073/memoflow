@@ -1,15 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/updates/update_config.dart';
+import '../../state/update_config_provider.dart';
 import 'version_announcement_dialog.dart';
 
-class ReleaseNotesScreen extends StatelessWidget {
+class ReleaseNotesScreen extends ConsumerStatefulWidget {
   const ReleaseNotesScreen({super.key});
 
   @override
+  ConsumerState<ReleaseNotesScreen> createState() => _ReleaseNotesScreenState();
+}
+
+class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
+  late final Future<UpdateAnnouncementConfig?> _configFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _configFuture = ref.read(updateConfigServiceProvider).fetchLatest();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final entries = VersionAnnouncementContent.allEntries();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
@@ -50,54 +65,60 @@ class ReleaseNotesScreen extends StatelessWidget {
                 ),
               ),
             ),
-          if (entries.isEmpty)
-            Center(
-              child: Text(
-                context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
-                style: TextStyle(color: textMuted),
-              ),
-            )
-          else
-            Stack(
-              children: [
-                Positioned(
-                  left: 28,
-                  top: 16,
-                  bottom: 36,
-                  child: Container(
-                    width: 2,
-                    color: lineColor.withValues(alpha: 0.55),
+          FutureBuilder<UpdateAnnouncementConfig?>(
+            future: _configFuture,
+            builder: (context, snapshot) {
+              final entries = buildVersionAnnouncementEntries(snapshot.data?.releaseNotes ?? const []);
+              if (entries.isEmpty) {
+                return Center(
+                  child: Text(
+                    context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
+                    style: TextStyle(color: textMuted),
                   ),
-                ),
-                ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 26),
-                  children: [
-                    for (var i = 0; i < entries.length; i++) ...[
-                      _TimelineEntry(
-                        entry: entries[i],
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        lineColor: lineColor,
-                        isDark: isDark,
-                      ),
-                      if (i != entries.length - 1) const SizedBox(height: 16),
-                    ],
-                    const SizedBox(height: 14),
-                    Center(
-                      child: Text(
-                        context.tr(
-                          zh: '以上是全部历史内容\nMEMOFLOW SINCE 2023',
-                          en: 'That is all the history so far\nMEMOFLOW SINCE 2023',
-                        ),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 11, height: 1.4, color: textMuted),
-                      ),
+                );
+              }
+              return Stack(
+                children: [
+                  Positioned(
+                    left: 28,
+                    top: 16,
+                    bottom: 36,
+                    child: Container(
+                      width: 2,
+                      color: lineColor.withValues(alpha: 0.55),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 26),
+                    children: [
+                      for (var i = 0; i < entries.length; i++) ...[
+                        _TimelineEntry(
+                          entry: entries[i],
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          lineColor: lineColor,
+                          isDark: isDark,
+                        ),
+                        if (i != entries.length - 1) const SizedBox(height: 16),
+                      ],
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          context.tr(
+                            zh: '以上是全部历史内容\nMEMOFLOW SINCE 2023',
+                            en: 'That is all the history so far\nMEMOFLOW SINCE 2023',
+                          ),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11, height: 1.4, color: textMuted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );

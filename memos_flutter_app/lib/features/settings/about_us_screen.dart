@@ -70,7 +70,13 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
       );
       return;
     }
-    await UpdateAnnouncementDialog.show(context, config: config);
+    final info = await AboutUsScreen._packageInfoFuture;
+    final version = info.version.trim();
+    await UpdateAnnouncementDialog.show(
+      context,
+      config: config,
+      currentVersion: version,
+    );
   }
 
   @override
@@ -172,35 +178,44 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
               future: AboutUsScreen._packageInfoFuture,
               builder: (context, snapshot) {
                 final appVersion = snapshot.data?.version.trim() ?? '';
-                final entry = appVersion.isEmpty
-                    ? VersionAnnouncementContent.latestEntry()
-                    : VersionAnnouncementContent.entryForVersion(appVersion);
-                final resolvedEntry = entry ?? VersionAnnouncementContent.latestEntry();
-                if (resolvedEntry == null) {
-                  return const SizedBox.shrink();
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 12),
-                    Text(
-                      context.tr(zh: '更新日志', en: 'Release Notes'),
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textMain),
-                    ),
-                    const SizedBox(height: 10),
-                    _ReleaseNotesPreviewCard(
-                      entry: resolvedEntry,
-                      versionLabel: appVersion.isNotEmpty ? appVersion : resolvedEntry.version,
-                      card: card,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const ReleaseNotesScreen()),
+                return FutureBuilder<UpdateAnnouncementConfig?>(
+                  future: _updateConfigFuture,
+                  builder: (context, configSnapshot) {
+                    final releaseNotes = configSnapshot.data?.releaseNotes ?? const <UpdateReleaseNoteEntry>[];
+                    final resolvedEntry =
+                        findVersionAnnouncementEntry(releaseNotes, appVersion) ??
+                        VersionAnnouncementEntry(
+                          version: appVersion,
+                          dateLabel: '',
+                          items: const [],
                         );
-                      },
-                    ),
-                  ],
+                    if (resolvedEntry.version.trim().isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Text(
+                          context.tr(zh: '更新日志', en: 'Release Notes'),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textMain),
+                        ),
+                        const SizedBox(height: 10),
+                        _ReleaseNotesPreviewCard(
+                          entry: resolvedEntry,
+                          versionLabel: resolvedEntry.version,
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(builder: (_) => const ReleaseNotesScreen()),
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -451,15 +466,21 @@ class _ReleaseNotesPreviewCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              for (var i = 0; i < entry.items.length; i++) ...[
-                _ReleaseNotePreviewItem(
-                  item: entry.items[i],
-                  textMain: textMain,
-                  textMuted: textMuted,
-                  isDark: isDark,
-                ),
-                if (i != entry.items.length - 1) const SizedBox(height: 6),
-              ],
+              if (entry.items.isEmpty)
+                Text(
+                  context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
+                  style: TextStyle(fontSize: 12.5, height: 1.35, color: textMuted),
+                )
+              else
+                for (var i = 0; i < entry.items.length; i++) ...[
+                  _ReleaseNotePreviewItem(
+                    item: entry.items[i],
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    isDark: isDark,
+                  ),
+                  if (i != entry.items.length - 1) const SizedBox(height: 6),
+                ],
             ],
           ),
         ),

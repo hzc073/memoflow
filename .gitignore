@@ -1,5 +1,6 @@
 /AGENTS.md
 /参考项目
+/memoflow_config
 # Secrets & signing
 **/key.properties
 **/*.jks

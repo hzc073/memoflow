@@ -20,6 +20,7 @@ import 'features/review/daily_review_screen.dart';
 import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
 import 'features/updates/update_announcement_dialog.dart';
+import 'data/updates/update_config.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
@@ -52,6 +53,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   bool _updateAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
+  static const UpdateAnnouncementConfig _fallbackUpdateConfig = UpdateAnnouncementConfig(
+    versionInfo: const UpdateVersionInfo(latestVersion: '', isForce: false, downloadUrl: ''),
+    announcement: const UpdateAnnouncement(
+      id: 0,
+      title: '',
+      contentsByLocale: const {},
+      fallbackContents: const [],
+      newDonorIds: const [],
+    ),
+    donors: const [],
+    releaseNotes: const [],
+  );
 
   static const Map<String, String> _imageEditorI18nZh = {
     'Crop': '裁剪',
@@ -346,17 +359,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     if (!prefs.hasSelectedLanguage) return;
 
     final config = await ref.read(updateConfigServiceProvider).fetchLatest();
-    if (!mounted || config == null) return;
-    final remoteVersion = config.versionInfo.latestVersion.trim();
-    if (remoteVersion.isEmpty) return;
-    if (_compareVersionTriplets(remoteVersion, version) <= 0) return;
+    if (!mounted) return;
+    final effectiveConfig = config ?? _fallbackUpdateConfig;
+    final isForce = effectiveConfig.versionInfo.isForce;
 
     final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();
-    final lastSeenAnnouncementId = prefs.lastSeenAnnouncementId;
-    final shouldShow =
-        config.versionInfo.isForce ||
-        lastSeenVersion != remoteVersion ||
-        lastSeenAnnouncementId != config.announcement.id;
+    final shouldShow = isForce || lastSeenVersion != version;
     if (!shouldShow) return;
 
     final dialogContext = _navigatorKey.currentContext;
@@ -364,13 +372,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     final action = await UpdateAnnouncementDialog.show(
       dialogContext,
-      config: config,
+      config: effectiveConfig,
+      currentVersion: version,
     );
-    if (!mounted || config.versionInfo.isForce) return;
+    if (!mounted || isForce) return;
     if (action == AnnouncementAction.update || action == AnnouncementAction.later) {
       ref.read(appPreferencesProvider.notifier).setLastSeenAnnouncement(
-        version: remoteVersion,
-        announcementId: config.announcement.id,
+        version: version,
+        announcementId: effectiveConfig.announcement.id,
       );
     }
   }

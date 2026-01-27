@@ -6,6 +6,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import 'donors_wall_screen.dart';
+import 'version_announcement_dialog.dart';
 
 enum AnnouncementAction {
   update,
@@ -17,13 +18,16 @@ class UpdateAnnouncementDialog extends StatelessWidget {
   const UpdateAnnouncementDialog({
     super.key,
     required this.config,
+    required this.currentVersion,
   });
 
   final UpdateAnnouncementConfig config;
+  final String currentVersion;
 
   static Future<AnnouncementAction?> show(
     BuildContext context, {
     required UpdateAnnouncementConfig config,
+    required String currentVersion,
   }) {
     return showGeneralDialog<AnnouncementAction>(
       context: context,
@@ -32,7 +36,10 @@ class UpdateAnnouncementDialog extends StatelessWidget {
       barrierColor: Colors.black.withValues(alpha: 0.35),
       transitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (context, animation, secondaryAnimation) {
-        return UpdateAnnouncementDialog(config: config);
+        return UpdateAnnouncementDialog(
+          config: config,
+          currentVersion: currentVersion,
+        );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
@@ -92,31 +99,33 @@ class UpdateAnnouncementDialog extends StatelessWidget {
         .where((name) => name.isNotEmpty)
         .map((name) => '@$name')
         .toList(growable: false);
-    final version = config.versionInfo.latestVersion.trim();
+    final version = currentVersion.trim();
     final rawTitle = config.announcement.title.trim();
     final fallbackTitle = context.tr(zh: '版本公告', en: 'Release Notes');
     final titleBase = rawTitle.isEmpty ? fallbackTitle : rawTitle;
     final title = version.isEmpty ? titleBase : '$titleBase v$version';
+    final releaseEntry = config.releaseNoteForVersion(version);
+    final releaseItems = buildVersionAnnouncementItems(releaseEntry);
+    final showUpdateAction = _compareVersionTriplets(config.versionInfo.latestVersion, version) > 0;
 
     Widget buildAnnouncementItems() {
-      final contents = config.announcement.contentsForLanguageCode(
-        Localizations.localeOf(context).languageCode,
-      );
-      if (contents.isEmpty) {
+      if (releaseItems.isEmpty) {
         return Text(
-          context.tr(zh: '暂无更新内容', en: 'No details available'),
+          context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
           style: TextStyle(fontSize: 13.5, height: 1.35, color: textMuted),
         );
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < contents.length; i++) ...[
-            Text(
-              contents[i],
-              style: TextStyle(fontSize: 13.5, height: 1.35, color: textMuted),
+          for (var i = 0; i < releaseItems.length; i++) ...[
+            _ReleaseNoteRow(
+              item: releaseItems[i],
+              textMain: textMain,
+              textMuted: textMuted,
+              isDark: isDark,
             ),
-            if (i != contents.length - 1) const SizedBox(height: 8),
+            if (i != releaseItems.length - 1) const SizedBox(height: 8),
           ],
         ],
       );
@@ -214,29 +223,30 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 18),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: accent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              elevation: 0,
-                            ),
-                            onPressed: () async {
-                              final launched = await _launchDownload(context, config.versionInfo.downloadUrl);
-                              if (!launched || isForce) return;
-                              if (context.mounted) {
-                                Navigator.of(context).pop(AnnouncementAction.update);
-                              }
-                            },
-                            child: Text(
-                              context.tr(zh: '立即获取新版本', en: 'Get the new version'),
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                        if (showUpdateAction)
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: accent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 0,
+                              ),
+                              onPressed: () async {
+                                final launched = await _launchDownload(context, config.versionInfo.downloadUrl);
+                                if (!launched || isForce) return;
+                                if (context.mounted) {
+                                  Navigator.of(context).pop(AnnouncementAction.update);
+                                }
+                              },
+                              child: Text(
+                                context.tr(zh: '立即获取新版本', en: 'Get the new version'),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
                             ),
                           ),
-                        ),
                         const SizedBox(height: 8),
                         if (isForce)
                           TextButton(
@@ -267,4 +277,62 @@ class UpdateAnnouncementDialog extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReleaseNoteRow extends StatelessWidget {
+  const _ReleaseNoteRow({
+    required this.item,
+    required this.textMain,
+    required this.textMuted,
+    required this.isDark,
+  });
+
+  final VersionAnnouncementItem item;
+  final Color textMain;
+  final Color textMuted;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = item.category.labelWithColon(context);
+    final highlight = item.category.tone(isDark: isDark);
+    final detail = context.tr(zh: item.detailZh, en: item.detailEn);
+
+    return Text.rich(
+      TextSpan(
+        style: TextStyle(fontSize: 13.5, height: 1.35, color: textMain),
+        children: [
+          TextSpan(
+            text: title,
+            style: TextStyle(fontWeight: FontWeight.w700, color: highlight),
+          ),
+          TextSpan(text: detail, style: TextStyle(color: textMuted)),
+        ],
+      ),
+    );
+  }
+}
+
+List<int> _parseVersionTriplet(String version) {
+  if (version.trim().isEmpty) return const [0, 0, 0];
+  final trimmed = version.split(RegExp(r'[-+]')).first;
+  final parts = trimmed.split('.');
+  final values = <int>[0, 0, 0];
+  for (var i = 0; i < 3; i++) {
+    if (i >= parts.length) break;
+    final match = RegExp(r'\d+').firstMatch(parts[i]);
+    if (match == null) continue;
+    values[i] = int.tryParse(match.group(0) ?? '') ?? 0;
+  }
+  return values;
+}
+
+int _compareVersionTriplets(String a, String b) {
+  final left = _parseVersionTriplet(a);
+  final right = _parseVersionTriplet(b);
+  for (var i = 0; i < 3; i++) {
+    final diff = left[i] - right[i];
+    if (diff != 0) return diff;
+  }
+  return 0;
 }

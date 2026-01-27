@@ -3,13 +3,16 @@ class UpdateAnnouncementConfig {
     required this.versionInfo,
     required this.announcement,
     required this.donors,
+    required this.releaseNotes,
   });
 
   final UpdateVersionInfo versionInfo;
   final UpdateAnnouncement announcement;
   final List<UpdateDonor> donors;
+  final List<UpdateReleaseNoteEntry> releaseNotes;
 
   bool get hasDonors => donors.isNotEmpty;
+  bool get hasReleaseNotes => releaseNotes.isNotEmpty;
 
   factory UpdateAnnouncementConfig.fromJson(Map<String, dynamic> json) {
     final versionInfo = UpdateVersionInfo.fromJson(_readMap(json['version_info']) ?? json);
@@ -19,11 +22,22 @@ class UpdateAnnouncementConfig {
         .map((raw) => UpdateDonor.fromJson(raw.cast<String, dynamic>()))
         .where((donor) => donor.name.trim().isNotEmpty || donor.avatar.trim().isNotEmpty)
         .toList(growable: false);
+    final releaseNotes = _readReleaseNotes(json['release_notes']);
     return UpdateAnnouncementConfig(
       versionInfo: versionInfo,
       announcement: announcement,
       donors: donors,
+      releaseNotes: releaseNotes,
     );
+  }
+
+  UpdateReleaseNoteEntry? releaseNoteForVersion(String version) {
+    final normalized = _normalizeVersionLabel(version);
+    if (normalized.isEmpty || releaseNotes.isEmpty) return null;
+    for (final entry in releaseNotes) {
+      if (_normalizeVersionLabel(entry.version) == normalized) return entry;
+    }
+    return null;
   }
 
   static Map<String, dynamic>? _readMap(dynamic value) {
@@ -138,6 +152,51 @@ class UpdateDonor {
   }
 }
 
+class UpdateReleaseNoteEntry {
+  const UpdateReleaseNoteEntry({
+    required this.version,
+    required this.dateLabel,
+    required this.items,
+  });
+
+  final String version;
+  final String dateLabel;
+  final List<UpdateReleaseNoteItem> items;
+
+  factory UpdateReleaseNoteEntry.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    final items = <UpdateReleaseNoteItem>[];
+    if (rawItems is List) {
+      for (final rawGroup in rawItems) {
+        if (rawGroup is! Map) continue;
+        final group = rawGroup.cast<String, dynamic>();
+        final category = _readString(group, 'category');
+        final contents = _readStringList(group['contents']);
+        for (final content in contents) {
+          final trimmed = content.trim();
+          if (trimmed.isEmpty) continue;
+          items.add(UpdateReleaseNoteItem(category: category, content: trimmed));
+        }
+      }
+    }
+    return UpdateReleaseNoteEntry(
+      version: _readString(json, 'version'),
+      dateLabel: _readString(json, 'date', fallbackKey: 'dateLabel'),
+      items: items,
+    );
+  }
+}
+
+class UpdateReleaseNoteItem {
+  const UpdateReleaseNoteItem({
+    required this.category,
+    required this.content,
+  });
+
+  final String category;
+  final String content;
+}
+
 String _readString(Map<String, dynamic> json, String key, {String? fallbackKey}) {
   final raw = json[key] ?? (fallbackKey == null ? null : json[fallbackKey]);
   if (raw is String) return raw.trim();
@@ -174,6 +233,15 @@ List<String> _readStringList(dynamic value) {
     return [trimmed];
   }
   return const [];
+}
+
+List<UpdateReleaseNoteEntry> _readReleaseNotes(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map((raw) => UpdateReleaseNoteEntry.fromJson(raw.cast<String, dynamic>()))
+      .where((entry) => entry.version.trim().isNotEmpty || entry.items.isNotEmpty)
+      .toList(growable: false);
 }
 
 List<String> _readIdList(dynamic value) {
@@ -225,4 +293,13 @@ String _normalizeLangKey(String code) {
   if (normalized.startsWith('zh')) return 'zh';
   if (normalized.startsWith('en')) return 'en';
   return normalized.split('-').first;
+}
+
+String _normalizeVersionLabel(String version) {
+  final trimmed = version.trim();
+  if (trimmed.isEmpty) return '';
+  if (trimmed.length >= 2 && (trimmed[0] == 'v' || trimmed[0] == 'V')) {
+    return trimmed.substring(1);
+  }
+  return trimmed;
 }

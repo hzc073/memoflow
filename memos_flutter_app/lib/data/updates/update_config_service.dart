@@ -53,7 +53,6 @@ class UpdateConfigService {
         final config = UpdateAnnouncementConfig.fromJson(
           decoded.cast<String, dynamic>(),
         );
-        if (config.versionInfo.latestVersion.trim().isEmpty) return null;
         return config;
       }
     } on DioException {

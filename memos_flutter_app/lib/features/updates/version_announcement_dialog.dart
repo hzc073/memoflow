@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/updates/update_config.dart';
 
 enum ReleaseNoteCategory {
   feature,
@@ -186,67 +187,79 @@ class VersionAnnouncementEntry {
   final List<VersionAnnouncementItem> items;
 }
 
-class VersionAnnouncementContent {
-  // Add new releases at the top; older entries stay below for the timeline.
-  static const List<VersionAnnouncementEntry> entries = [
-    VersionAnnouncementEntry(
-      version: '1.0.5',
-      dateLabel: '2024-05-20',
-      items: [
-        VersionAnnouncementItem(
-          category: ReleaseNoteCategory.feature,
-          detailZh: '第三方分享接入',
-          detailEn: 'Third-party share integration',
-        ),
-        VersionAnnouncementItem(
-          category: ReleaseNoteCategory.feature,
-          detailZh: '功能组件和赞赏',
-          detailEn: 'Feature widgets and donations',
-        ),
-        VersionAnnouncementItem(
-          category: ReleaseNoteCategory.fix,
-          detailZh: '编辑时图片无法加载',
-          detailEn: 'Images not loading while editing',
-        ),
-        VersionAnnouncementItem(
-          category: ReleaseNoteCategory.fix,
-          detailZh: '链接过长无法渲染',
-          detailEn: 'Long links not rendering',
-        ),
-        VersionAnnouncementItem(
-          category: ReleaseNoteCategory.improvement,
-          detailZh: '进入笔记详情自动展开',
-          detailEn: 'Memo details auto-expand',
-        ),
-        VersionAnnouncementItem(
-          category: ReleaseNoteCategory.improvement,
-          detailZh: 'AI 设置持久化保存本地',
-          detailEn: 'AI settings persist locally',
-        ),
-      ],
-    ),
-  ];
+List<VersionAnnouncementEntry> buildVersionAnnouncementEntries(List<UpdateReleaseNoteEntry> entries) {
+  return entries
+      .map(buildVersionAnnouncementEntry)
+      .whereType<VersionAnnouncementEntry>()
+      .toList(growable: false);
+}
 
-  static VersionAnnouncementEntry? entryForVersion(String version) {
-    final normalized = version.trim();
-    if (entries.isEmpty) return null;
-    if (normalized.isEmpty) return entries.first;
-    for (final entry in entries) {
-      if (entry.version == normalized) return entry;
+VersionAnnouncementEntry? buildVersionAnnouncementEntry(UpdateReleaseNoteEntry entry) {
+  final version = entry.version.trim();
+  if (version.isEmpty && entry.items.isEmpty) return null;
+  return VersionAnnouncementEntry(
+    version: version,
+    dateLabel: entry.dateLabel,
+    items: buildVersionAnnouncementItems(entry),
+  );
+}
+
+VersionAnnouncementEntry? findVersionAnnouncementEntry(
+  List<UpdateReleaseNoteEntry> entries,
+  String version,
+) {
+  final normalized = _normalizeReleaseNoteVersion(version);
+  if (normalized.isEmpty) return null;
+  for (final entry in entries) {
+    if (_normalizeReleaseNoteVersion(entry.version) == normalized) {
+      return buildVersionAnnouncementEntry(entry);
     }
-    return null;
   }
+  return null;
+}
 
-  static List<VersionAnnouncementItem> forVersion(String version) {
-    return entryForVersion(version)?.items ?? (entries.isNotEmpty ? entries.first.items : const []);
+List<VersionAnnouncementItem> buildVersionAnnouncementItems(UpdateReleaseNoteEntry? entry) {
+  if (entry == null) return const [];
+  final items = <VersionAnnouncementItem>[];
+  for (final item in entry.items) {
+    final content = item.content.trim();
+    if (content.isEmpty) continue;
+    items.add(
+      VersionAnnouncementItem(
+        category: parseReleaseNoteCategory(item.category),
+        detailZh: content,
+        detailEn: content,
+      ),
+    );
   }
+  return items;
+}
 
-  static VersionAnnouncementEntry? latestEntry() {
-    if (entries.isEmpty) return null;
-    return entries.first;
+ReleaseNoteCategory parseReleaseNoteCategory(String raw) {
+  final normalized = raw.trim().toLowerCase();
+  if (normalized.isEmpty) return ReleaseNoteCategory.feature;
+  if (normalized.contains('新增') || normalized.contains('feature') || normalized.contains('new')) {
+    return ReleaseNoteCategory.feature;
   }
+  if (normalized.contains('优化') ||
+      normalized.contains('improve') ||
+      normalized.contains('perf') ||
+      normalized.contains('performance')) {
+    return ReleaseNoteCategory.improvement;
+  }
+  if (normalized.contains('修复') || normalized.contains('fix') || normalized.contains('bug')) {
+    return ReleaseNoteCategory.fix;
+  }
+  return ReleaseNoteCategory.feature;
+}
 
-  static List<VersionAnnouncementEntry> allEntries() => entries;
+String _normalizeReleaseNoteVersion(String version) {
+  final trimmed = version.trim();
+  if (trimmed.isEmpty) return '';
+  if (trimmed.length >= 2 && (trimmed[0] == 'v' || trimmed[0] == 'V')) {
+    return trimmed.substring(1);
+  }
+  return trimmed;
 }
 
 class _AnnouncementItemRow extends StatelessWidget {
