@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,7 +55,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
   static const UpdateAnnouncementConfig _fallbackUpdateConfig = UpdateAnnouncementConfig(
-    versionInfo: const UpdateVersionInfo(latestVersion: '', isForce: false, downloadUrl: ''),
+    versionInfo: const UpdateVersionInfo(
+      latestVersion: '',
+      isForce: false,
+      downloadUrl: '',
+      debugVersion: '',
+    ),
     announcement: const UpdateAnnouncement(
       id: 0,
       title: '',
@@ -352,7 +358,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   }
 
   Future<void> _maybeShowUpdateAnnouncement() async {
-    final version = await _resolveAppVersion();
+    var version = await _resolveAppVersion();
     if (!mounted || version == null || version.isEmpty) return;
 
     final prefs = ref.read(appPreferencesProvider);
@@ -361,6 +367,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final config = await ref.read(updateConfigServiceProvider).fetchLatest();
     if (!mounted) return;
     final effectiveConfig = config ?? _fallbackUpdateConfig;
+    if (kDebugMode) {
+      final debugVersion = effectiveConfig.versionInfo.debugVersion.trim();
+      version = debugVersion.isNotEmpty ? debugVersion : '999.0';
+    }
     final isForce = effectiveConfig.versionInfo.isForce;
 
     final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();

@@ -154,6 +154,11 @@ Future<void> _discardLocalChangesForMemo(AppDatabase db, String memoUid) async {
   }
 }
 
+enum _QueueDeleteChoice {
+  keepMemo,
+  deleteMemo,
+}
+
 class SyncQueueScreen extends ConsumerWidget {
   const SyncQueueScreen({super.key});
 
@@ -180,13 +185,48 @@ class SyncQueueScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref, _SyncQueueItem item) async {
+    final db = ref.read(databaseProvider);
+    final memoUid = item.memoUid?.trim();
+    if (memoUid != null && memoUid.isNotEmpty) {
+      final choice = await showDialog<_QueueDeleteChoice>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
+          content: Text(context.tr(
+            zh: '\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\u65f6\uff0c\u662f\u5426\u4fdd\u7559\u672c\u5730\u7b14\u8bb0\uff1f',
+            en: 'When removing this sync task, keep the local memo or delete it?',
+          )),
+          actions: [
+            TextButton(
+              onPressed: () => context.safePop(),
+              child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+            ),
+            TextButton(
+              onPressed: () => context.safePop(_QueueDeleteChoice.keepMemo),
+              child: Text(context.tr(zh: '\u4fdd\u7559\u7b14\u8bb0', en: 'Keep memo')),
+            ),
+            FilledButton(
+              onPressed: () => context.safePop(_QueueDeleteChoice.deleteMemo),
+              child: Text(context.tr(zh: '\u5220\u9664\u7b14\u8bb0', en: 'Delete memo')),
+            ),
+          ],
+        ),
+      );
+      if (choice == _QueueDeleteChoice.keepMemo) {
+        await db.deleteOutbox(item.id);
+      } else if (choice == _QueueDeleteChoice.deleteMemo) {
+        await _discardLocalChangesForMemo(db, memoUid);
+      }
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
             content: Text(context.tr(
-              zh: '\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\u5e76\u4e22\u5f03\u672c\u5730\u6539\u52a8\uff1f',
-              en: 'Delete this sync task and discard local changes?',
+              zh: '\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\uff1f',
+              en: 'Delete this sync task?',
             )),
             actions: [
               TextButton(
@@ -202,13 +242,6 @@ class SyncQueueScreen extends ConsumerWidget {
         ) ??
         false;
     if (!confirmed) return;
-
-    final db = ref.read(databaseProvider);
-    final memoUid = item.memoUid?.trim();
-    if (memoUid != null && memoUid.isNotEmpty) {
-      await _discardLocalChangesForMemo(db, memoUid);
-      return;
-    }
     await db.deleteOutbox(item.id);
   }
 
