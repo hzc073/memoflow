@@ -267,6 +267,16 @@ class FlomoImportService {
     );
 
     final archive = ZipDecoder().decodeBytes(bytes);
+    final memoEntries = _memoFlowMemoEntries(archive);
+    if (memoEntries.isNotEmpty || _memoFlowIndexExists(archive)) {
+      return _importMemoFlowExportZip(
+        archive: archive,
+        fileMd5: fileMd5,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+        counters: counters,
+      );
+    }
     final htmlEntry = archive.files.firstWhere(
       (f) => f.isFile && f.name.toLowerCase().endsWith('.html'),
       orElse: () => ArchiveFile('', 0, const []),
@@ -289,6 +299,157 @@ class FlomoImportService {
       onProgress: onProgress,
       isCancelled: isCancelled,
       counters: counters,
+    );
+  }
+
+  Future<ImportResult> _importMemoFlowExportZip({
+    required Archive archive,
+    required String fileMd5,
+    required ImportProgressCallback onProgress,
+    required ImportCancelCheck isCancelled,
+    required _ImportCounters counters,
+  }) async {
+    _ensureNotCancelled(isCancelled);
+    _reportProgress(
+      onProgress,
+      progress: 0.2,
+      statusText: trByLanguage(language: language, zh: '正在解析 MemoFlow 导出...', en: 'Parsing MemoFlow export...'),
+      progressLabel: trByLanguage(language: language, zh: '解析中', en: 'Parsing'),
+      progressDetail: trByLanguage(language: language, zh: '正在准备笔记内容', en: 'Preparing memo content'),
+    );
+
+    final memoEntries = _memoFlowMemoEntries(archive);
+    if (memoEntries.isEmpty) {
+      throw ImportException(
+        trByLanguage(language: language, zh: '压缩包内未找到 Markdown 笔记', en: 'No Markdown memos found in ZIP.'),
+      );
+    }
+
+    final importRoot = await _resolveImportRoot(fileMd5);
+    await _extractArchiveSafely(archive, importRoot);
+
+    final attachmentEntries = _memoFlowAttachmentEntries(archive);
+    final attachmentsByMemoUid = <String, List<_MemoFlowArchiveAttachment>>{};
+    for (final entry in attachmentEntries) {
+      attachmentsByMemoUid.putIfAbsent(entry.memoUid, () => <_MemoFlowArchiveAttachment>[]).add(entry);
+    }
+
+    final existingTags = await _loadExistingTags();
+    final importedTags = <String>{};
+
+    final total = memoEntries.length;
+    var processed = 0;
+
+    for (final memoFile in memoEntries) {
+      _ensureNotCancelled(isCancelled);
+      processed++;
+
+      final raw = utf8.decode(_readArchiveBytes(memoFile), allowMalformed: true);
+      final parsed = _parseMemoFlowMarkdown(raw);
+      final content = parsed.content.trimRight();
+      if (content.trim().isEmpty) {
+        counters.setFailedCount(counters.failedCount() + 1);
+        _reportQueueProgress(onProgress, processed, total);
+        continue;
+      }
+
+      final memoUid = parsed.uid.isNotEmpty ? parsed.uid : generateUid();
+      final mergedTags = <String>{...parsed.tags, ...extractTags(content)}.toList(growable: false)..sort();
+      importedTags.addAll(mergedTags);
+
+      final memoAttachments = attachmentsByMemoUid[parsed.uid] ?? const <_MemoFlowArchiveAttachment>[];
+      final attachments = <Map<String, dynamic>>[];
+      final attachmentQueue = <_QueuedAttachment>[];
+      for (final attachment in memoAttachments) {
+        final localPath = _resolveArchivePath(importRoot, attachment.archivePath);
+        if (localPath == null) continue;
+        final file = File(localPath);
+        if (!file.existsSync()) continue;
+        final filename = attachment.filename;
+        final mimeType = _guessMimeType(filename);
+        final size = file.lengthSync();
+        final attachmentUid = generateUid();
+        attachments.add(
+          Attachment(
+            name: 'attachments/$attachmentUid',
+            filename: filename,
+            type: mimeType,
+            size: size,
+            externalLink: Uri.file(localPath).toString(),
+          ).toJson(),
+        );
+        attachmentQueue.add(
+          _QueuedAttachment(
+            uid: attachmentUid,
+            memoUid: memoUid,
+            filePath: localPath,
+            filename: filename,
+            mimeType: mimeType,
+            size: size,
+          ),
+        );
+      }
+
+      await db.upsertMemo(
+        uid: memoUid,
+        content: content,
+        visibility: parsed.visibility,
+        pinned: parsed.pinned,
+        state: parsed.state,
+        createTimeSec: parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: parsed.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+        tags: mergedTags,
+        attachments: attachments,
+        syncState: 1,
+      );
+
+      await db.enqueueOutbox(type: 'create_memo', payload: {
+        'uid': memoUid,
+        'content': content,
+        'visibility': parsed.visibility,
+        'pinned': parsed.pinned,
+        'has_attachments': attachments.isNotEmpty,
+        'display_time': parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      });
+
+      if (parsed.state.trim().isNotEmpty && parsed.state.trim().toUpperCase() != 'NORMAL') {
+        await db.enqueueOutbox(type: 'update_memo', payload: {
+          'uid': memoUid,
+          'state': parsed.state,
+        });
+      }
+
+      for (final attachment in attachmentQueue) {
+        await db.enqueueOutbox(type: 'upload_attachment', payload: {
+          'uid': attachment.uid,
+          'memo_uid': attachment.memoUid,
+          'file_path': attachment.filePath,
+          'filename': attachment.filename,
+          'mime_type': attachment.mimeType,
+          'file_size': attachment.size,
+        });
+        counters.setAttachmentCount(counters.attachmentCount() + 1);
+      }
+
+      counters.setMemoCount(counters.memoCount() + 1);
+      _reportQueueProgress(onProgress, processed, total);
+    }
+
+    final newTags = importedTags.difference(existingTags).toList(growable: false)..sort();
+
+    _reportProgress(
+      onProgress,
+      progress: 1.0,
+      statusText: trByLanguage(language: language, zh: '导入完成', en: 'Import complete'),
+      progressLabel: trByLanguage(language: language, zh: '完成', en: 'Done'),
+      progressDetail: trByLanguage(language: language, zh: '正在提交同步队列', en: 'Submitting sync queue'),
+    );
+
+    return ImportResult(
+      memoCount: counters.memoCount(),
+      attachmentCount: counters.attachmentCount(),
+      failedCount: counters.failedCount(),
+      newTags: newTags,
     );
   }
 
@@ -517,6 +678,178 @@ class FlomoImportService {
 
   List<int> _readArchiveBytes(ArchiveFile file) {
     return file.content;
+  }
+
+  List<ArchiveFile> _memoFlowMemoEntries(Archive archive) {
+    final entries = <ArchiveFile>[];
+    for (final file in archive.files) {
+      if (_isMemoFlowMemoEntry(file)) {
+        entries.add(file);
+      }
+    }
+    return entries;
+  }
+
+  bool _memoFlowIndexExists(Archive archive) {
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      final normalized = _normalizeArchivePath(file.name).toLowerCase();
+      if (normalized.endsWith('memos/index.md')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isMemoFlowMemoEntry(ArchiveFile file) {
+    if (!file.isFile) return false;
+    final normalized = _normalizeArchivePath(file.name);
+    final lower = normalized.toLowerCase();
+    if (!lower.endsWith('.md')) return false;
+    final segments = lower.split('/');
+    final memosIndex = segments.lastIndexOf('memos');
+    if (memosIndex == -1 || memosIndex >= segments.length - 1) return false;
+    final filename = segments.last;
+    return filename != 'index.md';
+  }
+
+  List<_MemoFlowArchiveAttachment> _memoFlowAttachmentEntries(Archive archive) {
+    final entries = <_MemoFlowArchiveAttachment>[];
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      final normalized = _normalizeArchivePath(file.name);
+      final segments = normalized.split('/');
+      final lowerSegments = segments.map((s) => s.toLowerCase()).toList(growable: false);
+      final idx = lowerSegments.lastIndexOf('attachments');
+      if (idx == -1 || segments.length < idx + 3) continue;
+      final memoUid = segments[idx + 1].trim();
+      final filename = segments.last.trim();
+      if (memoUid.isEmpty || filename.isEmpty) continue;
+      entries.add(
+        _MemoFlowArchiveAttachment(
+          memoUid: memoUid,
+          filename: filename,
+          archivePath: file.name,
+        ),
+      );
+    }
+    return entries;
+  }
+
+  String _normalizeArchivePath(String raw) {
+    var normalized = raw.replaceAll('\\', '/');
+    if (normalized.startsWith('./')) {
+      normalized = normalized.substring(2);
+    }
+    return normalized;
+  }
+
+  String? _resolveArchivePath(Directory root, String archivePath) {
+    final outPath = p.normalize(p.join(root.path, archivePath));
+    if (!p.isWithin(root.path, outPath)) return null;
+    return outPath;
+  }
+
+  _MemoFlowParsedMemo _parseMemoFlowMarkdown(String raw) {
+    final lines = const LineSplitter().convert(raw);
+    var meta = <String, String>{};
+    var contentStart = 0;
+
+    if (lines.isNotEmpty && lines.first.trim() == '---') {
+      for (var i = 1; i < lines.length; i++) {
+        if (lines[i].trim() == '---') {
+          meta = _parseMemoFlowFrontMatter(lines.sublist(1, i));
+          contentStart = i + 1;
+          break;
+        }
+      }
+    }
+
+    var contentLines = contentStart > 0 ? lines.sublist(contentStart) : lines;
+    if (contentStart > 0 && contentLines.isNotEmpty && contentLines.first.trim().isEmpty) {
+      contentLines = contentLines.sublist(1);
+    }
+
+    final content = contentLines.join('\n');
+    final uid = (meta['uid'] ?? '').trim();
+    final created = _parseMemoFlowTime(meta['created'], DateTime.now());
+    final updated = _parseMemoFlowTime(meta['updated'], created);
+    final visibility = _normalizeMemoFlowVisibility(meta['visibility']);
+    final pinned = _parseMemoFlowBool(meta['pinned']);
+    final state = _normalizeMemoFlowState(meta['state']);
+    final tags = _parseMemoFlowTags(meta['tags']);
+
+    return _MemoFlowParsedMemo(
+      uid: uid,
+      content: content,
+      createTime: created,
+      updateTime: updated,
+      visibility: visibility,
+      pinned: pinned,
+      state: state,
+      tags: tags,
+    );
+  }
+
+  Map<String, String> _parseMemoFlowFrontMatter(List<String> lines) {
+    final out = <String, String>{};
+    for (final line in lines) {
+      final idx = line.indexOf(':');
+      if (idx <= 0) continue;
+      final key = line.substring(0, idx).trim().toLowerCase();
+      final value = line.substring(idx + 1).trim();
+      if (key.isEmpty || value.isEmpty) continue;
+      out[key] = value;
+    }
+    return out;
+  }
+
+  DateTime _parseMemoFlowTime(String? raw, DateTime fallback) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return fallback;
+    return DateTime.tryParse(value) ?? fallback;
+  }
+
+  bool _parseMemoFlowBool(String? raw) {
+    final value = raw?.trim().toLowerCase() ?? '';
+    return value == 'true' || value == '1' || value == 'yes';
+  }
+
+  String _normalizeMemoFlowVisibility(String? raw) {
+    final value = raw?.trim().toUpperCase() ?? '';
+    return switch (value) {
+      'PUBLIC' || 'PROTECTED' || 'PRIVATE' => value,
+      _ => 'PRIVATE',
+    };
+  }
+
+  String _normalizeMemoFlowState(String? raw) {
+    final value = raw?.trim().toUpperCase() ?? '';
+    return switch (value) {
+      'ARCHIVED' || 'NORMAL' => value,
+      _ => 'NORMAL',
+    };
+  }
+
+  List<String> _parseMemoFlowTags(String? raw) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) return const [];
+    final tags = <String>{};
+    for (final part in value.split(RegExp(r'\s+'))) {
+      var t = part.trim();
+      if (t.startsWith('#')) {
+        t = t.substring(1);
+      }
+      if (t.endsWith(',')) {
+        t = t.substring(0, t.length - 1);
+      }
+      if (t.isNotEmpty) {
+        tags.add(t);
+      }
+    }
+    final list = tags.toList(growable: false);
+    list.sort();
+    return list;
   }
 
   List<_ParsedMemo> _parseFlomoHtml(String html, String htmlRootPath) {
@@ -760,6 +1093,40 @@ class FlomoImportService {
       throw const ImportCancelled();
     }
   }
+}
+
+class _MemoFlowArchiveAttachment {
+  const _MemoFlowArchiveAttachment({
+    required this.memoUid,
+    required this.filename,
+    required this.archivePath,
+  });
+
+  final String memoUid;
+  final String filename;
+  final String archivePath;
+}
+
+class _MemoFlowParsedMemo {
+  const _MemoFlowParsedMemo({
+    required this.uid,
+    required this.content,
+    required this.createTime,
+    required this.updateTime,
+    required this.visibility,
+    required this.pinned,
+    required this.state,
+    required this.tags,
+  });
+
+  final String uid;
+  final String content;
+  final DateTime createTime;
+  final DateTime updateTime;
+  final String visibility;
+  final bool pinned;
+  final String state;
+  final List<String> tags;
 }
 
 class _ParsedMemo {

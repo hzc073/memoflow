@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,9 +12,12 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/url.dart';
+import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/database_provider.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/session_provider.dart';
 import '../import/import_flow_screens.dart';
 
 class ImportExportScreen extends ConsumerStatefulWidget {
@@ -83,6 +87,74 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     return '$header${memo.content.trimRight()}\n';
   }
 
+  String _sanitizePathSegment(String raw, {String fallback = 'attachment'}) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return fallback;
+    return trimmed.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  }
+
+  String _attachmentArchiveName(Attachment attachment) {
+    final rawName = attachment.filename.trim().isNotEmpty
+        ? attachment.filename.trim()
+        : (attachment.uid.isNotEmpty ? attachment.uid : attachment.name);
+    final safeName = _sanitizePathSegment(rawName, fallback: 'attachment');
+    final uid = attachment.uid.trim();
+    if (uid.isEmpty) return safeName;
+    if (safeName.startsWith('$uid.')) return safeName;
+    if (safeName == uid) return safeName;
+    return '${uid}_$safeName';
+  }
+
+  File? _localAttachmentFile(Attachment attachment) {
+    final raw = attachment.externalLink.trim();
+    if (!raw.startsWith('file://')) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    final path = uri.toFilePath();
+    if (path.trim().isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return file;
+  }
+
+  String? _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment) {
+    final link = attachment.externalLink.trim();
+    if (link.isNotEmpty && !link.startsWith('file://') && !link.startsWith('content://')) {
+      if (link.startsWith('http://') || link.startsWith('https://')) return link;
+      if (baseUrl == null) return null;
+      return joinBaseUrl(baseUrl, link);
+    }
+    if (baseUrl == null) return null;
+    final filename = attachment.filename.trim();
+    if (filename.isEmpty) return null;
+    return joinBaseUrl(baseUrl, 'file/${attachment.name}/$filename');
+  }
+
+  Future<List<int>?> _readAttachmentBytes(
+    Attachment attachment, {
+    required Uri? baseUrl,
+    required String? authHeader,
+    Dio? dio,
+  }) async {
+    final localFile = _localAttachmentFile(attachment);
+    if (localFile != null) {
+      return localFile.readAsBytes();
+    }
+
+    final url = _resolveAttachmentUrl(baseUrl, attachment);
+    if (url == null || url.isEmpty) return null;
+
+    final client = dio ?? Dio();
+    final response = await client.get<List<int>>(
+      url,
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: authHeader == null ? null : {'Authorization': authHeader},
+      ),
+    );
+    return response.data;
+  }
+
   Future<Directory?> _tryGetDownloadsDirectory() async {
     try {
       return await getDownloadsDirectory();
@@ -116,7 +188,19 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
   Future<void> _export() async {
     if (_exporting) return;
     setState(() => _exporting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(context.tr(zh: '正在导出...', en: 'Exporting...')),
+        duration: const Duration(seconds: 30),
+      ),
+    );
     final language = ref.read(appPreferencesProvider).language;
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    final authHeader =
+        (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
     try {
       final db = ref.read(databaseProvider);
       final (startSec, endSecExclusive) = _rangeToUtcSec(_range);
@@ -126,6 +210,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         includeArchived: _includeArchived,
       );
       final memos = rows.map(LocalMemo.fromDb).where((m) => m.uid.isNotEmpty).toList(growable: false);
+      final totalMemoCount = rows.length;
+      final exportedMemoCount = memos.length;
+      final skippedMemoCount = totalMemoCount - exportedMemoCount;
 
       final archive = Archive();
       final indexLines = <String>[
@@ -134,7 +221,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         '${trByLanguage(language: language, zh: '- 导出时间', en: '- Export time')}: ${DateTime.now().toIso8601String()}',
         '${trByLanguage(language: language, zh: '- 时间范围', en: '- Date range')}: ${_formatRange(_range, language)}',
         '${trByLanguage(language: language, zh: '- 包含归档', en: '- Include archived')}: ${_includeArchived ? trByLanguage(language: language, zh: '是', en: 'Yes') : trByLanguage(language: language, zh: '否', en: 'No')}',
-        '${trByLanguage(language: language, zh: '- 数量', en: '- Count')}: ${memos.length}',
+        '${trByLanguage(language: language, zh: '- 数量', en: '- Count')}: $exportedMemoCount',
         '',
       ];
       final indexBytes = utf8.encode(indexLines.join('\n'));
@@ -144,6 +231,46 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         final filename = _memoFilename(memo);
         final content = utf8.encode(_memoMarkdown(memo));
         archive.addFile(ArchiveFile('memos/$filename', content.length, content));
+      }
+
+      var exportedAttachmentCount = 0;
+      var skippedAttachmentCount = 0;
+      final usedAttachmentPaths = <String>{};
+      final httpClient = Dio();
+      for (final memo in memos) {
+        if (memo.attachments.isEmpty) continue;
+        final memoDir = _sanitizePathSegment(memo.uid, fallback: 'memo');
+        for (final attachment in memo.attachments) {
+          try {
+            final bytes = await _readAttachmentBytes(
+              attachment,
+              baseUrl: baseUrl,
+              authHeader: authHeader,
+              dio: httpClient,
+            );
+            if (bytes == null) {
+              skippedAttachmentCount++;
+              continue;
+            }
+            final name = _attachmentArchiveName(attachment);
+            var entryPath = 'attachments/$memoDir/$name';
+            if (usedAttachmentPaths.contains(entryPath)) {
+              final base = p.basenameWithoutExtension(name);
+              final ext = p.extension(name);
+              var index = 1;
+              do {
+                entryPath = 'attachments/$memoDir/$base ($index)$ext';
+                index++;
+              } while (usedAttachmentPaths.contains(entryPath));
+            }
+            usedAttachmentPaths.add(entryPath);
+            archive.addFile(ArchiveFile(entryPath, bytes.length, bytes));
+            exportedAttachmentCount++;
+          } catch (_) {
+            // Skip attachments that cannot be resolved or downloaded.
+            skippedAttachmentCount++;
+          }
+        }
       }
 
       final zipData = ZipEncoder().encode(archive);
@@ -159,16 +286,41 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
 
       if (!mounted) return;
       setState(() => _lastExportPath = outPath);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '导出完成', en: 'Export finished'))),
+      messenger.hideCurrentSnackBar();
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(context.tr(zh: '导出完成', en: 'Export finished')),
+            content: Text(
+              context.tr(
+                zh:
+                    '笔记 $exportedMemoCount 条（跳过 $skippedMemoCount 条），附件 $exportedAttachmentCount 个（跳过 $skippedAttachmentCount 个）',
+                en:
+                    '$exportedMemoCount memos (skipped $skippedMemoCount), $exportedAttachmentCount attachments (skipped $skippedAttachmentCount).',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(context.tr(zh: '确定', en: 'OK')),
+              ),
+            ],
+          );
+        },
       );
     } catch (e) {
       if (!mounted) return;
+      messenger.hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(zh: '导出失败：$e', en: 'Export failed: $e'))),
       );
     } finally {
-      if (mounted) setState(() => _exporting = false);
+      if (mounted) {
+        messenger.hideCurrentSnackBar();
+        setState(() => _exporting = false);
+      }
     }
   }
 

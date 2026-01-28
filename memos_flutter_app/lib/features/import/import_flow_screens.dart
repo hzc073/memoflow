@@ -83,6 +83,56 @@ class ImportSourceScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _selectMarkdownZip(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      withData: true,
+    );
+    if (!context.mounted || result == null) return;
+
+    final file = result.files.isNotEmpty ? result.files.first : null;
+    if (file == null) return;
+
+    var path = file.path;
+    final fileName = file.name.trim();
+    final displayName = fileName.isNotEmpty ? fileName : (path == null ? '' : p.basename(path));
+    final bytes = file.bytes;
+
+    if ((path == null || path.trim().isEmpty || !File(path).existsSync()) && bytes != null) {
+      final tempDir = await getTemporaryDirectory();
+      if (!context.mounted) return;
+      final fallbackExt = (file.extension ?? '').trim().isNotEmpty ? file.extension!.trim() : 'zip';
+      final safeName =
+          _sanitizeFilename(displayName.isEmpty ? 'import.$fallbackExt' : displayName, fallbackExtension: fallbackExt);
+      final tempPath = p.join(tempDir.path, safeName);
+      await File(tempPath).writeAsBytes(bytes, flush: true);
+      if (!context.mounted) return;
+      path = tempPath;
+    }
+
+    if (path == null || path.trim().isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '无法获取文件路径', en: 'Unable to read file path.'))),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    final resolvedPath = path;
+    final shownName = displayName.isNotEmpty ? displayName : p.basename(resolvedPath);
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ImportRunScreen(
+          filePath: resolvedPath,
+          fileName: shownName,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -99,12 +149,6 @@ class ImportSourceScreen extends StatelessWidget {
               color: Colors.black.withValues(alpha: 0.06),
             ),
           ];
-    final fallbackNotice = context.tr(zh: '暂未支持', en: 'Not supported yet');
-
-    void fallbackTap() {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(fallbackNotice)));
-    }
-
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
@@ -185,7 +229,7 @@ class ImportSourceScreen extends StatelessWidget {
                             textMain: textMain,
                             textMuted: textMuted,
                             shadow: shadow,
-                            onTap: onSelectMarkdown ?? fallbackTap,
+                            onTap: onSelectMarkdown ?? () => _selectMarkdownZip(context),
                           ),
                           const Spacer(),
                           _ImportNoteCard(
