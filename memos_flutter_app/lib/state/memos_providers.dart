@@ -71,14 +71,31 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
 });
 
-final shortcutMemosProvider = FutureProvider.family<List<LocalMemo>, ShortcutMemosQuery>((ref, query) async {
+final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMemosQuery>((ref, query) async* {
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   if (account == null) {
     throw StateError('Not authenticated');
   }
 
-  final api = ref.watch(memosApiProvider);
   final db = ref.watch(databaseProvider);
+  final search = query.searchQuery.trim();
+  final normalizedTag = (query.tag ?? '').trim();
+  final initialPredicate = _buildShortcutPredicate(query.shortcutFilter);
+
+  if (initialPredicate != null) {
+    await for (final rows in db.watchMemos(
+      searchQuery: search.isEmpty ? null : search,
+      state: query.state,
+      tag: normalizedTag.isEmpty ? null : normalizedTag,
+      limit: 200,
+    )) {
+      final predicate = _buildShortcutPredicate(query.shortcutFilter) ?? initialPredicate;
+      yield _filterShortcutMemosFromRows(rows, predicate);
+    }
+    return;
+  }
+
+  final api = ref.watch(memosApiProvider);
   final creatorId = _parseUserId(account.user.name);
   final parent = _buildShortcutParent(creatorId);
   final filter = _buildShortcutFilter(
@@ -89,6 +106,7 @@ final shortcutMemosProvider = FutureProvider.family<List<LocalMemo>, ShortcutMem
     includeCreatorId: parent == null,
   );
 
+  var seed = <LocalMemo>[];
   try {
     final (memos, _) = await api.listMemos(
       pageSize: 200,
@@ -109,14 +127,7 @@ final shortcutMemosProvider = FutureProvider.family<List<LocalMemo>, ShortcutMem
       }
     }
 
-    results.sort((a, b) {
-      if (a.pinned != b.pinned) {
-        return a.pinned ? -1 : 1;
-      }
-      return b.updateTime.compareTo(a.updateTime);
-    });
-
-    return results;
+    seed = _sortShortcutMemos(results);
   } on DioException catch (e) {
     if (_shouldFallbackShortcutFilter(e)) {
       final local = await _tryListShortcutMemosLocally(
@@ -126,9 +137,20 @@ final shortcutMemosProvider = FutureProvider.family<List<LocalMemo>, ShortcutMem
         tag: query.tag,
         shortcutFilter: query.shortcutFilter,
       );
-      if (local != null) return local;
+      if (local != null) {
+        seed = local;
+      } else {
+        rethrow;
+      }
+    } else {
+      rethrow;
     }
-    rethrow;
+  }
+
+  yield seed;
+
+  await for (final _ in db.changes) {
+    yield await _refreshShortcutSeedWithLocal(seed: seed, db: db);
   }
 });
 
@@ -212,18 +234,48 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
     limit: 200,
   );
 
-  final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: false);
-  final results = memos.toList(growable: false);
-  results.sort((a, b) {
+  final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: true);
+  return _sortShortcutMemos(memos);
+}
+
+typedef _MemoPredicate = bool Function(LocalMemo memo);
+
+List<LocalMemo> _sortShortcutMemos(List<LocalMemo> memos) {
+  memos.sort((a, b) {
     if (a.pinned != b.pinned) {
       return a.pinned ? -1 : 1;
     }
     return b.updateTime.compareTo(a.updateTime);
   });
-  return results;
+  return memos;
 }
 
-typedef _MemoPredicate = bool Function(LocalMemo memo);
+List<LocalMemo> _filterShortcutMemosFromRows(
+  Iterable<Map<String, dynamic>> rows,
+  _MemoPredicate predicate,
+) {
+  final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: true);
+  return _sortShortcutMemos(memos);
+}
+
+Future<List<LocalMemo>> _refreshShortcutSeedWithLocal({
+  required List<LocalMemo> seed,
+  required AppDatabase db,
+}) async {
+  if (seed.isEmpty) return seed;
+  final refreshed = <LocalMemo>[];
+  for (final memo in seed) {
+    final uid = memo.uid.trim();
+    if (uid.isEmpty) continue;
+    final row = await db.getMemoByUid(uid);
+    if (row != null) {
+      refreshed.add(LocalMemo.fromDb(row));
+    } else {
+      refreshed.add(memo);
+    }
+  }
+  return _sortShortcutMemos(refreshed);
+}
 
 _MemoPredicate? _buildShortcutPredicate(String filter) {
   final trimmed = filter.trim();
