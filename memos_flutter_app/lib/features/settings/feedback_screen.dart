@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/log_sanitizer.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/db/app_database.dart';
 import '../../state/database_provider.dart';
+import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import 'submit_logs_screen.dart';
@@ -91,6 +93,69 @@ class FeedbackScreen extends ConsumerWidget {
       }
     }
 
+    Future<void> forceResetHeatmap() async {
+      final session = ref.read(appSessionProvider).valueOrNull;
+      final accountKey = session?.currentKey;
+      if (accountKey == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '请先登录', en: 'Please sign in first'))),
+        );
+        return;
+      }
+
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(context.tr(zh: '重置热力图？', en: 'Reset heatmap?')),
+              content: Text(
+                context.tr(
+                  zh: '这会清空本地缓存（离线笔记/待同步队列）并重新全量同步。未同步内容会丢失，可能需要一些时间。是否继续？',
+                  en: 'This clears local cache (offline memos/pending queue) and triggers a full resync. Unsynced content will be lost and it may take a while. Continue?',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => context.safePop(false),
+                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => context.safePop(true),
+                  child: Text(context.tr(zh: '继续', en: 'Continue')),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirmed) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '正在重置本地数据...', en: 'Resetting local data...'))),
+      );
+
+      try {
+        final db = ref.read(databaseProvider);
+        await db.close();
+      } catch (_) {}
+
+      try {
+        await AppDatabase.deleteDatabaseFile(dbName: databaseNameForAccountKey(accountKey));
+        ref.invalidate(databaseProvider);
+        ref.invalidate(syncControllerProvider);
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '重置失败：$e', en: 'Reset failed: $e'))),
+        );
+        return;
+      }
+
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '已重置，开始重新同步', en: 'Reset done. Syncing...'))),
+      );
+    }
+
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
@@ -141,6 +206,16 @@ class FeedbackScreen extends ConsumerWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(builder: (_) => const SubmitLogsScreen()),
                       );
+                    },
+                  ),
+                  _ActionRow(
+                    icon: Icons.restart_alt,
+                    label: context.tr(zh: '自助修复：重置热力图', en: 'Self repair: reset heatmap'),
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () async {
+                      haptic();
+                      await forceResetHeatmap();
                     },
                   ),
                   _ActionRow(
