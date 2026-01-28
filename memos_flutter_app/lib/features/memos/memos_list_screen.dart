@@ -1495,6 +1495,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 ),
               );
             },
+      onDoubleTap: removing
+          ? () {}
+          : () {
+              maybeHaptic();
+              unawaited(_handleMemoAction(memo, _MemoCardAction.edit));
+            },
       onAction: removing
           ? (_) {}
           : (action) async => _handleMemoAction(memo, action),
@@ -2665,6 +2671,7 @@ enum _MemoCardAction { togglePinned, edit, reminder, delete }
     this.onSyncStatusTap,
     required this.onToggleTask,
     required this.onTap,
+    this.onDoubleTap,
     required this.onAction,
     });
 
@@ -2684,6 +2691,7 @@ enum _MemoCardAction { togglePinned, edit, reminder, delete }
   final VoidCallback? onSyncStatusTap;
   final ValueChanged<int> onToggleTask;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final ValueChanged<_MemoCardAction> onAction;
 
   @override
@@ -2751,6 +2759,7 @@ class _MemoCardState extends State<_MemoCard> {
     final imageEntries = widget.imageEntries;
     final syncStatus = widget.syncStatus;
     final onSyncStatusTap = widget.onSyncStatusTap;
+    final onDoubleTap = widget.onDoubleTap;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark
@@ -2911,6 +2920,7 @@ class _MemoCardState extends State<_MemoCard> {
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
           onTap: onTap,
+          onDoubleTap: onDoubleTap,
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
