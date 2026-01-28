@@ -29,6 +29,7 @@ import 'state/reminder_scheduler.dart';
 import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
 import 'state/update_config_provider.dart';
+import 'state/webdav_sync_provider.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -215,6 +216,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ref.read(logManagerProvider);
+    ref.read(webDavSyncControllerProvider);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
     _loadPendingWidgetAction();
     ShareHandlerService.setShareHandler(_handleShareLaunch);

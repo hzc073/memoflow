@@ -1,11 +1,14 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/app_localization.dart';
 import '../core/theme_colors.dart';
 import 'session_provider.dart';
+import 'webdav_sync_trigger_provider.dart';
 
 enum AppLanguage {
   zhHans('简体中文', 'Chinese (Simplified)'),
@@ -97,6 +100,10 @@ class AppPreferences {
     lastSeenAnnouncementVersion: '',
     lastSeenAnnouncementId: 0,
   );
+
+  static AppPreferences defaultsForLanguage(AppLanguage language) {
+    return AppPreferences.defaults.copyWith(language: language, hasSelectedLanguage: true);
+  }
 
   const AppPreferences({
     required this.language,
@@ -479,14 +486,17 @@ class AppPreferences {
 }
 
 final appPreferencesRepositoryProvider = Provider<AppPreferencesRepository>((ref) {
-  return AppPreferencesRepository(ref.watch(secureStorageProvider));
+  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
+  return AppPreferencesRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
 });
 
 final appPreferencesLoadedProvider = StateProvider<bool>((ref) => false);
 
 final appPreferencesProvider = StateNotifierProvider<AppPreferencesController, AppPreferences>((ref) {
   final loadedState = ref.read(appPreferencesLoadedProvider.notifier);
+  Future.microtask(() => loadedState.state = false);
   return AppPreferencesController(
+    ref,
     ref.watch(appPreferencesRepositoryProvider),
     onLoaded: () => loadedState.state = true,
   );
@@ -494,6 +504,7 @@ final appPreferencesProvider = StateNotifierProvider<AppPreferencesController, A
 
 class AppPreferencesController extends StateNotifier<AppPreferences> {
   AppPreferencesController(
+    this._ref,
     this._repo, {
     void Function()? onLoaded,
   })  : _onLoaded = onLoaded,
@@ -501,19 +512,27 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
     unawaited(_loadFromStorage());
   }
 
+  final Ref _ref;
   final AppPreferencesRepository _repo;
   final void Function()? _onLoaded;
 
   Future<void> _loadFromStorage() async {
-    final stored = await _repo.read();
+    final systemLanguage = appLanguageFromLocale(WidgetsBinding.instance.platformDispatcher.locale);
+    final stored = await _repo.read(systemLanguage: systemLanguage);
     state = stored;
     _onLoaded?.call();
   }
 
-  void _setAndPersist(AppPreferences next) {
+  void _setAndPersist(AppPreferences next, {bool triggerSync = true}) {
     state = next;
     unawaited(_repo.write(next));
+    if (triggerSync) {
+      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    }
   }
+
+  Future<void> setAll(AppPreferences next, {bool triggerSync = true}) async =>
+      _setAndPersist(next, triggerSync: triggerSync);
 
   void setLanguage(AppLanguage v) => _setAndPersist(state.copyWith(language: v));
   void setHasSelectedLanguage(bool v) => _setAndPersist(state.copyWith(hasSelectedLanguage: v));
@@ -577,28 +596,59 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(aiSummaryAllowPrivateMemos: v));
   void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));
   void setThirdPartyShareEnabled(bool v) => _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
-  void setLastSeenAppVersion(String v) => _setAndPersist(state.copyWith(lastSeenAppVersion: v));
+  void setLastSeenAppVersion(String v) =>
+      _setAndPersist(state.copyWith(lastSeenAppVersion: v), triggerSync: false);
   void setLastSeenAnnouncement({required String version, required int announcementId}) {
     _setAndPersist(
       state.copyWith(
         lastSeenAnnouncementVersion: version,
         lastSeenAnnouncementId: announcementId,
       ),
+      triggerSync: false,
     );
   }
 }
 
 class AppPreferencesRepository {
-  AppPreferencesRepository(this._storage);
+  AppPreferencesRepository(this._storage, {required String? accountKey}) : _accountKey = accountKey;
 
-  static const _kStateKey = 'app_preferences_v1';
+  static const _kStatePrefix = 'app_preferences_v2_';
+  static const _kDeviceKey = 'app_preferences_device_v1';
+  static const _kLegacyKey = 'app_preferences_v1';
 
   final FlutterSecureStorage _storage;
+  final String? _accountKey;
 
-  Future<AppPreferences> read() async {
-    final raw = await _storage.read(key: _kStateKey);
+  String? get _storageKey {
+    final key = _accountKey;
+    if (key == null || key.trim().isEmpty) return null;
+    return '$_kStatePrefix$key';
+  }
+
+  Future<AppPreferences> read({required AppLanguage systemLanguage}) async {
+    final storageKey = _storageKey;
+    if (storageKey == null) {
+      final device = await _readDevice();
+      return device ?? AppPreferences.defaultsForLanguage(systemLanguage);
+    }
+
+    final raw = await _storage.read(key: storageKey);
     if (raw == null || raw.trim().isEmpty) {
-      return AppPreferences.defaults;
+      final legacy = await _readLegacy();
+      final device = await _readDevice();
+      if (legacy != null) {
+        var normalized = _normalizeLegacyForAccount(legacy);
+        if (device != null) {
+          normalized = normalized.copyWith(useLegacyApi: device.useLegacyApi);
+        }
+        await write(normalized);
+        return normalized;
+      }
+      if (device != null) {
+        await write(device);
+        return device;
+      }
+      return AppPreferences.defaultsForLanguage(systemLanguage);
     }
     try {
       final decoded = jsonDecode(raw);
@@ -606,15 +656,59 @@ class AppPreferencesRepository {
         return AppPreferences.fromJson(decoded.cast<String, dynamic>());
       }
     } catch (_) {}
-    return AppPreferences.defaults;
+    return AppPreferences.defaultsForLanguage(systemLanguage);
   }
 
   Future<void> write(AppPreferences prefs) async {
-    await _storage.write(key: _kStateKey, value: jsonEncode(prefs.toJson()));
+    final storageKey = _storageKey;
+    if (storageKey == null) {
+      await _storage.write(key: _kDeviceKey, value: jsonEncode(prefs.toJson()));
+      return;
+    }
+    await _storage.write(key: storageKey, value: jsonEncode(prefs.toJson()));
   }
 
   Future<void> clear() async {
-    await _storage.delete(key: _kStateKey);
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.delete(key: storageKey);
+  }
+
+  Future<AppPreferences?> _readDevice() async {
+    final raw = await _storage.read(key: _kDeviceKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return AppPreferences.fromJson(decoded.cast<String, dynamic>());
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<AppPreferences?> _readLegacy() async {
+    final raw = await _storage.read(key: _kLegacyKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return AppPreferences.fromJson(decoded.cast<String, dynamic>());
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  AppPreferences _normalizeLegacyForAccount(AppPreferences prefs) {
+    final key = _accountKey;
+    if (key == null || key.trim().isEmpty) return prefs;
+    final themeColor = prefs.accountThemeColors[key] ?? prefs.themeColor;
+    final customTheme = prefs.accountCustomThemes[key] ?? prefs.customTheme;
+    return prefs.copyWith(
+      themeColor: themeColor,
+      customTheme: customTheme,
+      accountThemeColors: {key: themeColor},
+      accountCustomThemes: {key: customTheme},
+    );
   }
 }
 

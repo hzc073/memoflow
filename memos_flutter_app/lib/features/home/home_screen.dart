@@ -7,6 +7,7 @@ import '../memos/memos_list_screen.dart';
 import '../review/daily_review_screen.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../core/app_localization.dart';
 import '../../state/preferences_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -29,7 +30,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_handledLaunchAction) return;
     _handledLaunchAction = true;
 
-    final prefs = await ref.read(appPreferencesRepositoryProvider).read();
+    final systemLanguage = appLanguageFromLocale(WidgetsBinding.instance.platformDispatcher.locale);
+    final prefs = await ref.read(appPreferencesRepositoryProvider).read(systemLanguage: systemLanguage);
 
     if (prefs.launchAction == LaunchAction.dailyReview && mounted) {
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));

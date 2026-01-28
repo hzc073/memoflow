@@ -4,20 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'session_provider.dart';
+import 'webdav_sync_trigger_provider.dart';
 
 final noteDraftRepositoryProvider = Provider<NoteDraftRepository>((ref) {
-  return NoteDraftRepository(ref.watch(secureStorageProvider));
+  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
+  return NoteDraftRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
 });
 
 final noteDraftProvider = StateNotifierProvider<NoteDraftController, AsyncValue<String>>((ref) {
-  return NoteDraftController(ref.watch(noteDraftRepositoryProvider));
+  return NoteDraftController(ref, ref.watch(noteDraftRepositoryProvider));
 });
 
 class NoteDraftController extends StateNotifier<AsyncValue<String>> {
-  NoteDraftController(this._repo) : super(const AsyncValue.loading()) {
+  NoteDraftController(this._ref, this._repo) : super(const AsyncValue.loading()) {
     unawaited(_load());
   }
 
+  final Ref _ref;
   final NoteDraftRepository _repo;
 
   Future<void> _load() async {
@@ -25,7 +28,7 @@ class NoteDraftController extends StateNotifier<AsyncValue<String>> {
     state = AsyncValue.data(draft);
   }
 
-  Future<void> setDraft(String text) async {
+  Future<void> setDraft(String text, {bool triggerSync = true}) async {
     final normalized = text;
     state = AsyncValue.data(normalized);
     if (normalized.trim().isEmpty) {
@@ -33,31 +36,57 @@ class NoteDraftController extends StateNotifier<AsyncValue<String>> {
     } else {
       await _repo.write(normalized);
     }
+    if (triggerSync) {
+      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    }
   }
 
   Future<void> clear() async {
     state = const AsyncValue.data('');
     await _repo.clear();
+    _ref.read(webDavSyncTriggerProvider.notifier).bump();
   }
 }
 
 class NoteDraftRepository {
-  NoteDraftRepository(this._storage);
+  NoteDraftRepository(this._storage, {required String? accountKey}) : _accountKey = accountKey;
 
-  static const _kKey = 'note_draft_v1';
+  static const _kPrefix = 'note_draft_v2_';
+  static const _kLegacyKey = 'note_draft_v1';
 
   final FlutterSecureStorage _storage;
+  final String? _accountKey;
+
+  String? get _storageKey {
+    final key = _accountKey;
+    if (key == null || key.trim().isEmpty) return null;
+    return '$_kPrefix$key';
+  }
 
   Future<String> read() async {
-    final raw = await _storage.read(key: _kKey);
-    return raw ?? '';
+    final storageKey = _storageKey;
+    if (storageKey == null) return '';
+    final raw = await _storage.read(key: storageKey);
+    if (raw == null || raw.trim().isEmpty) {
+      final legacy = await _storage.read(key: _kLegacyKey);
+      if (legacy != null && legacy.trim().isNotEmpty) {
+        await write(legacy);
+        return legacy;
+      }
+      return '';
+    }
+    return raw;
   }
 
   Future<void> write(String text) async {
-    await _storage.write(key: _kKey, value: text);
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.write(key: storageKey, value: text);
   }
 
   Future<void> clear() async {
-    await _storage.delete(key: _kKey);
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.delete(key: storageKey);
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'preferences_provider.dart';
 import 'session_provider.dart';
+import 'webdav_sync_trigger_provider.dart';
 
 enum ReminderSoundMode { system, silent, custom }
 
@@ -156,13 +157,15 @@ class ReminderSettings {
 }
 
 final reminderSettingsRepositoryProvider = Provider<ReminderSettingsRepository>((ref) {
-  return ReminderSettingsRepository(ref.watch(secureStorageProvider));
+  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
+  return ReminderSettingsRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
 });
 
 final reminderSettingsLoadedProvider = StateProvider<bool>((ref) => false);
 
 final reminderSettingsProvider = StateNotifierProvider<ReminderSettingsController, ReminderSettings>((ref) {
   final loadedState = ref.read(reminderSettingsLoadedProvider.notifier);
+  Future.microtask(() => loadedState.state = false);
   return ReminderSettingsController(
     ref,
     ref.watch(reminderSettingsRepositoryProvider),
@@ -199,6 +202,15 @@ class ReminderSettingsController extends StateNotifier<ReminderSettings> {
   void _setAndPersist(ReminderSettings next) {
     state = next;
     unawaited(_repo.write(next));
+    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+  }
+
+  Future<void> setAll(ReminderSettings next, {bool triggerSync = true}) async {
+    state = next;
+    await _repo.write(next);
+    if (triggerSync) {
+      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    }
   }
 
   void setEnabled(bool value) => _setAndPersist(state.copyWith(enabled: value));
@@ -221,15 +233,39 @@ class ReminderSettingsController extends StateNotifier<ReminderSettings> {
 }
 
 class ReminderSettingsRepository {
-  ReminderSettingsRepository(this._storage);
+  ReminderSettingsRepository(this._storage, {required String? accountKey}) : _accountKey = accountKey;
 
-  static const _kStateKey = 'reminder_settings_v1';
+  static const _kPrefix = 'reminder_settings_v2_';
+  static const _kLegacyKey = 'reminder_settings_v1';
 
   final FlutterSecureStorage _storage;
+  final String? _accountKey;
+
+  String? get _storageKey {
+    final key = _accountKey;
+    if (key == null || key.trim().isEmpty) return null;
+    return '$_kPrefix$key';
+  }
 
   Future<ReminderSettings?> read() async {
-    final raw = await _storage.read(key: _kStateKey);
-    if (raw == null || raw.trim().isEmpty) return null;
+    final storageKey = _storageKey;
+    if (storageKey == null) return null;
+    final raw = await _storage.read(key: storageKey);
+    if (raw == null || raw.trim().isEmpty) {
+      final legacy = await _storage.read(key: _kLegacyKey);
+      if (legacy != null && legacy.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(legacy);
+          if (decoded is Map) {
+            final fallback = ReminderSettings.defaultsFor(AppLanguage.zhHans);
+            final settings = ReminderSettings.fromJson(decoded.cast<String, dynamic>(), fallback: fallback);
+            await write(settings);
+            return settings;
+          }
+        } catch (_) {}
+      }
+      return null;
+    }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
@@ -241,10 +277,14 @@ class ReminderSettingsRepository {
   }
 
   Future<void> write(ReminderSettings settings) async {
-    await _storage.write(key: _kStateKey, value: jsonEncode(settings.toJson()));
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.write(key: storageKey, value: jsonEncode(settings.toJson()));
   }
 
   Future<void> clear() async {
-    await _storage.delete(key: _kStateKey);
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.delete(key: storageKey);
   }
 }

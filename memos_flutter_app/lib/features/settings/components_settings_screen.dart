@@ -11,8 +11,10 @@ import '../../state/image_bed_settings_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
+import '../../state/webdav_settings_provider.dart';
 import '../reminders/reminder_settings_screen.dart';
 import 'image_bed_settings_screen.dart';
+import 'webdav_sync_screen.dart';
 
 class ComponentsSettingsScreen extends ConsumerWidget {
   const ComponentsSettingsScreen({super.key});
@@ -22,6 +24,7 @@ class ComponentsSettingsScreen extends ConsumerWidget {
     final prefs = ref.watch(appPreferencesProvider);
     final reminderSettings = ref.watch(reminderSettingsProvider);
     final imageBedSettings = ref.watch(imageBedSettingsProvider);
+    final webDavSettings = ref.watch(webDavSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
@@ -114,6 +117,22 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                 onChanged: (v) => ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const ImageBedSettingsScreen()),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ToggleCard(
+                card: card,
+                label: context.tr(zh: 'WebDAV 同步', en: 'WebDAV Sync'),
+                description: context.tr(
+                  zh: '将设置同步到 WebDAV，在设备之间保持一致。',
+                  en: 'Sync settings to WebDAV across devices.',
+                ),
+                value: webDavSettings.enabled,
+                textMain: textMain,
+                textMuted: textMuted,
+                onChanged: (v) => ref.read(webDavSettingsProvider.notifier).setEnabled(v),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const WebDavSyncScreen()),
                 ),
               ),
             ],

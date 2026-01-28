@@ -215,15 +215,32 @@ class AiSettings {
 }
 
 class AiSettingsRepository {
-  AiSettingsRepository(this._storage);
+  AiSettingsRepository(this._storage, {required String? accountKey}) : _accountKey = accountKey;
 
-  static const _kKey = 'ai_settings_v1';
+  static const _kPrefix = 'ai_settings_v2_';
+  static const _kLegacyKey = 'ai_settings_v1';
 
   final FlutterSecureStorage _storage;
+  final String? _accountKey;
+
+  String? get _storageKey {
+    final key = _accountKey;
+    if (key == null || key.trim().isEmpty) return null;
+    return '$_kPrefix$key';
+  }
 
   Future<AiSettings> read() async {
-    final raw = await _storage.read(key: _kKey);
-    if (raw == null || raw.trim().isEmpty) return AiSettings.defaults;
+    final storageKey = _storageKey;
+    if (storageKey == null) return AiSettings.defaults;
+    final raw = await _storage.read(key: storageKey);
+    if (raw == null || raw.trim().isEmpty) {
+      final legacy = await _readLegacy();
+      if (legacy != null) {
+        await write(legacy);
+        return legacy;
+      }
+      return AiSettings.defaults;
+    }
 
     try {
       final decoded = jsonDecode(raw);
@@ -235,10 +252,26 @@ class AiSettingsRepository {
   }
 
   Future<void> write(AiSettings settings) async {
-    await _storage.write(key: _kKey, value: jsonEncode(settings.toJson()));
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.write(key: storageKey, value: jsonEncode(settings.toJson()));
   }
 
   Future<void> clear() async {
-    await _storage.delete(key: _kKey);
+    final storageKey = _storageKey;
+    if (storageKey == null) return;
+    await _storage.delete(key: storageKey);
+  }
+
+  Future<AiSettings?> _readLegacy() async {
+    final raw = await _storage.read(key: _kLegacyKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return AiSettings.fromJson(decoded.cast<String, dynamic>());
+      }
+    } catch (_) {}
+    return null;
   }
 }
