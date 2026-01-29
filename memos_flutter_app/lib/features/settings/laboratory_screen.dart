@@ -117,7 +117,7 @@ class LaboratoryScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'VERSION 1.0.6',
+                        'VERSION 1.0.7',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
