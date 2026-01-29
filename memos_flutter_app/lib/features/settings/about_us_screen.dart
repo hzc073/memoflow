@@ -77,7 +77,14 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
     final version = info.version.trim();
     await UpdateAnnouncementDialog.show(
       context,
-      config: config,
+      config: UpdateAnnouncementConfig(
+        versionInfo: config.versionInfo,
+        announcement: config.announcement,
+        donors: config.donors,
+        releaseNotes: config.releaseNotes,
+        debugAnnouncement: config.debugAnnouncement,
+        debugAnnouncementSource: DebugAnnouncementSource.releaseNotes,
+      ),
       currentVersion: version,
     );
   }
