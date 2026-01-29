@@ -106,11 +106,13 @@ class UpdateAnnouncementDialog extends StatelessWidget {
         .map((name) => '@$name')
         .toList(growable: false);
     final version = currentVersion.trim();
+    final latestVersion = config.versionInfo.latestVersion.trim();
+    final targetVersion = latestVersion.isEmpty ? version : latestVersion;
     final rawTitle = activeAnnouncement.title.trim();
     final fallbackTitle = context.tr(zh: '版本公告', en: 'Release Notes');
     final titleBase = rawTitle.isEmpty ? fallbackTitle : rawTitle;
-    final title = version.isEmpty ? titleBase : '$titleBase v$version';
-    final releaseEntry = useDebugAnnouncement ? null : config.releaseNoteForVersion(version);
+    final title = targetVersion.isEmpty ? titleBase : '$titleBase v$targetVersion';
+    final releaseEntry = useDebugAnnouncement ? null : config.releaseNoteForVersion(targetVersion);
     final announcementItems = useDebugAnnouncement
         ? activeAnnouncement
             .contentsForLanguageCode(Localizations.localeOf(context).languageCode)
