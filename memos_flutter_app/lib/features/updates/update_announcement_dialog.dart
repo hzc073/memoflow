@@ -92,7 +92,6 @@ class UpdateAnnouncementDialog extends StatelessWidget {
     final accent = MemoFlowPalette.primary;
     final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final shadow = Colors.black.withValues(alpha: 0.12);
-    final isForce = config.versionInfo.isForce;
     final useDebugAnnouncement = kDebugMode &&
         config.debugAnnouncementSource == DebugAnnouncementSource.debugAnnouncement;
     final activeAnnouncement = useDebugAnnouncement
@@ -126,6 +125,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
             .toList(growable: false)
         : buildVersionAnnouncementItems(releaseEntry);
     final showUpdateAction = _compareVersionTriplets(config.versionInfo.latestVersion, version) > 0;
+    final isForce = config.versionInfo.isForce && showUpdateAction;
 
     Widget buildAnnouncementItems() {
       if (announcementItems.isEmpty) {
