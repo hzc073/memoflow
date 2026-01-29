@@ -299,6 +299,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     json.remove('lastSeenAppVersion');
     json.remove('lastSeenAnnouncementVersion');
     json.remove('lastSeenAnnouncementId');
+    json.remove('lastSeenNoticeHash');
     json.remove('fontFile');
     return json;
   }

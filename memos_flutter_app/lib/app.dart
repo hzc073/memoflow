@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -20,6 +22,7 @@ import 'features/onboarding/language_selection_screen.dart';
 import 'features/review/daily_review_screen.dart';
 import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
+import 'features/updates/notice_dialog.dart';
 import 'features/updates/update_announcement_dialog.dart';
 import 'data/updates/update_config.dart';
 import 'state/logging_provider.dart';
@@ -72,6 +75,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     ),
     donors: const [],
     releaseNotes: const [],
+    noticeEnabled: false,
+    notice: null,
   );
 
   static const Map<String, String> _imageEditorI18nZh = {
@@ -356,11 +361,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _updateAnnouncementChecked = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_maybeShowUpdateAnnouncement());
+      unawaited(_maybeShowAnnouncements());
     });
   }
 
-  Future<void> _maybeShowUpdateAnnouncement() async {
+  Future<void> _maybeShowAnnouncements() async {
     var version = await _resolveAppVersion();
     if (!mounted || version == null || version.isEmpty) return;
 
@@ -370,19 +375,38 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final config = await ref.read(updateConfigServiceProvider).fetchLatest();
     if (!mounted) return;
     final effectiveConfig = config ?? _fallbackUpdateConfig;
+
+    var displayVersion = version;
     if (kDebugMode) {
       final debugVersion = effectiveConfig.versionInfo.debugVersion.trim();
-      version = debugVersion.isNotEmpty ? debugVersion : '999.0';
+      displayVersion = debugVersion.isNotEmpty ? debugVersion : '999.0';
     }
-    final isForce = effectiveConfig.versionInfo.isForce;
-    final latestVersion = effectiveConfig.versionInfo.latestVersion.trim();
-    final skipUpdateVersion = effectiveConfig.versionInfo.skipUpdateVersion.trim();
+
+    await _maybeShowUpdateAnnouncementWithConfig(
+      config: effectiveConfig,
+      currentVersion: displayVersion,
+      prefs: prefs,
+    );
+    await _maybeShowNoticeWithConfig(
+      config: effectiveConfig,
+      prefs: prefs,
+    );
+  }
+
+  Future<void> _maybeShowUpdateAnnouncementWithConfig({
+    required UpdateAnnouncementConfig config,
+    required String currentVersion,
+    required AppPreferences prefs,
+  }) async {
+    final isForce = config.versionInfo.isForce;
+    final latestVersion = config.versionInfo.latestVersion.trim();
+    final skipUpdateVersion = config.versionInfo.skipUpdateVersion.trim();
     final hasUpdate = latestVersion.isNotEmpty &&
         (skipUpdateVersion.isEmpty || latestVersion != skipUpdateVersion) &&
-        _compareVersionTriplets(latestVersion, version) > 0;
+        _compareVersionTriplets(latestVersion, currentVersion) > 0;
 
     final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();
-    final shouldShow = isForce || hasUpdate || lastSeenVersion != version;
+    final shouldShow = isForce || hasUpdate || lastSeenVersion != currentVersion;
     if (!shouldShow) return;
 
     final dialogContext = _navigatorKey.currentContext;
@@ -390,16 +414,60 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     final action = await UpdateAnnouncementDialog.show(
       dialogContext,
-      config: effectiveConfig,
-      currentVersion: version,
+      config: config,
+      currentVersion: currentVersion,
     );
     if (!mounted || isForce) return;
     if (action == AnnouncementAction.update || action == AnnouncementAction.later) {
       ref.read(appPreferencesProvider.notifier).setLastSeenAnnouncement(
-        version: version,
-        announcementId: effectiveConfig.announcement.id,
+        version: currentVersion,
+        announcementId: config.announcement.id,
       );
     }
+  }
+
+  Future<void> _maybeShowNoticeWithConfig({
+    required UpdateAnnouncementConfig config,
+    required AppPreferences prefs,
+  }) async {
+    if (!config.noticeEnabled) return;
+    final notice = config.notice;
+    if (notice == null || !notice.hasContents) return;
+
+    final noticeHash = _hashNotice(notice);
+    if (noticeHash.isEmpty) return;
+    if (prefs.lastSeenNoticeHash.trim() == noticeHash) return;
+
+    final dialogContext = _navigatorKey.currentContext;
+    if (dialogContext == null || !dialogContext.mounted) return;
+
+    final acknowledged = await NoticeDialog.show(dialogContext, notice: notice);
+    if (!mounted || acknowledged != true) return;
+    ref.read(appPreferencesProvider.notifier).setLastSeenNoticeHash(noticeHash);
+  }
+
+  String _hashNotice(UpdateNotice notice) {
+    final buffer = StringBuffer();
+    buffer.write(notice.title.trim());
+    final localeKeys = notice.contentsByLocale.keys.toList()..sort();
+    for (final key in localeKeys) {
+      buffer.write('|$key=');
+      final entries = notice.contentsByLocale[key] ?? const <String>[];
+      for (final line in entries) {
+        buffer.write(line.trim());
+        buffer.write('\n');
+      }
+    }
+    if (notice.fallbackContents.isNotEmpty) {
+      buffer.write('|fallback=');
+      for (final line in notice.fallbackContents) {
+        buffer.write(line.trim());
+        buffer.write('\n');
+      }
+    }
+    final raw = buffer.toString().trim();
+    if (raw.isEmpty) return '';
+    return sha1.convert(utf8.encode(raw)).toString();
   }
 
   Future<void> _updateStatsWidgetIfNeeded({bool force = false}) async {

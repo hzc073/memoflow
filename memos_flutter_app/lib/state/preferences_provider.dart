@@ -99,6 +99,7 @@ class AppPreferences {
     lastSeenAppVersion: '',
     lastSeenAnnouncementVersion: '',
     lastSeenAnnouncementId: 0,
+    lastSeenNoticeHash: '',
   );
 
   static AppPreferences defaultsForLanguage(AppLanguage language) {
@@ -133,6 +134,7 @@ class AppPreferences {
     required this.lastSeenAppVersion,
     required this.lastSeenAnnouncementVersion,
     required this.lastSeenAnnouncementId,
+    required this.lastSeenNoticeHash,
   });
 
   final AppLanguage language;
@@ -162,6 +164,7 @@ class AppPreferences {
   final String lastSeenAppVersion;
   final String lastSeenAnnouncementVersion;
   final int lastSeenAnnouncementId;
+  final String lastSeenNoticeHash;
 
   AppThemeColor resolveThemeColor(String? accountKey) {
     if (accountKey != null) {
@@ -207,6 +210,7 @@ class AppPreferences {
         'lastSeenAppVersion': lastSeenAppVersion,
         'lastSeenAnnouncementVersion': lastSeenAnnouncementVersion,
         'lastSeenAnnouncementId': lastSeenAnnouncementId,
+        'lastSeenNoticeHash': lastSeenNoticeHash,
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
@@ -375,6 +379,12 @@ class AppPreferences {
       return '';
     }
 
+    String parseLastSeenNoticeHash() {
+      final raw = json['lastSeenNoticeHash'];
+      if (raw is String) return raw;
+      return '';
+    }
+
     int parseLastSeenAnnouncementId() {
       final raw = json['lastSeenAnnouncementId'];
       if (raw is int) return raw;
@@ -421,6 +431,7 @@ class AppPreferences {
       lastSeenAppVersion: parseLastSeenAppVersion(),
       lastSeenAnnouncementVersion: parseLastSeenAnnouncementVersion(),
       lastSeenAnnouncementId: parseLastSeenAnnouncementId(),
+      lastSeenNoticeHash: parseLastSeenNoticeHash(),
     );
   }
 
@@ -452,6 +463,7 @@ class AppPreferences {
     String? lastSeenAppVersion,
     String? lastSeenAnnouncementVersion,
     int? lastSeenAnnouncementId,
+    String? lastSeenNoticeHash,
   }) {
     return AppPreferences(
       language: language ?? this.language,
@@ -481,6 +493,7 @@ class AppPreferences {
       lastSeenAppVersion: lastSeenAppVersion ?? this.lastSeenAppVersion,
       lastSeenAnnouncementVersion: lastSeenAnnouncementVersion ?? this.lastSeenAnnouncementVersion,
       lastSeenAnnouncementId: lastSeenAnnouncementId ?? this.lastSeenAnnouncementId,
+      lastSeenNoticeHash: lastSeenNoticeHash ?? this.lastSeenNoticeHash,
     );
   }
 }
@@ -604,6 +617,13 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
         lastSeenAnnouncementVersion: version,
         lastSeenAnnouncementId: announcementId,
       ),
+      triggerSync: false,
+    );
+  }
+
+  void setLastSeenNoticeHash(String hash) {
+    _setAndPersist(
+      state.copyWith(lastSeenNoticeHash: hash),
       triggerSync: false,
     );
   }

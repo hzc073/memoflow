@@ -82,6 +82,8 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
         announcement: config.announcement,
         donors: config.donors,
         releaseNotes: config.releaseNotes,
+        noticeEnabled: config.noticeEnabled,
+        notice: config.notice,
         debugAnnouncement: config.debugAnnouncement,
         debugAnnouncementSource: DebugAnnouncementSource.releaseNotes,
       ),

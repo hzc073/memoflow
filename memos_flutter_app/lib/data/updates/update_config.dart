@@ -9,6 +9,8 @@ class UpdateAnnouncementConfig {
     required this.announcement,
     required this.donors,
     required this.releaseNotes,
+    required this.noticeEnabled,
+    required this.notice,
     this.debugAnnouncement,
     this.debugAnnouncementSource = DebugAnnouncementSource.releaseNotes,
   });
@@ -17,6 +19,8 @@ class UpdateAnnouncementConfig {
   final UpdateAnnouncement announcement;
   final List<UpdateDonor> donors;
   final List<UpdateReleaseNoteEntry> releaseNotes;
+  final bool noticeEnabled;
+  final UpdateNotice? notice;
   final UpdateAnnouncement? debugAnnouncement;
   final DebugAnnouncementSource debugAnnouncementSource;
 
@@ -31,6 +35,8 @@ class UpdateAnnouncementConfig {
     final debugAnnouncementSource = _readDebugAnnouncementSource(
       debugSection?['announcement_source'] ?? json['debug_announcement_source'],
     );
+    final noticeEnabled = _readBool(json, 'notice_enabled', fallbackKey: 'noticeEnabled');
+    final notice = _readNotice(json['notice']);
     final donors = _readList(json['donors'])
         .whereType<Map>()
         .map((raw) => UpdateDonor.fromJson(raw.cast<String, dynamic>()))
@@ -42,6 +48,8 @@ class UpdateAnnouncementConfig {
       announcement: announcement,
       donors: donors,
       releaseNotes: releaseNotes,
+      noticeEnabled: noticeEnabled,
+      notice: notice,
       debugAnnouncement: debugAnnouncement,
       debugAnnouncementSource: debugAnnouncementSource,
     );
@@ -65,6 +73,12 @@ class UpdateAnnouncementConfig {
     final map = _readMap(value);
     if (map == null) return null;
     return UpdateAnnouncement.fromJson(map);
+  }
+
+  static UpdateNotice? _readNotice(dynamic value) {
+    final map = _readMap(value);
+    if (map == null) return null;
+    return UpdateNotice.fromJson(map);
   }
 
   static List<dynamic> _readList(dynamic value) {
@@ -156,6 +170,57 @@ class UpdateAnnouncement {
     final target = newDonorIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
     if (target.isEmpty) return const [];
     return allDonors.where((donor) => target.contains(donor.id)).toList(growable: false);
+  }
+}
+
+class UpdateNotice {
+  const UpdateNotice({
+    required this.title,
+    required this.contentsByLocale,
+    required this.fallbackContents,
+  });
+
+  final String title;
+  final Map<String, List<String>> contentsByLocale;
+  final List<String> fallbackContents;
+
+  factory UpdateNotice.fromJson(Map<String, dynamic> json) {
+    var contentsByLocale = _readLocalizedContents(json['contents']);
+    var fallbackContents = contentsByLocale.isEmpty ? _readStringList(json['contents']) : const <String>[];
+
+    if (contentsByLocale.isEmpty && fallbackContents.isEmpty) {
+      contentsByLocale = _readLocalizedContents(json['content']);
+    }
+    if (contentsByLocale.isEmpty && fallbackContents.isEmpty) {
+      fallbackContents = _readStringList(json['content']);
+    }
+
+    return UpdateNotice(
+      title: _readString(json, 'title'),
+      contentsByLocale: contentsByLocale,
+      fallbackContents: fallbackContents,
+    );
+  }
+
+  bool get hasContents =>
+      contentsByLocale.values.any((entries) => entries.isNotEmpty) || fallbackContents.isNotEmpty;
+
+  List<String> contentsForLanguageCode(String languageCode) {
+    final normalized = _normalizeLangKey(languageCode);
+    if (normalized.isNotEmpty) {
+      final exact = contentsByLocale[normalized];
+      if (exact != null && exact.isNotEmpty) return exact;
+    }
+    if (contentsByLocale.isNotEmpty) {
+      final zh = contentsByLocale['zh'];
+      if (zh != null && zh.isNotEmpty) return zh;
+      final en = contentsByLocale['en'];
+      if (en != null && en.isNotEmpty) return en;
+      for (final entries in contentsByLocale.values) {
+        if (entries.isNotEmpty) return entries;
+      }
+    }
+    return fallbackContents;
   }
 }
 
