@@ -79,12 +79,14 @@ class UpdateVersionInfo {
     required this.isForce,
     required this.downloadUrl,
     required this.debugVersion,
+    required this.skipUpdateVersion,
   });
 
   final String latestVersion;
   final bool isForce;
   final String downloadUrl;
   final String debugVersion;
+  final String skipUpdateVersion;
 
   factory UpdateVersionInfo.fromJson(Map<String, dynamic> json) {
     return UpdateVersionInfo(
@@ -92,6 +94,7 @@ class UpdateVersionInfo {
       isForce: _readBool(json, 'is_force', fallbackKey: 'isForce'),
       downloadUrl: _readString(json, 'download_url', fallbackKey: 'downloadUrl'),
       debugVersion: _readString(json, 'debug_version', fallbackKey: 'debugVersion'),
+      skipUpdateVersion: _readString(json, 'skip_update_version', fallbackKey: 'skipUpdateVersion'),
     );
   }
 }

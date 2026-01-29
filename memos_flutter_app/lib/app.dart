@@ -61,6 +61,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       isForce: false,
       downloadUrl: '',
       debugVersion: '',
+      skipUpdateVersion: '',
     ),
     announcement: const UpdateAnnouncement(
       id: 0,
@@ -374,9 +375,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       version = debugVersion.isNotEmpty ? debugVersion : '999.0';
     }
     final isForce = effectiveConfig.versionInfo.isForce;
+    final latestVersion = effectiveConfig.versionInfo.latestVersion.trim();
+    final skipUpdateVersion = effectiveConfig.versionInfo.skipUpdateVersion.trim();
+    final hasUpdate = latestVersion.isNotEmpty &&
+        (skipUpdateVersion.isEmpty || latestVersion != skipUpdateVersion) &&
+        _compareVersionTriplets(latestVersion, version) > 0;
 
     final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();
-    final shouldShow = isForce || lastSeenVersion != version;
+    final shouldShow = isForce || hasUpdate || lastSeenVersion != version;
     if (!shouldShow) return;
 
     final dialogContext = _navigatorKey.currentContext;
