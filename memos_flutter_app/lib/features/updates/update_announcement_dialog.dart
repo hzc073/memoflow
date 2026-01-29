@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -92,24 +93,40 @@ class UpdateAnnouncementDialog extends StatelessWidget {
     final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final shadow = Colors.black.withValues(alpha: 0.12);
     final isForce = config.versionInfo.isForce;
+    final useDebugAnnouncement = kDebugMode &&
+        config.debugAnnouncementSource == DebugAnnouncementSource.debugAnnouncement;
+    final activeAnnouncement = useDebugAnnouncement
+        ? (config.debugAnnouncement ?? config.announcement)
+        : config.announcement;
     final donors = config.donors;
-    final newDonors = config.announcement.newDonorsFrom(donors);
+    final newDonors = activeAnnouncement.newDonorsFrom(donors);
     final newDonorLabels = newDonors
         .map((donor) => donor.name.trim().isNotEmpty ? donor.name.trim() : donor.id.trim())
         .where((name) => name.isNotEmpty)
         .map((name) => '@$name')
         .toList(growable: false);
     final version = currentVersion.trim();
-    final rawTitle = config.announcement.title.trim();
+    final rawTitle = activeAnnouncement.title.trim();
     final fallbackTitle = context.tr(zh: '版本公告', en: 'Release Notes');
     final titleBase = rawTitle.isEmpty ? fallbackTitle : rawTitle;
     final title = version.isEmpty ? titleBase : '$titleBase v$version';
-    final releaseEntry = config.releaseNoteForVersion(version);
-    final releaseItems = buildVersionAnnouncementItems(releaseEntry);
+    final releaseEntry = useDebugAnnouncement ? null : config.releaseNoteForVersion(version);
+    final announcementItems = useDebugAnnouncement
+        ? activeAnnouncement
+            .contentsForLanguageCode(Localizations.localeOf(context).languageCode)
+            .map(
+              (line) => VersionAnnouncementItem(
+                category: ReleaseNoteCategory.feature,
+                detailZh: line,
+                detailEn: line,
+              ),
+            )
+            .toList(growable: false)
+        : buildVersionAnnouncementItems(releaseEntry);
     final showUpdateAction = _compareVersionTriplets(config.versionInfo.latestVersion, version) > 0;
 
     Widget buildAnnouncementItems() {
-      if (releaseItems.isEmpty) {
+      if (announcementItems.isEmpty) {
         return Text(
           context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
           style: TextStyle(fontSize: 13.5, height: 1.35, color: textMuted),
@@ -118,14 +135,14 @@ class UpdateAnnouncementDialog extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < releaseItems.length; i++) ...[
+          for (var i = 0; i < announcementItems.length; i++) ...[
             _ReleaseNoteRow(
-              item: releaseItems[i],
+              item: announcementItems[i],
               textMain: textMain,
               textMuted: textMuted,
               isDark: isDark,
             ),
-            if (i != releaseItems.length - 1) const SizedBox(height: 8),
+            if (i != announcementItems.length - 1) const SizedBox(height: 8),
           ],
         ],
       );

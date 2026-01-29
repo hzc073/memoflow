@@ -1,15 +1,24 @@
+enum DebugAnnouncementSource {
+  releaseNotes,
+  debugAnnouncement,
+}
+
 class UpdateAnnouncementConfig {
   const UpdateAnnouncementConfig({
     required this.versionInfo,
     required this.announcement,
     required this.donors,
     required this.releaseNotes,
+    this.debugAnnouncement,
+    this.debugAnnouncementSource = DebugAnnouncementSource.releaseNotes,
   });
 
   final UpdateVersionInfo versionInfo;
   final UpdateAnnouncement announcement;
   final List<UpdateDonor> donors;
   final List<UpdateReleaseNoteEntry> releaseNotes;
+  final UpdateAnnouncement? debugAnnouncement;
+  final DebugAnnouncementSource debugAnnouncementSource;
 
   bool get hasDonors => donors.isNotEmpty;
   bool get hasReleaseNotes => releaseNotes.isNotEmpty;
@@ -17,6 +26,11 @@ class UpdateAnnouncementConfig {
   factory UpdateAnnouncementConfig.fromJson(Map<String, dynamic> json) {
     final versionInfo = UpdateVersionInfo.fromJson(_readMap(json['version_info']) ?? json);
     final announcement = UpdateAnnouncement.fromJson(_readMap(json['announcement']) ?? json);
+    final debugSection = _readMap(json['debug']);
+    final debugAnnouncement = _readAnnouncement(debugSection?['announcement'] ?? json['debug_announcement']);
+    final debugAnnouncementSource = _readDebugAnnouncementSource(
+      debugSection?['announcement_source'] ?? json['debug_announcement_source'],
+    );
     final donors = _readList(json['donors'])
         .whereType<Map>()
         .map((raw) => UpdateDonor.fromJson(raw.cast<String, dynamic>()))
@@ -28,6 +42,8 @@ class UpdateAnnouncementConfig {
       announcement: announcement,
       donors: donors,
       releaseNotes: releaseNotes,
+      debugAnnouncement: debugAnnouncement,
+      debugAnnouncementSource: debugAnnouncementSource,
     );
   }
 
@@ -43,6 +59,12 @@ class UpdateAnnouncementConfig {
   static Map<String, dynamic>? _readMap(dynamic value) {
     if (value is Map) return value.cast<String, dynamic>();
     return null;
+  }
+
+  static UpdateAnnouncement? _readAnnouncement(dynamic value) {
+    final map = _readMap(value);
+    if (map == null) return null;
+    return UpdateAnnouncement.fromJson(map);
   }
 
   static List<dynamic> _readList(dynamic value) {
@@ -198,6 +220,22 @@ class UpdateReleaseNoteItem {
 
   final String category;
   final String content;
+}
+
+DebugAnnouncementSource _readDebugAnnouncementSource(dynamic value) {
+  if (value is bool) {
+    return value ? DebugAnnouncementSource.debugAnnouncement : DebugAnnouncementSource.releaseNotes;
+  }
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'debug' || normalized == 'debug_announcement' || normalized == 'announcement') {
+      return DebugAnnouncementSource.debugAnnouncement;
+    }
+    if (normalized == 'release' || normalized == 'release_notes' || normalized == 'release_announcement') {
+      return DebugAnnouncementSource.releaseNotes;
+    }
+  }
+  return DebugAnnouncementSource.releaseNotes;
 }
 
 String _readString(Map<String, dynamic> json, String key, {String? fallbackKey}) {
