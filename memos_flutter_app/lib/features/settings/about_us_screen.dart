@@ -7,6 +7,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../state/update_config_provider.dart';
+import '../debug/debug_tools_screen.dart';
 import '../updates/donors_wall_screen.dart';
 import '../updates/update_announcement_dialog.dart';
 import '../updates/version_announcement_dialog.dart';
@@ -50,6 +51,8 @@ class AboutUsContent extends ConsumerStatefulWidget {
 
 class _AboutUsContentState extends ConsumerState<AboutUsContent> {
   late final Future<UpdateAnnouncementConfig?> _updateConfigFuture;
+  int _debugTapCount = 0;
+  DateTime? _lastDebugTapAt;
 
   @override
   void initState() {
@@ -77,6 +80,20 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
       config: config,
       currentVersion: version,
     );
+  }
+
+  void _handleDebugTap() {
+    if (!kDebugMode) return;
+    final now = DateTime.now();
+    final last = _lastDebugTapAt;
+    if (last == null || now.difference(last) > const Duration(milliseconds: 1500)) {
+      _debugTapCount = 0;
+    }
+    _debugTapCount++;
+    _lastDebugTapAt = now;
+    if (_debugTapCount < 5) return;
+    _debugTapCount = 0;
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DebugToolsScreen()));
   }
 
   @override
@@ -109,34 +126,37 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
         ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: isDark
-                    ? null
-                    : [
-                        BoxShadow(
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                          color: Colors.black.withValues(alpha: 0.06),
-                        ),
-                      ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('MemoFlow', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
-                  const SizedBox(height: 8),
-                  Text(
-                    context.tr(
-                      zh: '一个基于 Memos 后端的离线优先客户端。',
-                      en: 'An offline-first client for the Memos backend.',
+            GestureDetector(
+              onTap: _handleDebugTap,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: card,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: isDark
+                      ? null
+                      : [
+                          BoxShadow(
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                            color: Colors.black.withValues(alpha: 0.06),
+                          ),
+                        ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('MemoFlow', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
+                    const SizedBox(height: 8),
+                    Text(
+                      context.tr(
+                        zh: '一个基于 Memos 后端的离线优先客户端。',
+                        en: 'An offline-first client for the Memos backend.',
+                      ),
+                      style: TextStyle(fontSize: 13, height: 1.4, color: textMuted),
                     ),
-                    style: TextStyle(fontSize: 13, height: 1.4, color: textMuted),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 12),
