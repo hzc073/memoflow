@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
 
@@ -33,6 +34,8 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    String tr({required String zh, required String en}) =>
+        trByLanguage(language: _selected, zh: zh, en: en);
 
     return Scaffold(
       backgroundColor: bg,
@@ -61,7 +64,7 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Select language',
+                    tr(zh: '\u9009\u62E9\u8BED\u8A00', en: 'Select language'),
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
@@ -70,7 +73,10 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Choose your preferred language for MemoFlow.',
+                    tr(
+                      zh: '\u9009\u62E9 MemoFlow \u7684\u663E\u793A\u8BED\u8A00.',
+                      en: 'Choose your preferred language for MemoFlow.',
+                    ),
                     style: TextStyle(fontSize: 13, color: textMuted),
                   ),
                   const SizedBox(height: 24),
@@ -101,9 +107,9 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       ),
-                      child: const Text(
-                        'Continue',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                      child: Text(
+                        tr(zh: '\u7EE7\u7EED', en: 'Continue'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
