@@ -8,12 +8,14 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/image_bed_settings_provider.dart';
+import '../../state/location_settings_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
 import '../../state/webdav_settings_provider.dart';
 import '../reminders/reminder_settings_screen.dart';
 import 'image_bed_settings_screen.dart';
+import 'location_settings_screen.dart';
 import 'webdav_sync_screen.dart';
 
 class ComponentsSettingsScreen extends ConsumerWidget {
@@ -24,6 +26,7 @@ class ComponentsSettingsScreen extends ConsumerWidget {
     final prefs = ref.watch(appPreferencesProvider);
     final reminderSettings = ref.watch(reminderSettingsProvider);
     final imageBedSettings = ref.watch(imageBedSettingsProvider);
+    final locationSettings = ref.watch(locationSettingsProvider);
     final webDavSettings = ref.watch(webDavSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
@@ -117,6 +120,22 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                 onChanged: (v) => ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const ImageBedSettingsScreen()),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ToggleCard(
+                card: card,
+                label: context.tr(zh: '定位', en: 'Location'),
+                description: context.tr(
+                  zh: '为笔记记录定位信息，并展示简洁地名。',
+                  en: 'Attach location info to memos and show subtle place names.',
+                ),
+                value: locationSettings.enabled,
+                textMain: textMain,
+                textMuted: textMuted,
+                onChanged: (v) => ref.read(locationSettingsProvider.notifier).setEnabled(v),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
                 ),
               ),
               const SizedBox(height: 12),

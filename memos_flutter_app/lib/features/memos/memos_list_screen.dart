@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/location_launcher.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/url.dart';
@@ -47,6 +48,7 @@ import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
 import 'memo_markdown.dart';
+import 'memo_location_line.dart';
 import 'note_input_sheet.dart';
 
 const _maxPreviewLines = 6;
@@ -1154,6 +1156,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments
           .map((a) => a.toJson())
           .toList(growable: false),
+      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -1192,6 +1195,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments
           .map((a) => a.toJson())
           .toList(growable: false),
+      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -1279,6 +1283,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
             builder: (_) => MemoEditorScreen(existing: memo),
           ),
         );
+        ref.invalidate(memoRelationsProvider(memo.uid));
         return;
       case _MemoCardAction.reminder:
         await Navigator.of(context).push(
@@ -2840,6 +2845,12 @@ class _MemoCardState extends State<_MemoCard> {
     final textMain = isDark
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
+    final isPinned = memo.pinned;
+    final pinColor = MemoFlowPalette.primary;
+    final pinBorderColor = pinColor.withValues(alpha: isDark ? 0.5 : 0.4);
+    final pinTint = pinColor.withValues(alpha: isDark ? 0.18 : 0.08);
+    final cardSurface = isPinned ? Color.alphaBlend(pinTint, cardColor) : cardColor;
+    final cardBorderColor = isPinned ? pinBorderColor : borderColor;
     final menuColor = isDark
         ? const Color(0xFF2B2523)
         : const Color(0xFFF6E7E3);
@@ -2854,6 +2865,32 @@ class _MemoCardState extends State<_MemoCard> {
     final syncColor = syncStatus == _MemoSyncStatus.failed
         ? deleteColor
         : pendingColor;
+    final pinnedChip = isPinned
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: pinColor.withValues(alpha: isDark ? 0.18 : 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: pinBorderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.push_pin, size: 12, color: pinColor),
+                const SizedBox(width: 4),
+                Text(
+                  context.tr(zh: '置顶', en: 'Pinned'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                    color: pinColor,
+                  ),
+                ),
+              ],
+            ),
+          )
+        : null;
 
     final audio = memo.attachments
         .where((a) => a.type.startsWith('audio'))
@@ -2988,9 +3025,9 @@ class _MemoCardState extends State<_MemoCard> {
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: cardColor,
+              color: cardSurface,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: borderColor),
+              border: Border.all(color: cardBorderColor),
               boxShadow: [
                 BoxShadow(
                   blurRadius: isDark ? 20 : 12,
@@ -3004,6 +3041,10 @@ class _MemoCardState extends State<_MemoCard> {
               children: [
                 Row(
                   children: [
+                    if (pinnedChip != null) ...[
+                      pinnedChip,
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: Text(
                         dateText,
@@ -3094,6 +3135,14 @@ class _MemoCardState extends State<_MemoCard> {
                     ),
                   ],
                 ),
+                if (memo.location != null) ...[
+                  const SizedBox(height: 6),
+                  MemoLocationLine(
+                    location: memo.location!,
+                    textColor: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+                    onTap: () => openAmapLocation(memo.location!),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 if (showProgress) ...[
                   _TaskProgressBar(
@@ -3274,8 +3323,43 @@ class _MemoRelationsSection extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const SizedBox.shrink(),
+      loading: () => _buildLoading(context),
       error: (error, stackTrace) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildLoading(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.link, size: 14, color: textMuted),
+            const SizedBox(width: 6),
+            Text(
+              context.tr(zh: '双链加载中', en: 'Loading links...'),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+            ),
+            const Spacer(),
+            SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(strokeWidth: 2, color: textMuted),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -12,14 +12,23 @@ import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
+import '../../data/location/amap_geocoder.dart';
+import '../../data/location/device_location_service.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
+import '../../data/models/memo_relation.dart';
+import '../../data/models/memo_location.dart';
+import '../../data/models/location_settings.dart';
 import '../../state/database_provider.dart';
+import '../../state/location_settings_provider.dart';
+import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/network_log_provider.dart';
 import '../../state/session_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
+import '../settings/location_settings_screen.dart';
 
 class MemoEditorScreen extends ConsumerStatefulWidget {
   const MemoEditorScreen({super.key, this.existing});
@@ -84,11 +93,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   TextEditingValue _lastValue = const TextEditingValue();
   var _isApplyingHistory = false;
   bool _isMoreToolbarOpen = false;
+  bool _relationsLoaded = false;
+  bool _relationsLoading = false;
+  bool _relationsDirty = false;
+  Future<void>? _relationsLoadFuture;
   static const _maxHistory = 100;
   static const _maxAttachmentBytes = 30 * 1024 * 1024;
   late String _visibility;
   late bool _pinned;
   var _saving = false;
+  MemoLocation? _location;
+  MemoLocation? _initialLocation;
+  var _locating = false;
 
   @override
   void initState() {
@@ -107,6 +123,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         .toSet();
     _visibility = existing?.visibility ?? 'PRIVATE';
     _pinned = existing?.pinned ?? false;
+    _location = existing?.location;
+    _initialLocation = existing?.location;
+    if (existing != null) {
+      _loadExistingRelations();
+    }
   }
 
   @override
@@ -129,6 +150,76 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       if (!mounted) return;
       setState(() => _tagStatsCache = tags);
     } catch (_) {}
+  }
+
+  Future<void> _loadExistingRelations({bool force = false}) async {
+    final existing = widget.existing;
+    if (existing == null) return;
+    if (_relationsLoaded && !force) return;
+    final inFlight = _relationsLoadFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _loadExistingRelationsInternal(existing.uid);
+    _relationsLoadFuture = future;
+    return future;
+  }
+
+  Future<void> _loadExistingRelationsInternal(String memoUid) async {
+    _relationsLoading = true;
+    if (mounted) {
+      setState(() {});
+    }
+
+    try {
+      final uid = memoUid.trim();
+      if (uid.isEmpty) {
+        _relationsLoaded = true;
+        return;
+      }
+
+      final api = ref.read(memosApiProvider);
+      final memoName = 'memos/$uid';
+      final items = <MemoRelation>[];
+      String? pageToken;
+      do {
+        final (relations, nextToken) = await api.listMemoRelations(
+          memoUid: uid,
+          pageSize: 200,
+          pageToken: pageToken,
+        );
+        items.addAll(relations);
+        pageToken = nextToken.trim().isEmpty ? null : nextToken;
+      } while (pageToken != null);
+
+      final linked = <_LinkedMemo>[];
+      final seen = <String>{};
+      for (final relation in items) {
+        if (relation.type.trim().toUpperCase() != 'REFERENCE') continue;
+        if (relation.memo.name.trim() != memoName) continue;
+        final relatedName = relation.relatedMemo.name.trim();
+        if (relatedName.isEmpty || relatedName == memoName) continue;
+        if (!seen.add(relatedName)) continue;
+        final label = _linkedMemoLabelFromRelation(relatedName, relation.relatedMemo.snippet);
+        linked.add(_LinkedMemo(name: relatedName, label: label));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _linkedMemos
+          ..clear()
+          ..addAll(linked);
+        _relationsLoaded = true;
+        _relationsDirty = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      _relationsLoading = false;
+      _relationsLoadFuture = null;
+      if (mounted) {
+        setState(() {});
+      }
+    }
   }
 
   void _trackHistory() {
@@ -171,6 +262,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (_saving) return;
     final content = _contentController.text.trimRight();
     final existing = widget.existing;
+    final location = _location;
+    final locationChanged = !_sameLocation(_initialLocation, location);
     final existingAttachments = List<Attachment>.from(_existingAttachments);
     final pendingAttachments = List<_PendingAttachment>.from(_pendingAttachments);
     final hasPendingAttachments = pendingAttachments.isNotEmpty;
@@ -193,6 +286,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       final createTime = existing?.createTime ?? now;
       final state = existing?.state ?? 'NORMAL';
       final relations = _linkedMemos.map((m) => m.toRelationJson()).toList(growable: false);
+      final includeRelations = _relationsDirty && (existing != null || relations.isNotEmpty);
       final attachments = [
         ...existingAttachments.map((a) => a.toJson()),
         ...pendingAttachments.map((p) {
@@ -224,6 +318,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
+        location: location,
         syncState: 1,
         lastError: null,
       );
@@ -235,7 +330,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           'visibility': _visibility,
           'pinned': _pinned,
           'has_attachments': attachments.isNotEmpty,
-          if (relations.isNotEmpty) 'relations': relations,
+          if (location != null) 'location': location.toJson(),
+          if (includeRelations) 'relations': relations,
         });
       } else {
         await db.enqueueOutbox(type: 'update_memo', payload: {
@@ -243,7 +339,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           'content': content,
           'visibility': _visibility,
           'pinned': _pinned,
-          if (relations.isNotEmpty) 'relations': relations,
+          if (locationChanged) 'location': location?.toJson(),
+          if (includeRelations) 'relations': relations,
           if (shouldSyncAttachments) 'sync_attachments': true,
           if (hasPendingAttachments) 'has_pending_attachments': true,
         });
@@ -447,6 +544,114 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     setState(() => _isMoreToolbarOpen = false);
   }
 
+  Future<void> _openLocationSettings() async {
+    if (_saving) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
+    );
+  }
+
+  Future<LocationSettings> _resolveLocationSettings() async {
+    final current = ref.read(locationSettingsProvider);
+    if (current.enabled) return current;
+    final stored = await ref.read(locationSettingsRepositoryProvider).read();
+    if (!mounted) return stored;
+    await ref.read(locationSettingsProvider.notifier).setAll(stored, triggerSync: false);
+    return stored;
+  }
+
+  Future<void> _requestLocation() async {
+    if (_saving || _locating) return;
+    final settings = await _resolveLocationSettings();
+    if (!settings.enabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(zh: '定位未启用，请先在设置中开启。', en: 'Location is disabled. Enable it in settings first.'),
+          ),
+          action: SnackBarAction(
+            label: context.tr(zh: '设置', en: 'Settings'),
+            onPressed: _openLocationSettings,
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _locating = true);
+    try {
+      final position = await DeviceLocationService().getCurrentPosition();
+      String placeholder = '';
+      if (settings.amapWebKey.trim().isNotEmpty) {
+        final geocoder = AmapGeocoder(
+          logStore: ref.read(networkLogStoreProvider),
+          logBuffer: ref.read(networkLogBufferProvider),
+          logManager: ref.read(logManagerProvider),
+        );
+        placeholder = await geocoder.reverseGeocode(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              apiKey: settings.amapWebKey,
+              securityKey: settings.amapSecurityKey,
+            ) ??
+            '';
+      }
+      final next = MemoLocation(
+        placeholder: placeholder,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      if (!mounted) return;
+      setState(() => _location = next);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '定位成功：${next.displayText(fractionDigits: 6)}',
+              en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_locationErrorText(e))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _locating = false);
+      }
+    }
+  }
+
+  String _locationErrorText(Object error) {
+    if (error is LocationException) {
+      return switch (error.code) {
+        'service_disabled' => context.tr(zh: '定位服务未开启', en: 'Location services are disabled'),
+        'permission_denied' => context.tr(zh: '定位权限被拒绝', en: 'Location permission denied'),
+        'permission_denied_forever' => context.tr(zh: '定位权限被永久拒绝', en: 'Location permission denied permanently'),
+        'timeout' => context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.'),
+        _ => context.tr(zh: '定位失败', en: 'Failed to get location'),
+      };
+    }
+    if (error is TimeoutException) {
+      return context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.');
+    }
+    return context.tr(zh: '定位失败', en: 'Failed to get location');
+  }
+
+  bool _sameLocation(MemoLocation? a, MemoLocation? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    if (a.placeholder.trim() != b.placeholder.trim()) return false;
+    if ((a.latitude - b.latitude).abs() > 1e-6) return false;
+    if ((a.longitude - b.longitude).abs() > 1e-6) return false;
+    return true;
+  }
+
   Widget _buildMoreToolbar(BuildContext context, bool isDark) {
     final iconColor = isDark ? Colors.white70 : Colors.black54;
     final disabledColor = iconColor.withValues(alpha: 0.45);
@@ -519,6 +724,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             ),
             const SizedBox(width: gap),
             actionButton(
+              icon: _locating ? Icons.my_location : Icons.place_outlined,
+              enabled: canEdit && !_locating,
+              onPressed: _requestLocation,
+            ),
+            const SizedBox(width: gap),
+            actionButton(
               icon: Icons.undo,
               enabled: canEdit && _undoStack.isNotEmpty,
               onPressed: _undo,
@@ -537,6 +748,22 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
   Future<void> _openLinkMemoSheet() async {
     if (_saving) return;
+    if (_relationsLoading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '姝ｅ湪鍔犺浇寮曠敤', en: 'Loading references'))),
+      );
+      return;
+    }
+    if (widget.existing != null && !_relationsLoaded) {
+      await _loadExistingRelations();
+      if (!_relationsLoaded) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '鍔犺浇寮曠敤澶辫触', en: 'Failed to load references'))),
+        );
+        return;
+      }
+    }
     final selection = await LinkMemoSheet.show(
       context,
       existingNames: _linkedMemoNames,
@@ -1111,11 +1338,20 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (name.isEmpty) return;
     if (_linkedMemos.any((m) => m.name == name)) return;
     final label = _linkedMemoLabel(memo);
-    setState(() => _linkedMemos.add(_LinkedMemo(name: name, label: label)));
+    setState(() {
+      _linkedMemos.add(_LinkedMemo(name: name, label: label));
+      _relationsDirty = true;
+    });
   }
 
   void _removeLinkedMemo(String name) {
-    setState(() => _linkedMemos.removeWhere((m) => m.name == name));
+    final before = _linkedMemos.length;
+    setState(() {
+      _linkedMemos.removeWhere((m) => m.name == name);
+      if (_linkedMemos.length != before) {
+        _relationsDirty = true;
+      }
+    });
   }
 
   void _clearLinkedMemos() {
@@ -1133,6 +1369,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       return _truncateLabel(name.startsWith('memos/') ? name.substring('memos/'.length) : name);
     }
     return _truncateLabel(memo.uid);
+  }
+
+  String _linkedMemoLabelFromRelation(String relatedName, String snippet) {
+    final trimmedSnippet = snippet.trim();
+    if (trimmedSnippet.isNotEmpty) {
+      return _truncateLabel(trimmedSnippet);
+    }
+    final name = relatedName.trim();
+    if (name.isNotEmpty) {
+      return _truncateLabel(name.startsWith('memos/') ? name.substring('memos/'.length) : name);
+    }
+    return _truncateLabel(relatedName);
   }
 
   String _truncateLabel(String text, {int maxLength = 24}) {
@@ -1326,6 +1574,42 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                   ),
                                 )
                                 .toList(growable: false),
+                          ),
+                        ),
+                      if (_locating)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                context.tr(zh: '正在定位…', en: 'Locating...'),
+                                style: TextStyle(fontSize: 12, color: chipText),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (_location != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: InputChip(
+                              avatar: Icon(Icons.place_outlined, size: 16, color: chipText),
+                              label: Text(
+                                _location!.displayText(fractionDigits: 6),
+                                style: TextStyle(fontSize: 12, color: chipText),
+                              ),
+                              backgroundColor: chipBg,
+                              deleteIconColor: chipDelete,
+                              onDeleted: _saving ? null : () => setState(() => _location = null),
+                            ),
                           ),
                         ),
                       AnimatedSwitcher(

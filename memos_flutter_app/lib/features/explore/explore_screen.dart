@@ -749,6 +749,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       displayTime: memo.displayTime,
       tags: memo.tags,
       attachments: memo.attachments,
+      location: memo.location,
       relations: memo.relations,
       reactions: reactions,
     );
@@ -917,6 +918,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       updateTime: memo.updateTime.toLocal(),
       tags: memo.tags,
       attachments: memo.attachments,
+      location: memo.location,
       syncState: SyncState.synced,
       lastError: null,
     );

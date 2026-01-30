@@ -12,6 +12,7 @@ import '../models/attachment.dart';
 import '../models/content_fingerprint.dart';
 import '../models/instance_profile.dart';
 import '../models/memo.dart';
+import '../models/memo_location.dart';
 import '../models/memo_relation.dart';
 import '../models/notification_item.dart';
 import '../models/personal_access_token.dart';
@@ -45,6 +46,7 @@ class MemosApi {
   final Dio _dio;
   final bool useLegacyApi;
   static const Duration _attachmentTimeout = Duration(seconds: 120);
+  static const Object _unset = Object();
 
   Options _attachmentOptions() {
     return Options(
@@ -1812,6 +1814,7 @@ class MemosApi {
     required String content,
     String visibility = 'PRIVATE',
     bool pinned = false,
+    MemoLocation? location,
   }) async {
     if (!useLegacyApi) {
       return _createMemoModern(
@@ -1819,6 +1822,7 @@ class MemosApi {
         content: content,
         visibility: visibility,
         pinned: pinned,
+        location: location,
       );
     }
     try {
@@ -1827,6 +1831,7 @@ class MemosApi {
         content: content,
         visibility: visibility,
         pinned: pinned,
+        location: location,
       );
     } on DioException catch (e) {
       if (_shouldFallbackLegacy(e)) {
@@ -1846,6 +1851,7 @@ class MemosApi {
     required String content,
     required String visibility,
     required bool pinned,
+    MemoLocation? location,
   }) async {
     final response = await _dio.post(
       'api/v1/memos',
@@ -1854,6 +1860,7 @@ class MemosApi {
         'content': content,
         'visibility': visibility,
         'pinned': pinned,
+        if (location != null) 'location': location.toJson(),
       },
     );
     return Memo.fromJson(_expectJsonMap(response.data));
@@ -1866,6 +1873,7 @@ class MemosApi {
     bool? pinned,
     String? state,
     DateTime? displayTime,
+    Object? location = _unset,
   }) async {
     if (!useLegacyApi) {
       return _updateMemoModern(
@@ -1875,6 +1883,7 @@ class MemosApi {
         pinned: pinned,
         state: state,
         displayTime: displayTime,
+        location: location,
       );
     }
     try {
@@ -1885,6 +1894,7 @@ class MemosApi {
         pinned: pinned,
         state: state,
         displayTime: displayTime,
+        location: location,
       );
     } on DioException catch (e) {
       if (_shouldFallbackLegacy(e)) {
@@ -1908,6 +1918,7 @@ class MemosApi {
     bool? pinned,
     String? state,
     DateTime? displayTime,
+    required Object? location,
   }) async {
     final updateMask = <String>[];
     final data = <String, Object?>{
@@ -1932,6 +1943,10 @@ class MemosApi {
     if (displayTime != null) {
       updateMask.add('display_time');
       data['displayTime'] = displayTime.toUtc().toIso8601String();
+    }
+    if (!identical(location, _unset)) {
+      updateMask.add('location');
+      data['location'] = location == null ? null : (location as MemoLocation).toJson();
     }
     if (updateMask.isEmpty) {
       throw ArgumentError('updateMemo requires at least one field');
@@ -2338,7 +2353,6 @@ class MemosApi {
     required String memoUid,
     required List<Map<String, dynamic>> relations,
   }) async {
-    if (relations.isEmpty) return;
     try {
       await _setMemoRelationsModern(memoUid, relations);
     } on DioException catch (e) {
@@ -2951,6 +2965,7 @@ class MemosApi {
       tags: memo.tags,
       attachments: memo.attachments,
       displayTime: memo.displayTime,
+      location: memo.location,
       relations: memo.relations,
       reactions: memo.reactions,
     );

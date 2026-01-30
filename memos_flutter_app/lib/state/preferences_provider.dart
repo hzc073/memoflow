@@ -1,11 +1,14 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/app_localization.dart';
+import '../core/hash.dart';
 import '../core/theme_colors.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
@@ -637,6 +640,7 @@ class AppPreferencesRepository {
   static const _kStatePrefix = 'app_preferences_v2_';
   static const _kDeviceKey = 'app_preferences_device_v1';
   static const _kLegacyKey = 'app_preferences_v1';
+  static const _kFallbackFilePrefix = 'memoflow_prefs_';
 
   final FlutterSecureStorage _storage;
   final String? _accountKey;
@@ -647,17 +651,68 @@ class AppPreferencesRepository {
     return '$_kStatePrefix$key';
   }
 
+  Future<File?> _fallbackFileForKey(String key) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final safe = fnv1a64Hex(key);
+      return File('${dir.path}/$_kFallbackFilePrefix$safe.json');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<AppPreferences?> _readFallback(String key) async {
+    final file = await _fallbackFileForKey(key);
+    if (file == null) return null;
+    try {
+      if (!await file.exists()) return null;
+      final raw = await file.readAsString();
+      if (raw.trim().isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return AppPreferences.fromJson(decoded.cast<String, dynamic>());
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _writeFallback(String key, AppPreferences prefs) async {
+    final file = await _fallbackFileForKey(key);
+    if (file == null) return;
+    try {
+      await file.writeAsString(jsonEncode(prefs.toJson()));
+    } catch (_) {}
+  }
+
+  Future<void> _deleteFallback(String key) async {
+    final file = await _fallbackFileForKey(key);
+    if (file == null) return;
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
   Future<AppPreferences> read({required AppLanguage systemLanguage}) async {
     final storageKey = _storageKey;
     if (storageKey == null) {
-      final device = await _readDevice();
+      final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
+      if (device != null) {
+        await _storage.write(key: _kDeviceKey, value: jsonEncode(device.toJson()));
+        await _writeFallback(_kDeviceKey, device);
+      }
       return device ?? AppPreferences.defaultsForLanguage(systemLanguage);
     }
 
     final raw = await _storage.read(key: storageKey);
     if (raw == null || raw.trim().isEmpty) {
       final legacy = await _readLegacy();
-      final device = await _readDevice();
+      final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
+      if (device != null) {
+        await _storage.write(key: _kDeviceKey, value: jsonEncode(device.toJson()));
+        await _writeFallback(_kDeviceKey, device);
+      }
       if (legacy != null) {
         var normalized = _normalizeLegacyForAccount(legacy);
         if (device != null) {
@@ -670,6 +725,11 @@ class AppPreferencesRepository {
         await write(device);
         return device;
       }
+      final fallback = await _readFallback(storageKey);
+      if (fallback != null) {
+        await write(fallback);
+        return fallback;
+      }
       return AppPreferences.defaultsForLanguage(systemLanguage);
     }
     try {
@@ -677,7 +737,14 @@ class AppPreferencesRepository {
       if (decoded is Map) {
         return AppPreferences.fromJson(decoded.cast<String, dynamic>());
       }
-    } catch (_) {}
+    } catch (_) {
+      // Fall through to fallback file.
+    }
+    final fallback = await _readFallback(storageKey);
+    if (fallback != null) {
+      await write(fallback);
+      return fallback;
+    }
     return AppPreferences.defaultsForLanguage(systemLanguage);
   }
 
@@ -685,15 +752,18 @@ class AppPreferencesRepository {
     final storageKey = _storageKey;
     if (storageKey == null) {
       await _storage.write(key: _kDeviceKey, value: jsonEncode(prefs.toJson()));
+      await _writeFallback(_kDeviceKey, prefs);
       return;
     }
     await _storage.write(key: storageKey, value: jsonEncode(prefs.toJson()));
+    await _writeFallback(storageKey, prefs);
   }
 
   Future<void> clear() async {
     final storageKey = _storageKey;
     if (storageKey == null) return;
     await _storage.delete(key: storageKey);
+    await _deleteFallback(storageKey);
   }
 
   Future<AppPreferences?> _readDevice() async {

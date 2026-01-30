@@ -15,10 +15,12 @@ import '../data/settings/ai_settings_repository.dart';
 import '../data/settings/webdav_sync_state_repository.dart';
 import '../data/webdav/webdav_client.dart';
 import '../data/models/image_bed_settings.dart';
+import '../data/models/location_settings.dart';
 import '../data/settings/webdav_device_id_repository.dart';
 import 'ai_settings_provider.dart';
 import 'app_lock_provider.dart';
 import 'image_bed_settings_provider.dart';
+import 'location_settings_provider.dart';
 import 'note_draft_provider.dart';
 import 'preferences_provider.dart';
 import 'reminder_settings_provider.dart';
@@ -33,6 +35,7 @@ const _webDavAppLockFile = 'app_lock.json';
 const _webDavDraftFile = 'note_draft.json';
 const _webDavReminderFile = 'reminder_settings.json';
 const _webDavImageBedFile = 'image_bed.json';
+const _webDavLocationFile = 'location_settings.json';
 
 final webDavSyncStateRepositoryProvider = Provider<WebDavSyncStateRepository>((ref) {
   final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
@@ -278,6 +281,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     final ai = _ref.read(aiSettingsProvider);
     final reminder = _ref.read(reminderSettingsProvider);
     final imageBed = _ref.read(imageBedSettingsProvider);
+    final locationSettings = _ref.read(locationSettingsProvider);
     final lockRepo = _ref.read(appLockRepositoryProvider);
     final lockSnapshot = await lockRepo.readSnapshot();
     final draftValue = _ref.read(noteDraftProvider).valueOrNull ?? '';
@@ -287,6 +291,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
       _webDavAiFile: _payloadFromJson(ai.toJson()),
       _webDavReminderFile: _payloadFromJson(reminder.toJson()),
       _webDavImageBedFile: _payloadFromJson(imageBed.toJson()),
+      _webDavLocationFile: _payloadFromJson(locationSettings.toJson()),
       _webDavAppLockFile: _payloadFromJson(lockSnapshot.toJson()),
       _webDavDraftFile: _payloadFromJson({'text': draftValue}),
     };
@@ -472,6 +477,10 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
         case _webDavImageBedFile:
           final settings = ImageBedSettings.fromJson(json);
           await _ref.read(imageBedSettingsProvider.notifier).setAll(settings, triggerSync: false);
+          break;
+        case _webDavLocationFile:
+          final settings = LocationSettings.fromJson(json);
+          await _ref.read(locationSettingsProvider.notifier).setAll(settings, triggerSync: false);
           break;
         case _webDavAppLockFile:
           final snapshot = AppLockSnapshot.fromJson(json);

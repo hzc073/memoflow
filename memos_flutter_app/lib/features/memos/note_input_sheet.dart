@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/markdown_editing.dart';
@@ -13,14 +15,22 @@ import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/memo.dart';
+import '../../data/models/memo_location.dart';
+import '../../data/models/location_settings.dart';
 import '../../data/models/user_setting.dart';
+import '../../data/location/amap_geocoder.dart';
+import '../../data/location/device_location_service.dart';
 import '../../state/database_provider.dart';
+import '../../state/location_settings_provider.dart';
+import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/network_log_provider.dart';
 import '../../state/note_draft_provider.dart';
 import '../../state/user_settings_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
 import '../voice/voice_record_screen.dart';
+import '../settings/location_settings_screen.dart';
 
 class NoteInputSheet extends ConsumerStatefulWidget {
   const NoteInputSheet({
@@ -86,6 +96,8 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   String _visibility = 'PRIVATE';
   bool _visibilityTouched = false;
   bool _isMoreToolbarOpen = false;
+  MemoLocation? _location;
+  var _locating = false;
   ProviderSubscription<AsyncValue<UserGeneralSetting>>? _settingsSubscription;
 
   @override
@@ -517,6 +529,105 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     setState(() => _isMoreToolbarOpen = false);
   }
 
+  Future<void> _openLocationSettings() async {
+    if (_busy) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
+    );
+  }
+
+  Future<LocationSettings> _resolveLocationSettings() async {
+    final current = ref.read(locationSettingsProvider);
+    if (current.enabled) return current;
+    final stored = await ref.read(locationSettingsRepositoryProvider).read();
+    if (!mounted) return stored;
+    await ref.read(locationSettingsProvider.notifier).setAll(stored, triggerSync: false);
+    return stored;
+  }
+
+  Future<void> _requestLocation() async {
+    if (_busy || _locating) return;
+    final settings = await _resolveLocationSettings();
+    if (!settings.enabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(zh: '定位未启用，请先在设置中开启。', en: 'Location is disabled. Enable it in settings first.'),
+          ),
+          action: SnackBarAction(
+            label: context.tr(zh: '设置', en: 'Settings'),
+            onPressed: _openLocationSettings,
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _locating = true);
+    try {
+      final position = await DeviceLocationService().getCurrentPosition();
+      String placeholder = '';
+      if (settings.amapWebKey.trim().isNotEmpty) {
+        final geocoder = AmapGeocoder(
+          logStore: ref.read(networkLogStoreProvider),
+          logBuffer: ref.read(networkLogBufferProvider),
+          logManager: ref.read(logManagerProvider),
+        );
+        placeholder = await geocoder.reverseGeocode(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              apiKey: settings.amapWebKey,
+              securityKey: settings.amapSecurityKey,
+            ) ??
+            '';
+      }
+      final next = MemoLocation(
+        placeholder: placeholder,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      if (!mounted) return;
+      setState(() => _location = next);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '定位成功：${next.displayText(fractionDigits: 6)}',
+              en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_locationErrorText(e))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _locating = false);
+      }
+    }
+  }
+
+  String _locationErrorText(Object error) {
+    if (error is LocationException) {
+      return switch (error.code) {
+        'service_disabled' => context.tr(zh: '定位服务未开启', en: 'Location services are disabled'),
+        'permission_denied' => context.tr(zh: '定位权限被拒绝', en: 'Location permission denied'),
+        'permission_denied_forever' => context.tr(zh: '定位权限被永久拒绝', en: 'Location permission denied permanently'),
+        'timeout' => context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.'),
+        _ => context.tr(zh: '定位失败', en: 'Failed to get location'),
+      };
+    }
+    if (error is TimeoutException) {
+      return context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.');
+    }
+    return context.tr(zh: '定位失败', en: 'Failed to get location');
+  }
+
   Widget _buildMoreToolbar(BuildContext context, bool isDark) {
     final iconColor = isDark ? Colors.white70 : Colors.black54;
     final disabledColor = iconColor.withValues(alpha: 0.45);
@@ -589,6 +700,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             ),
             const SizedBox(width: gap),
             actionButton(
+              icon: _locating ? Icons.my_location : Icons.place_outlined,
+              enabled: canEdit && !_locating,
+              onPressed: _requestLocation,
+            ),
+            const SizedBox(width: gap),
+            actionButton(
               icon: Icons.undo,
               enabled: canEdit && _undoStack.isNotEmpty,
               onPressed: _undo,
@@ -655,18 +772,57 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _pickAttachments() async {
     if (_busy) return;
     try {
-      final files = await _imagePicker.pickMultiImage();
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+        withReadStream: true,
+      );
       if (!mounted) return;
+      final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
 
       final added = <_PendingAttachment>[];
-      final accepted = <XFile>[];
       var tooLargeCount = 0;
+      var missingPathCount = 0;
+      Directory? tempDir;
       for (final file in files) {
-        final path = file.path;
-        if (path.trim().isEmpty) continue;
+        final reportedSize = file.size;
+        if (reportedSize > _maxAttachmentBytes) {
+          tooLargeCount++;
+          continue;
+        }
+
+        String path = (file.path ?? '').trim();
+        if (path.isEmpty) {
+          final stream = file.readStream;
+          final bytes = file.bytes;
+          if (stream == null && bytes == null) {
+            missingPathCount++;
+            continue;
+          }
+          tempDir ??= await getTemporaryDirectory();
+          final name = file.name.trim().isNotEmpty ? file.name.trim() : 'attachment_${generateUid()}';
+          final tempFile = File('${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name');
+          if (bytes != null) {
+            await tempFile.writeAsBytes(bytes, flush: true);
+          } else if (stream != null) {
+            final sink = tempFile.openWrite();
+            await sink.addStream(stream);
+            await sink.close();
+          }
+          path = tempFile.path;
+        }
+
+        if (path.trim().isEmpty) {
+          missingPathCount++;
+          continue;
+        }
+
         final handle = File(path);
-        if (!handle.existsSync()) continue;
+        if (!handle.existsSync()) {
+          missingPathCount++;
+          continue;
+        }
         final size = handle.lengthSync();
         if (size > _maxAttachmentBytes) {
           tooLargeCount++;
@@ -683,27 +839,31 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             size: size,
           ),
         );
-        accepted.add(file);
       }
 
       if (added.isEmpty) {
-        final msg = tooLargeCount > 0 ? 'Image too large (max 30 MB).' : 'No images selected.';
+        final msg = tooLargeCount > 0
+            ? 'File too large (max 30 MB).'
+            : (missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
         return;
       }
 
       setState(() {
         _pendingAttachments.addAll(added);
-        _pickedImages.addAll(accepted);
       });
       final suffix = added.length == 1 ? '' : 's';
-      final summary = tooLargeCount > 0
-          ? 'Added ${added.length} image$suffix. Skipped $tooLargeCount over 30 MB.'
-          : 'Added ${added.length} image$suffix.';
+      final skipped = [
+        if (tooLargeCount > 0) '$tooLargeCount over 30 MB',
+        if (missingPathCount > 0) '$missingPathCount unavailable',
+      ];
+      final summary = skipped.isEmpty
+          ? 'Added ${added.length} file$suffix.'
+          : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image selection failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
     }
   }
 
@@ -1047,6 +1207,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
+        location: _location,
         syncState: 1,
       );
 
@@ -1056,6 +1217,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         'visibility': visibility,
         'pinned': false,
         'has_attachments': hasAttachments,
+        if (_location != null) 'location': _location!.toJson(),
         if (relations.isNotEmpty) 'relations': relations,
       });
 
@@ -1197,6 +1359,42 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                 ),
                               )
                               .toList(growable: false),
+                        ),
+                      ),
+                    if (_locating)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              context.tr(zh: '正在定位…', en: 'Locating...'),
+                              style: TextStyle(fontSize: 12, color: chipText),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (_location != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: InputChip(
+                            avatar: Icon(Icons.place_outlined, size: 16, color: chipText),
+                            label: Text(
+                              _location!.displayText(fractionDigits: 6),
+                              style: TextStyle(fontSize: 12, color: chipText),
+                            ),
+                            backgroundColor: chipBg,
+                            deleteIconColor: chipDelete,
+                            onDeleted: _busy ? null : () => setState(() => _location = null),
+                          ),
                         ),
                       ),
                     AnimatedSwitcher(

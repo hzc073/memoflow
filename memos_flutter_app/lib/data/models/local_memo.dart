@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'content_fingerprint.dart';
 import 'attachment.dart';
+import 'memo_location.dart';
 
 enum SyncState {
   synced,
@@ -21,6 +22,7 @@ class LocalMemo {
     required this.updateTime,
     required this.tags,
     required this.attachments,
+    this.location,
     required this.syncState,
     required this.lastError,
   });
@@ -35,6 +37,7 @@ class LocalMemo {
   final DateTime updateTime;
   final List<String> tags;
   final List<Attachment> attachments;
+  final MemoLocation? location;
   final SyncState syncState;
   final String? lastError;
 
@@ -64,6 +67,12 @@ class LocalMemo {
 
     final contentFingerprint = computeContentFingerprint(content);
 
+    final location = _parseLocation(
+      placeholder: row['location_placeholder'],
+      latitude: row['location_lat'],
+      longitude: row['location_lng'],
+    );
+
     return LocalMemo(
       uid: (row['uid'] as String?) ?? '',
       content: content,
@@ -75,8 +84,29 @@ class LocalMemo {
       updateTime: DateTime.fromMillisecondsSinceEpoch(((row['update_time'] as int?) ?? 0) * 1000, isUtc: true).toLocal(),
       tags: tagsText.isEmpty ? const [] : tagsText.split(' ').where((t) => t.isNotEmpty).toList(growable: false),
       attachments: attachments,
+      location: location,
       syncState: syncState,
       lastError: row['last_error'] as String?,
     );
+  }
+
+  static MemoLocation? _parseLocation({
+    required dynamic placeholder,
+    required dynamic latitude,
+    required dynamic longitude,
+  }) {
+    final lat = _readDouble(latitude);
+    final lng = _readDouble(longitude);
+    if (lat == null || lng == null) return null;
+    final text = placeholder is String ? placeholder : placeholder?.toString() ?? '';
+    return MemoLocation(placeholder: text, latitude: lat, longitude: lng);
+  }
+
+  static double? _readDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim());
+    return null;
   }
 }

@@ -23,8 +23,12 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
 
   void _confirmSelection() {
     final notifier = ref.read(appPreferencesProvider.notifier);
+    final current = ref.read(appPreferencesProvider);
     notifier.setAll(
-      AppPreferences.defaultsForLanguage(_selected),
+      current.copyWith(
+        language: _selected,
+        hasSelectedLanguage: true,
+      ),
     );
   }
 

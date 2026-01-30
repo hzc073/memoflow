@@ -1,6 +1,7 @@
 import 'content_fingerprint.dart';
 import 'attachment.dart';
 import 'memo_relation.dart';
+import 'memo_location.dart';
 import 'reaction.dart';
 
 class Memo {
@@ -17,6 +18,7 @@ class Memo {
     required this.tags,
     required this.attachments,
     this.displayTime,
+    this.location,
     this.relations = const [],
     this.reactions = const [],
   });
@@ -31,6 +33,7 @@ class Memo {
   final DateTime createTime;
   final DateTime updateTime;
   final DateTime? displayTime;
+  final MemoLocation? location;
   final List<String> tags;
   final List<Attachment> attachments;
   final List<MemoRelation> relations;
@@ -52,6 +55,7 @@ class Memo {
       createTime: _parseTime(json['createTime']),
       updateTime: _parseTime(json['updateTime']),
       displayTime: _parseOptionalTime(json['displayTime'] ?? json['display_time']),
+      location: _parseLocation(json['location']),
       tags: _parseStringList(json['tags']),
       attachments: _parseAttachmentList(json['attachments'] ?? json['resources']),
       relations: _parseRelations(json['relations']),
@@ -70,6 +74,7 @@ class Memo {
       'createTime': createTime.toUtc().toIso8601String(),
       'updateTime': updateTime.toUtc().toIso8601String(),
       if (displayTime != null) 'displayTime': displayTime!.toUtc().toIso8601String(),
+      if (location != null) 'location': location!.toJson(),
       'tags': tags,
       'attachments': attachments.map((a) => a.toJson()).toList(),
       'relations': relations
@@ -136,5 +141,12 @@ class Memo {
           .toList(growable: false);
     }
     return const [];
+  }
+
+  static MemoLocation? _parseLocation(dynamic v) {
+    if (v is Map) {
+      return MemoLocation.fromJson(v.cast<String, dynamic>());
+    }
+    return null;
   }
 }

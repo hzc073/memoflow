@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/location_launcher.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -27,6 +28,7 @@ import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
 import 'memo_markdown.dart';
+import 'memo_location_line.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
   const MemoDetailScreen({
@@ -103,6 +105,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
     );
+    ref.invalidate(memoRelationsProvider(memo.uid));
     await _reload();
   }
 
@@ -156,6 +159,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
       attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -197,6 +201,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+        location: memo.location,
         syncState: 1,
         lastError: null,
       );
@@ -221,6 +226,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           updateTime: updateTime,
           tags: tags,
           attachments: memo.attachments,
+          location: memo.location,
           syncState: SyncState.pending,
           lastError: null,
         );
@@ -317,6 +323,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
       attachments: updatedAttachments.map((a) => a.toJson()).toList(growable: false),
+      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -360,6 +367,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         updateTime: now,
         tags: memo.tags,
         attachments: updatedAttachments,
+        location: memo.location,
         syncState: SyncState.pending,
         lastError: null,
       );
@@ -451,6 +459,15 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           _dateFmt.format(displayTime),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
+        if (memo.location != null) ...[
+          const SizedBox(height: 6),
+          MemoLocationLine(
+            location: memo.location!,
+            textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+            onTap: () => openAmapLocation(memo.location!),
+            fontSize: 12,
+          ),
+        ],
         const SizedBox(height: 8),
         contentWidget,
         const SizedBox(height: 12),
@@ -1527,8 +1544,43 @@ class _MemoRelationsSection extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const SizedBox.shrink(),
+      loading: () => _buildLoading(context),
       error: (error, stackTrace) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildLoading(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.link, size: 14, color: textMuted),
+            const SizedBox(width: 6),
+            Text(
+              context.tr(zh: '双链加载中', en: 'Loading links...'),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+            ),
+            const Spacer(),
+            SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(strokeWidth: 2, color: textMuted),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1555,6 +1607,7 @@ class _MemoRelationsSection extends ConsumerWidget {
           updateTimeSec: remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
           tags: remote.tags,
           attachments: remote.attachments.map((a) => a.toJson()).toList(growable: false),
+          location: remote.location,
           syncState: 0,
         );
         final refreshed = await db.getMemoByUid(remoteUid);

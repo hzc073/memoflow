@@ -15,6 +15,7 @@ import '../data/models/attachment.dart';
 import '../data/models/image_bed_settings.dart';
 import '../data/models/local_memo.dart';
 import '../data/models/memo.dart';
+import '../data/models/memo_location.dart';
 import '../data/models/memo_relation.dart';
 import '../data/settings/image_bed_settings_repository.dart';
 import '../state/database_provider.dart';
@@ -656,6 +657,7 @@ LocalMemo _localMemoFromRemote(Memo memo) {
     updateTime: memo.updateTime.toLocal(),
     tags: memo.tags,
     attachments: memo.attachments,
+    location: memo.location,
     syncState: SyncState.synced,
     lastError: null,
   );
@@ -683,6 +685,13 @@ final syncControllerProvider = StateNotifierProvider<SyncController, AsyncValue<
     syncStatusTracker: ref.read(syncStatusTrackerProvider),
     language: language,
     imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
+    onRelationsSynced: (memoUids) {
+      for (final uid in memoUids) {
+        final trimmed = uid.trim();
+        if (trimmed.isEmpty) continue;
+        ref.invalidate(memoRelationsProvider(trimmed));
+      }
+    },
   );
 });
 
@@ -784,6 +793,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     required this.syncStatusTracker,
     required this.language,
     required this.imageBedRepository,
+    this.onRelationsSynced,
   }) : super(const AsyncValue.data(null));
 
   final AppDatabase db;
@@ -792,6 +802,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
   final SyncStatusTracker syncStatusTracker;
   final AppLanguage language;
   final ImageBedSettingsRepository imageBedRepository;
+  final void Function(Set<String> memoUids)? onRelationsSynced;
 
   static int? _parseUserId(String userName) {
     final raw = userName.trim();
@@ -997,6 +1008,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
             tags: tags,
             attachments: mergedAttachments,
+            location: memo.location,
             syncState: localSync == 0 ? 0 : localSync,
           );
         }
@@ -1144,6 +1156,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final content = payload['content'] as String?;
     final visibility = payload['visibility'] as String? ?? 'PRIVATE';
     final pinned = payload['pinned'] as bool? ?? false;
+    final location = _parseLocationPayload(payload['location']);
     final displayTime = _parsePayloadTime(
       payload['display_time'] ?? payload['displayTime'] ?? payload['create_time'] ?? payload['createTime'],
     );
@@ -1160,11 +1173,17 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       throw const FormatException('create_memo missing fields');
     }
     try {
-      final created = await api.createMemo(memoId: uid, content: content, visibility: visibility, pinned: pinned);
+      final created = await api.createMemo(
+        memoId: uid,
+        content: content,
+        visibility: visibility,
+        pinned: pinned,
+        location: location,
+      );
       final remoteUid = created.uid;
       final targetUid = remoteUid.isNotEmpty ? remoteUid : uid;
       if (relations.isNotEmpty) {
-        await api.setMemoRelations(memoUid: targetUid, relations: relations);
+        await _applyMemoRelations(targetUid, relations);
       }
       if (remoteUid.isNotEmpty && remoteUid != uid) {
         await db.renameMemoUid(oldUid: uid, newUid: remoteUid);
@@ -1207,6 +1226,13 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     return null;
   }
 
+  MemoLocation? _parseLocationPayload(dynamic raw) {
+    if (raw is Map) {
+      return MemoLocation.fromJson(raw.cast<String, dynamic>());
+    }
+    return null;
+  }
+
   DateTime _epochToDateTime(int value) {
     final ms = value > 1000000000000 ? value : value * 1000;
     return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
@@ -1221,8 +1247,11 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
     final visibility = payload['visibility'] as String?;
     final pinned = payload['pinned'] as bool?;
     final state = payload['state'] as String?;
+    final hasLocation = payload.containsKey('location');
+    final location = _parseLocationPayload(payload['location']);
     final syncAttachments = payload['sync_attachments'] as bool? ?? false;
     final hasPendingAttachments = payload['has_pending_attachments'] as bool? ?? false;
+    final hasRelations = payload.containsKey('relations');
     final relationsRaw = payload['relations'];
     final relations = <Map<String, dynamic>>[];
     if (relationsRaw is List) {
@@ -1232,14 +1261,25 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
         }
       }
     }
-    await api.updateMemo(
-      memoUid: uid,
-      content: content,
-      visibility: visibility,
-      pinned: pinned,
-      state: state,
-    );
-    if (relations.isNotEmpty) {
+    if (hasLocation) {
+      await api.updateMemo(
+        memoUid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: pinned,
+        state: state,
+        location: payload['location'] == null ? null : location,
+      );
+    } else {
+      await api.updateMemo(
+        memoUid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: pinned,
+        state: state,
+      );
+    }
+    if (hasRelations) {
       await _applyMemoRelations(uid, relations);
     }
     if (syncAttachments && !hasPendingAttachments) {
@@ -1248,58 +1288,25 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
   }
 
   Future<void> _applyMemoRelations(String memoUid, List<Map<String, dynamic>> relations) async {
-    if (relations.isEmpty) return;
-    final trimmedUid = memoUid.trim();
-    final normalizedUid = trimmedUid.startsWith('memos/') ? trimmedUid.substring('memos/'.length) : trimmedUid;
+    final normalizedUid = _normalizeMemoUid(memoUid);
     if (normalizedUid.isEmpty) return;
     final memoName = 'memos/$normalizedUid';
 
-    final newNames = <String>{};
+    final normalizedRelations = <Map<String, dynamic>>[];
+    final seenNames = <String>{};
     for (final relation in relations) {
       final name = _readRelationRelatedMemoName(relation);
-      if (name.isEmpty || name == memoName) continue;
-      newNames.add(name);
-    }
-    if (newNames.isEmpty) return;
-
-    final existingNames = <String>{};
-    try {
-      String? pageToken;
-      do {
-        final (items, nextToken) = await api.listMemoRelations(
-          memoUid: normalizedUid,
-          pageSize: 200,
-          pageToken: pageToken,
-        );
-        for (final relation in items) {
-          if (relation.type.trim().toUpperCase() != 'REFERENCE') continue;
-          if (relation.memo.name.trim() != memoName) continue;
-          final name = relation.relatedMemo.name.trim();
-          if (name.isNotEmpty && name != memoName) {
-            existingNames.add(name);
-          }
-        }
-        pageToken = nextToken.trim().isEmpty ? null : nextToken;
-      } while (pageToken != null);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status == 404 || status == 405) {
-        return;
-      }
-      rethrow;
+      final trimmedName = name.trim();
+      if (trimmedName.isEmpty || trimmedName == memoName) continue;
+      if (!seenNames.add(trimmedName)) continue;
+      normalizedRelations.add(<String, dynamic>{
+        'relatedMemo': {'name': trimmedName},
+        'type': 'REFERENCE',
+      });
     }
 
-    final mergedNames = <String>{...existingNames, ...newNames};
-    if (mergedNames.isEmpty) return;
-    final mergedRelations = mergedNames
-        .map(
-          (name) => <String, dynamic>{
-            'relatedMemo': {'name': name},
-            'type': 'REFERENCE',
-          },
-        )
-        .toList(growable: false);
-    await api.setMemoRelations(memoUid: normalizedUid, relations: mergedRelations);
+    await api.setMemoRelations(memoUid: normalizedUid, relations: normalizedRelations);
+    _notifyRelationsSynced(normalizedUid, normalizedRelations);
   }
 
   String _readRelationRelatedMemoName(Map<String, dynamic> relation) {
@@ -1309,6 +1316,40 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       if (name is String) return name.trim();
     }
     return '';
+  }
+
+  void _notifyRelationsSynced(String memoUid, List<Map<String, dynamic>> relations) {
+    final uids = _collectRelationUids(memoUid: memoUid, relations: relations);
+    if (uids.isEmpty) return;
+    onRelationsSynced?.call(uids);
+  }
+
+  Set<String> _collectRelationUids({
+    required String memoUid,
+    required List<Map<String, dynamic>> relations,
+  }) {
+    final uids = <String>{};
+    final normalized = _normalizeMemoUid(memoUid);
+    if (normalized.isNotEmpty) {
+      uids.add(normalized);
+    }
+    for (final relation in relations) {
+      final relatedName = _readRelationRelatedMemoName(relation);
+      final relatedUid = _normalizeMemoUid(relatedName);
+      if (relatedUid.isNotEmpty) {
+        uids.add(relatedUid);
+      }
+    }
+    return uids;
+  }
+
+  String _normalizeMemoUid(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('memos/')) {
+      return trimmed.substring('memos/'.length);
+    }
+    return trimmed;
   }
 
   Future<void> _handleDeleteMemo(Map<String, dynamic> payload) async {
@@ -1573,6 +1614,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
       tags: tags,
       attachments: remainingAttachments,
+      location: memo.location,
       syncState: 1,
       lastError: null,
     );
