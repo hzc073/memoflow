@@ -528,6 +528,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   final Ref _ref;
   final AppPreferencesRepository _repo;
   final void Function()? _onLoaded;
+  Future<void> _writeChain = Future<void>.value();
 
   Future<void> _loadFromStorage() async {
     final systemLanguage = appLanguageFromLocale(WidgetsBinding.instance.platformDispatcher.locale);
@@ -538,7 +539,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
 
   void _setAndPersist(AppPreferences next, {bool triggerSync = true}) {
     state = next;
-    unawaited(_repo.write(next));
+    // Serialize writes to avoid out-of-order persistence overwriting newer prefs.
+    _writeChain = _writeChain.then((_) => _repo.write(next));
     if (triggerSync) {
       _ref.read(webDavSyncTriggerProvider.notifier).bump();
     }

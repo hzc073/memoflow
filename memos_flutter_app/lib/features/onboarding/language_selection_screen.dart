@@ -23,8 +23,9 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
 
   void _confirmSelection() {
     final notifier = ref.read(appPreferencesProvider.notifier);
-    notifier.setLanguage(_selected);
-    notifier.setHasSelectedLanguage(true);
+    notifier.setAll(
+      AppPreferences.defaultsForLanguage(_selected),
+    );
   }
 
   @override
