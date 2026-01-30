@@ -1156,7 +1156,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments
           .map((a) => a.toJson())
           .toList(growable: false),
-      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -1195,7 +1194,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments
           .map((a) => a.toJson())
           .toList(growable: false),
-      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -1596,15 +1594,24 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       tag: resolvedTag,
       shortcutFilter: shortcutFilter,
     );
+    final useRemoteSearch = !useShortcutFilter && searchQuery.trim().isNotEmpty;
     final memosAsync = useShortcutFilter
         ? ref.watch(shortcutMemosProvider(shortcutQuery))
-        : ref.watch(
-            memosStreamProvider((
-              searchQuery: searchQuery,
-              state: widget.state,
-              tag: resolvedTag,
-            )),
-          );
+        : useRemoteSearch
+            ? ref.watch(
+                remoteSearchMemosProvider((
+                  searchQuery: searchQuery,
+                  state: widget.state,
+                  tag: resolvedTag,
+                )),
+              )
+            : ref.watch(
+                memosStreamProvider((
+                  searchQuery: searchQuery,
+                  state: widget.state,
+                  tag: resolvedTag,
+                )),
+              );
     final outboxStatus =
         ref.watch(_outboxMemoStatusProvider).valueOrNull ??
         const _OutboxMemoStatus.empty();

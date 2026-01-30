@@ -318,7 +318,6 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
-        location: location,
         syncState: 1,
         lastError: null,
       );

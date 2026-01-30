@@ -72,6 +72,65 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
 });
 
+final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQuery>((ref, query) async {
+  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+  if (account == null) {
+    throw StateError('Not authenticated');
+  }
+
+  final api = ref.watch(memosApiProvider);
+  final db = ref.watch(databaseProvider);
+  final filters = <String>[];
+
+  final creatorId = _parseUserId(account.user.name);
+  if (creatorId != null) {
+    filters.add('creator_id == $creatorId');
+  }
+
+  final normalizedSearch = query.searchQuery.trim();
+  if (normalizedSearch.isNotEmpty) {
+    filters.add('content.contains("${_escapeFilterValue(normalizedSearch)}")');
+  }
+
+  var normalizedTag = (query.tag ?? '').trim();
+  if (normalizedTag.startsWith('#')) {
+    normalizedTag = normalizedTag.substring(1);
+  }
+  if (normalizedTag.isNotEmpty) {
+    filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
+  }
+
+  final filter = filters.isEmpty ? null : filters.join(' && ');
+  try {
+    final (memos, _) = await api.listMemos(
+      pageSize: 200,
+      state: query.state,
+      filter: filter,
+      orderBy: 'display_time desc',
+    );
+    final results = <LocalMemo>[];
+    for (final memo in memos) {
+      final uid = memo.uid.trim();
+      if (uid.isEmpty) continue;
+      final row = await db.getMemoByUid(uid);
+      if (row != null) {
+        results.add(LocalMemo.fromDb(row));
+      } else {
+        results.add(_localMemoFromRemote(memo));
+      }
+    }
+    return results;
+  } catch (_) {
+    final rows = await db.listMemos(
+      searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
+      state: query.state,
+      tag: normalizedTag.isEmpty ? null : normalizedTag,
+      limit: 200,
+    );
+    return rows.map(LocalMemo.fromDb).toList(growable: false);
+  }
+});
+
 final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMemosQuery>((ref, query) async* {
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   if (account == null) {
@@ -1008,7 +1067,6 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
             tags: tags,
             attachments: mergedAttachments,
-            location: memo.location,
             syncState: localSync == 0 ? 0 : localSync,
           );
         }
@@ -1614,7 +1672,6 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
       tags: tags,
       attachments: remainingAttachments,
-      location: memo.location,
       syncState: 1,
       lastError: null,
     );

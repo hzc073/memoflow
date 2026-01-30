@@ -159,7 +159,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
       attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
-      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -201,7 +200,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
-        location: memo.location,
         syncState: 1,
         lastError: null,
       );
@@ -323,7 +321,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
       attachments: updatedAttachments.map((a) => a.toJson()).toList(growable: false),
-      location: memo.location,
       syncState: 1,
       lastError: null,
     );
@@ -1607,7 +1604,6 @@ class _MemoRelationsSection extends ConsumerWidget {
           updateTimeSec: remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
           tags: remote.tags,
           attachments: remote.attachments.map((a) => a.toJson()).toList(growable: false),
-          location: remote.location,
           syncState: 0,
         );
         final refreshed = await db.getMemoByUid(remoteUid);
