@@ -1,14 +1,19 @@
 ﻿import 'dart:math' as math;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:appinio_swiper/appinio_swiper.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
+import '../../core/url.dart';
+import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
@@ -18,6 +23,7 @@ import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/widgets/audio_row.dart';
 
 class DailyReviewScreen extends ConsumerStatefulWidget {
   const DailyReviewScreen({super.key});
@@ -40,6 +46,19 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   List<LocalMemo> _deck = const [];
   List<String> _memoIds = const [];
   int _cursor = 0;
+  final _audioPlayer = AudioPlayer();
+  final _audioPositionNotifier = ValueNotifier(Duration.zero);
+  final _audioDurationNotifier = ValueNotifier<Duration?>(null);
+  StreamSubscription<PlayerState>? _audioStateSub;
+  StreamSubscription<Duration>? _audioPositionSub;
+  StreamSubscription<Duration?>? _audioDurationSub;
+  Timer? _audioProgressTimer;
+  DateTime? _audioProgressStart;
+  Duration _audioProgressBase = Duration.zero;
+  Duration _audioProgressLast = Duration.zero;
+  String? _playingMemoUid;
+  String? _playingAudioUrl;
+  bool _audioLoading = false;
 
   @override
   void initState() {
@@ -51,10 +70,54 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
         setState(() {});
       });
     }, fireImmediately: true);
+    _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
+      if (!mounted) return;
+      if (state.playing) {
+        _startAudioProgressTimer();
+        if (_audioLoading) {
+          setState(() => _audioLoading = false);
+        }
+      } else {
+        _stopAudioProgressTimer();
+      }
+      if (state.processingState == ProcessingState.completed) {
+        _stopAudioProgressTimer();
+        unawaited(_audioPlayer.seek(Duration.zero));
+        unawaited(_audioPlayer.pause());
+        _audioPositionNotifier.value = Duration.zero;
+        _audioDurationNotifier.value = null;
+        setState(() {
+          _playingMemoUid = null;
+          _playingAudioUrl = null;
+          _audioLoading = false;
+        });
+      }
+    });
+    _audioPositionSub = _audioPlayer.positionStream.listen((position) {
+      if (!mounted || _playingMemoUid == null) return;
+      if (_audioPlayer.playing && position <= _audioProgressLast) {
+        return;
+      }
+      _audioProgressBase = position;
+      _audioProgressLast = position;
+      _audioProgressStart = DateTime.now();
+      _audioPositionNotifier.value = position;
+    });
+    _audioDurationSub = _audioPlayer.durationStream.listen((duration) {
+      if (!mounted || _playingMemoUid == null) return;
+      _audioDurationNotifier.value = duration;
+    });
   }
 
   @override
   void dispose() {
+    _audioStateSub?.cancel();
+    _audioPositionSub?.cancel();
+    _audioDurationSub?.cancel();
+    _audioProgressTimer?.cancel();
+    _audioPositionNotifier.dispose();
+    _audioDurationNotifier.dispose();
+    _audioPlayer.dispose();
     _swiperController.dispose();
     super.dispose();
   }
@@ -125,6 +188,156 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     if (_deck.length <= 1) return;
     final last = _deck.last;
     _deck = [last, ..._deck.sublist(0, _deck.length - 1)];
+  }
+
+  void _startAudioProgressTimer() {
+    if (_audioProgressTimer != null) return;
+    _audioProgressBase = _audioPlayer.position;
+    _audioProgressLast = _audioProgressBase;
+    _audioProgressStart = DateTime.now();
+    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted || _playingMemoUid == null) return;
+      final now = DateTime.now();
+      var position = _audioPlayer.position;
+      if (_audioProgressStart != null && position <= _audioProgressLast) {
+        position = _audioProgressBase + now.difference(_audioProgressStart!);
+      } else {
+        _audioProgressBase = position;
+        _audioProgressStart = now;
+      }
+      _audioProgressLast = position;
+      _audioPositionNotifier.value = position;
+    });
+  }
+
+  void _stopAudioProgressTimer() {
+    _audioProgressTimer?.cancel();
+    _audioProgressTimer = null;
+    _audioProgressStart = null;
+  }
+
+  String? _localAttachmentPath(Attachment attachment) {
+    final raw = attachment.externalLink.trim();
+    if (!raw.startsWith('file://')) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    final path = uri.toFilePath();
+    if (path.trim().isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return path;
+  }
+
+  ({String url, String? localPath, Map<String, String>? headers})? _resolveAudioSource(
+    Attachment attachment,
+  ) {
+    final rawLink = attachment.externalLink.trim();
+    if (rawLink.isNotEmpty) {
+      final localPath = _localAttachmentPath(attachment);
+      if (localPath != null) {
+        return (
+          url: Uri.file(localPath).toString(),
+          localPath: localPath,
+          headers: null,
+        );
+      }
+      return (url: rawLink, localPath: null, headers: null);
+    }
+
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    if (baseUrl == null) return null;
+    final name = attachment.name.trim();
+    final filename = attachment.filename.trim();
+    if (name.isEmpty || filename.isEmpty) return null;
+    final url = joinBaseUrl(baseUrl, 'file/$name/$filename');
+    final token = account?.personalAccessToken ?? '';
+    final headers = token.trim().isEmpty ? null : {'Authorization': 'Bearer $token'};
+    return (url: url, localPath: null, headers: headers);
+  }
+
+  Future<void> _stopAudioPlayback({bool reset = true}) async {
+    if (_playingMemoUid == null && _playingAudioUrl == null) return;
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {}
+    _stopAudioProgressTimer();
+    if (reset) {
+      _audioPositionNotifier.value = Duration.zero;
+      _audioDurationNotifier.value = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _audioLoading = false;
+      _playingMemoUid = null;
+      _playingAudioUrl = null;
+    });
+  }
+
+  Future<void> _toggleAudioPlayback(LocalMemo memo) async {
+    if (_audioLoading) return;
+    final audioAttachments =
+        memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    if (audioAttachments.isEmpty) return;
+    final attachment = audioAttachments.first;
+    final source = _resolveAudioSource(attachment);
+    if (source == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '无法读取音频资源', en: 'Unable to load audio source.'))),
+      );
+      return;
+    }
+
+    final url = source.url;
+    final sameTarget = _playingMemoUid == memo.uid && _playingAudioUrl == url;
+    if (sameTarget) {
+      if (_audioPlayer.playing) {
+        await _audioPlayer.pause();
+        _stopAudioProgressTimer();
+      } else {
+        _startAudioProgressTimer();
+        await _audioPlayer.play();
+      }
+      _audioPositionNotifier.value = _audioPlayer.position;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    setState(() {
+      _audioLoading = true;
+      _playingMemoUid = memo.uid;
+      _playingAudioUrl = url;
+    });
+    _audioPositionNotifier.value = Duration.zero;
+    _audioDurationNotifier.value = null;
+
+    try {
+      await _audioPlayer.stop();
+      Duration? loadedDuration;
+      if (source.localPath != null) {
+        loadedDuration = await _audioPlayer.setFilePath(source.localPath!);
+      } else {
+        loadedDuration = await _audioPlayer.setUrl(url, headers: source.headers);
+      }
+      _audioDurationNotifier.value = loadedDuration ?? _audioPlayer.duration;
+      _startAudioProgressTimer();
+      await _audioPlayer.play();
+    } catch (e) {
+      _stopAudioProgressTimer();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr(zh: '播放失败：$e', en: 'Playback failed: $e'))),
+        );
+        setState(() {
+          _audioLoading = false;
+          _playingMemoUid = null;
+          _playingAudioUrl = null;
+        });
+      }
+      _audioPositionNotifier.value = Duration.zero;
+      _audioDurationNotifier.value = null;
+    }
   }
 
   Future<void> _toggleMemoCheckbox(LocalMemo memo, int checkboxIndex) async {
@@ -243,6 +456,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                     maxAngle: 14,
                     onSwipeEnd: (previousIndex, targetIndex, activity) {
                       if (!mounted) return;
+                      unawaited(_stopAudioPlayback());
                       setState(() {
                         if (activity.direction == AxisDirection.right) {
                           _rotateRight();
@@ -256,6 +470,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                     },
                     cardBuilder: (context, index) {
                       final memo = deck[index];
+                      final isAudioActive = _playingMemoUid == memo.uid;
                       return _RandomWalkCard(
                         memo: memo,
                         card: card,
@@ -264,6 +479,11 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                         isDark: isDark,
                         baseUrl: baseUrl,
                         authHeader: authHeader,
+                        audioPlaying: isAudioActive && _audioPlayer.playing,
+                        audioLoading: isAudioActive && _audioLoading,
+                        audioPositionListenable: isAudioActive ? _audioPositionNotifier : null,
+                        audioDurationListenable: isAudioActive ? _audioDurationNotifier : null,
+                        onAudioTap: () => unawaited(_toggleAudioPlayback(memo)),
                         onToggleTask: (request) =>
                             unawaited(_toggleMemoCheckbox(memo, request.taskIndex)),
                       );
@@ -292,6 +512,11 @@ class _RandomWalkCard extends StatelessWidget {
     required this.isDark,
     required this.baseUrl,
     required this.authHeader,
+    required this.audioPlaying,
+    required this.audioLoading,
+    this.audioPositionListenable,
+    this.audioDurationListenable,
+    this.onAudioTap,
     this.onToggleTask,
   });
 
@@ -302,6 +527,11 @@ class _RandomWalkCard extends StatelessWidget {
   final bool isDark;
   final Uri? baseUrl;
   final String? authHeader;
+  final bool audioPlaying;
+  final bool audioLoading;
+  final ValueListenable<Duration>? audioPositionListenable;
+  final ValueListenable<Duration?>? audioDurationListenable;
+  final VoidCallback? onAudioTap;
   final TaskToggleHandler? onToggleTask;
 
   @override
@@ -320,10 +550,67 @@ class _RandomWalkCard extends StatelessWidget {
       baseUrl: baseUrl,
       authHeader: authHeader,
     );
+    final audioAttachments =
+        memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    final hasAudio = audioAttachments.isNotEmpty;
+    final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
+    final audioDurationFallback = _parseVoiceDurationValue(memo.content);
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final imageBg =
         isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
     final maxGridHeight = MediaQuery.of(context).size.height * 0.4;
+    final resolvedAudioTap = hasAudio ? onAudioTap : null;
+
+    String formatDuration(Duration value) {
+      final totalSeconds = value.inSeconds;
+      final hh = totalSeconds ~/ 3600;
+      final mm = (totalSeconds % 3600) ~/ 60;
+      final ss = totalSeconds % 60;
+      if (hh <= 0) {
+        return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+      }
+      return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+    }
+
+    Widget buildAudioRow(Duration position, Duration? duration) {
+      final effectiveDuration = duration ?? audioDurationFallback;
+      final clampedPosition = effectiveDuration != null && position > effectiveDuration
+          ? effectiveDuration
+          : position;
+      final totalText = effectiveDuration != null
+          ? formatDuration(effectiveDuration)
+          : audioDurationText;
+      final showPosition = clampedPosition > Duration.zero || audioPlaying;
+      final displayText = effectiveDuration != null && showPosition
+          ? '${formatDuration(clampedPosition)} / $totalText'
+          : (showPosition ? formatDuration(clampedPosition) : totalText);
+
+      return AudioRow(
+        durationText: displayText,
+        isDark: isDark,
+        playing: audioPlaying,
+        loading: audioLoading,
+        position: clampedPosition,
+        duration: duration,
+        durationFallback: audioDurationFallback,
+        onTap: resolvedAudioTap,
+      );
+    }
+
+    Widget audioRow = buildAudioRow(Duration.zero, null);
+    if (audioPositionListenable != null && audioDurationListenable != null) {
+      audioRow = ValueListenableBuilder<Duration>(
+        valueListenable: audioPositionListenable!,
+        builder: (context, position, _) {
+          return ValueListenableBuilder<Duration?>(
+            valueListenable: audioDurationListenable!,
+            builder: (context, duration, __) {
+              return buildAudioRow(position, duration);
+            },
+          );
+        },
+      );
+    }
 
     return GestureDetector(
       onTap: () {
@@ -423,6 +710,10 @@ class _RandomWalkCard extends StatelessWidget {
                                         enableDownload: true,
                                       ),
                                     ],
+                                    if (hasAudio) ...[
+                                      const SizedBox(height: 10),
+                                      audioRow,
+                                    ],
                                   ],
                                 ),
                               ),
@@ -476,5 +767,42 @@ class _RandomWalkCard extends StatelessWidget {
     }
     final years = (diff.inDays / 365).floor();
     return trByLanguage(language: language, zh: '${years}年前', en: '${years}y ago');
+  }
+
+  static String? _parseVoiceDuration(String content) {
+    final value = _parseVoiceDurationValue(content);
+    if (value == null) return null;
+    final totalSeconds = value.inSeconds;
+    final hh = totalSeconds ~/ 3600;
+    final mm = (totalSeconds % 3600) ~/ 60;
+    final ss = totalSeconds % 60;
+    if (hh <= 0) {
+      return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+    }
+    return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+  }
+
+  static Duration? _parseVoiceDurationValue(String content) {
+    final linePattern = RegExp(r'^[-*+]?\s*', unicode: true);
+    final valuePattern = RegExp(
+      r'^(时长|Duration)\s*[:：]\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$',
+      caseSensitive: false,
+      unicode: true,
+    );
+
+    for (final rawLine in content.split('\n')) {
+      final trimmed = rawLine.trim();
+      if (trimmed.isEmpty) continue;
+      final line = trimmed.replaceFirst(linePattern, '');
+      final m = valuePattern.firstMatch(line);
+      if (m == null) continue;
+      final hh = int.tryParse(m.group(2) ?? '') ?? 0;
+      final mm = int.tryParse(m.group(3) ?? '') ?? 0;
+      final ss = int.tryParse(m.group(4) ?? '') ?? 0;
+      if (hh == 0 && mm == 0 && ss == 0) return null;
+      return Duration(hours: hh, minutes: mm, seconds: ss);
+    }
+
+    return null;
   }
 }
