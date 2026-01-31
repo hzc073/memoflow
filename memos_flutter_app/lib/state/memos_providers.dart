@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/app_localization.dart';
 import '../core/image_bed_url.dart';
+import '../core/memo_relations.dart';
 import '../core/tags.dart';
 import '../data/api/memos_api.dart';
 import '../data/api/image_bed_api.dart';
@@ -704,23 +705,24 @@ String _normalizeShortcutFilterForLocal(String raw) {
   );
 }
 
-LocalMemo _localMemoFromRemote(Memo memo) {
-  return LocalMemo(
-    uid: memo.uid,
-    content: memo.content,
-    contentFingerprint: memo.contentFingerprint,
-    visibility: memo.visibility,
-    pinned: memo.pinned,
-    state: memo.state,
-    createTime: memo.createTime.toLocal(),
-    updateTime: memo.updateTime.toLocal(),
-    tags: memo.tags,
-    attachments: memo.attachments,
-    location: memo.location,
-    syncState: SyncState.synced,
-    lastError: null,
-  );
-}
+  LocalMemo _localMemoFromRemote(Memo memo) {
+    return LocalMemo(
+      uid: memo.uid,
+      content: memo.content,
+      contentFingerprint: memo.contentFingerprint,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTime: memo.createTime.toLocal(),
+      updateTime: memo.updateTime.toLocal(),
+      tags: memo.tags,
+      attachments: memo.attachments,
+      relationCount: countReferenceRelations(memoUid: memo.uid, relations: memo.relations),
+      location: memo.location,
+      syncState: SyncState.synced,
+      lastError: null,
+    );
+  }
 
 final memoRelationsProvider = FutureProvider.family<List<MemoRelation>, String>((ref, memoUid) async {
   final api = ref.watch(memosApiProvider);
@@ -1052,6 +1054,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
           final tags = _mergeTags(memo.tags, memo.content);
           final attachments = memo.attachments.map((a) => a.toJson()).toList(growable: false);
           final mergedAttachments = localSync == 0 ? attachments : _mergeAttachmentJson(local, attachments);
+          final relationCount = countReferenceRelations(memoUid: memo.uid, relations: memo.relations);
 
           if (memo.uid.isNotEmpty) {
             remoteUids.add(memo.uid);
@@ -1067,6 +1070,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
             tags: tags,
             attachments: mergedAttachments,
+            relationCount: relationCount,
             syncState: localSync == 0 ? 0 : localSync,
           );
         }
@@ -1672,6 +1676,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
       tags: tags,
       attachments: remainingAttachments,
+      relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,
     );

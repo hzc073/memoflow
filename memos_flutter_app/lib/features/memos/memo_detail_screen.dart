@@ -9,6 +9,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/location_launcher.dart';
+import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -159,6 +160,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
       attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,
     );
@@ -200,6 +202,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+        relationCount: memo.relationCount,
         syncState: 1,
         lastError: null,
       );
@@ -224,6 +227,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           updateTime: updateTime,
           tags: tags,
           attachments: memo.attachments,
+          relationCount: memo.relationCount,
           location: memo.location,
           syncState: SyncState.pending,
           lastError: null,
@@ -321,6 +325,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: memo.tags,
       attachments: updatedAttachments.map((a) => a.toJson()).toList(growable: false),
+      relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,
     );
@@ -364,6 +369,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         updateTime: now,
         tags: memo.tags,
         attachments: updatedAttachments,
+        relationCount: memo.relationCount,
         location: memo.location,
         syncState: SyncState.pending,
         lastError: null,
@@ -1604,6 +1610,7 @@ class _MemoRelationsSection extends ConsumerWidget {
           updateTimeSec: remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
           tags: remote.tags,
           attachments: remote.attachments.map((a) => a.toJson()).toList(growable: false),
+          relationCount: countReferenceRelations(memoUid: remoteUid, relations: remote.relations),
           syncState: 0,
         );
         final refreshed = await db.getMemoByUid(remoteUid);

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
@@ -918,6 +919,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       updateTime: memo.updateTime.toLocal(),
       tags: memo.tags,
       attachments: memo.attachments,
+      relationCount: countReferenceRelations(memoUid: memo.uid, relations: memo.relations),
       location: memo.location,
       syncState: SyncState.synced,
       lastError: null,

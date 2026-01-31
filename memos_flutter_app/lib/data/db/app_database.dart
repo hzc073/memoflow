@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 5;
+  static const _dbVersion = 6;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS memos (
   update_time INTEGER NOT NULL,
   tags TEXT NOT NULL DEFAULT '',
   attachments_json TEXT NOT NULL DEFAULT '[]',
+  relation_count INTEGER NOT NULL DEFAULT 0,
   sync_state INTEGER NOT NULL DEFAULT 0,
   last_error TEXT
 );
@@ -139,6 +140,9 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
 );
 ''');
           }
+          if (oldVersion < 6) {
+            await db.execute('ALTER TABLE memos ADD COLUMN relation_count INTEGER NOT NULL DEFAULT 0;');
+          }
         },
         onOpen: (db) async {
           await _ensureFts(db);
@@ -222,6 +226,7 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     required int updateTimeSec,
     required List<String> tags,
     required List<Map<String, dynamic>> attachments,
+    int relationCount = 0,
     required int syncState,
     String? lastError,
   }) async {
@@ -241,6 +246,7 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
           'update_time': updateTimeSec,
           'tags': tagsText,
           'attachments_json': attachmentsJson,
+          'relation_count': relationCount,
           'sync_state': syncState,
           'last_error': lastError,
         },
@@ -262,6 +268,7 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
             'update_time': updateTimeSec,
             'tags': tagsText,
             'attachments_json': attachmentsJson,
+            'relation_count': relationCount,
             'sync_state': syncState,
             'last_error': lastError,
           },

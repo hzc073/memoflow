@@ -451,6 +451,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: const [],
+        relationCount: 0,
         syncState: 1,
       );
       await db.enqueueOutbox(type: 'create_memo', payload: {

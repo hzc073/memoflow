@@ -1207,6 +1207,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
+        relationCount: 0,
         syncState: 1,
       );
 
