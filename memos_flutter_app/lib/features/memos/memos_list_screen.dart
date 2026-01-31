@@ -3104,6 +3104,7 @@ class _MemoCardState extends State<_MemoCard> {
     final isArchived = widget.memo.state == 'ARCHIVED';
     final pendingColor = textMain.withValues(alpha: isDark ? 0.45 : 0.35);
     final showSyncStatus = syncStatus != _MemoSyncStatus.none;
+    final headerMinHeight = showSyncStatus ? 32.0 : 20.0;
     final syncIcon = syncStatus == _MemoSyncStatus.failed
         ? Icons.error_outline
         : Icons.cloud_upload_outlined;
@@ -3289,24 +3290,27 @@ class _MemoCardState extends State<_MemoCard> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            if (pinnedChip != null) ...[
-                              pinnedChip,
-                              const SizedBox(width: 8),
-                            ],
-                            Text(
-                              dateText,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.0,
-                                color: textMain.withValues(
-                                  alpha: isDark ? 0.4 : 0.5,
+                        SizedBox(
+                          height: headerMinHeight,
+                          child: Row(
+                            children: [
+                              if (pinnedChip != null) ...[
+                                pinnedChip,
+                                const SizedBox(width: 8),
+                              ],
+                              Text(
+                                dateText,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.0,
+                                  color: textMain.withValues(
+                                    alpha: isDark ? 0.4 : 0.5,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         if (memo.location != null) ...[
                           const SizedBox(height: 2),
