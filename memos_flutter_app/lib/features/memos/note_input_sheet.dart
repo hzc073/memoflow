@@ -868,6 +868,51 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     }
   }
 
+  void _addVoiceAttachment(VoiceRecordResult result) {
+    final messenger = ScaffoldMessenger.of(context);
+    final path = result.filePath.trim();
+    if (path.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '录音路径缺失', en: 'Recording path missing.'))),
+      );
+      return;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '录音文件不存在', en: 'Recording file not found.'))),
+      );
+      return;
+    }
+
+    final size = result.size > 0 ? result.size : file.lengthSync();
+    if (size > _maxAttachmentBytes) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '录音文件过大（最大 30 MB）', en: 'Recording too large (max 30 MB).'))),
+      );
+      return;
+    }
+
+    final filename = result.fileName.trim().isNotEmpty ? result.fileName.trim() : path.split(Platform.pathSeparator).last;
+    final mimeType = _guessMimeType(filename);
+    if (!mounted) return;
+    setState(() {
+      _pendingAttachments.add(
+        _PendingAttachment(
+          uid: generateUid(),
+          filePath: path,
+          filename: filename,
+          mimeType: mimeType,
+          size: size,
+        ),
+      );
+    });
+    messenger.showSnackBar(
+      SnackBar(content: Text(context.tr(zh: '已添加录音附件', en: 'Added voice attachment.'))),
+    );
+  }
+
   Future<void> _capturePhoto() async {
     if (_busy) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -1165,8 +1210,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         return;
       }
       if (!mounted) return;
-      context.safePop();
-      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const VoiceRecordScreen()));
+      final result = await Navigator.of(context).push<VoiceRecordResult>(
+        MaterialPageRoute(builder: (_) => const VoiceRecordScreen()),
+      );
+      if (!mounted || result == null) return;
+      _addVoiceAttachment(result);
       return;
     }
 

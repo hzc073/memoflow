@@ -12,11 +12,23 @@ import 'package:record/record.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
-import '../../core/uid.dart';
-import '../../data/models/attachment.dart';
-import '../../state/database_provider.dart';
-import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
+
+class VoiceRecordResult {
+  const VoiceRecordResult({
+    required this.filePath,
+    required this.fileName,
+    required this.size,
+    required this.duration,
+    required this.suggestedContent,
+  });
+
+  final String filePath;
+  final String fileName;
+  final int size;
+  final Duration duration;
+  final String suggestedContent;
+}
 
 class VoiceRecordScreen extends ConsumerStatefulWidget {
   const VoiceRecordScreen({super.key});
@@ -288,8 +300,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     try {
       final size = file.lengthSync();
       final now = DateTime.now();
-      final memoUid = generateUid();
-      final attachmentUid = generateUid();
       final durationText = _formatDuration(_elapsed);
       final language = ref.read(appPreferencesProvider).language;
       final createdAt = DateFormat('yyyy-MM-dd HH:mm').format(now);
@@ -306,59 +316,19 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
             '- Created: $createdAt\n',
       );
 
-      final attachments = [
-        Attachment(
-          name: 'attachments/$attachmentUid',
-          filename: fileName,
-          type: 'audio/mp4',
-          size: size,
-          externalLink: Uri.file(filePath).toString(),
-        ).toJson(),
-      ];
-
-      final db = ref.read(databaseProvider);
-      await db.upsertMemo(
-        uid: memoUid,
-        content: content,
-        visibility: 'PRIVATE',
-        pinned: false,
-        state: 'NORMAL',
-        createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-        tags: const [],
-        attachments: attachments,
-        location: null,
-        relationCount: 0,
-        syncState: 1,
-      );
-
-      await db.enqueueOutbox(type: 'create_memo', payload: {
-        'uid': memoUid,
-        'content': content,
-        'visibility': 'PRIVATE',
-        'pinned': false,
-        'has_attachments': true,
-      });
-      await db.enqueueOutbox(type: 'upload_attachment', payload: {
-        'uid': attachmentUid,
-        'memo_uid': memoUid,
-        'file_path': filePath,
-        'filename': fileName,
-        'mime_type': 'audio/mp4',
-        'file_size': size,
-      });
-
-      // Try best-effort sync in background (manual refresh still available).
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
-
       if (!mounted) return;
       setState(() {
         _awaitingConfirm = false;
         _processing = false;
       });
-      context.safePop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已创建语音 memo（待同步）', en: 'Voice memo created (pending sync)'))),
+      context.safePop(
+        VoiceRecordResult(
+          filePath: filePath,
+          fileName: fileName,
+          size: size,
+          duration: _elapsed,
+          suggestedContent: content,
+        ),
       );
     } catch (e) {
       if (!mounted) return;

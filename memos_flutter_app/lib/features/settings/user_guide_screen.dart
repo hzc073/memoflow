@@ -181,8 +181,8 @@ class UserGuideScreen extends ConsumerWidget {
                         context,
                         title: context.tr(zh: '语音备忘', en: 'Voice Memos'),
                         body: context.tr(
-                          zh: '录音完成后会创建本地 memo，并将音频加入待同步队列。最长 60 分钟；可后续通过第三方服务转写。',
-                          en: 'After recording, a local memo is created and the audio is queued for sync. Max length is 60 minutes; transcription can be added via third-party services later.',
+                          zh: '录音完成后会将音频作为附件加入当前草稿，便于继续编辑后再发送。最长 60 分钟；可后续通过第三方服务转写。',
+                          en: 'After recording, the audio is added to the current draft as an attachment so you can edit before sending. Max length is 60 minutes; transcription can be added via third-party services later.',
                         ),
                       );
                     },
