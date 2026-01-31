@@ -522,12 +522,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        if (memo.tags.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: memo.tags.map((t) => Chip(label: Text('#$t'))).toList(growable: false),
-          ),
         if (memo.lastError != null && memo.lastError!.isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(

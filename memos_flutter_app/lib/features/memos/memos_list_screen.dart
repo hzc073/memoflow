@@ -1405,7 +1405,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '删除', en: 'Delete')),
+                child: Text(context.tr(zh: '\u5220\u9664', en: 'Delete')),
               ),
             ],
           ),
@@ -3284,154 +3284,177 @@ class _MemoCardState extends State<_MemoCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Stack(
                   children: [
-                    if (pinnedChip != null) ...[
-                      pinnedChip,
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            dateText,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.0,
-                              color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
-                            ),
-                          ),
-                          if (memo.location != null) ...[
-                            const SizedBox(height: 2),
-                            MemoLocationLine(
-                              location: memo.location!,
-                              textColor: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
-                              onTap: () => openAmapLocation(memo.location!),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    if (reminderText != null)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Icon(
-                              Icons.notifications_active_outlined,
-                              size: 14,
-                              color: MemoFlowPalette.primary,
-                            ),
-                            const SizedBox(width: 4),
+                            if (pinnedChip != null) ...[
+                              pinnedChip,
+                              const SizedBox(width: 8),
+                            ],
                             Text(
-                              reminderText,
+                              dateText,
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: MemoFlowPalette.primary,
+                                letterSpacing: 1.0,
+                                color: textMain.withValues(
+                                  alpha: isDark ? 0.4 : 0.5,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    if (showSyncStatus)
-                      IconButton(
-                        onPressed: onSyncStatusTap,
-                        icon: Icon(syncIcon, size: 16, color: syncColor),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 32,
-                          height: 32,
+                        if (memo.location != null) ...[
+                          const SizedBox(height: 2),
+                          MemoLocationLine(
+                            location: memo.location!,
+                            textColor: textMain.withValues(
+                              alpha: isDark ? 0.4 : 0.5,
+                            ),
+                            onTap: () => openAmapLocation(memo.location!),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        splashRadius: 16,
-                      ),
-                    PopupMenuButton<_MemoCardAction>(
-                      tooltip: context.tr(zh: '更多', en: 'More'),
-                      icon: Icon(
-                        Icons.more_horiz,
-                        size: 20,
-                        color: textMain.withValues(alpha: 0.4),
-                      ),
-                      onSelected: onAction,
-                      color: menuColor,
-                      surfaceTintColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      itemBuilder: (context) => isArchived
-                          ? [
-                              PopupMenuItem(
-                                value: _MemoCardAction.restore,
-                                child: Text(
-                                  context.tr(zh: '\u6062\u590d', en: 'Restore'),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (reminderText != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.notifications_active_outlined,
+                                      size: 14,
+                                      color: MemoFlowPalette.primary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      reminderText,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: MemoFlowPalette.primary,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              PopupMenuItem(
-                                value: _MemoCardAction.delete,
-                                child: Text(
-                                  context.tr(zh: '\u5220\u9664', en: 'Delete'),
-                                  style: TextStyle(
-                                    color: deleteColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                            if (showSyncStatus)
+                              IconButton(
+                                onPressed: onSyncStatusTap,
+                                icon: Icon(syncIcon, size: 16, color: syncColor),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 32,
+                                  height: 32,
+                                ),
+                                splashRadius: 16,
+                              ),
+                            PopupMenuButton<_MemoCardAction>(
+                              tooltip: context.tr(zh: '\u66f4\u591a', en: 'More'),
+                              padding: EdgeInsets.zero,
+                              icon: Icon(
+                                Icons.more_horiz,
+                                size: 20,
+                                color: textMain.withValues(
+                                  alpha: isDark ? 0.4 : 0.5,
                                 ),
                               ),
-                            ]
-                          : [
-                              PopupMenuItem(
-                                value: _MemoCardAction.togglePinned,
-                                child: Text(
-                                  memo.pinned
-                                      ? context.tr(
-                                          zh: '\u53d6\u6d88\u7f6e\u9876',
-                                          en: 'Unpin',
-                                        )
-                                      : context.tr(
-                                          zh: '\u7f6e\u9876',
-                                          en: 'Pin',
+                              onSelected: onAction,
+                              color: menuColor,
+                              surfaceTintColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              itemBuilder: (context) => isArchived
+                                  ? [
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.restore,
+                                        child: Text(
+                                          context.tr(
+                                            zh: '\u6062\u590d',
+                                            en: 'Restore',
+                                          ),
                                         ),
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: _MemoCardAction.edit,
-                                child: Text(
-                                  context.tr(zh: '\u7f16\u8f91', en: 'Edit'),
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: _MemoCardAction.reminder,
-                                child: Text(
-                                  context.tr(
-                                    zh: '\u63d0\u9192',
-                                    en: 'Reminder',
-                                  ),
-                                ),
-                              ),
-                              PopupMenuItem(
-                                value: _MemoCardAction.archive,
-                                child: Text(
-                                  context.tr(zh: '\u5f52\u6863', en: 'Archive'),
-                                ),
-                              ),
-                              const PopupMenuDivider(),
-                              PopupMenuItem(
-                                value: _MemoCardAction.delete,
-                                child: Text(
-                                  context.tr(zh: '\u5220\u9664', en: 'Delete'),
-                                  style: TextStyle(
-                                    color: deleteColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
+                                      ),
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.delete,
+                                        child: Text(
+                                          context.tr(zh: '删除', en: 'Delete'),
+                                          style: TextStyle(
+                                            color: deleteColor,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ]
+                                  : [
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.togglePinned,
+                                        child: Text(
+                                          memo.pinned
+                                              ? context.tr(
+                                                  zh: '取消置顶',
+                                                  en: 'Unpin',
+                                                )
+                                              : context.tr(zh: '置顶', en: 'Pin'),
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.edit,
+                                        child: Text(
+                                          context.tr(
+                                            zh: '\u7f16\u8f91',
+                                            en: 'Edit',
+                                          ),
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.reminder,
+                                        child: Text(
+                                          context.tr(zh: '提醒', en: 'Reminder'),
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.archive,
+                                        child: Text(
+                                          context.tr(zh: '归档', en: 'Archive'),
+                                        ),
+                                      ),
+                                      const PopupMenuDivider(),
+                                      PopupMenuItem(
+                                        value: _MemoCardAction.delete,
+                                        child: Text(
+                                          context.tr(zh: '删除', en: 'Delete'),
+                                          style: TextStyle(
+                                            color: deleteColor,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 0),
                 if (showProgress) ...[
                   _TaskProgressBar(
                     progress: progress,
@@ -3439,7 +3462,7 @@ class _MemoCardState extends State<_MemoCard> {
                     total: taskStats.total,
                     checked: taskStats.checked,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 2),
                 ],
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3485,10 +3508,10 @@ class _MemoCardState extends State<_MemoCard> {
                       ),
                     ],
                     if (imageEntries.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 2),
                       buildImageGrid(),
                     ],
-                    if (hasAudio) ...[const SizedBox(height: 12), audioRow],
+                    if (hasAudio) ...[const SizedBox(height: 2), audioRow],
                   ],
                 ),
                 _MemoRelationsSection(
@@ -3598,17 +3621,26 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
       expanded: _expanded,
       countText: _cachedTotal.toString(),
       onTap: () => setState(() => _expanded = !_expanded),
+      boxed: false,
     );
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          summaryRow,
-          if (_expanded) const SizedBox(height: 8),
-          if (_expanded) _buildExpanded(context, isDark),
-        ],
+      padding: const EdgeInsets.only(top: 6),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            summaryRow,
+            if (_expanded) const SizedBox(height: 2),
+            if (_expanded) _buildExpanded(context, isDark),
+          ],
+        ),
       ),
     );
   }
@@ -3668,9 +3700,10 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
                 isDark: isDark,
                 showHeader: false,
                 onTap: (item) => _openMemo(context, ref, item.name),
+                boxed: false,
               ),
             if (referencing.isNotEmpty && referencedBy.isNotEmpty)
-              const SizedBox(height: 8),
+              const SizedBox(height: 2),
             if (referencedBy.isNotEmpty)
               _RelationGroup(
                 title: context.tr(
@@ -3681,6 +3714,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
                 isDark: isDark,
                 showHeader: false,
                 onTap: (item) => _openMemo(context, ref, item.name),
+                boxed: false,
               ),
           ],
         );
@@ -3700,24 +3734,13 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
 
   Widget _buildLoading(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark
-        ? MemoFlowPalette.borderDark
-        : MemoFlowPalette.borderLight;
-    final bg = isDark
-        ? MemoFlowPalette.audioSurfaceDark
-        : MemoFlowPalette.audioSurfaceLight;
     final textMain = isDark
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           Icon(Icons.link, size: 14, color: textMuted),
@@ -3744,24 +3767,13 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
   }
 
   Widget _buildEmptyState(BuildContext context, bool isDark) {
-    final borderColor = isDark
-        ? MemoFlowPalette.borderDark
-        : MemoFlowPalette.borderLight;
-    final bg = isDark
-        ? MemoFlowPalette.audioSurfaceDark
-        : MemoFlowPalette.audioSurfaceLight;
     final textMain = isDark
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           Icon(Icons.link_off, size: 14, color: textMuted),
@@ -3877,6 +3889,7 @@ class _RelationSummaryRow extends StatelessWidget {
     required this.expanded,
     required this.countText,
     required this.onTap,
+    this.boxed = true,
   });
 
   final Color borderColor;
@@ -3886,10 +3899,20 @@ class _RelationSummaryRow extends StatelessWidget {
   final bool expanded;
   final String countText;
   final VoidCallback onTap;
+  final bool boxed;
 
   @override
   Widget build(BuildContext context) {
     final label = context.tr(zh: '\u53cc\u94fe', en: 'Links');
+    final decoration = boxed
+        ? BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+          )
+        : null;
+    final padding =
+        boxed ? const EdgeInsets.symmetric(horizontal: 12) : EdgeInsets.zero;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3897,12 +3920,8 @@ class _RelationSummaryRow extends StatelessWidget {
         onTap: onTap,
         child: Container(
           height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-          ),
+          padding: padding,
+          decoration: decoration,
           child: Row(
             children: [
               Icon(Icons.link, size: 14, color: textMuted),
@@ -3936,6 +3955,7 @@ class _RelationGroup extends StatelessWidget {
     required this.isDark,
     this.showHeader = true,
     this.onTap,
+    this.boxed = true,
   });
 
   final String title;
@@ -3943,6 +3963,7 @@ class _RelationGroup extends StatelessWidget {
   final bool isDark;
   final bool showHeader;
   final ValueChanged<_RelationItem>? onTap;
+  final bool boxed;
 
   @override
   Widget build(BuildContext context) {
@@ -3960,13 +3981,19 @@ class _RelationGroup extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.black.withValues(alpha: 0.06);
 
+    final decoration = boxed
+        ? BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+          )
+        : null;
+    final padding = boxed
+        ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+        : EdgeInsets.zero;
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-      ),
+      padding: padding,
+      decoration: decoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

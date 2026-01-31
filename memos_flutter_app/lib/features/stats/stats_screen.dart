@@ -95,7 +95,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final boundary = _posterBoundaryKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '??????', en: 'Poster is not ready yet'))),
+        SnackBar(content: Text(context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'))),
       );
       return;
     }
@@ -109,7 +109,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       if (byteData == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '??????', en: 'Poster generation failed'))),
+          SnackBar(content: Text(context.tr(zh: '海报生成失败', en: 'Poster generation failed'))),
         );
         return;
       }
@@ -124,7 +124,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '?????$e', en: 'Share failed: $e'))),
+        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
       );
     }
   }
@@ -297,7 +297,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                 final stats = statsAsync.valueOrNull;
                 if (stats == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(context.tr(zh: '?????', en: 'Stats are loading'))),
+                    SnackBar(content: Text(context.tr(zh: '统计数据加载中...', en: 'Stats are loading'))),
                   );
                   return;
                 }

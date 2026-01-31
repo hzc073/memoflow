@@ -1544,7 +1544,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                   style: TextStyle(fontSize: 16, height: 1.35, color: textColor),
                                   decoration: InputDecoration(
                                     hintText: context.tr(
-                                      zh: '????????????#tag ????? ] / [x]',
+                                      zh: '写点什么... 支持 #tag 和任务 [ ] / [x]',
                                       en: 'Write something... Supports #tag and tasks [ ] / [x]',
                                     ),
                                     hintStyle: TextStyle(color: hintColor),
@@ -1703,7 +1703,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                       ),
                                     ),
                                     Tooltip(
-                                      message: context.tr(zh: '??????$visibilityLabel', en: 'Visibility: $visibilityLabel'),
+                                      message: context.tr(zh: '可见性：$visibilityLabel', en: 'Visibility: $visibilityLabel'),
                                       child: InkResponse(
                                         key: _visibilityMenuKey,
                                         onTap: _saving
