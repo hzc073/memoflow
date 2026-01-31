@@ -241,7 +241,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: 'Archive', en: 'Archive'),
+          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
           state: 'ARCHIVED',
           showDrawer: true,
         ),

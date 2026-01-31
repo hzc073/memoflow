@@ -249,7 +249,7 @@ class ResourcesScreen extends ConsumerWidget {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '回收站', en: 'Archive'),
+          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
           state: 'ARCHIVED',
           showDrawer: true,
         ),

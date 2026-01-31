@@ -30,6 +30,7 @@ import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
+import 'memos_list_screen.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
   const MemoDetailScreen({
@@ -75,8 +76,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     setState(() => _memo = LocalMemo.fromDb(row));
   }
 
+  bool _isArchivedMemo() {
+    return (_memo?.state ?? widget.initialMemo.state) == 'ARCHIVED';
+  }
+
   Future<void> _togglePinned() async {
-    if (widget.readOnly) return;
+    if (widget.readOnly || _isArchivedMemo()) return;
     final memo = _memo;
     if (memo == null) return;
     await _updateLocalAndEnqueue(
@@ -90,17 +95,42 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     if (widget.readOnly) return;
     final memo = _memo;
     if (memo == null) return;
-    final next = memo.state == 'ARCHIVED' ? 'NORMAL' : 'ARCHIVED';
-    await _updateLocalAndEnqueue(
-      memo: memo,
-      state: next,
-    );
+    final wasArchived = memo.state == 'ARCHIVED';
+    final next = wasArchived ? 'NORMAL' : 'ARCHIVED';
+    try {
+      await _updateLocalAndEnqueue(
+        memo: memo,
+        state: next,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '\u64cd\u4f5c\u5931\u8d25\uff1a$e', en: 'Action failed: $e'))),
+      );
+      return;
+    }
     if (!mounted) return;
-    context.safePop();
+    if (wasArchived) {
+      final message = context.tr(zh: '\u5df2\u6062\u590d', en: 'Restored');
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (_) => MemosListScreen(
+            title: 'MemoFlow',
+            state: 'NORMAL',
+            showDrawer: true,
+            enableCompose: true,
+            toastMessage: message,
+          ),
+        ),
+        (route) => false,
+      );
+    } else {
+      context.safePop();
+    }
   }
 
   Future<void> _edit() async {
-    if (widget.readOnly) return;
+    if (widget.readOnly || _isArchivedMemo()) return;
     final memo = _memo;
     if (memo == null) return;
     await Navigator.of(context).push(
@@ -179,6 +209,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   Future<void> _toggleTask(TaskToggleRequest request, {required bool skipReferenceLines}) async {
     final memo = _memo;
     if (memo == null) return;
+    if (_isArchivedMemo()) return;
     final updated = _applyTaskToggle(
       memo.content,
       request.taskIndex,
@@ -438,7 +469,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
-    final canToggleTasks = !widget.readOnly;
+    final canToggleTasks = !widget.readOnly && !isArchived;
 
     final contentWidget = _CollapsibleText(
       text: memo.content,
@@ -557,24 +588,26 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         actions: widget.readOnly
             ? null
             : [
+                if (!isArchived)
+                  IconButton(
+                    tooltip: context.tr(zh: '\u7f16\u8f91', en: 'Edit'),
+                    onPressed: () {
+                      maybeHaptic();
+                      unawaited(_edit());
+                    },
+                    icon: const Icon(Icons.edit),
+                  ),
+                if (!isArchived)
+                  IconButton(
+                    tooltip: memo.pinned ? context.tr(zh: '\u53d6\u6d88\u7f6e\u9876', en: 'Unpin') : context.tr(zh: '\u7f6e\u9876', en: 'Pin'),
+                    onPressed: () {
+                      maybeHaptic();
+                      unawaited(_togglePinned());
+                    },
+                    icon: Icon(memo.pinned ? Icons.push_pin : Icons.push_pin_outlined),
+                  ),
                 IconButton(
-                  tooltip: context.tr(zh: '编辑', en: 'Edit'),
-                  onPressed: () {
-                    maybeHaptic();
-                    unawaited(_edit());
-                  },
-                  icon: const Icon(Icons.edit),
-                ),
-                IconButton(
-                  tooltip: memo.pinned ? context.tr(zh: '取消置顶', en: 'Unpin') : context.tr(zh: '置顶', en: 'Pin'),
-                  onPressed: () {
-                    maybeHaptic();
-                    unawaited(_togglePinned());
-                  },
-                  icon: Icon(memo.pinned ? Icons.push_pin : Icons.push_pin_outlined),
-                ),
-                IconButton(
-                  tooltip: isArchived ? context.tr(zh: '取消归档', en: 'Unarchive') : context.tr(zh: '归档', en: 'Archive'),
+                  tooltip: isArchived ? context.tr(zh: '\u6062\u590d', en: 'Restore') : context.tr(zh: '\u5f52\u6863', en: 'Archive'),
                   onPressed: () {
                     maybeHaptic();
                     unawaited(_toggleArchived());
@@ -582,7 +615,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                   icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
                 ),
                 IconButton(
-                  tooltip: context.tr(zh: '删除', en: 'Delete'),
+                  tooltip: context.tr(zh: '\u5220\u9664', en: 'Delete'),
                   onPressed: () {
                     maybeHaptic();
                     unawaited(_delete());

@@ -81,6 +81,12 @@ class CustomizeDrawerScreen extends ConsumerWidget {
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerResources(v),
                   ),
+                  _ToggleRow(
+                    label: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+                    value: prefs.showDrawerArchive,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerArchive(v),
+                  ),
                 ],
               ),
             ],

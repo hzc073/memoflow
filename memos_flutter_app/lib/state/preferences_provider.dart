@@ -96,6 +96,7 @@ class AppPreferences {
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
     showDrawerResources: true,
+    showDrawerArchive: true,
     aiSummaryAllowPrivateMemos: false,
     supporterCrownEnabled: false,
     thirdPartyShareEnabled: true,
@@ -131,6 +132,7 @@ class AppPreferences {
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
     required this.showDrawerResources,
+    required this.showDrawerArchive,
     required this.aiSummaryAllowPrivateMemos,
     required this.supporterCrownEnabled,
     required this.thirdPartyShareEnabled,
@@ -161,6 +163,7 @@ class AppPreferences {
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
   final bool showDrawerResources;
+  final bool showDrawerArchive;
   final bool aiSummaryAllowPrivateMemos;
   final bool supporterCrownEnabled;
   final bool thirdPartyShareEnabled;
@@ -207,6 +210,7 @@ class AppPreferences {
         'showDrawerDailyReview': showDrawerDailyReview,
         'showDrawerAiSummary': showDrawerAiSummary,
         'showDrawerResources': showDrawerResources,
+        'showDrawerArchive': showDrawerArchive,
         'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
         'supporterCrownEnabled': supporterCrownEnabled,
         'thirdPartyShareEnabled': thirdPartyShareEnabled,
@@ -425,6 +429,7 @@ class AppPreferences {
       showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
       showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
       showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
+      showDrawerArchive: parseBool('showDrawerArchive', AppPreferences.defaults.showDrawerArchive),
       aiSummaryAllowPrivateMemos:
           parseBool('aiSummaryAllowPrivateMemos', AppPreferences.defaults.aiSummaryAllowPrivateMemos),
       supporterCrownEnabled:
@@ -460,6 +465,7 @@ class AppPreferences {
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
     bool? showDrawerResources,
+    bool? showDrawerArchive,
     bool? aiSummaryAllowPrivateMemos,
     bool? supporterCrownEnabled,
     bool? thirdPartyShareEnabled,
@@ -490,6 +496,7 @@ class AppPreferences {
       showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
+      showDrawerArchive: showDrawerArchive ?? this.showDrawerArchive,
       aiSummaryAllowPrivateMemos: aiSummaryAllowPrivateMemos ?? this.aiSummaryAllowPrivateMemos,
       supporterCrownEnabled: supporterCrownEnabled ?? this.supporterCrownEnabled,
       thirdPartyShareEnabled: thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
@@ -610,6 +617,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
   void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
   void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));
+  void setShowDrawerArchive(bool v) => _setAndPersist(state.copyWith(showDrawerArchive: v));
   void setAiSummaryAllowPrivateMemos(bool v) =>
       _setAndPersist(state.copyWith(aiSummaryAllowPrivateMemos: v));
   void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));

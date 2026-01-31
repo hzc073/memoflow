@@ -335,6 +335,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
     this.showPillActions = true,
     this.showFilterTagChip = false,
     this.showTagFilters = false,
+    this.toastMessage,
   });
 
   final String title;
@@ -348,6 +349,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final bool showPillActions;
   final bool showFilterTagChip;
   final bool showTagFilters;
+  final String? toastMessage;
 
   @override
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
@@ -391,6 +393,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   void initState() {
     super.initState();
     _activeTagFilter = _normalizeTag(widget.tag);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final message = widget.toastMessage;
+      if (message == null || message.trim().isEmpty) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    });
     _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
       if (state.playing) {
@@ -934,7 +944,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-        title: context.tr(zh: '回收站', en: 'Archive'),
+        title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
         state: 'ARCHIVED',
         showDrawer: true,
       ),
@@ -1273,6 +1283,46 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
+  Future<void> _restoreMemo(LocalMemo memo) async {
+    try {
+      await _updateMemo(memo, state: 'NORMAL');
+      if (!mounted) return;
+      final message = context.tr(zh: '\u5df2\u6062\u590d', en: 'Restored');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => MemosListScreen(
+            title: 'MemoFlow',
+            state: 'NORMAL',
+            showDrawer: true,
+            enableCompose: true,
+            toastMessage: message,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '\u6062\u590d\u5931\u8d25\uff1a$e', en: 'Restore failed: $e'))),
+      );
+    }
+  }
+
+  Future<void> _archiveMemo(LocalMemo memo) async {
+    try {
+      await _updateMemo(memo, state: 'ARCHIVED');
+      _removeMemoWithAnimation(memo);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '\u5df2\u5f52\u6863', en: 'Archived'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr(zh: '\u5f52\u6863\u5931\u8d25\uff1a$e', en: 'Archive failed: $e'))),
+      );
+    }
+  }
+
   Future<void> _handleMemoAction(LocalMemo memo, _MemoCardAction action) async {
     switch (action) {
       case _MemoCardAction.togglePinned:
@@ -1292,6 +1342,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
             builder: (_) => MemoReminderEditorScreen(memo: memo),
           ),
         );
+        return;
+      case _MemoCardAction.archive:
+        await _archiveMemo(memo);
+        return;
+      case _MemoCardAction.restore:
+        await _restoreMemo(memo);
         return;
       case _MemoCardAction.delete:
         await _deleteMemo(memo);
@@ -1511,7 +1567,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 ),
               );
             },
-      onDoubleTap: removing
+      onDoubleTap: removing || memo.state == 'ARCHIVED'
           ? () {}
           : () {
               maybeHaptic();
@@ -2731,7 +2787,7 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-enum _MemoCardAction { togglePinned, edit, reminder, delete }
+enum _MemoCardAction { togglePinned, edit, reminder, archive, restore, delete }
 
 class _MemoCard extends StatefulWidget {
   const _MemoCard({
@@ -2867,6 +2923,7 @@ class _MemoCardState extends State<_MemoCard> {
     final deleteColor = isDark
         ? const Color(0xFFFF7A7A)
         : const Color(0xFFE05656);
+    final isArchived = widget.memo.state == 'ARCHIVED';
     final pendingColor = textMain.withValues(alpha: isDark ? 0.45 : 0.35);
     final showSyncStatus = syncStatus != _MemoSyncStatus.none;
     final syncIcon = syncStatus == _MemoSyncStatus.failed
@@ -3113,35 +3170,56 @@ class _MemoCardState extends State<_MemoCard> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: _MemoCardAction.togglePinned,
-                          child: Text(
-                            memo.pinned
-                                ? context.tr(zh: '取消置顶', en: 'Unpin')
-                                : context.tr(zh: '置顶', en: 'Pin'),
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: _MemoCardAction.edit,
-                          child: Text(context.tr(zh: '编辑', en: 'Edit')),
-                        ),
-                        PopupMenuItem(
-                          value: _MemoCardAction.reminder,
-                          child: Text(context.tr(zh: '提醒', en: 'Reminder')),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: _MemoCardAction.delete,
-                          child: Text(
-                            context.tr(zh: '删除', en: 'Delete'),
-                            style: TextStyle(
-                              color: deleteColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                      itemBuilder: (context) => isArchived
+                          ? [
+                              PopupMenuItem(
+                                value: _MemoCardAction.restore,
+                                child: Text(context.tr(zh: '\u6062\u590d', en: 'Restore')),
+                              ),
+                              PopupMenuItem(
+                                value: _MemoCardAction.delete,
+                                child: Text(
+                                  context.tr(zh: '\u5220\u9664', en: 'Delete'),
+                                  style: TextStyle(
+                                    color: deleteColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ]
+                          : [
+                              PopupMenuItem(
+                                value: _MemoCardAction.togglePinned,
+                                child: Text(
+                                  memo.pinned
+                                      ? context.tr(zh: '\u53d6\u6d88\u7f6e\u9876', en: 'Unpin')
+                                      : context.tr(zh: '\u7f6e\u9876', en: 'Pin'),
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: _MemoCardAction.edit,
+                                child: Text(context.tr(zh: '\u7f16\u8f91', en: 'Edit')),
+                              ),
+                              PopupMenuItem(
+                                value: _MemoCardAction.reminder,
+                                child: Text(context.tr(zh: '\u63d0\u9192', en: 'Reminder')),
+                              ),
+                              PopupMenuItem(
+                                value: _MemoCardAction.archive,
+                                child: Text(context.tr(zh: '\u5f52\u6863', en: 'Archive')),
+                              ),
+                              const PopupMenuDivider(),
+                              PopupMenuItem(
+                                value: _MemoCardAction.delete,
+                                child: Text(
+                                  context.tr(zh: '\u5220\u9664', en: 'Delete'),
+                                  style: TextStyle(
+                                    color: deleteColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                     ),
                   ],
                 ),

@@ -298,6 +298,15 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
+                  if (prefs.showDrawerArchive)
+                    _NavButton(
+                      selected: selected == AppDrawerDestination.archived,
+                      label: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+                      icon: Icons.archive,
+                      onTap: () => onSelect(AppDrawerDestination.archived),
+                      textMain: textMain,
+                      hover: hover,
+                    ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -362,9 +371,61 @@ class AppDrawer extends ConsumerWidget {
                   Divider(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.08)),
                   const SizedBox(height: 2),
                   _BottomNavRow(
-                    label: context.tr(zh: '回收站', en: 'Archive'),
+                    label: context.tr(zh: '\u56de\u6536\u7ad9', en: 'Recycle Bin'),
                     icon: Icons.delete,
-                    onTap: () => onSelect(AppDrawerDestination.archived),
+                    onTap: () {
+                      final overlay = Overlay.of(context, rootOverlay: true);
+                      if (overlay == null) return;
+                      final isDark = Theme.of(context).brightness == Brightness.dark;
+                      final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+                      final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+                      late OverlayEntry entry;
+                      entry = OverlayEntry(
+                        builder: (context) => SafeArea(
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: toastBg,
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Text(
+                                    context.tr(
+                                      zh: '\u56de\u6536\u7ad9\u529f\u80fd\u6682\u672a\u5f00\u653e',
+                                      en: 'Recycle bin: coming soon',
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: toastText,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                      overlay.insert(entry);
+                      Future.delayed(const Duration(milliseconds: 1400), () {
+                        if (entry.mounted) {
+                          entry.remove();
+                        }
+                      });
+                    },
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
                     hover: hover,
                   ),
