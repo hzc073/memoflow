@@ -62,6 +62,8 @@ final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
 
 enum _MemoSyncStatus { none, pending, failed }
 
+enum _MemoSortOption { createAsc, createDesc, updateAsc, updateDesc }
+
 class _OutboxMemoStatus {
   const _OutboxMemoStatus({required this.pending, required this.failed});
   const _OutboxMemoStatus.empty()
@@ -369,6 +371,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   var _openedDrawerOnStart = false;
   String? _selectedShortcutId;
   String? _activeTagFilter;
+  var _sortOption = _MemoSortOption.createDesc;
   List<LocalMemo> _animatedMemos = [];
   String _listSignature = '';
   final Set<String> _pendingRemovedUids = <String>{};
@@ -517,6 +520,124 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   void _selectTagFilter(String? tag) {
     setState(() => _activeTagFilter = _normalizeTag(tag));
+  }
+
+  bool _shouldEnableHomeSort({required bool useRemoteSearch}) {
+    if (_searching || useRemoteSearch) return false;
+    if (widget.state != 'NORMAL') return false;
+    return widget.showDrawer;
+  }
+
+  String _sortOptionLabel(BuildContext context, _MemoSortOption option) {
+    return switch (option) {
+      _MemoSortOption.createAsc => context.tr(
+        zh: '创建时间 ↑',
+        en: 'Created time ↑',
+      ),
+      _MemoSortOption.createDesc => context.tr(
+        zh: '创建时间 ↓',
+        en: 'Created time ↓',
+      ),
+      _MemoSortOption.updateAsc => context.tr(
+        zh: '修改时间 ↑',
+        en: 'Updated time ↑',
+      ),
+      _MemoSortOption.updateDesc => context.tr(
+        zh: '修改时间 ↓',
+        en: 'Updated time ↓',
+      ),
+    };
+  }
+
+  int _compareMemosForSort(LocalMemo a, LocalMemo b) {
+    if (a.pinned != b.pinned) {
+      return a.pinned ? -1 : 1;
+    }
+
+    int primary;
+    switch (_sortOption) {
+      case _MemoSortOption.createAsc:
+        primary = a.createTime.compareTo(b.createTime);
+        break;
+      case _MemoSortOption.createDesc:
+        primary = b.createTime.compareTo(a.createTime);
+        break;
+      case _MemoSortOption.updateAsc:
+        primary = a.updateTime.compareTo(b.updateTime);
+        break;
+      case _MemoSortOption.updateDesc:
+        primary = b.updateTime.compareTo(a.updateTime);
+        break;
+    }
+    if (primary != 0) return primary;
+
+    final fallback = b.createTime.compareTo(a.createTime);
+    if (fallback != 0) return fallback;
+    return a.uid.compareTo(b.uid);
+  }
+
+  List<LocalMemo> _applyHomeSort(List<LocalMemo> memos) {
+    if (memos.length < 2) return memos;
+    final sorted = List<LocalMemo>.from(memos);
+    sorted.sort(_compareMemosForSort);
+    return sorted;
+  }
+
+  Widget _buildSortMenuButton(BuildContext context, {required bool isDark}) {
+    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    return PopupMenuButton<_MemoSortOption>(
+      tooltip: context.tr(zh: '排序', en: 'Sort'),
+      offset: const Offset(0, 40),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: borderColor.withValues(alpha: 0.7)),
+      ),
+      color: isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight,
+      onSelected: (value) {
+        if (value == _sortOption) return;
+        setState(() => _sortOption = value);
+      },
+      itemBuilder: (context) => [
+        _buildSortMenuItem(context, _MemoSortOption.createAsc, textColor),
+        _buildSortMenuItem(context, _MemoSortOption.createDesc, textColor),
+        _buildSortMenuItem(context, _MemoSortOption.updateAsc, textColor),
+        _buildSortMenuItem(context, _MemoSortOption.updateDesc, textColor),
+      ],
+      icon: const Icon(Icons.sort),
+    );
+  }
+
+  PopupMenuItem<_MemoSortOption> _buildSortMenuItem(
+    BuildContext context,
+    _MemoSortOption option,
+    Color textColor,
+  ) {
+    final selected = option == _sortOption;
+    final label = _sortOptionLabel(context, option);
+    return PopupMenuItem<_MemoSortOption>(
+      value: option,
+      height: 40,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            child: selected
+                ? Icon(Icons.check, size: 16, color: MemoFlowPalette.primary)
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected ? MemoFlowPalette.primary : textColor,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _resetAudioLogState() {
@@ -1707,12 +1828,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final memosValue = memosAsync.valueOrNull;
     final memosLoading = memosAsync.isLoading;
     final memosError = memosAsync.whenOrNull(error: (e, _) => e);
+    final enableHomeSort = _shouldEnableHomeSort(useRemoteSearch: useRemoteSearch);
 
     if (memosValue != null) {
+      final sortedMemos = enableHomeSort ? _applyHomeSort(memosValue) : memosValue;
       final listSignature =
           '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
-          '${useShortcutFilter ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}';
-      _syncAnimatedMemos(memosValue, listSignature);
+          '${useShortcutFilter ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|'
+          '${enableHomeSort ? _sortOption.name : 'default'}';
+      _syncAnimatedMemos(sortedMemos, listSignature);
     }
     final visibleMemos = _animatedMemos;
 
@@ -1863,6 +1987,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                           : null)
                     : (widget.enableSearch
                           ? [
+                              if (enableHomeSort)
+                                _buildSortMenuButton(
+                                  context,
+                                  isDark: isDark,
+                                ),
                               IconButton(
                                 tooltip: context.tr(zh: '搜索', en: 'Search'),
                                 onPressed: _openSearch,
