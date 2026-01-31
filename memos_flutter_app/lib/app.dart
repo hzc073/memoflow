@@ -741,6 +741,21 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         GlobalCupertinoLocalizations.delegate,
       ],
       navigatorObservers: [loggerService.navigatorObserver],
+      onGenerateRoute: (settings) {
+        if (settings.name == '/memos/day') {
+          final arg = settings.arguments;
+          return MaterialPageRoute<void>(
+            builder: (_) => MemosListScreen(
+              title: 'MemoFlow',
+              state: 'NORMAL',
+              showDrawer: true,
+              enableCompose: true,
+              dayFilter: arg is DateTime ? arg : null,
+            ),
+          );
+        }
+        return null;
+      },
       builder: (context, child) {
         final media = MediaQuery.of(context);
         return MediaQuery(

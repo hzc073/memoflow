@@ -327,6 +327,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
     required this.title,
     required this.state,
     this.tag,
+    this.dayFilter,
     this.showDrawer = false,
     this.enableCompose = false,
     this.openDrawerOnStart = false,
@@ -341,6 +342,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final String title;
   final String state;
   final String? tag;
+  final DateTime? dayFilter;
   final bool showDrawer;
   final bool enableCompose;
   final bool openDrawerOnStart;
@@ -388,6 +390,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   String? _playingAudioUrl;
   bool _audioLoading = false;
   DateTime? _lastBackPressedAt;
+
+  ({int startSec, int endSecExclusive}) _dayRangeSeconds(DateTime day) {
+    final localDay = DateTime(day.year, day.month, day.day);
+    final nextDay = localDay.add(const Duration(days: 1));
+    return (
+      startSec: localDay.toUtc().millisecondsSinceEpoch ~/ 1000,
+      endSecExclusive: nextDay.toUtc().millisecondsSinceEpoch ~/ 1000,
+    );
+  }
 
   @override
   void initState() {
@@ -900,6 +911,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (_searching) {
       _closeSearch();
       return false;
+    }
+    if (widget.dayFilter != null) {
+      return true;
     }
     if (!_isAllMemos) {
       if (widget.showDrawer) {
@@ -1641,6 +1655,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   @override
   Widget build(BuildContext context) {
     final searchQuery = _searchController.text;
+    final filterDay = widget.dayFilter;
+    final dayRange = filterDay == null ? null : _dayRangeSeconds(filterDay);
+    final startTimeSec = dayRange?.startSec;
+    final endTimeSecExclusive = dayRange?.endSecExclusive;
     final shortcutsAsync = ref.watch(shortcutsProvider);
     final shortcuts = shortcutsAsync.valueOrNull ?? const <Shortcut>[];
     final selectedShortcut = _findShortcutById(shortcuts);
@@ -1652,6 +1670,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       state: widget.state,
       tag: resolvedTag,
       shortcutFilter: shortcutFilter,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
     );
     final useRemoteSearch = !useShortcutFilter && searchQuery.trim().isNotEmpty;
     final memosAsync = useShortcutFilter
@@ -1662,6 +1682,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                   searchQuery: searchQuery,
                   state: widget.state,
                   tag: resolvedTag,
+                  startTimeSec: startTimeSec,
+                  endTimeSecExclusive: endTimeSecExclusive,
                 )),
               )
             : ref.watch(
@@ -1669,6 +1691,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                   searchQuery: searchQuery,
                   state: widget.state,
                   tag: resolvedTag,
+                  startTimeSec: startTimeSec,
+                  endTimeSecExclusive: endTimeSecExclusive,
                 )),
               );
     final outboxStatus =
@@ -1687,7 +1711,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (memosValue != null) {
       final listSignature =
           '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
-          '${useShortcutFilter ? 1 : 0}';
+          '${useShortcutFilter ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}';
       _syncAnimatedMemos(memosValue, listSignature);
     }
     final visibleMemos = _animatedMemos;

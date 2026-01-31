@@ -839,8 +839,7 @@ class _HeatmapCard extends StatelessWidget {
       final t = i / 6.0;
       final dt = DateTime.fromMillisecondsSinceEpoch(
         (start.millisecondsSinceEpoch + (end.millisecondsSinceEpoch - start.millisecondsSinceEpoch) * t).round(),
-        isUtc: true,
-      ).toLocal();
+      );
       points.add(DateTime(dt.year, dt.month));
     }
     return points;
@@ -862,9 +861,9 @@ class _YearHeatmap extends StatelessWidget {
     const daysPerWeek = 7;
 
     final todayLocal = DateTime.now();
-    final endUtc = DateTime.utc(todayLocal.year, todayLocal.month, todayLocal.day);
-    final startUtc = endUtc.subtract(const Duration(days: weeks * daysPerWeek - 1));
-    final alignedStart = startUtc.subtract(Duration(days: startUtc.weekday - 1));
+    final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
+    final currentWeekStart = endLocal.subtract(Duration(days: endLocal.weekday - 1));
+    final alignedStart = currentWeekStart.subtract(Duration(days: (weeks - 1) * daysPerWeek));
 
     final maxCount = dailyCounts.values.fold<int>(0, (max, v) => v > max ? v : max);
 
@@ -900,7 +899,7 @@ class _YearHeatmap extends StatelessWidget {
             itemCount: weeks * daysPerWeek,
             itemBuilder: (context, index) {
               final day = cells[index];
-              if (day.isAfter(endUtc)) {
+              if (day.isAfter(endLocal)) {
                 return const SizedBox.shrink();
               }
               final count = dailyCounts[day] ?? 0;
@@ -984,11 +983,11 @@ List<DateTime> _deriveMonths(Map<DateTime, int> dailyCounts) {
 
 Map<DateTime, int> _lastNDaysCounts(Map<DateTime, int> dailyCounts, {required int days}) {
   final todayLocal = DateTime.now();
-  final endUtc = DateTime.utc(todayLocal.year, todayLocal.month, todayLocal.day);
-  final startUtc = endUtc.subtract(Duration(days: days - 1));
+  final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
+  final startLocal = endLocal.subtract(Duration(days: days - 1));
   return {
     for (final e in dailyCounts.entries)
-      if (!e.key.isBefore(startUtc) && !e.key.isAfter(endUtc)) e.key: e.value,
+      if (!e.key.isBefore(startLocal) && !e.key.isAfter(endLocal)) e.key: e.value,
   };
 }
 
@@ -1008,7 +1007,7 @@ List<int> _toMonthSeries(DateTime selected, Map<DateTime, int> counts) {
 
 int _currentStreakDays(Map<DateTime, int> dailyCounts) {
   final todayLocal = DateTime.now();
-  var day = DateTime.utc(todayLocal.year, todayLocal.month, todayLocal.day);
+  var day = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
   var streak = 0;
   while (true) {
     final c = dailyCounts[day] ?? 0;

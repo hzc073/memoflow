@@ -30,6 +30,8 @@ typedef MemosQuery = ({
   String searchQuery,
   String state,
   String? tag,
+  int? startTimeSec,
+  int? endTimeSecExclusive,
 });
 
 typedef ShortcutMemosQuery = ({
@@ -37,6 +39,8 @@ typedef ShortcutMemosQuery = ({
   String state,
   String? tag,
   String shortcutFilter,
+  int? startTimeSec,
+  int? endTimeSecExclusive,
 });
 
 final memosApiProvider = Provider<MemosApi>((ref) {
@@ -68,6 +72,8 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
         searchQuery: search.isEmpty ? null : search,
         state: query.state,
         tag: query.tag,
+        startTimeSec: query.startTimeSec,
+        endTimeSecExclusive: query.endTimeSecExclusive,
         limit: 200,
       )
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
@@ -101,6 +107,18 @@ final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQu
     filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
   }
 
+  final startTimeSec = query.startTimeSec;
+  final endTimeSecExclusive = query.endTimeSecExclusive;
+  if (startTimeSec != null) {
+    filters.add('created_ts >= $startTimeSec');
+  }
+  if (endTimeSecExclusive != null) {
+    final endInclusive = endTimeSecExclusive - 1;
+    if (endInclusive >= 0) {
+      filters.add('created_ts <= $endInclusive');
+    }
+  }
+
   final filter = filters.isEmpty ? null : filters.join(' && ');
   try {
     final (memos, _) = await api.listMemos(
@@ -126,6 +144,8 @@ final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQu
       searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
       state: query.state,
       tag: normalizedTag.isEmpty ? null : normalizedTag,
+      startTimeSec: query.startTimeSec,
+      endTimeSecExclusive: query.endTimeSecExclusive,
       limit: 200,
     );
     return rows.map(LocalMemo.fromDb).toList(growable: false);
@@ -148,6 +168,8 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
       searchQuery: search.isEmpty ? null : search,
       state: query.state,
       tag: normalizedTag.isEmpty ? null : normalizedTag,
+      startTimeSec: query.startTimeSec,
+      endTimeSecExclusive: query.endTimeSecExclusive,
       limit: 200,
     )) {
       final predicate = _buildShortcutPredicate(query.shortcutFilter) ?? initialPredicate;
@@ -164,6 +186,8 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
     searchQuery: query.searchQuery,
     tag: query.tag,
     shortcutFilter: query.shortcutFilter,
+    startTimeSec: query.startTimeSec,
+    endTimeSecExclusive: query.endTimeSecExclusive,
     includeCreatorId: parent == null,
   );
 
@@ -197,6 +221,8 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
         state: query.state,
         tag: query.tag,
         shortcutFilter: query.shortcutFilter,
+        startTimeSec: query.startTimeSec,
+        endTimeSecExclusive: query.endTimeSecExclusive,
       );
       if (local != null) {
         seed = local;
@@ -220,6 +246,8 @@ String? _buildShortcutFilter({
   required String searchQuery,
   required String? tag,
   required String shortcutFilter,
+  int? startTimeSec,
+  int? endTimeSecExclusive,
   bool includeCreatorId = true,
 }) {
   final filters = <String>[];
@@ -238,6 +266,16 @@ String? _buildShortcutFilter({
   }
   if (normalizedTag.isNotEmpty) {
     filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
+  }
+
+  if (startTimeSec != null) {
+    filters.add('created_ts >= $startTimeSec');
+  }
+  if (endTimeSecExclusive != null) {
+    final endInclusive = endTimeSecExclusive - 1;
+    if (endInclusive >= 0) {
+      filters.add('created_ts <= $endInclusive');
+    }
   }
 
   final normalizedShortcut = shortcutFilter.trim();
@@ -282,6 +320,8 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
   required String state,
   required String? tag,
   required String shortcutFilter,
+  int? startTimeSec,
+  int? endTimeSecExclusive,
 }) async {
   final predicate = _buildShortcutPredicate(shortcutFilter);
   if (predicate == null) return null;
@@ -292,6 +332,8 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
     searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
     state: state,
     tag: normalizedTag.isEmpty ? null : normalizedTag,
+    startTimeSec: startTimeSec,
+    endTimeSecExclusive: endTimeSecExclusive,
     limit: 200,
   );
 

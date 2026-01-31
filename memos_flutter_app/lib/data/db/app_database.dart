@@ -629,6 +629,8 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     String? searchQuery,
     String? state,
     String? tag,
+    int? startTimeSec,
+    int? endTimeSecExclusive,
     int limit = 100,
   }) async {
     final db = await this.db;
@@ -645,6 +647,14 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     if (normalizedTag.isNotEmpty) {
       baseWhereClauses.add("(' ' || tags || ' ') LIKE ?");
       baseWhereArgs.add('% $normalizedTag %');
+    }
+    if (startTimeSec != null) {
+      baseWhereClauses.add('create_time >= ?');
+      baseWhereArgs.add(startTimeSec);
+    }
+    if (endTimeSecExclusive != null) {
+      baseWhereClauses.add('create_time < ?');
+      baseWhereArgs.add(endTimeSecExclusive);
     }
 
     Future<List<Map<String, dynamic>>> listBase() {
@@ -674,6 +684,14 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     if (normalizedTag.isNotEmpty) {
       whereClauses.add("(' ' || m.tags || ' ') LIKE ?");
       whereArgs.add('% $normalizedTag %');
+    }
+    if (startTimeSec != null) {
+      whereClauses.add('m.create_time >= ?');
+      whereArgs.add(startTimeSec);
+    }
+    if (endTimeSecExclusive != null) {
+      whereClauses.add('m.create_time < ?');
+      whereArgs.add(endTimeSecExclusive);
     }
     whereArgs.add(limit);
 
@@ -786,11 +804,27 @@ LIMIT ?;
     String? searchQuery,
     String? state,
     String? tag,
+    int? startTimeSec,
+    int? endTimeSecExclusive,
     int limit = 100,
   }) async* {
-    yield await listMemos(searchQuery: searchQuery, state: state, tag: tag, limit: limit);
+    yield await listMemos(
+      searchQuery: searchQuery,
+      state: state,
+      tag: tag,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+      limit: limit,
+    );
     await for (final _ in changes) {
-      yield await listMemos(searchQuery: searchQuery, state: state, tag: tag, limit: limit);
+      yield await listMemos(
+        searchQuery: searchQuery,
+        state: state,
+        tag: tag,
+        startTimeSec: startTimeSec,
+        endTimeSecExclusive: endTimeSecExclusive,
+        limit: limit,
+      );
     }
   }
 

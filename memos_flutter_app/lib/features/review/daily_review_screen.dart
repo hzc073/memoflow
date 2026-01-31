@@ -25,7 +25,13 @@ class DailyReviewScreen extends ConsumerStatefulWidget {
 class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   final _swiperController = AppinioSwiperController();
   final _random = math.Random();
-  late final _memosProvider = memosStreamProvider((searchQuery: '', state: 'NORMAL', tag: null));
+  late final _memosProvider = memosStreamProvider((
+    searchQuery: '',
+    state: 'NORMAL',
+    tag: null,
+    startTimeSec: null,
+    endTimeSecExclusive: null,
+  ));
 
   List<LocalMemo> _deck = const [];
   List<String> _memoIds = const [];

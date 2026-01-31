@@ -613,9 +613,9 @@ class _DrawerHeatmap extends StatelessWidget {
     const daysPerWeek = 7;
 
     final todayLocal = DateTime.now();
-    final endUtc = DateTime.utc(todayLocal.year, todayLocal.month, todayLocal.day);
-    final startUtc = endUtc.subtract(const Duration(days: weeks * daysPerWeek - 1));
-    final alignedStart = startUtc.subtract(Duration(days: startUtc.weekday - 1));
+    final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
+    final currentWeekStart = endLocal.subtract(Duration(days: endLocal.weekday - 1));
+    final alignedStart = currentWeekStart.subtract(Duration(days: (weeks - 1) * daysPerWeek));
 
     final maxCount = dailyCounts.values.fold<int>(0, (max, v) => v > max ? v : max);
 
@@ -630,7 +630,7 @@ class _DrawerHeatmap extends StatelessWidget {
       return accent.withValues(alpha: isDark ? 0.9 : 0.85);
     }
 
-    final todayUtc = endUtc;
+    final today = endLocal;
 
     final cells = <DateTime>[];
     for (var row = 0; row < daysPerWeek; row++) {
@@ -649,6 +649,84 @@ class _DrawerHeatmap extends StatelessWidget {
     final late = alignedStart.add(const Duration(days: (weeks * daysPerWeek) - 1));
     final labelColor = (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35);
 
+    String weekdayLabel(DateTime d) {
+      if (context.appLanguage == AppLanguage.en) {
+        return DateFormat.E(Localizations.localeOf(context).toString()).format(d);
+      }
+      const zhWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+      return zhWeekdays[d.weekday - 1];
+    }
+
+    String tooltipLabel(DateTime d, int count) {
+      final dateLabel = DateFormat('yyyy-MM-dd').format(d);
+      final weekLabel = weekdayLabel(d);
+      if (context.appLanguage == AppLanguage.en) {
+        final noun = count == 1 ? 'memo' : 'memos';
+        return '$dateLabel ($weekLabel) · $count $noun';
+      }
+      return '$dateLabel（$weekLabel）· $count 条';
+    }
+
+    void showOverlayToast(String message) {
+      final overlay = Overlay.of(context, rootOverlay: true);
+      if (overlay == null) return;
+      final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
+      final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+      late OverlayEntry entry;
+      entry = OverlayEntry(
+        builder: (context) => SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: toastBg,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: toastText,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      overlay.insert(entry);
+      Future.delayed(const Duration(milliseconds: 1400), () {
+        if (entry.mounted) {
+          entry.remove();
+        }
+      });
+    }
+
+    void openDay(DateTime d, int count) {
+      if (count <= 0) {
+        showOverlayToast(context.tr(zh: '当天无记录', en: 'No memos on this day'));
+        return;
+      }
+      final navigator = Navigator.of(context);
+      navigator.pop();
+      navigator.pushNamed('/memos/day', arguments: d);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -663,19 +741,33 @@ class _DrawerHeatmap extends StatelessWidget {
           itemCount: weeks * daysPerWeek,
           itemBuilder: (context, index) {
             final day = cells[index];
+            if (day.isAfter(endLocal)) {
+              return const SizedBox.shrink();
+            }
             final count = dailyCounts[day] ?? 0;
-            final isToday = day == todayUtc;
+            final isToday = day == today;
             final color = colorFor(count);
-            return Container(
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(2),
-                border: isToday
-                    ? Border.all(
-                        color: MemoFlowPalette.primary,
-                        width: 1,
-                      )
-                    : null,
+            return Tooltip(
+              message: tooltipLabel(day, count),
+              triggerMode: TooltipTriggerMode.longPress,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(2),
+                  onTap: () => openDay(day, count),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(2),
+                      border: isToday
+                          ? Border.all(
+                              color: MemoFlowPalette.primary,
+                              width: 1,
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
               ),
             );
           },

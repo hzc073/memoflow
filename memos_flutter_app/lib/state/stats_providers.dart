@@ -18,7 +18,7 @@ class LocalStats {
   final int daysSinceFirstMemo;
   final int totalChars;
 
-  /// Map keyed by UTC-midnight DateTime.
+  /// Map keyed by local-midnight DateTime.
   final Map<DateTime, int> dailyCounts;
 }
 
@@ -128,10 +128,10 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
     final minTimeSec = minRows.firstOrNull?['min_time'] as int?;
     var daysSinceFirstMemo = 0;
     if (minTimeSec != null && minTimeSec > 0) {
-      final first = DateTime.fromMillisecondsSinceEpoch(minTimeSec * 1000, isUtc: true);
-      final firstDay = DateTime.utc(first.year, first.month, first.day);
-      final today = DateTime.now().toUtc();
-      final todayDay = DateTime.utc(today.year, today.month, today.day);
+      final first = DateTime.fromMillisecondsSinceEpoch(minTimeSec * 1000, isUtc: true).toLocal();
+      final firstDay = DateTime(first.year, first.month, first.day);
+      final today = DateTime.now();
+      final todayDay = DateTime(today.year, today.month, today.day);
       daysSinceFirstMemo = todayDay.difference(firstDay).inDays + 1;
     }
 
@@ -145,8 +145,8 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
     for (final row in dailyRows) {
       final sec = row['create_time'] as int?;
       if (sec == null) continue;
-      final dt = DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true);
-      final day = DateTime.utc(dt.year, dt.month, dt.day);
+      final dt = DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true).toLocal();
+      final day = DateTime(dt.year, dt.month, dt.day);
       activeDays.add(day);
       dailyCounts[day] = (dailyCounts[day] ?? 0) + 1;
     }
