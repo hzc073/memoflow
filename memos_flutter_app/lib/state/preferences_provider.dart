@@ -543,6 +543,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   Future<void> _loadFromStorage() async {
     final systemLanguage = appLanguageFromLocale(WidgetsBinding.instance.platformDispatcher.locale);
     final stored = await _repo.read(systemLanguage: systemLanguage);
+    if (!mounted) return;
     state = stored;
     _onLoaded?.call();
   }

@@ -5,11 +5,13 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../models/memo_location.dart';
+
 class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 6;
+  static const _dbVersion = 7;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -40,6 +42,9 @@ CREATE TABLE IF NOT EXISTS memos (
   update_time INTEGER NOT NULL,
   tags TEXT NOT NULL DEFAULT '',
   attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
   relation_count INTEGER NOT NULL DEFAULT 0,
   sync_state INTEGER NOT NULL DEFAULT 0,
   last_error TEXT
@@ -143,6 +148,11 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
           if (oldVersion < 6) {
             await db.execute('ALTER TABLE memos ADD COLUMN relation_count INTEGER NOT NULL DEFAULT 0;');
           }
+          if (oldVersion < 7) {
+            await db.execute('ALTER TABLE memos ADD COLUMN location_placeholder TEXT;');
+            await db.execute('ALTER TABLE memos ADD COLUMN location_lat REAL;');
+            await db.execute('ALTER TABLE memos ADD COLUMN location_lng REAL;');
+          }
         },
         onOpen: (db) async {
           await _ensureFts(db);
@@ -226,6 +236,7 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     required int updateTimeSec,
     required List<String> tags,
     required List<Map<String, dynamic>> attachments,
+    required MemoLocation? location,
     int relationCount = 0,
     required int syncState,
     String? lastError,
@@ -233,6 +244,9 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     final db = await this.db;
     final tagsText = tags.join(' ');
     final attachmentsJson = jsonEncode(attachments);
+    final locationPlaceholder = location?.placeholder;
+    final locationLat = location?.latitude;
+    final locationLng = location?.longitude;
 
     await db.transaction((txn) async {
       final updated = await txn.update(
@@ -246,6 +260,9 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
           'update_time': updateTimeSec,
           'tags': tagsText,
           'attachments_json': attachmentsJson,
+          'location_placeholder': locationPlaceholder,
+          'location_lat': locationLat,
+          'location_lng': locationLng,
           'relation_count': relationCount,
           'sync_state': syncState,
           'last_error': lastError,
@@ -268,6 +285,9 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
             'update_time': updateTimeSec,
             'tags': tagsText,
             'attachments_json': attachmentsJson,
+            'location_placeholder': locationPlaceholder,
+            'location_lat': locationLat,
+            'location_lng': locationLng,
             'relation_count': relationCount,
             'sync_state': syncState,
             'last_error': lastError,

@@ -139,13 +139,23 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                       ref.read(locationSettingsProvider.notifier).setAmapSecurityKey(v);
                     },
                   ),
+                  _PrecisionRow(
+                    label: context.tr(zh: '定位精度', en: 'Location precision'),
+                    value: settings.precision,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onChanged: (value) {
+                      _markDirty();
+                      ref.read(locationSettingsProvider.notifier).setPrecision(value);
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
               Text(
                 context.tr(
-                  zh: '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析省/市与区县名称。',
-                  en: 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via Amap Web API.',
+                  zh: '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析地址，可在上方选择显示精度。',
+                  en: 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via Amap Web API. You can choose the display precision above.',
                 ),
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
@@ -296,6 +306,76 @@ class _InputRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PrecisionRow extends StatelessWidget {
+  const _PrecisionRow({
+    required this.label,
+    required this.value,
+    required this.textMain,
+    required this.textMuted,
+    required this.onChanged,
+  });
+
+  final String label;
+  final LocationPrecision value;
+  final Color textMain;
+  final Color textMuted;
+  final ValueChanged<LocationPrecision> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final options = <(LocationPrecision, String)>[
+      (LocationPrecision.province, context.tr(zh: '省', en: 'Province')),
+      (LocationPrecision.city, context.tr(zh: '市', en: 'City')),
+      (LocationPrecision.district, context.tr(zh: '区', en: 'District')),
+      (LocationPrecision.street, context.tr(zh: '街道', en: 'Street')),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: options
+                .map(
+                  (option) => _buildChip(
+                    option.$1,
+                    option.$2,
+                    chipBg,
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(LocationPrecision precision, String text, Color chipBg) {
+    final selected = precision == value;
+    return ChoiceChip(
+      label: Text(text),
+      selected: selected,
+      onSelected: (_) => onChanged(precision),
+      selectedColor: MemoFlowPalette.primary,
+      backgroundColor: chipBg,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: selected ? Colors.white : textMain,
+      ),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
     );
   }
 }

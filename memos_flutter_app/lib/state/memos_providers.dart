@@ -1139,6 +1139,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
             updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
             tags: tags,
             attachments: mergedAttachments,
+            location: memo.location,
             relationCount: relationCount,
             syncState: localSync == 0 ? 0 : localSync,
           );
@@ -1745,6 +1746,7 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
       tags: tags,
       attachments: remainingAttachments,
+      location: memo.location,
       relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,

@@ -451,6 +451,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: const [],
+        location: null,
         relationCount: 0,
         syncState: 1,
       );

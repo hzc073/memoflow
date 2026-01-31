@@ -411,9 +411,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       final message = widget.toastMessage;
       if (message == null || message.trim().isEmpty) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     });
     _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
@@ -584,8 +584,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   }
 
   Widget _buildSortMenuButton(BuildContext context, {required bool isDark}) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     return PopupMenuButton<_MemoSortOption>(
       tooltip: context.tr(zh: '排序', en: 'Sort'),
       offset: const Offset(0, 40),
@@ -1302,6 +1306,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments
           .map((a) => a.toJson())
           .toList(growable: false),
+      location: memo.location,
       relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,
@@ -1341,6 +1346,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments
           .map((a) => a.toJson())
           .toList(growable: false),
+      location: memo.location,
       relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,
@@ -1437,7 +1443,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '\u6062\u590d\u5931\u8d25\uff1a$e', en: 'Restore failed: $e'))),
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u6062\u590d\u5931\u8d25\uff1a$e',
+              en: 'Restore failed: $e',
+            ),
+          ),
+        ),
       );
     }
   }
@@ -1448,12 +1461,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       _removeMemoWithAnimation(memo);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '\u5df2\u5f52\u6863', en: 'Archived'))),
+        SnackBar(
+          content: Text(context.tr(zh: '\u5df2\u5f52\u6863', en: 'Archived')),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '\u5f52\u6863\u5931\u8d25\uff1a$e', en: 'Archive failed: $e'))),
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u5f52\u6863\u5931\u8d25\uff1a$e',
+              en: 'Archive failed: $e',
+            ),
+          ),
+        ),
       );
     }
   }
@@ -1798,24 +1820,24 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final memosAsync = useShortcutFilter
         ? ref.watch(shortcutMemosProvider(shortcutQuery))
         : useRemoteSearch
-            ? ref.watch(
-                remoteSearchMemosProvider((
-                  searchQuery: searchQuery,
-                  state: widget.state,
-                  tag: resolvedTag,
-                  startTimeSec: startTimeSec,
-                  endTimeSecExclusive: endTimeSecExclusive,
-                )),
-              )
-            : ref.watch(
-                memosStreamProvider((
-                  searchQuery: searchQuery,
-                  state: widget.state,
-                  tag: resolvedTag,
-                  startTimeSec: startTimeSec,
-                  endTimeSecExclusive: endTimeSecExclusive,
-                )),
-              );
+        ? ref.watch(
+            remoteSearchMemosProvider((
+              searchQuery: searchQuery,
+              state: widget.state,
+              tag: resolvedTag,
+              startTimeSec: startTimeSec,
+              endTimeSecExclusive: endTimeSecExclusive,
+            )),
+          )
+        : ref.watch(
+            memosStreamProvider((
+              searchQuery: searchQuery,
+              state: widget.state,
+              tag: resolvedTag,
+              startTimeSec: startTimeSec,
+              endTimeSecExclusive: endTimeSecExclusive,
+            )),
+          );
     final outboxStatus =
         ref.watch(_outboxMemoStatusProvider).valueOrNull ??
         const _OutboxMemoStatus.empty();
@@ -1828,10 +1850,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final memosValue = memosAsync.valueOrNull;
     final memosLoading = memosAsync.isLoading;
     final memosError = memosAsync.whenOrNull(error: (e, _) => e);
-    final enableHomeSort = _shouldEnableHomeSort(useRemoteSearch: useRemoteSearch);
+    final enableHomeSort = _shouldEnableHomeSort(
+      useRemoteSearch: useRemoteSearch,
+    );
 
     if (memosValue != null) {
-      final sortedMemos = enableHomeSort ? _applyHomeSort(memosValue) : memosValue;
+      final sortedMemos = enableHomeSort
+          ? _applyHomeSort(memosValue)
+          : memosValue;
       final listSignature =
           '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
           '${useShortcutFilter ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|'
@@ -1988,10 +2014,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                     : (widget.enableSearch
                           ? [
                               if (enableHomeSort)
-                                _buildSortMenuButton(
-                                  context,
-                                  isDark: isDark,
-                                ),
+                                _buildSortMenuButton(context, isDark: isDark),
                               IconButton(
                                 tooltip: context.tr(zh: '搜索', en: 'Search'),
                                 onPressed: _openSearch,
@@ -3068,7 +3091,9 @@ class _MemoCardState extends State<_MemoCard> {
     final pinColor = MemoFlowPalette.primary;
     final pinBorderColor = pinColor.withValues(alpha: isDark ? 0.5 : 0.4);
     final pinTint = pinColor.withValues(alpha: isDark ? 0.18 : 0.08);
-    final cardSurface = isPinned ? Color.alphaBlend(pinTint, cardColor) : cardColor;
+    final cardSurface = isPinned
+        ? Color.alphaBlend(pinTint, cardColor)
+        : cardColor;
     final cardBorderColor = isPinned ? pinBorderColor : borderColor;
     final menuColor = isDark
         ? const Color(0xFF2B2523)
@@ -3266,14 +3291,27 @@ class _MemoCardState extends State<_MemoCard> {
                       const SizedBox(width: 8),
                     ],
                     Expanded(
-                      child: Text(
-                        dateText,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.0,
-                          color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dateText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.0,
+                              color: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+                            ),
+                          ),
+                          if (memo.location != null) ...[
+                            const SizedBox(height: 2),
+                            MemoLocationLine(
+                              location: memo.location!,
+                              textColor: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
+                              onTap: () => openAmapLocation(memo.location!),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     if (reminderText != null)
@@ -3327,7 +3365,9 @@ class _MemoCardState extends State<_MemoCard> {
                           ? [
                               PopupMenuItem(
                                 value: _MemoCardAction.restore,
-                                child: Text(context.tr(zh: '\u6062\u590d', en: 'Restore')),
+                                child: Text(
+                                  context.tr(zh: '\u6062\u590d', en: 'Restore'),
+                                ),
                               ),
                               PopupMenuItem(
                                 value: _MemoCardAction.delete,
@@ -3345,21 +3385,36 @@ class _MemoCardState extends State<_MemoCard> {
                                 value: _MemoCardAction.togglePinned,
                                 child: Text(
                                   memo.pinned
-                                      ? context.tr(zh: '\u53d6\u6d88\u7f6e\u9876', en: 'Unpin')
-                                      : context.tr(zh: '\u7f6e\u9876', en: 'Pin'),
+                                      ? context.tr(
+                                          zh: '\u53d6\u6d88\u7f6e\u9876',
+                                          en: 'Unpin',
+                                        )
+                                      : context.tr(
+                                          zh: '\u7f6e\u9876',
+                                          en: 'Pin',
+                                        ),
                                 ),
                               ),
                               PopupMenuItem(
                                 value: _MemoCardAction.edit,
-                                child: Text(context.tr(zh: '\u7f16\u8f91', en: 'Edit')),
+                                child: Text(
+                                  context.tr(zh: '\u7f16\u8f91', en: 'Edit'),
+                                ),
                               ),
                               PopupMenuItem(
                                 value: _MemoCardAction.reminder,
-                                child: Text(context.tr(zh: '\u63d0\u9192', en: 'Reminder')),
+                                child: Text(
+                                  context.tr(
+                                    zh: '\u63d0\u9192',
+                                    en: 'Reminder',
+                                  ),
+                                ),
                               ),
                               PopupMenuItem(
                                 value: _MemoCardAction.archive,
-                                child: Text(context.tr(zh: '\u5f52\u6863', en: 'Archive')),
+                                child: Text(
+                                  context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+                                ),
                               ),
                               const PopupMenuDivider(),
                               PopupMenuItem(
@@ -3376,14 +3431,6 @@ class _MemoCardState extends State<_MemoCard> {
                     ),
                   ],
                 ),
-                if (memo.location != null) ...[
-                  const SizedBox(height: 6),
-                  MemoLocationLine(
-                    location: memo.location!,
-                    textColor: textMain.withValues(alpha: isDark ? 0.4 : 0.5),
-                    onTap: () => openAmapLocation(memo.location!),
-                  ),
-                ],
                 const SizedBox(height: 12),
                 if (showProgress) ...[
                   _TaskProgressBar(
@@ -3503,7 +3550,8 @@ class _MemoRelationsSection extends ConsumerStatefulWidget {
   final int initialCount;
 
   @override
-  ConsumerState<_MemoRelationsSection> createState() => _MemoRelationsSectionState();
+  ConsumerState<_MemoRelationsSection> createState() =>
+      _MemoRelationsSectionState();
 }
 
 class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
@@ -3531,9 +3579,15 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final bg = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
 
     final summaryRow = _RelationSummaryRow(
@@ -3619,7 +3673,10 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
               const SizedBox(height: 8),
             if (referencedBy.isNotEmpty)
               _RelationGroup(
-                title: context.tr(zh: '\u88ab\u5f15\u7528', en: 'Referenced by'),
+                title: context.tr(
+                  zh: '\u88ab\u5f15\u7528',
+                  en: 'Referenced by',
+                ),
                 items: referencedBy,
                 isDark: isDark,
                 showHeader: false,
@@ -3643,9 +3700,15 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
 
   Widget _buildLoading(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final bg = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
 
     return Container(
@@ -3660,8 +3723,15 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           Icon(Icons.link, size: 14, color: textMuted),
           const SizedBox(width: 6),
           Text(
-            context.tr(zh: '\u53cc\u94fe\u52a0\u8f7d\u4e2d', en: 'Loading links...'),
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+            context.tr(
+              zh: '\u53cc\u94fe\u52a0\u8f7d\u4e2d',
+              en: 'Loading links...',
+            ),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textMuted,
+            ),
           ),
           const Spacer(),
           SizedBox.square(
@@ -3674,9 +3744,15 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
   }
 
   Widget _buildEmptyState(BuildContext context, bool isDark) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final bg = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final bg = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
 
     return Container(
@@ -3692,14 +3768,22 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           const SizedBox(width: 6),
           Text(
             context.tr(zh: '\u6682\u65e0\u53cc\u94fe', en: 'No links'),
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textMuted,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _openMemo(BuildContext context, WidgetRef ref, String rawName) async {
+  Future<void> _openMemo(
+    BuildContext context,
+    WidgetRef ref,
+    String rawName,
+  ) async {
     final uid = _normalizeMemoUid(rawName);
     if (uid.isEmpty || uid == widget.memoUid) return;
 
@@ -3718,11 +3802,19 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           visibility: remote.visibility,
           pinned: remote.pinned,
           state: remote.state,
-          createTimeSec: remote.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          updateTimeSec: remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          createTimeSec:
+              remote.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          updateTimeSec:
+              remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
           tags: remote.tags,
-          attachments: remote.attachments.map((a) => a.toJson()).toList(growable: false),
-          relationCount: countReferenceRelations(memoUid: remoteUid, relations: remote.relations),
+          attachments: remote.attachments
+              .map((a) => a.toJson())
+              .toList(growable: false),
+          location: remote.location,
+          relationCount: countReferenceRelations(
+            memoUid: remoteUid,
+            relations: remote.relations,
+          ),
           syncState: 0,
         );
         final refreshed = await db.getMemoByUid(remoteUid);
@@ -3732,7 +3824,14 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '\u52a0\u8f7d\u5931\u8d25\uff1a$e', en: 'Failed to load: $e'))),
+          SnackBar(
+            content: Text(
+              context.tr(
+                zh: '\u52a0\u8f7d\u5931\u8d25\uff1a$e',
+                en: 'Failed to load: $e',
+              ),
+            ),
+          ),
         );
         return;
       }
@@ -3741,13 +3840,24 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
     if (memo == null) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '\u672c\u5730\u6682\u65e0\u8be5\u7b14\u8bb0', en: 'Memo not found locally'))),
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u672c\u5730\u6682\u65e0\u8be5\u7b14\u8bb0',
+              en: 'Memo not found locally',
+            ),
+          ),
+        ),
       );
       return;
     }
 
     if (!context.mounted) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo!)));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoDetailScreen(initialMemo: memo!),
+      ),
+    );
   }
 
   String _normalizeMemoUid(String raw) {
@@ -3799,7 +3909,11 @@ class _RelationSummaryRow extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 '$label - $countText',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMain),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textMain,
+                ),
               ),
               const Spacer(),
               Icon(
@@ -3814,6 +3928,7 @@ class _RelationSummaryRow extends StatelessWidget {
     );
   }
 }
+
 class _RelationGroup extends StatelessWidget {
   const _RelationGroup({
     required this.title,
@@ -3872,50 +3987,48 @@ class _RelationGroup extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          ...items.map(
-            (item) {
-              final row = Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: chipBg,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _shortMemoId(item.name),
-                        style: TextStyle(fontSize: 10, color: headerColor),
-                      ),
+          ...items.map((item) {
+            final row = Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _relationSnippet(item),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: textMain),
-                      ),
+                    decoration: BoxDecoration(
+                      color: chipBg,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
-                ),
-              );
-              if (onTap == null) return row;
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => onTap!(item),
-                  child: row,
-                ),
-              );
-            },
-          ),
+                    child: Text(
+                      _shortMemoId(item.name),
+                      style: TextStyle(fontSize: 10, color: headerColor),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _relationSnippet(item),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: textMain),
+                    ),
+                  ),
+                ],
+              ),
+            );
+            if (onTap == null) return row;
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => onTap!(item),
+                child: row,
+              ),
+            );
+          }),
         ],
       ),
     );

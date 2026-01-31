@@ -400,6 +400,7 @@ class FlomoImportService {
         updateTimeSec: parsed.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: mergedTags,
         attachments: attachments,
+        location: null,
         relationCount: 0,
         syncState: 1,
       );
@@ -534,6 +535,7 @@ class FlomoImportService {
         updateTimeSec: item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
+        location: null,
         relationCount: 0,
         syncState: 1,
       );

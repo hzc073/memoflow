@@ -318,6 +318,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
+        location: location,
         relationCount: existing?.relationCount ?? 0,
         syncState: 1,
         lastError: null,
@@ -594,6 +595,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
               longitude: position.longitude,
               apiKey: settings.amapWebKey,
               securityKey: settings.amapSecurityKey,
+              precision: settings.precision,
             ) ??
             '';
       }

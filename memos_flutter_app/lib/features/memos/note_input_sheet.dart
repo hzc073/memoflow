@@ -579,6 +579,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
               longitude: position.longitude,
               apiKey: settings.amapWebKey,
               securityKey: settings.amapSecurityKey,
+              precision: settings.precision,
             ) ??
             '';
       }
@@ -1207,6 +1208,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: tags,
         attachments: attachments,
+        location: _location,
         relationCount: 0,
         syncState: 1,
       );

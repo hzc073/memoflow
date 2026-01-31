@@ -148,6 +148,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: tags,
       attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      location: memo.location,
       relationCount: memo.relationCount,
       syncState: 1,
       lastError: null,

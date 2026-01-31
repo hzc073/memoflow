@@ -327,6 +327,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: const [],
         attachments: attachments,
+        location: null,
         relationCount: 0,
         syncState: 1,
       );

@@ -50,6 +50,10 @@ class LocationSettingsController extends StateNotifier<LocationSettings> {
     _setAndPersist(state.copyWith(amapSecurityKey: value.trim()));
   }
 
+  void setPrecision(LocationPrecision value) {
+    _setAndPersist(state.copyWith(precision: value));
+  }
+
   Future<void> setAll(LocationSettings next, {bool triggerSync = true}) async {
     state = next;
     await _repo.write(next);
