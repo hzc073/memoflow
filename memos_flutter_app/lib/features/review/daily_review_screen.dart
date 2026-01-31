@@ -1,12 +1,16 @@
 ﻿import 'dart:math' as math;
 
+import 'dart:async';
+
 import 'package:appinio_swiper/appinio_swiper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/tags.dart';
 import '../../data/models/local_memo.dart';
+import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -83,7 +87,27 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
 
   bool _syncDeck(List<LocalMemo> memos) {
     final ids = memos.map((m) => m.uid).toList(growable: false);
-    if (_sameIds(ids)) return false;
+    if (_sameIds(ids)) {
+      final lookup = {for (final memo in memos) memo.uid: memo};
+      var changed = false;
+      final next = <LocalMemo>[];
+      for (final memo in _deck) {
+        final updated = lookup[memo.uid] ?? memo;
+        if (memo.contentFingerprint != updated.contentFingerprint ||
+            memo.pinned != updated.pinned ||
+            memo.state != updated.state ||
+            memo.updateTime != updated.updateTime ||
+            memo.syncState != updated.syncState ||
+            memo.lastError != updated.lastError) {
+          changed = true;
+        }
+        next.add(updated);
+      }
+      if (changed) {
+        _deck = next;
+      }
+      return changed;
+    }
 
     _memoIds = ids;
     _deck = List<LocalMemo>.from(memos)..shuffle(_random);
@@ -101,6 +125,42 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     if (_deck.length <= 1) return;
     final last = _deck.last;
     _deck = [last, ..._deck.sublist(0, _deck.length - 1)];
+  }
+
+  Future<void> _toggleMemoCheckbox(LocalMemo memo, int checkboxIndex) async {
+    final updated = toggleCheckbox(
+      memo.content,
+      checkboxIndex,
+      skipQuotedLines: false,
+    );
+    if (updated == memo.content) return;
+
+    final db = ref.read(databaseProvider);
+    final tags = extractTags(updated);
+
+    await db.upsertMemo(
+      uid: memo.uid,
+      content: updated,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      tags: tags,
+      attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      relationCount: memo.relationCount,
+      syncState: 1,
+      lastError: null,
+    );
+
+    await db.enqueueOutbox(
+      type: 'update_memo',
+      payload: {
+        'uid': memo.uid,
+        'content': updated,
+        'visibility': memo.visibility,
+      },
+    );
   }
 
   @override
@@ -203,6 +263,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                         isDark: isDark,
                         baseUrl: baseUrl,
                         authHeader: authHeader,
+                        onToggleTask: (request) =>
+                            unawaited(_toggleMemoCheckbox(memo, request.taskIndex)),
                       );
                     },
                   ),
@@ -229,6 +291,7 @@ class _RandomWalkCard extends StatelessWidget {
     required this.isDark,
     required this.baseUrl,
     required this.authHeader,
+    this.onToggleTask,
   });
 
   final LocalMemo memo;
@@ -238,6 +301,7 @@ class _RandomWalkCard extends StatelessWidget {
   final bool isDark;
   final Uri? baseUrl;
   final String? authHeader;
+  final TaskToggleHandler? onToggleTask;
 
   @override
   Widget build(BuildContext context) {
@@ -341,6 +405,7 @@ class _RandomWalkCard extends StatelessWidget {
                                       textStyle: contentStyle,
                                       normalizeHeadings: true,
                                       renderImages: false,
+                                      onToggleTask: onToggleTask,
                                     ),
                                     if (imageEntries.isNotEmpty) ...[
                                       const SizedBox(height: 12),

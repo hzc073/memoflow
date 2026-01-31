@@ -79,7 +79,7 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
 });
 
-final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQuery>((ref, query) async {
+final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((ref, query) async* {
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   if (account == null) {
     throw StateError('Not authenticated');
@@ -120,6 +120,7 @@ final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQu
   }
 
   final filter = filters.isEmpty ? null : filters.join(' && ');
+  var seed = <LocalMemo>[];
   try {
     final (memos, _) = await api.listMemos(
       pageSize: 200,
@@ -138,7 +139,7 @@ final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQu
         results.add(_localMemoFromRemote(memo));
       }
     }
-    return results;
+    seed = results;
   } catch (_) {
     final rows = await db.listMemos(
       searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
@@ -148,7 +149,14 @@ final remoteSearchMemosProvider = FutureProvider.family<List<LocalMemo>, MemosQu
       endTimeSecExclusive: query.endTimeSecExclusive,
       limit: 200,
     );
-    return rows.map(LocalMemo.fromDb).toList(growable: false);
+    seed = rows.map(LocalMemo.fromDb).toList(growable: false);
+  }
+  yield seed;
+
+  await for (final _ in db.changes) {
+    final refreshed = await _refreshRemoteSeedWithLocal(seed: seed, db: db);
+    seed = refreshed;
+    yield refreshed;
   }
 });
 
@@ -359,6 +367,25 @@ List<LocalMemo> _filterShortcutMemosFromRows(
 ) {
   final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: true);
   return _sortShortcutMemos(memos);
+}
+
+Future<List<LocalMemo>> _refreshRemoteSeedWithLocal({
+  required List<LocalMemo> seed,
+  required AppDatabase db,
+}) async {
+  if (seed.isEmpty) return seed;
+  final refreshed = <LocalMemo>[];
+  for (final memo in seed) {
+    final uid = memo.uid.trim();
+    if (uid.isEmpty) continue;
+    final row = await db.getMemoByUid(uid);
+    if (row != null) {
+      refreshed.add(LocalMemo.fromDb(row));
+    } else {
+      refreshed.add(memo);
+    }
+  }
+  return refreshed;
 }
 
 Future<List<LocalMemo>> _refreshShortcutSeedWithLocal({
