@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
@@ -23,6 +24,10 @@ final RegExp _markdownImagePattern = RegExp(r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*"
 final RegExp _codeFencePattern = RegExp(r'^\s*(```|~~~)');
 final RegExp _codeLanguagePattern = RegExp(r'language-([\w]+)', caseSensitive: false);
 final RegExp _codeBlockHtmlPattern = RegExp(r'<pre><code([^>]*)>([\s\S]*?)</code></pre>');
+final RegExp _longWordPattern = RegExp(r'[^\s]{30,}', unicode: true);
+
+const String _zeroWidthSpace = '\u200B';
+const int _longWordChunk = 20;
 
 const Set<String> _htmlBlockTags = {
   'p',
@@ -74,6 +79,43 @@ class _LruCache<K, V> {
 final _markdownHtmlCache = _LruCache<String, String>(capacity: 80);
 
 const int _markdownImageMaxDecodePx = 2048;
+
+String _insertSoftBreaks(String text) {
+  if (text.isEmpty) return text;
+  return text.replaceAllMapped(_longWordPattern, (match) {
+    final value = match.group(0);
+    if (value == null || value.length <= _longWordChunk) return value ?? '';
+    final buffer = StringBuffer();
+    var count = 0;
+    for (final rune in value.runes) {
+      buffer.writeCharCode(rune);
+      count++;
+      if (count >= _longWordChunk) {
+        buffer.write(_zeroWidthSpace);
+        count = 0;
+      }
+    }
+    return buffer.toString();
+  });
+}
+
+class _MemoMarkdownWidgetFactory extends WidgetFactory {
+  @override
+  InlineSpan? buildTextSpan({
+    List<InlineSpan>? children,
+    GestureRecognizer? recognizer,
+    TextStyle? style,
+    String? text,
+  }) {
+    final normalizedText = text == null ? null : _insertSoftBreaks(text);
+    return super.buildTextSpan(
+      children: children,
+      recognizer: recognizer,
+      style: style,
+      text: normalizedText,
+    );
+  }
+}
 
 void invalidateMemoMarkdownCacheForUid(String memoUid) {
   final trimmed = memoUid.trim();
@@ -522,6 +564,7 @@ class MemoMarkdown extends StatelessWidget {
     final renderMode = shrinkWrap ? RenderMode.column : const ListViewMode(shrinkWrap: false);
     final content = HtmlWidget(
       html,
+      factoryBuilder: () => _MemoMarkdownWidgetFactory(),
       renderMode: renderMode,
       textStyle: baseStyle,
       customWidgetBuilder: customWidgetBuilder,
@@ -1117,40 +1160,43 @@ class _MemoCodeBlockState extends State<_MemoCodeBlock> {
       language: widget.language,
     );
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: widget.background,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(label, style: labelStyle),
-              ),
-              InkWell(
-                onTap: _handleCopy,
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(icon, size: 16, color: iconColor),
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: widget.background,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(label, style: labelStyle),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: RichText(
-              text: highlightSpan,
-              softWrap: false,
+                InkWell(
+                  onTap: _handleCopy,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(icon, size: 16, color: iconColor),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 4),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: RichText(
+                text: highlightSpan,
+                softWrap: false,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
