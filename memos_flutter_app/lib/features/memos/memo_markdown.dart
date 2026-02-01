@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:highlight/highlight.dart' as hi;
 import 'package:html/dom.dart' as dom;
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
@@ -18,6 +21,8 @@ final RegExp _tagInlinePattern = RegExp(
 );
 final RegExp _markdownImagePattern = RegExp(r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)');
 final RegExp _codeFencePattern = RegExp(r'^\s*(```|~~~)');
+final RegExp _codeLanguagePattern = RegExp(r'language-([\w]+)', caseSensitive: false);
+final RegExp _codeBlockHtmlPattern = RegExp(r'<pre><code([^>]*)>([\s\S]*?)</code></pre>');
 
 const Set<String> _htmlBlockTags = {
   'p',
@@ -228,10 +233,11 @@ class MemoMarkdown extends StatelessWidget {
 
     final cacheKey = this.cacheKey;
     final cachedHtml = cacheKey == null ? null : _markdownHtmlCache.get(cacheKey);
-    final html = cachedHtml ?? _renderMarkdownToHtml(tagged);
+    final rawHtml = cachedHtml ?? _renderMarkdownToHtml(tagged);
     if (cacheKey != null && cachedHtml == null) {
-      _markdownHtmlCache.set(cacheKey, html);
+      _markdownHtmlCache.set(cacheKey, rawHtml);
     }
+    final html = _escapeCodeBlocks(rawHtml);
 
     var taskIndex = 0;
     Widget? buildTableWidget(dom.Element element) {
@@ -414,10 +420,13 @@ class MemoMarkdown extends StatelessWidget {
         );
       }
       if (localName == 'pre') {
-        final code = element.text;
+        final codeElement = element.querySelector('code');
+        final code = _trimTrailingNewline(codeElement?.text ?? element.text);
         if (code.trim().isEmpty) return null;
+        final language = _extractCodeLanguage(codeElement);
         return _buildHtmlCodeBlock(
           code: code,
+          language: language,
           baseStyle: codeStyle,
           isDark: theme.brightness == Brightness.dark,
           background: codeBlockBg,
@@ -689,26 +698,17 @@ String _renderMarkdownToHtml(String text) {
 
 Widget _buildHtmlCodeBlock({
   required String code,
+  String? language,
   required TextStyle baseStyle,
   required bool isDark,
   required Color background,
 }) {
-  final highlighter = MemoCodeHighlighter(baseStyle: baseStyle, isDark: isDark);
-  final span = highlighter.format(code);
-  return Container(
-    width: double.infinity,
-    decoration: BoxDecoration(
-      color: background,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    padding: const EdgeInsets.all(8),
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: RichText(
-        text: span,
-        softWrap: false,
-      ),
-    ),
+  return _MemoCodeBlock(
+    code: code,
+    language: language,
+    baseStyle: baseStyle,
+    isDark: isDark,
+    background: background,
   );
 }
 
@@ -736,6 +736,40 @@ String _formatCssPx(double value) {
     return '${value.toInt()}px';
   }
   return '${value.toStringAsFixed(2)}px';
+}
+
+String _trimTrailingNewline(String value) {
+  if (value.endsWith('\r\n')) {
+    return value.substring(0, value.length - 2);
+  }
+  if (value.endsWith('\n')) {
+    return value.substring(0, value.length - 1);
+  }
+  return value;
+}
+
+String _escapeHtmlText(String value) {
+  return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+}
+
+String _escapeCodeBlocks(String html) {
+  return html.replaceAllMapped(_codeBlockHtmlPattern, (match) {
+    final attrs = match.group(1) ?? '';
+    final content = match.group(2) ?? '';
+    return '<pre><code$attrs>${_escapeHtmlText(content)}</code></pre>';
+  });
+}
+
+String? _extractCodeLanguage(dom.Element? codeElement) {
+  if (codeElement == null) return null;
+  final classAttr = codeElement.attributes['class'] ?? '';
+  final match = _codeLanguagePattern.firstMatch(classAttr);
+  final language = match?.group(1);
+  if (language == null || language.isEmpty) return null;
+  return language;
 }
 
 String _normalizeImageSrc(String value) {
@@ -1017,4 +1051,219 @@ class _CodeHighlightRule {
 
   final RegExp pattern;
   final TextStyle style;
+}
+
+class _MemoCodeBlock extends StatefulWidget {
+  const _MemoCodeBlock({
+    required this.code,
+    required this.language,
+    required this.baseStyle,
+    required this.isDark,
+    required this.background,
+  });
+
+  final String code;
+  final String? language;
+  final TextStyle baseStyle;
+  final bool isDark;
+  final Color background;
+
+  @override
+  State<_MemoCodeBlock> createState() => _MemoCodeBlockState();
+}
+
+class _MemoCodeBlockState extends State<_MemoCodeBlock> {
+  Timer? _resetTimer;
+  bool _copied = false;
+
+  @override
+  void dispose() {
+    _resetTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _handleCopy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _resetTimer?.cancel();
+    _resetTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final baseColor = widget.baseStyle.color ?? theme.colorScheme.onSurface;
+    final labelStyle = widget.baseStyle.copyWith(
+      fontSize: (widget.baseStyle.fontSize ?? 14) * 0.72,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.6,
+      color: baseColor.withValues(alpha: 0.6),
+    );
+    final label = widget.language == null ? '' : widget.language!.toUpperCase();
+    final iconColor = _copied ? theme.colorScheme.primary : labelStyle.color;
+    final icon = _copied ? Icons.check_rounded : Icons.copy_rounded;
+    final highlightSpan = _buildHighlightedSpan(
+      code: widget.code,
+      baseStyle: widget.baseStyle,
+      isDark: widget.isDark,
+      language: widget.language,
+    );
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: widget.background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(label, style: labelStyle),
+              ),
+              InkWell(
+                onTap: _handleCopy,
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(icon, size: 16, color: iconColor),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: RichText(
+              text: highlightSpan,
+              softWrap: false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+TextSpan _buildHighlightedSpan({
+  required String code,
+  required TextStyle baseStyle,
+  required bool isDark,
+  String? language,
+}) {
+  final normalized = language?.trim();
+  if (normalized == null || normalized.isEmpty) {
+    return TextSpan(text: code, style: baseStyle);
+  }
+
+  final result = hi.highlight.parse(code, language: normalized.toLowerCase());
+  final theme = _MemoCodeHighlightTheme.resolve(isDark: isDark);
+  final children = _buildHighlightSpans(result.nodes ?? const <hi.Node>[], baseStyle, theme);
+  return TextSpan(style: baseStyle, children: children);
+}
+
+List<TextSpan> _buildHighlightSpans(
+  List<hi.Node> nodes,
+  TextStyle parentStyle,
+  _MemoCodeHighlightTheme theme,
+) {
+  final spans = <TextSpan>[];
+  for (final node in nodes) {
+    final style = _resolveHighlightStyle(node.className, parentStyle, theme);
+    if (node.value != null) {
+      spans.add(TextSpan(text: node.value, style: style));
+    } else if (node.children != null) {
+      spans.add(TextSpan(
+        style: style,
+        children: _buildHighlightSpans(node.children!, style, theme),
+      ));
+    }
+  }
+  return spans;
+}
+
+TextStyle _resolveHighlightStyle(
+  String? className,
+  TextStyle parentStyle,
+  _MemoCodeHighlightTheme theme,
+) {
+  if (className == null || className.isEmpty) return parentStyle;
+  var style = parentStyle;
+  for (final part in className.split(RegExp(r'\s+'))) {
+    for (var token in part.split('.')) {
+      if (token.startsWith('hljs-')) {
+        token = token.substring(5);
+      }
+      final mapped = theme.styles[token];
+      if (mapped != null) {
+        style = style.merge(mapped);
+      }
+    }
+  }
+  return style;
+}
+
+class _MemoCodeHighlightTheme {
+  const _MemoCodeHighlightTheme(this.styles);
+
+  final Map<String, TextStyle> styles;
+
+  static _MemoCodeHighlightTheme resolve({required bool isDark}) {
+    final commentColor = isDark ? const Color(0xFF7C8895) : const Color(0xFF6A737D);
+    final stringColor = isDark ? const Color(0xFF98C379) : const Color(0xFF22863A);
+    final keywordColor = isDark ? const Color(0xFF7AA2F7) : const Color(0xFF005CC5);
+    final numberColor = isDark ? const Color(0xFFD19A66) : const Color(0xFFB45500);
+    final titleColor = isDark ? const Color(0xFFC678DD) : const Color(0xFF6F42C1);
+    final attributeColor = isDark ? const Color(0xFFE5C07B) : const Color(0xFFE36209);
+    final tagColor = stringColor;
+    final metaColor = isDark ? const Color(0xFFC9D1D9) : const Color(0xFF24292E);
+    final additionColor = isDark ? const Color(0xFF2EA043) : const Color(0xFF22863A);
+    final deletionColor = isDark ? const Color(0xFFF85149) : const Color(0xFFCB2431);
+
+    return _MemoCodeHighlightTheme({
+      'comment': TextStyle(color: commentColor, fontStyle: FontStyle.italic),
+      'quote': TextStyle(color: commentColor, fontStyle: FontStyle.italic),
+      'string': TextStyle(color: stringColor),
+      'regexp': TextStyle(color: stringColor),
+      'template-string': TextStyle(color: stringColor),
+      'keyword': TextStyle(color: keywordColor, fontWeight: FontWeight.w600),
+      'built_in': TextStyle(color: keywordColor),
+      'literal': TextStyle(color: keywordColor),
+      'type': TextStyle(color: keywordColor),
+      'selector-tag': TextStyle(color: tagColor),
+      'tag': TextStyle(color: tagColor),
+      'name': TextStyle(color: tagColor),
+      'number': TextStyle(color: numberColor),
+      'symbol': TextStyle(color: numberColor),
+      'bullet': TextStyle(color: numberColor),
+      'attr': TextStyle(color: attributeColor),
+      'attribute': TextStyle(color: attributeColor),
+      'property': TextStyle(color: attributeColor),
+      'params': TextStyle(color: attributeColor),
+      'variable': TextStyle(color: attributeColor),
+      'selector-attr': TextStyle(color: attributeColor),
+      'selector-class': TextStyle(color: attributeColor),
+      'selector-id': TextStyle(color: attributeColor),
+      'selector-pseudo': TextStyle(color: attributeColor),
+      'title': TextStyle(color: titleColor, fontWeight: FontWeight.w600),
+      'function': TextStyle(color: titleColor, fontWeight: FontWeight.w600),
+      'class': TextStyle(color: titleColor, fontWeight: FontWeight.w600),
+      'section': TextStyle(color: titleColor, fontWeight: FontWeight.w600),
+      'meta': TextStyle(color: metaColor),
+      'operator': TextStyle(color: metaColor),
+      'punctuation': TextStyle(color: metaColor),
+      'subst': TextStyle(color: metaColor),
+      'meta-keyword': TextStyle(color: keywordColor, fontWeight: FontWeight.w600),
+      'meta-string': TextStyle(color: stringColor),
+      'addition': TextStyle(color: additionColor),
+      'deletion': TextStyle(color: deletionColor),
+    });
+  }
 }
