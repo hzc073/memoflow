@@ -722,15 +722,11 @@ class _RandomWalkCard extends StatelessWidget {
                                       const SizedBox(height: 10),
                                       Builder(
                                         builder: (context) {
-                                          Offset? tapPosition;
                                           return GestureDetector(
                                             behavior: HitTestBehavior.opaque,
-                                            onTapDown: (details) =>
-                                                tapPosition = details.globalPosition,
                                             onTap: () => showAttachmentNamesToast(
                                               context,
                                               attachmentLines,
-                                              anchor: tapPosition,
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,

@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../data/models/attachment.dart';
 import 'memoflow_palette.dart';
 
-const int _maxAttachmentToastLines = 3;
 const double _toastHorizontalPadding = 14;
 const double _toastVerticalPadding = 8;
 const double _toastLineSpacing = 2;
 const double _toastMargin = 12;
 const double _toastGap = 6;
+const String _toastEllipsis = '...';
+OverlayEntry? _activeAttachmentToast;
 
 List<Attachment> filterNonMediaAttachments(List<Attachment> attachments) {
   if (attachments.isEmpty) return const [];
@@ -20,22 +21,14 @@ List<Attachment> filterNonMediaAttachments(List<Attachment> attachments) {
       .toList(growable: false);
 }
 
-List<String> attachmentNameLines(
-  List<Attachment> attachments, {
-  int maxLines = _maxAttachmentToastLines,
-}) {
+List<String> attachmentNameLines(List<Attachment> attachments) {
   if (attachments.isEmpty) return const [];
   final names = <String>[];
   for (final attachment in attachments) {
     final label = _attachmentDisplayName(attachment);
     if (label.isNotEmpty) names.add(label);
   }
-  if (names.isEmpty) return const [];
-  final limit = maxLines.clamp(1, names.length);
-  final lines = names.take(limit).toList(growable: true);
-  final remaining = names.length - lines.length;
-  if (remaining > 0) lines.add('+$remaining');
-  return lines;
+  return names;
 }
 
 String _attachmentDisplayName(Attachment attachment) {
@@ -54,6 +47,8 @@ void showAttachmentNamesToast(
   Offset? anchor,
 }) {
   if (lines.isEmpty) return;
+  _activeAttachmentToast?.remove();
+  _activeAttachmentToast = null;
   final overlay = Overlay.of(context, rootOverlay: true);
   if (overlay == null) return;
 
@@ -69,32 +64,53 @@ void showAttachmentNamesToast(
   final screenSize = MediaQuery.of(context).size;
   final padding = MediaQuery.of(context).padding;
 
-  double maxTextWidth = 0;
-  double lineHeight = 0;
+  final maxToastWidth = (screenSize.width -
+          padding.left -
+          padding.right -
+          _toastMargin * 2)
+      .clamp(0.0, screenSize.width) as double;
+  final maxTextWidthAllowed = (maxToastWidth - _toastHorizontalPadding * 2)
+      .clamp(0.0, maxToastWidth) as double;
+  final displayLines = <String>[];
   final textPainter = TextPainter(
     textDirection: textDirection,
     maxLines: 1,
     ellipsis: '…',
   );
   for (final line in lines) {
+    displayLines.add(
+      _truncateMiddleToFit(
+        line,
+        textPainter,
+        textStyle,
+        maxTextWidthAllowed,
+      ),
+    );
+  }
+
+  double maxTextWidth = 0;
+  double lineHeight = 0;
+  for (final line in displayLines) {
     textPainter.text = TextSpan(text: line, style: textStyle);
     textPainter.layout();
-    if (textPainter.width > maxTextWidth) {
-      maxTextWidth = textPainter.width;
-    }
-    if (textPainter.height > lineHeight) {
-      lineHeight = textPainter.height;
-    }
+    maxTextWidth = maxTextWidth < textPainter.width
+        ? textPainter.width
+        : maxTextWidth;
+    lineHeight =
+        lineHeight < textPainter.height ? textPainter.height : lineHeight;
   }
   if (lineHeight == 0) lineHeight = textStyle.fontSize ?? 12;
-  final contentHeight =
-      lineHeight * lines.length + _toastLineSpacing * (lines.length - 1);
+  final contentHeight = lineHeight * displayLines.length +
+      _toastLineSpacing * (displayLines.length - 1);
   final rawWidth = maxTextWidth + _toastHorizontalPadding * 2;
   final rawHeight = contentHeight + _toastVerticalPadding * 2;
-  final maxWidth =
-      screenSize.width - padding.left - padding.right - _toastMargin * 2;
-  final toastWidth = rawWidth.clamp(0.0, maxWidth);
-  final toastHeight = rawHeight;
+  final toastWidth = rawWidth.clamp(0.0, maxToastWidth) as double;
+  final maxToastHeight = (screenSize.height -
+          padding.top -
+          padding.bottom -
+          _toastMargin * 2)
+      .clamp(0.0, screenSize.height) as double;
+  final toastHeight = rawHeight.clamp(0.0, maxToastHeight) as double;
 
   Offset? anchorPoint = anchor;
   if (anchorPoint == null) {
@@ -109,53 +125,66 @@ void showAttachmentNamesToast(
   entry = OverlayEntry(
     builder: (context) {
       Widget toastBody() {
+        final scrollable = rawHeight > maxToastHeight && maxToastHeight > 0;
         return Material(
           color: Colors.transparent,
-          child: Container(
-            width: toastWidth,
-            padding: const EdgeInsets.symmetric(
-              horizontal: _toastHorizontalPadding,
-              vertical: _toastVerticalPadding,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: toastWidth,
+              maxHeight: scrollable ? maxToastHeight : double.infinity,
             ),
-            decoration: BoxDecoration(
-              color: toastBg,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < lines.length; i++) ...[
-                  if (i > 0) const SizedBox(height: _toastLineSpacing),
-                  Text(
-                    lines[i],
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textStyle,
+            child: Container(
+              width: toastWidth,
+              padding: const EdgeInsets.symmetric(
+                horizontal: _toastHorizontalPadding,
+                vertical: _toastVerticalPadding,
+              ),
+              decoration: BoxDecoration(
+                color: toastBg,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
                   ),
                 ],
-              ],
+              ),
+              child: ClipRect(
+                child: scrollable
+                    ? SingleChildScrollView(
+                        child: _buildToastLines(displayLines, textStyle),
+                      )
+                    : _buildToastLines(displayLines, textStyle),
+              ),
             ),
           ),
         );
       }
 
       if (anchorPoint == null) {
-        return SafeArea(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: toastBody(),
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  _activeAttachmentToast?.remove();
+                  _activeAttachmentToast = null;
+                },
+                child: const SizedBox.shrink(),
+              ),
             ),
-          ),
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: toastBody(),
+                ),
+              ),
+            ),
+          ],
         );
       }
 
@@ -177,6 +206,16 @@ void showAttachmentNamesToast(
 
       return Stack(
         children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () {
+                _activeAttachmentToast?.remove();
+                _activeAttachmentToast = null;
+              },
+              child: const SizedBox.shrink(),
+            ),
+          ),
           Positioned(
             left: left,
             top: top,
@@ -187,9 +226,67 @@ void showAttachmentNamesToast(
     },
   );
   overlay.insert(entry);
-  Future.delayed(const Duration(milliseconds: 1400), () {
-    if (entry.mounted) {
-      entry.remove();
+  _activeAttachmentToast = entry;
+}
+
+Widget _buildToastLines(List<String> lines, TextStyle textStyle) {
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (var i = 0; i < lines.length; i++) ...[
+        if (i > 0) const SizedBox(height: _toastLineSpacing),
+        Text(
+          lines[i],
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: textStyle,
+        ),
+      ],
+    ],
+  );
+}
+
+String _truncateMiddleToFit(
+  String text,
+  TextPainter painter,
+  TextStyle style,
+  double maxWidth,
+) {
+  if (text.isEmpty) return text;
+  painter.text = TextSpan(text: text, style: style);
+  painter.layout();
+  if (painter.width <= maxWidth) return text;
+
+  final tail = _tailSegment(text);
+  final ellipsis = _toastEllipsis;
+  var low = 1;
+  var high = text.length - tail.length;
+  if (high < low) {
+    return text;
+  }
+  var best = '${text.substring(0, low)}$ellipsis$tail';
+  while (low <= high) {
+    final mid = (low + high) >> 1;
+    final candidate = '${text.substring(0, mid)}$ellipsis$tail';
+    painter.text = TextSpan(text: candidate, style: style);
+    painter.layout();
+    if (painter.width <= maxWidth) {
+      best = candidate;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
     }
-  });
+  }
+  return best;
+}
+
+String _tailSegment(String text) {
+  final idx = text.lastIndexOf('.');
+  if (idx > 0 && idx < text.length - 1) {
+    final ext = text.substring(idx);
+    if (ext.length <= 8) return ext;
+  }
+  if (text.length <= 4) return text;
+  return text.substring(text.length - 4);
 }

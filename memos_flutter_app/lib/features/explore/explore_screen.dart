@@ -1724,17 +1724,13 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   alignment: Alignment.centerLeft,
                   child: Builder(
                     builder: (context) {
-                      Offset? tapPosition;
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(10),
-                          onTapDown: (details) =>
-                              tapPosition = details.globalPosition,
                           onTap: () => showAttachmentNamesToast(
                             context,
                             attachmentLines,
-                            anchor: tapPosition,
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(

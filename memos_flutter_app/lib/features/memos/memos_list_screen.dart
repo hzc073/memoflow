@@ -3105,7 +3105,7 @@ class _MemoCardState extends State<_MemoCard> {
     final pendingColor = textMain.withValues(alpha: isDark ? 0.45 : 0.35);
     final attachmentColor = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final showSyncStatus = syncStatus != _MemoSyncStatus.none;
-    final headerMinHeight = showSyncStatus ? 32.0 : 20.0;
+    final headerMinHeight = 32.0;
     final syncIcon = syncStatus == _MemoSyncStatus.failed
         ? Icons.error_outline
         : Icons.cloud_upload_outlined;
@@ -3372,7 +3372,11 @@ class _MemoCardState extends State<_MemoCard> {
                                 ),
                                 splashRadius: 16,
                               ),
-                            PopupMenuButton<_MemoCardAction>(
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Center(
+                                child: PopupMenuButton<_MemoCardAction>(
                               tooltip: context.tr(zh: '\u66f4\u591a', en: 'More'),
                               padding: EdgeInsets.zero,
                               icon: Icon(
@@ -3455,6 +3459,8 @@ class _MemoCardState extends State<_MemoCard> {
                                         ),
                                       ),
                                     ],
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -3526,17 +3532,13 @@ class _MemoCardState extends State<_MemoCard> {
                         alignment: Alignment.centerLeft,
                         child: Builder(
                           builder: (context) {
-                            Offset? tapPosition;
                             return Material(
                               color: Colors.transparent,
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(10),
-                                onTapDown: (details) =>
-                                    tapPosition = details.globalPosition,
                                 onTap: () => showAttachmentNamesToast(
                                   context,
                                   attachmentLines,
-                                  anchor: tapPosition,
                                 ),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
