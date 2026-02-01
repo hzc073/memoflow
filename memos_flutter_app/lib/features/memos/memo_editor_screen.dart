@@ -98,7 +98,6 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   bool _relationsDirty = false;
   Future<void>? _relationsLoadFuture;
   static const _maxHistory = 100;
-  static const _maxAttachmentBytes = 30 * 1024 * 1024;
   late String _visibility;
   late bool _pinned;
   var _saving = false;
@@ -820,17 +819,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
       final added = <_PendingAttachment>[];
       final accepted = <XFile>[];
-      var tooLargeCount = 0;
       for (final file in files) {
         final path = file.path;
         if (path.trim().isEmpty) continue;
         final handle = File(path);
         if (!handle.existsSync()) continue;
         final size = handle.lengthSync();
-        if (size > _maxAttachmentBytes) {
-          tooLargeCount++;
-          continue;
-        }
         final filename = file.name.trim().isNotEmpty ? file.name.trim() : path.split(Platform.pathSeparator).last;
         final mimeType = _guessMimeType(filename);
         added.add(
@@ -846,8 +840,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       }
 
       if (added.isEmpty) {
-        final msg = tooLargeCount > 0 ? 'Image too large (max 30 MB).' : 'No images selected.';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No images selected.')));
         return;
       }
 
@@ -856,9 +849,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         _pickedImages.addAll(accepted);
       });
       final suffix = added.length == 1 ? '' : 's';
-      final summary = tooLargeCount > 0
-          ? 'Added ${added.length} image$suffix. Skipped $tooLargeCount over 30 MB.'
-          : 'Added ${added.length} image$suffix.';
+      final summary = 'Added ${added.length} image$suffix.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
     } catch (e) {
       if (!mounted) return;
@@ -887,10 +878,6 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
       final size = await file.length();
       if (!mounted) return;
-      if (size > _maxAttachmentBytes) {
-        messenger.showSnackBar(const SnackBar(content: Text('Photo too large (max 30 MB).')));
-        return;
-      }
 
       final filename = path.split(Platform.pathSeparator).last;
       final mimeType = _guessMimeType(filename);
@@ -1048,13 +1035,6 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   }
 
   Future<void> _replaceEditedAttachment(EditedImageResult result) async {
-    if (result.size > _maxAttachmentBytes) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '图片过大（最大 30 MB）', en: 'Image too large (max 30 MB).'))),
-      );
-      return;
-    }
     final id = result.sourceId;
     if (id.startsWith('pending:')) {
       final uid = id.substring('pending:'.length);

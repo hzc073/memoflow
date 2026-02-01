@@ -97,7 +97,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   TextEditingValue _lastValue = const TextEditingValue();
   var _isApplyingHistory = false;
   static const _maxHistory = 100;
-  static const _maxAttachmentBytes = 30 * 1024 * 1024;
   String _visibility = 'PRIVATE';
   bool _visibilityTouched = false;
   bool _isMoreToolbarOpen = false;
@@ -196,7 +195,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final file = File(path);
       if (!file.existsSync()) continue;
       final size = file.lengthSync();
-      if (size > _maxAttachmentBytes) continue;
       final filename = path.split(Platform.pathSeparator).last;
       final mimeType = _guessMimeType(filename);
       added.add(
@@ -789,16 +787,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       if (files.isEmpty) return;
 
       final added = <_PendingAttachment>[];
-      var tooLargeCount = 0;
       var missingPathCount = 0;
       Directory? tempDir;
       for (final file in files) {
-        final reportedSize = file.size;
-        if (reportedSize > _maxAttachmentBytes) {
-          tooLargeCount++;
-          continue;
-        }
-
         String path = (file.path ?? '').trim();
         if (path.isEmpty) {
           final stream = file.readStream;
@@ -831,10 +822,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           continue;
         }
         final size = handle.lengthSync();
-        if (size > _maxAttachmentBytes) {
-          tooLargeCount++;
-          continue;
-        }
         final filename = file.name.trim().isNotEmpty ? file.name.trim() : path.split(Platform.pathSeparator).last;
         final mimeType = _guessMimeType(filename);
         added.add(
@@ -849,9 +836,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       }
 
       if (added.isEmpty) {
-        final msg = tooLargeCount > 0
-            ? 'File too large (max 30 MB).'
-            : (missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.');
+        final msg = missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
         return;
       }
@@ -860,10 +845,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         _pendingAttachments.addAll(added);
       });
       final suffix = added.length == 1 ? '' : 's';
-      final skipped = [
-        if (tooLargeCount > 0) '$tooLargeCount over 30 MB',
-        if (missingPathCount > 0) '$missingPathCount unavailable',
-      ];
+      final skipped = [if (missingPathCount > 0) '$missingPathCount unavailable'];
       final summary = skipped.isEmpty
           ? 'Added ${added.length} file$suffix.'
           : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
@@ -893,12 +875,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     }
 
     final size = result.size > 0 ? result.size : file.lengthSync();
-    if (size > _maxAttachmentBytes) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '录音文件过大（最大 30 MB）', en: 'Recording too large (max 30 MB).'))),
-      );
-      return;
-    }
 
     final filename = result.fileName.trim().isNotEmpty ? result.fileName.trim() : path.split(Platform.pathSeparator).last;
     final mimeType = _guessMimeType(filename);
@@ -940,10 +916,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
       final size = await file.length();
       if (!mounted) return;
-      if (size > _maxAttachmentBytes) {
-        messenger.showSnackBar(const SnackBar(content: Text('Photo too large (max 30 MB).')));
-        return;
-      }
 
       final filename = path.split(Platform.pathSeparator).last;
       final mimeType = _guessMimeType(filename);
@@ -1032,13 +1004,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _replacePendingAttachment(EditedImageResult result) async {
     final id = result.sourceId;
     if (!id.startsWith('pending:')) return;
-    if (result.size > _maxAttachmentBytes) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '图片过大（最大 30 MB）', en: 'Image too large (max 30 MB).'))),
-      );
-      return;
-    }
     final uid = id.substring('pending:'.length);
     final index = _pendingAttachments.indexWhere((a) => a.uid == uid);
     if (index < 0) return;

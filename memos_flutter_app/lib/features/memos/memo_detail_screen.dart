@@ -51,7 +51,6 @@ class MemoDetailScreen extends ConsumerStatefulWidget {
 class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _player = AudioPlayer();
-  static const _maxAttachmentBytes = 30 * 1024 * 1024;
 
   LocalMemo? _memo;
   String? _currentAudioUrl;
@@ -326,14 +325,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     if (memo == null) return;
     final index = memo.attachments.indexWhere((a) => a.name == result.sourceId || a.uid == result.sourceId);
     if (index < 0) return;
-    if (result.size > _maxAttachmentBytes) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '图片过大（最大 30 MB）', en: 'Image too large (max 30 MB).'))),
-      );
-      return;
-    }
-
     final oldAttachment = memo.attachments[index];
     final newUid = generateUid();
     final newAttachment = Attachment(

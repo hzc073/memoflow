@@ -44,6 +44,7 @@ class _SyncQueueItem {
     required this.filename,
     required this.lastError,
     required this.memoUid,
+    required this.attachmentUid,
   });
 
   final int id;
@@ -55,6 +56,7 @@ class _SyncQueueItem {
   final String? filename;
   final String? lastError;
   final String? memoUid;
+  final String? attachmentUid;
 }
 
 Future<_SyncQueueItem?> _buildQueueItem(AppDatabase db, Map<String, dynamic> row) async {
@@ -75,6 +77,7 @@ Future<_SyncQueueItem?> _buildQueueItem(AppDatabase db, Map<String, dynamic> row
 
   final payload = _decodePayload(row['payload']);
   final memoUid = _extractMemoUid(type, payload);
+  final attachmentUid = _extractAttachmentUid(type, payload);
   var content = payload['content'];
   if (content is! String || content.trim().isEmpty) {
     if (memoUid != null && memoUid.trim().isNotEmpty) {
@@ -99,6 +102,7 @@ Future<_SyncQueueItem?> _buildQueueItem(AppDatabase db, Map<String, dynamic> row
     filename: filename,
     lastError: lastError,
     memoUid: memoUid,
+    attachmentUid: attachmentUid,
   );
 }
 
@@ -121,6 +125,13 @@ String? _extractMemoUid(String type, Map<String, dynamic> payload) {
   };
 }
 
+String? _extractAttachmentUid(String type, Map<String, dynamic> payload) {
+  return switch (type) {
+    'upload_attachment' => payload['uid'] as String?,
+    _ => null,
+  };
+}
+
 String? _firstNonEmptyLine(String? raw) {
   if (raw == null) return null;
   for (final line in raw.split('\n')) {
@@ -130,33 +141,55 @@ String? _firstNonEmptyLine(String? raw) {
   return null;
 }
 
-Future<void> _discardLocalChangesForMemo(AppDatabase db, String memoUid) async {
-  final trimmed = memoUid.trim();
-  if (trimmed.isEmpty) return;
+Future<void> _removePendingAttachmentFromMemo(
+  AppDatabase db, {
+  required String memoUid,
+  required String attachmentUid,
+}) async {
+  final trimmedMemoUid = memoUid.trim();
+  final trimmedAttachmentUid = attachmentUid.trim();
+  if (trimmedMemoUid.isEmpty || trimmedAttachmentUid.isEmpty) return;
 
-  await db.deleteMemoByUid(trimmed);
+  final row = await db.getMemoByUid(trimmedMemoUid);
+  final raw = row?['attachments_json'];
+  if (raw is! String || raw.trim().isEmpty) return;
 
-  final sqlite = await db.db;
-  final rows = await sqlite.query(
-    'outbox',
-    columns: const ['id', 'type', 'payload'],
-    where: 'state IN (0, 2)',
-  );
-  for (final row in rows) {
-    final id = row['id'];
-    final type = row['type'];
-    if (id is! int || type is! String) continue;
-    final payload = _decodePayload(row['payload']);
-    final uid = _extractMemoUid(type, payload);
-    if (uid == null || uid.trim().isEmpty) continue;
-    if (uid.trim() != trimmed) continue;
-    await db.deleteOutbox(id);
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } catch (_) {
+    return;
   }
+  if (decoded is! List) return;
+
+  final expectedNames = <String>{
+    'attachments/$trimmedAttachmentUid',
+    'resources/$trimmedAttachmentUid',
+  };
+
+  var changed = false;
+  final next = <Map<String, dynamic>>[];
+  for (final item in decoded) {
+    if (item is! Map) continue;
+    final map = item.cast<String, dynamic>();
+    final name = (map['name'] as String?)?.trim() ?? '';
+    if (expectedNames.contains(name)) {
+      changed = true;
+      continue;
+    }
+    next.add(map);
+  }
+
+  if (!changed) return;
+  await db.updateMemoAttachmentsJson(trimmedMemoUid, attachmentsJson: jsonEncode(next));
 }
 
-enum _QueueDeleteChoice {
-  keepMemo,
-  deleteMemo,
+Future<void> _clearMemoSyncErrorIfIdle(AppDatabase db, String memoUid) async {
+  final trimmed = memoUid.trim();
+  if (trimmed.isEmpty) return;
+  final pending = await db.listPendingOutboxMemoUids();
+  if (pending.contains(trimmed)) return;
+  await db.updateMemoSyncState(trimmed, syncState: 0, lastError: null);
 }
 
 class SyncQueueScreen extends ConsumerWidget {
@@ -188,45 +221,47 @@ class SyncQueueScreen extends ConsumerWidget {
     final db = ref.read(databaseProvider);
     final memoUid = item.memoUid?.trim();
     if (memoUid != null && memoUid.isNotEmpty) {
-      final choice = await showDialog<_QueueDeleteChoice>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
-          content: Text(context.tr(
-            zh: '\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\u65f6\uff0c\u662f\u5426\u4fdd\u7559\u672c\u5730\u7b14\u8bb0\uff1f',
-            en: 'When removing this sync task, keep the local memo or delete it?',
-          )),
-          actions: [
-            TextButton(
-              onPressed: () => context.safePop(),
-              child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+      final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(context.tr(zh: '\u5220\u9664\u540c\u6b65\u4efb\u52a1', en: 'Delete sync task')),
+              content: Text(context.tr(
+                zh: '\u4ec5\u5220\u9664\u540c\u6b65\u4efb\u52a1\uff0c\u7b14\u8bb0\u4f1a\u4fdd\u7559\u3002',
+                en: 'Only delete the sync task; the memo will be kept.',
+              )),
+              actions: [
+                TextButton(
+                  onPressed: () => context.safePop(false),
+                  child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => context.safePop(true),
+                  child: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () => context.safePop(_QueueDeleteChoice.keepMemo),
-              child: Text(context.tr(zh: '\u4fdd\u7559\u7b14\u8bb0', en: 'Keep memo')),
-            ),
-            FilledButton(
-              onPressed: () => context.safePop(_QueueDeleteChoice.deleteMemo),
-              child: Text(context.tr(zh: '\u5220\u9664\u7b14\u8bb0', en: 'Delete memo')),
-            ),
-          ],
-        ),
-      );
-      if (choice == _QueueDeleteChoice.keepMemo) {
-        await db.deleteOutbox(item.id);
-      } else if (choice == _QueueDeleteChoice.deleteMemo) {
-        await _discardLocalChangesForMemo(db, memoUid);
+          ) ??
+          false;
+      if (!confirmed) return;
+      await db.deleteOutbox(item.id);
+      if (item.type == 'upload_attachment' && item.attachmentUid != null) {
+        await _removePendingAttachmentFromMemo(
+          db,
+          memoUid: memoUid,
+          attachmentUid: item.attachmentUid!,
+        );
       }
+      await _clearMemoSyncErrorIfIdle(db, memoUid);
       return;
     }
 
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
+            title: Text(context.tr(zh: '\u5220\u9664\u540c\u6b65\u4efb\u52a1', en: 'Delete sync task')),
             content: Text(context.tr(
-              zh: '\u5220\u9664\u8be5\u540c\u6b65\u4efb\u52a1\uff1f',
-              en: 'Delete this sync task?',
+              zh: '\u4ec5\u5220\u9664\u540c\u6b65\u4efb\u52a1\u3002',
+              en: 'Only delete the sync task.',
             )),
             actions: [
               TextButton(
@@ -235,7 +270,7 @@ class SyncQueueScreen extends ConsumerWidget {
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '\u5220\u9664', en: 'Delete')),
+                child: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
               ),
             ],
           ),
