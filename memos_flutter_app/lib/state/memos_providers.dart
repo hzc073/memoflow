@@ -836,16 +836,26 @@ final tagStatsProvider = StreamProvider<List<TagStat>>((ref) async* {
   final db = ref.watch(databaseProvider);
 
   Future<List<TagStat>> load() async {
-    final tagStrings = await db.listTagStrings(state: 'NORMAL');
-    final counts = <String, int>{};
-    for (final s in tagStrings) {
-      for (final t in s.split(' ')) {
-        final tag = t.trim();
-        if (tag.isEmpty) continue;
-        counts[tag] = (counts[tag] ?? 0) + 1;
-      }
+    int readInt(Object? value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value.trim()) ?? 0;
+      return 0;
     }
-    final list = counts.entries.map((e) => TagStat(tag: e.key, count: e.value)).toList(growable: false);
+
+    final sqlite = await db.db;
+    final rows = await sqlite.query(
+      'tag_stats_cache',
+      columns: const ['tag', 'memo_count'],
+    );
+    final list = <TagStat>[];
+    for (final row in rows) {
+      final tag = row['tag'];
+      if (tag is! String || tag.trim().isEmpty) continue;
+      final count = readInt(row['memo_count']);
+      if (count <= 0) continue;
+      list.add(TagStat(tag: tag.trim(), count: count));
+    }
     list.sort((a, b) {
       final byCount = b.count.compareTo(a.count);
       if (byCount != 0) return byCount;

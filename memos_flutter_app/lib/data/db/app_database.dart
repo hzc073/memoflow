@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS import_history (
 );
 ''');
 
+          await _ensureStatsCache(db, rebuild: true);
           await _ensureFts(db, rebuild: true);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
@@ -153,8 +154,12 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
             await db.execute('ALTER TABLE memos ADD COLUMN location_lat REAL;');
             await db.execute('ALTER TABLE memos ADD COLUMN location_lng REAL;');
           }
+          if (oldVersion < 8) {
+            await _ensureStatsCache(db, rebuild: true);
+          }
         },
         onOpen: (db) async {
+          await _ensureStatsCache(db);
           await _ensureFts(db);
         },
       );
@@ -226,6 +231,278 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     }
   }
 
+  static List<String> _normalizeTags(List<String> tags) {
+    if (tags.isEmpty) return const [];
+    final list = <String>[];
+    for (final raw in tags) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      list.add(t);
+    }
+    return list;
+  }
+
+  static List<String> _splitTagsText(String tagsText) {
+    if (tagsText.trim().isEmpty) return const [];
+    return tagsText
+        .split(' ')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static Map<String, int> _countTags(List<String> tags) {
+    if (tags.isEmpty) return const {};
+    final counts = <String, int>{};
+    for (final tag in tags) {
+      final key = tag.trim();
+      if (key.isEmpty) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  static int _countChars(String content) {
+    if (content.isEmpty) return 0;
+    return content.replaceAll(RegExp(r'\s+'), '').runes.length;
+  }
+
+  static String? _localDayKeyFromUtcSec(int createTimeSec) {
+    if (createTimeSec <= 0) return null;
+    final dtLocal = DateTime.fromMillisecondsSinceEpoch(
+      createTimeSec * 1000,
+      isUtc: true,
+    ).toLocal();
+    final y = dtLocal.year.toString().padLeft(4, '0');
+    final m = dtLocal.month.toString().padLeft(2, '0');
+    final d = dtLocal.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  static int? _readInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+
+  static Future<int?> _queryMinCreateTime(DatabaseExecutor txn) async {
+    final rows = await txn.rawQuery('SELECT MIN(create_time) AS min_time FROM memos;');
+    if (rows.isEmpty) return null;
+    return _readInt(rows.first['min_time']);
+  }
+
+  static Future<int?> _resolveMinCreateTime(
+    DatabaseExecutor txn, {
+    required int? currentMin,
+    required _MemoSnapshot? before,
+    required _MemoSnapshot? after,
+  }) async {
+    var nextMin = currentMin;
+    final beforeTime = before?.createTimeSec;
+    final afterTime = after?.createTimeSec;
+
+    if (afterTime != null && afterTime > 0) {
+      if (nextMin == null || afterTime < nextMin) {
+        nextMin = afterTime;
+      }
+    }
+
+    final removedMin =
+        beforeTime != null &&
+        currentMin != null &&
+        beforeTime == currentMin &&
+        (afterTime == null || afterTime > currentMin);
+    if (removedMin) {
+      nextMin = await _queryMinCreateTime(txn);
+    }
+    return nextMin;
+  }
+
+  static Future<void> _ensureStatsCacheRow(DatabaseExecutor txn) async {
+    final rows = await txn.query(
+      'stats_cache',
+      columns: const ['id'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    if (rows.isNotEmpty) return;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    await txn.insert(
+      'stats_cache',
+      {
+        'id': 1,
+        'total_memos': 0,
+        'archived_memos': 0,
+        'total_chars': 0,
+        'min_create_time': null,
+        'updated_time': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<void> _bumpDailyCount(
+    DatabaseExecutor txn,
+    String dayKey,
+    int delta,
+  ) async {
+    if (dayKey.trim().isEmpty || delta == 0) return;
+    final rows = await txn.query(
+      'daily_counts_cache',
+      columns: const ['memo_count'],
+      where: 'day = ?',
+      whereArgs: [dayKey],
+      limit: 1,
+    );
+    final current = _readInt(rows.firstOrNull?['memo_count']) ?? 0;
+    final next = current + delta;
+    if (next <= 0) {
+      await txn.delete('daily_counts_cache', where: 'day = ?', whereArgs: [dayKey]);
+      return;
+    }
+    if (rows.isEmpty) {
+      await txn.insert('daily_counts_cache', {'day': dayKey, 'memo_count': next});
+      return;
+    }
+    await txn.update(
+      'daily_counts_cache',
+      {'memo_count': next},
+      where: 'day = ?',
+      whereArgs: [dayKey],
+    );
+  }
+
+  static Future<void> _bumpTagCount(
+    DatabaseExecutor txn,
+    String tag,
+    int delta,
+  ) async {
+    final key = tag.trim();
+    if (key.isEmpty || delta == 0) return;
+    final rows = await txn.query(
+      'tag_stats_cache',
+      columns: const ['memo_count'],
+      where: 'tag = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    final current = _readInt(rows.firstOrNull?['memo_count']) ?? 0;
+    final next = current + delta;
+    if (next <= 0) {
+      await txn.delete('tag_stats_cache', where: 'tag = ?', whereArgs: [key]);
+      return;
+    }
+    if (rows.isEmpty) {
+      await txn.insert('tag_stats_cache', {'tag': key, 'memo_count': next});
+      return;
+    }
+    await txn.update(
+      'tag_stats_cache',
+      {'memo_count': next},
+      where: 'tag = ?',
+      whereArgs: [key],
+    );
+  }
+
+  Future<_MemoSnapshot?> _fetchMemoSnapshot(DatabaseExecutor txn, String uid) async {
+    final rows = await txn.query(
+      'memos',
+      columns: const ['state', 'create_time', 'content', 'tags'],
+      where: 'uid = ?',
+      whereArgs: [uid],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final state = (row['state'] as String?) ?? 'NORMAL';
+    final createTimeSec = _readInt(row['create_time']) ?? 0;
+    final content = (row['content'] as String?) ?? '';
+    final tagsText = (row['tags'] as String?) ?? '';
+    return _MemoSnapshot(
+      state: state,
+      createTimeSec: createTimeSec,
+      content: content,
+      tags: _splitTagsText(tagsText),
+    );
+  }
+
+  Future<void> _applyMemoCacheDelta(
+    DatabaseExecutor txn, {
+    required _MemoSnapshot? before,
+    required _MemoSnapshot? after,
+  }) async {
+    if (before == null && after == null) return;
+
+    await _ensureStatsCacheRow(txn);
+    final statsRows = await txn.query(
+      'stats_cache',
+      columns: const ['min_create_time'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    final currentMin = _readInt(statsRows.firstOrNull?['min_create_time']);
+
+    final oldState = before?.state ?? '';
+    final newState = after?.state ?? '';
+    final oldIsNormal = oldState == 'NORMAL';
+    final newIsNormal = newState == 'NORMAL';
+    final oldIsArchived = oldState == 'ARCHIVED';
+    final newIsArchived = newState == 'ARCHIVED';
+
+    final deltaTotal = (newIsNormal ? 1 : 0) - (oldIsNormal ? 1 : 0);
+    final deltaArchived = (newIsArchived ? 1 : 0) - (oldIsArchived ? 1 : 0);
+
+    final oldChars = oldIsNormal && before != null ? _countChars(before.content) : 0;
+    final newChars = newIsNormal && after != null ? _countChars(after.content) : 0;
+    final deltaChars = newChars - oldChars;
+
+    final oldDayKey = oldIsNormal && before != null ? _localDayKeyFromUtcSec(before.createTimeSec) : null;
+    final newDayKey = newIsNormal && after != null ? _localDayKeyFromUtcSec(after.createTimeSec) : null;
+    if (!(oldIsNormal && newIsNormal && oldDayKey == newDayKey)) {
+      if (oldDayKey != null) {
+        await _bumpDailyCount(txn, oldDayKey, -1);
+      }
+      if (newDayKey != null) {
+        await _bumpDailyCount(txn, newDayKey, 1);
+      }
+    }
+
+    final oldTagCounts = oldIsNormal && before != null ? _countTags(before.tags) : const <String, int>{};
+    final newTagCounts = newIsNormal && after != null ? _countTags(after.tags) : const <String, int>{};
+    if (oldTagCounts.isNotEmpty || newTagCounts.isNotEmpty) {
+      final allTags = <String>{...oldTagCounts.keys, ...newTagCounts.keys};
+      for (final tag in allTags) {
+        final delta = (newTagCounts[tag] ?? 0) - (oldTagCounts[tag] ?? 0);
+        if (delta != 0) {
+          await _bumpTagCount(txn, tag, delta);
+        }
+      }
+    }
+
+    final nextMin = await _resolveMinCreateTime(
+      txn,
+      currentMin: currentMin,
+      before: before,
+      after: after,
+    );
+    if (deltaTotal != 0 || deltaArchived != 0 || deltaChars != 0 || nextMin != currentMin) {
+      final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+      await txn.rawUpdate(
+        '''
+UPDATE stats_cache
+SET total_memos = total_memos + ?,
+    archived_memos = archived_memos + ?,
+    total_chars = total_chars + ?,
+    min_create_time = ?,
+    updated_time = ?
+WHERE id = 1;
+''',
+        [deltaTotal, deltaArchived, deltaChars, nextMin, now],
+      );
+    }
+  }
+
   Future<void> upsertMemo({
     required String uid,
     required String content,
@@ -242,13 +519,15 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     String? lastError,
   }) async {
     final db = await this.db;
-    final tagsText = tags.join(' ');
+    final normalizedTags = _normalizeTags(tags);
+    final tagsText = normalizedTags.join(' ');
     final attachmentsJson = jsonEncode(attachments);
     final locationPlaceholder = location?.placeholder;
     final locationLat = location?.latitude;
     final locationLng = location?.longitude;
 
     await db.transaction((txn) async {
+      final before = await _fetchMemoSnapshot(txn, uid);
       final updated = await txn.update(
         'memos',
         {
@@ -309,6 +588,14 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+
+      final after = _MemoSnapshot(
+        state: state,
+        createTimeSec: createTimeSec,
+        content: content,
+        tags: normalizedTags,
+      );
+      await _applyMemoCacheDelta(txn, before: before, after: after);
     });
     _notifyChanged();
   }
@@ -544,12 +831,14 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
   Future<void> deleteMemoByUid(String uid) async {
     final db = await this.db;
     await db.transaction((txn) async {
+      final before = await _fetchMemoSnapshot(txn, uid);
       final rows = await txn.query('memos', columns: const ['id'], where: 'uid = ?', whereArgs: [uid], limit: 1);
       final rowId = rows.firstOrNull?['id'] as int?;
       await txn.delete('memos', where: 'uid = ?', whereArgs: [uid]);
       if (rowId != null) {
         await txn.delete('memos_fts', where: 'rowid = ?', whereArgs: [rowId]);
       }
+      await _applyMemoCacheDelta(txn, before: before, after: null);
     });
     _notifyChanged();
   }
@@ -848,6 +1137,144 @@ LIMIT ?;
     }
   }
 
+  Future<void> rebuildStatsCache() async {
+    final db = await this.db;
+    await _rebuildStatsCache(db);
+    _notifyChanged();
+  }
+
+  static Future<void> _ensureStatsCache(Database db, {bool rebuild = false}) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS stats_cache (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  total_memos INTEGER NOT NULL DEFAULT 0,
+  archived_memos INTEGER NOT NULL DEFAULT 0,
+  total_chars INTEGER NOT NULL DEFAULT 0,
+  min_create_time INTEGER,
+  updated_time INTEGER NOT NULL
+);
+''');
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS daily_counts_cache (
+  day TEXT PRIMARY KEY,
+  memo_count INTEGER NOT NULL DEFAULT 0
+);
+''');
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS tag_stats_cache (
+  tag TEXT PRIMARY KEY,
+  memo_count INTEGER NOT NULL DEFAULT 0
+);
+''');
+
+    if (rebuild) {
+      await _rebuildStatsCache(db);
+      return;
+    }
+
+    try {
+      final rows = await db.query(
+        'stats_cache',
+        columns: const ['id'],
+        where: 'id = 1',
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        await _rebuildStatsCache(db);
+      }
+    } catch (_) {
+      await _rebuildStatsCache(db);
+    }
+  }
+
+  static Future<void> _rebuildStatsCache(Database db) async {
+    await db.transaction((txn) async {
+      await txn.delete('stats_cache');
+      await txn.delete('daily_counts_cache');
+      await txn.delete('tag_stats_cache');
+
+      final rows = await txn.query(
+        'memos',
+        columns: const ['state', 'create_time', 'content', 'tags'],
+      );
+
+      var totalMemos = 0;
+      var archivedMemos = 0;
+      var totalChars = 0;
+      int? minCreateTime;
+      final dailyCounts = <String, int>{};
+      final tagCounts = <String, int>{};
+
+      for (final row in rows) {
+        final state = (row['state'] as String?) ?? 'NORMAL';
+        final createTimeSec = row['create_time'] as int? ?? 0;
+        final content = (row['content'] as String?) ?? '';
+        final tagsText = (row['tags'] as String?) ?? '';
+
+        if (createTimeSec > 0) {
+          if (minCreateTime == null || createTimeSec < minCreateTime) {
+            minCreateTime = createTimeSec;
+          }
+        }
+
+        if (state == 'ARCHIVED') {
+          archivedMemos++;
+          continue;
+        }
+        if (state != 'NORMAL') {
+          continue;
+        }
+
+        totalMemos++;
+        totalChars += _countChars(content);
+
+        final dayKey = _localDayKeyFromUtcSec(createTimeSec);
+        if (dayKey != null) {
+          dailyCounts[dayKey] = (dailyCounts[dayKey] ?? 0) + 1;
+        }
+
+        for (final tag in _splitTagsText(tagsText)) {
+          tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+        }
+      }
+
+      final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+      await txn.insert(
+        'stats_cache',
+        {
+          'id': 1,
+          'total_memos': totalMemos,
+          'archived_memos': archivedMemos,
+          'total_chars': totalChars,
+          'min_create_time': minCreateTime,
+          'updated_time': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      if (dailyCounts.isNotEmpty || tagCounts.isNotEmpty) {
+        final batch = txn.batch();
+        dailyCounts.forEach((day, count) {
+          batch.insert(
+            'daily_counts_cache',
+            {'day': day, 'memo_count': count},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        });
+        tagCounts.forEach((tag, count) {
+          batch.insert(
+            'tag_stats_cache',
+            {'tag': tag, 'memo_count': count},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        });
+        await batch.commit(noResult: true);
+      }
+    });
+  }
+
   static Future<void> _recreateFts(Database db) async {
     await db.execute('DROP TRIGGER IF EXISTS memos_ai;');
     await db.execute('DROP TRIGGER IF EXISTS memos_ad;');
@@ -944,6 +1371,20 @@ SELECT
     final escaped = identifier.replaceAll('"', '""');
     return '"$escaped"';
   }
+}
+
+class _MemoSnapshot {
+  const _MemoSnapshot({
+    required this.state,
+    required this.createTimeSec,
+    required this.content,
+    required this.tags,
+  });
+
+  final String state;
+  final int createTimeSec;
+  final String content;
+  final List<String> tags;
 }
 
 extension _FirstOrNullExt<T> on List<T> {

@@ -119,15 +119,45 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
   Future<LocalStats> load() async {
     final sqlite = await db.db;
 
-    final totalRows = await sqlite.rawQuery("SELECT COUNT(*) as c FROM memos WHERE state = 'NORMAL';");
-    final archivedRows = await sqlite.rawQuery("SELECT COUNT(*) as c FROM memos WHERE state = 'ARCHIVED';");
-    final totalMemos = (totalRows.firstOrNull?['c'] as int?) ?? 0;
-    final archivedMemos = (archivedRows.firstOrNull?['c'] as int?) ?? 0;
+    int readInt(Object? value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value.trim()) ?? 0;
+      return 0;
+    }
 
-    final minRows = await sqlite.rawQuery('SELECT MIN(create_time) AS min_time FROM memos;');
-    final minTimeSec = minRows.firstOrNull?['min_time'] as int?;
+    DateTime? parseDayKey(String raw) {
+      final parts = raw.split('-');
+      if (parts.length != 3) return null;
+      final y = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      final d = int.tryParse(parts[2]);
+      if (y == null || m == null || d == null) return null;
+      return DateTime(y, m, d);
+    }
+
+    var statsRows = await sqlite.query(
+      'stats_cache',
+      columns: const ['total_memos', 'archived_memos', 'total_chars', 'min_create_time'],
+      where: 'id = 1',
+      limit: 1,
+    );
+    if (statsRows.isEmpty) {
+      await db.rebuildStatsCache();
+      statsRows = await sqlite.query(
+        'stats_cache',
+        columns: const ['total_memos', 'archived_memos', 'total_chars', 'min_create_time'],
+        where: 'id = 1',
+        limit: 1,
+      );
+    }
+    final statsRow = statsRows.firstOrNull;
+    final totalMemos = readInt(statsRow?['total_memos']);
+    final archivedMemos = readInt(statsRow?['archived_memos']);
+    final totalChars = readInt(statsRow?['total_chars']);
+    final minTimeSec = readInt(statsRow?['min_create_time']);
     var daysSinceFirstMemo = 0;
-    if (minTimeSec != null && minTimeSec > 0) {
+    if (minTimeSec > 0) {
       final first = DateTime.fromMillisecondsSinceEpoch(minTimeSec * 1000, isUtc: true).toLocal();
       final firstDay = DateTime(first.year, first.month, first.day);
       final today = DateTime.now();
@@ -135,38 +165,25 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
       daysSinceFirstMemo = todayDay.difference(firstDay).inDays + 1;
     }
 
-    final dailyRows = await sqlite.query(
-      'memos',
-      columns: const ['create_time'],
-      where: "state = 'NORMAL'",
-    );
     final dailyCounts = <DateTime, int>{};
-    final activeDays = <DateTime>{};
-    for (final row in dailyRows) {
-      final sec = row['create_time'] as int?;
-      if (sec == null) continue;
-      final dt = DateTime.fromMillisecondsSinceEpoch(sec * 1000, isUtc: true).toLocal();
-      final day = DateTime(dt.year, dt.month, dt.day);
-      activeDays.add(day);
-      dailyCounts[day] = (dailyCounts[day] ?? 0) + 1;
-    }
-
-    final contentRows = await sqlite.query(
-      'memos',
-      columns: const ['content'],
-      where: "state = 'NORMAL'",
+    final dailyRows = await sqlite.query(
+      'daily_counts_cache',
+      columns: const ['day', 'memo_count'],
     );
-    var totalChars = 0;
-    for (final row in contentRows) {
-      final c = row['content'] as String?;
-      if (c == null || c.isEmpty) continue;
-      totalChars += c.replaceAll(RegExp(r'\s+'), '').runes.length;
+    for (final row in dailyRows) {
+      final dayRaw = row['day'];
+      if (dayRaw is! String || dayRaw.trim().isEmpty) continue;
+      final day = parseDayKey(dayRaw.trim());
+      if (day == null) continue;
+      final count = readInt(row['memo_count']);
+      if (count <= 0) continue;
+      dailyCounts[day] = count;
     }
 
     return LocalStats(
       totalMemos: totalMemos,
       archivedMemos: archivedMemos,
-      activeDays: activeDays.length,
+      activeDays: dailyCounts.length,
       daysSinceFirstMemo: daysSinceFirstMemo,
       totalChars: totalChars,
       dailyCounts: dailyCounts,

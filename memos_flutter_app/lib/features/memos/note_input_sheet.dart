@@ -84,6 +84,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   var _didApplyDraft = false;
   var _didSeedInitialAttachments = false;
   List<TagStat> _tagStatsCache = const [];
+  late final NoteDraftController _noteDraftController;
   final _linkedMemos = <_LinkedMemo>[];
   final _pendingAttachments = <_PendingAttachment>[];
   final _tagMenuKey = GlobalKey();
@@ -107,6 +108,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   @override
   void initState() {
     super.initState();
+    _noteDraftController = ref.read(noteDraftProvider.notifier);
     _controller = TextEditingController(text: widget.initialText ?? '');
     final selection = widget.initialSelection;
     if (selection != null) {
@@ -141,7 +143,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _controller.removeListener(_scheduleDraftSave);
     _controller.removeListener(_trackHistory);
     _smartEnterController.dispose();
-    unawaited(ref.read(noteDraftProvider.notifier).setDraft(_controller.text));
+    unawaited(_noteDraftController.setDraft(_controller.text));
     _controller.dispose();
     super.dispose();
   }
