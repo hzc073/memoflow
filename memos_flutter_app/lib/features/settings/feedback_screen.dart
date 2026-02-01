@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
-import '../../core/log_sanitizer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/db/app_database.dart';
 import '../../state/database_provider.dart';
@@ -16,50 +15,6 @@ import 'submit_logs_screen.dart';
 
 class FeedbackScreen extends ConsumerWidget {
   const FeedbackScreen({super.key});
-
-  Future<String> _buildDiagnostics(WidgetRef ref) async {
-    final language = ref.read(appPreferencesProvider).language;
-    final session = ref.read(appSessionProvider).valueOrNull;
-    final account = session?.currentAccount;
-
-    final db = ref.read(databaseProvider);
-    final sqlite = await db.db;
-
-    Future<int> count(String sql) async {
-      final rows = await sqlite.rawQuery(sql);
-      final v = rows.firstOrNull?.values.first;
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      return 0;
-    }
-
-    final memosCount = await count('SELECT COUNT(*) FROM memos;');
-    final pendingCount = await count("SELECT COUNT(*) FROM memos WHERE sync_state IN (1,2);");
-    final outboxCount = await count('SELECT COUNT(*) FROM outbox;');
-    final outboxPending = await count("SELECT COUNT(*) FROM outbox WHERE state IN (0,2);");
-
-    final accountLabel = account == null
-        ? trByLanguage(language: language, zh: '未登录', en: 'Not signed in')
-        : LogSanitizer.maskUserLabel(
-            account.user.displayName.isNotEmpty ? account.user.displayName : account.user.name,
-          );
-    final hostRaw = account?.baseUrl.toString() ?? '';
-    final host = hostRaw.isEmpty ? '' : LogSanitizer.maskUrl(hostRaw);
-
-    return [
-      trByLanguage(language: language, zh: 'MemoFlow 诊断信息', en: 'MemoFlow Diagnostics'),
-      '${trByLanguage(language: language, zh: '时间', en: 'Time')}: ${DateTime.now().toIso8601String()}',
-      '',
-      '${trByLanguage(language: language, zh: '账号', en: 'Account')}: $accountLabel',
-      '${trByLanguage(language: language, zh: '后端', en: 'Backend')}: $host',
-      '',
-      trByLanguage(language: language, zh: '本地数据：', en: 'Local data:'),
-      '- memos: $memosCount',
-      '- ${trByLanguage(language: language, zh: '待同步笔记', en: 'pending memos')}: $pendingCount',
-      '- outbox: $outboxCount',
-      '- ${trByLanguage(language: language, zh: '待处理队列', en: 'pending outbox')}: $outboxPending',
-    ].join('\n');
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -74,22 +29,6 @@ class FeedbackScreen extends ConsumerWidget {
     void haptic() {
       if (hapticsEnabled) {
         HapticFeedback.selectionClick();
-      }
-    }
-
-    Future<void> copyDiagnostics() async {
-      try {
-        final text = await _buildDiagnostics(ref);
-        await Clipboard.setData(ClipboardData(text: text));
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '诊断信息已复制', en: 'Diagnostics copied'))),
-        );
-      } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '生成失败：$e', en: 'Failed to generate: $e'))),
-        );
       }
     }
 
@@ -127,6 +66,7 @@ class FeedbackScreen extends ConsumerWidget {
           ) ??
           false;
       if (!confirmed) return;
+      if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(zh: '正在重置本地数据...', en: 'Resetting local data...'))),
@@ -363,6 +303,3 @@ class _ActionRow extends StatelessWidget {
   }
 }
 
-extension _FirstOrNullExt<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}

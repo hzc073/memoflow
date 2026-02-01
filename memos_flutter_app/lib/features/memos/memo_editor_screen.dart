@@ -765,6 +765,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         return;
       }
     }
+    if (!mounted) return;
     final selection = await LinkMemoSheet.show(
       context,
       existingNames: _linkedMemoNames,

@@ -93,7 +93,7 @@ class SettingsScreen extends ConsumerWidget {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _close(context);
       },
@@ -503,7 +503,7 @@ class _ProfileCard extends StatelessWidget {
               width: 44,
               height: 44,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => avatarFallback,
+              errorBuilder: (_, _, _) => avatarFallback,
             ),
           );
         }
@@ -514,8 +514,8 @@ class _ProfileCard extends StatelessWidget {
             width: 44,
             height: 44,
             fit: BoxFit.cover,
-            placeholder: (_, __) => avatarFallback,
-            errorWidget: (_, __, ___) => avatarFallback,
+            placeholder: (_, _) => avatarFallback,
+            errorWidget: (_, _, _) => avatarFallback,
           ),
         );
       }

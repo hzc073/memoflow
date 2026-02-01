@@ -64,22 +64,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
   static const UpdateAnnouncementConfig _fallbackUpdateConfig = UpdateAnnouncementConfig(
-    versionInfo: const UpdateVersionInfo(
+    versionInfo: UpdateVersionInfo(
       latestVersion: '',
       isForce: false,
       downloadUrl: '',
       debugVersion: '',
       skipUpdateVersion: '',
     ),
-    announcement: const UpdateAnnouncement(
+    announcement: UpdateAnnouncement(
       id: 0,
       title: '',
-      contentsByLocale: const {},
-      fallbackContents: const [],
-      newDonorIds: const [],
+      contentsByLocale: {},
+      fallbackContents: [],
+      newDonorIds: [],
     ),
-    donors: const [],
-    releaseNotes: const [],
+    donors: [],
+    releaseNotes: [],
     noticeEnabled: false,
     notice: null,
   );

@@ -31,7 +31,7 @@ class WebDavClient {
     required this.ignoreBadCert,
   }) {
     if (ignoreBadCert) {
-      _client.badCertificateCallback = (_, __, ___) => true;
+      _client.badCertificateCallback = (_, _, _) => true;
     }
   }
 
@@ -142,20 +142,20 @@ class WebDavClient {
     final nc = resolved.nonceCount.toRadixString(16).padLeft(8, '0');
     final cnonce = _randomHex(16);
     final qop = resolved.qop;
-    final ha1 = _md5('${username}:${resolved.realm}:$password');
+    final ha1 = _md5('$username:$resolved.realm:$password');
     final ha2 = _md5('$method:$uri');
     final response = qop.isNotEmpty
-        ? _md5('$ha1:${resolved.nonce}:$nc:$cnonce:$qop:$ha2')
-        : _md5('$ha1:${resolved.nonce}:$ha2');
+        ? _md5('$ha1:$resolved.nonce:$nc:$cnonce:$qop:$ha2')
+        : _md5('$ha1:$resolved.nonce:$ha2');
 
     final buffer = StringBuffer('Digest ');
-    buffer.write('username="$username", realm="${resolved.realm}", nonce="${resolved.nonce}", uri="$uri", ');
+    buffer.write('username="$username", realm="$resolved.realm", nonce="$resolved.nonce", uri="$uri", ');
     buffer.write('response="$response"');
     if (resolved.opaque.isNotEmpty) {
-      buffer.write(', opaque="${resolved.opaque}"');
+      buffer.write(', opaque="$resolved.opaque"');
     }
     if (resolved.algorithm.isNotEmpty) {
-      buffer.write(', algorithm=${resolved.algorithm}');
+      buffer.write(', algorithm=$resolved.algorithm');
     }
     if (qop.isNotEmpty) {
       buffer.write(', qop=$qop, nc=$nc, cnonce="$cnonce"');

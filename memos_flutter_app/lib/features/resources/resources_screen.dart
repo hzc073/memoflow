@@ -125,6 +125,7 @@ class ResourcesScreen extends ConsumerWidget {
 
     try {
       final rootDir = await _resolveDownloadDirectory();
+      if (!context.mounted) return;
       final outDir = Directory(p.join(rootDir.path, 'MemoFlow_attachments'));
       if (!outDir.existsSync()) {
         outDir.createSync(recursive: true);
@@ -293,7 +294,7 @@ class ResourcesScreen extends ConsumerWidget {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _backToAllMemos(context);
       },

@@ -95,7 +95,7 @@ class NotificationsScreen extends ConsumerWidget {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _backToAllMemos(context);
       },

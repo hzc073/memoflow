@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,7 +48,7 @@ class _LruCache<K, V> {
   _LruCache({required int capacity}) : _capacity = capacity;
 
   final int _capacity;
-  final _map = LinkedHashMap<K, V>();
+  final _map = <K, V>{};
 
   V? get(K key) {
     final value = _map.remove(key);

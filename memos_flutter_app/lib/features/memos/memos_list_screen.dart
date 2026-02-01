@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -233,7 +232,7 @@ class _LruCache<K, V> {
   _LruCache({required int capacity}) : _capacity = capacity;
 
   final int _capacity;
-  final _map = LinkedHashMap<K, V>();
+  final _map = <K, V>{};
 
   V? get(K key) {
     final value = _map.remove(key);
@@ -1252,7 +1251,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       barrierDismissible: true,
       barrierLabel: 'title_menu',
       barrierColor: Colors.transparent,
-      pageBuilder: (context, _, __) => Stack(
+      pageBuilder: (context, _, _) => Stack(
         children: [
           Positioned(
             left: left,
@@ -1883,10 +1882,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         final shouldPop = await _handleWillPop();
-        if (!mounted || !shouldPop) return;
+        if (!context.mounted) return;
+        if (!shouldPop) return;
         final navigator = Navigator.of(context);
         if (navigator.canPop()) {
           navigator.pop();
@@ -3253,7 +3253,7 @@ class _MemoCardState extends State<_MemoCard> {
         builder: (context, position, _) {
           return ValueListenableBuilder<Duration?>(
             valueListenable: audioDurationListenable,
-            builder: (context, duration, __) {
+            builder: (context, duration, _) {
               return buildAudioRow(position, duration);
             },
           );
@@ -3592,8 +3592,9 @@ class _MemoCardState extends State<_MemoCard> {
     final hh = totalSeconds ~/ 3600;
     final mm = (totalSeconds % 3600) ~/ 60;
     final ss = totalSeconds % 60;
-    if (hh <= 0)
+    if (hh <= 0) {
       return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
+    }
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
   }
 

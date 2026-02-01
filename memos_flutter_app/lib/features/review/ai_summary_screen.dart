@@ -364,9 +364,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     }
     final text = _buildSummaryText(summary: summary, forMemo: false);
     try {
-      await Share.share(
-        text,
-        subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+      await SharePlus.instance.share(
+        ShareParams(
+          text: text,
+          subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -411,11 +413,14 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         '${dir.path}${Platform.pathSeparator}ai_summary_${DateTime.now().millisecondsSinceEpoch}.png',
       );
       await file.writeAsBytes(byteData.buffer.asUint8List());
+      if (!mounted) return;
 
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: _buildSummaryText(summary: summary, forMemo: false),
-        subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          text: _buildSummaryText(summary: summary, forMemo: false),
+          subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -672,7 +677,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _backToAllMemos(context);
       },
@@ -880,7 +885,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     child: Switch(
                       value: allowPrivate,
                       onChanged: onAllowPrivateChanged,
-                      activeColor: Colors.white,
+                      activeThumbColor: Colors.white,
                       activeTrackColor: MemoFlowPalette.primary,
                       inactiveThumbColor: Colors.white,
                       inactiveTrackColor: inactiveTrack,

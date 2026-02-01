@@ -73,7 +73,7 @@ class SmartEnterController {
         prevLineStart + prefix.length,
         '',
       );
-      final newCursor = (cursor - prefix.length).clamp(0, updated.length) as int;
+      final newCursor = (cursor - prefix.length).clamp(0, updated.length);
       return SmartEnterResult(
         text: updated,
         selection: TextSelection.collapsed(offset: newCursor),

@@ -71,8 +71,8 @@ class LogSanitizer {
       uri = alt;
     }
 
-    final scheme = hasScheme && uri!.scheme.isNotEmpty ? '${uri.scheme}://' : '';
-    final host = uri!.host.isNotEmpty ? maskHost(uri.host) : '';
+    final scheme = hasScheme && uri.scheme.isNotEmpty ? '${uri.scheme}://' : '';
+    final host = uri.host.isNotEmpty ? maskHost(uri.host) : '';
     final port = uri.hasPort ? ':${uri.port}' : '';
     final path = uri.path;
     final query = _sanitizeQuery(uri.queryParametersAll);
@@ -244,8 +244,8 @@ class LogSanitizer {
     if (s.isEmpty) return s;
     final runes = s.runes.toList();
     final length = runes.length;
-    final startCount = keepStart.clamp(0, length) as int;
-    final endCount = keepEnd.clamp(0, length - startCount) as int;
+    final startCount = keepStart.clamp(0, length);
+    final endCount = keepEnd.clamp(0, length - startCount);
     if (length <= startCount + endCount) {
       if (length == 1) return '*';
       final head = String.fromCharCode(runes.first);

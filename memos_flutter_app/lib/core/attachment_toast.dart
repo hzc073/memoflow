@@ -50,7 +50,6 @@ void showAttachmentNamesToast(
   _activeAttachmentToast?.remove();
   _activeAttachmentToast = null;
   final overlay = Overlay.of(context, rootOverlay: true);
-  if (overlay == null) return;
 
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
@@ -68,9 +67,9 @@ void showAttachmentNamesToast(
           padding.left -
           padding.right -
           _toastMargin * 2)
-      .clamp(0.0, screenSize.width) as double;
+      .clamp(0.0, screenSize.width);
   final maxTextWidthAllowed = (maxToastWidth - _toastHorizontalPadding * 2)
-      .clamp(0.0, maxToastWidth) as double;
+      .clamp(0.0, maxToastWidth);
   final displayLines = <String>[];
   final textPainter = TextPainter(
     textDirection: textDirection,
@@ -104,13 +103,13 @@ void showAttachmentNamesToast(
       _toastLineSpacing * (displayLines.length - 1);
   final rawWidth = maxTextWidth + _toastHorizontalPadding * 2;
   final rawHeight = contentHeight + _toastVerticalPadding * 2;
-  final toastWidth = rawWidth.clamp(0.0, maxToastWidth) as double;
+  final toastWidth = rawWidth.clamp(0.0, maxToastWidth);
   final maxToastHeight = (screenSize.height -
           padding.top -
           padding.bottom -
           _toastMargin * 2)
-      .clamp(0.0, screenSize.height) as double;
-  final toastHeight = rawHeight.clamp(0.0, maxToastHeight) as double;
+      .clamp(0.0, screenSize.height);
+  final toastHeight = rawHeight.clamp(0.0, maxToastHeight);
 
   Offset? anchorPoint = anchor;
   if (anchorPoint == null) {
@@ -191,16 +190,16 @@ void showAttachmentNamesToast(
       final minLeft = padding.left + _toastMargin;
       final maxLeft =
           screenSize.width - padding.right - _toastMargin - toastWidth;
-      var left = anchorPoint!.dx;
+      var left = anchorPoint.dx;
       if (left > maxLeft) left = maxLeft;
       if (left < minLeft) left = minLeft;
 
       final minTop = padding.top + _toastMargin;
       final maxTop =
           screenSize.height - padding.bottom - _toastMargin - toastHeight;
-      var top = anchorPoint!.dy + _toastGap;
+      var top = anchorPoint.dy + _toastGap;
       if (top > maxTop) {
-        top = anchorPoint!.dy - _toastGap - toastHeight;
+        top = anchorPoint.dy - _toastGap - toastHeight;
       }
       if (top < minTop) top = minTop;
 

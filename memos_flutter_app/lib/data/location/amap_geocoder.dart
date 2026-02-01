@@ -69,7 +69,7 @@ class AmapGeocoder {
 
     try {
       final start = DateTime.now().toUtc();
-      final requestId = '${start.microsecondsSinceEpoch}-${hashCode}';
+      final requestId = '$start.microsecondsSinceEpoch-$hashCode';
       final safeUrl = _sanitizeUrlForLog(url);
       if (_logStore?.enabled ?? false) {
         _logStore!.add(
@@ -205,7 +205,7 @@ class AmapGeocoder {
 
     try {
       final start = DateTime.now().toUtc();
-      final requestId = '${start.microsecondsSinceEpoch}-${hashCode}';
+      final requestId = '$start.microsecondsSinceEpoch-$hashCode';
       final safeUrl = _sanitizeUrlForLog(url);
       if (_logStore?.enabled ?? false) {
         _logStore!.add(

@@ -235,7 +235,7 @@ class MemoImageGrid extends StatelessWidget {
           httpHeaders: entry.headers,
           fit: BoxFit.cover,
           placeholder: (context, _) => placeholder(Icons.image_outlined),
-          errorWidget: (context, _, __) => placeholder(Icons.broken_image_outlined),
+          errorWidget: (context, _, _) => placeholder(Icons.broken_image_outlined),
         );
       } else {
         image = placeholder(Icons.image_outlined);

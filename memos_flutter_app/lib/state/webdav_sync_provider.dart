@@ -164,6 +164,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
         final remoteMeta = await _fetchRemoteMeta(client, baseUrl, rootPath, accountId);
 
         final diff = _diffFiles(localPayloads, remoteMeta, lastSync);
+        if (context != null && !context.mounted) return;
         if (diff.conflicts.isNotEmpty) {
           if (context == null) {
             state = state.copyWith(
@@ -590,12 +591,10 @@ class _WebDavFilePayload {
 
 class _WebDavDiff {
   _WebDavDiff({
-    required Set<String> uploads,
-    required Set<String> downloads,
-    required Set<String> conflicts,
-  })  : uploads = uploads,
-        downloads = downloads,
-        conflicts = conflicts;
+    required this.uploads,
+    required this.downloads,
+    required this.conflicts,
+  });
 
   final Set<String> uploads;
   final Set<String> downloads;
@@ -676,65 +675,60 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                 title: Text(trByLanguage(language: language, zh: '应用到全部', en: 'Apply to all')),
               ),
               if (_applyToAll)
-                Row(
-                  children: [
-                    Expanded(
-                      child: RadioListTile<bool>(
-                        contentPadding: EdgeInsets.zero,
-                        value: true,
-                        groupValue: _useLocalForAll,
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() {
-                            _useLocalForAll = value;
-                            for (final name in widget.conflicts) {
-                              _choices[name] = value;
-                            }
-                          });
-                        },
-                        title: Text(trByLanguage(language: language, zh: '使用本地', en: 'Use local')),
+                RadioGroup<bool>(
+                  groupValue: _useLocalForAll,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _useLocalForAll = value;
+                      for (final name in widget.conflicts) {
+                        _choices[name] = value;
+                      }
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<bool>(
+                          contentPadding: EdgeInsets.zero,
+                          value: true,
+                          title: Text(trByLanguage(language: language, zh: '使用本地', en: 'Use local')),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<bool>(
-                        contentPadding: EdgeInsets.zero,
-                        value: false,
-                        groupValue: _useLocalForAll,
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setState(() {
-                            _useLocalForAll = value;
-                            for (final name in widget.conflicts) {
-                              _choices[name] = value;
-                            }
-                          });
-                        },
-                        title: Text(trByLanguage(language: language, zh: '使用远端', en: 'Use remote')),
+                      Expanded(
+                        child: RadioListTile<bool>(
+                          contentPadding: EdgeInsets.zero,
+                          value: false,
+                          title: Text(trByLanguage(language: language, zh: '使用远端', en: 'Use remote')),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               if (!_applyToAll)
                 ...widget.conflicts.map(
-                  (name) => Column(
-                    children: [
-                      const Divider(height: 12),
-                      Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      RadioListTile<bool>(
-                        contentPadding: EdgeInsets.zero,
-                        value: true,
-                        groupValue: _choices[name],
-                        onChanged: (value) => setState(() => _choices[name] = value ?? true),
-                        title: Text(trByLanguage(language: language, zh: '使用本地', en: 'Use local')),
-                      ),
-                      RadioListTile<bool>(
-                        contentPadding: EdgeInsets.zero,
-                        value: false,
-                        groupValue: _choices[name],
-                        onChanged: (value) => setState(() => _choices[name] = value ?? false),
-                        title: Text(trByLanguage(language: language, zh: '使用远端', en: 'Use remote')),
-                      ),
-                    ],
+                  (name) => RadioGroup<bool>(
+                    groupValue: _choices[name],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _choices[name] = value);
+                    },
+                    child: Column(
+                      children: [
+                        const Divider(height: 12),
+                        Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        RadioListTile<bool>(
+                          contentPadding: EdgeInsets.zero,
+                          value: true,
+                          title: Text(trByLanguage(language: language, zh: '使用本地', en: 'Use local')),
+                        ),
+                        RadioListTile<bool>(
+                          contentPadding: EdgeInsets.zero,
+                          value: false,
+                          title: Text(trByLanguage(language: language, zh: '使用远端', en: 'Use remote')),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],

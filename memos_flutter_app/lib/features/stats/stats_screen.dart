@@ -120,7 +120,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       );
       await file.writeAsBytes(byteData.buffer.asUint8List());
 
-      await Share.shareXFiles([XFile(file.path)]);
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)]),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -273,7 +275,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _handleBack();
       },

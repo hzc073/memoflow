@@ -835,6 +835,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         );
       }
 
+      if (!mounted) return;
       if (added.isEmpty) {
         final msg = missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));

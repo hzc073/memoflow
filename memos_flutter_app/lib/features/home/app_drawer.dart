@@ -375,7 +375,6 @@ class AppDrawer extends ConsumerWidget {
                     icon: Icons.delete,
                     onTap: () {
                       final overlay = Overlay.of(context, rootOverlay: true);
-                      if (overlay == null) return;
                       final isDark = Theme.of(context).brightness == Brightness.dark;
                       final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
                       final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
@@ -669,7 +668,6 @@ class _DrawerHeatmap extends StatelessWidget {
 
     void showOverlayToast(String message) {
       final overlay = Overlay.of(context, rootOverlay: true);
-      if (overlay == null) return;
       final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
       final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
       late OverlayEntry entry;

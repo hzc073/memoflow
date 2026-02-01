@@ -80,6 +80,7 @@ class AccountSecurityScreen extends ConsumerWidget {
           ) ??
           false;
       if (!confirmed) return;
+      if (!context.mounted) return;
 
       final dbName = databaseNameForAccountKey(accountKey);
       if (shouldPopBeforeRemoval) {

@@ -73,7 +73,7 @@ class AiSettings {
     modelOptions: defaultModelOptions,
     prompt: '你是一位极简主义的笔记助手，擅长提炼核心观点并以优雅的格式排版。在回复时，请保持专业、温和且简洁的语气。尽量使用列表和简短的段落。',
     userProfile: '',
-    quickPrompts: const <AiQuickPrompt>[],
+    quickPrompts: <AiQuickPrompt>[],
   );
 
   const AiSettings({

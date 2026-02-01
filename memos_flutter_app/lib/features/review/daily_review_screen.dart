@@ -394,7 +394,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _back();
       },
@@ -608,7 +608,7 @@ class _RandomWalkCard extends StatelessWidget {
         builder: (context, position, _) {
           return ValueListenableBuilder<Duration?>(
             valueListenable: audioDurationListenable!,
-            builder: (context, duration, __) {
+            builder: (context, duration, _) {
               return buildAudioRow(position, duration);
             },
           );
@@ -645,7 +645,7 @@ class _RandomWalkCard extends StatelessWidget {
               border: Border.all(color: borderColor),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 20,
                   spreadRadius: 0,
                   offset: const Offset(0, 10),
@@ -796,14 +796,14 @@ class _RandomWalkCard extends StatelessWidget {
     if (diff.inDays < 7) return trByLanguage(language: language, zh: '${diff.inDays}天前', en: '${diff.inDays}d ago');
     if (diff.inDays < 30) {
       final weeks = (diff.inDays / 7).floor();
-      return trByLanguage(language: language, zh: '${weeks}周前', en: '${weeks}w ago');
+      return trByLanguage(language: language, zh: '$weeks周前', en: '${weeks}w ago');
     }
     if (diff.inDays < 365) {
       final months = (diff.inDays / 30).floor();
-      return trByLanguage(language: language, zh: '${months}个月前', en: '${months}mo ago');
+      return trByLanguage(language: language, zh: '$months个月前', en: '${months}mo ago');
     }
     final years = (diff.inDays / 365).floor();
-    return trByLanguage(language: language, zh: '${years}年前', en: '${years}y ago');
+    return trByLanguage(language: language, zh: '$years年前', en: '${years}y ago');
   }
 
   static String? _parseVoiceDuration(String content) {

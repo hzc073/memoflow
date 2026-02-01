@@ -314,6 +314,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       return;
     }
 
+    if (!mounted) return;
     final edited = await Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
         builder: (_) => ImageEditor(
@@ -322,6 +323,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         ),
       ),
     );
+    if (!mounted) return;
     if (edited == null) return;
 
     final action = await showDialog<_EditAction>(
@@ -346,6 +348,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         ],
       ),
     );
+    if (!mounted) return;
     if (action == null) return;
 
     final encoded = _reencodeJpeg(edited, quality: 90);
@@ -378,6 +381,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
           ),
         ) ??
         false;
+    if (!mounted) return;
     if (!confirmed) return;
 
     final result = await _persistEditedImage(source, encoded);
@@ -400,7 +404,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         httpHeaders: source.headers,
         fit: BoxFit.contain,
         placeholder: (context, _) => const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, _, __) => const Icon(Icons.broken_image, color: Colors.white),
+        errorWidget: (context, _, _) => const Icon(Icons.broken_image, color: Colors.white),
       );
     }
     return const Icon(Icons.broken_image, color: Colors.white);

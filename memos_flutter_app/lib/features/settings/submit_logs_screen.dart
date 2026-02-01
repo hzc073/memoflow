@@ -432,6 +432,3 @@ class _ToggleRow extends StatelessWidget {
   }
 }
 
-extension _FirstOrNullReportExt<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}

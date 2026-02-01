@@ -74,6 +74,7 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
       return;
     }
     final info = await AboutUsScreen._packageInfoFuture;
+    if (!context.mounted) return;
     final version = info.version.trim();
     await UpdateAnnouncementDialog.show(
       context,

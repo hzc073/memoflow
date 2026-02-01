@@ -729,8 +729,7 @@ class MemosApi {
       if (!_shouldFallbackLegacy(e)) rethrow;
     }
 
-    if (lastError != null) throw lastError;
-    throw StateError('Unable to load user general setting');
+    throw lastError;
   }
 
   Future<UserGeneralSetting> updateUserGeneralSetting({
@@ -887,8 +886,7 @@ class MemosApi {
       if (!_shouldFallbackLegacy(e)) rethrow;
     }
 
-    if (lastError != null) throw lastError;
-    throw StateError('Unable to load user webhooks');
+    throw lastError;
   }
 
   Future<UserWebhook> createUserWebhook({
@@ -936,8 +934,7 @@ class MemosApi {
       if (!_shouldFallbackLegacy(e)) rethrow;
     }
 
-    if (lastError != null) throw lastError;
-    throw StateError('Unable to create webhook');
+    throw lastError;
   }
 
   Future<UserWebhook> updateUserWebhook({
