@@ -121,6 +121,10 @@ String stripMarkdownImages(String text) {
       out.add(line);
       continue;
     }
+    if (line.trim().isEmpty) {
+      out.add('');
+      continue;
+    }
     final cleaned = line.replaceAll(_markdownImagePattern, '').trimRight();
     if (cleaned.trim().isEmpty) continue;
     out.add(cleaned);

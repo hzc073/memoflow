@@ -25,6 +25,7 @@ import 'features/settings/widgets_service.dart';
 import 'features/updates/notice_dialog.dart';
 import 'features/updates/update_announcement_dialog.dart';
 import 'data/updates/update_config.dart';
+import 'state/database_provider.dart';
 import 'state/logging_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
@@ -46,6 +47,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   HomeWidgetType? _pendingWidgetAction;
   SharePayload? _pendingSharePayload;
   bool _shareHandlingScheduled = false;
+  bool _launchActionHandled = false;
+  bool _launchActionScheduled = false;
+  Future<void>? _pendingWidgetActionLoad;
+  Future<void>? _pendingShareLoad;
   bool _statsWidgetUpdating = false;
   String? _statsWidgetAccountKey;
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
@@ -224,9 +229,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     ref.read(logManagerProvider);
     ref.read(webDavSyncControllerProvider);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
-    _loadPendingWidgetAction();
+    _pendingWidgetActionLoad = _loadPendingWidgetAction();
     ShareHandlerService.setShareHandler(_handleShareLaunch);
-    _loadPendingShare();
+    _pendingShareLoad = _loadPendingShare();
     _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
       final prevKey = prev?.valueOrNull?.currentKey;
       final nextKey = next.valueOrNull?.currentKey;
@@ -308,6 +313,84 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       _shareHandlingScheduled = false;
       if (!mounted) return;
       _handlePendingShare();
+    });
+  }
+
+  Future<void> _awaitPendingLaunchSources() async {
+    final futures = <Future<void>>[];
+    final widgetLoad = _pendingWidgetActionLoad;
+    if (widgetLoad != null) futures.add(widgetLoad);
+    final shareLoad = _pendingShareLoad;
+    if (shareLoad != null) futures.add(shareLoad);
+    if (futures.isEmpty) return;
+    try {
+      await Future.wait(futures);
+    } catch (_) {}
+  }
+
+  void _scheduleLaunchActionHandling() {
+    if (_launchActionHandled || _launchActionScheduled) return;
+    _launchActionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _launchActionScheduled = false;
+      if (!mounted) return;
+      unawaited(_handleLaunchAction());
+    });
+  }
+
+  Future<void> _handleLaunchAction() async {
+    if (_launchActionHandled) return;
+    await _awaitPendingLaunchSources();
+    if (!mounted) return;
+    final session = ref.read(appSessionProvider).valueOrNull;
+    if (session?.currentAccount == null) return;
+
+    _launchActionHandled = true;
+    final prefs = ref.read(appPreferencesProvider);
+    final hasPendingUiAction = _pendingSharePayload != null || _pendingWidgetAction != null;
+
+    if (!hasPendingUiAction) {
+      switch (prefs.launchAction) {
+        case LaunchAction.dailyReview:
+          final navigator = _navigatorKey.currentState;
+          if (navigator != null) {
+            navigator.push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
+          }
+          break;
+        case LaunchAction.quickInput:
+          _openQuickInput(autoFocus: prefs.quickInputAutoFocus);
+          break;
+        case LaunchAction.none:
+        case LaunchAction.sync:
+          break;
+      }
+    }
+
+    await _maybeSyncOnLaunch(prefs);
+  }
+
+  Future<void> _maybeSyncOnLaunch(AppPreferences prefs) async {
+    final db = ref.read(databaseProvider);
+    var hasLocalData = false;
+    try {
+      hasLocalData = (await db.listMemos(limit: 1)).isNotEmpty;
+    } catch (_) {}
+
+    final shouldSync = !hasLocalData || prefs.launchAction == LaunchAction.sync;
+    if (shouldSync) {
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    }
+  }
+
+  void _openQuickInput({required bool autoFocus}) {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    _openAllMemos(navigator);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final sheetContext = _navigatorKey.currentContext;
+      if (sheetContext != null) {
+        NoteInputSheet.show(sheetContext, autoFocus: autoFocus);
+      }
     });
   }
 
@@ -600,7 +683,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final sheetContext = _navigatorKey.currentContext;
           if (sheetContext != null) {
-            NoteInputSheet.show(sheetContext);
+            final autoFocus = ref.read(appPreferencesProvider).quickInputAutoFocus;
+            NoteInputSheet.show(sheetContext, autoFocus: autoFocus);
           }
         });
         break;
@@ -722,6 +806,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
     if (prefsLoaded) {
       _scheduleUpdateAnnouncementIfNeeded();
+    }
+    if (prefsLoaded && session?.currentAccount != null) {
+      _scheduleLaunchActionHandling();
     }
 
     return MaterialApp(

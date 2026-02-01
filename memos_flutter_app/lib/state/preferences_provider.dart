@@ -63,6 +63,7 @@ enum AppLineHeight {
 enum LaunchAction {
   none('无', 'None'),
   sync('同步', 'Sync'),
+  quickInput('快速记录', 'Quick Input'),
   dailyReview('随机漫步', 'Random Review');
 
   const LaunchAction(this.labelZh, this.labelEn);
@@ -84,6 +85,7 @@ class AppPreferences {
     collapseLongContent: true,
     collapseReferences: true,
     launchAction: LaunchAction.none,
+    quickInputAutoFocus: true,
     hapticsEnabled: true,
     useLegacyApi: true,
     networkLoggingEnabled: true,
@@ -120,6 +122,7 @@ class AppPreferences {
     required this.collapseLongContent,
     required this.collapseReferences,
     required this.launchAction,
+    required this.quickInputAutoFocus,
     required this.hapticsEnabled,
     required this.useLegacyApi,
     required this.networkLoggingEnabled,
@@ -151,6 +154,7 @@ class AppPreferences {
   final bool collapseLongContent;
   final bool collapseReferences;
   final LaunchAction launchAction;
+  final bool quickInputAutoFocus;
   final bool hapticsEnabled;
   final bool useLegacyApi;
   final bool networkLoggingEnabled;
@@ -198,6 +202,7 @@ class AppPreferences {
         'collapseLongContent': collapseLongContent,
         'collapseReferences': collapseReferences,
         'launchAction': launchAction.name,
+        'quickInputAutoFocus': quickInputAutoFocus,
         'hapticsEnabled': hapticsEnabled,
         'useLegacyApi': useLegacyApi,
         'networkLoggingEnabled': networkLoggingEnabled,
@@ -416,6 +421,7 @@ class AppPreferences {
       collapseLongContent: parseBool('collapseLongContent', AppPreferences.defaults.collapseLongContent),
       collapseReferences: parseBool('collapseReferences', AppPreferences.defaults.collapseReferences),
       launchAction: parseLaunchAction(),
+      quickInputAutoFocus: parseBool('quickInputAutoFocus', AppPreferences.defaults.quickInputAutoFocus),
       hapticsEnabled: parseBool('hapticsEnabled', AppPreferences.defaults.hapticsEnabled),
       useLegacyApi: parseBool('useLegacyApi', AppPreferences.defaults.useLegacyApi),
       networkLoggingEnabled:
@@ -453,6 +459,7 @@ class AppPreferences {
     bool? collapseLongContent,
     bool? collapseReferences,
     LaunchAction? launchAction,
+    bool? quickInputAutoFocus,
     bool? hapticsEnabled,
     bool? useLegacyApi,
     bool? networkLoggingEnabled,
@@ -484,6 +491,7 @@ class AppPreferences {
       collapseLongContent: collapseLongContent ?? this.collapseLongContent,
       collapseReferences: collapseReferences ?? this.collapseReferences,
       launchAction: launchAction ?? this.launchAction,
+      quickInputAutoFocus: quickInputAutoFocus ?? this.quickInputAutoFocus,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
       networkLoggingEnabled: networkLoggingEnabled ?? this.networkLoggingEnabled,
@@ -570,6 +578,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   void setCollapseLongContent(bool v) => _setAndPersist(state.copyWith(collapseLongContent: v));
   void setCollapseReferences(bool v) => _setAndPersist(state.copyWith(collapseReferences: v));
   void setLaunchAction(LaunchAction v) => _setAndPersist(state.copyWith(launchAction: v));
+  void setQuickInputAutoFocus(bool v) => _setAndPersist(state.copyWith(quickInputAutoFocus: v));
   void setHapticsEnabled(bool v) => _setAndPersist(state.copyWith(hapticsEnabled: v));
   void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));
   void setNetworkLoggingEnabled(bool v) => _setAndPersist(state.copyWith(networkLoggingEnabled: v));

@@ -279,6 +279,12 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                       onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLaunchAction(v),
                     ),
                   ),
+                  _ToggleRow(
+                    label: context.tr(zh: '快速记录时唤醒键盘', en: 'Auto-open keyboard for Quick Input'),
+                    value: prefs.quickInputAutoFocus,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setQuickInputAutoFocus(v),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),

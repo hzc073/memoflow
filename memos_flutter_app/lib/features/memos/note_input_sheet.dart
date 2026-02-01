@@ -39,12 +39,14 @@ class NoteInputSheet extends ConsumerStatefulWidget {
     this.initialSelection,
     this.initialAttachmentPaths = const [],
     this.ignoreDraft = false,
+    this.autoFocus = true,
   });
 
   final String? initialText;
   final TextSelection? initialSelection;
   final List<String> initialAttachmentPaths;
   final bool ignoreDraft;
+  final bool autoFocus;
 
   static Future<void> show(
     BuildContext context, {
@@ -52,6 +54,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
     TextSelection? initialSelection,
     List<String> initialAttachmentPaths = const [],
     bool ignoreDraft = false,
+    bool autoFocus = true,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -63,6 +66,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
         initialSelection: initialSelection,
         initialAttachmentPaths: initialAttachmentPaths,
         ignoreDraft: ignoreDraft,
+        autoFocus: autoFocus,
       ),
     );
   }
@@ -1374,7 +1378,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                               fit: FlexFit.loose,
                               child: TextField(
                                 controller: _controller,
-                                autofocus: true,
+                                autofocus: widget.autoFocus,
                                 maxLines: null,
                                 keyboardType: TextInputType.multiline,
                                 style: TextStyle(fontSize: 17, height: 1.35, color: textColor),
