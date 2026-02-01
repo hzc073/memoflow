@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/attachment_toast.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/url.dart';
@@ -553,6 +554,9 @@ class _RandomWalkCard extends StatelessWidget {
     final audioAttachments =
         memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
     final hasAudio = audioAttachments.isNotEmpty;
+    final nonMediaAttachments = filterNonMediaAttachments(memo.attachments);
+    final attachmentLines = attachmentNameLines(nonMediaAttachments);
+    final attachmentCount = nonMediaAttachments.length;
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
     final audioDurationFallback = _parseVoiceDurationValue(memo.content);
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
@@ -713,6 +717,43 @@ class _RandomWalkCard extends StatelessWidget {
                                     if (hasAudio) ...[
                                       const SizedBox(height: 10),
                                       audioRow,
+                                    ],
+                                    if (attachmentCount > 0) ...[
+                                      const SizedBox(height: 10),
+                                      Builder(
+                                        builder: (context) {
+                                          Offset? tapPosition;
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTapDown: (details) =>
+                                                tapPosition = details.globalPosition,
+                                            onTap: () => showAttachmentNamesToast(
+                                              context,
+                                              attachmentLines,
+                                              anchor: tapPosition,
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.attach_file,
+                                                  size: 14,
+                                                  color: textMuted,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  attachmentCount.toString(),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: textMuted,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ],
                                   ],
                                 ),

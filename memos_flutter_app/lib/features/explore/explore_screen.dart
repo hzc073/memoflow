@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/attachment_toast.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
@@ -1585,6 +1586,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       baseUrl: widget.baseUrl,
       authHeader: widget.authHeader,
     );
+    final nonMediaAttachments = filterNonMediaAttachments(memo.attachments);
+    final attachmentLines = attachmentNameLines(nonMediaAttachments);
+    final attachmentCount = nonMediaAttachments.length;
 
     final shadow = widget.commentingMode
         ? null
@@ -1712,6 +1716,55 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       : MemoFlowPalette.audioSurfaceLight,
                   textColor: textMain,
                   enableDownload: true,
+                ),
+              ],
+              if (attachmentCount > 0) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Builder(
+                    builder: (context) {
+                      Offset? tapPosition;
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTapDown: (details) =>
+                              tapPosition = details.globalPosition,
+                          onTap: () => showAttachmentNamesToast(
+                            context,
+                            attachmentLines,
+                            anchor: tapPosition,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.attach_file,
+                                  size: 14,
+                                  color: textMuted,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  attachmentCount.toString(),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
               const SizedBox(height: 10),

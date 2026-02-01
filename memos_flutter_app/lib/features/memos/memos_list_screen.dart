@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/attachment_toast.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
@@ -3102,6 +3103,7 @@ class _MemoCardState extends State<_MemoCard> {
         : const Color(0xFFE05656);
     final isArchived = widget.memo.state == 'ARCHIVED';
     final pendingColor = textMain.withValues(alpha: isDark ? 0.45 : 0.35);
+    final attachmentColor = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final showSyncStatus = syncStatus != _MemoSyncStatus.none;
     final headerMinHeight = showSyncStatus ? 32.0 : 20.0;
     final syncIcon = syncStatus == _MemoSyncStatus.failed
@@ -3141,6 +3143,9 @@ class _MemoCardState extends State<_MemoCard> {
         .where((a) => a.type.startsWith('audio'))
         .toList(growable: false);
     final hasAudio = audio.isNotEmpty;
+    final nonMediaAttachments = filterNonMediaAttachments(memo.attachments);
+    final attachmentLines = attachmentNameLines(nonMediaAttachments);
+    final attachmentCount = nonMediaAttachments.length;
     final language = context.appLanguage;
     final cacheKey = _memoRenderCacheKey(
       memo,
@@ -3515,6 +3520,55 @@ class _MemoCardState extends State<_MemoCard> {
                       buildImageGrid(),
                     ],
                     if (hasAudio) ...[const SizedBox(height: 2), audioRow],
+                    if (attachmentCount > 0) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Builder(
+                          builder: (context) {
+                            Offset? tapPosition;
+                            return Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTapDown: (details) =>
+                                    tapPosition = details.globalPosition,
+                                onTap: () => showAttachmentNamesToast(
+                                  context,
+                                  attachmentLines,
+                                  anchor: tapPosition,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.attach_file,
+                                        size: 14,
+                                        color: attachmentColor,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        attachmentCount.toString(),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: attachmentColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 _MemoRelationsSection(
