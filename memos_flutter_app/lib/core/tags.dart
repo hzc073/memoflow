@@ -50,6 +50,7 @@ void _extractTagsFromLine(String line, Set<String> tags) {
     }
     if (j == i + 1) continue;
     final tag = String.fromCharCodes(runes.sublist(i + 1, j));
-    if (tag.isNotEmpty) tags.add(tag);
+    if (tag.isEmpty) continue;
+    tags.add(tag.toLowerCase());
   }
 }

@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 8;
+  static const _dbVersion = 9;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -157,6 +157,10 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
           if (oldVersion < 8) {
             await _ensureStatsCache(db, rebuild: true);
           }
+          if (oldVersion < 9) {
+            await _normalizeStoredTags(db);
+            await _ensureStatsCache(db, rebuild: true);
+          }
         },
         onOpen: (db) async {
           await _ensureStatsCache(db);
@@ -235,11 +239,51 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
     if (tags.isEmpty) return const [];
     final list = <String>[];
     for (final raw in tags) {
-      final t = raw.trim();
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) continue;
+      final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+      final t = withoutHash.toLowerCase();
       if (t.isEmpty) continue;
       list.add(t);
     }
     return list;
+  }
+
+  static String _normalizeTagsText(String tagsText) {
+    if (tagsText.trim().isEmpty) return '';
+    final normalized = <String>{};
+    for (final part in tagsText.split(' ')) {
+      final trimmed = part.trim();
+      if (trimmed.isEmpty) continue;
+      final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+      if (withoutHash.isEmpty) continue;
+      normalized.add(withoutHash.toLowerCase());
+    }
+    if (normalized.isEmpty) return '';
+    final list = normalized.toList(growable: false)..sort();
+    return list.join(' ');
+  }
+
+  static Future<void> _normalizeStoredTags(Database db) async {
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'memos',
+        columns: const ['uid', 'tags'],
+      );
+      for (final row in rows) {
+        final uid = row['uid'];
+        if (uid is! String || uid.trim().isEmpty) continue;
+        final tagsText = (row['tags'] as String?) ?? '';
+        final normalized = _normalizeTagsText(tagsText);
+        if (normalized == tagsText) continue;
+        await txn.update(
+          'memos',
+          {'tags': normalized},
+          where: 'uid = ?',
+          whereArgs: [uid],
+        );
+      }
+    });
   }
 
   static List<String> _splitTagsText(String tagsText) {
@@ -943,7 +987,9 @@ WHERE id = 1;
     int limit = 100,
   }) async {
     final db = await this.db;
-    final normalizedTag = (tag ?? '').trim();
+    final trimmedTag = (tag ?? '').trim();
+    final withoutHash = trimmedTag.startsWith('#') ? trimmedTag.substring(1) : trimmedTag;
+    final normalizedTag = withoutHash.toLowerCase();
     final normalizedState = (state ?? '').trim();
     final normalizedSearch = (searchQuery ?? '').trim();
 

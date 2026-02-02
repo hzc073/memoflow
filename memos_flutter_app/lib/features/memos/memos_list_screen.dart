@@ -514,7 +514,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (raw == null) return null;
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
-    return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    return withoutHash.toLowerCase();
   }
 
   void _selectTagFilter(String? tag) {
@@ -2135,7 +2136,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                         ref.read(searchHistoryProvider.notifier).remove(value),
                     onSelectHistory: _applySearchQuery,
                     tags: recommendedTags
-                        .take(6)
                         .map((e) => e.tag)
                         .toList(growable: false),
                     onSelectTag: _applySearchQuery,
@@ -2586,7 +2586,7 @@ class _TitleMenuItem extends StatelessWidget {
   }
 }
 
-class _SearchLanding extends StatelessWidget {
+class _SearchLanding extends StatefulWidget {
   const _SearchLanding({
     required this.history,
     required this.onClearHistory,
@@ -2604,6 +2604,14 @@ class _SearchLanding extends StatelessWidget {
   final ValueChanged<String> onSelectTag;
 
   @override
+  State<_SearchLanding> createState() => _SearchLandingState();
+}
+
+class _SearchLandingState extends State<_SearchLanding> {
+  static const _collapsedTagCount = 6;
+  bool _showAllTags = false;
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textMain = isDark
@@ -2617,6 +2625,11 @@ class _SearchLanding extends StatelessWidget {
         ? MemoFlowPalette.cardDark
         : MemoFlowPalette.cardLight;
     final accent = MemoFlowPalette.primary;
+    final tags = widget.tags;
+    final hasMoreTags = tags.length > _collapsedTagCount;
+    final visibleTags = _showAllTags || !hasMoreTags
+        ? tags
+        : tags.take(_collapsedTagCount).toList(growable: false);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
@@ -2633,16 +2646,16 @@ class _SearchLanding extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              if (history.isNotEmpty)
+              if (widget.history.isNotEmpty)
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  onPressed: onClearHistory,
+                  onPressed: widget.onClearHistory,
                   icon: Icon(Icons.delete_outline, size: 18, color: textMuted),
                 ),
             ],
           ),
           const SizedBox(height: 8),
-          if (history.isEmpty)
+          if (widget.history.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
@@ -2653,9 +2666,9 @@ class _SearchLanding extends StatelessWidget {
           else
             Column(
               children: [
-                for (final item in history)
+                for (final item in widget.history)
                   InkWell(
-                    onTap: () => onSelectHistory(item),
+                    onTap: () => widget.onSelectHistory(item),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(
@@ -2670,7 +2683,7 @@ class _SearchLanding extends StatelessWidget {
                           ),
                           IconButton(
                             visualDensity: VisualDensity.compact,
-                            onPressed: () => onRemoveHistory(item),
+                            onPressed: () => widget.onRemoveHistory(item),
                             icon: Icon(Icons.close, size: 18, color: textMuted),
                           ),
                         ],
@@ -2680,13 +2693,38 @@ class _SearchLanding extends StatelessWidget {
               ],
             ),
           const SizedBox(height: 18),
-          Text(
-            context.tr(zh: '推荐标签', en: 'Suggested tags'),
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: textMain,
-            ),
+          Row(
+            children: [
+              Text(
+                context.tr(zh: '推荐标签', en: 'Suggested tags'),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textMain,
+                ),
+              ),
+              const Spacer(),
+              if (hasMoreTags)
+                TextButton.icon(
+                  onPressed: () => setState(() => _showAllTags = !_showAllTags),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: Icon(
+                    _showAllTags ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: textMuted,
+                  ),
+                  label: Text(
+                    _showAllTags
+                        ? context.tr(zh: '收起', en: 'Collapse')
+                        : context.tr(zh: '展开', en: 'Show all'),
+                    style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 10),
           if (tags.isEmpty)
@@ -2699,9 +2737,9 @@ class _SearchLanding extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
-                for (final tag in tags)
+                for (final tag in visibleTags)
                   InkWell(
-                    onTap: () => onSelectTag('#${tag.trim()}'),
+                    onTap: () => widget.onSelectTag('#${tag.trim()}'),
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       padding: const EdgeInsets.symmetric(

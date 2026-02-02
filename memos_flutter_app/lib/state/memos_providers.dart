@@ -99,10 +99,7 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
     filters.add('content.contains("${_escapeFilterValue(normalizedSearch)}")');
   }
 
-  var normalizedTag = (query.tag ?? '').trim();
-  if (normalizedTag.startsWith('#')) {
-    normalizedTag = normalizedTag.substring(1);
-  }
+  final normalizedTag = _normalizeTagInput(query.tag);
   if (normalizedTag.isNotEmpty) {
     filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
   }
@@ -168,7 +165,7 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
 
   final db = ref.watch(databaseProvider);
   final search = query.searchQuery.trim();
-  final normalizedTag = (query.tag ?? '').trim();
+  final normalizedTag = _normalizeTagInput(query.tag);
   final initialPredicate = _buildShortcutPredicate(query.shortcutFilter);
 
   if (initialPredicate != null) {
@@ -268,10 +265,7 @@ String? _buildShortcutFilter({
     filters.add('content.contains("${_escapeFilterValue(normalizedSearch)}")');
   }
 
-  var normalizedTag = (tag ?? '').trim();
-  if (normalizedTag.startsWith('#')) {
-    normalizedTag = normalizedTag.substring(1);
-  }
+  final normalizedTag = _normalizeTagInput(tag);
   if (normalizedTag.isNotEmpty) {
     filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
   }
@@ -311,6 +305,13 @@ String _escapeFilterValue(String raw) {
   return raw.replaceAll('\\', r'\\').replaceAll('"', r'\"').replaceAll('\n', ' ');
 }
 
+String _normalizeTagInput(String? raw) {
+  final trimmed = (raw ?? '').trim();
+  if (trimmed.isEmpty) return '';
+  final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+  return withoutHash.toLowerCase();
+}
+
 bool _shouldFallbackShortcutFilter(DioException e) {
   final status = e.response?.statusCode;
   if (status == null) {
@@ -335,7 +336,7 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
   if (predicate == null) return null;
 
   final normalizedSearch = searchQuery.trim();
-  final normalizedTag = (tag ?? '').trim();
+  final normalizedTag = _normalizeTagInput(tag);
   final rows = await db.listMemos(
     searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
     state: state,
@@ -755,9 +756,7 @@ int _timestampForMemo(LocalMemo memo, bool created) {
 }
 
 String _normalizeFilterTag(String raw) {
-  final trimmed = raw.trim();
-  if (trimmed.isEmpty) return '';
-  return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+  return _normalizeTagInput(raw);
 }
 
 String _normalizeShortcutFilterForLocal(String raw) {
@@ -1055,7 +1054,8 @@ class SyncController extends StateNotifier<AsyncValue<void>> {
   static String _normalizeTag(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return '';
-    return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    return withoutHash.toLowerCase();
   }
 
   static List<String> _mergeTags(List<String> remoteTags, String content) {
