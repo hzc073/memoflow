@@ -5,14 +5,41 @@ String canonicalBaseUrlString(Uri baseUrl) {
 }
 
 Uri sanitizeUserBaseUrl(Uri baseUrl) {
-  var s = baseUrl.toString().trim();
-  while (s.endsWith('/')) {
-    s = s.substring(0, s.length - 1);
+  final raw = baseUrl.toString().trim();
+  if (raw.isEmpty) return baseUrl;
+
+  final uri = Uri.parse(raw);
+  var path = uri.path;
+  while (path.endsWith('/')) {
+    path = path.substring(0, path.length - 1);
   }
-  if (s.toLowerCase().endsWith('/api/v1')) {
-    s = s.substring(0, s.length - '/api/v1'.length);
+
+  final lower = path.toLowerCase();
+  int cut = -1;
+  final apiSegmentIndex = lower.indexOf('/api/');
+  if (apiSegmentIndex >= 0) {
+    cut = apiSegmentIndex;
+  } else {
+    for (final marker in const ['/api/v1', '/api/v2', '/api']) {
+      final index = lower.indexOf(marker);
+      if (index >= 0) {
+        cut = index;
+        break;
+      }
+    }
   }
-  return Uri.parse(s);
+
+  if (cut >= 0) {
+    path = path.substring(0, cut);
+  }
+
+  return Uri(
+    scheme: uri.scheme,
+    userInfo: uri.userInfo,
+    host: uri.host,
+    port: uri.hasPort ? uri.port : null,
+    path: path,
+  );
 }
 
 String dioBaseUrlString(Uri baseUrl) => '${canonicalBaseUrlString(baseUrl)}/';

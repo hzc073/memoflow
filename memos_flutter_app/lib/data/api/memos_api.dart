@@ -108,6 +108,35 @@ class MemosApi {
     );
   }
 
+  factory MemosApi.sessionAuthenticated({
+    required Uri baseUrl,
+    required String sessionCookie,
+    bool useLegacyApi = false,
+    NetworkLogStore? logStore,
+    NetworkLogBuffer? logBuffer,
+    BreadcrumbStore? breadcrumbStore,
+    LogManager? logManager,
+  }) {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: dioBaseUrlString(baseUrl),
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+        headers: <String, Object?>{
+          'Cookie': sessionCookie,
+        },
+      ),
+    );
+    return MemosApi._(
+      dio,
+      useLegacyApi: useLegacyApi,
+      logStore: logStore,
+      logBuffer: logBuffer,
+      breadcrumbStore: breadcrumbStore,
+      logManager: logManager,
+    );
+  }
+
   Future<InstanceProfile> getInstanceProfile() async {
     final response = await _dio.get('api/v1/instance/profile');
     return InstanceProfile.fromJson(_expectJsonMap(response.data));
@@ -378,6 +407,38 @@ class MemosApi {
       throw const FormatException('Unable to determine user name');
     }
     return name.startsWith('users/') ? name : 'users/$name';
+  }
+
+  Future<String> createUserAccessToken({
+    String? userName,
+    required String description,
+    required int expiresInDays,
+  }) async {
+    final trimmedDescription = description.trim();
+    if (trimmedDescription.isEmpty) {
+      throw ArgumentError('createUserAccessToken requires description');
+    }
+
+    try {
+      final numericUserId = await _resolveNumericUserId(userName: userName);
+      final parent = 'users/$numericUserId';
+      final result = await _createUserAccessTokenCompat(
+        parent: parent,
+        description: trimmedDescription,
+        expiresInDays: expiresInDays,
+      );
+      return result.token;
+    } on DioException catch (e) {
+      if (_shouldFallback(e)) {
+        final legacy = await _createPersonalAccessTokenLegacy(
+          userName: userName,
+          description: trimmedDescription,
+          expiresInDays: expiresInDays,
+        );
+        return legacy.token;
+      }
+      rethrow;
+    }
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})> createPersonalAccessToken({

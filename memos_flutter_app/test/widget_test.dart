@@ -39,6 +39,14 @@ class _TestSessionController extends AppSessionController {
   Future<void> addAccountWithPat({required Uri baseUrl, required String personalAccessToken}) async {}
 
   @override
+  Future<void> addAccountWithPassword({
+    required Uri baseUrl,
+    required String username,
+    required String password,
+    required bool useLegacyApi,
+  }) async {}
+
+  @override
   Future<void> removeAccount(String accountKey) async {}
 
   @override
