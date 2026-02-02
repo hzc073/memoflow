@@ -363,6 +363,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   final _searchController = TextEditingController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _titleKey = GlobalKey();
+  final _scrollController = ScrollController();
   GlobalKey<SliverAnimatedListState> _listKey =
       GlobalKey<SliverAnimatedListState>();
 
@@ -374,6 +375,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   List<LocalMemo> _animatedMemos = [];
   String _listSignature = '';
   final Set<String> _pendingRemovedUids = <String>{};
+  var _showBackToTop = false;
   final _audioPlayer = AudioPlayer();
   final _audioPositionNotifier = ValueNotifier(Duration.zero);
   final _audioDurationNotifier = ValueNotifier<Duration?>(null);
@@ -406,6 +408,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   void initState() {
     super.initState();
     _activeTagFilter = _normalizeTag(widget.tag);
+    _scrollController.addListener(_handleScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleScroll());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final message = widget.toastMessage;
@@ -499,6 +503,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
     _audioDurationSub?.cancel();
@@ -520,6 +525,25 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   void _selectTagFilter(String? tag) {
     setState(() => _activeTagFilter = _normalizeTag(tag));
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final metrics = _scrollController.position;
+    final threshold = metrics.viewportDimension * 2;
+    final shouldShow = metrics.pixels >= threshold;
+    if (shouldShow == _showBackToTop) return;
+    if (!mounted) return;
+    setState(() => _showBackToTop = shouldShow);
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   bool _shouldEnableHomeSort({required bool useRemoteSearch}) {
@@ -1876,6 +1900,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final listVisualOffset = widget.showPillActions ? 6.0 : 0.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final backToTopBaseOffset =
+        widget.enableCompose && !_searching ? 104.0 : 24.0;
     void maybeHaptic() {
       if (!hapticsEnabled) return;
       HapticFeedback.selectionClick();
@@ -1907,16 +1934,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 onOpenNotifications: _openNotifications,
               )
             : null,
-        body: RefreshIndicator(
-          onRefresh: () async {
-            await ref.read(syncControllerProvider.notifier).syncNow();
-            if (useShortcutFilter) {
-              ref.invalidate(shortcutMemosProvider(shortcutQuery));
-            }
-          },
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
+        body: Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: () async {
+                await ref.read(syncControllerProvider.notifier).syncNow();
+                if (useShortcutFilter) {
+                  ref.invalidate(shortcutMemosProvider(shortcutQuery));
+                }
+              },
+              child: CustomScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
               SliverAppBar(
                 pinned: true,
                 backgroundColor: headerBg,
@@ -2186,6 +2216,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
             ],
           ),
         ),
+        Positioned(
+          right: 16,
+          bottom: backToTopBaseOffset + bottomInset,
+          child: _BackToTopButton(
+            visible: _showBackToTop,
+            hapticsEnabled: hapticsEnabled,
+            onPressed: _scrollToTop,
+          ),
+        ),
+      ],
+    ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         floatingActionButton: widget.enableCompose && !_searching
             ? _MemoFlowFab(
@@ -4365,6 +4406,86 @@ class _MemoFlowFabState extends State<_MemoFlowFab> {
             ],
           ),
           child: const Icon(Icons.add, size: 32, color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+class _BackToTopButton extends StatefulWidget {
+  const _BackToTopButton({
+    required this.visible,
+    required this.hapticsEnabled,
+    required this.onPressed,
+  });
+
+  final bool visible;
+  final bool hapticsEnabled;
+  final VoidCallback onPressed;
+
+  @override
+  State<_BackToTopButton> createState() => _BackToTopButtonState();
+}
+
+class _BackToTopButtonState extends State<_BackToTopButton> {
+  var _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = MemoFlowPalette.primary;
+    final iconColor = Colors.white;
+    final scale = widget.visible ? (_pressed ? 0.92 : 1.0) : 0.85;
+
+    return IgnorePointer(
+      ignoring: !widget.visible,
+      child: AnimatedOpacity(
+        opacity: widget.visible ? 1 : 0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          child: Semantics(
+            button: true,
+            label: context.tr(zh: '回到顶部', en: 'Back to top'),
+            child: GestureDetector(
+              onTapDown: (_) {
+                if (widget.hapticsEnabled) {
+                  HapticFeedback.selectionClick();
+                }
+                setState(() => _pressed = true);
+              },
+              onTapCancel: () => setState(() => _pressed = false),
+              onTapUp: (_) {
+                setState(() => _pressed = false);
+                widget.onPressed();
+              },
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: bg,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                      color: MemoFlowPalette.primary.withValues(
+                        alpha: isDark ? 0.35 : 0.25,
+                      ),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.keyboard_arrow_up,
+                  size: 26,
+                  color: iconColor,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
