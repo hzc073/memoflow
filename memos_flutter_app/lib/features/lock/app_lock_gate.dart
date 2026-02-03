@@ -99,6 +99,7 @@ class _AppLockOverlay extends ConsumerStatefulWidget {
 
 class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
   late final TextEditingController _controller;
+  late final FocusNode _focusNode;
   String? _error;
   var _unlocking = false;
 
@@ -106,10 +107,18 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
   void initState() {
     super.initState();
     _controller = TextEditingController();
+    _focusNode = FocusNode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Ensure the password field steals focus from any underlying editor.
+      FocusManager.instance.primaryFocus?.unfocus();
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
   }
 
   @override
   void dispose() {
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -205,6 +214,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _controller,
+                          focusNode: _focusNode,
                           autofocus: true,
                           obscureText: true,
                           onSubmitted: (_) => _unlock(),
