@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 9;
+  static const _dbVersion = 10;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -108,6 +108,14 @@ CREATE TABLE IF NOT EXISTS import_history (
 );
 ''');
 
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_relations_cache (
+  memo_uid TEXT NOT NULL PRIMARY KEY,
+  relations_json TEXT NOT NULL DEFAULT '[]',
+  updated_time INTEGER NOT NULL
+);
+''');
+
           await _ensureStatsCache(db, rebuild: true);
           await _ensureFts(db, rebuild: true);
         },
@@ -160,6 +168,15 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
           if (oldVersion < 9) {
             await _normalizeStoredTags(db);
             await _ensureStatsCache(db, rebuild: true);
+          }
+          if (oldVersion < 10) {
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_relations_cache (
+  memo_uid TEXT NOT NULL PRIMARY KEY,
+  relations_json TEXT NOT NULL DEFAULT '[]',
+  updated_time INTEGER NOT NULL
+);
+''');
           }
         },
         onOpen: (db) async {
@@ -669,6 +686,62 @@ WHERE id = 1;
     _notifyChanged();
   }
 
+  Future<String?> getMemoRelationsCacheJson(String memoUid) async {
+    final normalized = memoUid.trim();
+    if (normalized.isEmpty) return null;
+    final db = await this.db;
+    final rows = await db.query(
+      'memo_relations_cache',
+      columns: const ['relations_json'],
+      where: 'memo_uid = ?',
+      whereArgs: [normalized],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final raw = rows.first['relations_json'];
+    return raw is String ? raw : null;
+  }
+
+  Future<void> upsertMemoRelationsCache(String memoUid, {required String relationsJson}) async {
+    final normalized = memoUid.trim();
+    if (normalized.isEmpty) return;
+    final db = await this.db;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final updated = await db.update(
+      'memo_relations_cache',
+      {
+        'relations_json': relationsJson,
+        'updated_time': now,
+      },
+      where: 'memo_uid = ?',
+      whereArgs: [normalized],
+    );
+    if (updated == 0) {
+      await db.insert(
+        'memo_relations_cache',
+        {
+          'memo_uid': normalized,
+          'relations_json': relationsJson,
+          'updated_time': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    }
+    _notifyChanged();
+  }
+
+  Future<void> deleteMemoRelationsCache(String memoUid) async {
+    final normalized = memoUid.trim();
+    if (normalized.isEmpty) return;
+    final db = await this.db;
+    await db.delete(
+      'memo_relations_cache',
+      where: 'memo_uid = ?',
+      whereArgs: [normalized],
+    );
+    _notifyChanged();
+  }
+
   Future<void> renameMemoUid({required String oldUid, required String newUid}) async {
     final db = await this.db;
     await db.transaction((txn) async {
@@ -686,6 +759,12 @@ WHERE id = 1;
       );
       await txn.update(
         'attachments',
+        {'memo_uid': newUid},
+        where: 'memo_uid = ?',
+        whereArgs: [oldUid],
+      );
+      await txn.update(
+        'memo_relations_cache',
         {'memo_uid': newUid},
         where: 'memo_uid = ?',
         whereArgs: [oldUid],
@@ -879,6 +958,7 @@ WHERE id = 1;
       final rows = await txn.query('memos', columns: const ['id'], where: 'uid = ?', whereArgs: [uid], limit: 1);
       final rowId = rows.firstOrNull?['id'] as int?;
       await txn.delete('memos', where: 'uid = ?', whereArgs: [uid]);
+      await txn.delete('memo_relations_cache', where: 'memo_uid = ?', whereArgs: [uid]);
       if (rowId != null) {
         await txn.delete('memos_fts', where: 'rowid = ?', whereArgs: [rowId]);
       }
