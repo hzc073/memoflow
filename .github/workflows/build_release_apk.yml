@@ -112,3 +112,7 @@ jobs:
           artifacts: "memos_flutter_app/build/app/outputs/**/MemoFlow_v*-release.apk"
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
+
+      - name: Trigger CF announcement update
+        run: |
+          curl -sS -X GET "https://gentle-wood-7340.759737361.workers.dev/"
