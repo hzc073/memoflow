@@ -467,7 +467,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
     final contentWidget = _CollapsibleText(
       text: memo.content,
-      collapseEnabled: prefs.collapseLongContent,
+      collapseEnabled: false,
       initiallyExpanded: true,
       style: contentStyle,
       hapticsEnabled: hapticsEnabled,
