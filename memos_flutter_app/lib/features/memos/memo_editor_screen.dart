@@ -751,7 +751,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (_saving) return;
     if (_relationsLoading) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '姝ｅ湪鍔犺浇寮曠敤', en: 'Loading references'))),
+        SnackBar(content: Text(context.tr(zh: '正在加载引用', en: 'Loading references'))),
       );
       return;
     }
@@ -760,7 +760,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       if (!_relationsLoaded) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '鍔犺浇寮曠敤澶辫触', en: 'Failed to load references'))),
+          SnackBar(content: Text(context.tr(zh: '加载引用失败', en: 'Failed to load references'))),
         );
         return;
       }
