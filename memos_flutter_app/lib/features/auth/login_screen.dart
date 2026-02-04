@@ -442,11 +442,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ref.read(loginBaseUrlDraftProvider.notifier).state = v,
                     validator: (v) {
                       final raw = (v ?? '').trim();
-                      if (raw.isEmpty)
+                      if (raw.isEmpty) {
                         return context.tr(
                           zh: '请输入服务器地址',
                           en: 'Please enter server URL',
                         );
+                      }
                       final uri = Uri.tryParse(raw);
                       if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
                         return context.tr(

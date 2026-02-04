@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -222,6 +223,10 @@ class AppSessionNotifier extends AppSessionController {
     final attempts = useLegacyApi
         ? <_PasswordSignInAttempt>[
             _PasswordSignInAttempt(
+              _PasswordSignInEndpoint.grpcWebSessionV1,
+              () => _signInGrpcWeb(baseUrl: baseUrl, username: username, password: password),
+            ),
+            _PasswordSignInAttempt(
               _PasswordSignInEndpoint.signinV2,
               () => _signInV2(baseUrl: baseUrl, username: username, password: password),
             ),
@@ -235,6 +240,10 @@ class AppSessionNotifier extends AppSessionController {
             ),
           ]
         : <_PasswordSignInAttempt>[
+            _PasswordSignInAttempt(
+              _PasswordSignInEndpoint.grpcWebSessionV1,
+              () => _signInGrpcWeb(baseUrl: baseUrl, username: username, password: password),
+            ),
             _PasswordSignInAttempt(
               _PasswordSignInEndpoint.sessionV1,
               () => _signInSessions(baseUrl: baseUrl, username: username, password: password),
@@ -330,7 +339,11 @@ class AppSessionNotifier extends AppSessionController {
     required String username,
     required String password,
   }) async {
-    final dio = _newDio(baseUrl);
+    final dio = _newDio(
+      baseUrl,
+      connectTimeout: _kLoginConnectTimeout,
+      receiveTimeout: _kLoginReceiveTimeout,
+    );
     final response = await dio.post(
       'api/v1/auth/sessions',
       data: {
@@ -352,12 +365,42 @@ class AppSessionNotifier extends AppSessionController {
     );
   }
 
+  Future<_PasswordSignInResult> _signInGrpcWeb({
+    required Uri baseUrl,
+    required String username,
+    required String password,
+  }) async {
+    final request = _encodeCreateSessionRequest(username: username, password: password);
+    final response = await _grpcWebPost(
+      baseUrl: baseUrl,
+      path: _kGrpcWebCreateSessionPath,
+      data: request,
+    );
+    final message = _parseGrpcWebResponse(response.bytes);
+    final user = _parseCreateSessionUser(message.messageBytes);
+
+    final sessionValue = _extractCookieValue(response.headers, _kSessionCookieName);
+    if (sessionValue == null || sessionValue.isEmpty) {
+      throw const FormatException('Session cookie missing in response');
+    }
+    final sessionCookie = '$_kSessionCookieName=$sessionValue';
+    return _PasswordSignInResult(
+      user: user,
+      endpoint: _PasswordSignInEndpoint.grpcWebSessionV1,
+      sessionCookie: sessionCookie,
+    );
+  }
+
   Future<_PasswordSignInResult> _signInV1({
     required Uri baseUrl,
     required String username,
     required String password,
   }) async {
-    final dio = _newDio(baseUrl);
+    final dio = _newDio(
+      baseUrl,
+      connectTimeout: _kLoginConnectTimeout,
+      receiveTimeout: _kLoginReceiveTimeout,
+    );
     final response = await dio.post(
       'api/v1/auth/signin',
       data: {
@@ -383,7 +426,11 @@ class AppSessionNotifier extends AppSessionController {
     required String username,
     required String password,
   }) async {
-    final dio = _newDio(baseUrl);
+    final dio = _newDio(
+      baseUrl,
+      connectTimeout: _kLoginConnectTimeout,
+      receiveTimeout: _kLoginReceiveTimeout,
+    );
     final response = await dio.post(
       'api/v2/auth/signin',
       data: {
@@ -423,6 +470,38 @@ class AppSessionNotifier extends AppSessionController {
     }
 
     if (signIn.sessionCookie != null) {
+      try {
+        LogManager.instance.debug(
+          'Create access token (grpc-web)',
+          context: <String, Object?>{
+            'baseUrl': canonicalBaseUrlString(baseUrl),
+            'user': userName,
+          },
+        );
+        return await _createUserAccessTokenGrpcWeb(
+          baseUrl: baseUrl,
+          sessionCookie: signIn.sessionCookie!,
+          userName: userName,
+          description: description,
+        );
+      } on DioException catch (e) {
+        LogManager.instance.warn(
+          'Create access token failed (grpc-web)',
+          error: e,
+          context: <String, Object?>{
+            'status': e.response?.statusCode,
+            'message': _extractDioMessage(e),
+            'url': e.requestOptions.uri.toString(),
+          },
+        );
+      } on FormatException catch (e) {
+        LogManager.instance.warn(
+          'Create access token failed (grpc-web)',
+          error: e,
+          context: <String, Object?>{'format': e.message},
+        );
+      }
+
       final api = MemosApi.sessionAuthenticated(
         baseUrl: baseUrl,
         sessionCookie: signIn.sessionCookie!,
@@ -510,7 +589,12 @@ class AppSessionNotifier extends AppSessionController {
     required String description,
     required int expiresInDays,
   }) async {
-    final dio = _newDio(baseUrl, headers: {'Authorization': 'Bearer $accessToken'});
+    final dio = _newDio(
+      baseUrl,
+      headers: {'Authorization': 'Bearer $accessToken'},
+      connectTimeout: _kLoginConnectTimeout,
+      receiveTimeout: _kLoginReceiveTimeout,
+    );
     final expiresAt = expiresInDays > 0 ? DateTime.now().toUtc().add(Duration(days: expiresInDays)) : null;
     final path = userName.startsWith('users/') ? 'api/v2/$userName/access_tokens' : 'api/v2/users/$userName/access_tokens';
     final response = await dio.post(
@@ -532,6 +616,31 @@ class AppSessionNotifier extends AppSessionController {
     }
     return tokenValue;
   }
+
+  Future<String> _createUserAccessTokenGrpcWeb({
+    required Uri baseUrl,
+    required String sessionCookie,
+    required String userName,
+    required String description,
+  }) async {
+    final normalizedUser = userName.startsWith('users/') ? userName : 'users/$userName';
+    final request = _encodeCreateUserAccessTokenRequest(
+      parent: normalizedUser,
+      description: description,
+    );
+    final response = await _grpcWebPost(
+      baseUrl: baseUrl,
+      path: _kGrpcWebCreateUserAccessTokenPath,
+      data: request,
+      headers: <String, String>{'Cookie': sessionCookie},
+    );
+    final message = _parseGrpcWebResponse(response.bytes);
+    final token = _parseUserAccessToken(message.messageBytes);
+    if (token.isEmpty) {
+      throw const FormatException('Token missing in response');
+    }
+    return token;
+  }
 }
 
 extension _FirstOrNullAccountExt<T> on List<T> {
@@ -539,6 +648,7 @@ extension _FirstOrNullAccountExt<T> on List<T> {
 }
 
 enum _PasswordSignInEndpoint {
+  grpcWebSessionV1,
   sessionV1,
   signinV1,
   signinV2,
@@ -568,13 +678,23 @@ class _PasswordSignInResult {
 const String _kPasswordLoginTokenDescription = 'MemoFlow (password login)';
 const String _kAccessTokenCookieName = 'memos.access-token';
 const String _kSessionCookieName = 'user_session';
+const String _kGrpcWebContentType = 'application/grpc-web+proto';
+const String _kGrpcWebCreateSessionPath = '/memos.api.v1.AuthService/CreateSession';
+const String _kGrpcWebCreateUserAccessTokenPath = '/memos.api.v1.UserService/CreateUserAccessToken';
+const Duration _kLoginConnectTimeout = Duration(seconds: 20);
+const Duration _kLoginReceiveTimeout = Duration(seconds: 30);
 
-Dio _newDio(Uri baseUrl, {Map<String, Object?>? headers}) {
+Dio _newDio(
+  Uri baseUrl, {
+  Map<String, Object?>? headers,
+  Duration? connectTimeout,
+  Duration? receiveTimeout,
+}) {
   return Dio(
     BaseOptions(
       baseUrl: dioBaseUrlString(baseUrl),
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 20),
+      connectTimeout: connectTimeout ?? const Duration(seconds: 10),
+      receiveTimeout: receiveTimeout ?? const Duration(seconds: 20),
       headers: headers,
     ),
   );
@@ -617,6 +737,7 @@ String? _extractCookieValue(Headers headers, String name) {
 
 extension _PasswordSignInEndpointLabel on _PasswordSignInEndpoint {
   String get label => switch (this) {
+        _PasswordSignInEndpoint.grpcWebSessionV1 => 'grpc-web/CreateSession',
         _PasswordSignInEndpoint.sessionV1 => 'v1/auth/sessions',
         _PasswordSignInEndpoint.signinV1 => 'v1/auth/signin',
         _PasswordSignInEndpoint.signinV2 => 'v2/auth/signin',
@@ -644,4 +765,350 @@ String _readString(Object? value) {
   if (value is String) return value.trim();
   if (value == null) return '';
   return value.toString().trim();
+}
+
+class _GrpcWebResponse {
+  const _GrpcWebResponse({
+    required this.bytes,
+    required this.headers,
+  });
+
+  final Uint8List bytes;
+  final Headers headers;
+}
+
+class _GrpcWebMessage {
+  const _GrpcWebMessage({
+    required this.messageBytes,
+    required this.trailers,
+  });
+
+  final Uint8List messageBytes;
+  final Map<String, String> trailers;
+}
+
+Future<_GrpcWebResponse> _grpcWebPost({
+  required Uri baseUrl,
+  required String path,
+  required Uint8List data,
+  Map<String, String>? headers,
+}) async {
+  final dio = _newDio(
+    baseUrl,
+    headers: <String, Object?>{
+      'Content-Type': _kGrpcWebContentType,
+      'Accept': _kGrpcWebContentType,
+      'grpc-accept-encoding': 'identity',
+      'accept-encoding': 'identity',
+      'X-Grpc-Web': '1',
+      'X-User-Agent': 'grpc-web-dart',
+      if (headers != null) ...headers,
+    },
+    connectTimeout: _kLoginConnectTimeout,
+    receiveTimeout: _kLoginReceiveTimeout,
+  );
+  final response = await dio.post(
+    path,
+    data: _wrapGrpcWebMessage(data),
+    options: Options(responseType: ResponseType.bytes),
+  );
+  final bytes = response.data is Uint8List
+      ? response.data as Uint8List
+      : Uint8List.fromList((response.data as List).cast<int>());
+  return _GrpcWebResponse(bytes: bytes, headers: response.headers);
+}
+
+Uint8List _wrapGrpcWebMessage(Uint8List message) {
+  final buffer = BytesBuilder();
+  buffer.addByte(0);
+  buffer.add(_writeGrpcWebLength(message.length));
+  buffer.add(message);
+  return buffer.toBytes();
+}
+
+Uint8List _writeGrpcWebLength(int length) {
+  return Uint8List.fromList([
+    (length >> 24) & 0xFF,
+    (length >> 16) & 0xFF,
+    (length >> 8) & 0xFF,
+    length & 0xFF,
+  ]);
+}
+
+_GrpcWebMessage _parseGrpcWebResponse(Uint8List bytes) {
+  final decoded = _maybeDecodeGrpcWebText(bytes);
+  final data = decoded ?? bytes;
+  final buffer = BytesBuilder();
+  final trailers = <String, String>{};
+  var offset = 0;
+  while (offset + 5 <= data.length) {
+    final flag = data[offset];
+    final length = (data[offset + 1] << 24) |
+        (data[offset + 2] << 16) |
+        (data[offset + 3] << 8) |
+        data[offset + 4];
+    offset += 5;
+    if (offset + length > data.length) break;
+    final frame = Uint8List.sublistView(data, offset, offset + length);
+    offset += length;
+    if ((flag & 0x80) != 0) {
+      _parseGrpcWebTrailers(frame, trailers);
+    } else {
+      buffer.add(frame);
+    }
+  }
+  if (trailers.isNotEmpty) {
+    final status = trailers['grpc-status'];
+    if (status != null && status != '0') {
+      final message = trailers['grpc-message'] ?? 'grpc status $status';
+      throw FormatException(message);
+    }
+  }
+  return _GrpcWebMessage(messageBytes: buffer.toBytes(), trailers: trailers);
+}
+
+Uint8List? _maybeDecodeGrpcWebText(Uint8List bytes) {
+  if (bytes.isEmpty) return null;
+  var isAscii = true;
+  for (final b in bytes) {
+    if (b < 9 || b > 126) {
+      if (b != 10 && b != 13) {
+        isAscii = false;
+        break;
+      }
+    }
+  }
+  if (!isAscii) return null;
+  final text = utf8.decode(bytes, allowMalformed: true).trim();
+  if (text.isEmpty) return null;
+  final base64Text = text.replaceAll(RegExp(r'\s+'), '');
+  if (!RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(base64Text)) return null;
+  try {
+    return Uint8List.fromList(base64.decode(base64Text));
+  } catch (_) {
+    return null;
+  }
+}
+
+void _parseGrpcWebTrailers(Uint8List frame, Map<String, String> out) {
+  final text = utf8.decode(frame, allowMalformed: true);
+  final lines = text.split('\r\n');
+  for (final line in lines) {
+    if (line.isEmpty) continue;
+    final index = line.indexOf(':');
+    if (index <= 0) continue;
+    final key = line.substring(0, index).trim().toLowerCase();
+    final value = line.substring(index + 1).trim();
+    out[key] = value;
+  }
+}
+
+Uint8List _encodeCreateSessionRequest({
+  required String username,
+  required String password,
+}) {
+  final credentials = _encodePasswordCredentials(username: username, password: password);
+  final buffer = BytesBuilder();
+  _writeBytesField(buffer, 1, credentials);
+  return buffer.toBytes();
+}
+
+Uint8List _encodePasswordCredentials({
+  required String username,
+  required String password,
+}) {
+  final buffer = BytesBuilder();
+  _writeStringField(buffer, 1, username);
+  _writeStringField(buffer, 2, password);
+  return buffer.toBytes();
+}
+
+Uint8List _encodeCreateUserAccessTokenRequest({
+  required String parent,
+  required String description,
+}) {
+  final accessToken = _encodeUserAccessToken(description: description);
+  final buffer = BytesBuilder();
+  _writeStringField(buffer, 1, parent);
+  _writeBytesField(buffer, 2, accessToken);
+  return buffer.toBytes();
+}
+
+Uint8List _encodeUserAccessToken({required String description}) {
+  final buffer = BytesBuilder();
+  _writeStringField(buffer, 3, description);
+  return buffer.toBytes();
+}
+
+void _writeStringField(BytesBuilder buffer, int fieldNumber, String value) {
+  final bytes = utf8.encode(value);
+  _writeTag(buffer, fieldNumber, 2);
+  _writeVarint(buffer, bytes.length);
+  buffer.add(bytes);
+}
+
+void _writeBytesField(BytesBuilder buffer, int fieldNumber, Uint8List bytes) {
+  _writeTag(buffer, fieldNumber, 2);
+  _writeVarint(buffer, bytes.length);
+  buffer.add(bytes);
+}
+
+void _writeTag(BytesBuilder buffer, int fieldNumber, int wireType) {
+  final tag = (fieldNumber << 3) | wireType;
+  _writeVarint(buffer, tag);
+}
+
+void _writeVarint(BytesBuilder buffer, int value) {
+  var v = value;
+  while (v >= 0x80) {
+    buffer.addByte((v & 0x7F) | 0x80);
+    v >>= 7;
+  }
+  buffer.addByte(v);
+}
+
+User _parseCreateSessionUser(Uint8List messageBytes) {
+  final reader = _ProtoReader(messageBytes);
+  Uint8List? userBytes;
+  while (!reader.isAtEnd) {
+    final tag = reader.readTag();
+    final field = tag >> 3;
+    final wire = tag & 0x7;
+    if (field == 1 && wire == 2) {
+      userBytes = reader.readBytes();
+      break;
+    }
+    reader.skipField(wire);
+  }
+  if (userBytes == null) {
+    throw const FormatException('Missing user in response');
+  }
+  return _parseUserMessage(userBytes);
+}
+
+User _parseUserMessage(Uint8List bytes) {
+  final reader = _ProtoReader(bytes);
+  var name = '';
+  var username = '';
+  var displayName = '';
+  var avatarUrl = '';
+  var description = '';
+  while (!reader.isAtEnd) {
+    final tag = reader.readTag();
+    final field = tag >> 3;
+    final wire = tag & 0x7;
+    var handled = false;
+    switch (field) {
+      case 1:
+        if (wire == 2) {
+          name = reader.readString();
+          handled = true;
+        }
+        break;
+      case 3:
+        if (wire == 2) {
+          username = reader.readString();
+          handled = true;
+        }
+        break;
+      case 5:
+        if (wire == 2) {
+          displayName = reader.readString();
+          handled = true;
+        }
+        break;
+      case 6:
+        if (wire == 2) {
+          avatarUrl = reader.readString();
+          handled = true;
+        }
+        break;
+      case 7:
+        if (wire == 2) {
+          description = reader.readString();
+          handled = true;
+        }
+        break;
+    }
+    if (!handled) {
+      reader.skipField(wire);
+    }
+  }
+  final normalizedName = name.startsWith('users/') || name.isEmpty ? name : 'users/$name';
+  final finalUsername = username.isNotEmpty ? username : normalizedName.split('/').last;
+  final finalDisplayName = displayName.isNotEmpty ? displayName : finalUsername;
+  return User(
+    name: normalizedName,
+    username: finalUsername,
+    displayName: finalDisplayName,
+    avatarUrl: avatarUrl,
+    description: description,
+  );
+}
+
+String _parseUserAccessToken(Uint8List messageBytes) {
+  final reader = _ProtoReader(messageBytes);
+  while (!reader.isAtEnd) {
+    final tag = reader.readTag();
+    final field = tag >> 3;
+    final wire = tag & 0x7;
+    if (field == 2 && wire == 2) {
+      return reader.readString();
+    }
+    reader.skipField(wire);
+  }
+  return '';
+}
+
+class _ProtoReader {
+  _ProtoReader(this._data);
+
+  final Uint8List _data;
+  int _pos = 0;
+
+  bool get isAtEnd => _pos >= _data.length;
+
+  int readTag() => readVarint();
+
+  int readVarint() {
+    var shift = 0;
+    var result = 0;
+    while (_pos < _data.length) {
+      final byte = _data[_pos++];
+      result |= (byte & 0x7F) << shift;
+      if ((byte & 0x80) == 0) return result;
+      shift += 7;
+    }
+    return result;
+  }
+
+  Uint8List readBytes() {
+    final length = readVarint();
+    final end = (_pos + length).clamp(0, _data.length);
+    final bytes = Uint8List.sublistView(_data, _pos, end);
+    _pos = end;
+    return bytes;
+  }
+
+  String readString() => utf8.decode(readBytes(), allowMalformed: true);
+
+  void skipField(int wireType) {
+    switch (wireType) {
+      case 0:
+        readVarint();
+        return;
+      case 2:
+        final length = readVarint();
+        _pos = (_pos + length).clamp(0, _data.length);
+        return;
+      case 5:
+        _pos = (_pos + 4).clamp(0, _data.length);
+        return;
+      case 1:
+        _pos = (_pos + 8).clamp(0, _data.length);
+        return;
+      default:
+        return;
+    }
+  }
 }
