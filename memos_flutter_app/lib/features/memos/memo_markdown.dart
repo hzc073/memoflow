@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:highlight/highlight.dart' as hi;
 import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,6 +29,9 @@ final RegExp _longWordPattern = RegExp(r'[^\s]{30,}', unicode: true);
 const String _zeroWidthSpace = '\u200B';
 const int _longWordChunk = 20;
 
+const String _mathInlineTag = 'memo-math-inline';
+const String _mathBlockTag = 'memo-math-block';
+
 const Set<String> _htmlBlockTags = {
   'p',
   'blockquote',
@@ -42,7 +47,71 @@ const Set<String> _htmlBlockTags = {
   'h4',
   'h5',
   'h6',
+  _mathBlockTag,
 };
+
+const Set<String> _blockedHtmlTags = {
+  'script',
+  'style',
+};
+
+const Set<String> _allowedHtmlTags = {
+  'a',
+  'blockquote',
+  'br',
+  'code',
+  'del',
+  'em',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'hr',
+  'img',
+  'input',
+  'li',
+  'ol',
+  'p',
+  'pre',
+  'span',
+  'strong',
+  'sub',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'th',
+  'thead',
+  'tr',
+  'ul',
+  _mathInlineTag,
+  _mathBlockTag,
+};
+
+const Map<String, Set<String>> _allowedHtmlAttributes = {
+  'a': {'href', 'title'},
+  'img': {'src', 'alt', 'title', 'width', 'height'},
+  'code': {'class'},
+  'pre': {'class'},
+  'span': {'class', 'data-tag'},
+  'li': {'class'},
+  'ul': {'class'},
+  'ol': {'class'},
+  'p': {'class'},
+  'input': {'type', 'checked', 'disabled'},
+};
+
+final List<RegExp> _allowedClassPatterns = [
+  RegExp(r'^memotag$'),
+  RegExp(r'^memohighlight$'),
+  RegExp(r'^task-list-item$'),
+  RegExp(r'^contains-task-list$'),
+  RegExp(r'^language-[\w-]+$'),
+];
+
+const double _defaultLineHeight = 1.4;
 
 class _LruCache<K, V> {
   _LruCache({required int capacity}) : _capacity = capacity;
@@ -188,6 +257,7 @@ class MemoMarkdown extends StatelessWidget {
     required this.data,
     this.cacheKey,
     this.textStyle,
+    this.maxLines,
     this.normalizeHeadings = false,
     this.selectable = false,
     this.blockSpacing = 6,
@@ -199,6 +269,7 @@ class MemoMarkdown extends StatelessWidget {
   final String data;
   final String? cacheKey;
   final TextStyle? textStyle;
+  final int? maxLines;
   final bool normalizeHeadings;
   final bool selectable;
   final double blockSpacing;
@@ -277,11 +348,10 @@ class MemoMarkdown extends StatelessWidget {
 
     final cacheKey = this.cacheKey;
     final cachedHtml = cacheKey == null ? null : _markdownHtmlCache.get(cacheKey);
-    final rawHtml = cachedHtml ?? _renderMarkdownToHtml(tagged);
+    final html = cachedHtml ?? _buildMemoHtml(tagged);
     if (cacheKey != null && cachedHtml == null) {
-      _markdownHtmlCache.set(cacheKey, rawHtml);
+      _markdownHtmlCache.set(cacheKey, html);
     }
-    final html = _escapeCodeBlocks(rawHtml);
 
     var taskIndex = 0;
     Widget? buildTableWidget(dom.Element element) {
@@ -348,6 +418,37 @@ class MemoMarkdown extends StatelessWidget {
 
     Widget? customWidgetBuilder(dom.Element element) {
       final localName = element.localName;
+      if (localName == _mathInlineTag || localName == _mathBlockTag) {
+        final tex = element.text.trim();
+        if (tex.isEmpty) return const SizedBox.shrink();
+        final isBlock = localName == _mathBlockTag;
+        final fontSize = baseStyle.fontSize ?? 14;
+        final mathWidget = Math.tex(
+          tex,
+          mathStyle: isBlock ? MathStyle.display : MathStyle.text,
+          textStyle: baseStyle.copyWith(
+            fontSize: isBlock ? fontSize * 1.05 : fontSize,
+          ),
+        );
+        if (!isBlock) {
+          return InlineCustomWidget(
+            alignment: PlaceholderAlignment.middle,
+            child: mathWidget,
+          );
+        }
+        final blockChild = Align(
+          alignment: Alignment.centerLeft,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: mathWidget,
+          ),
+        );
+        if (blockSpacing <= 0) return blockChild;
+        return Padding(
+          padding: EdgeInsets.only(bottom: blockSpacing),
+          child: blockChild,
+        );
+      }
       if (localName == 'input') {
         final type = element.attributes['type']?.toLowerCase();
         if (type != 'checkbox') return null;
@@ -560,7 +661,7 @@ class MemoMarkdown extends StatelessWidget {
     }
 
     final renderMode = shrinkWrap ? RenderMode.column : const ListViewMode(shrinkWrap: false);
-    final content = HtmlWidget(
+    Widget content = HtmlWidget(
       html,
       factoryBuilder: () => _MemoMarkdownWidgetFactory(),
       renderMode: renderMode,
@@ -586,6 +687,24 @@ class MemoMarkdown extends StatelessWidget {
         return true;
       },
     );
+
+    final maxLines = this.maxLines;
+    if (maxLines != null && maxLines > 0) {
+      final fontSize = baseStyle.fontSize ?? 14;
+      final lineHeight = baseStyle.height ?? _defaultLineHeight;
+      final maxHeight = fontSize * lineHeight * maxLines;
+      content = ClipRect(
+        child: SizedBox(
+          height: maxHeight,
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minHeight: 0,
+            maxHeight: double.infinity,
+            child: content,
+          ),
+        ),
+      );
+    }
 
     if (!selectable) return content;
     return SelectionArea(child: content);
@@ -729,11 +848,163 @@ String _escapeHtmlAttribute(String value) {
       .replaceAll('>', '&gt;');
 }
 
+String _buildMemoHtml(String text) {
+  final rawHtml = _renderMarkdownToHtml(text);
+  final sanitized = _sanitizeHtml(rawHtml);
+  return _escapeCodeBlocks(sanitized);
+}
+
+String _sanitizeHtml(String html) {
+  final fragment = html_parser.parseFragment(html);
+  _sanitizeDomNode(fragment);
+  return fragment.outerHtml;
+}
+
+void _sanitizeDomNode(dom.Node node) {
+  final children = node.nodes.toList(growable: false);
+  for (final child in children) {
+    if (child is dom.Element) {
+      _sanitizeElement(child);
+      continue;
+    }
+    if (child.nodeType == dom.Node.COMMENT_NODE) {
+      child.remove();
+    }
+  }
+}
+
+void _sanitizeElement(dom.Element element) {
+  final tag = element.localName;
+  if (tag == null) {
+    element.remove();
+    return;
+  }
+  if (_blockedHtmlTags.contains(tag)) {
+    element.remove();
+    return;
+  }
+  if (!_allowedHtmlTags.contains(tag)) {
+    _unwrapElement(element);
+    return;
+  }
+  if (!_sanitizeAttributes(element, tag)) {
+    return;
+  }
+  _sanitizeDomNode(element);
+}
+
+bool _sanitizeAttributes(dom.Element element, String tag) {
+  final allowedAttrs = _allowedHtmlAttributes[tag] ?? const <String>{};
+  final attributes = Map<String, String>.from(element.attributes);
+  element.attributes.clear();
+  for (final entry in attributes.entries) {
+    if (!allowedAttrs.contains(entry.key)) continue;
+    element.attributes[entry.key] = entry.value;
+  }
+
+  if (element.attributes.containsKey('class')) {
+    final filtered = _filterClasses(element.attributes['class']);
+    if (filtered == null) {
+      element.attributes.remove('class');
+    } else {
+      element.attributes['class'] = filtered;
+    }
+  }
+
+  if (tag == 'a') {
+    final href = _sanitizeUrl(element.attributes['href'], allowRelative: true, allowMailto: true);
+    if (href == null) {
+      _unwrapElement(element);
+      return false;
+    }
+    element.attributes['href'] = href;
+  }
+
+  if (tag == 'img') {
+    final src = _sanitizeUrl(element.attributes['src'], allowRelative: true, allowMailto: false);
+    if (src == null) {
+      element.remove();
+      return false;
+    }
+    element.attributes['src'] = src;
+  }
+
+  if (tag == 'input') {
+    final type = element.attributes['type']?.toLowerCase();
+    if (type != 'checkbox') {
+      element.remove();
+      return false;
+    }
+  }
+
+  return true;
+}
+
+String? _filterClasses(String? value) {
+  if (value == null) return null;
+  final classes = value
+      .split(RegExp(r'\s+'))
+      .where((c) => c.isNotEmpty && _isAllowedClass(c))
+      .toList(growable: false);
+  if (classes.isEmpty) return null;
+  return classes.join(' ');
+}
+
+bool _isAllowedClass(String value) {
+  for (final pattern in _allowedClassPatterns) {
+    if (pattern.hasMatch(value)) return true;
+  }
+  return false;
+}
+
+String? _sanitizeUrl(
+  String? url, {
+  required bool allowRelative,
+  required bool allowMailto,
+}) {
+  if (url == null) return null;
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return null;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return null;
+  if (uri.hasScheme) {
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme == 'http' || scheme == 'https') return trimmed;
+    if (allowMailto && scheme == 'mailto') return trimmed;
+    return null;
+  }
+  if (!allowRelative) return null;
+  return trimmed;
+}
+
+void _unwrapElement(dom.Element element) {
+  final parent = element.parent;
+  if (parent == null) {
+    element.remove();
+    return;
+  }
+  final index = parent.nodes.indexOf(element);
+  final children = element.nodes.toList(growable: false);
+  element.remove();
+  if (children.isNotEmpty) {
+    parent.nodes.insertAll(index, children);
+    for (final child in children) {
+      _sanitizeDomNode(child);
+    }
+  }
+}
+
 String _renderMarkdownToHtml(String text) {
   return md.markdownToHtml(
     text,
     extensionSet: md.ExtensionSet.gitHubFlavored,
+    blockSyntaxes: const [
+      _MathBlockSyntax(),
+      _MathBracketBlockSyntax(),
+    ],
     inlineSyntaxes: [
+      _MathInlineSyntax(),
+      _MathParenInlineSyntax(),
       _HtmlSoftLineBreakSyntax(),
       _HtmlHighlightInlineSyntax(),
     ],
@@ -1197,6 +1468,108 @@ class _MemoCodeBlockState extends State<_MemoCodeBlock> {
         ),
       ),
     );
+  }
+}
+
+class _MathInlineSyntax extends md.InlineSyntax {
+  _MathInlineSyntax() : super(r'\$(?!\s)([^\n\$]+?)\$(?!\s)', startCharacter: 0x24);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final start = match.start;
+    if (start > 0 && parser.source.codeUnitAt(start - 1) == 0x5C) {
+      return false;
+    }
+    final content = match.group(1);
+    if (content == null || content.trim().isEmpty) return false;
+    parser.addNode(md.Element(_mathInlineTag, [md.Text(content)]));
+    return true;
+  }
+}
+
+class _MathParenInlineSyntax extends md.InlineSyntax {
+  _MathParenInlineSyntax() : super(r'\\\((.+?)\\\)', startCharacter: 0x5C);
+
+  @override
+  bool onMatch(md.InlineParser parser, Match match) {
+    final content = match.group(1);
+    if (content == null || content.trim().isEmpty) return false;
+    parser.addNode(md.Element(_mathInlineTag, [md.Text(content)]));
+    return true;
+  }
+}
+
+class _MathBlockSyntax extends md.BlockSyntax {
+  const _MathBlockSyntax();
+
+  static final RegExp _singleLine = RegExp(r'^\s*\$\$(.+?)\$\$\s*$');
+  static final RegExp _open = RegExp(r'^\s*\$\$');
+  static final RegExp _close = RegExp(r'^\s*\$\$\s*$');
+
+  @override
+  RegExp get pattern => _open;
+
+  @override
+  md.Node? parse(md.BlockParser parser) {
+    final line = parser.current.content;
+    final singleMatch = _singleLine.firstMatch(line);
+    if (singleMatch != null) {
+      parser.advance();
+      final content = singleMatch.group(1)?.trim() ?? '';
+      return md.Element(_mathBlockTag, [md.Text(content)]);
+    }
+
+    parser.advance();
+    final buffer = StringBuffer();
+    while (!parser.isDone) {
+      final current = parser.current.content;
+      if (_close.hasMatch(current)) {
+        parser.advance();
+        break;
+      }
+      if (buffer.isNotEmpty) buffer.writeln();
+      buffer.write(current);
+      parser.advance();
+    }
+    final content = buffer.toString().trim();
+    return md.Element(_mathBlockTag, [md.Text(content)]);
+  }
+}
+
+class _MathBracketBlockSyntax extends md.BlockSyntax {
+  const _MathBracketBlockSyntax();
+
+  static final RegExp _singleLine = RegExp(r'^\s*\\\[(.+?)\\\]\s*$');
+  static final RegExp _open = RegExp(r'^\s*\\\[');
+  static final RegExp _close = RegExp(r'^\s*\\\]\s*$');
+
+  @override
+  RegExp get pattern => _open;
+
+  @override
+  md.Node? parse(md.BlockParser parser) {
+    final line = parser.current.content;
+    final singleMatch = _singleLine.firstMatch(line);
+    if (singleMatch != null) {
+      parser.advance();
+      final content = singleMatch.group(1)?.trim() ?? '';
+      return md.Element(_mathBlockTag, [md.Text(content)]);
+    }
+
+    parser.advance();
+    final buffer = StringBuffer();
+    while (!parser.isDone) {
+      final current = parser.current.content;
+      if (_close.hasMatch(current)) {
+        parser.advance();
+        break;
+      }
+      if (buffer.isNotEmpty) buffer.writeln();
+      buffer.write(current);
+      parser.advance();
+    }
+    final content = buffer.toString().trim();
+    return md.Element(_mathBlockTag, [md.Text(content)]);
   }
 }
 

@@ -3258,8 +3258,8 @@ class _MemoCardState extends State<_MemoCard> {
     }
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
-    final displayText = showCollapsed ? preview.text : previewText;
-    final markdownCacheKey = '$cacheKey|${showCollapsed ? 1 : 0}|md';
+    final displayText = previewText;
+    final markdownCacheKey = '$cacheKey|md';
     final showProgress = !hasAudio && taskStats.total > 0;
     final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
@@ -3563,6 +3563,7 @@ class _MemoCardState extends State<_MemoCard> {
                     MemoMarkdown(
                       cacheKey: markdownCacheKey,
                       data: displayText,
+                      maxLines: showCollapsed ? 6 : null,
                       textStyle: Theme.of(
                         context,
                       ).textTheme.bodyMedium?.copyWith(color: textMain),
