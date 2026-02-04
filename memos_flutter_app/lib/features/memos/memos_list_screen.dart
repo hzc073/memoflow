@@ -3340,6 +3340,125 @@ class _MemoCardState extends State<_MemoCard> {
       );
     }
 
+    Widget content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showProgress) ...[
+          _TaskProgressBar(
+            progress: progress,
+            isDark: isDark,
+            total: taskStats.total,
+            checked: taskStats.checked,
+          ),
+          const SizedBox(height: 2),
+        ],
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MemoMarkdown(
+              cacheKey: markdownCacheKey,
+              data: displayText,
+              maxLines: showCollapsed ? 6 : null,
+              textStyle: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: textMain),
+              blockSpacing: 4,
+              normalizeHeadings: true,
+              renderImages: false,
+              onToggleTask: (request) => onToggleTask(request.taskIndex),
+            ),
+            if (showToggle) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    _expanded
+                        ? context.tr(zh: '收起', en: 'Collapse')
+                        : context.tr(zh: '展开', en: 'Expand'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: MemoFlowPalette.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (imageEntries.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              buildImageGrid(),
+            ],
+            if (hasAudio) ...[const SizedBox(height: 2), audioRow],
+            if (attachmentCount > 0) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Builder(
+                  builder: (context) {
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () =>
+                            showAttachmentNamesToast(context, attachmentLines),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.attach_file,
+                                size: 14,
+                                color: attachmentColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                attachmentCount.toString(),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: attachmentColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+        _MemoRelationsSection(
+          memoUid: memo.uid,
+          initialCount: memo.relationCount,
+        ),
+      ],
+    );
+
+    if (onDoubleTap != null) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onDoubleTap: onDoubleTap,
+        child: content,
+      );
+    }
+
     return Hero(
       tag: memo.uid,
       createRectTween: (begin, end) =>
@@ -3349,7 +3468,6 @@ class _MemoCardState extends State<_MemoCard> {
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
           onTap: onTap,
-          onDoubleTap: onDoubleTap,
           onLongPress: onLongPress,
           child: Container(
             padding: const EdgeInsets.all(20),
@@ -3548,115 +3666,7 @@ class _MemoCardState extends State<_MemoCard> {
                   ],
                 ),
                 const SizedBox(height: 0),
-                if (showProgress) ...[
-                  _TaskProgressBar(
-                    progress: progress,
-                    isDark: isDark,
-                    total: taskStats.total,
-                    checked: taskStats.checked,
-                  ),
-                  const SizedBox(height: 2),
-                ],
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MemoMarkdown(
-                      cacheKey: markdownCacheKey,
-                      data: displayText,
-                      maxLines: showCollapsed ? 6 : null,
-                      textStyle: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: textMain),
-                      blockSpacing: 4,
-                      normalizeHeadings: true,
-                      renderImages: false,
-                      onToggleTask: (request) =>
-                          onToggleTask(request.taskIndex),
-                    ),
-                    if (showToggle) ...[
-                      const SizedBox(height: 4),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () =>
-                              setState(() => _expanded = !_expanded),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: Text(
-                            _expanded
-                                ? context.tr(zh: '收起', en: 'Collapse')
-                                : context.tr(zh: '展开', en: 'Expand'),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: MemoFlowPalette.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (imageEntries.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      buildImageGrid(),
-                    ],
-                    if (hasAudio) ...[const SizedBox(height: 2), audioRow],
-                    if (attachmentCount > 0) ...[
-                      const SizedBox(height: 4),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Builder(
-                          builder: (context) {
-                            return Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(10),
-                                onTap: () => showAttachmentNamesToast(
-                                  context,
-                                  attachmentLines,
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.attach_file,
-                                        size: 14,
-                                        color: attachmentColor,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        attachmentCount.toString(),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: attachmentColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                _MemoRelationsSection(
-                  memoUid: memo.uid,
-                  initialCount: memo.relationCount,
-                ),
+                content,
               ],
             ),
           ),
