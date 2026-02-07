@@ -225,7 +225,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         '',
       ];
       final indexBytes = utf8.encode(indexLines.join('\n'));
-      archive.addFile(ArchiveFile('memos/index.md', indexBytes.length, indexBytes));
+      archive.addFile(ArchiveFile('index.md', indexBytes.length, indexBytes));
 
       for (final memo in memos) {
         final filename = _memoFilename(memo);

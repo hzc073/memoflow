@@ -8,20 +8,29 @@ import '../data/settings/image_bed_settings_repository.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
-final imageBedSettingsRepositoryProvider = Provider<ImageBedSettingsRepository>((ref) {
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  if (account == null) {
-    throw StateError('Not authenticated');
-  }
-  return ImageBedSettingsRepository(ref.watch(secureStorageProvider), accountKey: account.key);
-});
+final imageBedSettingsRepositoryProvider = Provider<ImageBedSettingsRepository>(
+  (ref) {
+    final session = ref.watch(appSessionProvider).valueOrNull;
+    final key = session?.currentKey?.trim();
+    final storageKey = (key == null || key.isEmpty) ? 'device' : key;
+    return ImageBedSettingsRepository(
+      ref.watch(secureStorageProvider),
+      accountKey: storageKey,
+    );
+  },
+);
 
-final imageBedSettingsProvider = StateNotifierProvider<ImageBedSettingsController, ImageBedSettings>((ref) {
-  return ImageBedSettingsController(ref, ref.watch(imageBedSettingsRepositoryProvider));
-});
+final imageBedSettingsProvider =
+    StateNotifierProvider<ImageBedSettingsController, ImageBedSettings>((ref) {
+      return ImageBedSettingsController(
+        ref,
+        ref.watch(imageBedSettingsRepositoryProvider),
+      );
+    });
 
 class ImageBedSettingsController extends StateNotifier<ImageBedSettings> {
-  ImageBedSettingsController(this._ref, this._repo) : super(ImageBedSettings.defaults) {
+  ImageBedSettingsController(this._ref, this._repo)
+    : super(ImageBedSettings.defaults) {
     unawaited(_load());
   }
 
@@ -63,7 +72,9 @@ class ImageBedSettingsController extends StateNotifier<ImageBedSettings> {
 
   void setStrategyId(String? value) {
     final trimmed = (value ?? '').trim();
-    _setAndPersist(state.copyWith(strategyId: trimmed.isEmpty ? null : trimmed));
+    _setAndPersist(
+      state.copyWith(strategyId: trimmed.isEmpty ? null : trimmed),
+    );
   }
 
   void setRetryCount(int value) {

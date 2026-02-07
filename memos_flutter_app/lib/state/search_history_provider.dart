@@ -20,7 +20,11 @@ class SearchHistoryRepository {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return decoded.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        return decoded
+            .whereType<String>()
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
       }
     } catch (_) {}
     return const [];
@@ -35,17 +39,24 @@ class SearchHistoryRepository {
   }
 }
 
-final searchHistoryRepositoryProvider = Provider<SearchHistoryRepository>((ref) {
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  if (account == null) {
-    throw StateError('Not authenticated');
-  }
-  return SearchHistoryRepository(ref.watch(secureStorageProvider), accountKey: account.key);
+final searchHistoryRepositoryProvider = Provider<SearchHistoryRepository>((
+  ref,
+) {
+  final session = ref.watch(appSessionProvider).valueOrNull;
+  final key = session?.currentKey?.trim();
+  final storageKey = (key == null || key.isEmpty) ? 'device' : key;
+  return SearchHistoryRepository(
+    ref.watch(secureStorageProvider),
+    accountKey: storageKey,
+  );
 });
 
-final searchHistoryProvider = StateNotifierProvider<SearchHistoryController, List<String>>((ref) {
-  return SearchHistoryController(ref.watch(searchHistoryRepositoryProvider));
-});
+final searchHistoryProvider =
+    StateNotifierProvider<SearchHistoryController, List<String>>((ref) {
+      return SearchHistoryController(
+        ref.watch(searchHistoryRepositoryProvider),
+      );
+    });
 
 class SearchHistoryController extends StateNotifier<List<String>> {
   SearchHistoryController(this._repo) : super(const []) {

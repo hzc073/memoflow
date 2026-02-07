@@ -20,12 +20,17 @@ import '../data/models/memo.dart';
 import '../data/models/memo_location.dart';
 import '../data/models/memo_relation.dart';
 import '../data/settings/image_bed_settings_repository.dart';
+import '../data/local_library/local_attachment_store.dart';
+import '../data/local_library/local_library_fs.dart';
 import '../state/database_provider.dart';
 import '../state/image_bed_settings_provider.dart';
+import '../state/local_library_provider.dart';
+import '../state/local_sync_controller.dart';
 import '../state/logging_provider.dart';
 import '../state/network_log_provider.dart';
 import '../state/preferences_provider.dart';
 import '../state/session_provider.dart';
+import '../state/sync_controller_base.dart';
 
 typedef MemosQuery = ({
   String searchQuery,
@@ -81,13 +86,25 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
 });
 
 final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((ref, query) async* {
+  final db = ref.watch(databaseProvider);
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+  final normalizedSearch = query.searchQuery.trim();
+  final normalizedTag = _normalizeTagInput(query.tag);
   if (account == null) {
-    throw StateError('Not authenticated');
+    await for (final rows in db.watchMemos(
+      searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
+      state: query.state,
+      tag: normalizedTag.isEmpty ? null : normalizedTag,
+      startTimeSec: query.startTimeSec,
+      endTimeSecExclusive: query.endTimeSecExclusive,
+      limit: 200,
+    )) {
+      yield rows.map(LocalMemo.fromDb).toList(growable: false);
+    }
+    return;
   }
 
   final api = ref.watch(memosApiProvider);
-  final db = ref.watch(databaseProvider);
   final filters = <String>[];
 
   final creatorId = _parseUserId(account.user.name);
@@ -95,12 +112,10 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
     filters.add('creator_id == $creatorId');
   }
 
-  final normalizedSearch = query.searchQuery.trim();
   if (normalizedSearch.isNotEmpty) {
     filters.add('content.contains("${_escapeFilterValue(normalizedSearch)}")');
   }
 
-  final normalizedTag = _normalizeTagInput(query.tag);
   if (normalizedTag.isNotEmpty) {
     filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
   }
@@ -159,14 +174,24 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
 });
 
 final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMemosQuery>((ref, query) async* {
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  if (account == null) {
-    throw StateError('Not authenticated');
-  }
-
   final db = ref.watch(databaseProvider);
+  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   final search = query.searchQuery.trim();
   final normalizedTag = _normalizeTagInput(query.tag);
+  if (account == null) {
+    await for (final rows in db.watchMemos(
+      searchQuery: search.isEmpty ? null : search,
+      state: query.state,
+      tag: normalizedTag.isEmpty ? null : normalizedTag,
+      startTimeSec: query.startTimeSec,
+      endTimeSecExclusive: query.endTimeSecExclusive,
+      limit: 200,
+    )) {
+      yield rows.map(LocalMemo.fromDb).toList(growable: false);
+    }
+    return;
+  }
+
   final initialPredicate = _buildShortcutPredicate(query.shortcutFilter);
 
   if (initialPredicate != null) {
@@ -846,6 +871,8 @@ Future<void> _refreshMemoRelationsCache(Ref ref, String memoUid) async {
   final normalized = memoUid.trim();
   if (normalized.isEmpty) return;
   try {
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    if (account == null) return;
     final api = ref.read(memosApiProvider);
     final (relations, _) = await api.listMemoRelations(
       memoUid: normalized,
@@ -875,13 +902,24 @@ final memoRelationsProvider = StreamProvider.family<List<MemoRelation>, String>(
   }
 });
 
-final syncControllerProvider = StateNotifierProvider<SyncController, AsyncValue<void>>((ref) {
+final syncControllerProvider = StateNotifierProvider<SyncControllerBase, AsyncValue<void>>((ref) {
+  final language = ref.watch(appPreferencesProvider.select((p) => p.language));
+  final localLibrary = ref.watch(currentLocalLibraryProvider);
+  if (localLibrary != null) {
+    return LocalSyncController(
+      db: ref.watch(databaseProvider),
+      fileSystem: LocalLibraryFileSystem(localLibrary),
+      attachmentStore: LocalAttachmentStore(),
+      syncStatusTracker: ref.read(syncStatusTrackerProvider),
+      language: language,
+    );
+  }
+
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   if (account == null) {
     throw StateError('Not authenticated');
   }
-  final language = ref.watch(appPreferencesProvider.select((p) => p.language));
-  return SyncController(
+  return RemoteSyncController(
     db: ref.watch(databaseProvider),
     api: ref.watch(memosApiProvider),
     currentUserName: account.user.name,
@@ -998,8 +1036,8 @@ final resourcesProvider = StreamProvider<List<ResourceEntry>>((ref) async* {
   }
 });
 
-class SyncController extends StateNotifier<AsyncValue<void>> {
-  SyncController({
+class RemoteSyncController extends SyncControllerBase {
+  RemoteSyncController({
     required this.db,
     required this.api,
     required this.currentUserName,

@@ -155,10 +155,14 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
 ''');
           }
           if (oldVersion < 6) {
-            await db.execute('ALTER TABLE memos ADD COLUMN relation_count INTEGER NOT NULL DEFAULT 0;');
+            await db.execute(
+              'ALTER TABLE memos ADD COLUMN relation_count INTEGER NOT NULL DEFAULT 0;',
+            );
           }
           if (oldVersion < 7) {
-            await db.execute('ALTER TABLE memos ADD COLUMN location_placeholder TEXT;');
+            await db.execute(
+              'ALTER TABLE memos ADD COLUMN location_placeholder TEXT;',
+            );
             await db.execute('ALTER TABLE memos ADD COLUMN location_lat REAL;');
             await db.execute('ALTER TABLE memos ADD COLUMN location_lng REAL;');
           }
@@ -190,7 +194,8 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
       return await open();
     } on DatabaseException catch (e) {
       final msg = e.toString();
-      if (msg.contains('unrecognized parameter') && msg.contains('content_rowid')) {
+      if (msg.contains('unrecognized parameter') &&
+          msg.contains('content_rowid')) {
         // The DB was created by an older buggy build and is not openable.
         // Reset the DB so the app can recover without manual uninstall/clear-data.
         await deleteDatabase(path);
@@ -258,7 +263,9 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
     for (final raw in tags) {
       final trimmed = raw.trim();
       if (trimmed.isEmpty) continue;
-      final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+      final withoutHash = trimmed.startsWith('#')
+          ? trimmed.substring(1)
+          : trimmed;
       final t = withoutHash.toLowerCase();
       if (t.isEmpty) continue;
       list.add(t);
@@ -272,7 +279,9 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
     for (final part in tagsText.split(' ')) {
       final trimmed = part.trim();
       if (trimmed.isEmpty) continue;
-      final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+      final withoutHash = trimmed.startsWith('#')
+          ? trimmed.substring(1)
+          : trimmed;
       if (withoutHash.isEmpty) continue;
       normalized.add(withoutHash.toLowerCase());
     }
@@ -283,10 +292,7 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
 
   static Future<void> _normalizeStoredTags(Database db) async {
     await db.transaction((txn) async {
-      final rows = await txn.query(
-        'memos',
-        columns: const ['uid', 'tags'],
-      );
+      final rows = await txn.query('memos', columns: const ['uid', 'tags']);
       for (final row in rows) {
         final uid = row['uid'];
         if (uid is! String || uid.trim().isEmpty) continue;
@@ -348,7 +354,9 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
   }
 
   static Future<int?> _queryMinCreateTime(DatabaseExecutor txn) async {
-    final rows = await txn.rawQuery('SELECT MIN(create_time) AS min_time FROM memos;');
+    final rows = await txn.rawQuery(
+      'SELECT MIN(create_time) AS min_time FROM memos;',
+    );
     if (rows.isEmpty) return null;
     return _readInt(rows.first['min_time']);
   }
@@ -389,18 +397,14 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
     );
     if (rows.isNotEmpty) return;
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    await txn.insert(
-      'stats_cache',
-      {
-        'id': 1,
-        'total_memos': 0,
-        'archived_memos': 0,
-        'total_chars': 0,
-        'min_create_time': null,
-        'updated_time': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await txn.insert('stats_cache', {
+      'id': 1,
+      'total_memos': 0,
+      'archived_memos': 0,
+      'total_chars': 0,
+      'min_create_time': null,
+      'updated_time': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static Future<void> _bumpDailyCount(
@@ -419,11 +423,18 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
     final current = _readInt(rows.firstOrNull?['memo_count']) ?? 0;
     final next = current + delta;
     if (next <= 0) {
-      await txn.delete('daily_counts_cache', where: 'day = ?', whereArgs: [dayKey]);
+      await txn.delete(
+        'daily_counts_cache',
+        where: 'day = ?',
+        whereArgs: [dayKey],
+      );
       return;
     }
     if (rows.isEmpty) {
-      await txn.insert('daily_counts_cache', {'day': dayKey, 'memo_count': next});
+      await txn.insert('daily_counts_cache', {
+        'day': dayKey,
+        'memo_count': next,
+      });
       return;
     }
     await txn.update(
@@ -466,7 +477,10 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
     );
   }
 
-  Future<_MemoSnapshot?> _fetchMemoSnapshot(DatabaseExecutor txn, String uid) async {
+  Future<_MemoSnapshot?> _fetchMemoSnapshot(
+    DatabaseExecutor txn,
+    String uid,
+  ) async {
     final rows = await txn.query(
       'memos',
       columns: const ['state', 'create_time', 'content', 'tags'],
@@ -514,12 +528,20 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
     final deltaTotal = (newIsNormal ? 1 : 0) - (oldIsNormal ? 1 : 0);
     final deltaArchived = (newIsArchived ? 1 : 0) - (oldIsArchived ? 1 : 0);
 
-    final oldChars = oldIsNormal && before != null ? _countChars(before.content) : 0;
-    final newChars = newIsNormal && after != null ? _countChars(after.content) : 0;
+    final oldChars = oldIsNormal && before != null
+        ? _countChars(before.content)
+        : 0;
+    final newChars = newIsNormal && after != null
+        ? _countChars(after.content)
+        : 0;
     final deltaChars = newChars - oldChars;
 
-    final oldDayKey = oldIsNormal && before != null ? _localDayKeyFromUtcSec(before.createTimeSec) : null;
-    final newDayKey = newIsNormal && after != null ? _localDayKeyFromUtcSec(after.createTimeSec) : null;
+    final oldDayKey = oldIsNormal && before != null
+        ? _localDayKeyFromUtcSec(before.createTimeSec)
+        : null;
+    final newDayKey = newIsNormal && after != null
+        ? _localDayKeyFromUtcSec(after.createTimeSec)
+        : null;
     if (!(oldIsNormal && newIsNormal && oldDayKey == newDayKey)) {
       if (oldDayKey != null) {
         await _bumpDailyCount(txn, oldDayKey, -1);
@@ -529,8 +551,12 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
       }
     }
 
-    final oldTagCounts = oldIsNormal && before != null ? _countTags(before.tags) : const <String, int>{};
-    final newTagCounts = newIsNormal && after != null ? _countTags(after.tags) : const <String, int>{};
+    final oldTagCounts = oldIsNormal && before != null
+        ? _countTags(before.tags)
+        : const <String, int>{};
+    final newTagCounts = newIsNormal && after != null
+        ? _countTags(after.tags)
+        : const <String, int>{};
     if (oldTagCounts.isNotEmpty || newTagCounts.isNotEmpty) {
       final allTags = <String>{...oldTagCounts.keys, ...newTagCounts.keys};
       for (final tag in allTags) {
@@ -547,7 +573,10 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
       before: before,
       after: after,
     );
-    if (deltaTotal != 0 || deltaArchived != 0 || deltaChars != 0 || nextMin != currentMin) {
+    if (deltaTotal != 0 ||
+        deltaArchived != 0 ||
+        deltaChars != 0 ||
+        nextMin != currentMin) {
       final now = DateTime.now().toUtc().millisecondsSinceEpoch;
       await txn.rawUpdate(
         '''
@@ -613,42 +642,40 @@ WHERE id = 1;
 
       int rowId;
       if (updated == 0) {
-        rowId = await txn.insert(
-          'memos',
-          {
-            'uid': uid,
-            'content': content,
-            'visibility': visibility,
-            'pinned': pinned ? 1 : 0,
-            'state': state,
-            'create_time': createTimeSec,
-            'update_time': updateTimeSec,
-            'tags': tagsText,
-            'attachments_json': attachmentsJson,
-            'location_placeholder': locationPlaceholder,
-            'location_lat': locationLat,
-            'location_lng': locationLng,
-            'relation_count': relationCount,
-            'sync_state': syncState,
-            'last_error': lastError,
-          },
-          conflictAlgorithm: ConflictAlgorithm.abort,
-        );
+        rowId = await txn.insert('memos', {
+          'uid': uid,
+          'content': content,
+          'visibility': visibility,
+          'pinned': pinned ? 1 : 0,
+          'state': state,
+          'create_time': createTimeSec,
+          'update_time': updateTimeSec,
+          'tags': tagsText,
+          'attachments_json': attachmentsJson,
+          'location_placeholder': locationPlaceholder,
+          'location_lat': locationLat,
+          'location_lng': locationLng,
+          'relation_count': relationCount,
+          'sync_state': syncState,
+          'last_error': lastError,
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
       } else {
-        final rows = await txn.query('memos', columns: const ['id'], where: 'uid = ?', whereArgs: [uid], limit: 1);
+        final rows = await txn.query(
+          'memos',
+          columns: const ['id'],
+          where: 'uid = ?',
+          whereArgs: [uid],
+          limit: 1,
+        );
         rowId = (rows.firstOrNull?['id'] as int?) ?? 0;
         if (rowId <= 0) return;
       }
 
-      await txn.insert(
-        'memos_fts',
-        {
-          'rowid': rowId,
-          'content': content,
-          'tags': tagsText,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('memos_fts', {
+        'rowid': rowId,
+        'content': content,
+        'tags': tagsText,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       final after = _MemoSnapshot(
         state: state,
@@ -661,21 +688,25 @@ WHERE id = 1;
     _notifyChanged();
   }
 
-  Future<void> updateMemoSyncState(String uid, {required int syncState, String? lastError}) async {
+  Future<void> updateMemoSyncState(
+    String uid, {
+    required int syncState,
+    String? lastError,
+  }) async {
     final db = await this.db;
     await db.update(
       'memos',
-      {
-        'sync_state': syncState,
-        'last_error': lastError,
-      },
+      {'sync_state': syncState, 'last_error': lastError},
       where: 'uid = ?',
       whereArgs: [uid],
     );
     _notifyChanged();
   }
 
-  Future<void> updateMemoAttachmentsJson(String uid, {required String attachmentsJson}) async {
+  Future<void> updateMemoAttachmentsJson(
+    String uid, {
+    required String attachmentsJson,
+  }) async {
     final db = await this.db;
     await db.update(
       'memos',
@@ -702,30 +733,26 @@ WHERE id = 1;
     return raw is String ? raw : null;
   }
 
-  Future<void> upsertMemoRelationsCache(String memoUid, {required String relationsJson}) async {
+  Future<void> upsertMemoRelationsCache(
+    String memoUid, {
+    required String relationsJson,
+  }) async {
     final normalized = memoUid.trim();
     if (normalized.isEmpty) return;
     final db = await this.db;
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     final updated = await db.update(
       'memo_relations_cache',
-      {
-        'relations_json': relationsJson,
-        'updated_time': now,
-      },
+      {'relations_json': relationsJson, 'updated_time': now},
       where: 'memo_uid = ?',
       whereArgs: [normalized],
     );
     if (updated == 0) {
-      await db.insert(
-        'memo_relations_cache',
-        {
-          'memo_uid': normalized,
-          'relations_json': relationsJson,
-          'updated_time': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
+      await db.insert('memo_relations_cache', {
+        'memo_uid': normalized,
+        'relations_json': relationsJson,
+        'updated_time': now,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
     }
     _notifyChanged();
   }
@@ -742,7 +769,10 @@ WHERE id = 1;
     _notifyChanged();
   }
 
-  Future<void> renameMemoUid({required String oldUid, required String newUid}) async {
+  Future<void> renameMemoUid({
+    required String oldUid,
+    required String newUid,
+  }) async {
     final db = await this.db;
     await db.transaction((txn) async {
       await txn.update(
@@ -773,9 +803,15 @@ WHERE id = 1;
     _notifyChanged();
   }
 
-  Future<void> rewriteOutboxMemoUids({required String oldUid, required String newUid}) async {
+  Future<void> rewriteOutboxMemoUids({
+    required String oldUid,
+    required String newUid,
+  }) async {
     final db = await this.db;
-    final rows = await db.query('outbox', columns: const ['id', 'type', 'payload']);
+    final rows = await db.query(
+      'outbox',
+      columns: const ['id', 'type', 'payload'],
+    );
     for (final row in rows) {
       final id = row['id'];
       final type = row['type'];
@@ -822,7 +858,12 @@ WHERE id = 1;
 
   Future<Map<String, dynamic>?> getMemoByUid(String uid) async {
     final db = await this.db;
-    final rows = await db.query('memos', where: 'uid = ?', whereArgs: [uid], limit: 1);
+    final rows = await db.query(
+      'memos',
+      where: 'uid = ?',
+      whereArgs: [uid],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     return rows.first;
   }
@@ -853,7 +894,9 @@ WHERE id = 1;
     );
   }
 
-  Future<List<Map<String, dynamic>>> listOutboxPendingByType(String type) async {
+  Future<List<Map<String, dynamic>>> listOutboxPendingByType(
+    String type,
+  ) async {
     final db = await this.db;
     return db.query(
       'outbox',
@@ -876,6 +919,51 @@ WHERE id = 1;
   Future<void> deleteOutbox(int id) async {
     final db = await this.db;
     await db.delete('outbox', where: 'id = ?', whereArgs: [id]);
+    _notifyChanged();
+  }
+
+  Future<void> deleteOutboxForMemo(String memoUid) async {
+    final trimmed = memoUid.trim();
+    if (trimmed.isEmpty) return;
+    final db = await this.db;
+    final rows = await db.query(
+      'outbox',
+      columns: const ['id', 'type', 'payload'],
+      where: 'state IN (0, 2)',
+    );
+    final ids = <int>[];
+    for (final row in rows) {
+      final id = row['id'];
+      final type = row['type'];
+      final payloadRaw = row['payload'];
+      if (id is! int || type is! String || payloadRaw is! String) continue;
+      Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(payloadRaw);
+        if (decoded is! Map) continue;
+        payload = decoded.cast<String, dynamic>();
+      } catch (_) {
+        continue;
+      }
+      final target = switch (type) {
+        'create_memo' || 'update_memo' || 'delete_memo' => payload['uid'],
+        'upload_attachment' || 'delete_attachment' => payload['memo_uid'],
+        _ => null,
+      };
+      if (target is String && target.trim() == trimmed) {
+        ids.add(id);
+      }
+    }
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      await db.delete('outbox', where: 'id = ?', whereArgs: [id]);
+    }
+    _notifyChanged();
+  }
+
+  Future<void> clearOutbox() async {
+    final db = await this.db;
+    await db.delete('outbox');
     _notifyChanged();
   }
 
@@ -906,22 +994,18 @@ WHERE id = 1;
   }) async {
     final db = await this.db;
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final id = await db.insert(
-      'import_history',
-      {
-        'source': source,
-        'file_md5': fileMd5,
-        'file_name': fileName,
-        'memo_count': memoCount,
-        'attachment_count': attachmentCount,
-        'failed_count': failedCount,
-        'status': status,
-        'created_time': now,
-        'updated_time': now,
-        'error': error,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final id = await db.insert('import_history', {
+      'source': source,
+      'file_md5': fileMd5,
+      'file_name': fileName,
+      'memo_count': memoCount,
+      'attachment_count': attachmentCount,
+      'failed_count': failedCount,
+      'status': status,
+      'created_time': now,
+      'updated_time': now,
+      'error': error,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     _notifyChanged();
     return id;
   }
@@ -955,10 +1039,20 @@ WHERE id = 1;
     final db = await this.db;
     await db.transaction((txn) async {
       final before = await _fetchMemoSnapshot(txn, uid);
-      final rows = await txn.query('memos', columns: const ['id'], where: 'uid = ?', whereArgs: [uid], limit: 1);
+      final rows = await txn.query(
+        'memos',
+        columns: const ['id'],
+        where: 'uid = ?',
+        whereArgs: [uid],
+        limit: 1,
+      );
       final rowId = rows.firstOrNull?['id'] as int?;
       await txn.delete('memos', where: 'uid = ?', whereArgs: [uid]);
-      await txn.delete('memo_relations_cache', where: 'memo_uid = ?', whereArgs: [uid]);
+      await txn.delete(
+        'memo_relations_cache',
+        where: 'memo_uid = ?',
+        whereArgs: [uid],
+      );
       if (rowId != null) {
         await txn.delete('memos_fts', where: 'rowid = ?', whereArgs: [rowId]);
       }
@@ -969,7 +1063,12 @@ WHERE id = 1;
 
   Future<Map<String, dynamic>?> getMemoReminderByUid(String memoUid) async {
     final db = await this.db;
-    final rows = await db.query('memo_reminders', where: 'memo_uid = ?', whereArgs: [memoUid], limit: 1);
+    final rows = await db.query(
+      'memo_reminders',
+      where: 'memo_uid = ?',
+      whereArgs: [memoUid],
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     return rows.first;
   }
@@ -995,33 +1094,29 @@ WHERE id = 1;
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     final updated = await db.update(
       'memo_reminders',
-      {
-        'mode': mode,
-        'times_json': timesJson,
-        'updated_time': now,
-      },
+      {'mode': mode, 'times_json': timesJson, 'updated_time': now},
       where: 'memo_uid = ?',
       whereArgs: [memoUid],
     );
     if (updated == 0) {
-      await db.insert(
-        'memo_reminders',
-        {
-          'memo_uid': memoUid,
-          'mode': mode,
-          'times_json': timesJson,
-          'created_time': now,
-          'updated_time': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
+      await db.insert('memo_reminders', {
+        'memo_uid': memoUid,
+        'mode': mode,
+        'times_json': timesJson,
+        'created_time': now,
+        'updated_time': now,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
     }
     _notifyChanged();
   }
 
   Future<void> deleteMemoReminder(String memoUid) async {
     final db = await this.db;
-    await db.delete('memo_reminders', where: 'memo_uid = ?', whereArgs: [memoUid]);
+    await db.delete(
+      'memo_reminders',
+      where: 'memo_uid = ?',
+      whereArgs: [memoUid],
+    );
     _notifyChanged();
   }
 
@@ -1040,7 +1135,9 @@ WHERE id = 1;
         .toList(growable: false);
   }
 
-  Future<List<Map<String, dynamic>>> listMemoAttachmentRows({String? state}) async {
+  Future<List<Map<String, dynamic>>> listMemoAttachmentRows({
+    String? state,
+  }) async {
     final db = await this.db;
     final normalizedState = (state ?? '').trim();
     return db.query(
@@ -1050,9 +1147,7 @@ WHERE id = 1;
         if (normalizedState.isNotEmpty) 'state = ?',
         "attachments_json <> '[]'",
       ].join(' AND '),
-      whereArgs: [
-        if (normalizedState.isNotEmpty) normalizedState,
-      ],
+      whereArgs: [if (normalizedState.isNotEmpty) normalizedState],
       orderBy: 'update_time DESC',
       limit: 2000,
     );
@@ -1068,7 +1163,9 @@ WHERE id = 1;
   }) async {
     final db = await this.db;
     final trimmedTag = (tag ?? '').trim();
-    final withoutHash = trimmedTag.startsWith('#') ? trimmedTag.substring(1) : trimmedTag;
+    final withoutHash = trimmedTag.startsWith('#')
+        ? trimmedTag.substring(1)
+        : trimmedTag;
     final normalizedTag = withoutHash.toLowerCase();
     final normalizedState = (state ?? '').trim();
     final normalizedSearch = (searchQuery ?? '').trim();
@@ -1131,28 +1228,21 @@ WHERE id = 1;
     whereArgs.add(limit);
 
     try {
-      return await db.rawQuery(
-        '''
+      return await db.rawQuery('''
 SELECT m.*
 FROM memos m
 JOIN memos_fts ON memos_fts.rowid = m.id
 WHERE ${whereClauses.join(' AND ')}
 ORDER BY m.pinned DESC, m.create_time DESC
 LIMIT ?;
-''',
-        whereArgs,
-      );
+''', whereArgs);
     } on DatabaseException {
       final like = '%$normalizedSearch%';
       final fallbackClauses = <String>[
         ...baseWhereClauses,
         '(content LIKE ? OR tags LIKE ?)',
       ];
-      final fallbackArgs = <Object?>[
-        ...baseWhereArgs,
-        like,
-        like,
-      ];
+      final fallbackArgs = <Object?>[...baseWhereArgs, like, like];
       return db.query(
         'memos',
         where: fallbackClauses.join(' AND '),
@@ -1163,7 +1253,9 @@ LIMIT ?;
     }
   }
 
-  Future<List<Map<String, dynamic>>> listMemoUidSyncStates({String? state}) async {
+  Future<List<Map<String, dynamic>>> listMemoUidSyncStates({
+    String? state,
+  }) async {
     final db = await this.db;
     final normalizedState = (state ?? '').trim();
     return db.query(
@@ -1269,7 +1361,10 @@ LIMIT ?;
     _notifyChanged();
   }
 
-  static Future<void> _ensureStatsCache(Database db, {bool rebuild = false}) async {
+  static Future<void> _ensureStatsCache(
+    Database db, {
+    bool rebuild = false,
+  }) async {
     await db.execute('''
 CREATE TABLE IF NOT EXISTS stats_cache (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1367,34 +1462,28 @@ CREATE TABLE IF NOT EXISTS tag_stats_cache (
       }
 
       final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-      await txn.insert(
-        'stats_cache',
-        {
-          'id': 1,
-          'total_memos': totalMemos,
-          'archived_memos': archivedMemos,
-          'total_chars': totalChars,
-          'min_create_time': minCreateTime,
-          'updated_time': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('stats_cache', {
+        'id': 1,
+        'total_memos': totalMemos,
+        'archived_memos': archivedMemos,
+        'total_chars': totalChars,
+        'min_create_time': minCreateTime,
+        'updated_time': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       if (dailyCounts.isNotEmpty || tagCounts.isNotEmpty) {
         final batch = txn.batch();
         dailyCounts.forEach((day, count) {
-          batch.insert(
-            'daily_counts_cache',
-            {'day': day, 'memo_count': count},
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+          batch.insert('daily_counts_cache', {
+            'day': day,
+            'memo_count': count,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
         });
         tagCounts.forEach((tag, count) {
-          batch.insert(
-            'tag_stats_cache',
-            {'tag': tag, 'memo_count': count},
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+          batch.insert('tag_stats_cache', {
+            'tag': tag,
+            'memo_count': count,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
         });
         await batch.commit(noResult: true);
       }
@@ -1429,13 +1518,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memos_fts USING fts4(
     } else {
       // Best-effort self-heal: if FTS is empty but memos exist, backfill.
       try {
-        final counts = await db.rawQuery(
-          '''
+        final counts = await db.rawQuery('''
 SELECT
   (SELECT COUNT(*) FROM memos) AS memos_count,
   (SELECT COUNT(*) FROM memos_fts) AS fts_count;
-''',
-        );
+''');
         final memosCount = (counts.firstOrNull?['memos_count'] as int?) ?? 0;
         final ftsCount = (counts.firstOrNull?['fts_count'] as int?) ?? 0;
         if (memosCount > 0 && ftsCount == 0) {
@@ -1447,19 +1534,18 @@ SELECT
 
   static Future<void> _backfillFts(Database db) async {
     await db.execute('DELETE FROM memos_fts;');
-    final rows = await db.query('memos', columns: const ['id', 'content', 'tags']);
+    final rows = await db.query(
+      'memos',
+      columns: const ['id', 'content', 'tags'],
+    );
     for (final row in rows) {
       final id = row['id'] as int?;
       if (id == null) continue;
-      await db.insert(
-        'memos_fts',
-        {
-          'rowid': id,
-          'content': (row['content'] as String?) ?? '',
-          'tags': (row['tags'] as String?) ?? '',
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('memos_fts', {
+        'rowid': id,
+        'content': (row['content'] as String?) ?? '',
+        'tags': (row['tags'] as String?) ?? '',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 

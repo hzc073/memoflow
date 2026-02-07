@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
+import '../../state/local_library_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../memos/memos_list_screen.dart';
@@ -30,7 +31,8 @@ import 'widgets_screen.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
-  static final Future<PackageInfo> _packageInfoFuture = PackageInfo.fromPlatform();
+  static final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
 
   void _close(BuildContext context) {
     if (Navigator.of(context).canPop()) {
@@ -55,7 +57,8 @@ class SettingsScreen extends ConsumerWidget {
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('data:')) return trimmed;
     final lower = trimmed.toLowerCase();
-    if (lower.startsWith('http://') || lower.startsWith('https://')) return trimmed;
+    if (lower.startsWith('http://') || lower.startsWith('https://'))
+      return trimmed;
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);
   }
@@ -63,15 +66,24 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
     final versionStyle = TextStyle(fontSize: 11, color: textMuted);
-    final hapticsEnabled = ref.watch(appPreferencesProvider.select((p) => p.hapticsEnabled));
-    final supporterCrownEnabled =
-        ref.watch(appPreferencesProvider.select((p) => p.supporterCrownEnabled));
+    final hapticsEnabled = ref.watch(
+      appPreferencesProvider.select((p) => p.hapticsEnabled),
+    );
+    final supporterCrownEnabled = ref.watch(
+      appPreferencesProvider.select((p) => p.supporterCrownEnabled),
+    );
 
     void haptic() {
       if (hapticsEnabled) {
@@ -80,16 +92,23 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-    final name = (account?.user.displayName.isNotEmpty ?? false)
+    final localLibrary = ref.watch(currentLocalLibraryProvider);
+    final name = localLibrary?.name.isNotEmpty == true
+        ? localLibrary!.name
+        : (account?.user.displayName.isNotEmpty ?? false)
         ? account!.user.displayName
         : (account?.user.name.isNotEmpty ?? false)
-            ? account!.user.name
-            : 'MemoFlow';
+        ? account!.user.name
+        : 'MemoFlow';
     final description = (account?.user.description ?? '').trim();
-    final subtitle = description.isNotEmpty
+    final subtitle = localLibrary != null
+        ? localLibrary.locationLabel
+        : description.isNotEmpty
         ? description
         : context.tr(zh: '记录每一个瞬间', en: 'Capture every moment you record');
-    final avatarUrl = _resolveAvatarUrl((account?.user.avatarUrl ?? ''), account?.baseUrl);
+    final avatarUrl = localLibrary != null
+        ? ''
+        : _resolveAvatarUrl((account?.user.avatarUrl ?? ''), account?.baseUrl);
 
     return PopScope(
       canPop: false,
@@ -121,11 +140,7 @@ class SettingsScreen extends ConsumerWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        const Color(0xFF0B0B0B),
-                        bg,
-                        bg,
-                      ],
+                      colors: [const Color(0xFF0B0B0B), bg, bg],
                     ),
                   ),
                 ),
@@ -143,7 +158,11 @@ class SettingsScreen extends ConsumerWidget {
                   showCrown: supporterCrownEnabled,
                   onTap: () {
                     haptic();
-                    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()));
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AccountSecurityScreen(),
+                      ),
+                    );
                   },
                 ),
                 const SizedBox(height: 14),
@@ -158,7 +177,11 @@ class SettingsScreen extends ConsumerWidget {
                         label: context.tr(zh: '统计', en: 'Stats'),
                         onTap: () {
                           haptic();
-                          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const StatsScreen(),
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -172,7 +195,11 @@ class SettingsScreen extends ConsumerWidget {
                         label: context.tr(zh: '小组件', en: 'Widgets'),
                         onTap: () {
                           haptic();
-                          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const WidgetsScreen()));
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const WidgetsScreen(),
+                            ),
+                          );
                         },
                       ),
                     ),
@@ -187,7 +214,9 @@ class SettingsScreen extends ConsumerWidget {
                         onTap: () {
                           haptic();
                           Navigator.of(context).push(
-                            MaterialPageRoute<void>(builder: (_) => const ApiPluginsScreen()),
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ApiPluginsScreen(),
+                            ),
                           );
                         },
                       ),
@@ -206,7 +235,11 @@ class SettingsScreen extends ConsumerWidget {
                       textMuted: textMuted,
                       onTap: () {
                         haptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const UserGuideScreen()));
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const UserGuideScreen(),
+                          ),
+                        );
                       },
                     ),
                   ],
@@ -224,7 +257,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const AccountSecurityScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AccountSecurityScreen(),
+                          ),
                         );
                       },
                     ),
@@ -236,7 +271,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const PreferencesSettingsScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PreferencesSettingsScreen(),
+                          ),
                         );
                       },
                     ),
@@ -248,7 +285,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const AiSettingsScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AiSettingsScreen(),
+                          ),
                         );
                       },
                     ),
@@ -260,7 +299,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const PasswordLockScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PasswordLockScreen(),
+                          ),
                         );
                       },
                     ),
@@ -279,7 +320,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const LaboratoryScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const LaboratoryScreen(),
+                          ),
                         );
                       },
                     ),
@@ -291,7 +334,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const ComponentsSettingsScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ComponentsSettingsScreen(),
+                          ),
                         );
                       },
                     ),
@@ -310,7 +355,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const FeedbackScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const FeedbackScreen(),
+                          ),
                         );
                       },
                     ),
@@ -332,7 +379,9 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () {
                         haptic();
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const ImportExportScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ImportExportScreen(),
+                          ),
                         );
                       },
                     ),
@@ -343,7 +392,11 @@ class SettingsScreen extends ConsumerWidget {
                       textMuted: textMuted,
                       onTap: () {
                         haptic();
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutUsScreen()));
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AboutUsScreen(),
+                          ),
+                        );
                       },
                     ),
                   ],
@@ -357,13 +410,19 @@ class SettingsScreen extends ConsumerWidget {
                         final version = snapshot.data?.version.trim() ?? '';
                         final label = version.isEmpty
                             ? context.tr(zh: '版本', en: 'Version')
-                            : context.tr(zh: '版本 v$version', en: 'Version v$version');
+                            : context.tr(
+                                zh: '版本 v$version',
+                                en: 'Version v$version',
+                              );
                         return Text(label, style: versionStyle);
                       },
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),
+                      context.tr(
+                        zh: '为记录而生',
+                        en: 'Made with love for note-taking',
+                      ),
                       style: versionStyle,
                     ),
                   ],
@@ -447,7 +506,10 @@ class _SettingRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
                 ),
               ),
               Icon(Icons.chevron_right, size: 20, color: textMuted),
@@ -488,7 +550,9 @@ class _ProfileCard extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.06),
       ),
       child: Icon(Icons.person, color: textMuted),
     );
@@ -521,7 +585,9 @@ class _ProfileCard extends StatelessWidget {
       }
     }
     if (showCrown) {
-      final badgeColor = isDark ? const Color(0xFFF2C879) : const Color(0xFFE1A670);
+      final badgeColor = isDark
+          ? const Color(0xFFF2C879)
+          : const Color(0xFFE1A670);
       final badgeBg = isDark ? const Color(0xFF2C2520) : Colors.white;
       avatarWidget = SizedBox(
         width: 44,
@@ -548,7 +614,11 @@ class _ProfileCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Icon(Icons.workspace_premium_rounded, size: 12, color: badgeColor),
+                child: Icon(
+                  Icons.workspace_premium_rounded,
+                  size: 12,
+                  color: badgeColor,
+                ),
               ),
             ),
           ],
@@ -583,9 +653,18 @@ class _ProfileCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: TextStyle(fontWeight: FontWeight.w800, color: textMain)),
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: textMain,
+                      ),
+                    ),
                     const SizedBox(height: 3),
-                    Text(subtitle, style: TextStyle(fontSize: 12, color: textMuted)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: textMuted),
+                    ),
                   ],
                 ),
               ),
@@ -654,7 +733,14 @@ class _ShortcutTile extends StatelessWidget {
             children: [
               Icon(icon, size: 22, color: textMuted),
               const SizedBox(height: 6),
-              Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMain)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: textMain,
+                ),
+              ),
             ],
           ),
         ),

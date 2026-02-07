@@ -21,6 +21,8 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/shortcut.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/database_provider.dart';
+import '../../state/local_library_provider.dart';
+import '../../state/local_library_scanner.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
@@ -394,6 +396,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   String? _playingAudioUrl;
   bool _audioLoading = false;
   DateTime? _lastBackPressedAt;
+  bool _autoScanTriggered = false;
+  bool _autoScanInFlight = false;
 
   ({int startSec, int endSecExclusive}) _dayRangeSeconds(DateTime day) {
     final localDay = DateTime(day.year, day.month, day.day);
@@ -519,7 +523,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (raw == null) return null;
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
-    final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    final withoutHash = trimmed.startsWith('#')
+        ? trimmed.substring(1)
+        : trimmed;
     return withoutHash.toLowerCase();
   }
 
@@ -1095,6 +1101,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
     context.safePop();
+    final hasAccount =
+        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
+    if (!hasAccount && dest == AppDrawerDestination.explore) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '本地库模式暂不支持该功能',
+              en: 'This feature is not available in local library mode.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
         title: 'MemoFlow',
@@ -1127,6 +1148,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       HapticFeedback.selectionClick();
     }
     context.safePop();
+    final hasAccount =
+        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
+    if (!hasAccount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '本地库模式暂不支持该功能',
+              en: 'This feature is not available in local library mode.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
     );
@@ -1167,7 +1203,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   Future<void> _openAccountSwitcher() async {
     final session = ref.read(appSessionProvider).valueOrNull;
     final accounts = session?.accounts ?? const [];
-    if (accounts.length < 2) return;
+    final localLibraries = ref.read(localLibrariesProvider);
+    final total = accounts.length + localLibraries.length;
+    if (total < 2) return;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1180,35 +1218,192 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(context.tr(zh: '切换账号', en: 'Switch account')),
+                child: Text(context.tr(zh: '切换工作区', en: 'Switch workspace')),
               ),
             ),
-            ...accounts.map(
-              (a) => ListTile(
-                leading: Icon(
-                  a.key == session?.currentKey
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
+            if (accounts.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    context.tr(zh: '账号', en: 'Accounts'),
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
                 ),
-                title: Text(
-                  a.user.displayName.isNotEmpty
-                      ? a.user.displayName
-                      : a.user.name,
-                ),
-                subtitle: Text(a.baseUrl.toString()),
-                onTap: () async {
-                  context.safePop();
-                  await ref
-                      .read(appSessionProvider.notifier)
-                      .switchAccount(a.key);
-                },
               ),
-            ),
+              ...accounts.map(
+                (a) => ListTile(
+                  leading: Icon(
+                    a.key == session?.currentKey
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                  ),
+                  title: Text(
+                    a.user.displayName.isNotEmpty
+                        ? a.user.displayName
+                        : a.user.name,
+                  ),
+                  subtitle: Text(a.baseUrl.toString()),
+                  onTap: () async {
+                    context.safePop();
+                    await ref
+                        .read(appSessionProvider.notifier)
+                        .switchAccount(a.key);
+                  },
+                ),
+              ),
+            ],
+            if (localLibraries.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    context.tr(zh: '本地库', en: 'Local libraries'),
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+              ),
+              ...localLibraries.map(
+                (l) => ListTile(
+                  leading: Icon(
+                    l.key == session?.currentKey
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                  ),
+                  title: Text(
+                    l.name.isNotEmpty
+                        ? l.name
+                        : context.tr(zh: '本地库', en: 'Local library'),
+                  ),
+                  subtitle: Text(l.locationLabel),
+                  onTap: () async {
+                    context.safePop();
+                    await ref
+                        .read(appSessionProvider.notifier)
+                        .switchWorkspace(l.key);
+                    if (!mounted) return;
+                    await _maybeScanLocalLibrary();
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _maybeScanLocalLibrary() async {
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(context.tr(zh: '扫描本地库', en: 'Scan local library')),
+            content: Text(
+              context.tr(
+                zh: '扫描磁盘目录并合并到本地数据库？缺失文件将视为删除。',
+                en: 'Scan disk directory and merge into local database? Missing files will be treated as deletions.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => context.safePop(false),
+                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () => context.safePop(true),
+                child: Text(context.tr(zh: '扫描', en: 'Scan')),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    final scanner = ref.read(localLibraryScannerProvider);
+    if (scanner == null) return;
+    try {
+      await scanner.scanAndMerge(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr(zh: '扫描完成', en: 'Scan completed')),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr(zh: '扫描失败：$e', en: 'Scan failed: $e')),
+        ),
+      );
+    }
+  }
+
+  void _maybeAutoScanLocalLibrary({
+    required bool memosLoading,
+    required List<LocalMemo>? memosValue,
+    required bool useRemoteSearch,
+    required bool useShortcutFilter,
+    required String searchQuery,
+    required String? resolvedTag,
+    required DateTime? filterDay,
+  }) {
+    if (_autoScanTriggered || _autoScanInFlight) return;
+    if (memosLoading) return;
+    if (useRemoteSearch || useShortcutFilter) return;
+    if (widget.state != 'NORMAL') return;
+    if (searchQuery.trim().isNotEmpty) return;
+    if (resolvedTag != null && resolvedTag.trim().isNotEmpty) return;
+    if (filterDay != null) return;
+    if (memosValue != null && memosValue.isNotEmpty) return;
+
+    final scanner = ref.read(localLibraryScannerProvider);
+    if (scanner == null) return;
+    _autoScanTriggered = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _autoScanInFlight = true;
+      try {
+        final db = ref.read(databaseProvider);
+        final existing = await db.listMemos(limit: 1);
+        if (!mounted) return;
+        if (existing.isNotEmpty) return;
+
+        final diskMemos = await scanner.fileSystem.listMemos();
+        if (!mounted || diskMemos.isEmpty) return;
+
+        await scanner.scanAndMerge(context, forceDisk: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.tr(
+                zh: '已从本地库导入笔记',
+                en: 'Imported memos from local library',
+              ),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.tr(
+                zh: '本地库导入失败: $e',
+                en: 'Local library import failed: $e',
+              ),
+            ),
+          ),
+        );
+      } finally {
+        _autoScanInFlight = false;
+      }
+    });
   }
 
   Future<void> _createShortcutFromMenu() async {
@@ -1253,7 +1448,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   Future<void> _openTitleMenu() async {
     final session = ref.read(appSessionProvider).valueOrNull;
     final accounts = session?.accounts ?? const [];
-    final showShortcuts = _isAllMemos;
+    final showShortcuts = _isAllMemos && session?.currentAccount != null;
     if (!showShortcuts && accounts.length < 2) return;
 
     final overlay =
@@ -1878,6 +2073,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       useRemoteSearch: useRemoteSearch,
     );
 
+    _maybeAutoScanLocalLibrary(
+      memosLoading: memosLoading,
+      memosValue: memosValue,
+      useRemoteSearch: useRemoteSearch,
+      useShortcutFilter: useShortcutFilter,
+      searchQuery: searchQuery,
+      resolvedTag: resolvedTag,
+      filterDay: filterDay,
+    );
+
     if (memosValue != null) {
       final sortedMemos = enableHomeSort
           ? _applyHomeSort(memosValue)
@@ -1901,8 +2106,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    final backToTopBaseOffset =
-        widget.enableCompose && !_searching ? 104.0 : 24.0;
+    final backToTopBaseOffset = widget.enableCompose && !_searching
+        ? 104.0
+        : 24.0;
     void maybeHaptic() {
       if (!hapticsEnabled) return;
       HapticFeedback.selectionClick();
@@ -1947,286 +2153,298 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
-              SliverAppBar(
-                pinned: true,
-                backgroundColor: headerBg,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
-                automaticallyImplyLeading: !_searching,
-                leading: _searching
-                    ? IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new),
-                        onPressed: _closeSearch,
-                      )
-                    : null,
-                title: _searching
-                    ? Container(
-                        key: const ValueKey('search'),
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? MemoFlowPalette.cardDark
-                              : MemoFlowPalette.cardLight,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isDark
-                                ? MemoFlowPalette.borderDark.withValues(
-                                    alpha: 0.7,
-                                  )
-                                : MemoFlowPalette.borderLight,
-                          ),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          autofocus: true,
-                          textInputAction: TextInputAction.search,
-                          decoration: InputDecoration(
-                            hintText: context.tr(zh: '搜索', en: 'Search'),
-                            border: InputBorder.none,
-                            isDense: true,
-                            prefixIcon: const Icon(Icons.search, size: 18),
-                          ),
-                          onChanged: (_) => setState(() {}),
-                          onSubmitted: _submitSearch,
-                        ),
-                      )
-                    : (widget.enableTitleMenu
-                          ? InkWell(
-                              key: _titleKey,
-                              onTap: () {
-                                maybeHaptic();
-                                _openTitleMenu();
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    widget.title,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                  SliverAppBar(
+                    pinned: true,
+                    backgroundColor: headerBg,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    automaticallyImplyLeading: !_searching,
+                    leading: _searching
+                        ? IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new),
+                            onPressed: _closeSearch,
+                          )
+                        : null,
+                    title: _searching
+                        ? Container(
+                            key: const ValueKey('search'),
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? MemoFlowPalette.cardDark
+                                  : MemoFlowPalette.cardLight,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: isDark
+                                    ? MemoFlowPalette.borderDark.withValues(
+                                        alpha: 0.7,
+                                      )
+                                    : MemoFlowPalette.borderLight,
+                              ),
+                            ),
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              textInputAction: TextInputAction.search,
+                              decoration: InputDecoration(
+                                hintText: context.tr(zh: '搜索', en: 'Search'),
+                                border: InputBorder.none,
+                                isDense: true,
+                                prefixIcon: const Icon(Icons.search, size: 18),
+                              ),
+                              onChanged: (_) => setState(() {}),
+                              onSubmitted: _submitSearch,
+                            ),
+                          )
+                        : (widget.enableTitleMenu
+                              ? InkWell(
+                                  key: _titleKey,
+                                  onTap: () {
+                                    maybeHaptic();
+                                    _openTitleMenu();
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        widget.title,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        Icons.expand_more,
+                                        size: 18,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.4),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Text(
+                                  widget.title,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                )),
+                    actions: _searching
+                        ? (widget.enableSearch
+                              ? [
+                                  TextButton(
+                                    onPressed: _closeSearch,
+                                    child: Text(
+                                      context.tr(zh: '取消', en: 'Cancel'),
+                                      style: TextStyle(
+                                        color: MemoFlowPalette.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.expand_more,
-                                    size: 18,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withValues(alpha: 0.4),
+                                ]
+                              : null)
+                        : (widget.enableSearch
+                              ? [
+                                  if (enableHomeSort)
+                                    _buildSortMenuButton(
+                                      context,
+                                      isDark: isDark,
+                                    ),
+                                  IconButton(
+                                    tooltip: context.tr(zh: '搜索', en: 'Search'),
+                                    onPressed: _openSearch,
+                                    icon: const Icon(Icons.search),
                                   ),
-                                ],
-                              ),
-                            )
-                          : Text(
-                              widget.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            )),
-                actions: _searching
-                    ? (widget.enableSearch
-                          ? [
-                              TextButton(
-                                onPressed: _closeSearch,
-                                child: Text(
-                                  context.tr(zh: '取消', en: 'Cancel'),
-                                  style: TextStyle(
-                                    color: MemoFlowPalette.primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ]
-                          : null)
-                    : (widget.enableSearch
-                          ? [
-                              if (enableHomeSort)
-                                _buildSortMenuButton(context, isDark: isDark),
-                              IconButton(
-                                tooltip: context.tr(zh: '搜索', en: 'Search'),
-                                onPressed: _openSearch,
-                                icon: const Icon(Icons.search),
-                              ),
-                            ]
-                          : null),
-                bottom: _searching
-                    ? null
-                    : (widget.showPillActions
-                          ? PreferredSize(
-                              preferredSize: const Size.fromHeight(46),
-                              child: Align(
-                                alignment: Alignment.bottomLeft,
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    0,
-                                    16,
-                                    0,
-                                  ),
-                                  child: _PillRow(
-                                    onWeeklyInsights: () {
-                                      maybeHaptic();
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) => const StatsScreen(),
-                                        ),
-                                      );
-                                    },
-                                    onAiSummary: () {
-                                      maybeHaptic();
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) =>
-                                              const AiSummaryScreen(),
-                                        ),
-                                      );
-                                    },
-                                    onDailyReview: () {
-                                      maybeHaptic();
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) =>
-                                              const DailyReviewScreen(),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                            )
-                          : (widget.showFilterTagChip &&
-                                    (resolvedTag?.trim().isNotEmpty ?? false)
-                                ? PreferredSize(
-                                    preferredSize: const Size.fromHeight(48),
+                                ]
+                              : null),
+                    bottom: _searching
+                        ? null
+                        : (widget.showPillActions
+                              ? PreferredSize(
+                                  preferredSize: const Size.fromHeight(46),
+                                  child: Align(
+                                    alignment: Alignment.bottomLeft,
                                     child: Padding(
                                       padding: const EdgeInsets.fromLTRB(
                                         16,
                                         0,
                                         16,
-                                        10,
+                                        0,
                                       ),
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: _FilterTagChip(
-                                          label: '#${resolvedTag!.trim()}',
-                                          onClear: widget.showTagFilters
-                                              ? () => _selectTagFilter(null)
-                                              : (widget.showDrawer
-                                                    ? _backToAllMemos
-                                                    : () => context.safePop()),
-                                        ),
+                                      child: _PillRow(
+                                        onWeeklyInsights: () {
+                                          maybeHaptic();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const StatsScreen(),
+                                            ),
+                                          );
+                                        },
+                                        onAiSummary: () {
+                                          maybeHaptic();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const AiSummaryScreen(),
+                                            ),
+                                          );
+                                        },
+                                        onDailyReview: () {
+                                          maybeHaptic();
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const DailyReviewScreen(),
+                                            ),
+                                          );
+                                        },
                                       ),
                                     ),
+                                  ),
+                                )
+                              : (widget.showFilterTagChip &&
+                                        (resolvedTag?.trim().isNotEmpty ??
+                                            false)
+                                    ? PreferredSize(
+                                        preferredSize: const Size.fromHeight(
+                                          48,
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            16,
+                                            0,
+                                            16,
+                                            10,
+                                          ),
+                                          child: Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: _FilterTagChip(
+                                              label: '#${resolvedTag!.trim()}',
+                                              onClear: widget.showTagFilters
+                                                  ? () => _selectTagFilter(null)
+                                                  : (widget.showDrawer
+                                                        ? _backToAllMemos
+                                                        : () => context
+                                                              .safePop()),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : null)),
+                  ),
+                  if (widget.showTagFilters &&
+                      !_searching &&
+                      recommendedTags.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _TagFilterBar(
+                        tags: recommendedTags
+                            .take(12)
+                            .map((e) => e.tag)
+                            .toList(growable: false),
+                        selectedTag: resolvedTag,
+                        onSelectTag: _selectTagFilter,
+                      ),
+                    ),
+                  if (memosLoading && memosValue != null)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
+                    ),
+                  if (memosError != null)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Text(
+                          context.tr(
+                            zh: '加载失败：$memosError',
+                            en: 'Failed to load: $memosError',
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (showSearchLanding)
+                    SliverToBoxAdapter(
+                      child: _SearchLanding(
+                        history: searchHistory,
+                        onClearHistory: () =>
+                            ref.read(searchHistoryProvider.notifier).clear(),
+                        onRemoveHistory: (value) => ref
+                            .read(searchHistoryProvider.notifier)
+                            .remove(value),
+                        onSelectHistory: _applySearchQuery,
+                        tags: recommendedTags
+                            .map((e) => e.tag)
+                            .toList(growable: false),
+                        onSelectTag: _applySearchQuery,
+                      ),
+                    )
+                  else if (memosValue == null && memosLoading)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (visibleMemos.isEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 140),
+                        child: Center(
+                          child: Text(
+                            _searching
+                                ? context.tr(
+                                    zh: '未找到相关内容',
+                                    en: 'No results found',
                                   )
-                                : null)),
+                                : context.tr(zh: '暂无内容', en: 'No content yet'),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        listTopPadding + listVisualOffset,
+                        16,
+                        140,
+                      ),
+                      sliver: SliverAnimatedList(
+                        key: _listKey,
+                        initialItemCount: visibleMemos.length,
+                        itemBuilder: (context, index, animation) {
+                          final memo = visibleMemos[index];
+                          return _buildAnimatedMemoItem(
+                            context: context,
+                            memo: memo,
+                            animation: animation,
+                            prefs: prefs,
+                            outboxStatus: outboxStatus,
+                            removing: false,
+                          );
+                        },
+                      ),
+                    ),
+                ],
               ),
-              if (widget.showTagFilters &&
-                  !_searching &&
-                  recommendedTags.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: _TagFilterBar(
-                    tags: recommendedTags
-                        .take(12)
-                        .map((e) => e.tag)
-                        .toList(growable: false),
-                    selectedTag: resolvedTag,
-                    onSelectTag: _selectTagFilter,
-                  ),
-                ),
-              if (memosLoading && memosValue != null)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-                ),
-              if (memosError != null)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Text(
-                      context.tr(
-                        zh: '加载失败：$memosError',
-                        en: 'Failed to load: $memosError',
-                      ),
-                    ),
-                  ),
-                )
-              else if (showSearchLanding)
-                SliverToBoxAdapter(
-                  child: _SearchLanding(
-                    history: searchHistory,
-                    onClearHistory: () =>
-                        ref.read(searchHistoryProvider.notifier).clear(),
-                    onRemoveHistory: (value) =>
-                        ref.read(searchHistoryProvider.notifier).remove(value),
-                    onSelectHistory: _applySearchQuery,
-                    tags: recommendedTags
-                        .map((e) => e.tag)
-                        .toList(growable: false),
-                    onSelectTag: _applySearchQuery,
-                  ),
-                )
-              else if (memosValue == null && memosLoading)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (visibleMemos.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 140),
-                    child: Center(
-                      child: Text(
-                        _searching
-                            ? context.tr(zh: '未找到相关内容', en: 'No results found')
-                            : context.tr(zh: '暂无内容', en: 'No content yet'),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    listTopPadding + listVisualOffset,
-                    16,
-                    140,
-                  ),
-                  sliver: SliverAnimatedList(
-                    key: _listKey,
-                    initialItemCount: visibleMemos.length,
-                    itemBuilder: (context, index, animation) {
-                      final memo = visibleMemos[index];
-                      return _buildAnimatedMemoItem(
-                        context: context,
-                        memo: memo,
-                        animation: animation,
-                        prefs: prefs,
-                        outboxStatus: outboxStatus,
-                        removing: false,
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: backToTopBaseOffset + bottomInset,
+              child: _BackToTopButton(
+                visible: _showBackToTop,
+                hapticsEnabled: hapticsEnabled,
+                onPressed: _scrollToTop,
+              ),
+            ),
+          ],
         ),
-        Positioned(
-          right: 16,
-          bottom: backToTopBaseOffset + bottomInset,
-          child: _BackToTopButton(
-            visible: _showBackToTop,
-            hapticsEnabled: hapticsEnabled,
-            onPressed: _scrollToTop,
-          ),
-        ),
-      ],
-    ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         floatingActionButton: widget.enableCompose && !_searching
             ? _MemoFlowFab(
@@ -3530,7 +3748,8 @@ class _MemoCardState extends State<_MemoCard> {
                       top: 0,
                       child: Theme(
                         data: Theme.of(context).copyWith(
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -3561,7 +3780,11 @@ class _MemoCardState extends State<_MemoCard> {
                             if (showSyncStatus)
                               IconButton(
                                 onPressed: onSyncStatusTap,
-                                icon: Icon(syncIcon, size: 16, color: syncColor),
+                                icon: Icon(
+                                  syncIcon,
+                                  size: 16,
+                                  color: syncColor,
+                                ),
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints.tightFor(
                                   width: 32,
@@ -3574,88 +3797,106 @@ class _MemoCardState extends State<_MemoCard> {
                               height: 32,
                               child: Center(
                                 child: PopupMenuButton<_MemoCardAction>(
-                              tooltip: context.tr(zh: '\u66f4\u591a', en: 'More'),
-                              padding: EdgeInsets.zero,
-                              icon: Icon(
-                                Icons.more_horiz,
-                                size: 20,
-                                color: textMain.withValues(
-                                  alpha: isDark ? 0.4 : 0.5,
-                                ),
-                              ),
-                              onSelected: onAction,
-                              color: menuColor,
-                              surfaceTintColor: Colors.transparent,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              itemBuilder: (context) => isArchived
-                                  ? [
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.restore,
-                                        child: Text(
-                                          context.tr(
-                                            zh: '\u6062\u590d',
-                                            en: 'Restore',
+                                  tooltip: context.tr(
+                                    zh: '\u66f4\u591a',
+                                    en: 'More',
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  icon: Icon(
+                                    Icons.more_horiz,
+                                    size: 20,
+                                    color: textMain.withValues(
+                                      alpha: isDark ? 0.4 : 0.5,
+                                    ),
+                                  ),
+                                  onSelected: onAction,
+                                  color: menuColor,
+                                  surfaceTintColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  itemBuilder: (context) => isArchived
+                                      ? [
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.restore,
+                                            child: Text(
+                                              context.tr(
+                                                zh: '\u6062\u590d',
+                                                en: 'Restore',
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.delete,
-                                        child: Text(
-                                          context.tr(zh: '删除', en: 'Delete'),
-                                          style: TextStyle(
-                                            color: deleteColor,
-                                            fontWeight: FontWeight.w600,
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.delete,
+                                            child: Text(
+                                              context.tr(
+                                                zh: '删除',
+                                                en: 'Delete',
+                                              ),
+                                              style: TextStyle(
+                                                color: deleteColor,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                    ]
-                                  : [
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.togglePinned,
-                                        child: Text(
-                                          memo.pinned
-                                              ? context.tr(
-                                                  zh: '取消置顶',
-                                                  en: 'Unpin',
-                                                )
-                                              : context.tr(zh: '置顶', en: 'Pin'),
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.edit,
-                                        child: Text(
-                                          context.tr(
-                                            zh: '\u7f16\u8f91',
-                                            en: 'Edit',
+                                        ]
+                                      : [
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.togglePinned,
+                                            child: Text(
+                                              memo.pinned
+                                                  ? context.tr(
+                                                      zh: '取消置顶',
+                                                      en: 'Unpin',
+                                                    )
+                                                  : context.tr(
+                                                      zh: '置顶',
+                                                      en: 'Pin',
+                                                    ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.reminder,
-                                        child: Text(
-                                          context.tr(zh: '提醒', en: 'Reminder'),
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.archive,
-                                        child: Text(
-                                          context.tr(zh: '归档', en: 'Archive'),
-                                        ),
-                                      ),
-                                      const PopupMenuDivider(),
-                                      PopupMenuItem(
-                                        value: _MemoCardAction.delete,
-                                        child: Text(
-                                          context.tr(zh: '删除', en: 'Delete'),
-                                          style: TextStyle(
-                                            color: deleteColor,
-                                            fontWeight: FontWeight.w600,
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.edit,
+                                            child: Text(
+                                              context.tr(
+                                                zh: '\u7f16\u8f91',
+                                                en: 'Edit',
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                    ],
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.reminder,
+                                            child: Text(
+                                              context.tr(
+                                                zh: '提醒',
+                                                en: 'Reminder',
+                                              ),
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.archive,
+                                            child: Text(
+                                              context.tr(
+                                                zh: '归档',
+                                                en: 'Archive',
+                                              ),
+                                            ),
+                                          ),
+                                          const PopupMenuDivider(),
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.delete,
+                                            child: Text(
+                                              context.tr(
+                                                zh: '删除',
+                                                en: 'Delete',
+                                              ),
+                                              style: TextStyle(
+                                                color: deleteColor,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                 ),
                               ),
                             ),
@@ -3954,48 +4195,51 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
     LocalMemo? memo = row == null ? null : LocalMemo.fromDb(row);
 
     if (memo == null) {
-      try {
-        final api = ref.read(memosApiProvider);
-        final remote = await api.getMemo(memoUid: uid);
-        final remoteUid = remote.uid.isNotEmpty ? remote.uid : uid;
-        await db.upsertMemo(
-          uid: remoteUid,
-          content: remote.content,
-          visibility: remote.visibility,
-          pinned: remote.pinned,
-          state: remote.state,
-          createTimeSec:
-              remote.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          updateTimeSec:
-              remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          tags: remote.tags,
-          attachments: remote.attachments
-              .map((a) => a.toJson())
-              .toList(growable: false),
-          location: remote.location,
-          relationCount: countReferenceRelations(
-            memoUid: remoteUid,
-            relations: remote.relations,
-          ),
-          syncState: 0,
-        );
-        final refreshed = await db.getMemoByUid(remoteUid);
-        if (refreshed != null) {
-          memo = LocalMemo.fromDb(refreshed);
-        }
-      } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.tr(
-                zh: '\u52a0\u8f7d\u5931\u8d25\uff1a$e',
-                en: 'Failed to load: $e',
+      final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+      if (account != null) {
+        try {
+          final api = ref.read(memosApiProvider);
+          final remote = await api.getMemo(memoUid: uid);
+          final remoteUid = remote.uid.isNotEmpty ? remote.uid : uid;
+          await db.upsertMemo(
+            uid: remoteUid,
+            content: remote.content,
+            visibility: remote.visibility,
+            pinned: remote.pinned,
+            state: remote.state,
+            createTimeSec:
+                remote.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            updateTimeSec:
+                remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            tags: remote.tags,
+            attachments: remote.attachments
+                .map((a) => a.toJson())
+                .toList(growable: false),
+            location: remote.location,
+            relationCount: countReferenceRelations(
+              memoUid: remoteUid,
+              relations: remote.relations,
+            ),
+            syncState: 0,
+          );
+          final refreshed = await db.getMemoByUid(remoteUid);
+          if (refreshed != null) {
+            memo = LocalMemo.fromDb(refreshed);
+          }
+        } catch (e) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                context.tr(
+                  zh: '\u52a0\u8f7d\u5931\u8d25\uff1a$e',
+                  en: 'Failed to load: $e',
+                ),
               ),
             ),
-          ),
-        );
-        return;
+          );
+          return;
+        }
       }
     }
 
@@ -4061,8 +4305,9 @@ class _RelationSummaryRow extends StatelessWidget {
             border: Border.all(color: borderColor.withValues(alpha: 0.7)),
           )
         : null;
-    final padding =
-        boxed ? const EdgeInsets.symmetric(horizontal: 12) : EdgeInsets.zero;
+    final padding = boxed
+        ? const EdgeInsets.symmetric(horizontal: 12)
+        : EdgeInsets.zero;
     return Material(
       color: Colors.transparent,
       child: InkWell(

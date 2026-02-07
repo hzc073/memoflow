@@ -59,7 +59,11 @@ abstract class AppSessionController extends StateNotifier<AsyncValue<AppSessionS
     required bool useLegacyApi,
   });
 
+  Future<void> setCurrentKey(String? key);
+
   Future<void> switchAccount(String accountKey);
+
+  Future<void> switchWorkspace(String workspaceKey);
 
   Future<void> removeAccount(String accountKey);
 
@@ -69,6 +73,19 @@ abstract class AppSessionController extends StateNotifier<AsyncValue<AppSessionS
 class AppSessionNotifier extends AppSessionController {
   AppSessionNotifier(this._accountsRepository) : super(const AsyncValue.loading()) {
     _loadFromStorage();
+  }
+
+  @override
+  Future<void> setCurrentKey(String? key) async {
+    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
+    final trimmed = key?.trim();
+    final nextKey = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+
+    state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
+    state = await AsyncValue.guard(() async {
+      await _accountsRepository.write(AccountsState(accounts: current.accounts, currentKey: nextKey));
+      return AppSessionState(accounts: current.accounts, currentKey: nextKey);
+    });
   }
 
   final AccountsRepository _accountsRepository;
@@ -166,6 +183,19 @@ class AppSessionNotifier extends AppSessionController {
     state = await AsyncValue.guard(() async {
       await _accountsRepository.write(AccountsState(accounts: current.accounts, currentKey: accountKey));
       return AppSessionState(accounts: current.accounts, currentKey: accountKey);
+    });
+  }
+
+  @override
+  Future<void> switchWorkspace(String workspaceKey) async {
+    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
+    final key = workspaceKey.trim();
+    if (key.isEmpty) return;
+
+    state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
+    state = await AsyncValue.guard(() async {
+      await _accountsRepository.write(AccountsState(accounts: current.accounts, currentKey: key));
+      return AppSessionState(accounts: current.accounts, currentKey: key);
     });
   }
 

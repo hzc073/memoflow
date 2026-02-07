@@ -74,6 +74,10 @@ dependencies:
   timezone: ^0.9.3
   flutter_timezone: ^5.0.1
   highlight: ^0.7.0
+  saf_util: ^0.11.0
+  saf_stream: ^0.12.3
+  cryptography: ^2.9.0
+  cryptography_flutter: ^2.3.4
 
 dev_dependencies:
   flutter_test:

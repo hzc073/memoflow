@@ -7,20 +7,29 @@ import '../data/settings/location_settings_repository.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
-final locationSettingsRepositoryProvider = Provider<LocationSettingsRepository>((ref) {
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  if (account == null) {
-    throw StateError('Not authenticated');
-  }
-  return LocationSettingsRepository(ref.watch(secureStorageProvider), accountKey: account.key);
-});
+final locationSettingsRepositoryProvider = Provider<LocationSettingsRepository>(
+  (ref) {
+    final session = ref.watch(appSessionProvider).valueOrNull;
+    final key = session?.currentKey?.trim();
+    final storageKey = (key == null || key.isEmpty) ? 'device' : key;
+    return LocationSettingsRepository(
+      ref.watch(secureStorageProvider),
+      accountKey: storageKey,
+    );
+  },
+);
 
-final locationSettingsProvider = StateNotifierProvider<LocationSettingsController, LocationSettings>((ref) {
-  return LocationSettingsController(ref, ref.watch(locationSettingsRepositoryProvider));
-});
+final locationSettingsProvider =
+    StateNotifierProvider<LocationSettingsController, LocationSettings>((ref) {
+      return LocationSettingsController(
+        ref,
+        ref.watch(locationSettingsRepositoryProvider),
+      );
+    });
 
 class LocationSettingsController extends StateNotifier<LocationSettings> {
-  LocationSettingsController(this._ref, this._repo) : super(LocationSettings.defaults) {
+  LocationSettingsController(this._ref, this._repo)
+    : super(LocationSettings.defaults) {
     unawaited(_load());
   }
 

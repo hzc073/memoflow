@@ -27,12 +27,14 @@ import 'features/updates/update_announcement_dialog.dart';
 import 'data/updates/update_config.dart';
 import 'state/database_provider.dart';
 import 'state/logging_provider.dart';
+import 'state/local_library_provider.dart';
 import 'state/memos_providers.dart';
 import 'state/preferences_provider.dart';
 import 'state/reminder_scheduler.dart';
 import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
 import 'state/update_config_provider.dart';
+import 'state/webdav_backup_provider.dart';
 import 'state/webdav_sync_provider.dart';
 
 class App extends ConsumerStatefulWidget {
@@ -63,26 +65,27 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   bool _updateAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
-  static const UpdateAnnouncementConfig _fallbackUpdateConfig = UpdateAnnouncementConfig(
-    versionInfo: UpdateVersionInfo(
-      latestVersion: '',
-      isForce: false,
-      downloadUrl: '',
-      debugVersion: '',
-      skipUpdateVersion: '',
-    ),
-    announcement: UpdateAnnouncement(
-      id: 0,
-      title: '',
-      contentsByLocale: {},
-      fallbackContents: [],
-      newDonorIds: [],
-    ),
-    donors: [],
-    releaseNotes: [],
-    noticeEnabled: false,
-    notice: null,
-  );
+  static const UpdateAnnouncementConfig _fallbackUpdateConfig =
+      UpdateAnnouncementConfig(
+        versionInfo: UpdateVersionInfo(
+          latestVersion: '',
+          isForce: false,
+          downloadUrl: '',
+          debugVersion: '',
+          skipUpdateVersion: '',
+        ),
+        announcement: UpdateAnnouncement(
+          id: 0,
+          title: '',
+          contentsByLocale: {},
+          fallbackContents: [],
+          newDonorIds: [],
+        ),
+        donors: [],
+        releaseNotes: [],
+        noticeEnabled: false,
+        notice: null,
+      );
 
   static const Map<String, String> _imageEditorI18nZh = {
     'Crop': '裁剪',
@@ -141,12 +144,17 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   };
 
   static void _applyImageEditorI18n(AppLanguage language) {
-    ImageEditor.setI18n(language == AppLanguage.en ? _imageEditorI18nEn : _imageEditorI18nZh);
+    ImageEditor.setI18n(
+      language == AppLanguage.en ? _imageEditorI18nEn : _imageEditorI18nZh,
+    );
   }
 
   static Locale _localeFor(AppLanguage language) {
     return switch (language) {
-      AppLanguage.zhHans => const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
+      AppLanguage.zhHans => const Locale.fromSubtags(
+        languageCode: 'zh',
+        scriptCode: 'Hans',
+      ),
       AppLanguage.en => const Locale('en'),
     };
   }
@@ -187,19 +195,34 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     );
   }
 
-  static TextTheme _applyFontFamily(TextTheme theme, {String? family, List<String>? fallback}) {
+  static TextTheme _applyFontFamily(
+    TextTheme theme, {
+    String? family,
+    List<String>? fallback,
+  }) {
     if (family == null && (fallback == null || fallback.isEmpty)) return theme;
     return theme.apply(fontFamily: family, fontFamilyFallback: fallback);
   }
 
-  static ThemeData _applyPreferencesToTheme(ThemeData theme, AppPreferences prefs) {
+  static ThemeData _applyPreferencesToTheme(
+    ThemeData theme,
+    AppPreferences prefs,
+  ) {
     final lineHeight = _lineHeightFor(prefs.lineHeight);
     final textTheme = _applyLineHeight(
-      _applyFontFamily(theme.textTheme, family: prefs.fontFamily, fallback: null),
+      _applyFontFamily(
+        theme.textTheme,
+        family: prefs.fontFamily,
+        fallback: null,
+      ),
       lineHeight,
     );
     final primaryTextTheme = _applyLineHeight(
-      _applyFontFamily(theme.primaryTextTheme, family: prefs.fontFamily, fallback: null),
+      _applyFontFamily(
+        theme.primaryTextTheme,
+        family: prefs.fontFamily,
+        fallback: null,
+      ),
       lineHeight,
     );
 
@@ -232,46 +255,68 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _pendingWidgetActionLoad = _loadPendingWidgetAction();
     ShareHandlerService.setShareHandler(_handleShareLaunch);
     _pendingShareLoad = _loadPendingShare();
-    _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
-      final prevKey = prev?.valueOrNull?.currentKey;
-      final nextKey = next.valueOrNull?.currentKey;
-      if (nextKey != null && nextKey != prevKey) {
-        _scheduleStatsWidgetUpdate();
-        _lastResumeSyncAt = null;
-        _lastPauseSyncAt = null;
-        _triggerLifecycleSync(isResume: true);
-        unawaited(ref.read(reminderSchedulerProvider).rescheduleAll(force: true));
-      }
-      if (nextKey != null) {
-        if (ref.read(appPreferencesLoadedProvider)) {
-          ref.read(appPreferencesProvider.notifier).ensureAccountThemeDefaults(nextKey);
-        } else {
-          _pendingThemeAccountKey = nextKey;
+    _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(
+      appSessionProvider,
+      (prev, next) {
+        final prevKey = prev?.valueOrNull?.currentKey;
+        final nextKey = next.valueOrNull?.currentKey;
+        if (nextKey != null && nextKey != prevKey) {
+          _scheduleStatsWidgetUpdate();
+          _lastResumeSyncAt = null;
+          _lastPauseSyncAt = null;
+          _triggerLifecycleSync(isResume: true);
+          unawaited(
+            ref.read(reminderSchedulerProvider).rescheduleAll(force: true),
+          );
         }
-      }
-      if (next.valueOrNull?.currentAccount != null) {
-        _scheduleShareHandling();
-      }
-    });
-    _prefsSubscription = ref.listenManual<AppPreferences>(appPreferencesProvider, (prev, next) {
-      if (prev?.fontFamily == next.fontFamily && prev?.fontFile == next.fontFile) return;
-      unawaited(_ensureFontLoaded(next));
-    });
-    _prefsLoadedSubscription = ref.listenManual<bool>(appPreferencesLoadedProvider, (prev, next) {
-      if (!next) return;
-      final key = _pendingThemeAccountKey ?? ref.read(appSessionProvider).valueOrNull?.currentKey;
-      if (key != null) {
-        ref.read(appPreferencesProvider.notifier).ensureAccountThemeDefaults(key);
-      }
-      _pendingThemeAccountKey = null;
-    });
+        if (nextKey != null) {
+          if (ref.read(appPreferencesLoadedProvider)) {
+            ref
+                .read(appPreferencesProvider.notifier)
+                .ensureAccountThemeDefaults(nextKey);
+          } else {
+            _pendingThemeAccountKey = nextKey;
+          }
+        }
+        if (next.valueOrNull?.currentAccount != null) {
+          _scheduleShareHandling();
+        }
+      },
+    );
+    _prefsSubscription = ref.listenManual<AppPreferences>(
+      appPreferencesProvider,
+      (prev, next) {
+        if (prev?.fontFamily == next.fontFamily &&
+            prev?.fontFile == next.fontFile)
+          return;
+        unawaited(_ensureFontLoaded(next));
+      },
+    );
+    _prefsLoadedSubscription = ref.listenManual<bool>(
+      appPreferencesLoadedProvider,
+      (prev, next) {
+        if (!next) return;
+        final key =
+            _pendingThemeAccountKey ??
+            ref.read(appSessionProvider).valueOrNull?.currentKey;
+        if (key != null) {
+          ref
+              .read(appPreferencesProvider.notifier)
+              .ensureAccountThemeDefaults(key);
+        }
+        _pendingThemeAccountKey = null;
+      },
+    );
     final reminderScheduler = ref.read(reminderSchedulerProvider);
     reminderScheduler.bindNavigator(_navigatorKey);
     unawaited(reminderScheduler.initialize());
-    _reminderSettingsSubscription = ref.listenManual<ReminderSettings>(reminderSettingsProvider, (prev, next) {
-      if (!ref.read(reminderSettingsLoadedProvider)) return;
-      unawaited(reminderScheduler.rescheduleAll());
-    });
+    _reminderSettingsSubscription = ref.listenManual<ReminderSettings>(
+      reminderSettingsProvider,
+      (prev, next) {
+        if (!ref.read(reminderSettingsLoadedProvider)) return;
+        unawaited(reminderScheduler.rescheduleAll());
+      },
+    );
     _scheduleStatsWidgetUpdate();
   }
 
@@ -347,14 +392,19 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     _launchActionHandled = true;
     final prefs = ref.read(appPreferencesProvider);
-    final hasPendingUiAction = _pendingSharePayload != null || _pendingWidgetAction != null;
+    final hasPendingUiAction =
+        _pendingSharePayload != null || _pendingWidgetAction != null;
 
     if (!hasPendingUiAction) {
       switch (prefs.launchAction) {
         case LaunchAction.dailyReview:
           final navigator = _navigatorKey.currentState;
           if (navigator != null) {
-            navigator.push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
+            navigator.push(
+              MaterialPageRoute<void>(
+                builder: (_) => const DailyReviewScreen(),
+              ),
+            );
           }
           break;
         case LaunchAction.quickInput:
@@ -470,10 +520,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       currentVersion: displayVersion,
       prefs: prefs,
     );
-    await _maybeShowNoticeWithConfig(
-      config: effectiveConfig,
-      prefs: prefs,
-    );
+    await _maybeShowNoticeWithConfig(config: effectiveConfig, prefs: prefs);
   }
 
   Future<void> _maybeShowUpdateAnnouncementWithConfig({
@@ -484,12 +531,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final isForce = config.versionInfo.isForce;
     final latestVersion = config.versionInfo.latestVersion.trim();
     final skipUpdateVersion = config.versionInfo.skipUpdateVersion.trim();
-    final hasUpdate = latestVersion.isNotEmpty &&
+    final hasUpdate =
+        latestVersion.isNotEmpty &&
         (skipUpdateVersion.isEmpty || latestVersion != skipUpdateVersion) &&
         _compareVersionTriplets(latestVersion, currentVersion) > 0;
 
     final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();
-    final shouldShow = isForce || hasUpdate || lastSeenVersion != currentVersion;
+    final shouldShow =
+        isForce || hasUpdate || lastSeenVersion != currentVersion;
     if (!shouldShow) return;
 
     final dialogContext = _navigatorKey.currentContext;
@@ -501,11 +550,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       currentVersion: currentVersion,
     );
     if (!mounted || isForce) return;
-    if (action == AnnouncementAction.update || action == AnnouncementAction.later) {
-      ref.read(appPreferencesProvider.notifier).setLastSeenAnnouncement(
-        version: currentVersion,
-        announcementId: config.announcement.id,
-      );
+    if (action == AnnouncementAction.update ||
+        action == AnnouncementAction.later) {
+      ref
+          .read(appPreferencesProvider.notifier)
+          .setLastSeenAnnouncement(
+            version: currentVersion,
+            announcementId: config.announcement.id,
+          );
     }
   }
 
@@ -569,9 +621,17 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       await HomeWidgetService.updateStatsWidget(
         total: stats.totalMemoCount,
         days: days,
-        title: trByLanguage(language: language, zh: '记录热力图', en: 'Activity Heatmap'),
+        title: trByLanguage(
+          language: language,
+          zh: '记录热力图',
+          en: 'Activity Heatmap',
+        ),
         totalLabel: trByLanguage(language: language, zh: '总记录', en: 'Total'),
-        rangeLabel: trByLanguage(language: language, zh: '最近 14 天', en: 'Last 14 days'),
+        rangeLabel: trByLanguage(
+          language: language,
+          zh: '最近 14 天',
+          en: 'Last 14 days',
+        ),
       );
       _statsWidgetAccountKey = account.key;
     } catch (_) {
@@ -581,7 +641,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _syncAndUpdateStatsWidget({required bool forceWidgetUpdate}) async {
+  Future<void> _syncAndUpdateStatsWidget({
+    required bool forceWidgetUpdate,
+  }) async {
     final session = ref.read(appSessionProvider).valueOrNull;
     if (session?.currentAccount == null) return;
 
@@ -614,6 +676,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     if (isResume) {
       unawaited(ref.read(appSessionProvider.notifier).refreshCurrentUser());
+      unawaited(
+        ref
+            .read(webDavBackupControllerProvider.notifier)
+            .checkAndBackupOnResume(),
+      );
     }
 
     unawaited(_syncAndUpdateStatsWidget(forceWidgetUpdate: true));
@@ -646,7 +713,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
   }
 
-  List<int> _buildHeatmapDays(List<DateTime> timestamps, {required int dayCount}) {
+  List<int> _buildHeatmapDays(
+    List<DateTime> timestamps, {
+    required int dayCount,
+  }) {
     final counts = List<int>.filled(dayCount, 0);
     if (dayCount <= 0) return counts;
 
@@ -676,14 +746,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _pendingWidgetAction = null;
     switch (type) {
       case HomeWidgetType.dailyReview:
-        navigator.push(MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()));
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()),
+        );
         break;
       case HomeWidgetType.quickInput:
         _openAllMemos(navigator);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final sheetContext = _navigatorKey.currentContext;
           if (sheetContext != null) {
-            final autoFocus = ref.read(appPreferencesProvider).quickInputAutoFocus;
+            final autoFocus = ref
+                .read(appPreferencesProvider)
+                .quickInputAutoFocus;
             NoteInputSheet.show(sheetContext, autoFocus: autoFocus);
           }
         });
@@ -814,7 +888,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return MaterialApp(
       title: 'MemoFlow',
       theme: _applyPreferencesToTheme(buildAppTheme(Brightness.light), prefs),
-      darkTheme: _applyPreferencesToTheme(buildAppTheme(Brightness.dark), prefs),
+      darkTheme: _applyPreferencesToTheme(
+        buildAppTheme(Brightness.dark),
+        prefs,
+      ),
       themeMode: themeMode,
       locale: locale,
       navigatorKey: _navigatorKey,
@@ -884,12 +961,17 @@ class MainHomePage extends ConsumerWidget {
 
     final sessionAsync = ref.watch(appSessionProvider);
     final session = sessionAsync.valueOrNull;
+    final localLibrary = ref.watch(currentLocalLibraryProvider);
 
     return sessionAsync.when(
-      data: (session) => session.currentAccount == null ? const LoginScreen() : const HomeScreen(),
+      data: (session) => session.currentAccount == null && localLibrary == null
+          ? const LoginScreen()
+          : const HomeScreen(),
       loading: () {
         if (session != null) {
-          return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
+          return session.currentAccount == null && localLibrary == null
+              ? const LoginScreen()
+              : const HomeScreen();
         }
         return ColoredBox(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -898,7 +980,9 @@ class MainHomePage extends ConsumerWidget {
       },
       error: (e, _) {
         if (session != null) {
-          return session.currentAccount == null ? const LoginScreen() : const HomeScreen();
+          return session.currentAccount == null && localLibrary == null
+              ? const LoginScreen()
+              : const HomeScreen();
         }
         return LoginScreen(initialError: e.toString());
       },

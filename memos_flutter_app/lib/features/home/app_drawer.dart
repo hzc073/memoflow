@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/database_provider.dart';
+import '../../state/local_library_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/notifications_provider.dart';
 import '../../state/preferences_provider.dart';
@@ -68,11 +69,14 @@ class AppDrawer extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-    final title = (account?.user.displayName.isNotEmpty ?? false)
-        ? account!.user.displayName
-        : (account?.user.name.isNotEmpty ?? false)
-            ? account!.user.name
-            : 'MemoFlow';
+    final localLibrary = ref.watch(currentLocalLibraryProvider);
+    final title = localLibrary?.name.isNotEmpty == true
+        ? localLibrary!.name
+        : (account?.user.displayName.isNotEmpty ?? false)
+            ? account!.user.displayName
+            : (account?.user.name.isNotEmpty ?? false)
+                ? account!.user.name
+                : 'MemoFlow';
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);

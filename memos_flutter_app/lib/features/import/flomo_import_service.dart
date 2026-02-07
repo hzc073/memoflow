@@ -698,7 +698,7 @@ class FlomoImportService {
     for (final file in archive.files) {
       if (!file.isFile) continue;
       final normalized = _normalizeArchivePath(file.name).toLowerCase();
-      if (normalized.endsWith('memos/index.md')) {
+      if (normalized == 'index.md' || normalized.endsWith('memos/index.md')) {
         return true;
       }
     }

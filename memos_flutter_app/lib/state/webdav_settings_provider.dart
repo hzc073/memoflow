@@ -8,17 +8,29 @@ import '../data/settings/webdav_settings_repository.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
-final webDavSettingsRepositoryProvider = Provider<WebDavSettingsRepository>((ref) {
-  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
-  return WebDavSettingsRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
+final webDavSettingsRepositoryProvider = Provider<WebDavSettingsRepository>((
+  ref,
+) {
+  final accountKey = ref.watch(
+    appSessionProvider.select((state) => state.valueOrNull?.currentKey),
+  );
+  return WebDavSettingsRepository(
+    ref.watch(secureStorageProvider),
+    accountKey: accountKey,
+  );
 });
 
-final webDavSettingsProvider = StateNotifierProvider<WebDavSettingsController, WebDavSettings>((ref) {
-  return WebDavSettingsController(ref, ref.watch(webDavSettingsRepositoryProvider));
-});
+final webDavSettingsProvider =
+    StateNotifierProvider<WebDavSettingsController, WebDavSettings>((ref) {
+      return WebDavSettingsController(
+        ref,
+        ref.watch(webDavSettingsRepositoryProvider),
+      );
+    });
 
 class WebDavSettingsController extends StateNotifier<WebDavSettings> {
-  WebDavSettingsController(this._ref, this._repo) : super(WebDavSettings.defaults) {
+  WebDavSettingsController(this._ref, this._repo)
+    : super(WebDavSettings.defaults) {
     unawaited(_load());
   }
 
@@ -42,13 +54,31 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
     _setAndPersist(state.copyWith(serverUrl: normalized));
   }
 
-  void setUsername(String value) => _setAndPersist(state.copyWith(username: value.trim()));
-  void setPassword(String value) => _setAndPersist(state.copyWith(password: value));
-  void setAuthMode(WebDavAuthMode mode) => _setAndPersist(state.copyWith(authMode: mode));
-  void setIgnoreTlsErrors(bool value) => _setAndPersist(state.copyWith(ignoreTlsErrors: value));
+  void setUsername(String value) =>
+      _setAndPersist(state.copyWith(username: value.trim()));
+  void setPassword(String value) =>
+      _setAndPersist(state.copyWith(password: value));
+  void setAuthMode(WebDavAuthMode mode) =>
+      _setAndPersist(state.copyWith(authMode: mode));
+  void setIgnoreTlsErrors(bool value) =>
+      _setAndPersist(state.copyWith(ignoreTlsErrors: value));
 
   void setRootPath(String value) {
     final normalized = normalizeWebDavRootPath(value);
     _setAndPersist(state.copyWith(rootPath: normalized));
   }
+
+  void setBackupEnabled(bool value) =>
+      _setAndPersist(state.copyWith(backupEnabled: value));
+
+  void setBackupSchedule(WebDavBackupSchedule schedule) =>
+      _setAndPersist(state.copyWith(backupSchedule: schedule));
+
+  void setBackupRetentionCount(int value) {
+    final next = value < 1 ? 1 : value;
+    _setAndPersist(state.copyWith(backupRetentionCount: next));
+  }
+
+  void setRememberBackupPassword(bool value) =>
+      _setAndPersist(state.copyWith(rememberBackupPassword: value));
 }

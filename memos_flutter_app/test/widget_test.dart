@@ -29,14 +29,15 @@ void main() {
 
 class _TestSessionController extends AppSessionController {
   _TestSessionController()
-      : super(
-          const AsyncValue.data(
-            AppSessionState(accounts: [], currentKey: null),
-          ),
-        );
+    : super(
+        const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
+      );
 
   @override
-  Future<void> addAccountWithPat({required Uri baseUrl, required String personalAccessToken}) async {}
+  Future<void> addAccountWithPat({
+    required Uri baseUrl,
+    required String personalAccessToken,
+  }) async {}
 
   @override
   Future<void> addAccountWithPassword({
@@ -51,6 +52,12 @@ class _TestSessionController extends AppSessionController {
 
   @override
   Future<void> switchAccount(String accountKey) async {}
+
+  @override
+  Future<void> setCurrentKey(String? key) async {}
+
+  @override
+  Future<void> switchWorkspace(String workspaceKey) async {}
 
   @override
   Future<void> refreshCurrentUser({bool ignoreErrors = true}) async {}

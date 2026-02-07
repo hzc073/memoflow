@@ -16,52 +16,15 @@ class AppLockGate extends ConsumerStatefulWidget {
 }
 
 class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingObserver {
-  late final OverlayEntry _rootEntry;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _rootEntry = OverlayEntry(
-      builder: (context) {
-        return Positioned.fill(
-          child: Consumer(
-            builder: (context, ref, _) {
-              final lockState = ref.watch(appLockProvider);
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  widget.child,
-                  if (lockState.locked)
-                    const Positioned.fill(
-                      child: PopScope(
-                        canPop: false,
-                        child: _AppLockOverlay(),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant AppLockGate oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.child != widget.child) {
-      _rootEntry.markNeedsBuild();
-    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (_rootEntry.mounted) {
-      _rootEntry.remove();
-    }
     super.dispose();
   }
 
@@ -84,8 +47,23 @@ class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
-    return Overlay(
-      initialEntries: [_rootEntry],
+    return Consumer(
+      builder: (context, ref, _) {
+        final lockState = ref.watch(appLockProvider);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.child,
+            if (lockState.locked)
+              const Positioned.fill(
+                child: PopScope(
+                  canPop: false,
+                  child: _AppLockOverlay(),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

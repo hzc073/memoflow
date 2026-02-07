@@ -8,7 +8,9 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
+import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -18,7 +20,10 @@ class LinkMemoSheet extends ConsumerStatefulWidget {
 
   final Set<String> existingNames;
 
-  static Future<Memo?> show(BuildContext context, {required Set<String> existingNames}) {
+  static Future<Memo?> show(
+    BuildContext context, {
+    required Set<String> existingNames,
+  }) {
     return showModalBottomSheet<Memo>(
       context: context,
       isScrollControlled: true,
@@ -58,11 +63,13 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
   void _scheduleSearch() {
     _debounce?.cancel();
     final query = _searchController.text;
-    _debounce = Timer(const Duration(milliseconds: 300), () => _loadMemos(query));
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _loadMemos(query),
+    );
   }
 
   Future<void> _loadMemos(String query) async {
-    final api = ref.read(memosApiProvider);
     final prefs = ref.read(appPreferencesProvider);
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     final userName = account?.user.name ?? '';
@@ -75,43 +82,66 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     });
 
     try {
-      String? filter;
-      String? oldFilter;
-      String? parent;
-
-      if (prefs.useLegacyApi) {
-        if (userName.isNotEmpty) {
-          parent = userName;
-        }
-        if (trimmed.isNotEmpty) {
-          oldFilter = 'content_search == [${jsonEncode(trimmed)}]';
-        }
+      List<Memo> memos;
+      if (account == null) {
+        final db = ref.read(databaseProvider);
+        final rows = await db.listMemos(
+          searchQuery: trimmed.isEmpty ? null : trimmed,
+          state: 'NORMAL',
+          tag: null,
+          startTimeSec: null,
+          endTimeSecExclusive: null,
+          limit: 200,
+        );
+        memos = rows
+            .map(LocalMemo.fromDb)
+            .map(_memoFromLocal)
+            .toList(growable: false);
       } else {
-        final userId = _tryExtractUserId(userName);
-        final conditions = <String>[];
-        if (userId != null) {
-          conditions.add('creator_id == $userId');
-        }
-        if (trimmed.isNotEmpty) {
-          final escaped = _escapeFilterText(trimmed);
-          conditions.add('content.contains("$escaped")');
-        }
-        if (conditions.isNotEmpty) {
-          filter = conditions.join(' && ');
-        }
-      }
+        final api = ref.read(memosApiProvider);
+        String? filter;
+        String? oldFilter;
+        String? parent;
 
-      final (memos, _) = await api.listMemos(
-        pageSize: 200,
-        filter: filter,
-        oldFilter: oldFilter,
-        parent: parent,
-        preferModern: true,
-      );
+        if (prefs.useLegacyApi) {
+          if (userName.isNotEmpty) {
+            parent = userName;
+          }
+          if (trimmed.isNotEmpty) {
+            oldFilter = 'content_search == [${jsonEncode(trimmed)}]';
+          }
+        } else {
+          final userId = _tryExtractUserId(userName);
+          final conditions = <String>[];
+          if (userId != null) {
+            conditions.add('creator_id == $userId');
+          }
+          if (trimmed.isNotEmpty) {
+            final escaped = _escapeFilterText(trimmed);
+            conditions.add('content.contains("$escaped")');
+          }
+          if (conditions.isNotEmpty) {
+            filter = conditions.join(' && ');
+          }
+        }
+
+        final (remoteMemos, _) = await api.listMemos(
+          pageSize: 200,
+          filter: filter,
+          oldFilter: oldFilter,
+          parent: parent,
+          preferModern: true,
+        );
+        memos = remoteMemos;
+      }
 
       if (!mounted || requestId != _requestId) return;
       final filtered = memos
-          .where((memo) => memo.name.trim().isNotEmpty && !widget.existingNames.contains(memo.name.trim()))
+          .where(
+            (memo) =>
+                memo.name.trim().isNotEmpty &&
+                !widget.existingNames.contains(memo.name.trim()),
+          )
           .toList(growable: false);
       setState(() => _memos = filtered);
     } catch (e) {
@@ -127,13 +157,36 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
   static String? _tryExtractUserId(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
-    final normalized = trimmed.startsWith('users/') ? trimmed.substring('users/'.length) : trimmed;
-    final last = normalized.contains('/') ? normalized.split('/').last : normalized;
+    final normalized = trimmed.startsWith('users/')
+        ? trimmed.substring('users/'.length)
+        : trimmed;
+    final last = normalized.contains('/')
+        ? normalized.split('/').last
+        : normalized;
     return int.tryParse(last) != null ? last : null;
   }
 
   static String _escapeFilterText(String input) {
     return input.replaceAll('\\', r'\\').replaceAll('"', r'\"');
+  }
+
+  Memo _memoFromLocal(LocalMemo memo) {
+    final uid = memo.uid.trim();
+    final name = uid.isEmpty ? '' : 'memos/$uid';
+    return Memo(
+      name: name,
+      creator: '',
+      content: memo.content,
+      contentFingerprint: memo.contentFingerprint,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTime: memo.createTime,
+      updateTime: memo.updateTime,
+      tags: memo.tags,
+      attachments: memo.attachments,
+      location: memo.location,
+    );
   }
 
   String _snippetFor(Memo memo) {
@@ -150,11 +203,17 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = isDark ? const Color(0xFF8E8E8E) : Colors.grey.shade600;
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.08);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.08);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final listHeight = math.min(MediaQuery.sizeOf(context).height * 0.5, 360.0).toDouble();
+    final listHeight = math
+        .min(MediaQuery.sizeOf(context).height * 0.5, 360.0)
+        .toDouble();
 
     return SafeArea(
       child: Container(
@@ -168,7 +227,11 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
           children: [
             Text(
               context.tr(zh: '关联卡片', en: 'Link Card'),
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textMain),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: textMain,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -178,7 +241,9 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
                 hintText: context.tr(zh: '搜索笔记内容', en: 'Search memo content'),
                 isDense: true,
                 filled: true,
-                fillColor: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.04),
+                fillColor: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.black.withValues(alpha: 0.04),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide(color: divider),
@@ -189,7 +254,9 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                  borderSide: BorderSide(
+                    color: MemoFlowPalette.primary.withValues(alpha: 0.6),
+                  ),
                 ),
                 prefixIcon: Icon(Icons.search, color: textMuted),
               ),
@@ -206,7 +273,12 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     );
   }
 
-  Widget _buildList(BuildContext context, Color textMain, Color textMuted, Color divider) {
+  Widget _buildList(
+    BuildContext context,
+    Color textMain,
+    Color textMuted,
+    Color divider,
+  ) {
     if (_loading) {
       return const Center(
         child: SizedBox.square(
@@ -239,7 +311,9 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
       itemBuilder: (context, index) {
         final memo = _memos[index];
         final snippet = _snippetFor(memo);
-        final dateLabel = memo.updateTime.millisecondsSinceEpoch > 0 ? fmt.format(memo.updateTime.toLocal()) : '';
+        final dateLabel = memo.updateTime.millisecondsSinceEpoch > 0
+            ? fmt.format(memo.updateTime.toLocal())
+            : '';
 
         return InkWell(
           onTap: () => context.safePop(memo),

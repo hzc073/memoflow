@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,7 +21,8 @@ enum AppLanguage {
   final String labelZh;
   final String labelEn;
 
-  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) =>
+      current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum AppThemeMode {
@@ -33,7 +34,8 @@ enum AppThemeMode {
   final String labelZh;
   final String labelEn;
 
-  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) =>
+      current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum AppFontSize {
@@ -45,7 +47,8 @@ enum AppFontSize {
   final String labelZh;
   final String labelEn;
 
-  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) =>
+      current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum AppLineHeight {
@@ -57,7 +60,8 @@ enum AppLineHeight {
   final String labelZh;
   final String labelEn;
 
-  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) =>
+      current == AppLanguage.en ? labelEn : labelZh;
 }
 
 enum LaunchAction {
@@ -70,7 +74,8 @@ enum LaunchAction {
   final String labelZh;
   final String labelEn;
 
-  String labelFor(AppLanguage current) => current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) =>
+      current == AppLanguage.en ? labelEn : labelZh;
 }
 
 class AppPreferences {
@@ -109,7 +114,10 @@ class AppPreferences {
   );
 
   static AppPreferences defaultsForLanguage(AppLanguage language) {
-    return AppPreferences.defaults.copyWith(language: language, hasSelectedLanguage: true);
+    return AppPreferences.defaults.copyWith(
+      language: language,
+      hasSelectedLanguage: true,
+    );
   }
 
   const AppPreferences({
@@ -193,37 +201,41 @@ class AppPreferences {
   }
 
   Map<String, dynamic> toJson() => {
-        'language': language.name,
-        'hasSelectedLanguage': hasSelectedLanguage,
-        'fontSize': fontSize.name,
-        'lineHeight': lineHeight.name,
-        'fontFamily': fontFamily,
-        'fontFile': fontFile,
-        'collapseLongContent': collapseLongContent,
-        'collapseReferences': collapseReferences,
-        'launchAction': launchAction.name,
-        'quickInputAutoFocus': quickInputAutoFocus,
-        'hapticsEnabled': hapticsEnabled,
-        'useLegacyApi': useLegacyApi,
-        'networkLoggingEnabled': networkLoggingEnabled,
-        'themeMode': themeMode.name,
-        'themeColor': themeColor.name,
-        'customTheme': customTheme.toJson(),
-        'accountThemeColors': accountThemeColors.map((key, value) => MapEntry(key, value.name)),
-        'accountCustomThemes': accountCustomThemes.map((key, value) => MapEntry(key, value.toJson())),
-        'showDrawerExplore': showDrawerExplore,
-        'showDrawerDailyReview': showDrawerDailyReview,
-        'showDrawerAiSummary': showDrawerAiSummary,
-        'showDrawerResources': showDrawerResources,
-        'showDrawerArchive': showDrawerArchive,
-        'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
-        'supporterCrownEnabled': supporterCrownEnabled,
-        'thirdPartyShareEnabled': thirdPartyShareEnabled,
-        'lastSeenAppVersion': lastSeenAppVersion,
-        'lastSeenAnnouncementVersion': lastSeenAnnouncementVersion,
-        'lastSeenAnnouncementId': lastSeenAnnouncementId,
-        'lastSeenNoticeHash': lastSeenNoticeHash,
-      };
+    'language': language.name,
+    'hasSelectedLanguage': hasSelectedLanguage,
+    'fontSize': fontSize.name,
+    'lineHeight': lineHeight.name,
+    'fontFamily': fontFamily,
+    'fontFile': fontFile,
+    'collapseLongContent': collapseLongContent,
+    'collapseReferences': collapseReferences,
+    'launchAction': launchAction.name,
+    'quickInputAutoFocus': quickInputAutoFocus,
+    'hapticsEnabled': hapticsEnabled,
+    'useLegacyApi': useLegacyApi,
+    'networkLoggingEnabled': networkLoggingEnabled,
+    'themeMode': themeMode.name,
+    'themeColor': themeColor.name,
+    'customTheme': customTheme.toJson(),
+    'accountThemeColors': accountThemeColors.map(
+      (key, value) => MapEntry(key, value.name),
+    ),
+    'accountCustomThemes': accountCustomThemes.map(
+      (key, value) => MapEntry(key, value.toJson()),
+    ),
+    'showDrawerExplore': showDrawerExplore,
+    'showDrawerDailyReview': showDrawerDailyReview,
+    'showDrawerAiSummary': showDrawerAiSummary,
+    'showDrawerResources': showDrawerResources,
+    'showDrawerArchive': showDrawerArchive,
+    'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
+    'supporterCrownEnabled': supporterCrownEnabled,
+    'thirdPartyShareEnabled': thirdPartyShareEnabled,
+    'lastSeenAppVersion': lastSeenAppVersion,
+    'lastSeenAnnouncementVersion': lastSeenAnnouncementVersion,
+    'lastSeenAnnouncementId': lastSeenAnnouncementId,
+    'lastSeenNoticeHash': lastSeenNoticeHash,
+  };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
     AppLanguage parseLanguage() {
@@ -310,7 +322,9 @@ class AppPreferences {
         final parsed = <String, CustomThemeSettings>{};
         raw.forEach((key, value) {
           if (key is String && value is Map) {
-            parsed[key] = CustomThemeSettings.fromJson(value.cast<String, dynamic>());
+            parsed[key] = CustomThemeSettings.fromJson(
+              value.cast<String, dynamic>(),
+            );
           }
         });
         return parsed;
@@ -418,30 +432,68 @@ class AppPreferences {
       lineHeight: parseLineHeight(),
       fontFamily: parsedFamily,
       fontFile: parsedFamily == null ? null : parsedFile,
-      collapseLongContent: parseBool('collapseLongContent', AppPreferences.defaults.collapseLongContent),
-      collapseReferences: parseBool('collapseReferences', AppPreferences.defaults.collapseReferences),
+      collapseLongContent: parseBool(
+        'collapseLongContent',
+        AppPreferences.defaults.collapseLongContent,
+      ),
+      collapseReferences: parseBool(
+        'collapseReferences',
+        AppPreferences.defaults.collapseReferences,
+      ),
       launchAction: parseLaunchAction(),
-      quickInputAutoFocus: parseBool('quickInputAutoFocus', AppPreferences.defaults.quickInputAutoFocus),
-      hapticsEnabled: parseBool('hapticsEnabled', AppPreferences.defaults.hapticsEnabled),
-      useLegacyApi: parseBool('useLegacyApi', AppPreferences.defaults.useLegacyApi),
-      networkLoggingEnabled:
-          parseBool('networkLoggingEnabled', AppPreferences.defaults.networkLoggingEnabled),
+      quickInputAutoFocus: parseBool(
+        'quickInputAutoFocus',
+        AppPreferences.defaults.quickInputAutoFocus,
+      ),
+      hapticsEnabled: parseBool(
+        'hapticsEnabled',
+        AppPreferences.defaults.hapticsEnabled,
+      ),
+      useLegacyApi: parseBool(
+        'useLegacyApi',
+        AppPreferences.defaults.useLegacyApi,
+      ),
+      networkLoggingEnabled: parseBool(
+        'networkLoggingEnabled',
+        AppPreferences.defaults.networkLoggingEnabled,
+      ),
       themeMode: parseThemeMode(),
       themeColor: parseThemeColor(),
       customTheme: parsedCustomTheme,
       accountThemeColors: parsedAccountThemeColors,
       accountCustomThemes: parsedAccountCustomThemes,
-      showDrawerExplore: parseBool('showDrawerExplore', AppPreferences.defaults.showDrawerExplore),
-      showDrawerDailyReview: parseBool('showDrawerDailyReview', AppPreferences.defaults.showDrawerDailyReview),
-      showDrawerAiSummary: parseBool('showDrawerAiSummary', AppPreferences.defaults.showDrawerAiSummary),
-      showDrawerResources: parseBool('showDrawerResources', AppPreferences.defaults.showDrawerResources),
-      showDrawerArchive: parseBool('showDrawerArchive', AppPreferences.defaults.showDrawerArchive),
-      aiSummaryAllowPrivateMemos:
-          parseBool('aiSummaryAllowPrivateMemos', AppPreferences.defaults.aiSummaryAllowPrivateMemos),
-      supporterCrownEnabled:
-          parseBool('supporterCrownEnabled', AppPreferences.defaults.supporterCrownEnabled),
-      thirdPartyShareEnabled:
-          parseBool('thirdPartyShareEnabled', AppPreferences.defaults.thirdPartyShareEnabled),
+      showDrawerExplore: parseBool(
+        'showDrawerExplore',
+        AppPreferences.defaults.showDrawerExplore,
+      ),
+      showDrawerDailyReview: parseBool(
+        'showDrawerDailyReview',
+        AppPreferences.defaults.showDrawerDailyReview,
+      ),
+      showDrawerAiSummary: parseBool(
+        'showDrawerAiSummary',
+        AppPreferences.defaults.showDrawerAiSummary,
+      ),
+      showDrawerResources: parseBool(
+        'showDrawerResources',
+        AppPreferences.defaults.showDrawerResources,
+      ),
+      showDrawerArchive: parseBool(
+        'showDrawerArchive',
+        AppPreferences.defaults.showDrawerArchive,
+      ),
+      aiSummaryAllowPrivateMemos: parseBool(
+        'aiSummaryAllowPrivateMemos',
+        AppPreferences.defaults.aiSummaryAllowPrivateMemos,
+      ),
+      supporterCrownEnabled: parseBool(
+        'supporterCrownEnabled',
+        AppPreferences.defaults.supporterCrownEnabled,
+      ),
+      thirdPartyShareEnabled: parseBool(
+        'thirdPartyShareEnabled',
+        AppPreferences.defaults.thirdPartyShareEnabled,
+      ),
       lastSeenAppVersion: parseLastSeenAppVersion(),
       lastSeenAnnouncementVersion: parseLastSeenAnnouncementVersion(),
       lastSeenAnnouncementId: parseLastSeenAnnouncementId(),
@@ -486,60 +538,76 @@ class AppPreferences {
       hasSelectedLanguage: hasSelectedLanguage ?? this.hasSelectedLanguage,
       fontSize: fontSize ?? this.fontSize,
       lineHeight: lineHeight ?? this.lineHeight,
-      fontFamily: identical(fontFamily, _unset) ? this.fontFamily : fontFamily as String?,
-      fontFile: identical(fontFile, _unset) ? this.fontFile : fontFile as String?,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      fontFile: identical(fontFile, _unset)
+          ? this.fontFile
+          : fontFile as String?,
       collapseLongContent: collapseLongContent ?? this.collapseLongContent,
       collapseReferences: collapseReferences ?? this.collapseReferences,
       launchAction: launchAction ?? this.launchAction,
       quickInputAutoFocus: quickInputAutoFocus ?? this.quickInputAutoFocus,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
-      networkLoggingEnabled: networkLoggingEnabled ?? this.networkLoggingEnabled,
+      networkLoggingEnabled:
+          networkLoggingEnabled ?? this.networkLoggingEnabled,
       themeMode: themeMode ?? this.themeMode,
       themeColor: themeColor ?? this.themeColor,
       customTheme: customTheme ?? this.customTheme,
       accountThemeColors: accountThemeColors ?? this.accountThemeColors,
       accountCustomThemes: accountCustomThemes ?? this.accountCustomThemes,
       showDrawerExplore: showDrawerExplore ?? this.showDrawerExplore,
-      showDrawerDailyReview: showDrawerDailyReview ?? this.showDrawerDailyReview,
+      showDrawerDailyReview:
+          showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
       showDrawerArchive: showDrawerArchive ?? this.showDrawerArchive,
-      aiSummaryAllowPrivateMemos: aiSummaryAllowPrivateMemos ?? this.aiSummaryAllowPrivateMemos,
-      supporterCrownEnabled: supporterCrownEnabled ?? this.supporterCrownEnabled,
-      thirdPartyShareEnabled: thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
+      aiSummaryAllowPrivateMemos:
+          aiSummaryAllowPrivateMemos ?? this.aiSummaryAllowPrivateMemos,
+      supporterCrownEnabled:
+          supporterCrownEnabled ?? this.supporterCrownEnabled,
+      thirdPartyShareEnabled:
+          thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
       lastSeenAppVersion: lastSeenAppVersion ?? this.lastSeenAppVersion,
-      lastSeenAnnouncementVersion: lastSeenAnnouncementVersion ?? this.lastSeenAnnouncementVersion,
-      lastSeenAnnouncementId: lastSeenAnnouncementId ?? this.lastSeenAnnouncementId,
+      lastSeenAnnouncementVersion:
+          lastSeenAnnouncementVersion ?? this.lastSeenAnnouncementVersion,
+      lastSeenAnnouncementId:
+          lastSeenAnnouncementId ?? this.lastSeenAnnouncementId,
       lastSeenNoticeHash: lastSeenNoticeHash ?? this.lastSeenNoticeHash,
     );
   }
 }
 
-final appPreferencesRepositoryProvider = Provider<AppPreferencesRepository>((ref) {
-  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
-  return AppPreferencesRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
+final appPreferencesRepositoryProvider = Provider<AppPreferencesRepository>((
+  ref,
+) {
+  final accountKey = ref.watch(
+    appSessionProvider.select((state) => state.valueOrNull?.currentKey),
+  );
+  return AppPreferencesRepository(
+    ref.watch(secureStorageProvider),
+    accountKey: accountKey,
+  );
 });
 
 final appPreferencesLoadedProvider = StateProvider<bool>((ref) => false);
 
-final appPreferencesProvider = StateNotifierProvider<AppPreferencesController, AppPreferences>((ref) {
-  final loadedState = ref.read(appPreferencesLoadedProvider.notifier);
-  Future.microtask(() => loadedState.state = false);
-  return AppPreferencesController(
-    ref,
-    ref.watch(appPreferencesRepositoryProvider),
-    onLoaded: () => loadedState.state = true,
-  );
-});
+final appPreferencesProvider =
+    StateNotifierProvider<AppPreferencesController, AppPreferences>((ref) {
+      final loadedState = ref.read(appPreferencesLoadedProvider.notifier);
+      Future.microtask(() => loadedState.state = false);
+      return AppPreferencesController(
+        ref,
+        ref.watch(appPreferencesRepositoryProvider),
+        onLoaded: () => loadedState.state = true,
+      );
+    });
 
 class AppPreferencesController extends StateNotifier<AppPreferences> {
-  AppPreferencesController(
-    this._ref,
-    this._repo, {
-    void Function()? onLoaded,
-  })  : _onLoaded = onLoaded,
-        super(AppPreferences.defaults) {
+  AppPreferencesController(this._ref, this._repo, {void Function()? onLoaded})
+    : _onLoaded = onLoaded,
+      super(AppPreferences.defaults) {
     unawaited(_loadFromStorage());
   }
 
@@ -549,7 +617,9 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   Future<void> _writeChain = Future<void>.value();
 
   Future<void> _loadFromStorage() async {
-    final systemLanguage = appLanguageFromLocale(WidgetsBinding.instance.platformDispatcher.locale);
+    final systemLanguage = appLanguageFromLocale(
+      WidgetsBinding.instance.platformDispatcher.locale,
+    );
     final stored = await _repo.read(systemLanguage: systemLanguage);
     if (!mounted) return;
     state = stored;
@@ -568,23 +638,40 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   Future<void> setAll(AppPreferences next, {bool triggerSync = true}) async =>
       _setAndPersist(next, triggerSync: triggerSync);
 
-  void setLanguage(AppLanguage v) => _setAndPersist(state.copyWith(language: v));
-  void setHasSelectedLanguage(bool v) => _setAndPersist(state.copyWith(hasSelectedLanguage: v));
-  void setFontSize(AppFontSize v) => _setAndPersist(state.copyWith(fontSize: v));
-  void setLineHeight(AppLineHeight v) => _setAndPersist(state.copyWith(lineHeight: v));
+  void setLanguage(AppLanguage v) =>
+      _setAndPersist(state.copyWith(language: v));
+  void setHasSelectedLanguage(bool v) =>
+      _setAndPersist(state.copyWith(hasSelectedLanguage: v));
+  void setFontSize(AppFontSize v) =>
+      _setAndPersist(state.copyWith(fontSize: v));
+  void setLineHeight(AppLineHeight v) =>
+      _setAndPersist(state.copyWith(lineHeight: v));
   void setFontFamily({String? family, String? filePath}) {
     _setAndPersist(state.copyWith(fontFamily: family, fontFile: filePath));
   }
-  void setCollapseLongContent(bool v) => _setAndPersist(state.copyWith(collapseLongContent: v));
-  void setCollapseReferences(bool v) => _setAndPersist(state.copyWith(collapseReferences: v));
-  void setLaunchAction(LaunchAction v) => _setAndPersist(state.copyWith(launchAction: v));
-  void setQuickInputAutoFocus(bool v) => _setAndPersist(state.copyWith(quickInputAutoFocus: v));
-  void setHapticsEnabled(bool v) => _setAndPersist(state.copyWith(hapticsEnabled: v));
-  void setUseLegacyApi(bool v) => _setAndPersist(state.copyWith(useLegacyApi: v));
-  void setNetworkLoggingEnabled(bool v) => _setAndPersist(state.copyWith(networkLoggingEnabled: v));
-  void setThemeMode(AppThemeMode v) => _setAndPersist(state.copyWith(themeMode: v));
-  void setThemeColor(AppThemeColor v) => setThemeColorForAccount(accountKey: null, color: v);
-  void setThemeColorForAccount({required String? accountKey, required AppThemeColor color}) {
+
+  void setCollapseLongContent(bool v) =>
+      _setAndPersist(state.copyWith(collapseLongContent: v));
+  void setCollapseReferences(bool v) =>
+      _setAndPersist(state.copyWith(collapseReferences: v));
+  void setLaunchAction(LaunchAction v) =>
+      _setAndPersist(state.copyWith(launchAction: v));
+  void setQuickInputAutoFocus(bool v) =>
+      _setAndPersist(state.copyWith(quickInputAutoFocus: v));
+  void setHapticsEnabled(bool v) =>
+      _setAndPersist(state.copyWith(hapticsEnabled: v));
+  void setUseLegacyApi(bool v) =>
+      _setAndPersist(state.copyWith(useLegacyApi: v));
+  void setNetworkLoggingEnabled(bool v) =>
+      _setAndPersist(state.copyWith(networkLoggingEnabled: v));
+  void setThemeMode(AppThemeMode v) =>
+      _setAndPersist(state.copyWith(themeMode: v));
+  void setThemeColor(AppThemeColor v) =>
+      setThemeColorForAccount(accountKey: null, color: v);
+  void setThemeColorForAccount({
+    required String? accountKey,
+    required AppThemeColor color,
+  }) {
     if (accountKey == null || accountKey.trim().isEmpty) {
       _setAndPersist(state.copyWith(themeColor: color));
       return;
@@ -593,23 +680,34 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
     next[accountKey] = color;
     _setAndPersist(state.copyWith(accountThemeColors: next));
   }
-  void setCustomThemeForAccount({required String? accountKey, required CustomThemeSettings settings}) {
+
+  void setCustomThemeForAccount({
+    required String? accountKey,
+    required CustomThemeSettings settings,
+  }) {
     if (accountKey == null || accountKey.trim().isEmpty) {
       _setAndPersist(state.copyWith(customTheme: settings));
       return;
     }
-    final next = Map<String, CustomThemeSettings>.from(state.accountCustomThemes);
+    final next = Map<String, CustomThemeSettings>.from(
+      state.accountCustomThemes,
+    );
     next[accountKey] = settings;
     _setAndPersist(state.copyWith(accountCustomThemes: next));
   }
+
   void ensureAccountThemeDefaults(String accountKey) {
     final key = accountKey.trim();
     if (key.isEmpty) return;
     final hasThemeColor = state.accountThemeColors.containsKey(key);
     final hasCustomTheme = state.accountCustomThemes.containsKey(key);
     if (hasThemeColor && hasCustomTheme) return;
-    final nextThemeColors = Map<String, AppThemeColor>.from(state.accountThemeColors);
-    final nextCustomThemes = Map<String, CustomThemeSettings>.from(state.accountCustomThemes);
+    final nextThemeColors = Map<String, AppThemeColor>.from(
+      state.accountThemeColors,
+    );
+    final nextCustomThemes = Map<String, CustomThemeSettings>.from(
+      state.accountCustomThemes,
+    );
     if (!hasThemeColor) {
       nextThemeColors[key] = state.themeColor;
     }
@@ -623,18 +721,29 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       ),
     );
   }
-  void setShowDrawerExplore(bool v) => _setAndPersist(state.copyWith(showDrawerExplore: v));
-  void setShowDrawerDailyReview(bool v) => _setAndPersist(state.copyWith(showDrawerDailyReview: v));
-  void setShowDrawerAiSummary(bool v) => _setAndPersist(state.copyWith(showDrawerAiSummary: v));
-  void setShowDrawerResources(bool v) => _setAndPersist(state.copyWith(showDrawerResources: v));
-  void setShowDrawerArchive(bool v) => _setAndPersist(state.copyWith(showDrawerArchive: v));
+
+  void setShowDrawerExplore(bool v) =>
+      _setAndPersist(state.copyWith(showDrawerExplore: v));
+  void setShowDrawerDailyReview(bool v) =>
+      _setAndPersist(state.copyWith(showDrawerDailyReview: v));
+  void setShowDrawerAiSummary(bool v) =>
+      _setAndPersist(state.copyWith(showDrawerAiSummary: v));
+  void setShowDrawerResources(bool v) =>
+      _setAndPersist(state.copyWith(showDrawerResources: v));
+  void setShowDrawerArchive(bool v) =>
+      _setAndPersist(state.copyWith(showDrawerArchive: v));
   void setAiSummaryAllowPrivateMemos(bool v) =>
       _setAndPersist(state.copyWith(aiSummaryAllowPrivateMemos: v));
-  void setSupporterCrownEnabled(bool v) => _setAndPersist(state.copyWith(supporterCrownEnabled: v));
-  void setThirdPartyShareEnabled(bool v) => _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
+  void setSupporterCrownEnabled(bool v) =>
+      _setAndPersist(state.copyWith(supporterCrownEnabled: v));
+  void setThirdPartyShareEnabled(bool v) =>
+      _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
   void setLastSeenAppVersion(String v) =>
       _setAndPersist(state.copyWith(lastSeenAppVersion: v), triggerSync: false);
-  void setLastSeenAnnouncement({required String version, required int announcementId}) {
+  void setLastSeenAnnouncement({
+    required String version,
+    required int announcementId,
+  }) {
     _setAndPersist(
       state.copyWith(
         lastSeenAnnouncementVersion: version,
@@ -653,7 +762,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
 }
 
 class AppPreferencesRepository {
-  AppPreferencesRepository(this._storage, {required String? accountKey}) : _accountKey = accountKey;
+  AppPreferencesRepository(this._storage, {required String? accountKey})
+    : _accountKey = accountKey;
 
   static const _kStatePrefix = 'app_preferences_v2_';
   static const _kDeviceKey = 'app_preferences_device_v1';
@@ -717,10 +827,13 @@ class AppPreferencesRepository {
     if (storageKey == null) {
       final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
       if (device != null) {
-        await _storage.write(key: _kDeviceKey, value: jsonEncode(device.toJson()));
+        await _storage.write(
+          key: _kDeviceKey,
+          value: jsonEncode(device.toJson()),
+        );
         await _writeFallback(_kDeviceKey, device);
       }
-      return device ?? AppPreferences.defaultsForLanguage(systemLanguage);
+      return device ?? _defaultsForFirstRun(systemLanguage);
     }
 
     final raw = await _storage.read(key: storageKey);
@@ -728,7 +841,10 @@ class AppPreferencesRepository {
       final legacy = await _readLegacy();
       final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
       if (device != null) {
-        await _storage.write(key: _kDeviceKey, value: jsonEncode(device.toJson()));
+        await _storage.write(
+          key: _kDeviceKey,
+          value: jsonEncode(device.toJson()),
+        );
         await _writeFallback(_kDeviceKey, device);
       }
       if (legacy != null) {
@@ -748,7 +864,7 @@ class AppPreferencesRepository {
         await write(fallback);
         return fallback;
       }
-      return AppPreferences.defaultsForLanguage(systemLanguage);
+      return _defaultsForFirstRun(systemLanguage);
     }
     try {
       final decoded = jsonDecode(raw);
@@ -763,7 +879,14 @@ class AppPreferencesRepository {
       await write(fallback);
       return fallback;
     }
-    return AppPreferences.defaultsForLanguage(systemLanguage);
+    return _defaultsForFirstRun(systemLanguage);
+  }
+
+  AppPreferences _defaultsForFirstRun(AppLanguage systemLanguage) {
+    return AppPreferences.defaults.copyWith(
+      language: systemLanguage,
+      hasSelectedLanguage: false,
+    );
   }
 
   Future<void> write(AppPreferences prefs) async {
@@ -821,4 +944,3 @@ class AppPreferencesRepository {
     );
   }
 }
-
