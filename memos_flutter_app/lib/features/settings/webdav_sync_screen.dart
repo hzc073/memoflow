@@ -189,12 +189,22 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     return value;
   }
 
-  Future<void> _setRememberBackupPassword(bool value) async {
-    setState(() => _rememberBackupPassword = value);
-    ref.read(webDavSettingsProvider.notifier).setRememberBackupPassword(value);
-    if (!value) {
-      await ref.read(webDavBackupPasswordRepositoryProvider).clear();
+  Future<bool> _setRememberBackupPassword(bool value) async {
+    if (value) {
+      final password = await _promptBackupPassword(confirm: false);
+      if (!mounted || password == null) return false;
+      final verified = await _verifyBackupPassword(password);
+      if (!mounted || !verified) return false;
+      setState(() => _rememberBackupPassword = true);
+      ref.read(webDavSettingsProvider.notifier).setRememberBackupPassword(true);
+      await ref.read(webDavBackupPasswordRepositoryProvider).write(password);
+      return true;
     }
+
+    setState(() => _rememberBackupPassword = false);
+    ref.read(webDavSettingsProvider.notifier).setRememberBackupPassword(false);
+    await ref.read(webDavBackupPasswordRepositoryProvider).clear();
+    return false;
   }
 
   void _setBackupRetention(String value) {
@@ -360,6 +370,22 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       await repo.write(entered);
     }
     return entered;
+  }
+
+  Future<bool> _verifyBackupPassword(String password) async {
+    try {
+      await ref
+          .read(webDavBackupControllerProvider.notifier)
+          .listSnapshots(password: password);
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      final message = _formatBackupError(e);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return false;
+    }
   }
 
   Future<void> _backupNow() async {
@@ -1418,7 +1444,7 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
   final bool rememberBackupPassword;
   final TextEditingController backupRetentionController;
   final Future<bool> Function(bool value) onBackupEnabledChanged;
-  final Future<void> Function(bool value) onRememberPasswordChanged;
+  final Future<bool> Function(bool value) onRememberPasswordChanged;
   final ValueChanged<WebDavBackupSchedule> onBackupScheduleChanged;
   final ValueChanged<String> onBackupRetentionChanged;
   final Future<void> Function() onBackupNow;
@@ -1470,9 +1496,9 @@ class _WebDavBackupSettingsScreenState
   }
 
   Future<void> _handleRememberPassword(bool value) async {
-    await widget.onRememberPasswordChanged(value);
+    final next = await widget.onRememberPasswordChanged(value);
     if (!mounted) return;
-    setState(() => _rememberPassword = value);
+    setState(() => _rememberPassword = next);
   }
 
   Future<void> _pickSchedule() async {
