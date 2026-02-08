@@ -42,6 +42,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     tag: null,
     startTimeSec: null,
     endTimeSecExclusive: null,
+    pageSize: 200,
   ));
 
   List<LocalMemo> _deck = const [];

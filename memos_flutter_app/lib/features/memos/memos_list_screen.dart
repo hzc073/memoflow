@@ -361,6 +361,8 @@ class MemosListScreen extends ConsumerStatefulWidget {
 }
 
 class _MemosListScreenState extends ConsumerState<MemosListScreen> {
+  static const int _initialPageSize = 200;
+  static const int _pageStep = 200;
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _searchController = TextEditingController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -398,6 +400,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   DateTime? _lastBackPressedAt;
   bool _autoScanTriggered = false;
   bool _autoScanInFlight = false;
+  int _pageSize = _initialPageSize;
+  bool _reachedEnd = false;
+  bool _loadingMore = false;
+  String _paginationKey = '';
+  int _lastResultCount = 0;
+  int _currentResultCount = 0;
+  bool _currentLoading = false;
+  bool _currentShowSearchLanding = false;
 
   ({int startSec, int endSecExclusive}) _dayRangeSeconds(DateTime day) {
     final localDay = DateTime(day.year, day.month, day.day);
@@ -538,9 +548,45 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final metrics = _scrollController.position;
     final threshold = metrics.viewportDimension * 2;
     final shouldShow = metrics.pixels >= threshold;
-    if (shouldShow == _showBackToTop) return;
-    if (!mounted) return;
-    setState(() => _showBackToTop = shouldShow);
+    if (shouldShow != _showBackToTop && mounted) {
+      setState(() => _showBackToTop = shouldShow);
+    }
+    _maybeLoadMore();
+  }
+
+  void _triggerLoadMore() {
+    _loadingMore = true;
+    _pageSize += _pageStep;
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _maybeLoadMore() {
+    if (_currentShowSearchLanding) return;
+    if (_currentLoading) return;
+    if (_loadingMore || _reachedEnd) return;
+    if (!_scrollController.hasClients) return;
+    final metrics = _scrollController.position;
+    if (metrics.maxScrollExtent <= 0) return;
+    final triggerOffset = metrics.maxScrollExtent - (metrics.viewportDimension * 0.6);
+    if (metrics.pixels < triggerOffset) return;
+    if (_currentResultCount < _pageSize) {
+      _reachedEnd = true;
+      return;
+    }
+    _triggerLoadMore();
+  }
+
+  void _maybeAutoLoadMore() {
+    if (_currentShowSearchLanding) return;
+    if (_currentLoading) return;
+    if (_loadingMore || _reachedEnd) return;
+    if (_currentResultCount < _pageSize || _currentResultCount <= 0) {
+      _reachedEnd = true;
+      return;
+    }
+    _triggerLoadMore();
   }
 
   void _scrollToTop() {
@@ -2027,6 +2073,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final shortcutFilter = selectedShortcut?.filter ?? '';
     final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
     final resolvedTag = _activeTagFilter;
+    final useRemoteSearch = !useShortcutFilter && searchQuery.trim().isNotEmpty;
+    final queryKey =
+        '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
+        '${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|${useShortcutFilter ? 1 : 0}|'
+        '${useRemoteSearch ? 1 : 0}';
+    if (_paginationKey != queryKey) {
+      _paginationKey = queryKey;
+      _pageSize = _initialPageSize;
+      _reachedEnd = false;
+      _loadingMore = false;
+      _lastResultCount = 0;
+    }
     final shortcutQuery = (
       searchQuery: searchQuery,
       state: widget.state,
@@ -2034,8 +2092,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       shortcutFilter: shortcutFilter,
       startTimeSec: startTimeSec,
       endTimeSecExclusive: endTimeSecExclusive,
+      pageSize: _pageSize,
     );
-    final useRemoteSearch = !useShortcutFilter && searchQuery.trim().isNotEmpty;
     final memosAsync = useShortcutFilter
         ? ref.watch(shortcutMemosProvider(shortcutQuery))
         : useRemoteSearch
@@ -2046,6 +2104,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               tag: resolvedTag,
               startTimeSec: startTimeSec,
               endTimeSecExclusive: endTimeSecExclusive,
+              pageSize: _pageSize,
             )),
           )
         : ref.watch(
@@ -2055,6 +2114,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               tag: resolvedTag,
               startTimeSec: startTimeSec,
               endTimeSecExclusive: endTimeSecExclusive,
+              pageSize: _pageSize,
             )),
           );
     final outboxStatus =
@@ -2072,6 +2132,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final enableHomeSort = _shouldEnableHomeSort(
       useRemoteSearch: useRemoteSearch,
     );
+
+    _currentResultCount = memosValue?.length ?? 0;
+    _currentLoading = memosLoading;
+    _currentShowSearchLanding = showSearchLanding;
+    if (_currentResultCount != _lastResultCount) {
+      _lastResultCount = _currentResultCount;
+      _loadingMore = false;
+    }
+    _reachedEnd = _currentResultCount < _pageSize;
+    if (!_currentLoading &&
+        !_currentShowSearchLanding &&
+        !_reachedEnd &&
+        !_loadingMore &&
+        _currentResultCount >= _pageSize &&
+        _currentResultCount > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _maybeAutoLoadMore();
+      });
+    }
 
     _maybeAutoScanLocalLibrary(
       memosLoading: memosLoading,

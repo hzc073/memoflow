@@ -38,6 +38,7 @@ typedef MemosQuery = ({
   String? tag,
   int? startTimeSec,
   int? endTimeSecExclusive,
+  int pageSize,
 });
 
 typedef ShortcutMemosQuery = ({
@@ -47,6 +48,7 @@ typedef ShortcutMemosQuery = ({
   String shortcutFilter,
   int? startTimeSec,
   int? endTimeSecExclusive,
+  int pageSize,
 });
 
 final memosApiProvider = Provider<MemosApi>((ref) {
@@ -73,6 +75,7 @@ final memosApiProvider = Provider<MemosApi>((ref) {
 final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((ref, query) {
   final db = ref.watch(databaseProvider);
   final search = query.searchQuery.trim();
+  final pageSize = query.pageSize > 0 ? query.pageSize : 200;
   return db
       .watchMemos(
         searchQuery: search.isEmpty ? null : search,
@@ -80,7 +83,7 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
         tag: query.tag,
         startTimeSec: query.startTimeSec,
         endTimeSecExclusive: query.endTimeSecExclusive,
-        limit: 200,
+        limit: pageSize,
       )
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
 });
@@ -90,6 +93,7 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   final normalizedSearch = query.searchQuery.trim();
   final normalizedTag = _normalizeTagInput(query.tag);
+  final pageSize = query.pageSize > 0 ? query.pageSize : 200;
   if (account == null) {
     await for (final rows in db.watchMemos(
       searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
@@ -97,7 +101,7 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
       tag: normalizedTag.isEmpty ? null : normalizedTag,
       startTimeSec: query.startTimeSec,
       endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: 200,
+      limit: pageSize,
     )) {
       yield rows.map(LocalMemo.fromDb).toList(growable: false);
     }
@@ -136,7 +140,7 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
   var seed = <LocalMemo>[];
   try {
     final (memos, _) = await api.listMemos(
-      pageSize: 200,
+      pageSize: pageSize,
       state: query.state,
       filter: filter,
       orderBy: 'display_time desc',
@@ -160,7 +164,7 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
       tag: normalizedTag.isEmpty ? null : normalizedTag,
       startTimeSec: query.startTimeSec,
       endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: 200,
+      limit: pageSize,
     );
     seed = rows.map(LocalMemo.fromDb).toList(growable: false);
   }
@@ -178,6 +182,7 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   final search = query.searchQuery.trim();
   final normalizedTag = _normalizeTagInput(query.tag);
+  final pageSize = query.pageSize > 0 ? query.pageSize : 200;
   if (account == null) {
     await for (final rows in db.watchMemos(
       searchQuery: search.isEmpty ? null : search,
@@ -185,7 +190,7 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
       tag: normalizedTag.isEmpty ? null : normalizedTag,
       startTimeSec: query.startTimeSec,
       endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: 200,
+      limit: pageSize,
     )) {
       yield rows.map(LocalMemo.fromDb).toList(growable: false);
     }
@@ -201,7 +206,7 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
       tag: normalizedTag.isEmpty ? null : normalizedTag,
       startTimeSec: query.startTimeSec,
       endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: 200,
+      limit: pageSize,
     )) {
       final predicate = _buildShortcutPredicate(query.shortcutFilter) ?? initialPredicate;
       yield _filterShortcutMemosFromRows(rows, predicate);
@@ -225,7 +230,7 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
   var seed = <LocalMemo>[];
   try {
     final (memos, _) = await api.listMemos(
-      pageSize: 200,
+      pageSize: pageSize,
       state: query.state,
       filter: filter,
       parent: parent,
@@ -254,6 +259,7 @@ final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMem
         shortcutFilter: query.shortcutFilter,
         startTimeSec: query.startTimeSec,
         endTimeSecExclusive: query.endTimeSecExclusive,
+        pageSize: pageSize,
       );
       if (local != null) {
         seed = local;
@@ -357,6 +363,7 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
   required String shortcutFilter,
   int? startTimeSec,
   int? endTimeSecExclusive,
+  required int pageSize,
 }) async {
   final predicate = _buildShortcutPredicate(shortcutFilter);
   if (predicate == null) return null;
@@ -369,7 +376,7 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
     tag: normalizedTag.isEmpty ? null : normalizedTag,
     startTimeSec: startTimeSec,
     endTimeSecExclusive: endTimeSecExclusive,
-    limit: 200,
+    limit: pageSize > 0 ? pageSize : 200,
   );
 
   final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: true);
