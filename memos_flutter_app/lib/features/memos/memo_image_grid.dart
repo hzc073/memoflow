@@ -298,6 +298,8 @@ class MemoImageGrid extends StatelessWidget {
         final aspectRatio = tileWidth > 0 && tileHeight > 0 ? tileWidth / tileHeight : 1.0;
         return GridView.builder(
           shrinkWrap: true,
+          primary: false,
+          padding: EdgeInsets.zero,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
