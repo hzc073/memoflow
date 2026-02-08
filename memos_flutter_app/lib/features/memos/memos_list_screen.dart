@@ -1292,7 +1292,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                   ),
                   subtitle: Text(a.baseUrl.toString()),
                   onTap: () async {
-                    context.safePop();
+                    await Navigator.of(context).maybePop();
+                    if (!mounted) return;
                     await ref
                         .read(appSessionProvider.notifier)
                         .switchAccount(a.key);
@@ -1325,10 +1326,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                   ),
                   subtitle: Text(l.locationLabel),
                   onTap: () async {
-                    context.safePop();
+                    await Navigator.of(context).maybePop();
+                    if (!mounted) return;
                     await ref
                         .read(appSessionProvider.notifier)
                         .switchWorkspace(l.key);
+                    if (!mounted) return;
+                    await WidgetsBinding.instance.endOfFrame;
                     if (!mounted) return;
                     await _maybeScanLocalLibrary();
                   },
@@ -1343,6 +1347,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   }
 
   Future<void> _maybeScanLocalLibrary() async {
+    if (!mounted) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
     final confirmed =
         await showDialog<bool>(
           context: context,

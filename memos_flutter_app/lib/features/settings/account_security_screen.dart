@@ -71,30 +71,16 @@ class AccountSecurityScreen extends ConsumerWidget {
         : currentAccount?.baseUrl.toString() ?? "";
 
     Future<String?> _promptLocalLibraryName(String initialName) async {
-      final controller = TextEditingController(text: initialName);
       final result = await showDialog<String>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.tr(zh: '本地库名称', en: 'Local library name')),
-          content: TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              hintText: context.tr(zh: '请输入名称', en: 'Enter a name'),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => context.safePop(null),
-              child: Text(context.tr(zh: '取消', en: 'Cancel')),
-            ),
-            FilledButton(
-              onPressed: () => context.safePop(controller.text.trim()),
-              child: Text(context.tr(zh: '确认', en: 'Confirm')),
-            ),
-          ],
+        builder: (context) => _LocalLibraryNameDialog(
+          initialName: initialName,
+          title: context.tr(zh: '本地库名称', en: 'Local library name'),
+          hintText: context.tr(zh: '请输入名称', en: 'Enter a name'),
+          cancelLabel: context.tr(zh: '取消', en: 'Cancel'),
+          confirmLabel: context.tr(zh: '确认', en: 'Confirm'),
         ),
       );
-      controller.dispose();
       if (result == null || result.trim().isEmpty) return null;
       return result.trim();
     }
@@ -125,6 +111,9 @@ class AccountSecurityScreen extends ConsumerWidget {
     }
 
     Future<void> _maybeScanLocalLibrary() async {
+      if (!context.mounted) return;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!context.mounted) return;
       final confirmed =
           await showDialog<bool>(
             context: context,
@@ -189,6 +178,8 @@ class AccountSecurityScreen extends ConsumerWidget {
       );
       ref.read(localLibrariesProvider.notifier).upsert(library);
       await ref.read(appSessionProvider.notifier).switchWorkspace(key);
+      if (!context.mounted) return;
+      await WidgetsBinding.instance.endOfFrame;
       if (!context.mounted) return;
       await _maybeScanLocalLibrary();
       if (!context.mounted) return;
@@ -497,6 +488,8 @@ class AccountSecurityScreen extends ConsumerWidget {
                               .read(appSessionProvider.notifier)
                               .switchWorkspace(l.key);
                           if (!context.mounted) return;
+                          await WidgetsBinding.instance.endOfFrame;
+                          if (!context.mounted) return;
                           await _maybeScanLocalLibrary();
                         },
                         onDelete: () async {
@@ -745,6 +738,69 @@ class _AccountRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+class _LocalLibraryNameDialog extends StatefulWidget {
+  const _LocalLibraryNameDialog({
+    required this.initialName,
+    required this.title,
+    required this.hintText,
+    required this.cancelLabel,
+    required this.confirmLabel,
+  });
+
+  final String initialName;
+  final String title;
+  final String hintText;
+  final String cancelLabel;
+  final String confirmLabel;
+
+  @override
+  State<_LocalLibraryNameDialog> createState() =>
+      _LocalLibraryNameDialogState();
+}
+
+class _LocalLibraryNameDialogState extends State<_LocalLibraryNameDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(_controller.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        decoration: InputDecoration(hintText: widget.hintText),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(null),
+          child: Text(widget.cancelLabel),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.confirmLabel),
+        ),
+      ],
     );
   }
 }
