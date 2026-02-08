@@ -2702,12 +2702,15 @@ class MemosApi {
   }
 
   Future<void> deleteMemoReaction({required Reaction reaction}) async {
-    final name = reaction.name.trim();
-    final legacyId = reaction.legacyId;
+    final rawName = reaction.name.trim();
+    final contentId = reaction.contentId.trim();
+    final parsedId = _parseReactionIdFromName(rawName);
+    final legacyId = reaction.legacyId ?? parsedId;
+    final normalizedName = _normalizeReactionName(rawName, contentId, parsedId);
 
-    if (!useLegacyApi && name.isNotEmpty) {
+    if (!useLegacyApi && normalizedName != null && normalizedName.isNotEmpty) {
       try {
-        await _deleteMemoReactionModern(name: name);
+        await _deleteMemoReactionModern(name: normalizedName);
         return;
       } on DioException catch (e) {
         if (_shouldFallbackLegacy(e) && legacyId != null && legacyId > 0) {
@@ -2723,12 +2726,39 @@ class MemosApi {
       return;
     }
 
-    if (name.isNotEmpty) {
-      await _deleteMemoReactionModern(name: name);
+    if (normalizedName != null && normalizedName.isNotEmpty) {
+      await _deleteMemoReactionModern(name: normalizedName);
       return;
     }
 
     throw ArgumentError('deleteMemoReaction requires reaction name or legacy id');
+  }
+
+  int? _parseReactionIdFromName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    final parts = trimmed.split('/');
+    if (parts.isEmpty) return null;
+    final last = parts.last.trim();
+    if (last.isEmpty) return null;
+    return int.tryParse(last);
+  }
+
+  String? _normalizeReactionName(String name, String contentId, int? parsedId) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.startsWith('memos/')) {
+      final segments = trimmed.split('/');
+      if (segments.length >= 4) {
+        return trimmed;
+      }
+    }
+    final reactionId = parsedId ?? _parseReactionIdFromName(trimmed);
+    if (reactionId == null) return trimmed;
+    if (contentId.startsWith('memos/')) {
+      return '$contentId/reactions/$reactionId';
+    }
+    return trimmed;
   }
 
   Future<void> _deleteMemoReactionModern({required String name}) async {
@@ -2736,7 +2766,8 @@ class MemosApi {
     if (trimmed.isEmpty) {
       throw ArgumentError('deleteMemoReaction requires name');
     }
-    final path = trimmed.startsWith('memos/') ? 'api/v1/$trimmed' : 'api/v1/memos/$trimmed';
+    final path =
+        (trimmed.startsWith('memos/') || trimmed.startsWith('reactions/')) ? 'api/v1/$trimmed' : 'api/v1/memos/$trimmed';
     await _dio.delete(path);
   }
 

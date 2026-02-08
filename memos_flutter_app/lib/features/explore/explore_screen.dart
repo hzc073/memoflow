@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/content_fingerprint.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/reaction.dart';
@@ -40,11 +42,30 @@ const _scrollLoadThreshold = 240.0;
 const _maxPreviewLines = 6;
 const _maxPreviewRunes = 220;
 const _likeReactionType = '❤️';
+const _commentPreviewCount = 3;
+
+const _quickMenuPaddingH = 6.0;
+const _quickMenuPaddingV = 4.0;
+const _quickMenuItemHPadding = 10.0;
+const _quickMenuItemVPadding = 6.0;
+const _quickMenuIconSize = 16.0;
+const _quickMenuIconGap = 6.0;
+const _quickMenuDividerWidth = 1.0;
+const _quickMenuGap = 6.0;
+
+OverlayEntry? _activeExploreQuickMenu;
+Object? _activeExploreQuickMenuOwner;
 
 typedef _PreviewResult = ({String text, bool truncated});
 
 final RegExp _markdownLinkPattern = RegExp(r'\[([^\]]*)\]\(([^)]+)\)');
 final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
+
+void _dismissExploreQuickMenu() {
+  _activeExploreQuickMenu?.remove();
+  _activeExploreQuickMenu = null;
+  _activeExploreQuickMenuOwner = null;
+}
 
 int _compactRuneCount(String text) {
   if (text.isEmpty) return 0;
@@ -186,7 +207,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final _reactionErrors = <String, String>{};
   final _reactionLoading = <String>{};
   final _reactionUpdating = <String>{};
+  final _reactionPreviewRequested = <String>{};
   final _commentedByMe = <String>{};
+  final _commentPreviewRequested = <String>{};
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
   String? _activeAccountKey;
   int _requestId = 0;
@@ -334,7 +357,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _reactionErrors.clear();
     _reactionLoading.clear();
     _reactionUpdating.clear();
+    _reactionPreviewRequested.clear();
     _commentedByMe.clear();
+    _commentPreviewRequested.clear();
     _commentingMemoUid = null;
     _replyingMemoUid = null;
     _replyingCommentCreator = null;
@@ -380,6 +405,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           _reactionLoading.clear();
           _reactionUpdating.clear();
           _commentedByMe.clear();
+          _reactionPreviewRequested.clear();
+          _commentPreviewRequested.clear();
         }
       });
 
@@ -436,10 +463,14 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Future<void> _prefetchCreators(List<Memo> memos) async {
+    await _prefetchCreatorsByName(memos.map((memo) => memo.creator));
+  }
+
+  Future<void> _prefetchCreatorsByName(Iterable<String> names) async {
     final api = ref.read(memosApiProvider);
     final pending = <String>[];
-    for (final memo in memos) {
-      final creator = memo.creator.trim();
+    for (final raw in names) {
+      final creator = raw.trim();
       if (creator.isEmpty) continue;
       if (_creatorCache.containsKey(creator)) continue;
       if (_creatorFetching.contains(creator)) continue;
@@ -464,6 +495,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void _seedReactionCache(List<Memo> memos) {
     final updates = <String, List<Reaction>>{};
     final totals = <String, int>{};
+    final creators = <String>{};
     for (final memo in memos) {
       final uid = memo.uid;
       if (uid.isEmpty) continue;
@@ -471,12 +503,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       if (memo.reactions.isEmpty) continue;
       updates[uid] = memo.reactions;
       totals[uid] = memo.reactions.where(_isLikeReaction).length;
+      for (final reaction in memo.reactions) {
+        final creator = reaction.creator.trim();
+        if (creator.isNotEmpty) {
+          creators.add(creator);
+        }
+      }
     }
     if (updates.isEmpty) return;
     setState(() {
       _reactionCache.addAll(updates);
       _reactionTotals.addAll(totals);
     });
+    if (creators.isNotEmpty) {
+      unawaited(_prefetchCreatorsByName(creators));
+    }
   }
 
   String _resolveAvatarUrl(String rawUrl, Uri? baseUrl) {
@@ -545,6 +586,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     return type == _likeReactionType || type == 'HEART';
   }
 
+  List<String> _likeCreatorNames(List<Reaction> reactions) {
+    if (reactions.isEmpty) return const [];
+    final result = <String>[];
+    final seen = <String>{};
+    for (final reaction in reactions) {
+      if (!_isLikeReaction(reaction)) continue;
+      final creator = reaction.creator.trim();
+      if (creator.isEmpty) continue;
+      if (seen.add(creator)) {
+        result.add(creator);
+      }
+    }
+    return result;
+  }
+
   List<Reaction> _reactionListFor(Memo memo) {
     return _reactionCache[memo.uid] ?? memo.reactions;
   }
@@ -610,7 +666,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   void _exitCommentEditing() {
-    if (_replyingCommentCreator == null) return;
+    if (_commentingMemoUid == null) return;
     setState(() {
       _commentingMemoUid = null;
       _replyingMemoUid = null;
@@ -620,7 +676,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     FocusScope.of(context).unfocus();
   }
 
-  Future<void> _loadComments(Memo memo) async {
+  Future<void> _loadComments(Memo memo, {int pageSize = 50}) async {
     final uid = memo.uid;
     if (uid.isEmpty || _commentLoading.contains(uid)) return;
     setState(() {
@@ -631,21 +687,32 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       final api = ref.read(memosApiProvider);
       final result = await api.listMemoComments(
         memoUid: uid,
-        pageSize: 50,
+        pageSize: pageSize,
       );
       if (!mounted) return;
-      _commentCache[uid] = result.memos;
+      final existing = _commentCache[uid] ?? const <Memo>[];
+      final optimistic = existing.where((m) => m.name.startsWith('local/')).toList(growable: false);
+      final resultNames = <String>{};
+      for (final m in result.memos) {
+        resultNames.add(m.name);
+      }
+      final merged = <Memo>[
+        ...optimistic,
+        ...result.memos,
+        ...existing.where((m) => !m.name.startsWith('local/') && !resultNames.contains(m.name)),
+      ];
+      _commentCache[uid] = merged;
       _commentTotals[uid] = result.totalSize;
       final currentUser = _currentUserName();
       if (currentUser.isNotEmpty) {
-        final hasMine = result.memos.any((m) => m.creator.trim() == currentUser);
+        final hasMine = merged.any((m) => m.creator.trim() == currentUser);
         if (hasMine) {
           _commentedByMe.add(uid);
         } else {
           _commentedByMe.remove(uid);
         }
       }
-      unawaited(_prefetchCreators(result.memos));
+      unawaited(_prefetchCreators(merged));
     } catch (e) {
       if (!mounted) return;
       _commentErrors[uid] = e.toString();
@@ -654,6 +721,30 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         setState(() => _commentLoading.remove(uid));
       }
     }
+  }
+
+  void _requestCommentPreview(Memo memo) {
+    final uid = memo.uid;
+    if (uid.isEmpty) return;
+    if (_commentPreviewRequested.contains(uid)) return;
+    if (_commentLoading.contains(uid)) return;
+    _commentPreviewRequested.add(uid);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_loadComments(memo, pageSize: _commentPreviewCount));
+    });
+  }
+
+  void _requestReactionPreview(Memo memo) {
+    final uid = memo.uid;
+    if (uid.isEmpty) return;
+    if (_reactionPreviewRequested.contains(uid)) return;
+    if (_reactionLoading.contains(uid)) return;
+    _reactionPreviewRequested.add(uid);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_loadReactions(memo));
+    });
   }
 
   Future<List<Reaction>> _loadReactions(Memo memo) async {
@@ -674,6 +765,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       if (!mounted) return memo.reactions;
       _reactionCache[uid] = result.reactions;
       _reactionTotals[uid] = result.reactions.where(_isLikeReaction).length;
+      if (result.reactions.isNotEmpty) {
+        unawaited(_prefetchCreatorsByName(result.reactions.map((r) => r.creator)));
+      }
       return result.reactions;
     } catch (e) {
       if (!mounted) return memo.reactions;
@@ -694,26 +788,47 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (_reactionUpdating.contains(uid)) return;
 
     setState(() => _reactionUpdating.add(uid));
+    final reactions = _reactionListFor(memo);
+    final mine = reactions
+        .where((r) => _isLikeReaction(r) && r.creator.trim() == currentUser)
+        .toList(growable: false);
+
     try {
       final api = ref.read(memosApiProvider);
-      final reactions = await _loadReactions(memo);
-      final mine = reactions
-          .where((r) => _isLikeReaction(r) && r.creator.trim() == currentUser)
-          .toList(growable: false);
-
       if (mine.isNotEmpty) {
+        final updated = reactions.where((r) => !mine.contains(r)).toList(growable: false);
+        _updateMemoReactions(uid, updated);
         for (final reaction in mine) {
           await api.deleteMemoReaction(reaction: reaction);
         }
-        final updated = reactions.where((r) => !mine.contains(r)).toList(growable: false);
-        _updateMemoReactions(uid, updated);
       } else {
-        final created = await api.upsertMemoReaction(memoUid: uid, reactionType: _likeReactionType);
-        final updated = [...reactions, created];
+        final optimistic = Reaction(
+          name: '',
+          creator: currentUser,
+          contentId: 'memos/$uid',
+          reactionType: _likeReactionType,
+        );
+        final updated = [...reactions, optimistic];
         _updateMemoReactions(uid, updated);
+        final created = await api.upsertMemoReaction(memoUid: uid, reactionType: _likeReactionType);
+        if (!mounted) return;
+        final currentList = List<Reaction>.from(_reactionCache[uid] ?? updated);
+        final idx = currentList.indexWhere(
+          (r) =>
+              r.creator.trim() == currentUser &&
+              _isLikeReaction(r) &&
+              r.name.trim().isEmpty,
+        );
+        if (idx >= 0) {
+          currentList[idx] = created;
+        } else {
+          currentList.add(created);
+        }
+        _updateMemoReactions(uid, currentList);
       }
     } catch (e) {
       if (!mounted) return;
+      _updateMemoReactions(uid, reactions);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(zh: '点赞失败：$e', en: 'Failed to react: $e'))),
       );
@@ -757,25 +872,52 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
+  Memo _buildOptimisticComment({
+    required String memoUid,
+    required String content,
+    required String visibility,
+    required String creator,
+  }) {
+    final now = DateTime.now().toUtc();
+    final fingerprint = computeContentFingerprint(content);
+    return Memo(
+      name: 'local/${now.microsecondsSinceEpoch}',
+      creator: creator,
+      content: content,
+      contentFingerprint: fingerprint,
+      visibility: visibility,
+      pinned: false,
+      state: 'NORMAL',
+      createTime: now,
+      updateTime: now,
+      displayTime: now,
+      tags: const [],
+      attachments: const [],
+      relations: const [],
+      reactions: const [],
+    );
+  }
+
   Future<void> _submitComment() async {
     final uid = _commentingMemoUid;
     if (uid == null || uid.trim().isEmpty) return;
     final content = _commentController.text.trim();
     if (content.isEmpty || _commentSending) return;
 
-    setState(() => _commentSending = true);
-    try {
-      final memo = _findMemoByUid(uid);
-      final visibility = (memo?.visibility ?? '').trim().isNotEmpty ? memo!.visibility : 'PUBLIC';
-      final api = ref.read(memosApiProvider);
-      final created = await api.createMemoComment(
-        memoUid: uid,
-        content: content,
-        visibility: visibility,
-      );
-      if (!mounted) return;
-      final list = _commentCache[uid] ?? <Memo>[];
-      list.insert(0, created);
+    final memo = _findMemoByUid(uid);
+    final visibility = (memo?.visibility ?? '').trim().isNotEmpty ? memo!.visibility : 'PUBLIC';
+    final creator = _currentUserName();
+    final optimistic = _buildOptimisticComment(
+      memoUid: uid,
+      content: content,
+      visibility: visibility,
+      creator: creator,
+    );
+
+    setState(() {
+      _commentSending = true;
+      final list = List<Memo>.from(_commentCache[uid] ?? const <Memo>[]);
+      list.insert(0, optimistic);
       _commentCache[uid] = list;
       final total = _commentTotals[uid];
       if (total != null && total > 0) {
@@ -783,13 +925,54 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       } else {
         _commentTotals[uid] = list.length;
       }
-      _commentController.clear();
       _commentedByMe.add(uid);
       _replyingMemoUid = null;
       _replyingCommentCreator = null;
+      _commentController.clear();
+    });
+
+    try {
+      final api = ref.read(memosApiProvider);
+      final created = await api.createMemoComment(
+        memoUid: uid,
+        content: content,
+        visibility: visibility,
+      );
+      if (!mounted) return;
+      final list = List<Memo>.from(_commentCache[uid] ?? const <Memo>[]);
+      final idx = list.indexWhere((m) => m.name == optimistic.name);
+      if (idx >= 0) {
+        list[idx] = created;
+      } else {
+        list.insert(0, created);
+      }
+      _commentCache[uid] = list;
+      final total = _commentTotals[uid];
+      if (total != null && total > 0) {
+        _commentTotals[uid] = total;
+      } else {
+        _commentTotals[uid] = list.length;
+      }
+      _commentedByMe.add(uid);
       unawaited(_prefetchCreators([created]));
+      if (memo != null && !_commentLoading.contains(uid)) {
+        unawaited(_loadComments(memo, pageSize: 50));
+      }
     } catch (e) {
       if (!mounted) return;
+      final list = List<Memo>.from(_commentCache[uid] ?? const <Memo>[]);
+      list.removeWhere((m) => m.name == optimistic.name);
+      _commentCache[uid] = list;
+      final total = _commentTotals[uid];
+      if (total != null && total > 0) {
+        _commentTotals[uid] = math.max(0, total - 1);
+      } else {
+        _commentTotals[uid] = list.length;
+      }
+      final hasMine = creator.isNotEmpty && list.any((m) => m.creator.trim() == creator);
+      if (!hasMine) {
+        _commentedByMe.remove(uid);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr(zh: '评论失败：$e', en: 'Failed to comment: $e'))),
       );
@@ -809,7 +992,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final surface = isDark ? MemoFlowPalette.cardDark : Colors.white;
     final inputBg = isDark ? MemoFlowPalette.backgroundDark : const Color(0xFFF7F5F1);
     return TapRegion(
-      onTapOutside: _replyingCommentCreator == null ? null : (_) => _exitCommentEditing(),
+      onTapOutside: (_) => _exitCommentEditing(),
       child: AnimatedPadding(
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -1027,9 +1210,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               final commentError = _commentErrors[memo.uid];
               final commentsLoading = _commentLoading.contains(memo.uid);
               final commentCount = _commentCountFor(memo);
+              final reactions = _reactionListFor(memo);
               final reactionCount = _reactionCountFor(memo);
               final isLiked = _hasMyReaction(memo);
               final hasOwnComment = _hasMyComment(memo);
+              final likeCreators = _likeCreatorNames(reactions);
+
+              if (commentCount > 0 && comments.isEmpty && !commentsLoading && commentError == null) {
+                _requestCommentPreview(memo);
+              }
+              if (reactionCount > 0 && reactions.isEmpty && !_reactionLoading.contains(memo.uid)) {
+                _requestReactionPreview(memo);
+              }
 
               return _ExploreMemoCard(
                 memo: memo,
@@ -1040,6 +1232,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 authHeader: authHeader,
                 initial: initial,
                 commentCount: commentCount,
+                likeCreators: likeCreators,
                 reactionCount: reactionCount,
                 isLiked: isLiked,
                 hasOwnComment: hasOwnComment,
@@ -1060,6 +1253,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       builder: (_) => MemoDetailScreen(
                         initialMemo: _toLocalMemo(memo),
                         readOnly: true,
+                        showEngagement: true,
                       ),
                     ),
                   );
@@ -1238,6 +1432,7 @@ class _ExploreMemoCard extends StatefulWidget {
     required this.authHeader,
     required this.initial,
     required this.commentCount,
+    required this.likeCreators,
     required this.reactionCount,
     required this.isLiked,
     required this.hasOwnComment,
@@ -1266,6 +1461,7 @@ class _ExploreMemoCard extends StatefulWidget {
   final String? authHeader;
   final String initial;
   final int commentCount;
+  final List<String> likeCreators;
   final int reactionCount;
   final bool isLiked;
   final bool hasOwnComment;
@@ -1291,6 +1487,7 @@ class _ExploreMemoCard extends StatefulWidget {
 
 class _ExploreMemoCardState extends State<_ExploreMemoCard> {
   var _expanded = false;
+  final _quickMenuOwner = Object();
 
   static String _previewText(
     String content, {
@@ -1389,6 +1586,186 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       return '${context.tr(zh: '用户', en: 'User')} ${trimmed.substring('users/'.length)}';
     }
     return trimmed.isEmpty ? context.tr(zh: '未知用户', en: 'Unknown') : trimmed;
+  }
+
+  @override
+  void dispose() {
+    if (_activeExploreQuickMenuOwner == _quickMenuOwner) {
+      _dismissExploreQuickMenu();
+    }
+    super.dispose();
+  }
+
+  ({double width, double height}) _measureQuickMenu(
+    BuildContext context,
+    List<String> labels,
+    TextStyle textStyle,
+  ) {
+    final textPainter = TextPainter(textDirection: Directionality.of(context));
+    var maxTextHeight = 0.0;
+    var width = _quickMenuPaddingH * 2;
+    for (var i = 0; i < labels.length; i++) {
+      textPainter.text = TextSpan(text: labels[i], style: textStyle);
+      textPainter.layout();
+      maxTextHeight = math.max(maxTextHeight, textPainter.height);
+      final itemWidth = _quickMenuItemHPadding * 2 + _quickMenuIconSize + _quickMenuIconGap + textPainter.width;
+      width += itemWidth;
+      if (i != labels.length - 1) {
+        width += _quickMenuDividerWidth;
+      }
+    }
+    final contentHeight = math.max(_quickMenuIconSize, maxTextHeight);
+    final height = _quickMenuPaddingV * 2 + _quickMenuItemVPadding * 2 + contentHeight;
+    return (width: width, height: height);
+  }
+
+  void _showQuickMenu(BuildContext anchorContext) {
+    final overlay = Overlay.of(context, rootOverlay: true);
+    if (overlay == null) return;
+    final renderBox = anchorContext.findRenderObject();
+    if (renderBox is! RenderBox || !renderBox.hasSize) return;
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+    final padding = MediaQuery.of(context).padding;
+    final screenSize = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final likeLabel = context.tr(zh: '赞', en: 'Like');
+    final commentLabel = context.tr(zh: '评论', en: 'Comment');
+    final textColor = Colors.white.withValues(alpha: 0.9);
+    final textStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor);
+    final menuSize = _measureQuickMenu(context, [likeLabel, commentLabel], textStyle);
+    final menuWidth = menuSize.width;
+    final menuHeight = menuSize.height;
+
+    final minLeft = padding.left + 8;
+    final maxLeft = screenSize.width - padding.right - menuWidth - 8;
+    final safeMaxLeft = math.max(minLeft, maxLeft);
+    var left = offset.dx - menuWidth - _quickMenuGap;
+    if (left < minLeft) {
+      left = offset.dx + size.width + _quickMenuGap;
+    }
+    left = math.min(math.max(left, minLeft), safeMaxLeft);
+
+    final minTop = padding.top + 8;
+    final maxTop = screenSize.height - padding.bottom - menuHeight - 8;
+    final safeMaxTop = math.max(minTop, maxTop);
+    var top = offset.dy + (size.height - menuHeight) / 2;
+    top = math.min(math.max(top, minTop), safeMaxTop);
+
+    final menuBg = isDark ? const Color(0xFF1F1F1F) : const Color(0xFF2A2A2A);
+    final dividerColor = Colors.white.withValues(alpha: 0.12);
+    final activeColor = MemoFlowPalette.primary;
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (context) {
+        Widget buildItem({
+          required IconData icon,
+          required String label,
+          required bool active,
+          required VoidCallback onTap,
+        }) {
+          final color = active ? activeColor : textColor;
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () {
+                _dismissExploreQuickMenu();
+                onTap();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: _quickMenuItemHPadding,
+                  vertical: _quickMenuItemVPadding,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: _quickMenuIconSize, color: color),
+                    const SizedBox(width: _quickMenuIconGap),
+                    Text(label, style: textStyle.copyWith(color: color)),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _dismissExploreQuickMenu,
+                child: const SizedBox.shrink(),
+              ),
+            ),
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: _quickMenuPaddingH,
+                    vertical: _quickMenuPaddingV,
+                  ),
+                  decoration: BoxDecoration(
+                    color: menuBg,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.25),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      buildItem(
+                        icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                        label: likeLabel,
+                        active: widget.isLiked,
+                        onTap: widget.onToggleLike,
+                      ),
+                      Container(
+                        width: _quickMenuDividerWidth,
+                        height: _quickMenuIconSize + 4,
+                        color: dividerColor,
+                      ),
+                      buildItem(
+                        icon: widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                        label: commentLabel,
+                        active: widget.hasOwnComment,
+                        onTap: widget.onToggleComment,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    _activeExploreQuickMenu = entry;
+    _activeExploreQuickMenuOwner = _quickMenuOwner;
+    overlay.insert(entry);
+  }
+
+  void _toggleQuickMenu(BuildContext anchorContext) {
+    widget.onMore();
+    if (_activeExploreQuickMenuOwner == _quickMenuOwner) {
+      _dismissExploreQuickMenu();
+      return;
+    }
+    _dismissExploreQuickMenu();
+    _showQuickMenu(anchorContext);
   }
 
   bool _isImageAttachment(Attachment attachment) {
@@ -1553,6 +1930,257 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     );
   }
 
+  String _resolveUserAvatarUrl(User? user) {
+    final raw = user?.avatarUrl.trim() ?? '';
+    if (raw.isEmpty) return '';
+    if (raw.startsWith('data:')) return raw;
+    final lower = raw.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return raw;
+    final baseUrl = widget.baseUrl;
+    if (baseUrl == null) return raw;
+    return joinBaseUrl(baseUrl, raw);
+  }
+
+  String _initialForUser(User? user, String fallback) {
+    final name = _commentAuthor(context, user, fallback).trim();
+    if (name.isEmpty) return '?';
+    final rune = name.runes.first;
+    return String.fromCharCode(rune).toUpperCase();
+  }
+
+  Widget _buildTinyAvatar(User? user, String fallback, {double size = 20}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final border = widget.cardColor;
+    final url = _resolveUserAvatarUrl(user);
+    final fallbackWidget = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: bg,
+        border: Border.all(color: border, width: 1),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        _initialForUser(user, fallback),
+        style: TextStyle(fontSize: size * 0.45, fontWeight: FontWeight.w700, color: textColor),
+      ),
+    );
+
+    if (url.isEmpty) return fallbackWidget;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: border, width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (context, _) => fallbackWidget,
+        errorWidget: (context, _, __) => fallbackWidget,
+      ),
+    );
+  }
+
+  Widget _buildAvatarStack(List<String> creators, {double size = 20, int maxCount = 5}) {
+    final names = creators.where((c) => c.trim().isNotEmpty).toList(growable: false);
+    if (names.isEmpty) return const SizedBox.shrink();
+    final display = names.take(maxCount).toList(growable: false);
+    final extra = names.length - display.length;
+    final overlap = size * 0.35;
+    final slot = size - overlap;
+    final totalSlots = display.length + (extra > 0 ? 1 : 0);
+    final width = size + (totalSlots - 1) * slot;
+
+    return SizedBox(
+      width: width,
+      height: size,
+      child: Stack(
+        children: [
+          for (var i = 0; i < display.length; i++)
+            Positioned(
+              left: i * slot,
+              child: _buildTinyAvatar(
+                widget.resolveCreator(display[i]),
+                display[i],
+                size: size,
+              ),
+            ),
+          if (extra > 0)
+            Positioned(
+              left: display.length * slot,
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: MemoFlowPalette.primary.withValues(alpha: 0.15),
+                  border: Border.all(color: widget.cardColor, width: 1),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '+$extra',
+                  style: TextStyle(
+                    fontSize: size * 0.45,
+                    fontWeight: FontWeight.w700,
+                    color: MemoFlowPalette.primary,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLikeSummary({required Color textMuted}) {
+    final hasLikes = widget.reactionCount > 0 || widget.isLiked || widget.likeCreators.isNotEmpty;
+    if (!hasLikes) return const SizedBox.shrink();
+    final iconColor = widget.isLiked ? MemoFlowPalette.primary : textMuted;
+    final avatars = _buildAvatarStack(widget.likeCreators, size: 20, maxCount: 5);
+    final remaining = widget.reactionCount - widget.likeCreators.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: widget.onToggleLike,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              Icon(widget.isLiked ? Icons.favorite : Icons.favorite_border, size: 16, color: iconColor),
+              const SizedBox(width: 8),
+              if (widget.likeCreators.isNotEmpty) avatars,
+              if (widget.likeCreators.isEmpty)
+                Text(
+                  widget.reactionCount.toString(),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+                ),
+              if (remaining > 0 && widget.likeCreators.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '+$remaining',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentSummary({
+    required Color textMain,
+    required Color textMuted,
+  }) {
+    final hasComments = widget.commentCount > 0 || widget.hasOwnComment || widget.comments.isNotEmpty;
+    if (!hasComments) return const SizedBox.shrink();
+
+    final iconColor = widget.hasOwnComment ? MemoFlowPalette.primary : textMuted;
+    final preview = widget.comments.isNotEmpty ? widget.comments.first : null;
+    final previewText = preview == null ? '' : _commentSnippet(preview.content);
+    final previewCreator = preview == null ? null : widget.resolveCreator(preview.creator);
+    final previewName = preview == null ? '' : _commentAuthor(context, previewCreator, preview.creator);
+
+    final label = widget.commentCount <= 0
+        ? context.tr(zh: '暂无评论', en: 'No comments yet')
+        : context.tr(
+            zh: '${widget.commentCount} 条评论',
+            en: '${widget.commentCount} comment${widget.commentCount == 1 ? '' : 's'}',
+          );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: widget.onToggleComment,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              Icon(
+                widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                size: 16,
+                color: iconColor,
+              ),
+              const SizedBox(width: 8),
+              if (preview != null) ...[
+                _buildTinyAvatar(previewCreator, preview.creator, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '$previewName ',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMain),
+                        ),
+                        TextSpan(
+                          text: previewText,
+                          style: TextStyle(fontSize: 12, color: textMain),
+                        ),
+                      ],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ] else
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentPreviewLine({
+    required Memo comment,
+    required Color textMain,
+  }) {
+    final previewCreator = widget.resolveCreator(comment.creator);
+    final previewName = _commentAuthor(context, previewCreator, comment.creator);
+    final previewText = _commentSnippet(comment.content);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTinyAvatar(previewCreator, comment.creator, size: 22),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '$previewName ',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMain),
+                ),
+                TextSpan(
+                  text: previewText,
+                  style: TextStyle(fontSize: 12, color: textMain),
+                ),
+              ],
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final memo = widget.memo;
@@ -1578,8 +2206,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final showCollapsed = showToggle && !_expanded;
     final displayText = showCollapsed ? preview.text : previewText;
     final hasBody = displayText.trim().isNotEmpty;
-    final showLike = widget.reactionCount > 0 || widget.isLiked;
-    final showComment = widget.commentCount > 0 || widget.hasOwnComment;
+    final showLike = widget.reactionCount > 0 || widget.isLiked || widget.likeCreators.isNotEmpty;
+    final showComment = widget.commentCount > 0 || widget.hasOwnComment || widget.comments.isNotEmpty;
+    final previewCount = math.min(widget.comments.length, _commentPreviewCount);
+    final totalCommentCount = widget.commentCount > 0 ? widget.commentCount : widget.comments.length;
+    final remainingComments = math.max(0, totalCommentCount - previewCount);
     final imageEntries = collectMemoImageEntries(
       content: memo.content,
       attachments: memo.attachments,
@@ -1766,29 +2397,60 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               const SizedBox(height: 10),
               Container(height: 1, color: borderColor.withValues(alpha: 0.5)),
               const SizedBox(height: 8),
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (showLike)
-                    _buildAction(
-                      icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
-                      count: widget.reactionCount,
-                      color: widget.isLiked ? MemoFlowPalette.primary : textMuted,
-                      onTap: widget.onToggleLike,
-                    ),
-                  if (showLike && showComment) const SizedBox(width: 10),
-                  if (showComment)
-                    _buildAction(
-                      icon: widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
-                      count: widget.commentCount,
-                      color: widget.hasOwnComment ? MemoFlowPalette.primary : textMuted,
-                      onTap: widget.onToggleComment,
-                    ),
-                  const Spacer(),
-                  IconButton(
-                    icon: Icon(Icons.more_horiz, size: 18, color: textMuted),
-                    onPressed: widget.onMore,
-                    tooltip: context.tr(zh: '更多', en: 'More'),
+                  Row(
+                    children: [
+                      if (showLike)
+                        Expanded(
+                          child: _buildLikeSummary(textMuted: textMuted),
+                        )
+                      else
+                        const Spacer(),
+                      Builder(
+                        builder: (buttonContext) => IconButton(
+                          icon: Icon(Icons.more_horiz, size: 18, color: textMuted),
+                          onPressed: () => _toggleQuickMenu(buttonContext),
+                          tooltip: context.tr(zh: '更多', en: 'More'),
+                        ),
+                      ),
+                    ],
                   ),
+                  if (showComment) ...[
+                    const SizedBox(height: 6),
+                    _buildCommentSummary(textMain: textMain, textMuted: textMuted),
+                    if (!widget.isCommenting && previewCount > 1) ...[
+                      const SizedBox(height: 6),
+                      for (var i = 1; i < previewCount; i++) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28),
+                          child: _buildCommentPreviewLine(comment: widget.comments[i], textMain: textMain),
+                        ),
+                        if (i != previewCount - 1) const SizedBox(height: 6),
+                      ],
+                    ],
+                    if (!widget.isCommenting && remainingComments > 0) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: widget.onToggleComment,
+                          style: TextButton.styleFrom(
+                            foregroundColor: textMuted,
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          ),
+                          child: Text(
+                            context.tr(
+                              zh: '还有 $remainingComments 条评论',
+                              en: '$remainingComments more comments',
+                            ),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ],
               ),
               if (widget.isCommenting) ...[
@@ -1821,7 +2483,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       for (var i = 0; i < widget.comments.length; i++) ...[
                         GestureDetector(
                           onTap: () => widget.onReplyComment(widget.memo, widget.comments[i]),
-                          child: _buildCommentItem(comment: widget.comments[i], textMain: textMain),
+                          child: _buildCommentPreviewLine(comment: widget.comments[i], textMain: textMain),
                         ),
                         if (i != widget.comments.length - 1) const SizedBox(height: 6),
                       ],
