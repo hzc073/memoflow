@@ -101,10 +101,15 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     super.dispose();
   }
 
+  void _clearInput() {
+    _controller.value = const TextEditingValue();
+  }
+
   Future<void> _unlock() async {
     if (_unlocking) return;
     final text = _controller.text.trim();
     if (text.isEmpty) {
+      _clearInput();
       setState(() => _error = context.tr(zh: '请输入密码', en: 'Please enter password'));
       return;
     }
@@ -115,14 +120,15 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     final ok = await ref.read(appLockProvider.notifier).verifyPassword(text);
     if (!mounted) return;
     if (!ok) {
-      _controller.clear();
+      _clearInput();
+      FocusScope.of(context).requestFocus(_focusNode);
       setState(() {
         _error = context.tr(zh: '密码错误', en: 'Incorrect password');
         _unlocking = false;
       });
       return;
     }
-    _controller.clear();
+    _clearInput();
     setState(() => _unlocking = false);
   }
 
@@ -195,6 +201,11 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                           focusNode: _focusNode,
                           autofocus: true,
                           obscureText: true,
+                          onChanged: (_) {
+                            if (_error != null) {
+                              setState(() => _error = null);
+                            }
+                          },
                           onSubmitted: (_) => _unlock(),
                           keyboardType: TextInputType.number,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],

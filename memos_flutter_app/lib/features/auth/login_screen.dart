@@ -228,6 +228,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final sessionAsync = ref.read(appSessionProvider);
     if (sessionAsync.hasError) {
       if (!mounted) return;
+      _passwordController.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_formatPasswordLoginError(sessionAsync.error!))),
       );
