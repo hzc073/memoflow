@@ -2134,7 +2134,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final listVisualOffset = widget.showPillActions ? 6.0 : 0.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
-    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.padding.bottom;
+    final screenWidth = mediaQuery.size.width;
     final backToTopBaseOffset = widget.enableCompose && !_searching
         ? 104.0
         : 24.0;
@@ -2169,6 +2171,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 onOpenNotifications: _openNotifications,
               )
             : null,
+        drawerEnableOpenDragGesture: widget.showDrawer && !_searching,
+        drawerEdgeDragWidth:
+            widget.showDrawer && !_searching ? screenWidth : null,
         body: Stack(
           children: [
             RefreshIndicator(
