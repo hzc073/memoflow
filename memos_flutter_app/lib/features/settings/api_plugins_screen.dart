@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/models/personal_access_token.dart';
 import '../../state/memos_providers.dart';
 import '../../state/personal_access_token_repository_provider.dart';
@@ -202,8 +203,9 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                       onPressed: () async {
                         await Clipboard.setData(ClipboardData(text: token));
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'))),
+                        showTopToast(
+                          context,
+                          context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'),
                         );
                       },
                       icon: const Icon(Icons.copy),
@@ -255,8 +257,9 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
 
       await Clipboard.setData(ClipboardData(text: token));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: 'Token 已复制到剪贴板', en: 'Token copied to clipboard'))),
+      showTopToast(
+        context,
+        context.tr(zh: 'Token 已复制到剪贴板', en: 'Token copied to clipboard'),
       );
       await _showTokenSheet(token);
       await _refreshTokens();
@@ -273,19 +276,20 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
   Future<void> _copyExistingToken(PersonalAccessToken token) async {
     final value = _tokenValues[token.name]?.trim();
     if (value == null || value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(zh: 'Token 仅返回一次，无法再次获取', en: 'Token is returned only once and cannot be fetched again'),
-          ),
+      showTopToast(
+        context,
+        context.tr(
+          zh: 'Token 仅返回一次，无法再次获取',
+          en: 'Token is returned only once and cannot be fetched again',
         ),
       );
       return;
     }
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'))),
+    showTopToast(
+      context,
+      context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'),
     );
   }
 

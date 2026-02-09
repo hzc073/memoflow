@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/models/user_setting.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
@@ -43,8 +44,9 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
           );
       ref.invalidate(userGeneralSettingProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已更新设置', en: 'Settings updated'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已更新设置', en: 'Settings updated'),
       );
     } catch (e) {
       if (!mounted) return;

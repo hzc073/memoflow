@@ -15,6 +15,7 @@ import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
+import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
@@ -428,9 +429,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       final message = widget.toastMessage;
       if (message == null || message.trim().isEmpty) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
     });
     _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
@@ -1128,13 +1127,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (_lastBackPressedAt == null ||
         now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {
       _lastBackPressedAt = now;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(zh: '再按一次返回退出', en: 'Press back again to exit'),
-          ),
-          duration: const Duration(seconds: 2),
-        ),
+      showTopToast(
+        context,
+        context.tr(zh: '再按一次返回退出', en: 'Press back again to exit'),
+        duration: const Duration(seconds: 2),
       );
       return false;
     }
@@ -1150,14 +1146,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final hasAccount =
         ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     if (!hasAccount && dest == AppDrawerDestination.explore) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '本地库模式暂不支持该功能',
-              en: 'This feature is not available in local library mode.',
-            ),
-          ),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '本地库模式暂不支持该功能',
+          en: 'This feature is not available in local library mode.',
         ),
       );
       return;
@@ -1197,14 +1190,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final hasAccount =
         ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     if (!hasAccount) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '本地库模式暂不支持该功能',
-              en: 'This feature is not available in local library mode.',
-            ),
-          ),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '本地库模式暂不支持该功能',
+          en: 'This feature is not available in local library mode.',
         ),
       );
       return;
@@ -1380,10 +1370,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     try {
       await scanner.scanAndMerge(context);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.tr(zh: '扫描完成', en: 'Scan completed')),
-        ),
+      showTopToast(
+        context,
+        context.tr(zh: '扫描完成', en: 'Scan completed'),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1431,14 +1420,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
         await scanner.scanAndMerge(context, forceDisk: true);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.tr(
-                zh: '已从本地库导入笔记',
-                en: 'Imported memos from local library',
-              ),
-            ),
+        showTopToast(
+          context,
+          context.tr(
+            zh: '已从本地库导入笔记',
+            en: 'Imported memos from local library',
           ),
         );
       } catch (e) {
@@ -1732,10 +1718,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       await _updateMemo(memo, state: 'ARCHIVED');
       _removeMemoWithAnimation(memo);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.tr(zh: '\u5df2\u5f52\u6863', en: 'Archived')),
-        ),
+      showTopToast(
+        context,
+        context.tr(zh: '\u5df2\u5f52\u6863', en: 'Archived'),
       );
     } catch (e) {
       if (!mounted) return;
@@ -2008,57 +1993,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               maybeHaptic();
               await Clipboard.setData(ClipboardData(text: memo.content));
               if (!context.mounted) return;
-              final size = MediaQuery.of(context).size;
-              final topPadding = MediaQuery.of(context).padding.top;
-              const toastWidth = 160.0;
-              const toastHeight = 32.0;
-              final desiredTop = topPadding + 200.0;
-              final bottomMargin =
-                  (size.height - desiredTop - toastHeight - 16.0).clamp(
-                    16.0,
-                    size.height - toastHeight - 16.0,
-                  );
-              final sideMargin = ((size.width - toastWidth) / 2).clamp(
-                16.0,
-                size.width,
-              );
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              final toastBg = isDark
-                  ? MemoFlowPalette.cardDark
-                  : MemoFlowPalette.cardLight;
-              final toastText = isDark
-                  ? MemoFlowPalette.textDark
-                  : MemoFlowPalette.textLight;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  margin: EdgeInsets.fromLTRB(
-                    sideMargin,
-                    0,
-                    sideMargin,
-                    bottomMargin,
-                  ),
-                  content: Text(
-                    context.tr(
-                      zh: '\u5df2\u590d\u5236\u7b14\u8bb0\u5185\u5bb9',
-                      en: 'Memo copied',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: toastText,
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  backgroundColor: toastBg,
-                  shape: const StadiumBorder(),
-                  elevation: 3,
-                  duration: const Duration(milliseconds: 1200),
+              showTopToast(
+                context,
+                context.tr(
+                  zh: '\u5df2\u590d\u5236\u7b14\u8bb0\u5185\u5bb9',
+                  en: 'Memo copied',
                 ),
+                duration: const Duration(milliseconds: 1200),
               );
             },
       onAction: removing

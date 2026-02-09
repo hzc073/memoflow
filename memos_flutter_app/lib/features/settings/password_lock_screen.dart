@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../state/app_lock_provider.dart';
 
 class PasswordLockScreen extends ConsumerWidget {
@@ -161,8 +162,9 @@ class PasswordLockScreen extends ConsumerWidget {
                         if (!context.mounted) return;
                         await ref.read(appLockProvider.notifier).setPassword(password);
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '密码已更新（仅本地）', en: 'Password updated (local)'))),
+                        showTopToast(
+                          context,
+                          context.tr(zh: '密码已更新（仅本地）', en: 'Password updated (local)'),
                         );
                       },
                     ),

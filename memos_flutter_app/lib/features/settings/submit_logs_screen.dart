@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../state/logging_provider.dart';
 import '../../state/preferences_provider.dart';
 
@@ -89,8 +90,9 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
       await File(outPath).writeAsString(text, flush: true);
       if (!mounted) return;
       setState(() => _lastPath = outPath);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '日志文件已生成', en: 'Log file created'))),
+      showTopToast(
+        context,
+        context.tr(zh: '日志文件已生成', en: 'Log file created'),
       );
     } catch (e) {
       if (!mounted) return;
@@ -243,8 +245,9 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                       try {
                         await _copyReport();
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '日志已复制', en: 'Log copied'))),
+                        showTopToast(
+                          context,
+                          context.tr(zh: '日志已复制', en: 'Log copied'),
                         );
                       } catch (e) {
                         if (!context.mounted) return;
@@ -295,8 +298,9 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                             haptic();
                             await Clipboard.setData(ClipboardData(text: _lastPath!));
                             if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(context.tr(zh: '路径已复制', en: 'Path copied'))),
+                            showTopToast(
+                              context,
+                              context.tr(zh: '路径已复制', en: 'Path copied'),
                             );
                           },
                           child: Text(context.tr(zh: '复制路径', en: 'Copy path')),

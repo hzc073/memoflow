@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
@@ -190,11 +191,10 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     setState(() => _exporting = true);
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(context.tr(zh: '正在导出...', en: 'Exporting...')),
-        duration: const Duration(seconds: 30),
-      ),
+    showTopToast(
+      context,
+      context.tr(zh: '正在导出...', en: 'Exporting...'),
+      duration: const Duration(seconds: 30),
     );
     final language = ref.read(appPreferencesProvider).language;
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
@@ -415,9 +415,10 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                     textMuted: textMuted,
                     onTap: () {
                       haptic();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(context.tr(zh: '格式固定为 Markdown + ZIP', en: 'Format is fixed to Markdown + ZIP'))),
-                      );
+                        showTopToast(
+                          context,
+                          context.tr(zh: '格式固定为 Markdown + ZIP', en: 'Format is fixed to Markdown + ZIP'),
+                        );
                     },
                   ),
                 ],
@@ -488,8 +489,9 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                           haptic();
                           await Clipboard.setData(ClipboardData(text: _lastExportPath!));
                           if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(context.tr(zh: '路径已复制', en: 'Path copied'))),
+                          showTopToast(
+                            context,
+                            context.tr(zh: '路径已复制', en: 'Path copied'),
                           );
                         },
                       ),

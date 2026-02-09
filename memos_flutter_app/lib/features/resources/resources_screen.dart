@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
@@ -119,8 +120,9 @@ class ResourcesScreen extends ConsumerWidget {
     final safeName = _sanitizeFilename(rawName);
 
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '正在下载', en: 'Downloading...'))),
+    showTopToast(
+      context,
+      context.tr(zh: '正在下载', en: 'Downloading...'),
     );
 
     try {
@@ -156,8 +158,9 @@ class ResourcesScreen extends ConsumerWidget {
 
       if (!context.mounted) return;
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已保存到: $targetPath', en: 'Saved to: $targetPath'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已保存到: $targetPath', en: 'Saved to: $targetPath'),
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -221,8 +224,9 @@ class ResourcesScreen extends ConsumerWidget {
   }
 
   void _showUnsupportedPreview(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '暂不支持该类型预览', en: 'Preview not supported for this type'))),
+    showTopToast(
+      context,
+      context.tr(zh: '暂不支持该类型预览', en: 'Preview not supported for this type'),
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_localization.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
@@ -323,8 +324,12 @@ class NotificationsScreen extends ConsumerWidget {
             ref.invalidate(notificationsProvider);
           } catch (_) {}
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '通知对应的内容已被删除', en: 'The related memo was deleted'))),
+        showTopToast(
+          context,
+          context.tr(
+            zh: '通知对应的内容已被删除',
+            en: 'The related memo was deleted',
+          ),
         );
         return;
       }
@@ -362,7 +367,7 @@ class NotificationsScreen extends ConsumerWidget {
       final message = action == _NotificationAction.markRead
           ? context.tr(zh: '已标记为已读', en: 'Marked as read')
           : context.tr(zh: '通知已删除', en: 'Notification deleted');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

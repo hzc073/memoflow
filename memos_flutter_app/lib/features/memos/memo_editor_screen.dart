@@ -10,6 +10,7 @@ import '../../core/app_localization.dart';
 import '../../core/markdown_editing.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
+import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
 import '../../data/location/amap_geocoder.dart';
@@ -605,16 +606,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
       if (!mounted) return;
       setState(() => _location = next);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '定位成功：${next.displayText(fractionDigits: 6)}',
-              en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
-            ),
-          ),
-          duration: const Duration(seconds: 2),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '定位成功：${next.displayText(fractionDigits: 6)}',
+          en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
         ),
+        duration: const Duration(seconds: 2),
       );
     } catch (e) {
       if (!mounted) return;
@@ -750,8 +748,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Future<void> _openLinkMemoSheet() async {
     if (_saving) return;
     if (_relationsLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '正在加载引用', en: 'Loading references'))),
+      showTopToast(
+        context,
+        context.tr(zh: '正在加载引用', en: 'Loading references'),
       );
       return;
     }
@@ -841,7 +840,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       }
 
       if (added.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No images selected.')));
+        showTopToast(context, 'No images selected.');
         return;
       }
 
@@ -851,7 +850,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       });
       final suffix = added.length == 1 ? '' : 's';
       final summary = 'Added ${added.length} image$suffix.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
+      showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image selection failed: $e')));
@@ -895,7 +894,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         );
         _pickedImages.add(photo);
       });
-      messenger.showSnackBar(const SnackBar(content: Text('Added photo attachment.')));
+      showTopToast(context, 'Added photo attachment.');
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Camera failed: $e')));

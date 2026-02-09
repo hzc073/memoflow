@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/models/shortcut.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
@@ -65,8 +66,9 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
       }
       ref.invalidate(shortcutsProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已保存', en: 'Saved'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已保存', en: 'Saved'),
       );
     } catch (e) {
       if (!mounted) return;

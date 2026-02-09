@@ -11,6 +11,7 @@ import '../../core/app_localization.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
@@ -536,8 +537,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                       onPressed: () {
                         maybeHaptic();
                         unawaited(ref.read(syncControllerProvider.notifier).syncNow());
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '已开始重试同步', en: 'Retry started'))),
+                        showTopToast(
+                          context,
+                          context.tr(zh: '已开始重试同步', en: 'Retry started'),
                         );
                       },
                       icon: const Icon(Icons.refresh, size: 18),
@@ -549,8 +551,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                         maybeHaptic();
                         await Clipboard.setData(ClipboardData(text: memo.lastError!));
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '已复制错误信息', en: 'Error copied'))),
+                        showTopToast(
+                          context,
+                          context.tr(zh: '已复制错误信息', en: 'Error copied'),
                         );
                       },
                       icon: const Icon(Icons.copy, size: 18),

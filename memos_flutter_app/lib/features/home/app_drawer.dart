@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../state/database_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/memos_providers.dart';
@@ -147,8 +148,12 @@ class AppDrawer extends ConsumerWidget {
                         onPressed: () {
                           final handler = onOpenNotifications;
                           if (handler == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(context.tr(zh: '通知功能即将上线', en: 'Notifications: coming soon'))),
+                            showTopToast(
+                              context,
+                              context.tr(
+                                zh: '通知功能即将上线',
+                                en: 'Notifications: coming soon',
+                              ),
                             );
                             return;
                           }
@@ -377,58 +382,14 @@ class AppDrawer extends ConsumerWidget {
                   _BottomNavRow(
                     label: context.tr(zh: '\u56de\u6536\u7ad9', en: 'Recycle Bin'),
                     icon: Icons.delete,
-                    onTap: () {
-                      final overlay = Overlay.of(context, rootOverlay: true);
-                      final isDark = Theme.of(context).brightness == Brightness.dark;
-                      final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-                      final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-                      late OverlayEntry entry;
-                      entry = OverlayEntry(
-                        builder: (context) => SafeArea(
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 24),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: toastBg,
-                                    borderRadius: BorderRadius.circular(999),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
-                                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    context.tr(
-                                      zh: '\u56de\u6536\u7ad9\u529f\u80fd\u6682\u672a\u5f00\u653e',
-                                      en: 'Recycle bin: coming soon',
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: toastText,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                      overlay.insert(entry);
-                      Future.delayed(const Duration(milliseconds: 1400), () {
-                        if (entry.mounted) {
-                          entry.remove();
-                        }
-                      });
-                    },
+                    onTap: () => showTopToast(
+                      context,
+                      context.tr(
+                        zh: '\u56de\u6536\u7ad9\u529f\u80fd\u6682\u672a\u5f00\u653e',
+                        en: 'Recycle bin: coming soon',
+                      ),
+                      duration: const Duration(milliseconds: 1400),
+                    ),
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
                     hover: hover,
                   ),
@@ -671,52 +632,11 @@ class _DrawerHeatmap extends StatelessWidget {
     }
 
     void showOverlayToast(String message) {
-      final overlay = Overlay.of(context, rootOverlay: true);
-      final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-      final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-      late OverlayEntry entry;
-      entry = OverlayEntry(
-        builder: (context) => SafeArea(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: toastBg,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: toastText,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+      showTopToast(
+        context,
+        message,
+        duration: const Duration(milliseconds: 1400),
       );
-      overlay.insert(entry);
-      Future.delayed(const Duration(milliseconds: 1400), () {
-        if (entry.mounted) {
-          entry.remove();
-        }
-      });
     }
 
     void openDay(DateTime d, int count) {

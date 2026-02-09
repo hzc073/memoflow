@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/logs/debug_log_store.dart';
 import '../../state/debug_log_provider.dart';
 
@@ -74,8 +75,9 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
     final text = _entries.map((e) => jsonEncode(e.toJson())).join('\n');
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '记录已复制', en: 'Logs copied'))),
+    showTopToast(
+      context,
+      context.tr(zh: '记录已复制', en: 'Logs copied'),
     );
   }
 

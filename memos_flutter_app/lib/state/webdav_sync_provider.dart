@@ -498,9 +498,11 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
   }
 
   AppPreferences _mergePreferences(AppPreferences current, AppPreferences remote) {
+    final hasSelectedLanguage =
+        current.hasSelectedLanguage || remote.hasSelectedLanguage;
     return current.copyWith(
       language: remote.language,
-      hasSelectedLanguage: remote.hasSelectedLanguage,
+      hasSelectedLanguage: hasSelectedLanguage,
       fontSize: remote.fontSize,
       lineHeight: remote.lineHeight,
       fontFamily: remote.fontFamily,

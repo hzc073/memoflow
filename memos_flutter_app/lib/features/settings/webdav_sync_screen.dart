@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/webdav_url.dart';
 import '../../data/models/webdav_backup.dart';
 import '../../data/models/webdav_settings.dart';
@@ -554,10 +555,9 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(context.tr(zh: '恢复完成', en: 'Restore completed')),
-      ),
+    showTopToast(
+      context,
+      context.tr(zh: '恢复完成', en: 'Restore completed'),
     );
   }
 

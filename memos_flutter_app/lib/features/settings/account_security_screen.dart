@@ -10,6 +10,7 @@ import 'package:saf_util/saf_util.dart';
 import '../../core/app_localization.dart';
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
 import '../../data/models/local_library.dart';
 import '../../data/settings/image_bed_settings_repository.dart';
@@ -144,10 +145,9 @@ class AccountSecurityScreen extends ConsumerWidget {
       try {
         await scanner.scanAndMerge(context);
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.tr(zh: '扫描完成', en: 'Scan completed')),
-          ),
+        showTopToast(
+          context,
+          context.tr(zh: '扫描完成', en: 'Scan completed'),
         );
       } catch (e) {
         if (!context.mounted) return;
@@ -183,10 +183,9 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!context.mounted) return;
       await _maybeScanLocalLibrary();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.tr(zh: '本地库已添加', en: 'Local library added')),
-        ),
+      showTopToast(
+        context,
+        context.tr(zh: '本地库已添加', en: 'Local library added'),
       );
     }
 
@@ -245,10 +244,9 @@ class AccountSecurityScreen extends ConsumerWidget {
       }
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.tr(zh: '本地库已移除', en: 'Local library removed')),
-        ),
+      showTopToast(
+        context,
+        context.tr(zh: '本地库已移除', en: 'Local library removed'),
       );
     }
 

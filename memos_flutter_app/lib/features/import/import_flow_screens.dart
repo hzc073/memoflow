@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
@@ -332,8 +333,9 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
       );
     } on ImportCancelled {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已取消导入', en: 'Import canceled.'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已取消导入', en: 'Import canceled.'),
       );
       context.safePop();
     } on ImportException catch (e) {

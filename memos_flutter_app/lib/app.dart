@@ -13,6 +13,7 @@ import 'core/app_localization.dart';
 import 'core/app_theme.dart';
 import 'core/memoflow_palette.dart';
 import 'core/system_fonts.dart';
+import 'core/top_toast.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/app_lock_gate.dart';
@@ -834,12 +835,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void _notifyShareDisabled() {
     final context = _navigatorKey.currentContext;
     if (context == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          context.tr(zh: '第三方分享未开启', en: 'Third-party share is disabled'),
-        ),
-      ),
+    showTopToast(
+      context,
+      context.tr(zh: '第三方分享未开启', en: 'Third-party share is disabled'),
     );
   }
 

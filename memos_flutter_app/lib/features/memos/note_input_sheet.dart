@@ -12,6 +12,7 @@ import '../../core/app_localization.dart';
 import '../../core/markdown_editing.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
+import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/memo.dart';
@@ -594,16 +595,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       );
       if (!mounted) return;
       setState(() => _location = next);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '定位成功：${next.displayText(fractionDigits: 6)}',
-              en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
-            ),
-          ),
-          duration: const Duration(seconds: 2),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '定位成功：${next.displayText(fractionDigits: 6)}',
+          en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
         ),
+        duration: const Duration(seconds: 2),
       );
     } catch (e) {
       if (!mounted) return;
@@ -838,7 +836,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       if (!mounted) return;
       if (added.isEmpty) {
         final msg = missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        showTopToast(context, msg);
         return;
       }
 
@@ -850,7 +848,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final summary = skipped.isEmpty
           ? 'Added ${added.length} file$suffix.'
           : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
+      showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
@@ -891,8 +889,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         ),
       );
     });
-    messenger.showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '已添加录音附件', en: 'Added voice attachment.'))),
+    showTopToast(
+      context,
+      context.tr(zh: '已添加录音附件', en: 'Added voice attachment.'),
     );
   }
 
@@ -933,7 +932,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         );
         _pickedImages.add(photo);
       });
-      messenger.showSnackBar(const SnackBar(content: Text('Added photo attachment.')));
+      showTopToast(context, 'Added photo attachment.');
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Camera failed: $e')));

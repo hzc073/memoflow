@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../memos/memos_list_screen.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/stats_providers.dart';
@@ -94,8 +95,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   Future<void> _sharePoster() async {
     final boundary = _posterBoundaryKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'))),
+      showTopToast(
+        context,
+        context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'),
       );
       return;
     }
@@ -298,8 +300,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               onPressed: () {
                 final stats = statsAsync.valueOrNull;
                 if (stats == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(context.tr(zh: '统计数据加载中...', en: 'Stats are loading'))),
+                  showTopToast(
+                    context,
+                    context.tr(zh: '统计数据加载中...', en: 'Stats are loading'),
                   );
                   return;
                 }

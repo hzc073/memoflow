@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
 
@@ -227,8 +228,9 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
       await ref.read(aiSettingsProvider.notifier).setAll(next);
       if (!mounted) return;
       setState(() => _dirty = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '设置已保存', en: 'Settings saved'))),
+      showTopToast(
+        context,
+        context.tr(zh: '设置已保存', en: 'Settings saved'),
       );
     } catch (e) {
       if (!mounted) return;

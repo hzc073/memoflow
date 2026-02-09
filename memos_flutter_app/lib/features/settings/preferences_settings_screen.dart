@@ -5,6 +5,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/system_fonts.dart';
 import '../../core/theme_colors.dart';
 import '../../state/preferences_provider.dart';
@@ -1515,8 +1516,9 @@ class _HexInputRow extends StatelessWidget {
       final text = '#${formatHex(color)}';
       await Clipboard.setData(ClipboardData(text: text));
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'),
       );
     }
     return Container(

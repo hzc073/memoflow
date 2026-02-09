@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
@@ -68,8 +69,9 @@ class FeedbackScreen extends ConsumerWidget {
       if (!confirmed) return;
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '正在重置本地数据...', en: 'Resetting local data...'))),
+      showTopToast(
+        context,
+        context.tr(zh: '正在重置本地数据...', en: 'Resetting local data...'),
       );
 
       try {
@@ -91,8 +93,9 @@ class FeedbackScreen extends ConsumerWidget {
 
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已重置，开始重新同步', en: 'Reset done. Syncing...'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已重置，开始重新同步', en: 'Reset done. Syncing...'),
       );
     }
 

@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
 import 'custom_notification_screen.dart';
@@ -71,7 +72,11 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
               en: 'Test scheduled at $timeLabel$suffix$pendingLabel',
             )
           : context.tr(zh: '权限未授予', en: 'Permissions denied');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      if (result.ok) {
+        showTopToast(context, message);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -99,8 +104,9 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     final ignoring = await SystemSettingsLauncher.isIgnoringBatteryOptimizations();
     if (!mounted) return;
     if (ignoring) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已在电池白名单', en: 'Already whitelisted'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已在电池白名单', en: 'Already whitelisted'),
       );
       return;
     }

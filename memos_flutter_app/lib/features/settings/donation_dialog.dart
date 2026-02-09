@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../state/preferences_provider.dart';
 
 enum _DonationStep { request, success }
@@ -144,12 +145,9 @@ class _DonationDialogState extends ConsumerState<DonationDialog>
         return;
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(zh: '二维码已保存到系统相册', en: 'QR saved to gallery'),
-          ),
-        ),
+      showTopToast(
+        context,
+        context.tr(zh: '二维码已保存到系统相册', en: 'QR saved to gallery'),
       );
     } catch (e) {
       if (!mounted) return;

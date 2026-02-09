@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../state/login_draft_provider.dart';
 import '../../state/preferences_provider.dart';
@@ -151,14 +152,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _baseUrlController.text = sanitizedBaseUrl.toString();
       ref.read(loginBaseUrlDraftProvider.notifier).state =
           _baseUrlController.text;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '已规范化服务器地址（移除多余路径）',
-              en: 'Server URL normalized (removed extra path segments)',
-            ),
-          ),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '已规范化服务器地址（移除多余路径）',
+          en: 'Server URL normalized (removed extra path segments)',
         ),
       );
     }

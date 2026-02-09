@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/models/shortcut.dart';
 import '../../state/memos_providers.dart';
 
@@ -116,14 +117,16 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
     final title = _titleController.text.trim();
     final filter = _buildFilter();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '请输入筛选名称', en: 'Please enter a name.'))),
+      showTopToast(
+        context,
+        context.tr(zh: '请输入筛选名称', en: 'Please enter a name.'),
       );
       return;
     }
     if (filter.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '请至少设置一个条件', en: 'Please add at least one condition.'))),
+      showTopToast(
+        context,
+        context.tr(zh: '请至少设置一个条件', en: 'Please add at least one condition.'),
       );
       return;
     }

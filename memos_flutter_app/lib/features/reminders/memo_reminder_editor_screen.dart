@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo_reminder.dart';
 import '../../state/database_provider.dart';
@@ -61,8 +62,9 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
   Future<void> _addOrEditTime({DateTime? current}) async {
     if (current == null && _mode == ReminderMode.repeat && _times.length >= 9) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '最多设置 9 个提醒时间', en: 'Up to 9 times allowed'))),
+        showTopToast(
+          context,
+          context.tr(zh: '最多设置 9 个提醒时间', en: 'Up to 9 times allowed'),
         );
       }
       return;
@@ -105,8 +107,9 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
     final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
     if (picked.isBefore(now)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '请选择未来时间', en: 'Pick a future time'))),
+        showTopToast(
+          context,
+          context.tr(zh: '请选择未来时间', en: 'Pick a future time'),
         );
       }
       return null;
@@ -116,14 +119,16 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
 
   Future<void> _save() async {
     if (_times.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '请设置提醒时间', en: 'Select reminder time'))),
+      showTopToast(
+        context,
+        context.tr(zh: '请设置提醒时间', en: 'Select reminder time'),
       );
       return;
     }
     if (_mode == ReminderMode.repeat && _times.length > 9) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '最多设置 9 个提醒时间', en: 'Up to 9 times allowed'))),
+      showTopToast(
+        context,
+        context.tr(zh: '最多设置 9 个提醒时间', en: 'Up to 9 times allowed'),
       );
       return;
     }

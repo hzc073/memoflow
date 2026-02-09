@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../data/ai/ai_summary_service.dart';
@@ -228,14 +229,16 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (_isLoading) return;
     final settings = ref.read(aiSettingsProvider);
     if (settings.apiKey.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '请先在 AI 设置中填写 API Key', en: 'Please enter API Key in AI settings'))),
+      showTopToast(
+        context,
+        context.tr(zh: '请先在 AI 设置中填写 API Key', en: 'Please enter API Key in AI settings'),
       );
       return;
     }
     if (settings.apiUrl.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '请先在 AI 设置中填写 API URL', en: 'Please enter API URL in AI settings'))),
+      showTopToast(
+        context,
+        context.tr(zh: '请先在 AI 设置中填写 API URL', en: 'Please enter API URL in AI settings'),
       );
       return;
     }
@@ -247,8 +250,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       if (!mounted || !_isLoading || requestId != _requestId) return;
       if (memoSource.text.trim().isEmpty) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '该时间范围内没有可总结的笔记', en: 'No memos to summarize in this range'))),
+        showTopToast(
+          context,
+          context.tr(zh: '该时间范围内没有可总结的笔记', en: 'No memos to summarize in this range'),
         );
         return;
       }
@@ -357,8 +361,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   Future<void> _shareReport() async {
     final summary = _summary;
     if (summary == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '暂无可分享的总结', en: 'No summary to share'))),
+      showTopToast(
+        context,
+        context.tr(zh: '暂无可分享的总结', en: 'No summary to share'),
       );
       return;
     }
@@ -381,15 +386,17 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   Future<void> _sharePoster() async {
     final summary = _summary;
     if (summary == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '暂无可分享的总结', en: 'No summary to share'))),
+      showTopToast(
+        context,
+        context.tr(zh: '暂无可分享的总结', en: 'No summary to share'),
       );
       return;
     }
     final boundary = _reportBoundaryKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'))),
+      showTopToast(
+        context,
+        context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'),
       );
       return;
     }
@@ -433,8 +440,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   Future<void> _saveAsMemo() async {
     final summary = _summary;
     if (summary == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '暂无可保存的总结', en: 'No summary to save'))),
+      showTopToast(
+        context,
+        context.tr(zh: '暂无可保存的总结', en: 'No summary to save'),
       );
       return;
     }
@@ -469,8 +477,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       });
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已保存为笔记', en: 'Saved as memo'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已保存为笔记', en: 'Saved as memo'),
       );
     } catch (e) {
       if (!mounted) return;

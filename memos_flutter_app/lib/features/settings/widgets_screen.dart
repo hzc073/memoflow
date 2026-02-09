@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import 'widgets_service.dart';
 
 class WidgetsScreen extends StatelessWidget {
@@ -126,21 +127,22 @@ class WidgetsScreen extends StatelessWidget {
 
   static Future<void> _handleAdd(BuildContext context, HomeWidgetType type) async {
     if (defaultTargetPlatform != TargetPlatform.android) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: 'iOS 请长按桌面添加 MemoFlow 小组件', en: 'On iOS, long-press the home screen to add MemoFlow widgets'))),
+      showTopToast(
+        context,
+        context.tr(
+          zh: 'iOS 请长按桌面添加 MemoFlow 小组件',
+          en: 'On iOS, long-press the home screen to add MemoFlow widgets',
+        ),
       );
       return;
     }
     final ok = await HomeWidgetService.requestPinWidget(type);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok
-              ? context.tr(zh: '已发送请求，请在系统提示中确认', en: 'Request sent. Confirm in the system prompt')
-              : context.tr(zh: '不支持一键添加，请从小组件列表添加', en: 'One-tap add not supported. Add it from the widget picker'),
-        ),
-      ),
+    showTopToast(
+      context,
+      ok
+          ? context.tr(zh: '已发送请求，请在系统提示中确认', en: 'Request sent. Confirm in the system prompt')
+          : context.tr(zh: '不支持一键添加，请从小组件列表添加', en: 'One-tap add not supported. Add it from the widget picker'),
     );
   }
 }

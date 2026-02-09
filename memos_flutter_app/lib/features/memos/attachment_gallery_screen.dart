@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/top_toast.dart';
 
 class AttachmentImageSource {
   const AttachmentImageSource({
@@ -213,8 +214,9 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         );
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已保存到相册', en: 'Saved to gallery'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已保存到相册', en: 'Saved to gallery'),
       );
     } catch (e) {
       if (!mounted) return;
@@ -255,8 +257,9 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         );
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已保存到相册', en: 'Saved to gallery'))),
+      showTopToast(
+        context,
+        context.tr(zh: '已保存到相册', en: 'Saved to gallery'),
       );
     } catch (e) {
       if (!mounted) return;

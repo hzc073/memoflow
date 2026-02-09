@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
 
@@ -46,9 +47,10 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
     try {
       await ref.read(aiSettingsProvider.notifier).setUserProfile(_controller.text);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '已保存', en: 'Saved'))),
-      );
+        showTopToast(
+          context,
+          context.tr(zh: '已保存', en: 'Saved'),
+        );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
