@@ -861,6 +861,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   ({String url, String? localPath, Map<String, String>? headers})?
   _resolveAudioSource(Attachment attachment) {
     final rawLink = attachment.externalLink.trim();
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final baseUrl = account?.baseUrl;
+    final token = account?.personalAccessToken ?? '';
+    final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     if (rawLink.isNotEmpty) {
       final localPath = _localAttachmentPath(attachment);
       if (localPath != null) {
@@ -870,20 +874,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           headers: null,
         );
       }
-      return (url: rawLink, localPath: null, headers: null);
+      final isAbsolute = isAbsoluteUrl(rawLink);
+      final resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
+      final headers = (!isAbsolute && authHeader != null) ? {'Authorization': authHeader} : null;
+      return (url: resolved, localPath: null, headers: headers);
     }
-
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final baseUrl = account?.baseUrl;
     if (baseUrl == null) return null;
     final name = attachment.name.trim();
     final filename = attachment.filename.trim();
     if (name.isEmpty || filename.isEmpty) return null;
     final url = joinBaseUrl(baseUrl, 'file/$name/$filename');
-    final token = account?.personalAccessToken ?? '';
-    final headers = token.trim().isEmpty
-        ? null
-        : {'Authorization': 'Bearer $token'};
+    final headers = authHeader == null ? null : {'Authorization': authHeader};
     return (url: url, localPath: null, headers: headers);
   }
 

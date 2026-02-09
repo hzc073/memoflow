@@ -121,9 +121,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
   String? _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment) {
     final link = attachment.externalLink.trim();
     if (link.isNotEmpty && !link.startsWith('file://') && !link.startsWith('content://')) {
-      if (link.startsWith('http://') || link.startsWith('https://')) return link;
-      if (baseUrl == null) return null;
-      return joinBaseUrl(baseUrl, link);
+      return resolveMaybeRelativeUrl(baseUrl, link);
     }
     if (baseUrl == null) return null;
     final filename = attachment.filename.trim();

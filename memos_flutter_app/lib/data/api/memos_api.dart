@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
@@ -70,6 +70,7 @@ class MemosApi {
     LogManager? logManager,
   }) {
     _instanceProfileHint = instanceProfile;
+    _logManager = logManager;
     if (logStore != null || logManager != null || logBuffer != null || breadcrumbStore != null) {
       _dio.interceptors.add(
         NetworkLogInterceptor(
@@ -85,11 +86,13 @@ class MemosApi {
   final Dio _dio;
   final bool useLegacyApi;
   InstanceProfile? _instanceProfileHint;
+  LogManager? _logManager;
   _ServerApiFlavor _serverFlavor = _ServerApiFlavor.unknown;
   _ServerVersion? _serverVersion;
   String _serverVersionRaw = '';
   Future<void>? _serverHintsFuture;
   bool _serverHintsApplied = false;
+  bool _serverHintsLogged = false;
   bool _memoApiLegacy = false;
   _NotificationApiMode? _notificationMode;
   _UserStatsApiMode? _userStatsMode;
@@ -143,6 +146,7 @@ class MemosApi {
     _serverVersion = _ServerVersion.tryParse(rawVersion);
     final flavor = _inferServerFlavor(_serverVersion);
     _applyServerHints(flavor);
+    _logServerHints();
     _serverHintsApplied = true;
   }
 
@@ -200,6 +204,27 @@ class MemosApi {
       case _ServerApiFlavor.unknown:
         break;
     }
+  }
+
+  void _logServerHints() {
+    if (_serverHintsLogged) return;
+    _serverHintsLogged = true;
+    _logManager?.info(
+      'Server API hints',
+      context: <String, Object?>{
+        'versionRaw': _serverVersionRaw,
+        'versionParsed': _serverVersion == null
+            ? ''
+            : '${_serverVersion!.major}.${_serverVersion!.minor}.${_serverVersion!.patch}',
+        'flavor': _serverFlavor.name,
+        'useLegacyApi': useLegacyApi,
+        'memoLegacy': _memoApiLegacy,
+        'attachmentMode': _attachmentMode?.name ?? '',
+        'userStatsMode': _userStatsMode?.name ?? '',
+        'notificationMode': _notificationMode?.name ?? '',
+        'shortcutsSupported': _shortcutsSupported,
+      },
+    );
   }
 
   factory MemosApi.unauthenticated(
@@ -449,14 +474,51 @@ class MemosApi {
       throw ArgumentError('getUser requires name');
     }
 
-    final normalized = raw.startsWith('users/') ? raw : 'users/$raw';
-    final response = await _dio.get('api/v1/$normalized');
-    final body = _expectJsonMap(response.data);
-    final userJson = body['user'];
-    if (userJson is Map) {
-      return User.fromJson(userJson.cast<String, dynamic>());
+    await _ensureServerHints();
+
+    Future<User> callModern() async {
+      final normalized = raw.startsWith('users/') ? raw : 'users/$raw';
+      final response = await _dio.get('api/v1/$normalized');
+      final body = _expectJsonMap(response.data);
+      final userJson = body['user'];
+      if (userJson is Map) {
+        return User.fromJson(userJson.cast<String, dynamic>());
+      }
+      return User.fromJson(body);
     }
-    return User.fromJson(body);
+
+    Future<User> callLegacy() async {
+      var legacyKey = raw.startsWith('users/') ? raw.substring('users/'.length) : raw;
+      legacyKey = legacyKey.trim();
+      if (legacyKey.isEmpty) {
+        throw const FormatException('Invalid legacy user identifier');
+      }
+      final numeric = int.tryParse(legacyKey);
+      final path = numeric != null ? 'api/v1/user/$numeric' : 'api/v1/user/name/$legacyKey';
+      final response = await _dio.get(path);
+      return User.fromJson(_expectJsonMap(response.data));
+    }
+
+    if (useLegacyApi || _serverFlavor == _ServerApiFlavor.v0_21) {
+      try {
+        return await callLegacy();
+      } on DioException catch (e) {
+        if (!_shouldFallbackLegacy(e)) rethrow;
+      } on FormatException {
+        // Fall through to modern.
+      }
+    }
+
+    try {
+      return await callModern();
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return await callLegacy();
+      }
+      rethrow;
+    } on FormatException {
+      return await callLegacy();
+    }
   }
 
   Future<UserStatsSummary> getUserStatsSummary({String? userName}) async {
@@ -1837,8 +1899,8 @@ class MemosApi {
     final trimmed = reactionType.trim();
     if (trimmed.isEmpty) return 'HEART';
     if (trimmed == 'HEART' || trimmed == 'THUMBS_UP') return trimmed;
-    if (trimmed == '❤️' || trimmed == '❤' || trimmed == '♥') return 'HEART';
-    if (trimmed == '👍') return 'THUMBS_UP';
+    if (trimmed == '\u{2764}\u{FE0F}' || trimmed == '\u{2764}' || trimmed == '\u{2665}') return 'HEART';
+    if (trimmed == '\u{1F44D}') return 'THUMBS_UP';
     return 'HEART';
   }
 
@@ -2349,7 +2411,7 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          memos.add(Memo.fromJson(item.cast<String, dynamic>()));
+          memos.add(_memoFromJson(item.cast<String, dynamic>()));
         }
       }
     }
@@ -2411,7 +2473,7 @@ class MemosApi {
 
   Future<Memo> _getMemoModern(String memoUid) async {
     final response = await _dio.get('api/v1/memos/$memoUid');
-    return Memo.fromJson(_expectJsonMap(response.data));
+    return _memoFromJson(_expectJsonMap(response.data));
   }
 
   Future<Memo> _getMemoLegacy(String memoUid) async {
@@ -2449,9 +2511,9 @@ class MemosApi {
     final body = _expectJsonMap(response.data);
     final memoJson = body['memo'];
     if (memoJson is Map) {
-      return Memo.fromJson(memoJson.cast<String, dynamic>());
+      return _memoFromJson(memoJson.cast<String, dynamic>());
     }
-    return Memo.fromJson(body);
+    return _memoFromJson(body);
   }
 
   Future<Memo> createMemo({
@@ -2517,7 +2579,7 @@ class MemosApi {
         if (location != null) 'location': location.toJson(),
       },
     );
-    return Memo.fromJson(_expectJsonMap(response.data));
+    return _memoFromJson(_expectJsonMap(response.data));
   }
 
   Future<Memo> updateMemo({
@@ -2625,7 +2687,7 @@ class MemosApi {
       },
       data: data,
     );
-    return Memo.fromJson(_expectJsonMap(response.data));
+    return _memoFromJson(_expectJsonMap(response.data));
   }
 
   Future<void> deleteMemo({required String memoUid, bool force = false}) async {
@@ -2776,7 +2838,8 @@ class MemosApi {
         options: _attachmentOptions(),
       );
       _attachmentMode = _AttachmentApiMode.attachments;
-      return Attachment.fromJson(_expectJsonMap(response.data));
+      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+      return _normalizeAttachmentForServer(attachment);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status != 404) rethrow;
@@ -2790,7 +2853,8 @@ class MemosApi {
       options: _attachmentOptions(),
     );
     _attachmentMode = _AttachmentApiMode.resources;
-    return Attachment.fromJson(_expectJsonMap(response.data));
+    final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+    return _normalizeAttachmentForServer(attachment);
   }
 
   Future<Attachment> _createAttachmentCompat({
@@ -2816,7 +2880,8 @@ class MemosApi {
         options: _attachmentOptions(),
       );
       _attachmentMode = _AttachmentApiMode.resources;
-      return Attachment.fromJson(_expectJsonMap(response.data));
+      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+      return _normalizeAttachmentForServer(attachment);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status != 404) rethrow;
@@ -2830,7 +2895,8 @@ class MemosApi {
       options: _attachmentOptions(),
     );
     _attachmentMode = _AttachmentApiMode.attachments;
-    return Attachment.fromJson(_expectJsonMap(response.data));
+    final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+    return _normalizeAttachmentForServer(attachment);
   }
 
   Future<Attachment> getAttachment({required String attachmentUid}) async {
@@ -2863,7 +2929,8 @@ class MemosApi {
     try {
       final response = await _dio.get('api/v1/attachments/$attachmentUid');
       _attachmentMode = _AttachmentApiMode.attachments;
-      return Attachment.fromJson(_expectJsonMap(response.data));
+      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+      return _normalizeAttachmentForServer(attachment);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status != 404) rethrow;
@@ -2872,7 +2939,8 @@ class MemosApi {
     // Older builds use /resources/{id}.
     final response = await _dio.get('api/v1/resources/$attachmentUid');
     _attachmentMode = _AttachmentApiMode.resources;
-    return Attachment.fromJson(_expectJsonMap(response.data));
+    final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+    return _normalizeAttachmentForServer(attachment);
   }
 
   Future<Attachment> _getAttachmentCompat(String attachmentUid) async {
@@ -2880,7 +2948,8 @@ class MemosApi {
     try {
       final response = await _dio.get('api/v1/resources/$attachmentUid');
       _attachmentMode = _AttachmentApiMode.resources;
-      return Attachment.fromJson(_expectJsonMap(response.data));
+      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+      return _normalizeAttachmentForServer(attachment);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status != 404) rethrow;
@@ -2889,7 +2958,8 @@ class MemosApi {
     // 0.25+ uses /attachments/{id}.
     final response = await _dio.get('api/v1/attachments/$attachmentUid');
     _attachmentMode = _AttachmentApiMode.attachments;
-    return Attachment.fromJson(_expectJsonMap(response.data));
+    final attachment = Attachment.fromJson(_expectJsonMap(response.data));
+    return _normalizeAttachmentForServer(attachment);
   }
 
   Future<void> deleteAttachment({required String attachmentName}) async {
@@ -3027,7 +3097,7 @@ class MemosApi {
         }
       }
     }
-    return attachments;
+    return _normalizeAttachmentsForServer(attachments);
   }
 
   Future<List<Attachment>> _listMemoResources(String memoUid) async {
@@ -3046,7 +3116,7 @@ class MemosApi {
         }
       }
     }
-    return attachments;
+    return _normalizeAttachmentsForServer(attachments);
   }
 
   Future<void> setMemoAttachments({
@@ -3251,7 +3321,7 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          memos.add(Memo.fromJson(item.cast<String, dynamic>()));
+          memos.add(_memoFromJson(item.cast<String, dynamic>()));
         }
       }
     }
@@ -3278,7 +3348,7 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          memos.add(Memo.fromJson(item.cast<String, dynamic>()));
+          memos.add(_memoFromJson(item.cast<String, dynamic>()));
         }
       }
     }
@@ -3576,7 +3646,7 @@ class MemosApi {
         'visibility': visibility,
       },
     );
-    return Memo.fromJson(_expectJsonMap(response.data));
+    return _memoFromJson(_expectJsonMap(response.data));
   }
 
   Future<Memo> _createMemoCommentLegacyV2({
@@ -3594,9 +3664,9 @@ class MemosApi {
     final body = _expectJsonMap(response.data);
     final memoJson = body['memo'];
     if (memoJson is Map) {
-      return Memo.fromJson(memoJson.cast<String, dynamic>());
+      return _memoFromJson(memoJson.cast<String, dynamic>());
     }
-    return Memo.fromJson(body);
+    return _memoFromJson(body);
   }
 
   Future<(List<Memo> memos, String nextPageToken)> _listMemosLegacy({
@@ -3799,6 +3869,63 @@ class MemosApi {
     );
   }
 
+  Memo _memoFromJson(Map<String, dynamic> json) {
+    final memo = Memo.fromJson(json);
+    return _normalizeMemoForServer(memo);
+  }
+
+  Memo _normalizeMemoForServer(Memo memo) {
+    if (_serverFlavor != _ServerApiFlavor.v0_22) return memo;
+    final normalizedAttachments = _normalizeAttachmentsForServer(memo.attachments);
+    if (identical(normalizedAttachments, memo.attachments)) return memo;
+    return Memo(
+      name: memo.name,
+      creator: memo.creator,
+      content: memo.content,
+      contentFingerprint: memo.contentFingerprint,
+      visibility: memo.visibility,
+      pinned: memo.pinned,
+      state: memo.state,
+      createTime: memo.createTime,
+      updateTime: memo.updateTime,
+      tags: memo.tags,
+      attachments: normalizedAttachments,
+      displayTime: memo.displayTime,
+      location: memo.location,
+      relations: memo.relations,
+      reactions: memo.reactions,
+    );
+  }
+
+  List<Attachment> _normalizeAttachmentsForServer(List<Attachment> attachments) {
+    if (_serverFlavor != _ServerApiFlavor.v0_22 || attachments.isEmpty) return attachments;
+    var changed = false;
+    final normalized = <Attachment>[];
+    for (final attachment in attachments) {
+      final next = _normalizeAttachmentForServer(attachment);
+      if (!identical(next, attachment)) {
+        changed = true;
+      }
+      normalized.add(next);
+    }
+    return changed ? normalized : attachments;
+  }
+
+  Attachment _normalizeAttachmentForServer(Attachment attachment) {
+    if (_serverFlavor != _ServerApiFlavor.v0_22) return attachment;
+    final external = attachment.externalLink.trim();
+    if (external.isNotEmpty) return attachment;
+    final name = attachment.name.trim();
+    if (!name.startsWith('resources/')) return attachment;
+    return Attachment(
+      name: attachment.name,
+      filename: attachment.filename,
+      type: attachment.type,
+      size: attachment.size,
+      externalLink: '/file/$name',
+    );
+  }
+
   static Memo _memoFromLegacy(Map<String, dynamic> json) {
     final id = _readString(json['id']);
     final rawName = _readString(json['name']);
@@ -3850,6 +3977,7 @@ class MemosApi {
     final id = _readString(json['id']);
     final nameRaw = _readString(json['name']);
     final uidRaw = _readString(json['uid']);
+    final externalRaw = _readString(json['externalLink'] ?? json['external_link']);
     var name = nameRaw.isNotEmpty ? nameRaw : uidRaw;
     if (name.isEmpty && id.isNotEmpty) {
       name = id;
@@ -3857,12 +3985,15 @@ class MemosApi {
     if (name.isNotEmpty && !name.startsWith('resources/')) {
       name = 'resources/$name';
     }
+    final externalLink = externalRaw.isNotEmpty
+        ? externalRaw
+        : (uidRaw.isNotEmpty ? '/o/r/$uidRaw' : '');
     return Attachment(
       name: name,
       filename: _readString(json['filename']),
       type: _readString(json['type']),
       size: _readInt(json['size']),
-      externalLink: _readString(json['externalLink'] ?? json['external_link']),
+      externalLink: externalLink,
     );
   }
 
@@ -4046,3 +4177,4 @@ class MemosApi {
     });
   }
 }
+

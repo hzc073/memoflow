@@ -1775,11 +1775,15 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
 
   String _resolveAttachmentUrl(Attachment attachment, {required bool thumbnail}) {
     final external = attachment.externalLink.trim();
-    if (external.isNotEmpty) return external;
+    if (external.isNotEmpty) {
+      final isRelative = !isAbsoluteUrl(external);
+      final resolved = resolveMaybeRelativeUrl(widget.baseUrl, external);
+      return (thumbnail && isRelative) ? appendThumbnailParam(resolved) : resolved;
+    }
     final baseUrl = widget.baseUrl;
     if (baseUrl == null) return '';
     final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
-    return thumbnail ? '$url?thumbnail=true' : url;
+    return thumbnail ? appendThumbnailParam(url) : url;
   }
 
   void _openImagePreview(String url) {
@@ -1887,7 +1891,20 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     );
 
     final avatarUrl = widget.avatarUrl.trim();
-    if (avatarUrl.isEmpty || avatarUrl.startsWith('data:')) return fallback;
+    if (avatarUrl.isEmpty) return fallback;
+    if (avatarUrl.startsWith('data:')) {
+      final bytes = tryDecodeDataUri(avatarUrl);
+      if (bytes == null) return fallback;
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          width: avatarSize,
+          height: avatarSize,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallback,
+        ),
+      );
+    }
 
     return ClipOval(
       child: CachedNetworkImage(
@@ -1970,6 +1987,24 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     );
 
     if (url.isEmpty) return fallbackWidget;
+    if (url.startsWith('data:')) {
+      final bytes = tryDecodeDataUri(url);
+      if (bytes == null) return fallbackWidget;
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: border, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallbackWidget,
+        ),
+      );
+    }
     return Container(
       width: size,
       height: size,

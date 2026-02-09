@@ -691,10 +691,14 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
 
   String _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment, {required bool thumbnail}) {
     final external = attachment.externalLink.trim();
-    if (external.isNotEmpty) return external;
+    if (external.isNotEmpty) {
+      final isRelative = !isAbsoluteUrl(external);
+      final resolved = resolveMaybeRelativeUrl(baseUrl, external);
+      return (thumbnail && isRelative) ? appendThumbnailParam(resolved) : resolved;
+    }
     if (baseUrl == null) return '';
     final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
-    return thumbnail ? '$url?thumbnail=true' : url;
+    return thumbnail ? appendThumbnailParam(url) : url;
   }
 
   Widget _buildAvatar({
@@ -719,7 +723,20 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     );
 
     final avatarUrl = _resolveAvatarUrl(creator?.avatarUrl ?? '', baseUrl);
-    if (avatarUrl.isEmpty || avatarUrl.startsWith('data:')) return fallbackWidget;
+    if (avatarUrl.isEmpty) return fallbackWidget;
+    if (avatarUrl.startsWith('data:')) {
+      final bytes = tryDecodeDataUri(avatarUrl);
+      if (bytes == null) return fallbackWidget;
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallbackWidget,
+        ),
+      );
+    }
 
     return ClipOval(
       child: CachedNetworkImage(
@@ -754,6 +771,7 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
   String _resolveAvatarUrl(String rawUrl, Uri? baseUrl) {
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('data:')) return trimmed;
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);

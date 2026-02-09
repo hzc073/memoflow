@@ -957,11 +957,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   }) {
     final raw = attachment.externalLink.trim();
     if (raw.isNotEmpty && !raw.startsWith('file://') && !raw.startsWith('content://')) {
-      return raw;
+      final isRelative = !isAbsoluteUrl(raw);
+      final resolved = resolveMaybeRelativeUrl(baseUrl, raw);
+      return (thumbnail && isRelative) ? appendThumbnailParam(resolved) : resolved;
     }
     if (baseUrl == null) return '';
     final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
-    return thumbnail ? '$url?thumbnail=true' : url;
+    return thumbnail ? appendThumbnailParam(url) : url;
   }
 
   File? _localExistingAttachmentFile(Attachment attachment) {

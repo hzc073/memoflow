@@ -101,13 +101,19 @@ MemoImageEntry? _entryFromAttachment(Attachment attachment, Uri? baseUrl, String
   }
 
   if (external.isNotEmpty) {
+    final isAbsolute = isAbsoluteUrl(external);
+    final resolved = resolveMaybeRelativeUrl(baseUrl, external);
+    final previewUrl = isAbsolute ? resolved : appendThumbnailParam(resolved);
+    final headers = (!isAbsolute && authHeader != null && authHeader.trim().isNotEmpty)
+        ? {'Authorization': authHeader.trim()}
+        : null;
     return MemoImageEntry(
       id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
       title: title.isEmpty ? _titleFromUrl(external) : title,
       mimeType: mimeType,
-      previewUrl: external,
-      fullUrl: external,
-      headers: null,
+      previewUrl: previewUrl,
+      fullUrl: resolved,
+      headers: headers,
       isAttachment: true,
     );
   }
@@ -117,7 +123,7 @@ MemoImageEntry? _entryFromAttachment(Attachment attachment, Uri? baseUrl, String
   final filename = attachment.filename.trim();
   if (name.isEmpty || filename.isEmpty) return null;
   final fullUrl = joinBaseUrl(baseUrl, 'file/$name/$filename');
-  final previewUrl = _appendThumbnailQuery(fullUrl);
+  final previewUrl = appendThumbnailParam(fullUrl);
   final headers = (authHeader == null || authHeader.trim().isEmpty)
       ? null
       : {'Authorization': authHeader.trim()};
@@ -141,14 +147,6 @@ File? _resolveLocalFile(String externalLink) {
   final file = File(path);
   if (!file.existsSync()) return null;
   return file;
-}
-
-String _appendThumbnailQuery(String url) {
-  final uri = Uri.tryParse(url);
-  if (uri == null) return '$url?thumbnail=true';
-  final params = Map<String, String>.from(uri.queryParameters);
-  params['thumbnail'] = 'true';
-  return uri.replace(queryParameters: params).toString();
 }
 
 String _titleFromUrl(String url) {

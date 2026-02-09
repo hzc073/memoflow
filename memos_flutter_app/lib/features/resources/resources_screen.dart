@@ -48,13 +48,14 @@ class ResourcesScreen extends ConsumerWidget {
   String? _resolveRemoteUrl(Uri? baseUrl, Attachment attachment, {required bool thumbnail}) {
     final link = attachment.externalLink.trim();
     if (link.isNotEmpty && !link.startsWith('file://')) {
-      if (link.startsWith('http://') || link.startsWith('https://')) return link;
-      if (baseUrl == null) return null;
-      return joinBaseUrl(baseUrl, link);
+      final isRelative = !isAbsoluteUrl(link);
+      final resolved = resolveMaybeRelativeUrl(baseUrl, link);
+      if (!thumbnail || !isRelative) return resolved;
+      return appendThumbnailParam(resolved);
     }
     if (baseUrl == null) return null;
     final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
-    return thumbnail ? '$url?thumbnail=true' : url;
+    return thumbnail ? appendThumbnailParam(url) : url;
   }
 
   String _sanitizeFilename(String filename) {
