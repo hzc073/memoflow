@@ -65,6 +65,7 @@ final memosApiProvider = Provider<MemosApi>((ref) {
     baseUrl: account.baseUrl,
     personalAccessToken: account.personalAccessToken,
     useLegacyApi: useLegacyApi,
+    instanceProfile: account.instanceProfile,
     logStore: logStore,
     logBuffer: logBuffer,
     breadcrumbStore: breadcrumbStore,
@@ -1661,7 +1662,7 @@ class RemoteSyncController extends SyncControllerBase {
       }
     }
 
-    if (api.useLegacyApi) {
+    if (api.usesLegacyMemos) {
       final created = await _createAttachmentWith409Recovery(
         attachmentId: uid,
         filename: filename,

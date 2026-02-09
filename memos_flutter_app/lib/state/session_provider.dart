@@ -115,6 +115,16 @@ class AppSessionNotifier extends AppSessionController {
       logManager: LogManager.instance,
     ).getCurrentUser();
 
+    if (instanceProfile.version.trim().isEmpty) {
+      try {
+        instanceProfile = await MemosApi.authenticated(
+          baseUrl: baseUrl,
+          personalAccessToken: personalAccessToken,
+          logManager: LogManager.instance,
+        ).getInstanceProfile();
+      } catch (_) {}
+    }
+
     final normalizedBaseUrl = sanitizeUserBaseUrl(baseUrl);
     final accountKey = '${canonicalBaseUrlString(normalizedBaseUrl)}|${user.name}';
 
@@ -220,18 +230,25 @@ class AppSessionNotifier extends AppSessionController {
     if (account == null) return;
 
     try {
-      final user = await MemosApi.authenticated(
+      final api = MemosApi.authenticated(
         baseUrl: account.baseUrl,
         personalAccessToken: account.personalAccessToken,
         logManager: LogManager.instance,
-      ).getCurrentUser();
+      );
+      final user = await api.getCurrentUser();
+      var instanceProfile = account.instanceProfile;
+      if (instanceProfile.version.trim().isEmpty) {
+        try {
+          instanceProfile = await api.getInstanceProfile();
+        } catch (_) {}
+      }
 
       final updatedAccount = Account(
         key: account.key,
         baseUrl: account.baseUrl,
         personalAccessToken: account.personalAccessToken,
         user: user,
-        instanceProfile: account.instanceProfile,
+        instanceProfile: instanceProfile,
       );
       final accounts = current.accounts
           .map((a) => a.key == account.key ? updatedAccount : a)
@@ -261,12 +278,12 @@ class AppSessionNotifier extends AppSessionController {
               () => _signInV2(baseUrl: baseUrl, username: username, password: password),
             ),
             _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.signinV1,
-              () => _signInV1(baseUrl: baseUrl, username: username, password: password),
-            ),
-            _PasswordSignInAttempt(
               _PasswordSignInEndpoint.sessionV1,
               () => _signInSessions(baseUrl: baseUrl, username: username, password: password),
+            ),
+            _PasswordSignInAttempt(
+              _PasswordSignInEndpoint.signinV1,
+              () => _signInV1(baseUrl: baseUrl, username: username, password: password, useLegacyApi: useLegacyApi),
             ),
           ]
         : <_PasswordSignInAttempt>[
@@ -280,7 +297,7 @@ class AppSessionNotifier extends AppSessionController {
             ),
             _PasswordSignInAttempt(
               _PasswordSignInEndpoint.signinV1,
-              () => _signInV1(baseUrl: baseUrl, username: username, password: password),
+              () => _signInV1(baseUrl: baseUrl, username: username, password: password, useLegacyApi: useLegacyApi),
             ),
             _PasswordSignInAttempt(
               _PasswordSignInEndpoint.signinV2,
@@ -422,6 +439,62 @@ class AppSessionNotifier extends AppSessionController {
   }
 
   Future<_PasswordSignInResult> _signInV1({
+    required Uri baseUrl,
+    required String username,
+    required String password,
+    required bool useLegacyApi,
+  }) async {
+    if (!useLegacyApi) {
+      return _signInV1Modern(baseUrl: baseUrl, username: username, password: password);
+    }
+
+    try {
+      return await _signInV1Legacy(baseUrl: baseUrl, username: username, password: password);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status != 400 && status != 404 && status != 405) {
+        rethrow;
+      }
+    } on FormatException {
+      // Fallback to modern payload below.
+    }
+
+    return _signInV1Modern(baseUrl: baseUrl, username: username, password: password);
+  }
+
+  Future<_PasswordSignInResult> _signInV1Legacy({
+    required Uri baseUrl,
+    required String username,
+    required String password,
+  }) async {
+    final dio = _newDio(
+      baseUrl,
+      connectTimeout: _kLoginConnectTimeout,
+      receiveTimeout: _kLoginReceiveTimeout,
+    );
+    final response = await dio.post(
+      'api/v1/auth/signin',
+      data: <String, Object?>{
+        'username': username,
+        'password': password,
+        'remember': false,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final userJson = body['user'] is Map ? body['user'] as Map : body;
+    final user = User.fromJson(userJson.cast<String, dynamic>());
+    final token = _extractAccessToken(body) ?? _extractCookieValue(response.headers, _kAccessTokenCookieName);
+    if (token == null || token.isEmpty) {
+      throw const FormatException('Access token missing in response');
+    }
+    return _PasswordSignInResult(
+      user: user,
+      endpoint: _PasswordSignInEndpoint.signinV1,
+      accessToken: token,
+    );
+  }
+
+  Future<_PasswordSignInResult> _signInV1Modern({
     required Uri baseUrl,
     required String username,
     required String password,
