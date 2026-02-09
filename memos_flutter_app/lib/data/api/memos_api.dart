@@ -1514,8 +1514,8 @@ class MemosApi {
     String? userName,
     String? filter,
   }) async {
-    if (!useLegacyApi) {
-      return await _listNotificationsModern(
+    Future<(List<AppNotification> notifications, String nextPageToken)> callModern() {
+      return _listNotificationsModern(
         pageSize: pageSize,
         pageToken: pageToken,
         userName: userName,
@@ -1523,20 +1523,37 @@ class MemosApi {
       );
     }
 
-    try {
-      return await _listNotificationsLegacy(
+    Future<(List<AppNotification> notifications, String nextPageToken)> callLegacyV1() {
+      return _listNotificationsLegacyV1(
         pageSize: pageSize,
         pageToken: pageToken,
-      );
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
-      return await _listNotificationsModern(
-        pageSize: pageSize,
-        pageToken: pageToken,
-        userName: userName,
-        filter: filter,
       );
     }
+
+    Future<(List<AppNotification> notifications, String nextPageToken)> callLegacyV2() {
+      return _listNotificationsLegacyV2(
+        pageSize: pageSize,
+        pageToken: pageToken,
+      );
+    }
+
+    try {
+      return await callModern();
+    } on DioException catch (e) {
+      if (!_shouldFallback(e)) rethrow;
+    } on FormatException {
+      // Fall back to legacy endpoints when server returns HTML.
+    }
+
+    try {
+      return await callLegacyV1();
+    } on DioException catch (e) {
+      if (!_shouldFallbackLegacy(e)) rethrow;
+    } on FormatException {
+      // Continue to legacy v2.
+    }
+
+    return await callLegacyV2();
   }
 
   Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsModern({
@@ -1574,13 +1591,42 @@ class MemosApi {
     return (notifications, nextToken);
   }
 
-  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsLegacy({
+  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsLegacyV1({
     required int pageSize,
     String? pageToken,
   }) async {
     final normalizedToken = (pageToken ?? '').trim();
     final response = await _dio.get(
       'api/v1/inboxes',
+      queryParameters: <String, Object?>{
+        if (pageSize > 0) 'pageSize': pageSize,
+        if (pageSize > 0) 'page_size': pageSize,
+        if (normalizedToken.isNotEmpty) 'pageToken': normalizedToken,
+        if (normalizedToken.isNotEmpty) 'page_token': normalizedToken,
+      },
+    );
+
+    final body = _expectJsonMap(response.data);
+    final list = body['inboxes'];
+    final notifications = <AppNotification>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          notifications.add(AppNotification.fromLegacyJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    return (notifications, nextToken);
+  }
+
+  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsLegacyV2({
+    required int pageSize,
+    String? pageToken,
+  }) async {
+    final normalizedToken = (pageToken ?? '').trim();
+    final response = await _dio.get(
+      'api/v2/inboxes',
       queryParameters: <String, Object?>{
         if (pageSize > 0) 'pageSize': pageSize,
         if (pageSize > 0) 'page_size': pageSize,
@@ -1633,7 +1679,15 @@ class MemosApi {
       throw ArgumentError('deleteNotification requires name');
     }
     if (source == NotificationSource.legacy) {
-      await _dio.delete('api/v1/$trimmedName');
+      try {
+        await _dio.delete('api/v1/$trimmedName');
+      } on DioException catch (e) {
+        if (_shouldFallbackLegacy(e)) {
+          await _dio.delete('api/v2/$trimmedName');
+          return;
+        }
+        rethrow;
+      }
       return;
     }
     await _dio.delete('api/v1/$trimmedName');
@@ -1654,17 +1708,35 @@ class MemosApi {
   }
 
   Future<void> _updateInboxStatus({required String name, required String status}) async {
-    await _dio.patch(
-      'api/v1/$name',
-      queryParameters: const <String, Object?>{
-        'updateMask': 'status',
-        'update_mask': 'status',
-      },
-      data: <String, Object?>{
-        'name': name,
-        'status': status,
-      },
-    );
+    try {
+      await _dio.patch(
+        'api/v1/$name',
+        queryParameters: const <String, Object?>{
+          'updateMask': 'status',
+          'update_mask': 'status',
+        },
+        data: <String, Object?>{
+          'name': name,
+          'status': status,
+        },
+      );
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        await _dio.patch(
+          'api/v2/$name',
+          queryParameters: const <String, Object?>{
+            'updateMask': 'status',
+            'update_mask': 'status',
+          },
+          data: <String, Object?>{
+            'name': name,
+            'status': status,
+          },
+        );
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<String> _resolveNotificationParent(String? userName) async {
@@ -1681,6 +1753,73 @@ class MemosApi {
       if (resolved.name.trim().isNotEmpty) return resolved.name;
     } catch (_) {}
     return raw;
+  }
+
+  Future<({String commentMemoUid, String relatedMemoUid})> getMemoCommentActivityRefs({
+    required int activityId,
+  }) async {
+    if (activityId <= 0) {
+      return (commentMemoUid: '', relatedMemoUid: '');
+    }
+
+    Map<String, dynamic> activity;
+    try {
+      activity = await _getActivityModern(activityId);
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e) || _shouldFallback(e)) {
+        activity = await _getActivityLegacyV2(activityId);
+      } else {
+        rethrow;
+      }
+    } on FormatException {
+      activity = await _getActivityLegacyV2(activityId);
+    }
+
+    return _extractMemoCommentRefs(activity);
+  }
+
+  Future<Map<String, dynamic>> _getActivityModern(int activityId) async {
+    final response = await _dio.get('api/v1/activities/$activityId');
+    return _expectJsonMap(response.data);
+  }
+
+  Future<Map<String, dynamic>> _getActivityLegacyV2(int activityId) async {
+    final response = await _dio.get('v2/activities/$activityId');
+    final body = _expectJsonMap(response.data);
+    final activity = _readMap(body['activity']);
+    return activity ?? body;
+  }
+
+  ({String commentMemoUid, String relatedMemoUid}) _extractMemoCommentRefs(Map<String, dynamic> activity) {
+    final payload = _readMap(activity['payload']);
+    final memoComment = _readMap(payload?['memoComment'] ?? payload?['memo_comment']);
+    if (memoComment == null) {
+      return (commentMemoUid: '', relatedMemoUid: '');
+    }
+
+    final commentName =
+        _readString(memoComment['memo'] ?? memoComment['memoName'] ?? memoComment['memo_name']);
+    final relatedName = _readString(
+      memoComment['relatedMemo'] ??
+          memoComment['relatedMemoName'] ??
+          memoComment['related_memo'] ??
+          memoComment['related_memo_name'],
+    );
+    final commentId = _readInt(memoComment['memoId'] ?? memoComment['memo_id']);
+    final relatedId = _readInt(memoComment['relatedMemoId'] ?? memoComment['related_memo_id']);
+
+    final commentUid = _normalizeMemoUid(
+      commentName.isNotEmpty
+          ? commentName
+          : (commentId > 0 ? 'memos/$commentId' : ''),
+    );
+    final relatedUid = _normalizeMemoUid(
+      relatedName.isNotEmpty
+          ? relatedName
+          : (relatedId > 0 ? 'memos/$relatedId' : ''),
+    );
+
+    return (commentMemoUid: commentUid, relatedMemoUid: relatedUid);
   }
 
   Future<(List<Memo> memos, String nextPageToken)> listMemos({
@@ -1863,8 +2002,42 @@ class MemosApi {
   }
 
   Future<Memo> _getMemoLegacy(String memoUid) async {
+    try {
+      return await _getMemoLegacyV1(memoUid);
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e)) {
+        return await _getMemoLegacyV2(memoUid);
+      }
+      rethrow;
+    }
+  }
+
+  Future<Memo> getMemoCompat({required String memoUid}) async {
+    try {
+      return await _getMemoModern(memoUid);
+    } on DioException catch (e) {
+      if (_shouldFallbackLegacy(e) || _shouldFallback(e)) {
+        return await _getMemoLegacy(memoUid);
+      }
+      rethrow;
+    } on FormatException {
+      return await _getMemoLegacy(memoUid);
+    }
+  }
+
+  Future<Memo> _getMemoLegacyV1(String memoUid) async {
     final response = await _dio.get('api/v1/memo/$memoUid');
     return _memoFromLegacy(_expectJsonMap(response.data));
+  }
+
+  Future<Memo> _getMemoLegacyV2(String memoUid) async {
+    final response = await _dio.get('api/v2/memos/$memoUid');
+    final body = _expectJsonMap(response.data);
+    final memoJson = body['memo'];
+    if (memoJson is Map) {
+      return Memo.fromJson(memoJson.cast<String, dynamic>());
+    }
+    return Memo.fromJson(body);
   }
 
   Future<Memo> createMemo({
@@ -3149,6 +3322,12 @@ class MemosApi {
     if (value is String) return value.trim();
     if (value == null) return '';
     return value.toString().trim();
+  }
+
+  static Map<String, dynamic>? _readMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return value.cast<String, dynamic>();
+    return null;
   }
 
   static int _readInt(dynamic value) {
