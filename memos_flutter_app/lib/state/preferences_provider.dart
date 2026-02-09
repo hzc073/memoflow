@@ -836,24 +836,23 @@ class AppPreferencesRepository {
       return device ?? _defaultsForFirstRun(systemLanguage);
     }
 
+    final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
+    if (device != null) {
+      await _storage.write(key: _kDeviceKey, value: jsonEncode(device.toJson()));
+      await _writeFallback(_kDeviceKey, device);
+    }
+
     final raw = await _storage.read(key: storageKey);
     if (raw == null || raw.trim().isEmpty) {
       final legacy = await _readLegacy();
-      final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
-      if (device != null) {
-        await _storage.write(
-          key: _kDeviceKey,
-          value: jsonEncode(device.toJson()),
-        );
-        await _writeFallback(_kDeviceKey, device);
-      }
       if (legacy != null) {
         var normalized = _normalizeLegacyForAccount(legacy);
         if (device != null) {
           normalized = normalized.copyWith(useLegacyApi: device.useLegacyApi);
         }
-        await write(normalized);
-        return normalized;
+        final resolved = _inheritDeviceOnboarding(normalized, device);
+        await write(resolved);
+        return resolved;
       }
       if (device != null) {
         await write(device);
@@ -869,15 +868,23 @@ class AppPreferencesRepository {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
-        return AppPreferences.fromJson(decoded.cast<String, dynamic>());
+        final parsed = AppPreferences.fromJson(decoded.cast<String, dynamic>());
+        final resolved = _inheritDeviceOnboarding(parsed, device);
+        if (resolved != parsed) {
+          await write(resolved);
+          return resolved;
+        }
+        await _syncDeviceOnboarding(parsed);
+        return parsed;
       }
     } catch (_) {
       // Fall through to fallback file.
     }
     final fallback = await _readFallback(storageKey);
     if (fallback != null) {
-      await write(fallback);
-      return fallback;
+      final resolved = _inheritDeviceOnboarding(fallback, device);
+      await write(resolved);
+      return resolved;
     }
     return _defaultsForFirstRun(systemLanguage);
   }
@@ -898,6 +905,7 @@ class AppPreferencesRepository {
     }
     await _storage.write(key: storageKey, value: jsonEncode(prefs.toJson()));
     await _writeFallback(storageKey, prefs);
+    await _syncDeviceOnboarding(prefs);
   }
 
   Future<void> clear() async {
@@ -942,5 +950,37 @@ class AppPreferencesRepository {
       accountThemeColors: {key: themeColor},
       accountCustomThemes: {key: customTheme},
     );
+  }
+
+  AppPreferences _inheritDeviceOnboarding(
+    AppPreferences prefs,
+    AppPreferences? device,
+  ) {
+    if (device == null) return prefs;
+    if (prefs.hasSelectedLanguage || !device.hasSelectedLanguage) return prefs;
+    return prefs.copyWith(
+      language: device.language,
+      hasSelectedLanguage: true,
+    );
+  }
+
+  Future<void> _syncDeviceOnboarding(AppPreferences prefs) async {
+    final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
+    final nextHasSelected = prefs.hasSelectedLanguage;
+    final nextLanguage =
+        prefs.hasSelectedLanguage ? prefs.language : device?.language;
+    if (device != null &&
+        device.hasSelectedLanguage == nextHasSelected &&
+        device.language == nextLanguage) {
+      return;
+    }
+    final base =
+        device ?? AppPreferences.defaults.copyWith(language: prefs.language);
+    final next = base.copyWith(
+      language: nextLanguage ?? prefs.language,
+      hasSelectedLanguage: nextHasSelected,
+    );
+    await _storage.write(key: _kDeviceKey, value: jsonEncode(next.toJson()));
+    await _writeFallback(_kDeviceKey, next);
   }
 }
