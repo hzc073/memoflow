@@ -10,7 +10,6 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_localization.dart';
 import '../../i18n/strings.g.dart';
 
 final RegExp _tagTokenPattern = RegExp(
@@ -21,10 +20,17 @@ final RegExp _tagInlinePattern = RegExp(
   r'#(?!#|\s)([\p{L}\p{N}\p{S}_/\-]{1,100})',
   unicode: true,
 );
-final RegExp _markdownImagePattern = RegExp(r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)');
+final RegExp _markdownImagePattern = RegExp(
+  r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)',
+);
 final RegExp _codeFencePattern = RegExp(r'^\s*(```|~~~)');
-final RegExp _codeLanguagePattern = RegExp(r'language-([\w]+)', caseSensitive: false);
-final RegExp _codeBlockHtmlPattern = RegExp(r'<pre><code([^>]*)>([\s\S]*?)</code></pre>');
+final RegExp _codeLanguagePattern = RegExp(
+  r'language-([\w]+)',
+  caseSensitive: false,
+);
+final RegExp _codeBlockHtmlPattern = RegExp(
+  r'<pre><code([^>]*)>([\s\S]*?)</code></pre>',
+);
 final RegExp _longWordPattern = RegExp(r'[^\s]{30,}', unicode: true);
 
 const String _zeroWidthSpace = '\u200B';
@@ -51,10 +57,7 @@ const Set<String> _htmlBlockTags = {
   _mathBlockTag,
 };
 
-const Set<String> _blockedHtmlTags = {
-  'script',
-  'style',
-};
+const Set<String> _blockedHtmlTags = {'script', 'style'};
 
 const Set<String> _allowedHtmlTags = {
   'a',
@@ -242,7 +245,6 @@ String stripMarkdownImages(String text) {
   return out.join('\n');
 }
 
-
 typedef TaskToggleHandler = void Function(TaskToggleRequest request);
 
 class TaskToggleRequest {
@@ -280,6 +282,92 @@ class MemoMarkdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rawTrimmed = data.trim();
+    if (rawTrimmed.isEmpty) return const SizedBox.shrink();
+    // IMPORTANT:
+    // Keep full HTML documents on the dedicated code-block path below.
+    // Routing them through markdown/html rendering will mutate structure
+    // (for example dropping <head>/<body>) and break the expected output.
+    final fullHtmlDocument = _looksLikeFullHtmlDocument(rawTrimmed);
+
+    final theme = Theme.of(context);
+    final baseStyle =
+        textStyle ?? theme.textTheme.bodyMedium ?? const TextStyle();
+    final fontSize = baseStyle.fontSize;
+    final codeStyle = baseStyle.copyWith(
+      fontFamily: 'monospace',
+      fontSize: fontSize == null ? null : fontSize * 0.9,
+    );
+    final tagStyle = _MemoTagStyle.resolve(theme);
+    final highlightStyle = _MemoHighlightStyle.resolve(theme);
+    final inlineCodeBg =
+        theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
+    final codeBlockBg =
+        theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
+    final quoteColor = (baseStyle.color ?? theme.colorScheme.onSurface)
+        .withValues(alpha: 0.7);
+    final quoteBorder = theme.colorScheme.primary.withValues(
+      alpha: theme.brightness == Brightness.dark ? 0.45 : 0.35,
+    );
+    final tableBorder = theme.dividerColor.withValues(
+      alpha: theme.brightness == Brightness.dark ? 0.35 : 0.5,
+    );
+    final tableHeaderBg = theme.colorScheme.surfaceContainerHighest.withValues(
+      alpha: 0.7,
+    );
+    final tableCellBg = theme.colorScheme.surface.withValues(
+      alpha: theme.brightness == Brightness.dark ? 0.4 : 1.0,
+    );
+    final checkboxSize = (fontSize ?? 14) * 1.25;
+    final checkboxTapSize = checkboxSize + 6;
+    final checkboxColor = baseStyle.color ?? theme.colorScheme.onSurface;
+    final imagePlaceholderBg =
+        theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
+    final imagePlaceholderFg = (baseStyle.color ?? theme.colorScheme.onSurface)
+        .withValues(alpha: 0.6);
+    final spacingPx = blockSpacing > 0 ? _formatCssPx(blockSpacing) : null;
+    final maxImageHeight = _resolveImageMaxHeight(context);
+    final maxImageHeightPx = _formatCssPx(maxImageHeight);
+
+    if (fullHtmlDocument) {
+      // Intentionally render as source code (not live HTML).
+      // This preserves the original document text and matches expected UX.
+      Widget content = _buildHtmlCodeBlock(
+        code: rawTrimmed.replaceAll('\r\n', '\n'),
+        language: 'html',
+        baseStyle: codeStyle,
+        isDark: theme.brightness == Brightness.dark,
+        background: codeBlockBg,
+      );
+      if (blockSpacing > 0) {
+        content = Padding(
+          padding: EdgeInsets.only(bottom: blockSpacing),
+          child: content,
+        );
+      }
+
+      final maxLines = this.maxLines;
+      if (maxLines != null && maxLines > 0) {
+        final fontSize = baseStyle.fontSize ?? 14;
+        final lineHeight = baseStyle.height ?? _defaultLineHeight;
+        final maxHeight = fontSize * lineHeight * maxLines;
+        content = ClipRect(
+          child: SizedBox(
+            height: maxHeight,
+            child: OverflowBox(
+              alignment: Alignment.topLeft,
+              minHeight: 0,
+              maxHeight: double.infinity,
+              child: content,
+            ),
+          ),
+        );
+      }
+
+      if (!selectable) return content;
+      return SelectionArea(child: content);
+    }
+
     final normalized = _normalizeTagSpacing(data);
     var sanitized = _sanitizeMarkdown(normalized);
     if (!renderImages) {
@@ -288,31 +376,6 @@ class MemoMarkdown extends StatelessWidget {
     final trimmed = sanitized.trim();
     if (trimmed.isEmpty) return const SizedBox.shrink();
     final tagged = _decorateTagsForHtml(trimmed);
-
-    final theme = Theme.of(context);
-    final baseStyle = textStyle ?? theme.textTheme.bodyMedium ?? const TextStyle();
-    final fontSize = baseStyle.fontSize;
-    final codeStyle = baseStyle.copyWith(
-      fontFamily: 'monospace',
-      fontSize: fontSize == null ? null : fontSize * 0.9,
-    );
-    final tagStyle = _MemoTagStyle.resolve(theme);
-    final highlightStyle = _MemoHighlightStyle.resolve(theme);
-    final inlineCodeBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
-    final codeBlockBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
-    final quoteColor = (baseStyle.color ?? theme.colorScheme.onSurface).withValues(alpha: 0.7);
-    final quoteBorder = theme.colorScheme.primary.withValues(alpha: theme.brightness == Brightness.dark ? 0.45 : 0.35);
-    final tableBorder = theme.dividerColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.35 : 0.5);
-    final tableHeaderBg = theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7);
-    final tableCellBg = theme.colorScheme.surface.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 1.0);
-    final checkboxSize = (fontSize ?? 14) * 1.25;
-    final checkboxTapSize = checkboxSize + 6;
-    final checkboxColor = baseStyle.color ?? theme.colorScheme.onSurface;
-    final imagePlaceholderBg = theme.cardTheme.color ?? theme.colorScheme.surfaceContainerHighest;
-    final imagePlaceholderFg = (baseStyle.color ?? theme.colorScheme.onSurface).withValues(alpha: 0.6);
-    final spacingPx = blockSpacing > 0 ? _formatCssPx(blockSpacing) : null;
-    final maxImageHeight = _resolveImageMaxHeight(context);
-    final maxImageHeightPx = _formatCssPx(maxImageHeight);
 
     Widget imagePlaceholder() {
       return Container(
@@ -333,10 +396,7 @@ class MemoMarkdown extends StatelessWidget {
       return Container(
         color: imagePlaceholderBg,
         alignment: Alignment.center,
-        child: Icon(
-          Icons.broken_image_outlined,
-          color: imagePlaceholderFg,
-        ),
+        child: Icon(Icons.broken_image_outlined, color: imagePlaceholderFg),
       );
     }
 
@@ -348,7 +408,9 @@ class MemoMarkdown extends StatelessWidget {
     }
 
     final cacheKey = this.cacheKey;
-    final cachedHtml = cacheKey == null ? null : _markdownHtmlCache.get(cacheKey);
+    final cachedHtml = cacheKey == null
+        ? null
+        : _markdownHtmlCache.get(cacheKey);
     final html = cachedHtml ?? _buildMemoHtml(tagged);
     if (cacheKey != null && cachedHtml == null) {
       _markdownHtmlCache.set(cacheKey, html);
@@ -367,7 +429,9 @@ class MemoMarkdown extends StatelessWidget {
             .where((c) => c.localName == 'th' || c.localName == 'td')
             .toList(growable: false);
         if (cells.isEmpty) continue;
-        final header = row.parent?.localName == 'thead' || cells.every((c) => c.localName == 'th');
+        final header =
+            row.parent?.localName == 'thead' ||
+            cells.every((c) => c.localName == 'th');
         if (cells.length > maxColumns) {
           maxColumns = cells.length;
         }
@@ -385,15 +449,22 @@ class MemoMarkdown extends StatelessWidget {
         children: [
           for (final row in parsedRows)
             TableRow(
-              decoration: row.header ? BoxDecoration(color: tableHeaderBg) : BoxDecoration(color: tableCellBg),
+              decoration: row.header
+                  ? BoxDecoration(color: tableHeaderBg)
+                  : BoxDecoration(color: tableCellBg),
               children: [
                 for (var i = 0; i < maxColumns; i++)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
                     child: Text(
                       i < row.cells.length ? row.cells[i].text.trim() : '',
                       style: baseStyle.copyWith(
-                        fontWeight: row.header ? FontWeight.w700 : baseStyle.fontWeight,
+                        fontWeight: row.header
+                            ? FontWeight.w700
+                            : baseStyle.fontWeight,
                       ),
                     ),
                   ),
@@ -458,7 +529,9 @@ class MemoMarkdown extends StatelessWidget {
         final currentIndex = taskIndex++;
         final onTap = handler == null
             ? null
-            : () => handler(TaskToggleRequest(taskIndex: currentIndex, checked: checked));
+            : () => handler(
+                TaskToggleRequest(taskIndex: currentIndex, checked: checked),
+              );
         final icon = Icon(
           checked ? Icons.check_box : Icons.check_box_outline_blank,
           size: checkboxSize,
@@ -469,10 +542,7 @@ class MemoMarkdown extends StatelessWidget {
           child: Center(child: icon),
         );
         final checkbox = onTap == null
-            ? Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: hitBox,
-              )
+            ? Padding(padding: const EdgeInsets.only(right: 6), child: hitBox)
             : Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: InkWell(
@@ -516,10 +586,17 @@ class MemoMarkdown extends StatelessWidget {
               double? targetWidth = widthAttr;
               double? targetHeight = heightAttr;
 
-              if (targetWidth != null && targetWidth > 0 && targetHeight != null && targetHeight > 0) {
+              if (targetWidth != null &&
+                  targetWidth > 0 &&
+                  targetHeight != null &&
+                  targetHeight > 0) {
                 final widthScale = maxWidth / targetWidth;
                 final heightScale = maxHeight / targetHeight;
-                final scale = [1.0, widthScale, heightScale].reduce((a, b) => a < b ? a : b);
+                final scale = [
+                  1.0,
+                  widthScale,
+                  heightScale,
+                ].reduce((a, b) => a < b ? a : b);
                 targetWidth = targetWidth * scale;
                 targetHeight = targetHeight * scale;
               } else {
@@ -536,7 +613,10 @@ class MemoMarkdown extends StatelessWidget {
               }
 
               final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-              final cacheWidth = _resolveCacheExtent(targetWidth ?? maxWidth, pixelRatio);
+              final cacheWidth = _resolveCacheExtent(
+                targetWidth ?? maxWidth,
+                pixelRatio,
+              );
 
               final image = Image.network(
                 src,
@@ -555,7 +635,10 @@ class MemoMarkdown extends StatelessWidget {
               );
 
               return ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
+                constraints: BoxConstraints(
+                  maxWidth: maxWidth,
+                  maxHeight: maxHeight,
+                ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: image,
@@ -626,18 +709,17 @@ class MemoMarkdown extends StatelessWidget {
         styles['border-left'] = '3px solid ${_cssColor(quoteBorder)}';
         styles['padding-left'] = '10px';
       }
-      if (localName == 'p' && element.parent?.classes.contains('task-list-item') == true) {
+      if (localName == 'p' &&
+          element.parent?.classes.contains('task-list-item') == true) {
         styles['display'] = 'inline';
         styles['margin'] = '0';
       }
       if (localName == 'li' && element.classes.contains('task-list-item')) {
         styles['list-style-type'] = 'none';
       }
-      if ((localName == 'ul' || localName == 'ol') && element.classes.contains('contains-task-list')) {
-        styles.addAll({
-          'list-style-type': 'none',
-          'padding-left': '0',
-        });
+      if ((localName == 'ul' || localName == 'ol') &&
+          element.classes.contains('contains-task-list')) {
+        styles.addAll({'list-style-type': 'none', 'padding-left': '0'});
       }
       if (localName == 'img') {
         if (renderImages) {
@@ -653,7 +735,9 @@ class MemoMarkdown extends StatelessWidget {
         styles['font-weight'] = '700';
       }
       if (spacingPx != null && _htmlBlockTags.contains(localName)) {
-        final isTaskParagraph = localName == 'p' && element.parent?.classes.contains('task-list-item') == true;
+        final isTaskParagraph =
+            localName == 'p' &&
+            element.parent?.classes.contains('task-list-item') == true;
         if (!isTaskParagraph) {
           styles['margin'] = '0 0 $spacingPx 0';
         }
@@ -661,7 +745,9 @@ class MemoMarkdown extends StatelessWidget {
       return styles.isEmpty ? null : styles;
     }
 
-    final renderMode = shrinkWrap ? RenderMode.column : const ListViewMode(shrinkWrap: false);
+    final renderMode = shrinkWrap
+        ? RenderMode.column
+        : const ListViewMode(shrinkWrap: false);
     Widget content = HtmlWidget(
       html,
       factoryBuilder: () => _MemoMarkdownWidgetFactory(),
@@ -672,12 +758,19 @@ class MemoMarkdown extends StatelessWidget {
       onTapUrl: (url) async {
         final uri = Uri.tryParse(url);
         if (uri == null) return true;
-        final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
         if (!launched && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                context.t.strings.legacy.msg_unable_open_browser_install_browser_app,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_unable_open_browser_install_browser_app,
               ),
             ),
           );
@@ -726,7 +819,9 @@ String _sanitizeMarkdown(String text) {
 String _escapeEmptyTaskHeadings(String text) {
   final lines = text.split('\n');
   for (var i = 0; i < lines.length; i++) {
-    final match = RegExp(r'^(\s*[-*+]\s+\[(?: |x|X)\]\s*)(#{1,6})\s*$').firstMatch(lines[i]);
+    final match = RegExp(
+      r'^(\s*[-*+]\s+\[(?: |x|X)\]\s*)(#{1,6})\s*$',
+    ).firstMatch(lines[i]);
     if (match == null) continue;
     final prefix = match.group(1) ?? '';
     final hashes = match.group(2) ?? '';
@@ -852,6 +947,16 @@ String _buildMemoHtml(String text) {
   return _escapeCodeBlocks(sanitized);
 }
 
+bool _looksLikeFullHtmlDocument(String text) {
+  // Heuristic gate for the protected full-document code path in build().
+  // Do not broaden this casually; keep behavior stable across versions.
+  final trimmed = text.trimLeft();
+  return RegExp(
+    r'^(?:<!doctype\s+html(?:\s[^>]*)?>\s*)?<html(?:\s|>)',
+    caseSensitive: false,
+  ).hasMatch(trimmed);
+}
+
 String _sanitizeHtml(String html) {
   final fragment = html_parser.parseFragment(html);
   _sanitizeDomNode(fragment);
@@ -910,7 +1015,11 @@ bool _sanitizeAttributes(dom.Element element, String tag) {
   }
 
   if (tag == 'a') {
-    final href = _sanitizeUrl(element.attributes['href'], allowRelative: true, allowMailto: true);
+    final href = _sanitizeUrl(
+      element.attributes['href'],
+      allowRelative: true,
+      allowMailto: true,
+    );
     if (href == null) {
       _unwrapElement(element);
       return false;
@@ -919,7 +1028,11 @@ bool _sanitizeAttributes(dom.Element element, String tag) {
   }
 
   if (tag == 'img') {
-    final src = _sanitizeUrl(element.attributes['src'], allowRelative: true, allowMailto: false);
+    final src = _sanitizeUrl(
+      element.attributes['src'],
+      allowRelative: true,
+      allowMailto: false,
+    );
     if (src == null) {
       element.remove();
       return false;
@@ -993,19 +1106,18 @@ void _unwrapElement(dom.Element element) {
 }
 
 String _renderMarkdownToHtml(String text) {
+  final inlineSyntaxes = <md.InlineSyntax>[
+    _MathInlineSyntax(),
+    _MathParenInlineSyntax(),
+    _HtmlSoftLineBreakSyntax(),
+    _HtmlHighlightInlineSyntax(),
+  ];
+
   return md.markdownToHtml(
     text,
     extensionSet: md.ExtensionSet.gitHubFlavored,
-    blockSyntaxes: const [
-      _MathBlockSyntax(),
-      _MathBracketBlockSyntax(),
-    ],
-    inlineSyntaxes: [
-      _MathInlineSyntax(),
-      _MathParenInlineSyntax(),
-      _HtmlSoftLineBreakSyntax(),
-      _HtmlHighlightInlineSyntax(),
-    ],
+    blockSyntaxes: const [_MathBlockSyntax(), _MathBracketBlockSyntax()],
+    inlineSyntaxes: inlineSyntaxes,
     encodeHtml: false,
   );
 }
@@ -1115,7 +1227,9 @@ int? _resolveCacheExtent(double logicalExtent, double devicePixelRatio) {
   if (logicalExtent <= 0) return null;
   final pixels = (logicalExtent * devicePixelRatio).round();
   if (pixels <= 0) return null;
-  return pixels > _markdownImageMaxDecodePx ? _markdownImageMaxDecodePx : pixels;
+  return pixels > _markdownImageMaxDecodePx
+      ? _markdownImageMaxDecodePx
+      : pixels;
 }
 
 double _resolveImageMaxHeight(BuildContext context) {
@@ -1168,7 +1282,11 @@ double calculateProgress(String content, {bool skipQuotedLines = false}) {
   return stats.checked / stats.total;
 }
 
-String toggleCheckbox(String rawContent, int checkboxIndex, {bool skipQuotedLines = false}) {
+String toggleCheckbox(
+  String rawContent,
+  int checkboxIndex, {
+  bool skipQuotedLines = false,
+}) {
   final fenceRegex = RegExp(r'^\s*(```|~~~)');
   final taskRegex = RegExp(r'^(\s*[-*+]\s+)\[( |x|X)\]');
 
@@ -1185,7 +1303,8 @@ String toggleCheckbox(String rawContent, int checkboxIndex, {bool skipQuotedLine
       continue;
     }
 
-    final skipLine = inFence || (skipQuotedLines && line.trimLeft().startsWith('>'));
+    final skipLine =
+        inFence || (skipQuotedLines && line.trimLeft().startsWith('>'));
     if (!skipLine) {
       final match = taskRegex.firstMatch(line);
       if (match != null) {
@@ -1238,7 +1357,6 @@ class _HtmlHighlightInlineSyntax extends md.InlineSyntax {
   }
 }
 
-
 class _MemoTagStyle {
   const _MemoTagStyle({
     required this.background,
@@ -1282,10 +1400,7 @@ class _MemoHighlightStyle {
 }
 
 class MemoCodeHighlighter {
-  MemoCodeHighlighter({
-    required this.baseStyle,
-    required this.isDark,
-  });
+  MemoCodeHighlighter({required this.baseStyle, required this.isDark});
 
   final TextStyle baseStyle;
   final bool isDark;
@@ -1309,18 +1424,43 @@ class MemoCodeHighlighter {
   TextSpan format(String source) {
     if (source.isEmpty) return const TextSpan(text: '');
 
-    final commentColor = isDark ? const Color(0xFF7C8895) : const Color(0xFF6A737D);
-    final stringColor = isDark ? const Color(0xFF98C379) : const Color(0xFF22863A);
-    final keywordColor = isDark ? const Color(0xFF7AA2F7) : const Color(0xFF005CC5);
-    final numberColor = isDark ? const Color(0xFFD19A66) : const Color(0xFFB45500);
-    final annotationColor = isDark ? const Color(0xFF56B6C2) : const Color(0xFF22863A);
+    final commentColor = isDark
+        ? const Color(0xFF7C8895)
+        : const Color(0xFF6A737D);
+    final stringColor = isDark
+        ? const Color(0xFF98C379)
+        : const Color(0xFF22863A);
+    final keywordColor = isDark
+        ? const Color(0xFF7AA2F7)
+        : const Color(0xFF005CC5);
+    final numberColor = isDark
+        ? const Color(0xFFD19A66)
+        : const Color(0xFFB45500);
+    final annotationColor = isDark
+        ? const Color(0xFF56B6C2)
+        : const Color(0xFF22863A);
 
     final rules = <_CodeHighlightRule>[
-      _CodeHighlightRule(_commentPattern, baseStyle.copyWith(color: commentColor, fontStyle: FontStyle.italic)),
-      _CodeHighlightRule(_stringPattern, baseStyle.copyWith(color: stringColor)),
-      _CodeHighlightRule(_annotationPattern, baseStyle.copyWith(color: annotationColor)),
-      _CodeHighlightRule(_keywordPattern, baseStyle.copyWith(color: keywordColor, fontWeight: FontWeight.w600)),
-      _CodeHighlightRule(_numberPattern, baseStyle.copyWith(color: numberColor)),
+      _CodeHighlightRule(
+        _commentPattern,
+        baseStyle.copyWith(color: commentColor, fontStyle: FontStyle.italic),
+      ),
+      _CodeHighlightRule(
+        _stringPattern,
+        baseStyle.copyWith(color: stringColor),
+      ),
+      _CodeHighlightRule(
+        _annotationPattern,
+        baseStyle.copyWith(color: annotationColor),
+      ),
+      _CodeHighlightRule(
+        _keywordPattern,
+        baseStyle.copyWith(color: keywordColor, fontWeight: FontWeight.w600),
+      ),
+      _CodeHighlightRule(
+        _numberPattern,
+        baseStyle.copyWith(color: numberColor),
+      ),
     ];
 
     final spans = <TextSpan>[];
@@ -1441,9 +1581,7 @@ class _MemoCodeBlockState extends State<_MemoCodeBlock> {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(label, style: labelStyle),
-                ),
+                Expanded(child: Text(label, style: labelStyle)),
                 InkWell(
                   onTap: _handleCopy,
                   borderRadius: BorderRadius.circular(6),
@@ -1457,10 +1595,7 @@ class _MemoCodeBlockState extends State<_MemoCodeBlock> {
             const SizedBox(height: 4),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: RichText(
-                text: highlightSpan,
-                softWrap: false,
-              ),
+              child: RichText(text: highlightSpan, softWrap: false),
             ),
           ],
         ),
@@ -1470,7 +1605,8 @@ class _MemoCodeBlockState extends State<_MemoCodeBlock> {
 }
 
 class _MathInlineSyntax extends md.InlineSyntax {
-  _MathInlineSyntax() : super(r'\$(?!\s)([^\n\$]+?)\$(?!\s)', startCharacter: 0x24);
+  _MathInlineSyntax()
+    : super(r'\$(?!\s)([^\n\$]+?)\$(?!\s)', startCharacter: 0x24);
 
   @override
   bool onMatch(md.InlineParser parser, Match match) {
@@ -1584,7 +1720,11 @@ TextSpan _buildHighlightedSpan({
 
   final result = hi.highlight.parse(code, language: normalized.toLowerCase());
   final theme = _MemoCodeHighlightTheme.resolve(isDark: isDark);
-  final children = _buildHighlightSpans(result.nodes ?? const <hi.Node>[], baseStyle, theme);
+  final children = _buildHighlightSpans(
+    result.nodes ?? const <hi.Node>[],
+    baseStyle,
+    theme,
+  );
   return TextSpan(style: baseStyle, children: children);
 }
 
@@ -1599,10 +1739,12 @@ List<TextSpan> _buildHighlightSpans(
     if (node.value != null) {
       spans.add(TextSpan(text: node.value, style: style));
     } else if (node.children != null) {
-      spans.add(TextSpan(
-        style: style,
-        children: _buildHighlightSpans(node.children!, style, theme),
-      ));
+      spans.add(
+        TextSpan(
+          style: style,
+          children: _buildHighlightSpans(node.children!, style, theme),
+        ),
+      );
     }
   }
   return spans;
@@ -1635,16 +1777,34 @@ class _MemoCodeHighlightTheme {
   final Map<String, TextStyle> styles;
 
   static _MemoCodeHighlightTheme resolve({required bool isDark}) {
-    final commentColor = isDark ? const Color(0xFF7C8895) : const Color(0xFF6A737D);
-    final stringColor = isDark ? const Color(0xFF98C379) : const Color(0xFF22863A);
-    final keywordColor = isDark ? const Color(0xFF7AA2F7) : const Color(0xFF005CC5);
-    final numberColor = isDark ? const Color(0xFFD19A66) : const Color(0xFFB45500);
-    final titleColor = isDark ? const Color(0xFFC678DD) : const Color(0xFF6F42C1);
-    final attributeColor = isDark ? const Color(0xFFE5C07B) : const Color(0xFFE36209);
+    final commentColor = isDark
+        ? const Color(0xFF7C8895)
+        : const Color(0xFF6A737D);
+    final stringColor = isDark
+        ? const Color(0xFF98C379)
+        : const Color(0xFF22863A);
+    final keywordColor = isDark
+        ? const Color(0xFF7AA2F7)
+        : const Color(0xFF005CC5);
+    final numberColor = isDark
+        ? const Color(0xFFD19A66)
+        : const Color(0xFFB45500);
+    final titleColor = isDark
+        ? const Color(0xFFC678DD)
+        : const Color(0xFF6F42C1);
+    final attributeColor = isDark
+        ? const Color(0xFFE5C07B)
+        : const Color(0xFFE36209);
     final tagColor = stringColor;
-    final metaColor = isDark ? const Color(0xFFC9D1D9) : const Color(0xFF24292E);
-    final additionColor = isDark ? const Color(0xFF2EA043) : const Color(0xFF22863A);
-    final deletionColor = isDark ? const Color(0xFFF85149) : const Color(0xFFCB2431);
+    final metaColor = isDark
+        ? const Color(0xFFC9D1D9)
+        : const Color(0xFF24292E);
+    final additionColor = isDark
+        ? const Color(0xFF2EA043)
+        : const Color(0xFF22863A);
+    final deletionColor = isDark
+        ? const Color(0xFFF85149)
+        : const Color(0xFFCB2431);
 
     return _MemoCodeHighlightTheme({
       'comment': TextStyle(color: commentColor, fontStyle: FontStyle.italic),
@@ -1679,7 +1839,10 @@ class _MemoCodeHighlightTheme {
       'operator': TextStyle(color: metaColor),
       'punctuation': TextStyle(color: metaColor),
       'subst': TextStyle(color: metaColor),
-      'meta-keyword': TextStyle(color: keywordColor, fontWeight: FontWeight.w600),
+      'meta-keyword': TextStyle(
+        color: keywordColor,
+        fontWeight: FontWeight.w600,
+      ),
       'meta-string': TextStyle(color: stringColor),
       'addition': TextStyle(color: additionColor),
       'deletion': TextStyle(color: deletionColor),
