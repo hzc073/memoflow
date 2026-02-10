@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/app_lock_provider.dart';
 import '../../i18n/strings.g.dart';
@@ -16,7 +15,8 @@ class AppLockGate extends ConsumerStatefulWidget {
   ConsumerState<AppLockGate> createState() => _AppLockGateState();
 }
 
-class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingObserver {
+class _AppLockGateState extends ConsumerState<AppLockGate>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -57,10 +57,7 @@ class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingOb
             widget.child,
             if (lockState.locked)
               const Positioned.fill(
-                child: PopScope(
-                  canPop: false,
-                  child: _AppLockOverlay(),
-                ),
+                child: PopScope(canPop: false, child: _AppLockOverlay()),
               ),
           ],
         );
@@ -81,6 +78,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
   late final FocusNode _focusNode;
   String? _error;
   var _unlocking = false;
+  var _inputGeneration = 0;
 
   @override
   void initState() {
@@ -103,7 +101,20 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
   }
 
   void _clearInput() {
-    _controller.value = const TextEditingValue();
+    _controller.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+      composing: TextRange.empty,
+    );
+  }
+
+  void _refreshInputConnection() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _inputGeneration++);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_focusNode);
+    });
   }
 
   Future<void> _unlock() async {
@@ -111,6 +122,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     final text = _controller.text.trim();
     if (text.isEmpty) {
       _clearInput();
+      _refreshInputConnection();
       setState(() => _error = context.t.strings.legacy.msg_enter_password);
       return;
     }
@@ -122,7 +134,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     if (!mounted) return;
     if (!ok) {
       _clearInput();
-      FocusScope.of(context).requestFocus(_focusNode);
+      _refreshInputConnection();
       setState(() {
         _error = context.t.strings.legacy.msg_incorrect_password;
         _unlocking = false;
@@ -136,11 +148,17 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final border = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Material(
       color: bg,
@@ -153,11 +171,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -165,7 +179,12 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  24,
+                  24 + MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: Container(
@@ -189,7 +208,11 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                       children: [
                         Text(
                           context.t.strings.legacy.msg_password_required,
-                          style: TextStyle(fontWeight: FontWeight.w800, color: textMain, fontSize: 16),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: textMain,
+                            fontSize: 16,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -198,10 +221,13 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                         ),
                         const SizedBox(height: 16),
                         TextField(
+                          key: ValueKey<int>(_inputGeneration),
                           controller: _controller,
                           focusNode: _focusNode,
                           autofocus: true,
                           obscureText: true,
+                          autofillHints: const <String>[],
+                          enableIMEPersonalizedLearning: false,
                           onChanged: (_) {
                             if (_error != null) {
                               setState(() => _error = null);
@@ -209,15 +235,20 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                           },
                           onSubmitted: (_) => _unlock(),
                           keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
                           textInputAction: TextInputAction.done,
                           enableSuggestions: false,
                           autocorrect: false,
                           decoration: InputDecoration(
-                            hintText: context.t.strings.legacy.msg_enter_password_3,
+                            hintText:
+                                context.t.strings.legacy.msg_enter_password_3,
                             errorText: _error,
                             isDense: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -229,15 +260,25 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: MemoFlowPalette.primary,
                               foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
                               elevation: isDark ? 0 : 3,
                             ),
                             child: _unlocking
                                 ? const SizedBox.square(
                                     dimension: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
                                   )
-                                : Text(context.t.strings.legacy.msg_unlock, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                : Text(
+                                    context.t.strings.legacy.msg_unlock,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],
