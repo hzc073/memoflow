@@ -44,7 +44,40 @@ third-party client and has no affiliation with the official Memos project.
   - [ ] Speech-to-text
   - [ ] Custom quick tools
   - [x] Task progress bar
-  - [x] Multi-language (Chinese/English)
+  - [ ] Multi-language (align with Memos backend locales, 33 total)
+    - [ ] `ar` Arabic
+    - [ ] `ca` Catalan
+    - [ ] `cs` Czech
+    - [x] `de` German
+    - [x] `en` English
+    - [ ] `en-GB` English (UK)
+    - [ ] `es` Spanish
+    - [ ] `fa` Persian
+    - [ ] `fr` French
+    - [ ] `gl` Galician
+    - [ ] `hi` Hindi
+    - [ ] `hr` Croatian
+    - [ ] `hu` Hungarian
+    - [ ] `id` Indonesian
+    - [ ] `it` Italian
+    - [x] `ja` Japanese
+    - [ ] `ka-GE` Georgian
+    - [ ] `ko` Korean
+    - [ ] `mr` Marathi
+    - [ ] `nb` Norwegian Bokmål
+    - [ ] `nl` Dutch
+    - [ ] `pl` Polish
+    - [ ] `pt-PT` Portuguese (Portugal)
+    - [ ] `pt-BR` Portuguese (Brazil)
+    - [ ] `ru` Russian
+    - [ ] `sl` Slovenian
+    - [ ] `sv` Swedish
+    - [ ] `th` Thai
+    - [ ] `tr` Turkish
+    - [ ] `uk` Ukrainian
+    - [ ] `vi` Vietnamese
+    - [x] `zh-Hans` Chinese (Simplified)
+    - [x] `zh-Hant` Chinese (Traditional, current app locale: `zh-Hant-TW`)
 
 ## Screenshots
 **Login**
