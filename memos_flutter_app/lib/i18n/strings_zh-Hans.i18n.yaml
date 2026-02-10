@@ -10,14 +10,14 @@ common:
 languages:
   system: "跟随系统"
   zhHans: "简体中文"
-  zhHantTw: "繁体中文（台湾）"
+  zhHantTw: "繁体中文（中国台湾）"
   en: "英语"
   ja: "日语"
   de: "德语"
 languagesNative:
   system: "系统"
   zhHans: "简体中文"
-  zhHantTw: "繁體中文（台灣）"
+  zhHantTw: "繁體中文（中國台灣）"
   en: "英语"
   ja: "日本語"
   de: "Deutsch"
@@ -952,7 +952,7 @@ legacy:
   app_language:
     system: "跟随系统"
     zh_hans: "简体中文"
-    zh_hant_tw: "繁体中文（台湾）"
+    zh_hant_tw: "繁体中文（中国台湾）"
     en: "英语"
     ja: "日语"
     de: "德语"

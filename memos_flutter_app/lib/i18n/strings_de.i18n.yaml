@@ -10,14 +10,14 @@ common:
 languages:
   system: "System folgen"
   zhHans: "Chinesisch (Vereinfacht)"
-  zhHantTw: "Chinesisch (Traditionell, Taiwan)"
+  zhHantTw: "Chinesisch (Traditionell, China Taiwan)"
   en: "Englisch"
   ja: "Japanisch"
   de: "Deutsch"
 languagesNative:
   system: "System"
   zhHans: "简体中文"
-  zhHantTw: "繁體中文（台灣）"
+  zhHantTw: "繁體中文（中國台灣）"
   en: "English"
   ja: "日本語"
   de: "Deutsch"
@@ -952,7 +952,7 @@ legacy:
   app_language:
     system: "System"
     zh_hans: "Chinesisch (Vereinfacht)"
-    zh_hant_tw: "Chinesisch (Traditionell, Taiwan)"
+    zh_hant_tw: "Chinesisch (Traditionell, China Taiwan)"
     en: "Englisch"
     ja: "Japanisch"
     de: "Deutsch"
