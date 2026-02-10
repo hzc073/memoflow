@@ -29,6 +29,7 @@ import '../../state/network_log_provider.dart';
 import '../../state/note_draft_provider.dart';
 import '../../state/user_settings_provider.dart';
 import 'attachment_gallery_screen.dart';
+import 'memo_video_grid.dart';
 import 'link_memo_sheet.dart';
 import '../voice/voice_record_screen.dart';
 import '../settings/location_settings_screen.dart';
@@ -953,6 +954,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     return mimeType.trim().toLowerCase().startsWith('image/');
   }
 
+  bool _isVideoMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase().startsWith('video');
+  }
+
   File? _resolvePendingAttachmentFile(_PendingAttachment attachment) {
     final path = attachment.filePath.trim();
     if (path.isEmpty) return null;
@@ -1048,6 +1053,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
     final isImage = _isImageMimeType(attachment.mimeType);
+    final isVideo = _isVideoMimeType(attachment.mimeType);
     final file = _resolvePendingAttachmentFile(attachment);
 
     Widget content;
@@ -1061,8 +1067,31 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           return _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true);
         },
       );
+    } else if (isVideo && file != null) {
+      final entry = MemoVideoEntry(
+        id: attachment.uid,
+        title: attachment.filename.isNotEmpty ? attachment.filename : 'video',
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        localFile: file,
+        videoUrl: null,
+        headers: null,
+      );
+      content = AttachmentVideoThumbnail(
+        entry: entry,
+        width: size,
+        height: size,
+        borderRadius: 14,
+        fit: BoxFit.cover,
+        showPlayIcon: false,
+      );
     } else {
-      content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
+      content = _attachmentFallback(
+        iconColor: iconColor,
+        surfaceColor: surfaceColor,
+        isImage: isImage,
+        isVideo: isVideo,
+      );
     }
 
     final tile = Container(
@@ -1118,12 +1147,15 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     required Color iconColor,
     required Color surfaceColor,
     required bool isImage,
+    bool isVideo = false,
   }) {
     return Container(
       color: surfaceColor,
       alignment: Alignment.center,
       child: Icon(
-        isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
+        isImage
+            ? Icons.image_outlined
+            : (isVideo ? Icons.videocam_outlined : Icons.insert_drive_file_outlined),
         size: 22,
         color: iconColor,
       ),

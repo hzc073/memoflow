@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -192,6 +193,11 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
   bool _loggedBuild = false;
   String _entryKey = '';
   int _loadToken = 0;
+  Timer? _retryTimer;
+  int _retryCount = 0;
+
+  static const int _maxRetries = 4;
+  static const Duration _retryBaseDelay = Duration(seconds: 2);
 
   @override
   void initState() {
@@ -207,6 +213,12 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
     }
   }
 
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
   bool _isSameEntry(MemoVideoEntry a, MemoVideoEntry b) {
     return a.id == b.id &&
         a.size == b.size &&
@@ -219,6 +231,8 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
     _bytes = null;
     _file = null;
     _loading = true;
+    _retryCount = 0;
+    _retryTimer?.cancel();
     final token = ++_loadToken;
     _load(entry, token);
   }
@@ -242,6 +256,9 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         _file = file;
         _loading = false;
       });
+      if (file == null || !file.existsSync() || file.lengthSync() == 0) {
+        _scheduleRetry(entry, token);
+      }
       assert(() {
         final hasFile = _file != null && _file!.existsSync() && _file!.lengthSync() > 0;
         debugPrint(
@@ -260,6 +277,7 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         },
       );
       setState(() => _loading = false);
+      _scheduleRetry(entry, token);
       assert(() {
         debugPrint('Video thumbnail widget result | {entry: $_entryKey, error: $e}');
         return true;
@@ -290,6 +308,20 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
       if (!mounted || token != _loadToken) return;
       // Ignore byte read errors; file preview is already shown.
     }
+  }
+
+  void _scheduleRetry(MemoVideoEntry entry, int token) {
+    if (_retryCount >= _maxRetries) return;
+    _retryTimer?.cancel();
+    final delay = Duration(
+      milliseconds: _retryBaseDelay.inMilliseconds * (1 << _retryCount),
+    );
+    _retryCount++;
+    _retryTimer = Timer(delay, () {
+      if (!mounted || token != _loadToken) return;
+      setState(() => _loading = true);
+      _load(entry, token);
+    });
   }
 
   @override

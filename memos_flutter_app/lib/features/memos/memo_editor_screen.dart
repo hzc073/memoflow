@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/markdown_editing.dart';
@@ -29,6 +31,7 @@ import '../../state/network_log_provider.dart';
 import '../../state/session_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
+import 'memo_video_grid.dart';
 import '../settings/location_settings_screen.dart';
 
 class MemoEditorScreen extends ConsumerStatefulWidget {
@@ -813,17 +816,50 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Future<void> _pickAttachments() async {
     if (_saving) return;
     try {
-      final files = await _imagePicker.pickMultiImage();
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+        withReadStream: true,
+      );
       if (!mounted) return;
+      final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
 
       final added = <_PendingAttachment>[];
-      final accepted = <XFile>[];
+      var missingPathCount = 0;
+      Directory? tempDir;
       for (final file in files) {
-        final path = file.path;
-        if (path.trim().isEmpty) continue;
+        String path = (file.path ?? '').trim();
+        if (path.isEmpty) {
+          final stream = file.readStream;
+          final bytes = file.bytes;
+          if (stream == null && bytes == null) {
+            missingPathCount++;
+            continue;
+          }
+          tempDir ??= await getTemporaryDirectory();
+          final name = file.name.trim().isNotEmpty ? file.name.trim() : 'attachment_${generateUid()}';
+          final tempFile = File('${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name');
+          if (bytes != null) {
+            await tempFile.writeAsBytes(bytes, flush: true);
+          } else if (stream != null) {
+            final sink = tempFile.openWrite();
+            await sink.addStream(stream);
+            await sink.close();
+          }
+          path = tempFile.path;
+        }
+
+        if (path.trim().isEmpty) {
+          missingPathCount++;
+          continue;
+        }
+
         final handle = File(path);
-        if (!handle.existsSync()) continue;
+        if (!handle.existsSync()) {
+          missingPathCount++;
+          continue;
+        }
         final size = handle.lengthSync();
         final filename = file.name.trim().isNotEmpty ? file.name.trim() : path.split(Platform.pathSeparator).last;
         final mimeType = _guessMimeType(filename);
@@ -836,24 +872,27 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             size: size,
           ),
         );
-        accepted.add(file);
       }
 
+      if (!mounted) return;
       if (added.isEmpty) {
-        showTopToast(context, 'No images selected.');
+        final msg = missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.';
+        showTopToast(context, msg);
         return;
       }
 
       setState(() {
         _pendingAttachments.addAll(added);
-        _pickedImages.addAll(accepted);
       });
       final suffix = added.length == 1 ? '' : 's';
-      final summary = 'Added ${added.length} image$suffix.';
+      final skipped = [if (missingPathCount > 0) '$missingPathCount unavailable'];
+      final summary = skipped.isEmpty
+          ? 'Added ${added.length} file$suffix.'
+          : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
       showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image selection failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
     }
   }
 
@@ -940,6 +979,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
   bool _isImageMimeType(String mimeType) {
     return mimeType.trim().toLowerCase().startsWith('image/');
+  }
+
+  bool _isVideoMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase().startsWith('video');
   }
 
   File? _resolvePendingAttachmentFile(_PendingAttachment attachment) {
@@ -1133,6 +1176,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
     final isImage = _isImageMimeType(attachment.mimeType);
+    final isVideo = _isVideoMimeType(attachment.mimeType);
     final file = _resolvePendingAttachmentFile(attachment);
 
     Widget content;
@@ -1146,8 +1190,31 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           return _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true);
         },
       );
+    } else if (isVideo && file != null) {
+      final entry = MemoVideoEntry(
+        id: attachment.uid,
+        title: attachment.filename.isNotEmpty ? attachment.filename : 'video',
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        localFile: file,
+        videoUrl: null,
+        headers: null,
+      );
+      content = AttachmentVideoThumbnail(
+        entry: entry,
+        width: size,
+        height: size,
+        borderRadius: 14,
+        fit: BoxFit.cover,
+        showPlayIcon: false,
+      );
     } else {
-      content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
+      content = _attachmentFallback(
+        iconColor: iconColor,
+        surfaceColor: surfaceColor,
+        isImage: isImage,
+        isVideo: isVideo,
+      );
     }
 
     final tile = Container(
@@ -1218,8 +1285,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
     final isImage = _isImageMimeType(attachment.type);
+    final isVideo = _isVideoMimeType(attachment.type);
     final localFile = _localExistingAttachmentFile(attachment);
     final thumbUrl = _existingAttachmentUrl(attachment, thumbnail: true, baseUrl: baseUrl);
+    final videoEntry = isVideo ? memoVideoEntryFromAttachment(attachment, baseUrl, authHeader) : null;
 
     Widget content;
     if (isImage && localFile != null) {
@@ -1242,8 +1311,22 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         errorWidget: (context, url, error) =>
             _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true),
       );
+    } else if (videoEntry != null) {
+      content = AttachmentVideoThumbnail(
+        entry: videoEntry,
+        width: size,
+        height: size,
+        borderRadius: 14,
+        fit: BoxFit.cover,
+        showPlayIcon: false,
+      );
     } else {
-      content = _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: isImage);
+      content = _attachmentFallback(
+        iconColor: iconColor,
+        surfaceColor: surfaceColor,
+        isImage: isImage,
+        isVideo: isVideo,
+      );
     }
 
     final tile = Container(
@@ -1303,12 +1386,15 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     required Color iconColor,
     required Color surfaceColor,
     required bool isImage,
+    bool isVideo = false,
   }) {
     return Container(
       color: surfaceColor,
       alignment: Alignment.center,
       child: Icon(
-        isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
+        isImage
+            ? Icons.image_outlined
+            : (isVideo ? Icons.videocam_outlined : Icons.insert_drive_file_outlined),
         size: 22,
         color: iconColor,
       ),
