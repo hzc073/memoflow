@@ -1,0 +1,9 @@
+base_locale: en
+fallback_strategy: base_locale
+file_type: yaml
+input_directory: lib/i18n
+input_file_pattern: .i18n.yaml
+output_directory: lib/i18n
+output_file_name: strings.g.dart
+flutter: true
+namespaces: true

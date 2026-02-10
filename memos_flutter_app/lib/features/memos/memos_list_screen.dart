@@ -55,6 +55,7 @@ import 'memo_location_line.dart';
 import 'memo_video_grid.dart';
 import 'note_input_sheet.dart';
 import 'widgets/audio_row.dart';
+import '../../i18n/strings.g.dart';
 
 const _maxPreviewLines = 6;
 const _maxPreviewRunes = 220;
@@ -607,22 +608,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   String _sortOptionLabel(BuildContext context, _MemoSortOption option) {
     return switch (option) {
-      _MemoSortOption.createAsc => context.tr(
-        zh: '创建时间 ↑',
-        en: 'Created time ↑',
-      ),
-      _MemoSortOption.createDesc => context.tr(
-        zh: '创建时间 ↓',
-        en: 'Created time ↓',
-      ),
-      _MemoSortOption.updateAsc => context.tr(
-        zh: '修改时间 ↑',
-        en: 'Updated time ↑',
-      ),
-      _MemoSortOption.updateDesc => context.tr(
-        zh: '修改时间 ↓',
-        en: 'Updated time ↓',
-      ),
+      _MemoSortOption.createAsc => context.t.strings.legacy.msg_created_time,
+      _MemoSortOption.createDesc => context.t.strings.legacy.msg_created_time_2,
+      _MemoSortOption.updateAsc => context.t.strings.legacy.msg_updated_time_2,
+      _MemoSortOption.updateDesc => context.t.strings.legacy.msg_updated_time,
     };
   }
 
@@ -668,7 +657,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     return PopupMenuButton<_MemoSortOption>(
-      tooltip: context.tr(zh: '排序', en: 'Sort'),
+      tooltip: context.t.strings.legacy.msg_sort,
       offset: const Offset(0, 40),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -793,13 +782,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
   }
 
-  String _formatReminderTime(DateTime time, AppLanguage language) {
-    final datePart = DateFormat('MM/dd').format(time);
-    final timePart = DateFormat('HH:mm').format(time);
-    if (language == AppLanguage.en) {
-      return '$datePart $timePart';
-    }
-    return '$datePart日 $timePart';
+  String _formatReminderTime(DateTime time) {
+    final locale = Localizations.localeOf(context).toString();
+    final datePart = DateFormat.Md(locale).format(time);
+    final timePart = DateFormat.Hm(locale).format(time);
+    return '$datePart $timePart';
   }
 
   void _startAudioProgressTimer() {
@@ -904,7 +891,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '无法读取音频资源', en: 'Unable to load audio source.'),
+            context.t.strings.legacy.msg_unable_load_audio_source,
           ),
         ),
       );
@@ -1019,7 +1006,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       _audioDurationNotifier.value = null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '播放失败: $e', en: 'Playback failed: $e')),
+          content: Text(context.t.strings.legacy.msg_playback_failed(e: e)),
         ),
       );
       return;
@@ -1074,21 +1061,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   String _formatShortcutLoadError(BuildContext context, Object error) {
     if (error is UnsupportedError) {
-      return context.tr(
-        zh: '当前服务器不支持快捷筛选',
-        en: 'Shortcuts are not supported on this server.',
-      );
+      return context.t.strings.legacy.msg_shortcuts_not_supported_server;
     }
     if (error is DioException) {
       final status = error.response?.statusCode ?? 0;
       if (status == 404 || status == 405) {
-        return context.tr(
-          zh: '当前服务器不支持快捷筛选',
-          en: 'Shortcuts are not supported on this server.',
-        );
+        return context.t.strings.legacy.msg_shortcuts_not_supported_server;
       }
     }
-    return context.tr(zh: '快捷筛选加载失败', en: 'Failed to load shortcuts.');
+    return context.t.strings.legacy.msg_failed_load_shortcuts;
   }
 
   bool get _isAllMemos {
@@ -1132,7 +1113,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       _lastBackPressedAt = now;
       showTopToast(
         context,
-        context.tr(zh: '再按一次返回退出', en: 'Press back again to exit'),
+        context.t.strings.legacy.msg_press_back_exit,
         duration: const Duration(seconds: 2),
       );
       return false;
@@ -1151,10 +1132,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (!hasAccount && dest == AppDrawerDestination.explore) {
       showTopToast(
         context,
-        context.tr(
-          zh: '本地库模式暂不支持该功能',
-          en: 'This feature is not available in local library mode.',
-        ),
+        context.t.strings.legacy.msg_feature_not_available_local_library_mode,
       );
       return;
     }
@@ -1170,7 +1148,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-        title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+        title: context.t.strings.legacy.msg_archive,
         state: 'ARCHIVED',
         showDrawer: true,
       ),
@@ -1195,10 +1173,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (!hasAccount) {
       showTopToast(
         context,
-        context.tr(
-          zh: '本地库模式暂不支持该功能',
-          en: 'This feature is not available in local library mode.',
-        ),
+        context.t.strings.legacy.msg_feature_not_available_local_library_mode,
       );
       return;
     }
@@ -1257,7 +1232,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(context.tr(zh: '切换工作区', en: 'Switch workspace')),
+                child: Text(context.t.strings.legacy.msg_switch_workspace),
               ),
             ),
             if (accounts.isNotEmpty) ...[
@@ -1266,7 +1241,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    context.tr(zh: '账号', en: 'Accounts'),
+                    context.t.strings.legacy.msg_accounts,
                     style: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
@@ -1300,7 +1275,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    context.tr(zh: '本地库', en: 'Local libraries'),
+                    context.t.strings.legacy.msg_local_libraries,
                     style: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
@@ -1315,7 +1290,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                   title: Text(
                     l.name.isNotEmpty
                         ? l.name
-                        : context.tr(zh: '本地库', en: 'Local library'),
+                        : context.t.strings.legacy.msg_local_library,
                   ),
                   subtitle: Text(l.locationLabel),
                   onTap: () async {
@@ -1347,21 +1322,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '扫描本地库', en: 'Scan local library')),
+            title: Text(context.t.strings.legacy.msg_scan_local_library),
             content: Text(
-              context.tr(
-                zh: '扫描磁盘目录并合并到本地数据库？缺失文件将视为删除。',
-                en: 'Scan disk directory and merge into local database? Missing files will be treated as deletions.',
-              ),
+              context.t.strings.legacy.msg_scan_disk_directory_merge_local_database,
             ),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '扫描', en: 'Scan')),
+                child: Text(context.t.strings.legacy.msg_scan),
               ),
             ],
           ),
@@ -1375,13 +1347,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '扫描完成', en: 'Scan completed'),
+        context.t.strings.legacy.msg_scan_completed,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '扫描失败：$e', en: 'Scan failed: $e')),
+          content: Text(context.t.strings.legacy.msg_scan_failed(e: e)),
         ),
       );
     }
@@ -1425,20 +1397,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         if (!mounted) return;
         showTopToast(
           context,
-          context.tr(
-            zh: '已从本地库导入笔记',
-            en: 'Imported memos from local library',
-          ),
+          context.t.strings.legacy.msg_imported_memos_local_library,
         );
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              context.tr(
-                zh: '本地库导入失败: $e',
-                en: 'Local library import failed: $e',
-              ),
+              context.t.strings.legacy.msg_local_library_import_failed(e: e),
             ),
           ),
         );
@@ -1461,7 +1427,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '未登录', en: 'Not authenticated')),
+          content: Text(context.t.strings.legacy.msg_not_authenticated),
         ),
       );
       return;
@@ -1481,7 +1447,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '创建失败：$e', en: 'Create failed: $e')),
+          content: Text(context.t.strings.legacy.msg_create_failed_2(e: e)),
         ),
       );
     }
@@ -1652,21 +1618,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '删除 Memo？', en: 'Delete memo?')),
+            title: Text(context.t.strings.legacy.msg_delete_memo),
             content: Text(
-              context.tr(
-                zh: '本地会立即移除，联网后将同步删除服务器内容。',
-                en: 'It will be removed locally now and deleted on the server when online.',
-              ),
+              context.t.strings.legacy.msg_removed_locally_now_deleted_server_when,
             ),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '\u5220\u9664', en: 'Delete')),
+                child: Text(context.t.strings.legacy.msg_delete),
               ),
             ],
           ),
@@ -1689,7 +1652,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     try {
       await _updateMemo(memo, state: 'NORMAL');
       if (!mounted) return;
-      final message = context.tr(zh: '\u5df2\u6062\u590d', en: 'Restored');
+      final message = context.t.strings.legacy.msg_restored;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => MemosListScreen(
@@ -1706,10 +1669,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(
-              zh: '\u6062\u590d\u5931\u8d25\uff1a$e',
-              en: 'Restore failed: $e',
-            ),
+            context.t.strings.legacy.msg_restore_failed(e: e),
           ),
         ),
       );
@@ -1723,17 +1683,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '\u5df2\u5f52\u6863', en: 'Archived'),
+        context.t.strings.legacy.msg_archived,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(
-              zh: '\u5f52\u6863\u5931\u8d25\uff1a$e',
-              en: 'Archive failed: $e',
-            ),
+            context.t.strings.legacy.msg_archive_failed(e: e),
           ),
         ),
       );
@@ -1950,7 +1907,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           );
     final reminderText = nextReminderTime == null
         ? null
-        : _formatReminderTime(nextReminderTime, prefs.language);
+        : _formatReminderTime(nextReminderTime);
 
     return _MemoCard(
       key: ValueKey(memo.uid),
@@ -2008,10 +1965,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               if (!context.mounted) return;
               showTopToast(
                 context,
-                context.tr(
-                  zh: '\u5df2\u590d\u5236\u7b14\u8bb0\u5185\u5bb9',
-                  en: 'Memo copied',
-                ),
+                context.t.strings.legacy.msg_memo_copied,
                 duration: const Duration(milliseconds: 1200),
               );
             },
@@ -2235,7 +2189,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                               autofocus: true,
                               textInputAction: TextInputAction.search,
                               decoration: InputDecoration(
-                                hintText: context.tr(zh: '搜索', en: 'Search'),
+                                hintText: context.t.strings.legacy.msg_search,
                                 border: InputBorder.none,
                                 isDense: true,
                                 prefixIcon: const Icon(Icons.search, size: 18),
@@ -2285,7 +2239,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                   TextButton(
                                     onPressed: _closeSearch,
                                     child: Text(
-                                      context.tr(zh: '取消', en: 'Cancel'),
+                                      context.t.strings.legacy.msg_cancel_2,
                                       style: TextStyle(
                                         color: MemoFlowPalette.primary,
                                         fontWeight: FontWeight.w600,
@@ -2302,7 +2256,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                       isDark: isDark,
                                     ),
                                   IconButton(
-                                    tooltip: context.tr(zh: '搜索', en: 'Search'),
+                                    tooltip: context.t.strings.legacy.msg_search,
                                     onPressed: _openSearch,
                                     icon: const Icon(Icons.search),
                                   ),
@@ -2409,10 +2363,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                       hasScrollBody: false,
                       child: Center(
                         child: Text(
-                          context.tr(
-                            zh: '加载失败：$memosError',
-                            en: 'Failed to load: $memosError',
-                          ),
+                          context.t.strings.legacy.msg_failed_load_3(memosError: memosError),
                         ),
                       ),
                     )
@@ -2444,11 +2395,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                         child: Center(
                           child: Text(
                             _searching
-                                ? context.tr(
-                                    zh: '未找到相关内容',
-                                    en: 'No results found',
-                                  )
-                                : context.tr(zh: '暂无内容', en: 'No content yet'),
+                                ? context.t.strings.legacy.msg_no_results_found
+                                : context.t.strings.legacy.msg_no_content_yet,
                           ),
                         ),
                       ),
@@ -2541,7 +2489,7 @@ class _PillRow extends StatelessWidget {
                   _PillButton(
                     icon: Icons.insights,
                     iconColor: MemoFlowPalette.primary,
-                    label: context.tr(zh: '每月统计', en: 'Monthly stats'),
+                    label: context.t.strings.legacy.msg_monthly_stats,
                     onPressed: onWeeklyInsights,
                     backgroundColor: bgColor,
                     borderColor: borderColor,
@@ -2553,7 +2501,7 @@ class _PillRow extends StatelessWidget {
                     iconColor: isDark
                         ? MemoFlowPalette.aiChipBlueDark
                         : MemoFlowPalette.aiChipBlueLight,
-                    label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
+                    label: context.t.strings.legacy.msg_ai_summary,
                     onPressed: onAiSummary,
                     backgroundColor: bgColor,
                     borderColor: borderColor,
@@ -2565,7 +2513,7 @@ class _PillRow extends StatelessWidget {
                     iconColor: isDark
                         ? MemoFlowPalette.reviewChipOrangeDark
                         : MemoFlowPalette.reviewChipOrangeLight,
-                    label: context.tr(zh: '随机漫步', en: 'Random Review'),
+                    label: context.t.strings.legacy.msg_random_review,
                     onPressed: onDailyReview,
                     backgroundColor: bgColor,
                     borderColor: borderColor,
@@ -2662,7 +2610,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.note_outlined,
-              label: context.tr(zh: '全部笔记', en: 'All memos'),
+              label: context.t.strings.legacy.msg_all_memos_2,
               selected: !hasSelection,
               onTap: () => Navigator.of(
                 context,
@@ -2674,7 +2622,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
             addRow(
               _TitleMenuItem(
                 icon: Icons.info_outline,
-                label: context.tr(zh: '暂无快捷筛选', en: 'No shortcuts'),
+                label: context.t.strings.legacy.msg_no_shortcuts,
                 enabled: false,
                 textColor: textMuted,
                 iconColor: textMuted,
@@ -2685,7 +2633,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
               final shortcut = shortcuts[i];
               final label = shortcut.title.trim().isNotEmpty
                   ? shortcut.title.trim()
-                  : context.tr(zh: '未命名', en: 'Untitled');
+                  : context.t.strings.legacy.msg_untitled;
               addRow(
                 _TitleMenuItem(
                   icon: _shortcutIcons[i % _shortcutIcons.length],
@@ -2702,7 +2650,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.add_circle_outline,
-              label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
+              label: context.t.strings.legacy.msg_shortcut,
               accent: true,
               onTap: () => Navigator.of(
                 context,
@@ -2714,7 +2662,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.note_outlined,
-              label: context.tr(zh: '全部笔记', en: 'All memos'),
+              label: context.t.strings.legacy.msg_all_memos_2,
               selected:
                   selectedShortcutId == null || selectedShortcutId!.isEmpty,
               onTap: () => Navigator.of(
@@ -2725,7 +2673,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.hourglass_bottom,
-              label: context.tr(zh: '加载中...', en: 'Loading...'),
+              label: context.t.strings.legacy.msg_loading,
               enabled: false,
               textColor: textMuted,
               iconColor: textMuted,
@@ -2734,7 +2682,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.add_circle_outline,
-              label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
+              label: context.t.strings.legacy.msg_shortcut,
               accent: true,
               onTap: () => Navigator.of(
                 context,
@@ -2746,7 +2694,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.note_outlined,
-              label: context.tr(zh: '全部笔记', en: 'All memos'),
+              label: context.t.strings.legacy.msg_all_memos_2,
               selected:
                   selectedShortcutId == null || selectedShortcutId!.isEmpty,
               onTap: () => Navigator.of(
@@ -2766,7 +2714,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
           addRow(
             _TitleMenuItem(
               icon: Icons.add_circle_outline,
-              label: context.tr(zh: '新建快捷筛选', en: 'New shortcut'),
+              label: context.t.strings.legacy.msg_shortcut,
               accent: true,
               onTap: () => Navigator.of(
                 context,
@@ -2781,7 +2729,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
       addRow(
         _TitleMenuItem(
           icon: Icons.swap_horiz,
-          label: context.tr(zh: '切换账号', en: 'Switch account'),
+          label: context.t.strings.legacy.msg_switch_account,
           onTap: () => Navigator.of(
             context,
           ).pop(const _TitleMenuAction.openAccountSwitcher()),
@@ -2944,7 +2892,7 @@ class _SearchLandingState extends State<_SearchLanding> {
           Row(
             children: [
               Text(
-                context.tr(zh: '最近搜索', en: 'Recent searches'),
+                context.t.strings.legacy.msg_recent_searches,
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -2964,7 +2912,7 @@ class _SearchLandingState extends State<_SearchLanding> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                context.tr(zh: '暂无搜索记录', en: 'No search history'),
+                context.t.strings.legacy.msg_no_search_history,
                 style: TextStyle(fontSize: 12, color: textMuted),
               ),
             )
@@ -3001,7 +2949,7 @@ class _SearchLandingState extends State<_SearchLanding> {
           Row(
             children: [
               Text(
-                context.tr(zh: '推荐标签', en: 'Suggested tags'),
+                context.t.strings.legacy.msg_suggested_tags,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -3024,8 +2972,8 @@ class _SearchLandingState extends State<_SearchLanding> {
                   ),
                   label: Text(
                     _showAllTags
-                        ? context.tr(zh: '收起', en: 'Collapse')
-                        : context.tr(zh: '展开', en: 'Show all'),
+                        ? context.t.strings.legacy.msg_collapse
+                        : context.t.strings.legacy.msg_show_all,
                     style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                 ),
@@ -3034,7 +2982,7 @@ class _SearchLandingState extends State<_SearchLanding> {
           const SizedBox(height: 10),
           if (tags.isEmpty)
             Text(
-              context.tr(zh: '暂无标签', en: 'No tags'),
+              context.t.strings.legacy.msg_no_tags,
               style: TextStyle(fontSize: 12, color: textMuted),
             )
           else
@@ -3080,10 +3028,7 @@ class _SearchLandingState extends State<_SearchLanding> {
           const SizedBox(height: 28),
           Center(
             child: Text(
-              context.tr(
-                zh: '您可以搜索标题、内容或标签',
-                en: 'Search by title, content, or tags',
-              ),
+              context.t.strings.legacy.msg_search_title_content_tags,
               style: TextStyle(fontSize: 12, color: textMuted),
             ),
           ),
@@ -3167,7 +3112,7 @@ class _TagFilterBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            context.tr(zh: '标签筛选', en: 'Filter by tags'),
+            context.t.strings.legacy.msg_filter_tags,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -3180,7 +3125,7 @@ class _TagFilterBar extends StatelessWidget {
             runSpacing: 10,
             children: [
               buildChip(
-                context.tr(zh: '全部', en: 'All'),
+                context.t.strings.legacy.msg_all_2,
                 selected: normalizedSelected.isEmpty,
                 onTap: () => onSelectTag(null),
               ),
@@ -3389,7 +3334,7 @@ class _MemoCardState extends State<_MemoCard> {
           .trim();
       return cleaned.isEmpty ? trimmed : cleaned;
     }
-    return '$main\n\n${trByLanguage(language: language, zh: '引用 $quoteLines 行', en: 'Quoted $quoteLines lines')}';
+    return '$main\n\n${trByLanguageKey(language: language, key: 'legacy.msg_quoted_lines', params: {'quoteLines': quoteLines})}';
   }
 
   @override
@@ -3471,7 +3416,7 @@ class _MemoCardState extends State<_MemoCard> {
                 Icon(Icons.push_pin, size: 12, color: pinColor),
                 const SizedBox(width: 4),
                 Text(
-                  context.tr(zh: '置顶', en: 'Pinned'),
+                  context.t.strings.legacy.msg_pinned,
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -3648,8 +3593,8 @@ class _MemoCardState extends State<_MemoCard> {
                   ),
                   child: Text(
                     _expanded
-                        ? context.tr(zh: '收起', en: 'Collapse')
-                        : context.tr(zh: '展开', en: 'Expand'),
+                        ? context.t.strings.legacy.msg_collapse
+                        : context.t.strings.legacy.msg_expand,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -3785,7 +3730,7 @@ class _MemoCardState extends State<_MemoCard> {
                             textColor: textMain.withValues(
                               alpha: isDark ? 0.4 : 0.5,
                             ),
-                            onTap: () => openAmapLocation(memo.location!),
+                            onTap: () => openAmapLocation(context, memo.location!),
                           ),
                         ],
                       ],
@@ -3844,10 +3789,7 @@ class _MemoCardState extends State<_MemoCard> {
                               height: 32,
                               child: Center(
                                 child: PopupMenuButton<_MemoCardAction>(
-                                  tooltip: context.tr(
-                                    zh: '\u66f4\u591a',
-                                    en: 'More',
-                                  ),
+                                  tooltip: context.t.strings.legacy.msg_more,
                                   padding: EdgeInsets.zero,
                                   icon: Icon(
                                     Icons.more_horiz,
@@ -3867,19 +3809,13 @@ class _MemoCardState extends State<_MemoCard> {
                                           PopupMenuItem(
                                             value: _MemoCardAction.restore,
                                             child: Text(
-                                              context.tr(
-                                                zh: '\u6062\u590d',
-                                                en: 'Restore',
-                                              ),
+                                              context.t.strings.legacy.msg_restore,
                                             ),
                                           ),
                                           PopupMenuItem(
                                             value: _MemoCardAction.delete,
                                             child: Text(
-                                              context.tr(
-                                                zh: '删除',
-                                                en: 'Delete',
-                                              ),
+                                              context.t.strings.legacy.msg_delete,
                                               style: TextStyle(
                                                 color: deleteColor,
                                                 fontWeight: FontWeight.w600,
@@ -3892,51 +3828,33 @@ class _MemoCardState extends State<_MemoCard> {
                                             value: _MemoCardAction.togglePinned,
                                             child: Text(
                                               memo.pinned
-                                                  ? context.tr(
-                                                      zh: '取消置顶',
-                                                      en: 'Unpin',
-                                                    )
-                                                  : context.tr(
-                                                      zh: '置顶',
-                                                      en: 'Pin',
-                                                    ),
+                                                  ? context.t.strings.legacy.msg_unpin
+                                                  : context.t.strings.legacy.msg_pin,
                                             ),
                                           ),
                                           PopupMenuItem(
                                             value: _MemoCardAction.edit,
                                             child: Text(
-                                              context.tr(
-                                                zh: '\u7f16\u8f91',
-                                                en: 'Edit',
-                                              ),
+                                              context.t.strings.legacy.msg_edit,
                                             ),
                                           ),
                                           PopupMenuItem(
                                             value: _MemoCardAction.reminder,
                                             child: Text(
-                                              context.tr(
-                                                zh: '提醒',
-                                                en: 'Reminder',
-                                              ),
+                                              context.t.strings.legacy.msg_reminder,
                                             ),
                                           ),
                                           PopupMenuItem(
                                             value: _MemoCardAction.archive,
                                             child: Text(
-                                              context.tr(
-                                                zh: '归档',
-                                                en: 'Archive',
-                                              ),
+                                              context.t.strings.legacy.msg_archive,
                                             ),
                                           ),
                                           const PopupMenuDivider(),
                                           PopupMenuItem(
                                             value: _MemoCardAction.delete,
                                             child: Text(
-                                              context.tr(
-                                                zh: '删除',
-                                                en: 'Delete',
-                                              ),
+                                              context.t.strings.legacy.msg_delete,
                                               style: TextStyle(
                                                 color: deleteColor,
                                                 fontWeight: FontWeight.w600,
@@ -4133,7 +4051,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           children: [
             if (referencing.isNotEmpty)
               _RelationGroup(
-                title: context.tr(zh: '\u5f15\u7528\u4e86', en: 'References'),
+                title: context.t.strings.legacy.msg_references,
                 items: referencing,
                 isDark: isDark,
                 showHeader: false,
@@ -4144,10 +4062,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
               const SizedBox(height: 2),
             if (referencedBy.isNotEmpty)
               _RelationGroup(
-                title: context.tr(
-                  zh: '\u88ab\u5f15\u7528',
-                  en: 'Referenced by',
-                ),
+                title: context.t.strings.legacy.msg_referenced,
                 items: referencedBy,
                 isDark: isDark,
                 showHeader: false,
@@ -4184,10 +4099,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           Icon(Icons.link, size: 14, color: textMuted),
           const SizedBox(width: 6),
           Text(
-            context.tr(
-              zh: '\u53cc\u94fe\u52a0\u8f7d\u4e2d',
-              en: 'Loading links...',
-            ),
+            context.t.strings.legacy.msg_loading_links,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -4217,7 +4129,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           Icon(Icons.link_off, size: 14, color: textMuted),
           const SizedBox(width: 6),
           Text(
-            context.tr(zh: '\u6682\u65e0\u53cc\u94fe', en: 'No links'),
+            context.t.strings.legacy.msg_no_links,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -4278,10 +4190,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                context.tr(
-                  zh: '\u52a0\u8f7d\u5931\u8d25\uff1a$e',
-                  en: 'Failed to load: $e',
-                ),
+                context.t.strings.legacy.msg_failed_load_4(e: e),
               ),
             ),
           );
@@ -4295,10 +4204,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(
-              zh: '\u672c\u5730\u6682\u65e0\u8be5\u7b14\u8bb0',
-              en: 'Memo not found locally',
-            ),
+            context.t.strings.legacy.msg_memo_not_found_locally,
           ),
         ),
       );
@@ -4344,7 +4250,7 @@ class _RelationSummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = context.tr(zh: '\u53cc\u94fe', en: 'Links');
+    final label = context.t.strings.legacy.msg_links;
     final decoration = boxed
         ? BoxDecoration(
             color: bg,
@@ -4613,7 +4519,7 @@ class _TaskProgressBarState extends State<_TaskProgressBar>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${context.tr(zh: '完成进度', en: 'Progress')} (${widget.checked}/${widget.total})',
+                  '${context.t.strings.legacy.msg_progress} (${widget.checked}/${widget.total})',
                   style: TextStyle(
                     fontSize: 12,
                     color: textColor,
@@ -4752,7 +4658,7 @@ class _BackToTopButtonState extends State<_BackToTopButton> {
           curve: Curves.easeOutCubic,
           child: Semantics(
             button: true,
-            label: context.tr(zh: '回到顶部', en: 'Back to top'),
+            label: context.t.strings.legacy.msg_back_top,
             child: GestureDetector(
               onTapDown: (_) {
                 if (widget.hapticsEnabled) {

@@ -14,6 +14,7 @@ import '../../state/local_library_provider.dart';
 import '../../state/webdav_backup_provider.dart';
 import '../../state/webdav_settings_provider.dart';
 import '../../state/webdav_sync_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class WebDavSyncScreen extends ConsumerStatefulWidget {
   const WebDavSyncScreen({super.key});
@@ -124,21 +125,21 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
           shrinkWrap: true,
           children: [
             ListTile(
-              title: Text(context.tr(zh: '手动', en: 'Manual')),
+              title: Text(context.t.strings.legacy.msg_manual),
               trailing: _backupSchedule == WebDavBackupSchedule.manual
                   ? const Icon(Icons.check)
                   : null,
               onTap: () => context.safePop(WebDavBackupSchedule.manual),
             ),
             ListTile(
-              title: Text(context.tr(zh: '每天', en: 'Daily')),
+              title: Text(context.t.strings.legacy.msg_daily),
               trailing: _backupSchedule == WebDavBackupSchedule.daily
                   ? const Icon(Icons.check)
                   : null,
               onTap: () => context.safePop(WebDavBackupSchedule.daily),
             ),
             ListTile(
-              title: Text(context.tr(zh: '每周', en: 'Weekly')),
+              title: Text(context.t.strings.legacy.msg_weekly),
               trailing: _backupSchedule == WebDavBackupSchedule.weekly
                   ? const Icon(Icons.check)
                   : null,
@@ -278,7 +279,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '备份密码', en: 'Backup password')),
+            title: Text(context.t.strings.legacy.msg_backup_password),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -289,10 +290,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                       ? TextInputAction.next
                       : TextInputAction.done,
                   decoration: InputDecoration(
-                    hintText: context.tr(
-                      zh: '请输入备份密码',
-                      en: 'Enter backup password',
-                    ),
+                    hintText: context.t.strings.legacy.msg_enter_backup_password,
                   ),
                   onChanged: (value) => password = value,
                   onFieldSubmitted: (_) {
@@ -308,10 +306,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                     obscureText: true,
                     textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
-                      hintText: context.tr(
-                        zh: '再次输入确认',
-                        en: 'Confirm password',
-                      ),
+                      hintText: context.t.strings.legacy.msg_confirm_password_2,
                     ),
                     onChanged: (value) => confirmPassword = value,
                     onFieldSubmitted: (_) {
@@ -328,14 +323,14 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                   FocusScope.of(context).unfocus();
                   context.safePop(false);
                 },
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () {
                   FocusScope.of(context).unfocus();
                   context.safePop(true);
                 },
-                child: Text(context.tr(zh: '确认', en: 'Confirm')),
+                child: Text(context.t.strings.legacy.msg_confirm),
               ),
             ],
           ),
@@ -352,7 +347,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '两次密码不一致', en: 'Passwords do not match'),
+            context.t.strings.legacy.msg_passwords_not_match,
           ),
         ),
       );
@@ -404,10 +399,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(
-              zh: '仅本地库可恢复备份',
-              en: 'Restore is only available for local libraries.',
-            ),
+            context.t.strings.legacy.msg_restore_only_available_local_libraries,
           ),
         ),
       );
@@ -433,7 +425,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     if (snapshots.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '暂无备份记录', en: 'No backups found')),
+          content: Text(context.t.strings.legacy.msg_no_backups_found),
         ),
       );
       return;
@@ -462,7 +454,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Text(
-                    context.tr(zh: '选择备份', en: 'Select backup'),
+                    context.t.strings.legacy.msg_select_backup,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -492,7 +484,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                      child: Text(context.t.strings.legacy.msg_cancel_2),
                     ),
                   ),
                 ),
@@ -508,21 +500,18 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '恢复备份？', en: 'Restore backup?')),
+            title: Text(context.t.strings.legacy.msg_restore_backup),
             content: Text(
-              context.tr(
-                zh: '恢复会覆盖本地库文件，并重新导入数据库。此操作无法撤销。',
-                en: 'Restoring will overwrite local library files and rebuild the database. This cannot be undone.',
-              ),
+              context.t.strings.legacy.msg_restoring_overwrite_local_library_files_rebuild,
             ),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '确认', en: 'Confirm')),
+                child: Text(context.t.strings.legacy.msg_confirm),
               ),
             ],
           ),
@@ -557,14 +546,14 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     }
     showTopToast(
       context,
-      context.tr(zh: '恢复完成', en: 'Restore completed'),
+      context.t.strings.legacy.msg_restore_completed,
     );
   }
 
   String _formatBackupError(Object error) {
     final raw = error.toString().trim();
     if (raw.isEmpty) {
-      return context.tr(zh: '备份失败', en: 'Backup failed');
+      return context.t.strings.legacy.msg_backup_failed;
     }
     const prefix = 'Bad state:';
     if (raw.startsWith(prefix)) {
@@ -603,9 +592,9 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
 
   String _backupScheduleLabel(WebDavBackupSchedule schedule) {
     return switch (schedule) {
-      WebDavBackupSchedule.manual => context.tr(zh: '手动', en: 'Manual'),
-      WebDavBackupSchedule.daily => context.tr(zh: '每天', en: 'Daily'),
-      WebDavBackupSchedule.weekly => context.tr(zh: '每周', en: 'Weekly'),
+      WebDavBackupSchedule.manual => context.t.strings.legacy.msg_manual,
+      WebDavBackupSchedule.daily => context.t.strings.legacy.msg_daily,
+      WebDavBackupSchedule.weekly => context.t.strings.legacy.msg_weekly,
     };
   }
 
@@ -626,15 +615,15 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     final serverUrl = _serverUrlController.text.trim();
     final isHttp = serverUrl.startsWith('http://');
     final connectionSubtitle = serverUrl.isEmpty
-        ? context.tr(zh: '未设置', en: 'Not set')
+        ? context.t.strings.legacy.msg_not_set
         : serverUrl;
     final retentionText = _backupRetentionController.text.trim();
     final retentionValue = retentionText.isEmpty ? '5' : retentionText;
     final backupSubtitle = !backupAvailable
-        ? context.tr(zh: '仅本地库可用', en: 'Local library only')
+        ? context.t.strings.legacy.msg_local_library_only
         : _backupEnabled
         ? '${_backupScheduleLabel(_backupSchedule)} \u00b7 $retentionValue'
-        : context.tr(zh: '未启用', en: 'Disabled');
+        : context.t.strings.legacy.msg_disabled;
 
     return Scaffold(
       backgroundColor: bg,
@@ -644,15 +633,15 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: 'WebDAV 同步', en: 'WebDAV Sync')),
+        title: Text(context.t.strings.legacy.msg_webdav_sync),
         centerTitle: false,
         actions: [
           IconButton(
-            tooltip: context.tr(zh: '同步', en: 'Sync'),
+            tooltip: context.t.strings.legacy.msg_sync,
             onPressed: (!_enabled || syncStatus.syncing) ? null : _syncNow,
             icon: syncStatus.syncing
                 ? const SizedBox.square(
@@ -685,18 +674,15 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                 card: card,
                 textMain: textMain,
                 textMuted: textMuted,
-                label: context.tr(zh: '启用 WebDAV 同步', en: 'Enable WebDAV sync'),
-                description: context.tr(
-                  zh: '保持设备间数据一致。',
-                  en: 'Keep data consistent across devices.',
-                ),
+                label: context.t.strings.legacy.msg_enable_webdav_sync,
+                description: context.t.strings.legacy.msg_keep_data_consistent_across_devices,
                 value: _enabled,
                 onChanged: _setEnabled,
               ),
               const SizedBox(height: 14),
               _NavCard(
                 card: card,
-                title: context.tr(zh: '服务器连接', en: 'Server connection'),
+                title: context.t.strings.legacy.msg_server_connection,
                 subtitle: connectionSubtitle,
                 icon: Icons.link_rounded,
                 onTap: _openConnectionSettings,
@@ -704,7 +690,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               const SizedBox(height: 12),
               _NavCard(
                 card: card,
-                title: context.tr(zh: '自动备份', en: 'Auto backup'),
+                title: context.t.strings.legacy.msg_auto_backup,
                 subtitle: backupSubtitle,
                 icon: Icons.cloud_upload_outlined,
                 onTap: _openBackupSettings,
@@ -712,16 +698,13 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               if (isHttp || _ignoreTlsErrors) ...[
                 const SizedBox(height: 12),
                 _WarningCard(
-                  text: context.tr(
-                    zh: '为了安全，建议使用 HTTPS，且避免忽略证书校验。',
-                    en: 'Use HTTPS and avoid ignoring TLS errors to protect credentials.',
-                  ),
+                  text: context.t.strings.legacy.msg_use_https_avoid_ignoring_tls_errors,
                   isDark: isDark,
                 ),
               ],
               const SizedBox(height: 16),
               _SyncStatusLine(
-                label: context.tr(zh: '上次同步', en: 'Last sync'),
+                label: context.t.strings.legacy.msg_last_sync,
                 value: _formatTime(syncStatus.lastSuccessAt),
                 syncing: syncStatus.syncing,
                 textMuted: textMuted,
@@ -1276,18 +1259,18 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '服务器连接', en: 'Server connection')),
+        title: Text(context.t.strings.legacy.msg_server_connection),
         centerTitle: false,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           Text(
-            context.tr(zh: '基础设置', en: 'Basic settings'),
+            context.t.strings.legacy.msg_basic_settings,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1300,7 +1283,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
             divider: divider,
             children: [
               _InputRow(
-                label: context.tr(zh: '服务器地址', en: 'Server URL'),
+                label: context.t.strings.legacy.msg_server_url,
                 hint: 'https://example.com/dav',
                 controller: widget.serverUrlController,
                 textMain: textMain,
@@ -1310,8 +1293,8 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 onEditingComplete: widget.onServerUrlEditingComplete,
               ),
               _InputRow(
-                label: context.tr(zh: '用户名', en: 'Username'),
-                hint: context.tr(zh: '请输入用户名', en: 'Enter username'),
+                label: context.t.strings.legacy.msg_username,
+                hint: context.t.strings.legacy.msg_enter_username,
                 controller: widget.usernameController,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -1323,7 +1306,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                   vertical: 6,
                 ),
                 title: Text(
-                  context.tr(zh: '密码', en: 'Password'),
+                  context.t.strings.legacy.msg_password,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: textMain,
@@ -1338,7 +1321,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                     fontWeight: FontWeight.w500,
                   ),
                   decoration: InputDecoration(
-                    hintText: context.tr(zh: '请输入密码', en: 'Enter password'),
+                    hintText: context.t.strings.legacy.msg_enter_password_2,
                     hintStyle: TextStyle(
                       color: textMuted.withValues(alpha: 0.6),
                       fontSize: 12,
@@ -1362,7 +1345,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            context.tr(zh: '认证设置', en: 'Auth settings'),
+            context.t.strings.legacy.msg_auth_settings,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1375,7 +1358,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
             divider: divider,
             children: [
               _SelectRow(
-                label: context.tr(zh: '认证方式', en: 'Auth mode'),
+                label: context.t.strings.legacy.msg_auth_mode,
                 value: _authMode.name.toUpperCase(),
                 textMain: textMain,
                 textMuted: textMuted,
@@ -1385,7 +1368,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            context.tr(zh: '高级与安全', en: 'Advanced & security'),
+            context.t.strings.legacy.msg_advanced_security,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1398,7 +1381,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
             divider: divider,
             children: [
               _ToggleRow(
-                label: context.tr(zh: '忽略证书校验', en: 'Ignore TLS errors'),
+                label: context.t.strings.legacy.msg_ignore_tls_errors,
                 value: _ignoreTlsErrors,
                 textMain: textMain,
                 onChanged: (v) {
@@ -1407,7 +1390,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 },
               ),
               _InputRow(
-                label: context.tr(zh: '根路径', en: 'Root path'),
+                label: context.t.strings.legacy.msg_root_path,
                 hint: '/notes',
                 controller: widget.rootPathController,
                 textMain: textMain,
@@ -1510,21 +1493,21 @@ class _WebDavBackupSettingsScreenState
           shrinkWrap: true,
           children: [
             ListTile(
-              title: Text(context.tr(zh: '手动', en: 'Manual')),
+              title: Text(context.t.strings.legacy.msg_manual),
               trailing: _schedule == WebDavBackupSchedule.manual
                   ? const Icon(Icons.check)
                   : null,
               onTap: () => context.safePop(WebDavBackupSchedule.manual),
             ),
             ListTile(
-              title: Text(context.tr(zh: '每天', en: 'Daily')),
+              title: Text(context.t.strings.legacy.msg_daily),
               trailing: _schedule == WebDavBackupSchedule.daily
                   ? const Icon(Icons.check)
                   : null,
               onTap: () => context.safePop(WebDavBackupSchedule.daily),
             ),
             ListTile(
-              title: Text(context.tr(zh: '每周', en: 'Weekly')),
+              title: Text(context.t.strings.legacy.msg_weekly),
               trailing: _schedule == WebDavBackupSchedule.weekly
                   ? const Icon(Icons.check)
                   : null,
@@ -1541,9 +1524,9 @@ class _WebDavBackupSettingsScreenState
 
   String _scheduleLabel(WebDavBackupSchedule schedule, BuildContext context) {
     return switch (schedule) {
-      WebDavBackupSchedule.manual => context.tr(zh: '手动', en: 'Manual'),
-      WebDavBackupSchedule.daily => context.tr(zh: '每天', en: 'Daily'),
-      WebDavBackupSchedule.weekly => context.tr(zh: '每周', en: 'Weekly'),
+      WebDavBackupSchedule.manual => context.t.strings.legacy.msg_manual,
+      WebDavBackupSchedule.daily => context.t.strings.legacy.msg_daily,
+      WebDavBackupSchedule.weekly => context.t.strings.legacy.msg_weekly,
     };
   }
 
@@ -1573,18 +1556,18 @@ class _WebDavBackupSettingsScreenState
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '备份设置', en: 'Backup settings')),
+        title: Text(context.t.strings.legacy.msg_backup_settings),
         centerTitle: false,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           Text(
-            context.tr(zh: '本地库备份', en: 'Local library backup'),
+            context.t.strings.legacy.msg_local_library_backup,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1597,16 +1580,13 @@ class _WebDavBackupSettingsScreenState
             divider: divider,
             children: [
               _ToggleRow(
-                label: context.tr(
-                  zh: '启用本地库备份',
-                  en: 'Enable local library backup',
-                ),
+                label: context.t.strings.legacy.msg_enable_local_library_backup,
                 value: _backupEnabled,
                 textMain: textMain,
                 onChanged: disabled ? null : _handleBackupToggle,
               ),
               _ToggleRow(
-                label: context.tr(zh: '记住密码', en: 'Remember password'),
+                label: context.t.strings.legacy.msg_remember_password,
                 value: _rememberPassword,
                 textMain: textMain,
                 onChanged: disabled ? null : _handleRememberPassword,
@@ -1616,13 +1596,13 @@ class _WebDavBackupSettingsScreenState
           if (disabled) ...[
             const SizedBox(height: 6),
             Text(
-              context.tr(zh: '仅本地库可用', en: 'Local library only'),
+              context.t.strings.legacy.msg_local_library_only,
               style: TextStyle(fontSize: 12, color: textMuted),
             ),
           ],
           const SizedBox(height: 16),
           Text(
-            context.tr(zh: '同步参数', en: 'Sync parameters'),
+            context.t.strings.legacy.msg_sync_parameters,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1635,14 +1615,14 @@ class _WebDavBackupSettingsScreenState
             divider: divider,
             children: [
               _SelectRow(
-                label: context.tr(zh: '备份频率', en: 'Backup schedule'),
+                label: context.t.strings.legacy.msg_backup_schedule,
                 value: _scheduleLabel(_schedule, context),
                 textMain: textMain,
                 textMuted: textMuted,
                 onTap: _pickSchedule,
               ),
               _InputRow(
-                label: context.tr(zh: '版本保留数量', en: 'Retention'),
+                label: context.t.strings.legacy.msg_retention,
                 hint: '5',
                 controller: widget.backupRetentionController,
                 textMain: textMain,
@@ -1654,10 +1634,7 @@ class _WebDavBackupSettingsScreenState
           ),
           const SizedBox(height: 10),
           Text(
-            context.tr(
-              zh: '增加保留数量会占用更多存储空间，建议定期清理旧版本。',
-              en: 'Keeping more versions uses more storage. Consider cleaning old versions.',
-            ),
+            context.t.strings.legacy.msg_keeping_more_versions_uses_more_storage,
             style: TextStyle(fontSize: 12, height: 1.4, color: textMuted),
           ),
           if (backupStatus.lastError != null &&
@@ -1688,8 +1665,8 @@ class _WebDavBackupSettingsScreenState
                     : const Icon(Icons.backup_outlined),
                 label: Text(
                   backupStatus.running
-                      ? context.tr(zh: '备份中…', en: 'Backing up…')
-                      : context.tr(zh: '开始备份', en: 'Start backup'),
+                      ? context.t.strings.legacy.msg_backing
+                      : context.t.strings.legacy.msg_start_backup,
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: MemoFlowPalette.primary,
@@ -1713,8 +1690,8 @@ class _WebDavBackupSettingsScreenState
                     : const Icon(Icons.cloud_download_outlined),
                 label: Text(
                   backupStatus.restoring
-                      ? context.tr(zh: '恢复中…', en: 'Restoring…')
-                      : context.tr(zh: '从云端恢复', en: 'Restore from cloud'),
+                      ? context.t.strings.legacy.msg_restoring
+                      : context.t.strings.legacy.msg_restore_cloud,
                 ),
                 style: OutlinedButton.styleFrom(
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),

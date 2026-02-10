@@ -1,21 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../i18n/strings.g.dart';
 
 class SettingsPlaceholderScreen extends StatelessWidget {
   const SettingsPlaceholderScreen({
     super.key,
-    required this.titleZh,
-    required this.titleEn,
-    required this.messageZh,
-    required this.messageEn,
+    required this.titleKey,
+    required this.messageKey,
   });
 
-  final String titleZh;
-  final String titleEn;
-  final String messageZh;
-  final String messageEn;
+  final String titleKey;
+  final String messageKey;
 
   @override
   Widget build(BuildContext context) {
@@ -25,8 +21,8 @@ class SettingsPlaceholderScreen extends StatelessWidget {
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
 
-    final title = context.tr(zh: titleZh, en: titleEn);
-    final message = context.tr(zh: messageZh, en: messageEn);
+    final title = context.t['strings.legacy.$titleKey'] as String;
+    final message = context.t['strings.legacy.$messageKey'] as String;
 
     return Scaffold(
       backgroundColor: bg,
@@ -36,7 +32,7 @@ class SettingsPlaceholderScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: 'Back', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back_2,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),

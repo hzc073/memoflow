@@ -25,6 +25,7 @@ import 'logging_provider.dart';
 import 'preferences_provider.dart';
 import 'reminder_settings_provider.dart';
 import 'session_provider.dart';
+import '../i18n/strings.g.dart';
 
 final reminderSchedulerProvider = Provider<ReminderScheduler>((ref) {
   final scheduler = ReminderScheduler(ref);
@@ -452,8 +453,8 @@ class ReminderScheduler {
 
   Future<AndroidNotificationChannel> _ensureChannel(ReminderSettings settings) async {
     final language = _ref.read(appPreferencesProvider).language;
-    final name = trByLanguage(language: language, zh: '笔记提醒', en: 'Memo Reminders');
-    final description = trByLanguage(language: language, zh: 'MemoFlow 本地提醒', en: 'MemoFlow local reminders');
+    final name = trByLanguageKey(language: language, key: 'legacy.msg_memo_reminders');
+    final description = trByLanguageKey(language: language, key: 'legacy.msg_memoflow_local_reminders');
     final channelId = _channelIdFor(settings);
 
     AndroidNotificationSound? sound;
@@ -615,7 +616,7 @@ class ReminderScheduler {
     if (row == null) {
       _logWarn('tap_memo_missing', context: {'memo': memoToken});
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '笔记不存在', en: 'Memo not found'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_memo_not_found)),
       );
       navigator.pushAndRemoveUntil(
         MaterialPageRoute<void>(

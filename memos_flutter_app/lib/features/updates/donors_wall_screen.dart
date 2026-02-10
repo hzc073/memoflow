@@ -6,6 +6,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../state/update_config_provider.dart';
+import '../../i18n/strings.g.dart';
 
 const String _defaultAvatarAsset = 'assets/images/default_avatar.webp';
 
@@ -41,11 +42,11 @@ class _DonorsWallScreenState extends ConsumerState<DonorsWallScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '贡献与致谢', en: 'Contributors')),
+        title: Text(context.t.strings.legacy.msg_contributors),
         centerTitle: false,
       ),
       body: Stack(
@@ -122,7 +123,7 @@ class _EmptyDonorsState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            context.tr(zh: '暂无致谢名单', en: 'No contributors yet'),
+            context.t.strings.legacy.msg_no_contributors_yet,
             style: TextStyle(fontSize: 13, color: textMuted),
           ),
         ],
@@ -169,7 +170,7 @@ class _DonorTile extends StatelessWidget {
           _DonorAvatar(url: donor.avatar, size: 54, mutedColor: textMuted),
           const SizedBox(height: 10),
           Text(
-            donor.name.isEmpty ? context.tr(zh: '匿名', en: 'Anonymous') : donor.name,
+            donor.name.isEmpty ? context.t.strings.legacy.msg_anonymous : donor.name,
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,

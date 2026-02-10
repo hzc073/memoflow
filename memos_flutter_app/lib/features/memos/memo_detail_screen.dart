@@ -34,6 +34,7 @@ import 'memo_markdown.dart';
 import 'memo_location_line.dart';
 import 'memos_list_screen.dart';
 import 'memo_video_grid.dart';
+import '../../i18n/strings.g.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
   const MemoDetailScreen({
@@ -107,13 +108,13 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '\u64cd\u4f5c\u5931\u8d25\uff1a$e', en: 'Action failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_action_failed(e: e))),
       );
       return;
     }
     if (!mounted) return;
     if (wasArchived) {
-      final message = context.tr(zh: '\u5df2\u6062\u590d', en: 'Restored');
+      final message = context.t.strings.legacy.msg_restored;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(
           builder: (_) => MemosListScreen(
@@ -150,14 +151,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '删除 Memo？', en: 'Delete memo?')),
-            content: Text(context.tr(
-              zh: '本地会立即移除，联网后将同步删除服务器内容。',
-              en: 'It will be removed locally now and deleted on the server when online.',
-            )),
+            title: Text(context.t.strings.legacy.msg_delete_memo),
+            content: Text(context.t.strings.legacy.msg_removed_locally_now_deleted_server_when),
             actions: [
-              TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-              FilledButton(onPressed: () => context.safePop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
+              TextButton(onPressed: () => context.safePop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
+              FilledButton(onPressed: () => context.safePop(true), child: Text(context.t.strings.legacy.msg_delete)),
             ],
           ),
         ) ??
@@ -427,7 +425,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '播放失败：$e', en: 'Playback failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_playback_failed_2(e: e))),
       );
     }
   }
@@ -511,7 +509,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           MemoLocationLine(
             location: memo.location!,
             textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            onTap: () => openAmapLocation(memo.location!),
+            onTap: () => openAmapLocation(context, memo.location!),
             fontSize: 12,
           ),
         ],
@@ -559,11 +557,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                         unawaited(ref.read(syncControllerProvider.notifier).syncNow());
                         showTopToast(
                           context,
-                          context.tr(zh: '已开始重试同步', en: 'Retry started'),
+                          context.t.strings.legacy.msg_retry_started,
                         );
                       },
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: Text(context.tr(zh: '重试同步', en: 'Retry sync')),
+                      label: Text(context.t.strings.legacy.msg_retry_sync),
                     ),
                     const SizedBox(width: 8),
                     TextButton.icon(
@@ -573,11 +571,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                         if (!context.mounted) return;
                         showTopToast(
                           context,
-                          context.tr(zh: '已复制错误信息', en: 'Error copied'),
+                          context.t.strings.legacy.msg_error_copied,
                         );
                       },
                       icon: const Icon(Icons.copy, size: 18),
-                      label: Text(context.tr(zh: '复制', en: 'Copy')),
+                      label: Text(context.t.strings.legacy.msg_copy),
                     ),
                   ],
                 ),
@@ -595,13 +593,13 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: Text(isArchived ? context.tr(zh: '已归档', en: 'Archived') : context.tr(zh: '笔记', en: 'Memo')),
+        title: Text(isArchived ? context.t.strings.legacy.msg_archived : context.t.strings.legacy.msg_memo),
         actions: widget.readOnly
             ? null
             : [
                 if (!isArchived)
                   IconButton(
-                    tooltip: context.tr(zh: '\u7f16\u8f91', en: 'Edit'),
+                    tooltip: context.t.strings.legacy.msg_edit,
                     onPressed: () {
                       maybeHaptic();
                       unawaited(_edit());
@@ -610,7 +608,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                   ),
                 if (!isArchived)
                   IconButton(
-                    tooltip: memo.pinned ? context.tr(zh: '\u53d6\u6d88\u7f6e\u9876', en: 'Unpin') : context.tr(zh: '\u7f6e\u9876', en: 'Pin'),
+                    tooltip: memo.pinned ? context.t.strings.legacy.msg_unpin : context.t.strings.legacy.msg_pin,
                     onPressed: () {
                       maybeHaptic();
                       unawaited(_togglePinned());
@@ -618,7 +616,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                     icon: Icon(memo.pinned ? Icons.push_pin : Icons.push_pin_outlined),
                   ),
                 IconButton(
-                  tooltip: isArchived ? context.tr(zh: '\u6062\u590d', en: 'Restore') : context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+                  tooltip: isArchived ? context.t.strings.legacy.msg_restore : context.t.strings.legacy.msg_archive,
                   onPressed: () {
                     maybeHaptic();
                     unawaited(_toggleArchived());
@@ -626,7 +624,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                   icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
                 ),
                 IconButton(
-                  tooltip: context.tr(zh: '\u5220\u9664', en: 'Delete'),
+                  tooltip: context.t.strings.legacy.msg_delete,
                   onPressed: () {
                     maybeHaptic();
                     unawaited(_delete());
@@ -664,7 +662,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                 _MemoRelationsSection(memoUid: memo.uid),
                 if (nonImageAttachments.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Text(context.tr(zh: '附件', en: 'Attachments'), style: Theme.of(context).textTheme.titleMedium),
+                  Text(context.t.strings.legacy.msg_attachments, style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -875,10 +873,10 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
       final creator = _creatorCache[replyCreator];
       final name = _creatorDisplayName(creator, replyCreator, context);
       if (name.isNotEmpty) {
-        return context.tr(zh: '回复 $name...', en: 'Reply $name...');
+        return context.t.strings.legacy.msg_reply_2(name: name);
       }
     }
-    return context.tr(zh: '写下评论...', en: 'Write a comment...');
+    return context.t.strings.legacy.msg_write_comment;
   }
 
   Future<void> _submitComment() async {
@@ -907,7 +905,7 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '评论失败：$e', en: 'Failed to comment: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_comment(e: e))),
       );
     } finally {
       if (mounted) {
@@ -977,7 +975,7 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
                 child: Text(
-                  context.tr(zh: '发送', en: 'Send'),
+                  context.t.strings.legacy.msg_send,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -1016,9 +1014,9 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
     if (username.isNotEmpty) return username;
     final trimmed = fallback.trim();
     if (trimmed.startsWith('users/')) {
-      return '${context.tr(zh: '用户', en: 'User')} ${trimmed.substring('users/'.length)}';
+      return '${context.t.strings.legacy.msg_user} ${trimmed.substring('users/'.length)}';
     }
-    return trimmed.isEmpty ? context.tr(zh: '未知用户', en: 'Unknown') : trimmed;
+    return trimmed.isEmpty ? context.t.strings.legacy.msg_unknown : trimmed;
   }
 
   String _creatorInitial(User? creator, String fallback, BuildContext context) {
@@ -1267,7 +1265,7 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
 
     if (_reactionsError != null && _reactions.isEmpty) {
       return Text(
-        context.tr(zh: '加载失败', en: 'Failed to load'),
+        context.t.strings.legacy.msg_failed_load_2,
         style: TextStyle(fontSize: 12, color: textMuted),
       );
     }
@@ -1277,7 +1275,7 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
         children: [
           Icon(Icons.favorite_border, size: 16, color: textMuted),
           const SizedBox(width: 8),
-          Text(context.tr(zh: '暂无点赞', en: 'No likes yet'), style: TextStyle(fontSize: 12, color: textMuted)),
+          Text(context.t.strings.legacy.msg_no_likes_yet, style: TextStyle(fontSize: 12, color: textMuted)),
         ],
       );
     }
@@ -1352,14 +1350,14 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
 
     if (_commentsError != null && _comments.isEmpty) {
       return Text(
-        context.tr(zh: '加载失败', en: 'Failed to load'),
+        context.t.strings.legacy.msg_failed_load_2,
         style: TextStyle(fontSize: 12, color: textMuted),
       );
     }
 
     if (_comments.isEmpty) {
       return Text(
-        context.tr(zh: '暂无评论', en: 'No comments yet'),
+        context.t.strings.legacy.msg_no_comments_yet,
         style: TextStyle(fontSize: 12, color: textMuted),
       );
     }
@@ -1410,14 +1408,14 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
             children: [
               _EngagementAction(
                 icon: Icons.favorite,
-                label: context.tr(zh: '点赞', en: 'Like'),
+                label: context.t.strings.legacy.msg_like_2,
                 count: reactionCount,
                 color: MemoFlowPalette.primary,
               ),
               const SizedBox(width: 18),
               _EngagementAction(
                 icon: commentActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
-                label: context.tr(zh: '评论', en: 'Comment'),
+                label: context.t.strings.legacy.msg_comment,
                 count: commentCount,
                 color: commentActive ? MemoFlowPalette.primary : textMuted,
                 onTap: _toggleCommentComposer,
@@ -1572,7 +1570,7 @@ class _MemoRelationsSection extends ConsumerWidget {
                   Icon(Icons.link, size: 16, color: textMuted),
                   const SizedBox(width: 6),
                   Text(
-                    context.tr(zh: '双链', en: 'Links'),
+                    context.t.strings.legacy.msg_links,
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
                   ),
                   const SizedBox(width: 6),
@@ -1582,7 +1580,7 @@ class _MemoRelationsSection extends ConsumerWidget {
               const SizedBox(height: 10),
               if (referencing.isNotEmpty)
                 _RelationGroup(
-                  title: context.tr(zh: '引用了', en: 'References'),
+                  title: context.t.strings.legacy.msg_references,
                   items: referencing,
                   isDark: isDark,
                   borderColor: borderColor,
@@ -1595,7 +1593,7 @@ class _MemoRelationsSection extends ConsumerWidget {
               if (referencing.isNotEmpty && referencedBy.isNotEmpty) const SizedBox(height: 10),
               if (referencedBy.isNotEmpty)
                 _RelationGroup(
-                  title: context.tr(zh: '被引用', en: 'Referenced by'),
+                  title: context.t.strings.legacy.msg_referenced,
                   items: referencedBy,
                   isDark: isDark,
                   borderColor: borderColor,
@@ -1635,7 +1633,7 @@ class _MemoRelationsSection extends ConsumerWidget {
             Icon(Icons.link, size: 14, color: textMuted),
             const SizedBox(width: 6),
             Text(
-              context.tr(zh: '双链加载中', en: 'Loading links...'),
+              context.t.strings.legacy.msg_loading_links,
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
             ),
             const Spacer(),
@@ -1683,7 +1681,7 @@ class _MemoRelationsSection extends ConsumerWidget {
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
         );
         return;
       }
@@ -1692,7 +1690,7 @@ class _MemoRelationsSection extends ConsumerWidget {
     if (memo == null) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '本地暂无该笔记', en: 'Memo not found locally'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_memo_not_found_locally)),
       );
       return;
     }
@@ -1914,7 +1912,7 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
                 }
                 setState(() => _expanded = !_expanded);
               },
-              child: Text(_expanded ? context.tr(zh: '收起', en: 'Collapse') : context.tr(zh: '展开', en: 'Expand')),
+              child: Text(_expanded ? context.t.strings.legacy.msg_collapse : context.t.strings.legacy.msg_expand),
             ),
           ),
       ],

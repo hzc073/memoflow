@@ -6,6 +6,7 @@ import '../../core/image_bed_url.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/image_bed_settings.dart';
 import '../../state/image_bed_settings_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class ImageBedSettingsScreen extends ConsumerStatefulWidget {
   const ImageBedSettingsScreen({super.key});
@@ -65,7 +66,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
   }
 
   String _providerLabel(BuildContext context, ImageBedProvider provider) {
-    return context.tr(zh: '兰空图床 (Lsky Pro)', en: 'Lsky Pro');
+    return context.t.strings.legacy.msg_lsky_pro;
   }
 
   Future<void> _selectProvider() async {
@@ -131,11 +132,11 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '图床设置', en: 'Image Bed')),
+        title: Text(context.t.strings.legacy.msg_image_bed_3),
         centerTitle: false,
       ),
       body: Stack(
@@ -163,17 +164,14 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                 card: card,
                 textMain: textMain,
                 textMuted: textMuted,
-                label: context.tr(zh: '启用图床', en: 'Enable image bed'),
-                description: context.tr(
-                  zh: '开启后自动上传图片并在正文末尾插入链接。',
-                  en: 'Automatically upload images and append links to the memo.',
-                ),
+                label: context.t.strings.legacy.msg_enable_image_bed,
+                description: context.t.strings.legacy.msg_automatically_upload_images_append_links_memo,
                 value: settings.enabled,
                 onChanged: (value) => ref.read(imageBedSettingsProvider.notifier).setEnabled(value),
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(zh: '服务商', en: 'Provider'),
+                context.t.strings.legacy.msg_provider,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -182,7 +180,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                 divider: divider,
                 children: [
                   _SelectRow(
-                    label: context.tr(zh: '兰空图床', en: 'Image Bed'),
+                    label: context.t.strings.legacy.msg_image_bed,
                     value: _providerLabel(context, _provider),
                     textMain: textMain,
                     textMuted: textMuted,
@@ -192,7 +190,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(zh: '基础配置', en: 'Basics'),
+                context.t.strings.legacy.msg_basics,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -201,7 +199,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                 divider: divider,
                 children: [
                   _InputRow(
-                    label: context.tr(zh: 'API 地址', en: 'API URL'),
+                    label: context.t.strings.legacy.msg_api_url,
                     hint: 'https://lsky.example.com',
                     controller: _baseUrlController,
                     textMain: textMain,
@@ -214,8 +212,8 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                     onEditingComplete: _normalizeBaseUrl,
                   ),
                   _InputRow(
-                    label: context.tr(zh: '邮箱', en: 'Email'),
-                    hint: context.tr(zh: '请输入邮箱', en: 'Enter email'),
+                    label: context.t.strings.legacy.msg_email,
+                    hint: context.t.strings.legacy.msg_enter_email,
                     controller: _emailController,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -226,8 +224,8 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                     },
                   ),
                   _InputRow(
-                    label: context.tr(zh: '密码', en: 'Password'),
-                    hint: context.tr(zh: '请输入密码', en: 'Enter password'),
+                    label: context.t.strings.legacy.msg_password,
+                    hint: context.t.strings.legacy.msg_enter_password_2,
                     controller: _passwordController,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -238,8 +236,8 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                     },
                   ),
                   _InputRow(
-                    label: context.tr(zh: '策略 ID', en: 'Strategy ID'),
-                    hint: context.tr(zh: '选填，使用默认存储策略时请留空', en: 'Optional. Leave empty for default.'),
+                    label: context.t.strings.legacy.msg_strategy_id,
+                    hint: context.t.strings.legacy.msg_optional_leave_empty_default,
                     controller: _strategyController,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -253,7 +251,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(zh: '策略设置', en: 'Policy'),
+                context.t.strings.legacy.msg_policy,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -262,7 +260,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                 divider: divider,
                 children: [
                   _StepperRow(
-                    label: context.tr(zh: '失败重试次数', en: 'Retry Count'),
+                    label: context.t.strings.legacy.msg_retry_count,
                     value: _retryCount,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -273,10 +271,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                context.tr(
-                  zh: '重试次数决定了上传失败后的最大尝试频率。设置较高的次数可以提高成功率，但可能增加等待时间。',
-                  en: 'Retry count controls how many extra attempts are made on failure. Higher values may improve success but take longer.',
-                ),
+                context.t.strings.legacy.msg_retry_count_controls_how_many_extra,
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
             ],
@@ -534,7 +529,7 @@ class _StepperRow extends StatelessWidget {
               children: [
                 buildButton(Icons.remove, onDecrease),
                 const SizedBox(width: 6),
-                Text('$value ${context.tr(zh: '次', en: 'times')}',
+                Text('$value ${context.t.strings.legacy.msg_times_2}',
                     style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
                 const SizedBox(width: 6),
                 buildButton(Icons.add, onIncrease),

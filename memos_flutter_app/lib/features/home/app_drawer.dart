@@ -15,6 +15,7 @@ import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/stats_providers.dart';
 import '../tags/tag_tree.dart';
+import '../../i18n/strings.g.dart';
 
 enum AppDrawerDestination {
   memos,
@@ -120,7 +121,7 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: context.tr(zh: '\u540c\u6b65\u961f\u5217', en: 'Sync queue'),
+                        tooltip: context.t.strings.legacy.msg_sync_queue,
                         onPressed: () => onSelect(AppDrawerDestination.syncQueue),
                         icon: Stack(
                           clipBehavior: Clip.none,
@@ -144,16 +145,13 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: context.tr(zh: '通知', en: 'Notifications'),
+                        tooltip: context.t.strings.legacy.msg_notifications,
                         onPressed: () {
                           final handler = onOpenNotifications;
                           if (handler == null) {
                             showTopToast(
                               context,
-                              context.tr(
-                                zh: '通知功能即将上线',
-                                en: 'Notifications: coming soon',
-                              ),
+                              context.t.strings.legacy.msg_notifications_coming_soon,
                             );
                             return;
                           }
@@ -181,7 +179,7 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: context.tr(zh: '设置', en: 'Settings'),
+                        tooltip: context.t.strings.legacy.msg_settings,
                         onPressed: () => onSelect(AppDrawerDestination.settings),
                         icon: Icon(Icons.settings, color: textMuted),
                       ),
@@ -196,7 +194,7 @@ class AppDrawer extends ConsumerWidget {
                           Expanded(
                             child: _DrawerStat(
                               value: '${stats.totalMemos}',
-                              label: context.tr(zh: '笔记', en: 'Memos'),
+                              label: context.t.strings.legacy.msg_memos,
                               textMain: textMain,
                               textMuted: textMuted,
                             ),
@@ -204,7 +202,7 @@ class AppDrawer extends ConsumerWidget {
                           Expanded(
                             child: _DrawerStat(
                               value: '$tagCount',
-                              label: context.tr(zh: '标签', en: 'Tags'),
+                              label: context.t.strings.legacy.msg_tags,
                               textMain: textMain,
                               textMuted: textMuted,
                             ),
@@ -212,7 +210,7 @@ class AppDrawer extends ConsumerWidget {
                           Expanded(
                             child: _DrawerStat(
                               value: '${stats.daysSinceFirstMemo}',
-                              label: context.tr(zh: '天', en: 'Days'),
+                              label: context.t.strings.legacy.msg_days_2,
                               textMain: textMain,
                               textMuted: textMuted,
                             ),
@@ -225,7 +223,7 @@ class AppDrawer extends ConsumerWidget {
                         Expanded(
                           child: _DrawerStat(
                             value: '?',
-                            label: context.tr(zh: '笔记', en: 'Memos'),
+                            label: context.t.strings.legacy.msg_memos,
                             textMain: textMain,
                             textMuted: textMuted,
                           ),
@@ -233,7 +231,7 @@ class AppDrawer extends ConsumerWidget {
                         Expanded(
                           child: _DrawerStat(
                             value: '?',
-                            label: context.tr(zh: '标签', en: 'Tags'),
+                            label: context.t.strings.legacy.msg_tags,
                             textMain: textMain,
                             textMuted: textMuted,
                           ),
@@ -241,7 +239,7 @@ class AppDrawer extends ConsumerWidget {
                         Expanded(
                           child: _DrawerStat(
                             value: '?',
-                            label: context.tr(zh: '天', en: 'Days'),
+                            label: context.t.strings.legacy.msg_days_2,
                             textMain: textMain,
                             textMuted: textMuted,
                           ),
@@ -249,7 +247,7 @@ class AppDrawer extends ConsumerWidget {
                       ],
                     ),
                     error: (e, _) => Text(
-                      context.tr(zh: '加载统计失败：$e', en: 'Failed to load stats: $e'),
+                      context.t.strings.legacy.msg_failed_load_stats(e: e),
                       style: TextStyle(color: textMuted),
                     ),
                   ),
@@ -265,7 +263,7 @@ class AppDrawer extends ConsumerWidget {
                   const SizedBox(height: 16),
                     _NavButton(
                       selected: selected == AppDrawerDestination.memos,
-                      label: context.tr(zh: '全部笔记', en: 'All Memos'),
+                      label: context.t.strings.legacy.msg_all_memos,
                       icon: Icons.grid_view,
                       onTap: () => onSelect(AppDrawerDestination.memos),
                       textMain: textMain,
@@ -274,7 +272,7 @@ class AppDrawer extends ConsumerWidget {
                     if (prefs.showDrawerExplore)
                     _NavButton(
                       selected: selected == AppDrawerDestination.explore,
-                      label: context.tr(zh: '探索', en: 'Explore'),
+                      label: context.t.strings.legacy.msg_explore,
                       icon: Icons.public,
                       onTap: () => onSelect(AppDrawerDestination.explore),
                       textMain: textMain,
@@ -283,7 +281,7 @@ class AppDrawer extends ConsumerWidget {
                     if (prefs.showDrawerDailyReview)
                     _NavButton(
                       selected: selected == AppDrawerDestination.dailyReview,
-                      label: context.tr(zh: '随机漫步', en: 'Random Review'),
+                      label: context.t.strings.legacy.msg_random_review,
                       icon: Icons.explore,
                       onTap: () => onSelect(AppDrawerDestination.dailyReview),
                       textMain: textMain,
@@ -292,7 +290,7 @@ class AppDrawer extends ConsumerWidget {
                   if (prefs.showDrawerAiSummary)
                     _NavButton(
                       selected: selected == AppDrawerDestination.aiSummary,
-                      label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
+                      label: context.t.strings.legacy.msg_ai_summary,
                       icon: Icons.track_changes,
                       onTap: () => onSelect(AppDrawerDestination.aiSummary),
                       textMain: textMain,
@@ -301,7 +299,7 @@ class AppDrawer extends ConsumerWidget {
                   if (prefs.showDrawerResources)
                     _NavButton(
                       selected: selected == AppDrawerDestination.resources,
-                      label: context.tr(zh: '附件', en: 'Attachments'),
+                      label: context.t.strings.legacy.msg_attachments,
                       icon: Icons.attach_file,
                       onTap: () => onSelect(AppDrawerDestination.resources),
                       textMain: textMain,
@@ -310,7 +308,7 @@ class AppDrawer extends ConsumerWidget {
                   if (prefs.showDrawerArchive)
                     _NavButton(
                       selected: selected == AppDrawerDestination.archived,
-                      label: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+                      label: context.t.strings.legacy.msg_archive,
                       icon: Icons.archive,
                       onTap: () => onSelect(AppDrawerDestination.archived),
                       textMain: textMain,
@@ -321,7 +319,7 @@ class AppDrawer extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          context.tr(zh: '全部标签', en: 'All Tags'),
+                          context.t.strings.legacy.msg_all_tags,
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -331,7 +329,7 @@ class AppDrawer extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: context.tr(zh: '筛选', en: 'Filter'),
+                        tooltip: context.t.strings.legacy.msg_filter,
                         onPressed: () => onSelect(AppDrawerDestination.tags),
                         icon: Icon(Icons.tune, color: textMuted, size: 20),
                       ),
@@ -342,7 +340,7 @@ class AppDrawer extends ConsumerWidget {
                       if (tags.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text(context.tr(zh: '暂无标签', en: 'No tags yet'), style: TextStyle(color: textMuted)),
+                          child: Text(context.t.strings.legacy.msg_no_tags_yet, style: TextStyle(color: textMuted)),
                         );
                       }
                       final preview = tags.take(4).toList(growable: false);
@@ -366,12 +364,12 @@ class AppDrawer extends ConsumerWidget {
                     },
                     loading: () => Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text(context.tr(zh: '加载中…', en: 'Loading?'), style: TextStyle(color: textMuted)),
+                      child: Text(context.t.strings.legacy.msg_loading_2, style: TextStyle(color: textMuted)),
                     ),
                     error: (e, _) => Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        context.tr(zh: '加载标签失败：$e', en: 'Failed to load tags: $e'),
+                        context.t.strings.legacy.msg_failed_load_tags(e: e),
                         style: TextStyle(color: textMuted),
                       ),
                     ),
@@ -380,21 +378,18 @@ class AppDrawer extends ConsumerWidget {
                   Divider(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.08)),
                   const SizedBox(height: 2),
                   _BottomNavRow(
-                    label: context.tr(zh: '\u56de\u6536\u7ad9', en: 'Recycle Bin'),
+                    label: context.t.strings.legacy.msg_recycle_bin,
                     icon: Icons.delete,
                     onTap: () => showTopToast(
                       context,
-                      context.tr(
-                        zh: '\u56de\u6536\u7ad9\u529f\u80fd\u6682\u672a\u5f00\u653e',
-                        en: 'Recycle bin: coming soon',
-                      ),
+                      context.t.strings.legacy.msg_recycle_bin_coming_soon,
                       duration: const Duration(milliseconds: 1400),
                     ),
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
                     hover: hover,
                   ),
                   _BottomNavRow(
-                    label: context.tr(zh: '关于', en: 'About'),
+                    label: context.t.strings.legacy.msg_about,
                     icon: Icons.info,
                     onTap: () => onSelect(AppDrawerDestination.about),
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
@@ -605,7 +600,7 @@ class _DrawerHeatmap extends StatelessWidget {
     }
 
     String monthLabel(DateTime d) {
-      final locale = context.appLanguage == AppLanguage.en ? 'en' : 'zh';
+      final locale = Localizations.localeOf(context).toString();
       return DateFormat.MMM(locale).format(d.toLocal());
     }
 
@@ -614,21 +609,25 @@ class _DrawerHeatmap extends StatelessWidget {
     final labelColor = (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35);
 
     String weekdayLabel(DateTime d) {
-      if (context.appLanguage == AppLanguage.en) {
-        return DateFormat.E(Localizations.localeOf(context).toString()).format(d);
-      }
-      const zhWeekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-      return zhWeekdays[d.weekday - 1];
+      final locale = Localizations.localeOf(context).toString();
+      return DateFormat.E(locale).format(d);
     }
 
     String tooltipLabel(DateTime d, int count) {
       final dateLabel = DateFormat('yyyy-MM-dd').format(d);
       final weekLabel = weekdayLabel(d);
-      if (context.appLanguage == AppLanguage.en) {
-        final noun = count == 1 ? 'memo' : 'memos';
-        return '$dateLabel ($weekLabel) · $count $noun';
-      }
-      return '$dateLabel（$weekLabel）· $count 条';
+      final key = count == 1
+          ? 'legacy.app_drawer.tooltip_single'
+          : 'legacy.app_drawer.tooltip_multi';
+      return trByLanguageKey(
+        language: context.appLanguage,
+        key: key,
+        params: {
+          'date': dateLabel,
+          'weekday': weekLabel,
+          'count': count,
+        },
+      );
     }
 
     void showOverlayToast(String message) {
@@ -641,7 +640,7 @@ class _DrawerHeatmap extends StatelessWidget {
 
     void openDay(DateTime d, int count) {
       if (count <= 0) {
-        showOverlayToast(context.tr(zh: '当天无记录', en: 'No memos on this day'));
+        showOverlayToast(context.t.strings.legacy.msg_no_memos_day);
         return;
       }
       final navigator = Navigator.of(context);

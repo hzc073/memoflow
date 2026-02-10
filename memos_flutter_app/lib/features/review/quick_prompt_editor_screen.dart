@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/settings/ai_settings_repository.dart';
+import '../../i18n/strings.g.dart';
 
 class QuickPromptEditorScreen extends StatefulWidget {
   const QuickPromptEditorScreen({super.key});
@@ -76,7 +77,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
         leading: TextButton(
           onPressed: () => context.safePop(),
           child: Text(
-            context.tr(zh: '取消', en: 'Cancel'),
+            context.t.strings.legacy.msg_cancel_2,
             style: TextStyle(
               color: MemoFlowPalette.primary,
               fontWeight: FontWeight.w600,
@@ -84,14 +85,14 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
           ),
         ),
         title: Text(
-          context.tr(zh: '添加提示词', en: 'Add prompt'),
+          context.t.strings.legacy.msg_add_prompt,
           style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
         ),
         actions: [
           TextButton(
             onPressed: _canSave ? _save : null,
             child: Text(
-              context.tr(zh: '保存', en: 'Save'),
+              context.t.strings.legacy.msg_save,
               style: TextStyle(
                 color: _canSave ? MemoFlowPalette.primary : textMuted,
                 fontWeight: FontWeight.w700,
@@ -121,7 +122,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  context.tr(zh: '提示词标题', en: 'Prompt title'),
+                  context.t.strings.legacy.msg_prompt_title,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -137,7 +138,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
                     color: textMain,
                   ),
                   decoration: InputDecoration(
-                    hintText: context.tr(zh: '如：情绪分析', en: 'e.g. Mood check'),
+                    hintText: context.t.strings.legacy.msg_e_g_mood_check,
                     hintStyle: TextStyle(color: textMuted),
                     filled: true,
                     fillColor: inputBg,
@@ -163,7 +164,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  context.tr(zh: '具体指令内容', en: 'Prompt content'),
+                  context.t.strings.legacy.msg_prompt_content,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -182,10 +183,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
                     color: textMain,
                   ),
                   decoration: InputDecoration(
-                    hintText: context.tr(
-                      zh: '请分析我本周笔记中体现的情绪波动曲线…',
-                      en: 'Describe how you want the summary…',
-                    ),
+                    hintText: context.t.strings.legacy.msg_describe_how_want_summary,
                     hintStyle: TextStyle(color: textMuted),
                     filled: true,
                     fillColor: inputBg,
@@ -211,7 +209,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            context.tr(zh: '图标选择', en: 'Icon'),
+            context.t.strings.legacy.msg_icon,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -245,10 +243,7 @@ class _QuickPromptEditorScreenState extends State<QuickPromptEditorScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  context.tr(
-                    zh: '提示词将保存在快速总结中',
-                    en: 'Your prompt will be saved in Quick prompts',
-                  ),
+                  context.t.strings.legacy.msg_prompt_saved_quick_prompts,
                   style: TextStyle(
                     fontSize: 12,
                     color: textMuted,

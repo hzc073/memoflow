@@ -10,6 +10,7 @@ import '../../data/models/user_setting.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/user_settings_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class WebhooksSettingsScreen extends ConsumerStatefulWidget {
   const WebhooksSettingsScreen({super.key});
@@ -30,20 +31,20 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          isEditing ? context.tr(zh: '编辑 Webhook', en: 'Edit Webhook') : context.tr(zh: '新增 Webhook', en: 'Add Webhook'),
+          isEditing ? context.t.strings.legacy.msg_edit_webhook : context.t.strings.legacy.msg_add_webhook,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              decoration: InputDecoration(labelText: context.tr(zh: '显示名称', en: 'Display name')),
+              decoration: InputDecoration(labelText: context.t.strings.legacy.msg_display_name),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: urlController,
               decoration: InputDecoration(
-                labelText: context.tr(zh: 'URL', en: 'URL'),
+                labelText: context.t.strings.legacy.msg_url,
                 hintText: 'https://example.com/webhook',
               ),
             ),
@@ -52,7 +53,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
         actions: [
           TextButton(
             onPressed: () => context.safePop(),
-            child: Text(context.tr(zh: '取消', en: 'Cancel')),
+            child: Text(context.t.strings.legacy.msg_cancel_2),
           ),
           FilledButton(
             onPressed: () {
@@ -65,7 +66,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
                 ),
               );
             },
-            child: Text(context.tr(zh: '保存', en: 'Save')),
+            child: Text(context.t.strings.legacy.msg_save),
           ),
         ],
       ),
@@ -97,12 +98,12 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '已保存', en: 'Saved'),
+        context.t.strings.legacy.msg_saved_2,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
       );
     } finally {
       if (mounted) {
@@ -116,16 +117,16 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '删除 Webhook', en: 'Delete Webhook')),
-            content: Text(context.tr(zh: '确定要删除该 Webhook 吗？', en: 'Are you sure you want to delete this webhook?')),
+            title: Text(context.t.strings.legacy.msg_delete_webhook),
+            content: Text(context.t.strings.legacy.msg_sure_want_delete_webhook),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '删除', en: 'Delete')),
+                child: Text(context.t.strings.legacy.msg_delete),
               ),
             ],
           ),
@@ -140,7 +141,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '删除失败：$e', en: 'Delete failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_delete_failed(e: e))),
       );
     } finally {
       if (mounted) {
@@ -161,10 +162,10 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
     if (error is DioException) {
       final status = error.response?.statusCode ?? 0;
       if (status == 404 || status == 405) {
-        return context.tr(zh: '当前服务器不支持 Webhooks', en: 'Webhooks are not supported on this server.');
+        return context.t.strings.legacy.msg_webhooks_not_supported_server;
       }
     }
-    return context.tr(zh: '加载失败，请稍后重试', en: 'Failed to load. Please try again.');
+    return context.t.strings.legacy.msg_failed_load_try;
   }
 
   @override
@@ -193,15 +194,15 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: 'Webhooks', en: 'Webhooks')),
+        title: Text(context.t.strings.legacy.msg_webhooks),
         centerTitle: false,
         actions: [
           IconButton(
-            tooltip: context.tr(zh: '新增', en: 'Add'),
+            tooltip: context.t.strings.legacy.msg_add,
             icon: const Icon(Icons.add),
             onPressed: _saving
                 ? null
@@ -234,7 +235,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
             data: (webhooks) {
               if (webhooks.isEmpty) {
                 return Center(
-                  child: Text(context.tr(zh: '暂无 Webhooks', en: 'No webhooks configured'), style: TextStyle(color: textMuted)),
+                  child: Text(context.t.strings.legacy.msg_no_webhooks_configured, style: TextStyle(color: textMuted)),
                 );
               }
 
@@ -273,7 +274,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      context.tr(zh: '加载失败', en: 'Failed to load'),
+                      context.t.strings.legacy.msg_failed_load_2,
                       style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
                     ),
                     const SizedBox(height: 8),
@@ -285,7 +286,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () => ref.invalidate(userWebhooksProvider),
-                      child: Text(context.tr(zh: '重试', en: 'Retry')),
+                      child: Text(context.t.strings.legacy.msg_retry),
                     ),
                   ],
                 ),
@@ -333,12 +334,12 @@ class _WebhookRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: context.tr(zh: '编辑', en: 'Edit'),
+            tooltip: context.t.strings.legacy.msg_edit,
             icon: Icon(Icons.edit, size: 18, color: textMuted),
             onPressed: onEdit,
           ),
           IconButton(
-            tooltip: context.tr(zh: '删除', en: 'Delete'),
+            tooltip: context.t.strings.legacy.msg_delete,
             icon: Icon(Icons.delete_outline, size: 18, color: textMuted),
             onPressed: onDelete,
           ),

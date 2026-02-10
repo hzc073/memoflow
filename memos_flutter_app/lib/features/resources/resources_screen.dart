@@ -31,6 +31,7 @@ import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class ResourcesScreen extends ConsumerWidget {
   const ResourcesScreen({super.key});
@@ -125,7 +126,7 @@ class ResourcesScreen extends ConsumerWidget {
     messenger.hideCurrentSnackBar();
     showTopToast(
       context,
-      context.tr(zh: '正在下载', en: 'Downloading...'),
+      context.t.strings.legacy.msg_downloading,
     );
 
     try {
@@ -145,7 +146,7 @@ class ResourcesScreen extends ConsumerWidget {
         if (url == null || url.isEmpty) {
           messenger.hideCurrentSnackBar();
           messenger.showSnackBar(
-            SnackBar(content: Text(context.tr(zh: '无法获取下载链接', en: 'No download URL available'))),
+            SnackBar(content: Text(context.t.strings.legacy.msg_no_download_url_available)),
           );
           return;
         }
@@ -163,13 +164,13 @@ class ResourcesScreen extends ConsumerWidget {
       messenger.hideCurrentSnackBar();
       showTopToast(
         context,
-        context.tr(zh: '已保存到: $targetPath', en: 'Saved to: $targetPath'),
+        context.t.strings.legacy.msg_saved(targetPath: targetPath),
       );
     } catch (e) {
       if (!context.mounted) return;
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '下载失败: $e', en: 'Download failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_download_failed(e: e))),
       );
     }
   }
@@ -251,7 +252,7 @@ class ResourcesScreen extends ConsumerWidget {
   void _showUnsupportedPreview(BuildContext context) {
     showTopToast(
       context,
-      context.tr(zh: '暂不支持该类型预览', en: 'Preview not supported for this type'),
+      context.t.strings.legacy.msg_preview_not_supported_type,
     );
   }
 
@@ -279,7 +280,7 @@ class ResourcesScreen extends ConsumerWidget {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+          title: context.t.strings.legacy.msg_archive,
           state: 'ARCHIVED',
           showDrawer: true,
         ),
@@ -334,10 +335,10 @@ class ResourcesScreen extends ConsumerWidget {
           onSelectTag: (t) => _openTag(context, t),
           onOpenNotifications: () => _openNotifications(context),
         ),
-        appBar: AppBar(title: Text(context.tr(zh: '附件', en: 'Attachments'))),
+        appBar: AppBar(title: Text(context.t.strings.legacy.msg_attachments)),
         body: entriesAsync.when(
           data: (entries) => entries.isEmpty
-              ? Center(child: Text(context.tr(zh: '暂无附件', en: 'No attachments')))
+              ? Center(child: Text(context.t.strings.legacy.msg_no_attachments))
               : ListView.separated(
                   itemBuilder: (context, index) {
                     final entry = entries[index];
@@ -405,7 +406,7 @@ class ResourcesScreen extends ConsumerWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            tooltip: context.tr(zh: '预览', en: 'Preview'),
+                            tooltip: context.t.strings.legacy.msg_preview,
                             icon: const Icon(Icons.visibility_outlined),
                             onPressed: canPreview
                                 ? () => _openPreview(
@@ -419,7 +420,7 @@ class ResourcesScreen extends ConsumerWidget {
                             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                           ),
                           IconButton(
-                            tooltip: context.tr(zh: '下载', en: 'Download'),
+                            tooltip: context.t.strings.legacy.msg_download,
                             icon: const Icon(Icons.download),
                             onPressed: canDownload ? () => _downloadAttachment(context, a, baseUrl, authHeader) : null,
                             visualDensity: VisualDensity.compact,
@@ -442,7 +443,7 @@ class ResourcesScreen extends ConsumerWidget {
                   itemCount: entries.length,
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+          error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
         ),
       ),
     );
@@ -581,7 +582,7 @@ class _AudioPreviewSheetState extends State<_AudioPreviewSheet> {
             const SizedBox(height: 12),
             if (_error != null)
               Text(
-                context.tr(zh: '加载失败: $_error', en: 'Failed to load: $_error'),
+                context.t.strings.legacy.msg_failed_load(error: _error ?? context.t.strings.legacy.msg_request_failed),
                 style: TextStyle(color: textMuted),
               )
             else if (!_ready)

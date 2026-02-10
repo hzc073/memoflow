@@ -1,13 +1,26 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_localization.dart';
 import '../data/models/memo_location.dart';
 
-Future<void> openAmapLocation(MemoLocation location, {String? name}) async {
+String _defaultLocationLabel(BuildContext context) {
+  return trByLanguageKey(
+    language: context.appLanguage,
+    key: 'legacy.location.current',
+  );
+}
+
+Future<void> openAmapLocation(
+  BuildContext context,
+  MemoLocation location, {
+  String? name,
+}) async {
   final label = (name ?? '').trim().isNotEmpty
       ? name!.trim()
-      : (location.hasPlaceholder ? location.placeholder.trim() : '当前位置');
+      : (location.hasPlaceholder ? location.placeholder.trim() : _defaultLocationLabel(context));
   final lat = location.latitude.toStringAsFixed(6);
   final lng = location.longitude.toStringAsFixed(6);
 

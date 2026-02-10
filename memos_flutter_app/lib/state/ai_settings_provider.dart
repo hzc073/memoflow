@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/settings/ai_settings_repository.dart';
+import 'preferences_provider.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
@@ -16,7 +17,10 @@ final aiSettingsProvider = StateNotifierProvider<AiSettingsController, AiSetting
 });
 
 class AiSettingsController extends StateNotifier<AiSettings> {
-  AiSettingsController(this._ref, this._repo) : super(AiSettings.defaults) {
+  AiSettingsController(Ref ref, AiSettingsRepository repo)
+      : _ref = ref,
+        _repo = repo,
+        super(AiSettings.defaultsFor(ref.read(appPreferencesProvider).language)) {
     unawaited(_load());
   }
 
@@ -24,7 +28,9 @@ class AiSettingsController extends StateNotifier<AiSettings> {
   final AiSettingsRepository _repo;
 
   Future<void> _load() async {
-    state = await _repo.read();
+    state = await _repo.read(
+      language: _ref.read(appPreferencesProvider).language,
+    );
   }
 
   Future<void> setAll(AiSettings next, {bool triggerSync = true}) async {

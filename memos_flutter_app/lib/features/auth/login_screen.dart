@@ -6,6 +6,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
+import '../../i18n/strings.g.dart';
 import '../../state/login_draft_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -79,60 +80,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final status = error.response?.statusCode;
       if (status == 401) {
         if (token.startsWith('memos_pat_')) {
-          return context.tr(
-            zh: '认证失败，请确认 Token 是否有效或未过期',
-            en: 'Authentication failed. Check that the token is valid and not expired.',
-          );
+          return context.t.strings.login.errors.authFailedToken;
         }
-        return context.tr(
-          zh: '认证失败。新版 Memos 请使用以 memos_pat_ 开头的 PAT（不要粘贴 Bearer 前缀）',
-          en: 'Authentication failed. For new Memos use a PAT starting with memos_pat_ (do not paste the Bearer prefix).',
-        );
+        return context.t.strings.login.errors.authFailedPat;
       }
       final serverMessage = _extractServerMessage(error.response?.data);
       if (serverMessage.isNotEmpty) {
-        return context.tr(
-          zh: '连接失败：$serverMessage',
-          en: 'Connection failed: $serverMessage',
-        );
+        return context.t.strings.login.errors.connectionFailedWithMessage(message: serverMessage);
       }
     } else if (error is FormatException) {
       final message = error.message.trim();
       if (message.isNotEmpty) {
-        return context.tr(
-          zh: '连接失败：$message',
-          en: 'Connection failed: $message',
-        );
+        return context.t.strings.login.errors.connectionFailedWithMessage(message: message);
       }
     }
-    return context.tr(zh: '连接失败：$error', en: 'Connection failed: $error');
+    return context.t.strings.login.errors.connectionFailed(error: error.toString());
   }
 
   String _formatPasswordLoginError(Object error) {
     if (error is DioException) {
       final status = error.response?.statusCode;
       if (status == 401 || status == 403) {
-        return context.tr(
-          zh: '登录失败，请检查账号和密码',
-
-          en: 'Sign-in failed. Check username and password.',
-        );
+        return context.t.strings.login.errors.signInFailed;
       }
       final serverMessage = _extractServerMessage(error.response?.data);
       if (serverMessage.isNotEmpty) {
-        return context.tr(
-          zh: '登录失败：$serverMessage',
-
-          en: 'Sign-in failed: $serverMessage',
-        );
+        return context.t.strings.login.errors.signInFailedWithMessage(message: serverMessage);
       }
     } else if (error is FormatException) {
       final message = error.message.trim();
       if (message.isNotEmpty) {
-        return context.tr(zh: '登录失败：$message', en: 'Sign-in failed: $message');
+        return context.t.strings.login.errors.signInFailedWithMessage(message: message);
       }
     }
-    return context.tr(zh: '登录失败：$error', en: 'Sign-in failed: $error');
+    return context.t.strings.login.errors.signInFailedWithMessage(message: error.toString());
   }
 
   Uri? _resolveBaseUrl() {
@@ -141,7 +122,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (baseUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '服务器地址无效', en: 'Invalid server URL')),
+          content: Text(context.t.strings.login.errors.invalidServerUrl),
         ),
       );
       return null;
@@ -154,10 +135,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _baseUrlController.text;
       showTopToast(
         context,
-        context.tr(
-          zh: '已规范化服务器地址（移除多余路径）',
-          en: 'Server URL normalized (removed extra path segments)',
-        ),
+        context.t.strings.login.errors.serverUrlNormalized,
       );
     }
     return sanitizedBaseUrl;
@@ -349,12 +327,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       children: [
         buildButton(
           mode: _LoginMode.password,
-          label: context.tr(zh: '账号密码', en: 'Username & Password'),
+          label: context.t.strings.login.mode.password,
         ),
         const SizedBox(width: 10),
         buildButton(
           mode: _LoginMode.token,
-          label: context.tr(zh: 'Token 登录', en: 'Token'),
+          label: context.t.strings.login.mode.token,
         ),
       ],
     );
@@ -377,11 +355,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       appPreferencesProvider.select((p) => p.useLegacyApi),
     );
     final modeDescription = _loginMode == _LoginMode.password
-        ? context.tr(zh: '使用账号密码登录', en: 'Sign in with username and password')
-        : context.tr(
-            zh: '使用个人访问令牌登录',
-            en: 'Sign in with Personal Access Token',
-          );
+        ? context.t.strings.login.mode.descPassword
+        : context.t.strings.login.mode.descToken;
 
     if (!_shownInitialError) {
       _shownInitialError = true;
@@ -399,11 +374,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       backgroundColor: bg,
       appBar: AppBar(
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.common.back,
           icon: const Icon(Icons.arrow_back_ios_new),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '连接 Memos', en: 'Connect to Memos')),
+        title: Text(context.t.strings.login.title),
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -428,7 +403,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   _buildField(
                     controller: _baseUrlController,
-                    label: context.tr(zh: '服务器地址', en: 'Server URL'),
+                    label: context.t.strings.login.field.serverUrlLabel,
                     hint: 'http://localhost:5230',
                     enabled: !isBusy,
                     obscureText: false,
@@ -442,24 +417,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     validator: (v) {
                       final raw = (v ?? '').trim();
                       if (raw.isEmpty) {
-                        return context.tr(
-                          zh: '请输入服务器地址',
-                          en: 'Please enter server URL',
-                        );
+                        return context.t.strings.login.validation.serverUrlRequired;
                       }
                       final uri = Uri.tryParse(raw);
                       if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
-                        return context.tr(
-                          zh: '请输入完整地址（包含 http/https 与端口）',
-                          en: 'Enter full URL (including http/https and port)',
-                        );
+                        return context.t.strings.login.validation.serverUrlInvalid;
                       }
                       return null;
                     },
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    context.tr(zh: '登录方式', en: 'Sign-in method'),
+                    context.t.strings.login.mode.signInMethod,
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: textMain,
@@ -476,8 +445,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   if (_loginMode == _LoginMode.password) ...[
                     _buildField(
                       controller: _usernameController,
-                      label: context.tr(zh: '账号', en: 'Username'),
-                      hint: context.tr(zh: '请输入账号', en: 'Enter username'),
+                      label: context.t.strings.login.field.usernameLabel,
+                      hint: context.t.strings.login.field.usernameHint,
                       enabled: !isBusy,
                       obscureText: false,
                       isDark: isDark,
@@ -486,10 +455,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textMuted: textMuted,
                       validator: (v) {
                         if ((v ?? '').trim().isEmpty) {
-                          return context.tr(
-                            zh: '请输入账号',
-                            en: 'Please enter username',
-                          );
+                          return context.t.strings.login.validation.usernameRequired;
                         }
                         return null;
                       },
@@ -497,8 +463,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 14),
                     _buildField(
                       controller: _passwordController,
-                      label: context.tr(zh: '密码', en: 'Password'),
-                      hint: context.tr(zh: '请输入密码', en: 'Enter password'),
+                      label: context.t.strings.login.field.passwordLabel,
+                      hint: context.t.strings.login.field.passwordHint,
                       enabled: !isBusy,
                       obscureText: true,
                       isDark: isDark,
@@ -508,10 +474,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       keyboardType: TextInputType.visiblePassword,
                       validator: (v) {
                         if ((v ?? '').isEmpty) {
-                          return context.tr(
-                            zh: '请输入密码',
-                            en: 'Please enter password',
-                          );
+                          return context.t.strings.login.validation.passwordRequired;
                         }
                         return null;
                       },
@@ -519,8 +482,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ] else ...[
                     _buildField(
                       controller: _tokenController,
-                      label: 'Token (PAT)',
-                      hint: 'Token (PAT)',
+                      label: context.t.strings.login.field.tokenLabel,
+                      hint: context.t.strings.login.field.tokenHint,
                       enabled: !isBusy,
                       obscureText: true,
                       isDark: isDark,
@@ -529,10 +492,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textMuted: textMuted,
                       validator: (v) {
                         if ((v ?? '').trim().isEmpty) {
-                          return context.tr(
-                            zh: '请输入 Token',
-                            en: 'Please enter token',
-                          );
+                          return context.t.strings.login.validation.tokenRequired;
                         }
                         return null;
                       },
@@ -544,7 +504,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          context.tr(zh: '兼容模式', en: 'Compatibility Mode'),
+                          context.t.strings.login.compatibility.title,
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: textMain,
@@ -571,10 +531,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    context.tr(
-                      zh: '使用旧版接口（适配旧版 Memos）',
-                      en: 'Use legacy endpoints (for older Memos servers)',
-                    ),
+                    context.t.strings.login.compatibility.description,
                     style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                   const SizedBox(height: 24),
@@ -590,8 +547,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : const Icon(Icons.link),
                       label: Text(
                         isBusy
-                            ? context.tr(zh: '连接中…', en: 'Connecting?')
-                            : context.tr(zh: '连接', en: 'Connect'),
+                            ? context.t.strings.login.connect.connecting
+                            : context.t.strings.login.connect.action,
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MemoFlowPalette.primary,

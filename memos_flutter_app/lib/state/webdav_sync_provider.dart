@@ -129,10 +129,12 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     final settings = _ref.read(webDavSettingsProvider);
     final accountKey = _accountKey;
     if (!_canSync(settings) || accountKey == null || accountKey.trim().isEmpty) {
+      final language = _ref.read(appPreferencesProvider).language;
       state = state.copyWith(
-        lastError: _ref.read(appPreferencesProvider).language == AppLanguage.en
-            ? 'WebDAV is not configured'
-            : 'WebDAV 未配置',
+        lastError: trByLanguageKey(
+          language: language,
+          key: 'legacy.webdav.not_configured',
+        ),
       );
       return;
     }
@@ -141,11 +143,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     try {
       final baseUrl = Uri.tryParse(settings.serverUrl.trim());
       if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
-        throw StateError(trByLanguage(
-          language: _ref.read(appPreferencesProvider).language,
-          zh: 'WebDAV 服务器地址无效',
-          en: 'Invalid WebDAV server URL',
-        ));
+        throw StateError(trByLanguageKey(language: _ref.read(appPreferencesProvider).language, key: 'legacy.msg_invalid_webdav_server_url'));
       }
 
       final accountId = fnv1a64Hex(accountKey);
@@ -170,11 +168,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
             state = state.copyWith(
               syncing: false,
               hasPendingConflict: true,
-              lastError: trByLanguage(
-                language: _ref.read(appPreferencesProvider).language,
-                zh: '存在冲突，需要手动同步',
-                en: 'Conflicts detected. Run manual sync.',
-              ),
+              lastError: trByLanguageKey(language: _ref.read(appPreferencesProvider).language, key: 'legacy.msg_conflicts_detected_run_manual_sync'),
             );
             return;
           }
@@ -654,7 +648,7 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
   Widget build(BuildContext context) {
     final language = context.appLanguage;
     return AlertDialog(
-      title: Text(trByLanguage(language: language, zh: '同步冲突', en: 'Sync conflicts')),
+      title: Text(trByLanguageKey(language: language, key: 'legacy.msg_sync_conflicts')),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -662,11 +656,7 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                trByLanguage(
-                  language: language,
-                  zh: '以下设置在本地和远端都有修改，请选择保留哪个版本。',
-                  en: 'These settings changed locally and remotely. Choose which version to keep.',
-                ),
+                trByLanguageKey(language: language, key: 'legacy.msg_these_settings_changed_locally_remotely_choose'),
                 style: const TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -674,7 +664,7 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                 contentPadding: EdgeInsets.zero,
                 value: _applyToAll,
                 onChanged: _toggleApplyAll,
-                title: Text(trByLanguage(language: language, zh: '应用到全部', en: 'Apply to all')),
+                title: Text(trByLanguageKey(language: language, key: 'legacy.msg_apply_all')),
               ),
               if (_applyToAll)
                 RadioGroup<bool>(
@@ -694,14 +684,14 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                         child: RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: true,
-                          title: Text(trByLanguage(language: language, zh: '使用本地', en: 'Use local')),
+                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_local')),
                         ),
                       ),
                       Expanded(
                         child: RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: false,
-                          title: Text(trByLanguage(language: language, zh: '使用远端', en: 'Use remote')),
+                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_remote')),
                         ),
                       ),
                     ],
@@ -722,12 +712,12 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                         RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: true,
-                          title: Text(trByLanguage(language: language, zh: '使用本地', en: 'Use local')),
+                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_local')),
                         ),
                         RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: false,
-                          title: Text(trByLanguage(language: language, zh: '使用远端', en: 'Use remote')),
+                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_remote')),
                         ),
                       ],
                     ),
@@ -740,11 +730,11 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(trByLanguage(language: language, zh: '取消', en: 'Cancel')),
+          child: Text(trByLanguageKey(language: language, key: 'legacy.msg_cancel_2')),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_choices),
-          child: Text(trByLanguage(language: language, zh: '确定', en: 'Apply')),
+          child: Text(trByLanguageKey(language: language, key: 'legacy.msg_apply')),
         ),
       ],
     );

@@ -1112,50 +1112,30 @@ class RemoteSyncController extends SyncControllerBase {
 
     if (status == null) {
       if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
-        return trByLanguage(
-          language: language,
-          zh: '网络超时，请稍后重试',
-          en: 'Network timeout. Please try again.',
-        );
+        return trByLanguageKey(language: language, key: 'legacy.msg_network_timeout_try');
       }
       if (e.type == DioExceptionType.connectionError) {
-        return trByLanguage(
-          language: language,
-          zh: '网络连接失败，请检查网络',
-          en: 'Network connection failed. Please check your network.',
-        );
+        return trByLanguageKey(language: language, key: 'legacy.msg_network_connection_failed_check_network');
       }
       final raw = e.message ?? '';
       if (raw.trim().isNotEmpty) return raw.trim();
-      return trByLanguage(
-        language: language,
-        zh: '网络请求失败',
-        en: 'Network request failed',
-      );
+      return trByLanguageKey(language: language, key: 'legacy.msg_network_request_failed');
     }
 
     final base = switch (status) {
-      400 => trByLanguage(language: language, zh: '请求参数错误', en: 'Invalid request parameters'),
-      401 => trByLanguage(language: language, zh: '认证失败，请检查 Token', en: 'Authentication failed. Check token.'),
-      403 => trByLanguage(language: language, zh: '权限不足', en: 'Insufficient permissions'),
-      404 => trByLanguage(language: language, zh: '接口不存在（可能是 Memos 版本不兼容）', en: 'Endpoint not found (version mismatch?)'),
-      413 => trByLanguage(language: language, zh: '附件过大，超过服务器限制', en: 'Attachment too large'),
-      500 => trByLanguage(language: language, zh: '服务器内部错误', en: 'Server error'),
-      _ => trByLanguage(language: language, zh: '请求失败', en: 'Request failed'),
+      400 => trByLanguageKey(language: language, key: 'legacy.msg_invalid_request_parameters'),
+      401 => trByLanguageKey(language: language, key: 'legacy.msg_authentication_failed_check_token'),
+      403 => trByLanguageKey(language: language, key: 'legacy.msg_insufficient_permissions'),
+      404 => trByLanguageKey(language: language, key: 'legacy.msg_endpoint_not_found_version_mismatch'),
+      413 => trByLanguageKey(language: language, key: 'legacy.msg_attachment_too_large'),
+      500 => trByLanguageKey(language: language, key: 'legacy.msg_server_error'),
+      _ => trByLanguageKey(language: language, key: 'legacy.msg_request_failed'),
     };
 
     if (msg.isEmpty) {
-      return trByLanguage(
-        language: language,
-        zh: '$base（HTTP $status）',
-        en: '$base (HTTP $status)',
-      );
+      return trByLanguageKey(language: language, key: 'legacy.msg_http_2', params: {'base': base, 'status': status});
     }
-    return trByLanguage(
-      language: language,
-      zh: '$base（HTTP $status）：$msg',
-      en: '$base (HTTP $status): $msg',
-    );
+    return trByLanguageKey(language: language, key: 'legacy.msg_http', params: {'base': base, 'status': status, 'msg': msg});
   }
 
   static String _detailHttpError(DioException e) {
@@ -1301,7 +1281,7 @@ class RemoteSyncController extends SyncControllerBase {
         }
         final method = e.requestOptions.method;
         final path = e.requestOptions.uri.path;
-        final requestLabel = trByLanguage(language: language, zh: '请求', en: 'Request');
+        final requestLabel = trByLanguageKey(language: language, key: 'legacy.msg_request_2');
         throw StateError('${_summarizeHttpError(e)} ($requestLabel: $method $path)');
       }
     }
@@ -1400,11 +1380,7 @@ class RemoteSyncController extends SyncControllerBase {
           _ => null,
         };
         if (memoUid != null && memoUid.isNotEmpty) {
-          final errorText = trByLanguage(
-            language: language,
-            zh: '同步失败（$type）：$memoError',
-            en: 'Sync failed ($type): $memoError',
-          );
+          final errorText = trByLanguageKey(language: language, key: 'legacy.msg_sync_failed', params: {'type': type, 'memoError': memoError});
           await db.updateMemoSyncState(memoUid, syncState: 2, lastError: errorText);
         }
         // Keep ordering: stop processing further ops until this one succeeds.

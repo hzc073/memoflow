@@ -10,6 +10,7 @@ import '../../data/models/personal_access_token.dart';
 import '../../state/memos_providers.dart';
 import '../../state/personal_access_token_repository_provider.dart';
 import '../../state/session_provider.dart';
+import '../../i18n/strings.g.dart';
 
 enum _TokenExpiration {
   h8,
@@ -20,8 +21,8 @@ enum _TokenExpiration {
 extension on _TokenExpiration {
   String label(BuildContext context) => switch (this) {
         _TokenExpiration.h8 => '8h',
-        _TokenExpiration.d30 => context.tr(zh: '30 天', en: '30 days'),
-        _TokenExpiration.never => context.tr(zh: '永不过期', en: 'Never'),
+        _TokenExpiration.d30 => context.t.strings.legacy.msg_v_30_days,
+        _TokenExpiration.never => context.t.strings.legacy.msg_never,
       };
 
   int get expiresInDays => switch (this) {
@@ -74,7 +75,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
         message = data.trim();
       }
       final base = status == null
-          ? context.tr(zh: '网络请求失败', en: 'Network request failed')
+          ? context.t.strings.legacy.msg_network_request_failed
           : 'HTTP $status';
       if (message.isEmpty) return base;
       return '$base: $message';
@@ -102,9 +103,9 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     final stored = _tokenValues[token.name];
     final tail = _last4(stored ?? token.id);
     if (tail == null || tail.isEmpty) {
-      return context.tr(zh: 'Token 尾号未知', en: 'Token tail unknown');
+      return context.t.strings.legacy.msg_token_tail_unknown;
     }
-    return context.tr(zh: 'Token 尾号 $tail', en: 'Token tail $tail');
+    return context.t.strings.legacy.msg_token_tail(tail: tail);
   }
 
   Future<void> _refreshTokens() async {
@@ -177,12 +178,12 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
             children: [
               const SizedBox(height: 8),
               Text(
-                context.tr(zh: 'Token 已创建', en: 'Token created'),
+                context.t.strings.legacy.msg_token_created,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
-                context.tr(zh: '仅显示一次，请复制并妥善保存。', en: 'Shown only once, please copy and keep it safe.'),
+                context.t.strings.legacy.msg_shown_only_once_copy_keep_safe,
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 12),
@@ -205,18 +206,18 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                         if (!context.mounted) return;
                         showTopToast(
                           context,
-                          context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'),
+                          context.t.strings.legacy.msg_copied_clipboard,
                         );
                       },
                       icon: const Icon(Icons.copy),
-                      label: Text(context.tr(zh: '复制', en: 'Copy')),
+                      label: Text(context.t.strings.legacy.msg_copy),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => context.safePop(),
-                      child: Text(context.tr(zh: '完成', en: 'Done')),
+                      child: Text(context.t.strings.legacy.msg_done),
                     ),
                   ),
                 ],
@@ -235,7 +236,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     if (account == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '未登录', en: 'Not signed in'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_not_signed)),
       );
       return;
     }
@@ -259,14 +260,14 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: 'Token 已复制到剪贴板', en: 'Token copied to clipboard'),
+        context.t.strings.legacy.msg_token_copied_clipboard,
       );
       await _showTokenSheet(token);
       await _refreshTokens();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '创建失败：${_formatError(e, context)}', en: 'Create failed: ${_formatError(e, context)}'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_create_failed(formatError_e_context: _formatError(e, context)))),
       );
     } finally {
       if (mounted) setState(() => _creating = false);
@@ -278,10 +279,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     if (value == null || value.isEmpty) {
       showTopToast(
         context,
-        context.tr(
-          zh: 'Token 仅返回一次，无法再次获取',
-          en: 'Token is returned only once and cannot be fetched again',
-        ),
+        context.t.strings.legacy.msg_token_returned_only_once_cannot_fetched,
       );
       return;
     }
@@ -289,7 +287,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     if (!mounted) return;
     showTopToast(
       context,
-      context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'),
+      context.t.strings.legacy.msg_copied_clipboard,
     );
   }
 
@@ -297,7 +295,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     final expires = token.expiresAt;
     if (expires == null) {
       return (
-        label: context.tr(zh: '有效', en: 'Active'),
+        label: context.t.strings.legacy.msg_active,
         bg: Colors.green.withValues(alpha: 0.18),
         fg: Colors.green.shade300,
       );
@@ -306,7 +304,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     final now = DateTime.now();
     if (expires.isBefore(now)) {
       return (
-        label: context.tr(zh: '已过期', en: 'Expired'),
+        label: context.t.strings.legacy.msg_expired,
         bg: Colors.red.withValues(alpha: 0.18),
         fg: Colors.red.shade300,
       );
@@ -314,14 +312,14 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
 
     if (expires.difference(now).inDays <= 7) {
       return (
-        label: context.tr(zh: '即将过期', en: 'Expiring'),
+        label: context.t.strings.legacy.msg_expiring,
         bg: MemoFlowPalette.reviewChipOrangeDark.withValues(alpha: 0.22),
         fg: MemoFlowPalette.reviewChipOrangeDark,
       );
     }
 
     return (
-      label: context.tr(zh: '有效', en: 'Active'),
+      label: context.t.strings.legacy.msg_active,
       bg: Colors.green.withValues(alpha: 0.18),
       fg: Colors.green.shade300,
     );
@@ -345,11 +343,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: 'API 与插件', en: 'API & Plugins')),
+        title: Text(context.t.strings.legacy.msg_api_plugins),
         centerTitle: false,
       ),
       body: Stack(
@@ -377,7 +375,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
               children: [
                 Text(
-                  context.tr(zh: '创建新 Token', en: 'Create New Token'),
+                  context.t.strings.legacy.msg_create_token,
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
                 ),
                 const SizedBox(height: 10),
@@ -409,7 +407,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          context.tr(zh: 'Token 名称', en: 'Token Name'),
+                          context.t.strings.legacy.msg_token_name,
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
                         ),
                         const SizedBox(height: 8),
@@ -418,7 +416,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                           enabled: !_creating,
                           style: TextStyle(color: textMain, fontWeight: FontWeight.w600),
                           decoration: InputDecoration(
-                            hintText: context.tr(zh: '请输入 Token 描述', en: 'Enter a token description'),
+                            hintText: context.t.strings.legacy.msg_enter_token_description,
                             hintStyle: TextStyle(color: textMuted),
                             filled: true,
                             fillColor: fieldBg,
@@ -430,14 +428,14 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                           ),
                           validator: (v) {
                             if ((v ?? '').trim().isEmpty) {
-                              return context.tr(zh: '请输入 Token 名称', en: 'Please enter token name');
+                              return context.t.strings.legacy.msg_enter_token_name;
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          context.tr(zh: '有效期', en: 'Expiration'),
+                          context.t.strings.legacy.msg_expiration,
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
                         ),
                         const SizedBox(height: 8),
@@ -493,7 +491,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                       )
                                     : Text(
-                                        context.tr(zh: '创建 Token', en: 'Create Token'),
+                                        context.t.strings.legacy.msg_create_token_2,
                                         style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
                                       ),
                               ),
@@ -506,7 +504,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  context.tr(zh: '已有 Token', en: 'Existing Tokens'),
+                  context.t.strings.legacy.msg_existing_tokens,
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
                 ),
                 const SizedBox(height: 10),
@@ -523,7 +521,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                         Expanded(child: Text(_listError!, style: TextStyle(color: textMain))),
                         TextButton(
                           onPressed: _refreshTokens,
-                          child: Text(context.tr(zh: '重试', en: 'Retry')),
+                          child: Text(context.t.strings.legacy.msg_retry),
                         ),
                       ],
                     ),
@@ -538,7 +536,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                 else if (_tokens.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    child: Center(child: Text(context.tr(zh: '暂无 Token', en: 'No tokens yet'), style: TextStyle(color: textMuted))),
+                    child: Center(child: Text(context.t.strings.legacy.msg_no_tokens_yet, style: TextStyle(color: textMuted))),
                   )
                 else
                   Column(
@@ -562,10 +560,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                 const SizedBox(height: 8),
                 Center(
                   child: Text(
-                    context.tr(
-                      zh: '请妥善保存 Token，不要泄露。\nAPI 访问频率限制为每分钟 60 次。',
-                      en: 'Keep your token safe and do not share it.\nAPI rate limit is 60 requests per minute.',
-                    ),
+                    context.t.strings.legacy.msg_keep_token_safe_not_share_api,
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
                   ),
@@ -616,7 +611,7 @@ class _TokenItemState extends State<_TokenItem> {
     final badgeFg = widget.badge.fg;
 
     final title = widget.token.description.trim().isEmpty
-        ? context.tr(zh: '(未命名 Token)', en: '(Unnamed Token)')
+        ? context.t.strings.legacy.msg_unnamed_token
         : widget.token.description.trim();
     return Container(
       decoration: BoxDecoration(
@@ -654,7 +649,7 @@ class _TokenItemState extends State<_TokenItem> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  context.tr(zh: '创建于 ${widget.createdAtLabel}', en: 'Created ${widget.createdAtLabel}'),
+                  context.t.strings.legacy.msg_created(widget_createdAtLabel: widget.createdAtLabel),
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: widget.textMuted),
                 ),
                 const SizedBox(height: 6),

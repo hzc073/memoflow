@@ -6,6 +6,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class AiUserProfileScreen extends ConsumerStatefulWidget {
   const AiUserProfileScreen({super.key});
@@ -49,12 +50,12 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
       if (!mounted) return;
         showTopToast(
           context,
-          context.tr(zh: '已保存', en: 'Saved'),
+          context.t.strings.legacy.msg_saved_2,
         );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -102,7 +103,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      context.tr(zh: '我的资料', en: 'My Profile'),
+                      context.t.strings.legacy.msg_my_profile,
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
                     ),
                     const SizedBox(height: 10),
@@ -113,10 +114,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
                       maxLines: 12,
                       style: TextStyle(fontWeight: FontWeight.w600, color: textMain, height: 1.35),
                       decoration: InputDecoration(
-                        hintText: context.tr(
-                          zh: '例如：我的角色 / 兴趣主题 / 写作风格偏好',
-                          en: 'e.g., my role / topics of interest / writing style preferences?',
-                        ),
+                        hintText: context.t.strings.legacy.msg_e_g_my_role_topics_interest,
                         hintStyle: TextStyle(color: textMuted),
                         border: InputBorder.none,
                         isDense: true,
@@ -128,10 +126,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                context.tr(
-                  zh: '这些信息仅用于 AI 总结/报告的背景，不会同步到后端。',
-                  en: 'This info is only used as background for AI summaries/reports and is not synced to the backend.',
-                ),
+                context.t.strings.legacy.msg_info_only_used_background_ai_summaries,
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
             ],
@@ -154,7 +149,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
                   onPressed: _saving ? null : _save,
                   child: _saving
                       ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(context.tr(zh: '保存设置', en: 'Save Settings'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                      : Text(context.t.strings.legacy.msg_save_settings, style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ),
             ),
@@ -171,11 +166,11 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '我的资料', en: 'My Profile')),
+        title: Text(context.t.strings.legacy.msg_my_profile),
         centerTitle: false,
       ),
       body: isDark

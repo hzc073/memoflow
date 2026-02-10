@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../../core/app_localization.dart';
+import '../../state/preferences_provider.dart';
 import '../settings/ai_settings_repository.dart';
 
 class AiSummaryResult {
@@ -39,6 +41,7 @@ class AiSummaryService {
   final Dio _dio;
 
   Future<AiSummaryResult> generateSummary({
+    required AppLanguage language,
     required AiSettings settings,
     required String memoText,
     required String rangeLabel,
@@ -48,7 +51,12 @@ class AiSummaryService {
   }) async {
     final trimmedKey = settings.apiKey.trim();
     if (trimmedKey.isEmpty) {
-      throw StateError('API Key 为空');
+      throw StateError(
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.ai_summary.error_api_key_empty',
+        ),
+      );
     }
 
     final isAnthropic = _isAnthropic(settings);
@@ -57,7 +65,7 @@ class AiSummaryService {
       baseUrl,
       isAnthropic ? 'messages' : 'chat/completions',
     );
-    final systemPrompt = _buildSystemPrompt(settings);
+    final systemPrompt = _buildSystemPrompt(settings: settings, language: language);
     final userPrompt = _buildUserPrompt(
       settings: settings,
       memoText: memoText,
@@ -65,6 +73,7 @@ class AiSummaryService {
       memoCount: memoCount,
       includedCount: includedCount,
       customPrompt: customPrompt,
+      language: language,
     );
 
     final response = isAnthropic
@@ -74,6 +83,7 @@ class AiSummaryService {
             model: settings.model,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
+            language: language,
           )
         : await _callOpenAi(
             endpoint: endpoint,
@@ -81,6 +91,7 @@ class AiSummaryService {
             model: settings.model,
             systemPrompt: systemPrompt,
             userPrompt: userPrompt,
+            language: language,
           );
 
     return _parseSummary(response);
@@ -92,13 +103,25 @@ class AiSummaryService {
     return url.contains('anthropic') || model.contains('claude');
   }
 
-  String _buildSystemPrompt(AiSettings settings) {
+  String _buildSystemPrompt({
+    required AiSettings settings,
+    required AppLanguage language,
+  }) {
     final base = settings.prompt.trim();
     return [
       if (base.isNotEmpty) base,
-      '请严格输出 JSON，不要使用代码块，不要额外说明文字。',
-      'JSON 格式：{"insights":["..."],"moodTrend":"...","keywords":["#..."]}',
-      'insights 控制在 2-5 条，keywords 为 4-8 个带 # 的词。',
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.system.require_json',
+      ),
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.system.json_format',
+      ),
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.system.insights_rule',
+      ),
     ].join('\n');
   }
 
@@ -109,18 +132,51 @@ class AiSummaryService {
     required int memoCount,
     required int includedCount,
     String? customPrompt,
+    required AppLanguage language,
   }) {
     final buffer = StringBuffer();
-    buffer.writeln('时间范围：$rangeLabel');
-    buffer.writeln('笔记条数：$memoCount（提供用于总结：$includedCount）');
+    buffer.writeln(
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.user.range',
+        params: {'rangeLabel': rangeLabel},
+      ),
+    );
+    buffer.writeln(
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.user.counts',
+        params: {
+          'memoCount': memoCount,
+          'includedCount': includedCount,
+        },
+      ),
+    );
     final profile = settings.userProfile.trim();
     if (profile.isNotEmpty) {
-      buffer.writeln('用户背景：$profile');
+      buffer.writeln(
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.ai_summary.user.profile',
+          params: {'profile': profile},
+        ),
+      );
     }
     if (customPrompt != null && customPrompt.trim().isNotEmpty) {
-      buffer.writeln('用户补充指令：${customPrompt.trim()}');
+      buffer.writeln(
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.ai_summary.user.custom_prompt',
+          params: {'customPrompt': customPrompt.trim()},
+        ),
+      );
     }
-    buffer.writeln('笔记内容：');
+    buffer.writeln(
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.user.memo_content',
+      ),
+    );
     buffer.writeln(memoText.trim());
     return buffer.toString();
   }
@@ -131,6 +187,7 @@ class AiSummaryService {
     required String model,
     required String systemPrompt,
     required String userPrompt,
+    required AppLanguage language,
   }) async {
     final response = await _dio.post(
       endpoint,
@@ -152,11 +209,21 @@ class AiSummaryService {
 
     final data = response.data;
     if (data is! Map) {
-      throw StateError('AI 响应格式不正确');
+      throw StateError(
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.ai_summary.error_invalid_response',
+        ),
+      );
     }
     final choices = data['choices'];
     if (choices is! List || choices.isEmpty) {
-      throw StateError('AI 响应为空');
+      throw StateError(
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.ai_summary.error_empty_response',
+        ),
+      );
     }
     final first = choices.first;
     if (first is Map) {
@@ -168,7 +235,12 @@ class AiSummaryService {
         return first['text'] as String;
       }
     }
-    throw StateError('AI 响应内容缺失');
+    throw StateError(
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.error_missing_content',
+      ),
+    );
   }
 
   Future<String> _callAnthropic({
@@ -177,6 +249,7 @@ class AiSummaryService {
     required String model,
     required String systemPrompt,
     required String userPrompt,
+    required AppLanguage language,
   }) async {
     final response = await _dio.post(
       endpoint,
@@ -200,7 +273,12 @@ class AiSummaryService {
 
     final data = response.data;
     if (data is! Map) {
-      throw StateError('AI 响应格式不正确');
+      throw StateError(
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.ai_summary.error_invalid_response',
+        ),
+      );
     }
     final content = data['content'];
     if (content is List) {
@@ -216,7 +294,12 @@ class AiSummaryService {
     if (content is String && content.isNotEmpty) {
       return content;
     }
-    throw StateError('AI 响应内容缺失');
+    throw StateError(
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.error_missing_content',
+      ),
+    );
   }
 
   AiSummaryResult _parseSummary(String rawText) {

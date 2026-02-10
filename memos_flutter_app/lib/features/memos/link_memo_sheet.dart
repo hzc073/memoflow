@@ -14,6 +14,7 @@ import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class LinkMemoSheet extends ConsumerStatefulWidget {
   const LinkMemoSheet({super.key, required this.existingNames});
@@ -226,7 +227,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              context.tr(zh: '关联卡片', en: 'Link Card'),
+              context.t.strings.legacy.msg_link_card,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -238,7 +239,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
               controller: _searchController,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: context.tr(zh: '搜索笔记内容', en: 'Search memo content'),
+                hintText: context.t.strings.legacy.msg_search_memo_content,
                 isDense: true,
                 filled: true,
                 fillColor: isDark
@@ -290,7 +291,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     if (_error != null) {
       return Center(
         child: Text(
-          context.tr(zh: '加载失败', en: 'Failed to load'),
+          context.t.strings.legacy.msg_failed_load_2,
           style: TextStyle(color: textMuted),
         ),
       );
@@ -298,7 +299,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     if (_memos.isEmpty) {
       return Center(
         child: Text(
-          context.tr(zh: '暂无可关联的笔记', en: 'No memos available'),
+          context.t.strings.legacy.msg_no_memos_available,
           style: TextStyle(color: textMuted),
         ),
       );

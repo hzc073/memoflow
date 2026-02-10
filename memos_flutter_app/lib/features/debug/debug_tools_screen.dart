@@ -18,6 +18,7 @@ import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';
 import '../debug/debug_logs_screen.dart';
 import '../onboarding/language_selection_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class DebugToolsScreen extends ConsumerStatefulWidget {
   const DebugToolsScreen({super.key});
@@ -496,13 +497,13 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     if (_loginBusy) return;
     final baseUrl = _resolveBaseUrl();
     if (baseUrl == null) {
-      _showMessage(context.tr(zh: '未找到服务器地址', en: 'Server URL unavailable'));
+      _showMessage(context.t.strings.legacy.msg_server_url_unavailable);
       return;
     }
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
     if (username.isEmpty || password.isEmpty) {
-      _showMessage(context.tr(zh: '请输入账号和密码', en: 'Enter username and password'));
+      _showMessage(context.t.strings.legacy.msg_enter_username_password);
       return;
     }
 
@@ -557,7 +558,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
         error: message,
       );
       if (!mounted) return;
-      _showMessage(context.tr(zh: '登录失败: $message', en: 'Sign-in failed: $message'));
+      _showMessage(context.t.strings.legacy.msg_sign_failed(message: message ?? context.t.strings.legacy.msg_request_failed));
       return;
     }
 
@@ -591,17 +592,17 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
       }
     });
     if (token == null || token.isEmpty) {
-      _showMessage(context.tr(zh: '登录成功，但未返回 Token', en: 'Signed in, but no token returned'));
+      _showMessage(context.t.strings.legacy.msg_signed_but_no_token_returned);
       return;
     }
-    _showMessage(context.tr(zh: '登录成功', en: 'Signed in'));
+    _showMessage(context.t.strings.legacy.msg_signed);
   }
 
   void _setManualToken() {
     final raw = _tokenController.text;
     final token = _normalizeTokenInput(raw);
     if (token.isEmpty) {
-      _showMessage(context.tr(zh: '请输入 Token', en: 'Enter a token'));
+      _showMessage(context.t.strings.legacy.msg_enter_token);
       return;
     }
     setState(() {
@@ -609,7 +610,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
       _activeTokenSource = 'manual';
     });
     _logAction('Set token', detail: 'manual');
-    _showMessage(context.tr(zh: 'Token 已应用', en: 'Token applied'));
+    _showMessage(context.t.strings.legacy.msg_token_applied);
   }
 
   void _clearToken() {
@@ -624,16 +625,16 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     if (_apiBusy) return;
     final baseUrl = _resolveBaseUrl();
     if (baseUrl == null) {
-      _showMessage(context.tr(zh: '未找到服务器地址', en: 'Server URL unavailable'));
+      _showMessage(context.t.strings.legacy.msg_server_url_unavailable);
       return;
     }
     final path = _apiPathController.text.trim();
     if (path.isEmpty) {
-      _showMessage(context.tr(zh: '请输入接口路径', en: 'Enter API path'));
+      _showMessage(context.t.strings.legacy.msg_enter_api_path);
       return;
     }
     if (path.toLowerCase().startsWith('http')) {
-      _showMessage(context.tr(zh: '请使用相对路径', en: 'Use a relative path'));
+      _showMessage(context.t.strings.legacy.msg_use_relative_path);
       return;
     }
 
@@ -642,7 +643,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     if (queryRaw.isNotEmpty) {
       query = _parseQuery(queryRaw);
       if (query == null) {
-        _showMessage(context.tr(zh: 'Query 解析失败', en: 'Failed to parse query'));
+        _showMessage(context.t.strings.legacy.msg_failed_parse_query);
         return;
       }
     }
@@ -653,7 +654,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
       try {
         body = jsonDecode(bodyRaw);
       } catch (_) {
-        _showMessage(context.tr(zh: 'Body 必须是 JSON', en: 'Body must be JSON'));
+        _showMessage(context.t.strings.legacy.msg_body_must_json);
         return;
       }
     }
@@ -801,11 +802,11 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     final baseUrl = account?.baseUrl.toString() ?? '';
     final accountUser = account?.user;
     final userLabel = accountUser == null
-        ? context.tr(zh: '未登录', en: 'Not signed in')
+        ? context.t.strings.legacy.msg_not_signed
         : (accountUser.displayName.isNotEmpty ? accountUser.displayName : accountUser.username);
     final token = _activeToken;
     final tokenLabel = token == null || token.isEmpty
-        ? context.tr(zh: '无', en: 'None')
+        ? context.t.strings.legacy.msg_none
         : _tokenPreview(token);
     final tokenSource = _activeTokenSource.isEmpty ? '-' : _activeTokenSource;
 
@@ -817,11 +818,11 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '调试工具', en: 'Debug Tools')),
+        title: Text(context.t.strings.legacy.msg_debug_tools),
         centerTitle: false,
       ),
       body: Stack(
@@ -845,30 +846,30 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
           ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
-              _SectionTitle(text: context.tr(zh: '状态', en: 'Status'), color: textMuted),
+              _SectionTitle(text: context.t.strings.legacy.msg_status, color: textMuted),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
                 divider: divider,
                 children: [
-                  _InfoRow(label: context.tr(zh: '用户', en: 'User'), value: userLabel, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.tr(zh: '服务器', en: 'Server'), value: baseUrl.isEmpty ? '-' : baseUrl, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.tr(zh: 'Token 来源', en: 'Token Source'), value: tokenSource, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.tr(zh: 'Token 摘要', en: 'Token'), value: tokenLabel, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.tr(zh: '兼容模式', en: 'Legacy Mode'), value: prefs.useLegacyApi ? 'ON' : 'OFF', textMain: textMain, textMuted: textMuted),
+                  _InfoRow(label: context.t.strings.legacy.msg_user, value: userLabel, textMain: textMain, textMuted: textMuted),
+                  _InfoRow(label: context.t.strings.legacy.msg_server, value: baseUrl.isEmpty ? '-' : baseUrl, textMain: textMain, textMuted: textMuted),
+                  _InfoRow(label: context.t.strings.legacy.msg_token_source, value: tokenSource, textMain: textMain, textMuted: textMuted),
+                  _InfoRow(label: context.t.strings.legacy.msg_token, value: tokenLabel, textMain: textMain, textMuted: textMuted),
+                  _InfoRow(label: context.t.strings.legacy.msg_legacy_mode, value: prefs.useLegacyApi ? 'ON' : 'OFF', textMain: textMain, textMuted: textMuted),
                   FutureBuilder<PackageInfo>(
                     future: _packageInfoFuture,
                     builder: (context, snapshot) {
                       final version = snapshot.data?.version.trim() ?? '';
                       final build = snapshot.data?.buildNumber.trim() ?? '';
                       final label = version.isEmpty ? '-' : (build.isEmpty ? version : 'v$version ($build)');
-                      return _InfoRow(label: context.tr(zh: '版本', en: 'Version'), value: label, textMain: textMain, textMuted: textMuted);
+                      return _InfoRow(label: context.t.strings.legacy.msg_version, value: label, textMain: textMain, textMuted: textMuted);
                     },
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.tr(zh: '本地调试', en: 'Local'), color: textMuted),
+              _SectionTitle(text: context.t.strings.legacy.msg_local, color: textMuted),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
@@ -876,7 +877,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 children: [
                   _ActionRow(
                     icon: Icons.language_outlined,
-                    label: context.tr(zh: '打开语言首次设置', en: 'Open language onboarding'),
+                    label: context.t.strings.legacy.msg_open_language_onboarding,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -886,18 +887,18 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                   ),
                   _ActionRow(
                     icon: Icons.restart_alt,
-                    label: context.tr(zh: '重置语言选择状态', en: 'Reset language selection'),
+                    label: context.t.strings.legacy.msg_reset_language_selection,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
                       ref.read(appPreferencesProvider.notifier).setHasSelectedLanguage(false);
                       _logAction('Reset language selection');
-                      _showMessage(context.tr(zh: '已重置', en: 'Reset complete'));
+                      _showMessage(context.t.strings.legacy.msg_reset_complete);
                     },
                   ),
                   _ActionRow(
                     icon: Icons.login_outlined,
-                    label: context.tr(zh: '打开登录页面', en: 'Open login screen'),
+                    label: context.t.strings.legacy.msg_open_login_screen,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -908,7 +909,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.tr(zh: '服务端登录', en: 'Server Login'), color: textMuted),
+              _SectionTitle(text: context.t.strings.legacy.msg_server_login, color: textMuted),
               const SizedBox(height: 10),
               _Card(
                 card: card,
@@ -917,7 +918,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _Field(
-                      label: context.tr(zh: '账号', en: 'Username'),
+                      label: context.t.strings.legacy.msg_username_2,
                       controller: _usernameController,
                       hintText: 'user',
                       obscureText: false,
@@ -927,9 +928,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     ),
                     const SizedBox(height: 12),
                     _Field(
-                      label: context.tr(zh: '密码', en: 'Password'),
+                      label: context.t.strings.legacy.msg_password,
                       controller: _passwordController,
-                      hintText: context.tr(zh: '请输入密码', en: 'Enter password'),
+                      hintText: context.t.strings.legacy.msg_enter_password_2,
                       obscureText: _obscurePassword,
                       textMain: textMain,
                       textMuted: textMuted,
@@ -947,7 +948,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                         icon: _loginBusy
                             ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.key),
-                        label: Text(_loginBusy ? context.tr(zh: '登录中…', en: 'Signing in...') : context.tr(zh: '登录', en: 'Sign in')),
+                        label: Text(_loginBusy ? context.t.strings.legacy.msg_signing : context.t.strings.legacy.msg_sign_3),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: MemoFlowPalette.primary,
                           foregroundColor: Colors.white,
@@ -960,7 +961,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     if ((_lastLoginUser ?? '').isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
-                        context.tr(zh: '当前登录用户: $_lastLoginUser', en: 'Signed in as: $_lastLoginUser'),
+                        context.t.strings.legacy.msg_signed_2(
+                          lastLoginUser: _lastLoginUser ?? '-',
+                        ),
                         style: TextStyle(fontSize: 12, color: textMuted),
                       ),
                     ],
@@ -968,7 +971,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.tr(zh: '手动 Token', en: 'Manual Token'), color: textMuted),
+              _SectionTitle(text: context.t.strings.legacy.msg_manual_token, color: textMuted),
               const SizedBox(height: 10),
               _Card(
                 card: card,
@@ -1003,7 +1006,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                                 shape: const StadiumBorder(),
                                 textStyle: const TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              child: Text(context.tr(zh: '应用 Token', en: 'Apply token')),
+                              child: Text(context.t.strings.legacy.msg_apply_token),
                             ),
                           ),
                         ),
@@ -1012,7 +1015,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                           height: 42,
                           child: TextButton(
                             onPressed: _clearToken,
-                            child: Text(context.tr(zh: '清除', en: 'Clear'), style: TextStyle(color: textMuted)),
+                            child: Text(context.t.strings.legacy.msg_clear_2, style: TextStyle(color: textMuted)),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -1023,12 +1026,12 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                                 ? null
                                 : () async {
                                     final messenger = ScaffoldMessenger.of(context);
-                                    final message = context.tr(zh: 'Token 已复制', en: 'Token copied');
+                                    final message = context.t.strings.legacy.msg_token_copied;
                                     await Clipboard.setData(ClipboardData(text: token));
                                     if (!mounted) return;
                                     messenger.showSnackBar(SnackBar(content: Text(message)));
                                   },
-                            child: Text(context.tr(zh: '复制', en: 'Copy'), style: TextStyle(color: textMuted)),
+                            child: Text(context.t.strings.legacy.msg_copy, style: TextStyle(color: textMuted)),
                           ),
                         ),
                       ],
@@ -1037,7 +1040,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.tr(zh: 'API 调用', en: 'API Call'), color: textMuted),
+              _SectionTitle(text: context.t.strings.legacy.msg_api_call, color: textMuted),
               const SizedBox(height: 10),
               _Card(
                 card: card,
@@ -1046,7 +1049,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _Field(
-                      label: context.tr(zh: '路径', en: 'Path'),
+                      label: context.t.strings.legacy.msg_path,
                       controller: _apiPathController,
                       hintText: '/api/v1/memos',
                       obscureText: false,
@@ -1056,7 +1059,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     ),
                     const SizedBox(height: 12),
                     _Field(
-                      label: context.tr(zh: 'Query', en: 'Query'),
+                      label: context.t.strings.legacy.msg_query,
                       controller: _apiQueryController,
                       hintText: 'pageSize=20&filter=',
                       obscureText: false,
@@ -1066,7 +1069,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     ),
                     const SizedBox(height: 12),
                     _Field(
-                      label: context.tr(zh: 'Body (JSON)', en: 'Body (JSON)'),
+                      label: context.t.strings.legacy.msg_body_json,
                       controller: _apiBodyController,
                       hintText: '{"content":"hello"}',
                       obscureText: false,
@@ -1124,7 +1127,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.tr(zh: '日志', en: 'Logs'), color: textMuted),
+              _SectionTitle(text: context.t.strings.legacy.msg_logs, color: textMuted),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
@@ -1132,7 +1135,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 children: [
                   _ActionRow(
                     icon: Icons.list_alt_outlined,
-                    label: context.tr(zh: '查看调试记录', en: 'View debug logs'),
+                    label: context.t.strings.legacy.msg_view_debug_logs,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {

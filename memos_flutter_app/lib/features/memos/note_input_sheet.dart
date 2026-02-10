@@ -33,6 +33,7 @@ import 'memo_video_grid.dart';
 import 'link_memo_sheet.dart';
 import '../voice/voice_record_screen.dart';
 import '../settings/location_settings_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class NoteInputSheet extends ConsumerStatefulWidget {
   const NoteInputSheet({
@@ -296,7 +297,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             children: [
               const Icon(Icons.lock, size: 18),
               const SizedBox(width: 8),
-              Text(context.tr(zh: '私密', en: 'Private')),
+              Text(context.t.strings.legacy.msg_private_2),
             ],
           ),
         ),
@@ -307,7 +308,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             children: [
               const Icon(Icons.verified_user, size: 18),
               const SizedBox(width: 8),
-              Text(context.tr(zh: '受保护', en: 'Protected')),
+              Text(context.t.strings.legacy.msg_protected),
             ],
           ),
         ),
@@ -318,7 +319,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             children: [
               const Icon(Icons.public, size: 18),
               const SizedBox(width: 8),
-              Text(context.tr(zh: '公开', en: 'Public')),
+              Text(context.t.strings.legacy.msg_public),
             ],
           ),
         ),
@@ -343,19 +344,19 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     switch (raw.trim().toUpperCase()) {
       case 'PUBLIC':
         return (
-          context.tr(zh: '公开', en: 'Public'),
+          context.t.strings.legacy.msg_public,
           Icons.public,
           const Color(0xFF3B8C52),
         );
       case 'PROTECTED':
         return (
-          context.tr(zh: '受保护', en: 'Protected'),
+          context.t.strings.legacy.msg_protected,
           Icons.verified_user,
           const Color(0xFFB26A2B),
         );
       default:
         return (
-          context.tr(zh: '私密', en: 'Private'),
+          context.t.strings.legacy.msg_private_2,
           Icons.lock,
           const Color(0xFF7C7C7C),
         );
@@ -559,10 +560,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '定位未启用，请先在设置中开启。', en: 'Location is disabled. Enable it in settings first.'),
+            context.t.strings.legacy.msg_location_disabled_enable_settings_first,
           ),
           action: SnackBarAction(
-            label: context.tr(zh: '设置', en: 'Settings'),
+            label: context.t.strings.legacy.msg_settings,
             onPressed: _openLocationSettings,
           ),
         ),
@@ -598,10 +599,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       setState(() => _location = next);
       showTopToast(
         context,
-        context.tr(
-          zh: '定位成功：${next.displayText(fractionDigits: 6)}',
-          en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
-        ),
+        context.t.strings.legacy.msg_location_updated(next_displayText_fractionDigits_6: next.displayText(fractionDigits: 6)),
         duration: const Duration(seconds: 2),
       );
     } catch (e) {
@@ -619,17 +617,17 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   String _locationErrorText(Object error) {
     if (error is LocationException) {
       return switch (error.code) {
-        'service_disabled' => context.tr(zh: '定位服务未开启', en: 'Location services are disabled'),
-        'permission_denied' => context.tr(zh: '定位权限被拒绝', en: 'Location permission denied'),
-        'permission_denied_forever' => context.tr(zh: '定位权限被永久拒绝', en: 'Location permission denied permanently'),
-        'timeout' => context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.'),
-        _ => context.tr(zh: '定位失败', en: 'Failed to get location'),
+        'service_disabled' => context.t.strings.legacy.msg_location_services_disabled,
+        'permission_denied' => context.t.strings.legacy.msg_location_permission_denied,
+        'permission_denied_forever' => context.t.strings.legacy.msg_location_permission_denied_permanently,
+        'timeout' => context.t.strings.legacy.msg_location_timed_try,
+        _ => context.t.strings.legacy.msg_failed_get_location,
       };
     }
     if (error is TimeoutException) {
-      return context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.');
+      return context.t.strings.legacy.msg_location_timed_try;
     }
-    return context.tr(zh: '定位失败', en: 'Failed to get location');
+    return context.t.strings.legacy.msg_failed_get_location;
   }
 
   Widget _buildMoreToolbar(BuildContext context, bool isDark) {
@@ -861,7 +859,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final path = result.filePath.trim();
     if (path.isEmpty) {
       messenger.showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '录音路径缺失', en: 'Recording path missing.'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_recording_path_missing)),
       );
       return;
     }
@@ -869,7 +867,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final file = File(path);
     if (!file.existsSync()) {
       messenger.showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '录音文件不存在', en: 'Recording file not found.'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_recording_file_not_found_2)),
       );
       return;
     }
@@ -892,7 +890,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     });
     showTopToast(
       context,
-      context.tr(zh: '已添加录音附件', en: 'Added voice attachment.'),
+      context.t.strings.legacy.msg_added_voice_attachment,
     );
   }
 
@@ -1384,7 +1382,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                 decoration: InputDecoration(
                                   isDense: true,
                                   border: InputBorder.none,
-                                hintText: context.tr(zh: '写下你的想法...', en: 'Write down your thoughts...'),
+                                hintText: context.t.strings.legacy.msg_write_thoughts,
                                   hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
                                 ),
                               ),
@@ -1427,7 +1425,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              context.tr(zh: '正在定位…', en: 'Locating...'),
+                              context.t.strings.legacy.msg_locating,
                               style: TextStyle(fontSize: 12, color: chipText),
                             ),
                           ],
@@ -1539,7 +1537,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                     ),
                                   ),
                                   Tooltip(
-                                    message: context.tr(zh: '可见性：$visibilityLabel', en: 'Visibility: $visibilityLabel'),
+                                    message: context.t.strings.legacy.msg_visibility_2(visibilityLabel: visibilityLabel),
                                     child: InkResponse(
                                       key: _visibilityMenuKey,
                                       onTap: _busy

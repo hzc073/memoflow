@@ -8,6 +8,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/system_fonts.dart';
 import '../../core/theme_colors.dart';
+import '../../i18n/strings.g.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/system_fonts_provider.dart';
@@ -60,7 +61,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
   }) async {
     final systemDefault = SystemFontInfo(
       family: '',
-      displayName: context.tr(zh: '系统默认', en: 'System Default'),
+      displayName: context.t.strings.settings.preferences.systemDefault,
     );
     final selectedFamily = prefs.fontFamily?.trim() ?? '';
     await showModalBottomSheet<void>(
@@ -74,7 +75,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(context.tr(zh: '字体', en: 'Font')),
+                  child: Text(context.t.strings.settings.preferences.font),
                 ),
               ),
               for (final font in [systemDefault, ...fonts])
@@ -101,7 +102,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: Text(
-                    context.tr(zh: '未找到系统字体', en: 'No system fonts found'),
+                    context.t.strings.settings.preferences.noSystemFonts,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -114,7 +115,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
 
   String _fontLabel(BuildContext context, AppPreferences prefs, List<SystemFontInfo> fonts) {
     final family = prefs.fontFamily?.trim() ?? '';
-    if (family.isEmpty) return context.tr(zh: '系统默认', en: 'System Default');
+    if (family.isEmpty) return context.t.strings.settings.preferences.systemDefault;
     for (final font in fonts) {
       if (font.family == family) return font.displayName;
     }
@@ -140,6 +141,17 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final languageItems = AppLanguage.values
+        .map(
+          (language) => DropdownMenuItem<AppLanguage>(
+            value: language,
+            child: Text(
+              language.labelFor(prefs.language),
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+            ),
+          ),
+        )
+        .toList(growable: false);
 
     return Scaffold(
       backgroundColor: bg,
@@ -149,11 +161,11 @@ class PreferencesSettingsScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.common.back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '偏好设置', en: 'Preferences')),
+        title: Text(context.t.strings.settings.preferences.title),
         centerTitle: false,
       ),
       body: Stack(
@@ -181,30 +193,26 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 card: card,
                 divider: divider,
                 children: [
-                  _SelectRow(
-                    label: context.tr(zh: '语言', en: 'Language'),
-                    value: prefs.language.labelFor(prefs.language),
-                    icon: Icons.expand_more,
+                  _DropdownRow<AppLanguage>(
+                    label: context.t.strings.settings.preferences.language,
+                    value: prefs.language,
+                    items: languageItems,
                     textMain: textMain,
                     textMuted: textMuted,
-                    onTap: () => _selectEnum<AppLanguage>(
-                      context: context,
-                      title: context.tr(zh: '语言', en: 'Language'),
-                      values: AppLanguage.values,
-                      label: (v) => v.labelFor(prefs.language),
-                      selected: prefs.language,
-                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLanguage(v),
-                    ),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      ref.read(appPreferencesProvider.notifier).setLanguage(v);
+                    },
                   ),
                   _SelectRow(
-                    label: context.tr(zh: '字号', en: 'Font Size'),
+                    label: context.t.strings.settings.preferences.fontSize,
                     value: prefs.fontSize.labelFor(prefs.language),
                     icon: Icons.chevron_right,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _selectEnum<AppFontSize>(
                       context: context,
-                      title: context.tr(zh: '字号', en: 'Font Size'),
+                      title: context.t.strings.settings.preferences.fontSize,
                       values: AppFontSize.values,
                       label: (v) => v.labelFor(prefs.language),
                       selected: prefs.fontSize,
@@ -212,14 +220,14 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     ),
                   ),
                   _SelectRow(
-                    label: context.tr(zh: '行高', en: 'Line Height'),
+                    label: context.t.strings.settings.preferences.lineHeight,
                     value: prefs.lineHeight.labelFor(prefs.language),
                     icon: Icons.chevron_right,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _selectEnum<AppLineHeight>(
                       context: context,
-                      title: context.tr(zh: '行高', en: 'Line Height'),
+                      title: context.t.strings.settings.preferences.lineHeight,
                       values: AppLineHeight.values,
                       label: (v) => v.labelFor(prefs.language),
                       selected: prefs.lineHeight,
@@ -227,7 +235,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     ),
                   ),
                   _SelectRow(
-                    label: context.tr(zh: '字体', en: 'Font'),
+                    label: context.t.strings.settings.preferences.font,
                     value: fontLabel,
                     icon: Icons.chevron_right,
                     textMain: textMain,
@@ -241,19 +249,19 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                       } catch (e) {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '加载字体失败：$e', en: 'Failed to load fonts: $e'))),
+                          SnackBar(content: Text(context.t.strings.settings.preferences.loadFontsFailed(error: e.toString()))),
                         );
                       }
                     },
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '折叠长内容', en: 'Collapse Long Content'),
+                    label: context.t.strings.settings.preferences.collapseLongContent,
                     value: prefs.collapseLongContent,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseLongContent(v),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '折叠引用', en: 'Collapse References'),
+                    label: context.t.strings.settings.preferences.collapseReferences,
                     value: prefs.collapseReferences,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseReferences(v),
@@ -266,14 +274,14 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 divider: divider,
                 children: [
                   _SelectRow(
-                    label: context.tr(zh: '启动动作', en: 'Launch Action'),
+                    label: context.t.strings.settings.preferences.launchAction,
                     value: prefs.launchAction.labelFor(prefs.language),
                     icon: Icons.expand_more,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _selectEnum<LaunchAction>(
                       context: context,
-                      title: context.tr(zh: '启动动作', en: 'Launch Action'),
+                      title: context.t.strings.settings.preferences.launchAction,
                       values: LaunchAction.values,
                       label: (v) => v.labelFor(prefs.language),
                       selected: prefs.launchAction,
@@ -281,7 +289,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     ),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '快速记录时唤醒键盘', en: 'Auto-open keyboard for Quick Input'),
+                    label: context.t.strings.settings.preferences.quickInputKeyboard,
                     value: prefs.quickInputAutoFocus,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setQuickInputAutoFocus(v),
@@ -294,14 +302,14 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 divider: divider,
                 children: [
                   _SelectRow(
-                    label: context.tr(zh: '外观', en: 'Appearance'),
+                    label: context.t.strings.settings.preferences.appearance,
                     value: themeModeLabel,
                     icon: Icons.expand_more,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _selectEnum<AppThemeMode>(
                       context: context,
-                      title: context.tr(zh: '外观', en: 'Appearance'),
+                      title: context.t.strings.settings.preferences.appearance,
                       values: const [AppThemeMode.system, AppThemeMode.light, AppThemeMode.dark],
                       label: (v) => v.labelFor(prefs.language),
                       selected: themeMode,
@@ -309,7 +317,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     ),
                   ),
                   _ThemeColorRow(
-                    label: context.tr(zh: '主题色', en: 'Theme Color'),
+                    label: context.t.strings.settings.preferences.themeColor,
                     selected: themeColor,
                     textMain: textMain,
                     isDark: isDark,
@@ -328,7 +336,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     },
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '触感反馈', en: 'Haptics'),
+                    label: context.t.strings.settings.preferences.haptics,
                     value: prefs.hapticsEnabled,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setHapticsEnabled(v),
@@ -422,6 +430,52 @@ class _SelectRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DropdownRow<T> extends StatelessWidget {
+  const _DropdownRow({
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.textMain,
+    required this.textMuted,
+    required this.onChanged,
+  });
+
+  final String label;
+  final T value;
+  final List<DropdownMenuItem<T>> items;
+  final Color textMain;
+  final Color textMuted;
+  final ValueChanged<T?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+            ),
+          ),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: value,
+              items: items,
+              onChanged: onChanged,
+              isDense: true,
+              icon: Icon(Icons.expand_more, size: 18, color: textMuted),
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+              dropdownColor: Theme.of(context).cardColor,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -896,7 +950,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(context.tr(zh: '\u81ea\u5b9a\u4e49\u4e3b\u9898', en: 'Custom Theme'), style: headerStyle, textAlign: TextAlign.center),
+                    Text(context.t.strings.settings.preferences.customTheme, style: headerStyle, textAlign: TextAlign.center),
                     const SizedBox(height: 12),
                     _ModeToggle(
                       mode: _mode,
@@ -927,7 +981,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       if (_history.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         _HistoryRow(
-                          title: context.tr(zh: '\u5386\u53f2', en: 'History'),
+                          title: context.t.strings.settings.preferences.history,
                           entries: _history,
                           border: border,
                           textMuted: textMuted,
@@ -936,7 +990,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ],
                     ] else ...[
                       _ModeSectionHeader(
-                        label: context.tr(zh: '\u6d45\u8272\u6a21\u5f0f', en: 'Light Mode'),
+                        label: context.t.strings.settings.preferences.lightMode,
                         caption: 'LIGHT MODE',
                         textMain: textMain,
                         textMuted: textMuted,
@@ -960,12 +1014,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 12),
                       _SurfaceSectionHeader(
-                        title: context.tr(zh: '\u8868\u9762\u8272', en: 'Surfaces'),
+                        title: context.t.strings.settings.preferences.surfaces,
                         textMuted: textMuted,
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.tr(zh: '\u80cc\u666f', en: 'Background'),
+                        label: context.t.strings.settings.preferences.background,
                         controller: _surfaceLightBackgroundController,
                         color: _manualSurfacesLight.background,
                         field: field,
@@ -981,7 +1035,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.tr(zh: '\u80cc\u666f\u8272', en: 'Background Color'),
+                          title: context.t.strings.settings.preferences.backgroundColor,
                           isLight: true,
                           slot: _SurfaceSlot.background,
                           color: _manualSurfacesLight.background,
@@ -989,7 +1043,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.tr(zh: '\u5361\u7247', en: 'Card'),
+                        label: context.t.strings.settings.preferences.card,
                         controller: _surfaceLightCardController,
                         color: _manualSurfacesLight.card,
                         field: field,
@@ -1005,7 +1059,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.tr(zh: '\u5361\u7247\u8272', en: 'Card Color'),
+                          title: context.t.strings.settings.preferences.cardColor,
                           isLight: true,
                           slot: _SurfaceSlot.card,
                           color: _manualSurfacesLight.card,
@@ -1013,7 +1067,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.tr(zh: '\u8fb9\u6846', en: 'Border'),
+                        label: context.t.strings.settings.preferences.border,
                         controller: _surfaceLightBorderController,
                         color: _manualSurfacesLight.border,
                         field: field,
@@ -1029,7 +1083,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.tr(zh: '\u8fb9\u6846\u8272', en: 'Border Color'),
+                          title: context.t.strings.settings.preferences.borderColor,
                           isLight: true,
                           slot: _SurfaceSlot.border,
                           color: _manualSurfacesLight.border,
@@ -1038,7 +1092,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       if (_history.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         _HistoryRow(
-                          title: context.tr(zh: '\u5386\u53f2', en: 'History'),
+                          title: context.t.strings.settings.preferences.history,
                           entries: _history,
                           border: border,
                           textMuted: textMuted,
@@ -1047,7 +1101,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ],
                       const SizedBox(height: 16),
                       _ModeSectionHeader(
-                        label: context.tr(zh: '\u6df1\u8272\u6a21\u5f0f', en: 'Dark Mode'),
+                        label: context.t.strings.settings.preferences.darkMode,
                         caption: 'DARK MODE',
                         textMain: textMain,
                         textMuted: textMuted,
@@ -1071,12 +1125,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 12),
                       _SurfaceSectionHeader(
-                        title: context.tr(zh: '\u8868\u9762\u8272', en: 'Surfaces'),
+                        title: context.t.strings.settings.preferences.surfaces,
                         textMuted: textMuted,
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.tr(zh: '\u80cc\u666f', en: 'Background'),
+                        label: context.t.strings.settings.preferences.background,
                         controller: _surfaceDarkBackgroundController,
                         color: _manualSurfacesDark.background,
                         field: field,
@@ -1092,7 +1146,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.tr(zh: '\u80cc\u666f\u8272', en: 'Background Color'),
+                          title: context.t.strings.settings.preferences.backgroundColor,
                           isLight: false,
                           slot: _SurfaceSlot.background,
                           color: _manualSurfacesDark.background,
@@ -1100,7 +1154,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.tr(zh: '\u5361\u7247', en: 'Card'),
+                        label: context.t.strings.settings.preferences.card,
                         controller: _surfaceDarkCardController,
                         color: _manualSurfacesDark.card,
                         field: field,
@@ -1116,7 +1170,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.tr(zh: '\u5361\u7247\u8272', en: 'Card Color'),
+                          title: context.t.strings.settings.preferences.cardColor,
                           isLight: false,
                           slot: _SurfaceSlot.card,
                           color: _manualSurfacesDark.card,
@@ -1124,7 +1178,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.tr(zh: '\u8fb9\u6846', en: 'Border'),
+                        label: context.t.strings.settings.preferences.border,
                         controller: _surfaceDarkBorderController,
                         color: _manualSurfacesDark.border,
                         field: field,
@@ -1140,7 +1194,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.tr(zh: '\u8fb9\u6846\u8272', en: 'Border Color'),
+                          title: context.t.strings.settings.preferences.borderColor,
                           isLight: false,
                           slot: _SurfaceSlot.border,
                           color: _manualSurfacesDark.border,
@@ -1159,7 +1213,7 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
-                            child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+                            child: Text(context.t.strings.common.cancel),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1175,8 +1229,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                             ),
                             child: Text(
                               _mode == CustomThemeMode.manual
-                                  ? context.tr(zh: '\u4fdd\u5b58\u8bbe\u7f6e', en: 'Save Settings')
-                                  : context.tr(zh: '\u4fdd\u5b58', en: 'Save'),
+                                  ? context.t.strings.common.saveSettings
+                                  : context.t.strings.common.save,
                             ),
                           ),
                         ),
@@ -1222,14 +1276,14 @@ class _ModeToggle extends StatelessWidget {
       child: Row(
         children: [
           _ModeToggleButton(
-            label: context.tr(zh: '\u81ea\u52a8', en: 'Auto'),
+            label: context.t.strings.common.auto,
             selected: mode == CustomThemeMode.auto,
             accent: accent,
             textMuted: textMuted,
             onTap: () => onSelect(CustomThemeMode.auto),
           ),
           _ModeToggleButton(
-            label: context.tr(zh: '\u624b\u52a8', en: 'Manual'),
+            label: context.t.strings.common.manual,
             selected: mode == CustomThemeMode.manual,
             accent: accent,
             textMuted: textMuted,
@@ -1518,7 +1572,7 @@ class _HexInputRow extends StatelessWidget {
       if (!context.mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '已复制到剪贴板', en: 'Copied to clipboard'),
+        context.t.strings.common.copiedToClipboard,
       );
     }
     return Container(
@@ -1865,7 +1919,7 @@ class _SurfaceColorDialogState extends State<_SurfaceColorDialog> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
-                    child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+                    child: Text(context.t.strings.common.cancel),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1879,7 +1933,7 @@ class _SurfaceColorDialogState extends State<_SurfaceColorDialog> {
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       elevation: 0,
                     ),
-                    child: Text(context.tr(zh: '\u4fdd\u5b58', en: 'Save')),
+                    child: Text(context.t.strings.common.save),
                   ),
                 ),
               ],

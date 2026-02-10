@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/app_localization.dart';
 import 'preferences_provider.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
@@ -39,8 +40,14 @@ class ReminderSettings {
   final int dndEndMinutes;
 
   static ReminderSettings defaultsFor(AppLanguage language) {
-    final title = language == AppLanguage.en ? 'Hey, remember this idea?' : '嗨，你还记得这个想法吗？';
-    final body = language == AppLanguage.en ? 'Tap to view details' : '点击查看详情';
+    final title = trByLanguageKey(
+      language: language,
+      key: 'legacy.reminder.default_title',
+    );
+    final body = trByLanguageKey(
+      language: language,
+      key: 'legacy.reminder.default_body',
+    );
     return ReminderSettings(
       enabled: false,
       notificationTitle: title,

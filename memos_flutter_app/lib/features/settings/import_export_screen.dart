@@ -20,6 +20,7 @@ import '../../state/database_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../import/import_flow_screens.dart';
+import '../../i18n/strings.g.dart';
 
 class ImportExportScreen extends ConsumerStatefulWidget {
   const ImportExportScreen({super.key});
@@ -36,7 +37,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
   String? _lastExportPath;
 
   String _formatRange(DateTimeRange? range, AppLanguage language) {
-    if (range == null) return trByLanguage(language: language, zh: '全部', en: 'All');
+    if (range == null) return trByLanguageKey(language: language, key: 'legacy.msg_all_2');
     final fmt = DateFormat('yyyy-MM-dd');
     return '${fmt.format(range.start)} ~ ${fmt.format(range.end)}';
   }
@@ -191,7 +192,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
     messenger.hideCurrentSnackBar();
     showTopToast(
       context,
-      context.tr(zh: '正在导出...', en: 'Exporting...'),
+      context.t.strings.legacy.msg_exporting,
       duration: const Duration(seconds: 30),
     );
     final language = ref.read(appPreferencesProvider).language;
@@ -214,12 +215,12 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
 
       final archive = Archive();
       final indexLines = <String>[
-        trByLanguage(language: language, zh: '# MemoFlow 导出', en: '# MemoFlow Export'),
+        trByLanguageKey(language: language, key: 'legacy.msg_memoflow_export'),
         '',
-        '${trByLanguage(language: language, zh: '- 导出时间', en: '- Export time')}: ${DateTime.now().toIso8601String()}',
-        '${trByLanguage(language: language, zh: '- 时间范围', en: '- Date range')}: ${_formatRange(_range, language)}',
-        '${trByLanguage(language: language, zh: '- 包含归档', en: '- Include archived')}: ${_includeArchived ? trByLanguage(language: language, zh: '是', en: 'Yes') : trByLanguage(language: language, zh: '否', en: 'No')}',
-        '${trByLanguage(language: language, zh: '- 数量', en: '- Count')}: $exportedMemoCount',
+        '${trByLanguageKey(language: language, key: 'legacy.msg_export_time')}: ${DateTime.now().toIso8601String()}',
+        '${trByLanguageKey(language: language, key: 'legacy.msg_date_range_4')}: ${_formatRange(_range, language)}',
+        '${trByLanguageKey(language: language, key: 'legacy.msg_include_archived_2')}: ${_includeArchived ? trByLanguageKey(language: language, key: 'legacy.msg_yes') : trByLanguageKey(language: language, key: 'legacy.msg_no')}',
+        '${trByLanguageKey(language: language, key: 'legacy.msg_count')}: $exportedMemoCount',
         '',
       ];
       final indexBytes = utf8.encode(indexLines.join('\n'));
@@ -290,19 +291,14 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         barrierDismissible: false,
         builder: (dialogContext) {
           return AlertDialog(
-            title: Text(context.tr(zh: '导出完成', en: 'Export finished')),
+            title: Text(context.t.strings.legacy.msg_export_finished),
             content: Text(
-              context.tr(
-                zh:
-                    '笔记 $exportedMemoCount 条（跳过 $skippedMemoCount 条），附件 $exportedAttachmentCount 个（跳过 $skippedAttachmentCount 个）',
-                en:
-                    '$exportedMemoCount memos (skipped $skippedMemoCount), $exportedAttachmentCount attachments (skipped $skippedAttachmentCount).',
-              ),
+              context.t.strings.legacy.msg_memos_skipped_attachments_skipped(exportedMemoCount: exportedMemoCount, skippedMemoCount: skippedMemoCount, exportedAttachmentCount: exportedAttachmentCount, skippedAttachmentCount: skippedAttachmentCount),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(context.tr(zh: '确定', en: 'OK')),
+                child: Text(context.t.strings.legacy.msg_ok),
               ),
             ],
           );
@@ -312,7 +308,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
       if (!mounted) return;
       messenger.hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '导出失败：$e', en: 'Export failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_export_failed(e: e))),
       );
     } finally {
       if (mounted) {
@@ -346,11 +342,11 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '导入 / 导出', en: 'Import / Export')),
+        title: Text(context.t.strings.legacy.msg_import_export),
         centerTitle: false,
       ),
       body: Stack(
@@ -375,7 +371,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
               Text(
-                context.tr(zh: '导出', en: 'Export'),
+                context.t.strings.legacy.msg_export,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -385,7 +381,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                 children: [
                   _SelectRow(
                     icon: Icons.date_range_outlined,
-                    label: context.tr(zh: '时间范围', en: 'Date Range'),
+                    label: context.t.strings.legacy.msg_date_range,
                     value: _formatRange(_range, ref.read(appPreferencesProvider).language),
                     textMain: textMain,
                     textMuted: textMuted,
@@ -396,7 +392,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                   ),
                   _ToggleRow(
                     icon: Icons.delete_outline,
-                    label: context.tr(zh: '包含归档', en: 'Include Archived'),
+                    label: context.t.strings.legacy.msg_include_archived,
                     value: _includeArchived,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -407,7 +403,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                   ),
                   _SelectRow(
                     icon: Icons.description_outlined,
-                    label: context.tr(zh: '导出格式', en: 'Export Format'),
+                    label: context.t.strings.legacy.msg_export_format,
                     value: 'Markdown + ZIP',
                     textMain: textMain,
                     textMuted: textMuted,
@@ -415,7 +411,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                       haptic();
                         showTopToast(
                           context,
-                          context.tr(zh: '格式固定为 Markdown + ZIP', en: 'Format is fixed to Markdown + ZIP'),
+                          context.t.strings.legacy.msg_format_fixed_markdown_zip,
                         );
                     },
                   ),
@@ -448,7 +444,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
                           : Text(
-                              context.tr(zh: '导出', en: 'Export'),
+                              context.t.strings.legacy.msg_export,
                               style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.white),
                             ),
                     ),
@@ -481,7 +477,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                         ),
                       ),
                       IconButton(
-                        tooltip: context.tr(zh: '复制路径', en: 'Copy path'),
+                        tooltip: context.t.strings.legacy.msg_copy_path,
                         icon: Icon(Icons.copy, size: 18, color: textMuted),
                         onPressed: () async {
                           haptic();
@@ -489,7 +485,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                           if (!context.mounted) return;
                           showTopToast(
                             context,
-                            context.tr(zh: '路径已复制', en: 'Path copied'),
+                            context.t.strings.legacy.msg_path_copied,
                           );
                         },
                       ),
@@ -499,7 +495,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
               ],
               const SizedBox(height: 18),
               Text(
-                context.tr(zh: '导入', en: 'Import'),
+                context.t.strings.legacy.msg_import,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -509,8 +505,8 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
                 children: [
                   _SelectRow(
                     icon: Icons.file_upload_outlined,
-                    label: context.tr(zh: '从文件导入', en: 'Import from file'),
-                    value: context.tr(zh: 'HTML / ZIP', en: 'HTML / ZIP'),
+                    label: context.t.strings.legacy.msg_import_file_2,
+                    value: context.t.strings.legacy.msg_html_zip,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -524,10 +520,7 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(
-                  zh: '提示：导出包含已同步到本地数据库的内容（含离线数据）。',
-                  en: 'Note: Export includes content already synced to the local database (offline data included).',
-                ),
+                context.t.strings.legacy.msg_note_export_includes_content_already_synced,
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],

@@ -14,6 +14,7 @@ import 'core/app_theme.dart';
 import 'core/memoflow_palette.dart';
 import 'core/system_fonts.dart';
 import 'core/top_toast.dart';
+import 'i18n/strings.g.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/app_lock_gate.dart';
@@ -66,6 +67,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   bool _updateAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
+  AppLocale? _activeLocale;
   static const UpdateAnnouncementConfig _fallbackUpdateConfig =
       UpdateAnnouncementConfig(
         versionInfo: UpdateVersionInfo(
@@ -116,6 +118,90 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     'https://example.com': '输入链接',
   };
 
+  static const Map<String, String> _imageEditorI18nZhHant = {
+    'Crop': '裁切',
+    'Brush': '塗鴉',
+    'Text': '文字',
+    'Link': '連結',
+    'Flip': '翻轉',
+    'Rotate left': '向左旋轉',
+    'Rotate right': '向右旋轉',
+    'Blur': '模糊',
+    'Filter': '濾鏡',
+    'Emoji': '貼紙',
+    'Select Emoji': '選擇貼紙',
+    'Size Adjust': '大小調整',
+    'Remove': '刪除',
+    'Size': '大小',
+    'Color': '顏色',
+    'Background Color': '背景顏色',
+    'Background Opacity': '背景透明度',
+    'Slider Filter Color': '濾鏡顏色',
+    'Slider Color': '顏色',
+    'Slider Opicity': '透明度',
+    'Reset': '重設',
+    'Blur Radius': '模糊半徑',
+    'Color Opacity': '顏色透明度',
+    'Insert Your Message': '輸入文字',
+    'https://example.com': '輸入連結',
+  };
+
+  static const Map<String, String> _imageEditorI18nJa = {
+    'Crop': 'トリミング',
+    'Brush': 'ブラシ',
+    'Text': 'テキスト',
+    'Link': 'リンク',
+    'Flip': '反転',
+    'Rotate left': '左に回転',
+    'Rotate right': '右に回転',
+    'Blur': 'ぼかし',
+    'Filter': 'フィルター',
+    'Emoji': '絵文字',
+    'Select Emoji': '絵文字を選択',
+    'Size Adjust': 'サイズ調整',
+    'Remove': '削除',
+    'Size': 'サイズ',
+    'Color': '色',
+    'Background Color': '背景色',
+    'Background Opacity': '背景の透明度',
+    'Slider Filter Color': 'フィルター色',
+    'Slider Color': '色',
+    'Slider Opicity': '透明度',
+    'Reset': 'リセット',
+    'Blur Radius': 'ぼかし半径',
+    'Color Opacity': '色の透明度',
+    'Insert Your Message': 'テキストを入力',
+    'https://example.com': 'リンクを入力',
+  };
+
+  static const Map<String, String> _imageEditorI18nDe = {
+    'Crop': 'Zuschneiden',
+    'Brush': 'Pinsel',
+    'Text': 'Text',
+    'Link': 'Link',
+    'Flip': 'Spiegeln',
+    'Rotate left': 'Nach links drehen',
+    'Rotate right': 'Nach rechts drehen',
+    'Blur': 'Weichzeichnen',
+    'Filter': 'Filter',
+    'Emoji': 'Emoji',
+    'Select Emoji': 'Emoji auswählen',
+    'Size Adjust': 'Größe anpassen',
+    'Remove': 'Entfernen',
+    'Size': 'Größe',
+    'Color': 'Farbe',
+    'Background Color': 'Hintergrundfarbe',
+    'Background Opacity': 'Hintergrundtransparenz',
+    'Slider Filter Color': 'Filterfarbe',
+    'Slider Color': 'Farbe',
+    'Slider Opicity': 'Transparenz',
+    'Reset': 'Zurücksetzen',
+    'Blur Radius': 'Weichzeichnungsradius',
+    'Color Opacity': 'Farbtransparenz',
+    'Insert Your Message': 'Text eingeben',
+    'https://example.com': 'Link eingeben',
+  };
+
   static const Map<String, String> _imageEditorI18nEn = {
     'Crop': 'Crop',
     'Brush': 'Brush',
@@ -145,18 +231,48 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   };
 
   static void _applyImageEditorI18n(AppLanguage language) {
-    ImageEditor.setI18n(
-      language == AppLanguage.en ? _imageEditorI18nEn : _imageEditorI18nZh,
-    );
+    final effective = language == AppLanguage.system
+        ? appLanguageFromLocale(
+            WidgetsBinding.instance.platformDispatcher.locale,
+          )
+        : language;
+    final map = switch (effective) {
+      AppLanguage.zhHans => _imageEditorI18nZh,
+      AppLanguage.zhHantTw => _imageEditorI18nZhHant,
+      AppLanguage.ja => _imageEditorI18nJa,
+      AppLanguage.de => _imageEditorI18nDe,
+      _ => _imageEditorI18nEn,
+    };
+    ImageEditor.setI18n(map);
   }
 
-  static Locale _localeFor(AppLanguage language) {
+  static bool _isTraditionalZhLocale(Locale locale) {
+    if (locale.languageCode.toLowerCase() != 'zh') return false;
+    final script = locale.scriptCode?.toLowerCase();
+    if (script == 'hant') return true;
+    final region = locale.countryCode?.toUpperCase();
+    return region == 'TW' || region == 'HK' || region == 'MO';
+  }
+
+  static AppLocale _deviceLocaleToAppLocale(Locale locale) {
+    return switch (locale.languageCode.toLowerCase()) {
+      'zh' => _isTraditionalZhLocale(locale) ? AppLocale.zhHantTw : AppLocale.zhHans,
+      'ja' => AppLocale.ja,
+      'de' => AppLocale.de,
+      _ => AppLocale.en,
+    };
+  }
+
+  static AppLocale _appLocaleFor(AppLanguage language) {
     return switch (language) {
-      AppLanguage.zhHans => const Locale.fromSubtags(
-        languageCode: 'zh',
-        scriptCode: 'Hans',
+      AppLanguage.system => _deviceLocaleToAppLocale(
+        WidgetsBinding.instance.platformDispatcher.locale,
       ),
-      AppLanguage.en => const Locale('en'),
+      AppLanguage.zhHans => AppLocale.zhHans,
+      AppLanguage.zhHantTw => AppLocale.zhHantTw,
+      AppLanguage.en => AppLocale.en,
+      AppLanguage.ja => AppLocale.ja,
+      AppLanguage.de => AppLocale.de,
     };
   }
 
@@ -622,17 +738,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       await HomeWidgetService.updateStatsWidget(
         total: stats.totalMemoCount,
         days: days,
-        title: trByLanguage(
-          language: language,
-          zh: '记录热力图',
-          en: 'Activity Heatmap',
-        ),
-        totalLabel: trByLanguage(language: language, zh: '总记录', en: 'Total'),
-        rangeLabel: trByLanguage(
-          language: language,
-          zh: '最近 14 天',
-          en: 'Last 14 days',
-        ),
+        title: trByLanguageKey(language: language, key: 'legacy.msg_activity_heatmap'),
+        totalLabel: trByLanguageKey(language: language, key: 'legacy.msg_total'),
+        rangeLabel: trByLanguageKey(language: language, key: 'legacy.msg_last_14_days'),
       );
       _statsWidgetAccountKey = account.key;
     } catch (_) {
@@ -837,7 +945,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     if (context == null) return;
     showTopToast(
       context,
-      context.tr(zh: '第三方分享未开启', en: 'Third-party share is disabled'),
+      context.t.strings.legacy.msg_third_party_share_disabled,
     );
   }
 
@@ -866,7 +974,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     MemoFlowPalette.applyThemeColor(themeColor, customTheme: customTheme);
     final themeMode = _themeModeFor(prefs.themeMode);
     final loggerService = ref.watch(loggerServiceProvider);
-    final locale = _localeFor(prefs.language);
+    final appLocale = _appLocaleFor(prefs.language);
+    if (_activeLocale != appLocale) {
+      LocaleSettings.setLocale(appLocale);
+      _activeLocale = appLocale;
+    }
     final scale = _textScaleFor(prefs.fontSize);
     _applyImageEditorI18n(prefs.language);
 
@@ -883,49 +995,48 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       _scheduleLaunchActionHandling();
     }
 
-    return MaterialApp(
-      title: 'MemoFlow',
-      theme: _applyPreferencesToTheme(buildAppTheme(Brightness.light), prefs),
-      darkTheme: _applyPreferencesToTheme(
-        buildAppTheme(Brightness.dark),
-        prefs,
-      ),
-      themeMode: themeMode,
-      locale: locale,
-      navigatorKey: _navigatorKey,
-      supportedLocales: const [
-        Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
-        Locale('en'),
-      ],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      navigatorObservers: [loggerService.navigatorObserver],
-      onGenerateRoute: (settings) {
-        if (settings.name == '/memos/day') {
-          final arg = settings.arguments;
-          return MaterialPageRoute<void>(
-            builder: (_) => MemosListScreen(
-              title: 'MemoFlow',
-              state: 'NORMAL',
-              showDrawer: true,
-              enableCompose: true,
-              dayFilter: arg is DateTime ? arg : null,
-            ),
+    return TranslationProvider(
+      child: MaterialApp(
+        title: 'MemoFlow',
+        theme: _applyPreferencesToTheme(buildAppTheme(Brightness.light), prefs),
+        darkTheme: _applyPreferencesToTheme(
+          buildAppTheme(Brightness.dark),
+          prefs,
+        ),
+        themeMode: themeMode,
+        locale: appLocale.flutterLocale,
+        navigatorKey: _navigatorKey,
+        supportedLocales: AppLocaleUtils.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        navigatorObservers: [loggerService.navigatorObserver],
+        onGenerateRoute: (settings) {
+          if (settings.name == '/memos/day') {
+            final arg = settings.arguments;
+            return MaterialPageRoute<void>(
+              builder: (_) => MemosListScreen(
+                title: 'MemoFlow',
+                state: 'NORMAL',
+                showDrawer: true,
+                enableCompose: true,
+                dayFilter: arg is DateTime ? arg : null,
+              ),
+            );
+          }
+          return null;
+        },
+        builder: (context, child) {
+          final media = MediaQuery.of(context);
+          return MediaQuery(
+            data: media.copyWith(textScaler: TextScaler.linear(scale)),
+            child: AppLockGate(child: child ?? const SizedBox.shrink()),
           );
-        }
-        return null;
-      },
-      builder: (context, child) {
-        final media = MediaQuery.of(context);
-        return MediaQuery(
-          data: media.copyWith(textScaler: TextScaler.linear(scale)),
-          child: AppLockGate(child: child ?? const SizedBox.shrink()),
-        );
-      },
-      home: const MainHomePage(),
+        },
+        home: const MainHomePage(),
+      ),
     );
   }
 

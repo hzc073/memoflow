@@ -93,28 +93,20 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.05,
-      statusText: trByLanguage(language: language, zh: '正在检查后端版本...', en: 'Checking server version...'),
-      progressLabel: trByLanguage(language: language, zh: '准备中', en: 'Preparing'),
-      progressDetail: trByLanguage(language: language, zh: '可能需要几秒钟', en: 'This may take a few seconds'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_checking_server_version'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_preparing'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_may_take_few_seconds'),
     );
 
     final backend = await _detectBackendVersion();
     if (backend == _BackendVersion.v021) {
       throw ImportException(
-        trByLanguage(
-          language: language,
-          zh: '检测到 0.21 版本，暂不支持导入，请升级后端后再试',
-          en: 'Backend 0.21 is not supported for import. Please upgrade and try again.',
-        ),
+        trByLanguageKey(language: language, key: 'legacy.msg_backend_0_21_not_supported_import'),
       );
     }
     if (backend == _BackendVersion.unknown) {
       throw ImportException(
-        trByLanguage(
-          language: language,
-          zh: '无法识别后端版本，请检查地址或网络',
-          en: 'Unable to detect backend version. Check the server URL or network.',
-        ),
+        trByLanguageKey(language: language, key: 'legacy.msg_unable_detect_backend_version_check_server'),
       );
     }
 
@@ -122,15 +114,15 @@ class FlomoImportService {
     final file = File(filePath);
     if (!file.existsSync()) {
       throw ImportException(
-        trByLanguage(language: language, zh: '找不到导入文件', en: 'Import file not found.'),
+        trByLanguageKey(language: language, key: 'legacy.msg_import_file_not_found'),
       );
     }
 
     _reportProgress(
       onProgress,
       progress: 0.1,
-      statusText: trByLanguage(language: language, zh: '正在读取文件...', en: 'Reading file...'),
-      progressLabel: trByLanguage(language: language, zh: '准备中', en: 'Preparing'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_reading_file'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_preparing'),
       progressDetail: p.basename(filePath),
     );
 
@@ -140,11 +132,7 @@ class FlomoImportService {
     final existingStatus = (existing?['status'] as int?) ?? 0;
     if (existing != null && existingStatus == 1) {
       throw ImportException(
-        trByLanguage(
-          language: language,
-          zh: '该文件已导入过，已跳过',
-          en: 'This file has already been imported. Skipped.',
-        ),
+        trByLanguageKey(language: language, key: 'legacy.msg_file_has_already_been_imported_skipped'),
       );
     }
     if (await _importMarkerExists(fileMd5)) {
@@ -152,11 +140,7 @@ class FlomoImportService {
         await _deleteImportMarker(fileMd5);
       } else {
         throw ImportException(
-          trByLanguage(
-            language: language,
-            zh: '该文件已导入过，已跳过',
-            en: 'This file has already been imported. Skipped.',
-          ),
+          trByLanguageKey(language: language, key: 'legacy.msg_file_has_already_been_imported_skipped'),
         );
       }
     }
@@ -246,7 +230,7 @@ class FlomoImportService {
       );
     }
     throw ImportException(
-      trByLanguage(language: language, zh: '不支持的文件格式', en: 'Unsupported file type.'),
+      trByLanguageKey(language: language, key: 'legacy.msg_unsupported_file_type'),
     );
   }
 
@@ -261,9 +245,9 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.15,
-      statusText: trByLanguage(language: language, zh: '正在解压 ZIP...', en: 'Decoding ZIP...'),
-      progressLabel: trByLanguage(language: language, zh: '解析中', en: 'Parsing'),
-      progressDetail: trByLanguage(language: language, zh: '正在准备文件结构', en: 'Preparing file structure'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_decoding_zip'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_parsing'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_preparing_file_structure'),
     );
 
     final archive = ZipDecoder().decodeBytes(bytes);
@@ -283,7 +267,7 @@ class FlomoImportService {
     );
     if (htmlEntry.name.isEmpty) {
       throw ImportException(
-        trByLanguage(language: language, zh: '压缩包内未找到 HTML 文件', en: 'No HTML file found in ZIP.'),
+        trByLanguageKey(language: language, key: 'legacy.msg_no_html_file_found_zip'),
       );
     }
 
@@ -313,15 +297,15 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.2,
-      statusText: trByLanguage(language: language, zh: '正在解析 MemoFlow 导出...', en: 'Parsing MemoFlow export...'),
-      progressLabel: trByLanguage(language: language, zh: '解析中', en: 'Parsing'),
-      progressDetail: trByLanguage(language: language, zh: '正在准备笔记内容', en: 'Preparing memo content'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_parsing_memoflow_export'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_parsing'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_preparing_memo_content'),
     );
 
     final memoEntries = _memoFlowMemoEntries(archive);
     if (memoEntries.isEmpty) {
       throw ImportException(
-        trByLanguage(language: language, zh: '压缩包内未找到 Markdown 笔记', en: 'No Markdown memos found in ZIP.'),
+        trByLanguageKey(language: language, key: 'legacy.msg_no_markdown_memos_found_zip'),
       );
     }
 
@@ -442,9 +426,9 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 1.0,
-      statusText: trByLanguage(language: language, zh: '导入完成', en: 'Import complete'),
-      progressLabel: trByLanguage(language: language, zh: '完成', en: 'Done'),
-      progressDetail: trByLanguage(language: language, zh: '正在提交同步队列', en: 'Submitting sync queue'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_import_complete'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_done'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_submitting_sync_queue'),
     );
 
     return ImportResult(
@@ -466,16 +450,16 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.25,
-      statusText: trByLanguage(language: language, zh: '正在解析 HTML...', en: 'Parsing HTML...'),
-      progressLabel: trByLanguage(language: language, zh: '解析中', en: 'Parsing'),
-      progressDetail: trByLanguage(language: language, zh: '正在定位笔记内容', en: 'Locating memo content'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_parsing_html'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_parsing'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_locating_memo_content'),
     );
 
     final html = utf8.decode(bytes, allowMalformed: true);
     final parsed = _parseFlomoHtml(html, htmlRootPath);
     if (parsed.isEmpty) {
       throw ImportException(
-        trByLanguage(language: language, zh: 'HTML 内未找到可导入的内容', en: 'No memos found in HTML.'),
+        trByLanguageKey(language: language, key: 'legacy.msg_no_memos_found_html'),
       );
     }
 
@@ -570,9 +554,9 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 1.0,
-      statusText: trByLanguage(language: language, zh: '导入完成', en: 'Import complete'),
-      progressLabel: trByLanguage(language: language, zh: '完成', en: 'Done'),
-      progressDetail: trByLanguage(language: language, zh: '正在提交同步队列', en: 'Submitting sync queue'),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_import_complete'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_done'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_submitting_sync_queue'),
     );
 
     return ImportResult(
@@ -1065,13 +1049,9 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: progress,
-      statusText: trByLanguage(language: language, zh: '正在导入笔记...', en: 'Importing memos...'),
-      progressLabel: trByLanguage(language: language, zh: '导入中', en: 'Importing'),
-      progressDetail: trByLanguage(
-        language: language,
-        zh: '正在处理 $processed / $total',
-        en: 'Processing $processed / $total',
-      ),
+      statusText: trByLanguageKey(language: language, key: 'legacy.msg_importing_memos'),
+      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_importing'),
+      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_processing', params: {'processed': processed, 'total': total}),
     );
   }
 

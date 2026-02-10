@@ -15,6 +15,7 @@ import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../sync/sync_queue_screen.dart';
 import 'tag_tree.dart';
+import '../../i18n/strings.g.dart';
 
 class TagsScreen extends ConsumerWidget {
   const TagsScreen({super.key});
@@ -43,7 +44,7 @@ class TagsScreen extends ConsumerWidget {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+          title: context.t.strings.legacy.msg_archive,
           state: 'ARCHIVED',
           showDrawer: true,
         ),
@@ -93,10 +94,10 @@ class TagsScreen extends ConsumerWidget {
           onSelectTag: (t) => _openTag(context, t),
           onOpenNotifications: () => _openNotifications(context),
         ),
-        appBar: AppBar(title: Text(context.tr(zh: '标签', en: 'Tags'))),
+        appBar: AppBar(title: Text(context.t.strings.legacy.msg_tags)),
         body: tagsAsync.when(
           data: (tags) => tags.isEmpty
-              ? Center(child: Text(context.tr(zh: '暂无标签', en: 'No tags yet')))
+              ? Center(child: Text(context.t.strings.legacy.msg_no_tags_yet))
               : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                   children: [
@@ -106,7 +107,7 @@ class TagsScreen extends ConsumerWidget {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => MemosListScreen(
-                              title: context.tr(zh: '标签', en: 'Tags'),
+                              title: context.t.strings.legacy.msg_tags,
                               state: 'NORMAL',
                               tag: tag,
                               showDrawer: true,
@@ -122,7 +123,7 @@ class TagsScreen extends ConsumerWidget {
                   ],
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+          error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
         ),
       ),
     );

@@ -167,23 +167,20 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     if (!settings.backupEnabled) {
       if (manual) {
         state = state.copyWith(
-          lastError: _localized('备份未启用', 'Backup is disabled'),
+          lastError: _localizedKey('legacy.webdav.backup_disabled'),
         );
       }
       return;
     }
     if (accountKey == null || accountKey.trim().isEmpty) {
       state = state.copyWith(
-        lastError: _localized('账号缺失，无法备份', 'Account missing for backup'),
+        lastError: _localizedKey('legacy.webdav.backup_account_missing'),
       );
       return;
     }
     if (localLibrary == null) {
       state = state.copyWith(
-        lastError: _localized(
-          '仅本地库可用备份',
-          'Backup is available only for local libraries',
-        ),
+        lastError: _localizedKey('legacy.webdav.backup_local_only'),
       );
       return;
     }
@@ -191,7 +188,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     final resolvedPassword = await _resolvePassword(password);
     if (resolvedPassword == null || resolvedPassword.trim().isEmpty) {
       state = state.copyWith(
-        lastError: _localized('缺少备份密码', 'Backup password missing'),
+        lastError: _localizedKey('legacy.webdav.backup_password_missing'),
       );
       return;
     }
@@ -207,10 +204,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
         if (memoFiles.isEmpty) {
           state = state.copyWith(
             running: false,
-            lastError: _localized(
-              '本地库未发现笔记文件，备份已取消',
-              'No memo files found in local library; backup cancelled',
-            ),
+            lastError: _localizedKey('legacy.webdav.backup_no_memo_files'),
           );
           return;
         }
@@ -383,16 +377,13 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     final localLibrary = _ref.read(currentLocalLibraryProvider);
     if (accountKey == null || accountKey.trim().isEmpty) {
       state = state.copyWith(
-        lastError: _localized('账号缺失，无法恢复', 'Account missing for restore'),
+        lastError: _localizedKey('legacy.webdav.restore_account_missing'),
       );
       return;
     }
     if (localLibrary == null) {
       state = state.copyWith(
-        lastError: _localized(
-          '仅本地库可恢复备份',
-          'Restore is only available for local libraries',
-        ),
+        lastError: _localizedKey('legacy.webdav.restore_local_only'),
       );
       return;
     }
@@ -424,14 +415,14 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
         if (snapshotData.files.isEmpty) {
           state = state.copyWith(
             restoring: false,
-            lastError: _localized('备份内容为空', 'Backup is empty'),
+            lastError: _localizedKey('legacy.webdav.backup_empty'),
           );
           return;
         }
         if (!_snapshotHasMemos(snapshotData)) {
           state = state.copyWith(
             restoring: false,
-            lastError: _localized('备份中没有笔记', 'No memos found in backup'),
+            lastError: _localizedKey('legacy.webdav.backup_no_memos'),
           );
           return;
         }
@@ -774,14 +765,14 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
       _snapshotUri(baseUrl, rootPath, accountId, snapshotId),
     );
     if (data == null) {
-      throw StateError(_localized('备份快照丢失', 'Backup snapshot missing'));
+      throw StateError(_localizedKey('legacy.webdav.snapshot_missing'));
     }
     final key = await _deriveSubKey(masterKey, 'snapshot:$snapshotId');
     final decoded = await _decryptJson(key, data);
     if (decoded is Map) {
       return WebDavBackupSnapshot.fromJson(decoded.cast<String, dynamic>());
     }
-    throw StateError(_localized('备份快照损坏', 'Backup snapshot corrupted'));
+    throw StateError(_localizedKey('legacy.webdav.snapshot_corrupted'));
   }
 
   Future<void> _restoreFile({
@@ -812,7 +803,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
         _objectUri(baseUrl, rootPath, accountId, hash),
       );
       if (objectData == null) {
-        throw StateError(_localized('备份对象缺失', 'Backup object missing'));
+        throw StateError(_localizedKey('legacy.webdav.object_missing'));
       }
       final key = await _deriveObjectKey(masterKey, hash);
       final plain = await _decryptBytes(key, objectData);
@@ -844,7 +835,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     if (decoded is Map) {
       return WebDavBackupConfig.fromJson(decoded.cast<String, dynamic>());
     }
-    throw StateError(_localized('备份配置损坏', 'Backup config corrupted'));
+    throw StateError(_localizedKey('legacy.webdav.config_corrupted'));
   }
 
   Future<WebDavBackupConfig> _createConfig(String password) async {
@@ -881,7 +872,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
   ) async {
     final kdf = config.kdf;
     if (kdf.salt.isEmpty) {
-      throw StateError(_localized('备份配置无效', 'Invalid backup config'));
+      throw StateError(_localizedKey('legacy.webdav.config_invalid'));
     }
     final kek = await _deriveKeyFromPassword(password, kdf);
     final wrapped = config.wrappedKey;
@@ -894,7 +885,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
       final clear = await _cipher.decrypt(box, secretKey: kek);
       return SecretKey(clear);
     } catch (_) {
-      throw StateError(_localized('备份密码错误', 'Invalid backup password'));
+      throw StateError(_localizedKey('legacy.webdav.password_invalid'));
     }
   }
 
@@ -952,7 +943,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
 
   Future<Uint8List> _decryptBytes(SecretKey key, List<int> combined) async {
     if (combined.length < _nonceLength + _macLength) {
-      throw StateError(_localized('备份数据损坏', 'Backup data corrupted'));
+      throw StateError(_localizedKey('legacy.webdav.data_corrupted'));
     }
     final nonce = combined.sublist(0, _nonceLength);
     final macBytes = combined.sublist(combined.length - _macLength);
@@ -1133,7 +1124,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     final baseUrl = Uri.tryParse(raw.trim());
     if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
       throw StateError(
-        _localized('WebDAV 服务器地址无效', 'Invalid WebDAV server URL'),
+        _localizedKey('legacy.webdav.server_url_invalid'),
       );
     }
     return baseUrl;
@@ -1182,9 +1173,9 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     return DateTime.tryParse(raw);
   }
 
-  String _localized(String zh, String en) {
+  String _localizedKey(String key) {
     final language = _ref.read(appPreferencesProvider).language;
-    return trByLanguage(language: language, zh: zh, en: en);
+    return trByLanguageKey(language: language, key: key);
   }
 
   Future<String?> _resolvePassword(String? override) async {

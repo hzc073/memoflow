@@ -37,6 +37,7 @@ import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
+import '../../i18n/strings.g.dart';
 
 const _pageSize = 30;
 const _orderBy = 'display_time desc';
@@ -267,7 +268,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+          title: context.t.strings.legacy.msg_archive,
           state: 'ARCHIVED',
           showDrawer: true,
         ),
@@ -378,7 +379,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     if (account == null) {
       if (!mounted) return;
-      setState(() => _error = context.tr(zh: '未登录', en: 'Not signed in'));
+      setState(() => _error = context.t.strings.legacy.msg_not_signed);
       return;
     }
 
@@ -444,7 +445,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       });
       if (!reset) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
         );
       }
     } finally {
@@ -556,9 +557,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (username.isNotEmpty) return username;
     final trimmed = fallback.trim();
     if (trimmed.startsWith('users/')) {
-      return '${context.tr(zh: '用户', en: 'User')} ${trimmed.substring('users/'.length)}';
+      return '${context.t.strings.legacy.msg_user} ${trimmed.substring('users/'.length)}';
     }
-    return trimmed.isEmpty ? context.tr(zh: '未知用户', en: 'Unknown') : trimmed;
+    return trimmed.isEmpty ? context.t.strings.legacy.msg_unknown : trimmed;
   }
 
   String _creatorInitial(User? creator, String fallback) {
@@ -832,7 +833,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       if (!mounted) return;
       _updateMemoReactions(uid, reactions);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '点赞失败：$e', en: 'Failed to react: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_react(e: e))),
       );
     } finally {
       if (mounted) {
@@ -976,7 +977,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         _commentedByMe.remove(uid);
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '评论失败：$e', en: 'Failed to comment: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_comment(e: e))),
       );
     } finally {
       if (mounted) {
@@ -1078,7 +1079,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                         child: Text(
-                          context.tr(zh: '发送', en: 'Send'),
+                          context.t.strings.legacy.msg_send,
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -1156,7 +1157,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                context.tr(zh: '加载失败', en: 'Failed to load'),
+                context.t.strings.legacy.msg_failed_load_2,
                 style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
               ),
               const SizedBox(height: 8),
@@ -1168,7 +1169,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: _refresh,
-                child: Text(context.tr(zh: '重试', en: 'Retry')),
+                child: Text(context.t.strings.legacy.msg_retry),
               ),
             ],
           ),
@@ -1184,7 +1185,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             const SizedBox(height: 120),
             Center(
               child: Text(
-                context.tr(zh: '暂无内容', en: 'No content yet'),
+                context.t.strings.legacy.msg_no_content_yet,
                 style: TextStyle(fontSize: 13, color: textMuted),
               ),
             ),
@@ -1291,7 +1292,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   child: TextButton.icon(
                     onPressed: _fetchPage,
                     icon: const Icon(Icons.refresh, size: 16),
-                    label: Text(context.tr(zh: '加载更多', en: 'Load more')),
+                    label: Text(context.t.strings.legacy.msg_load_more),
                   ),
                 ),
               );
@@ -1325,7 +1326,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       focusNode: _searchFocus,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: context.tr(zh: '搜索公开内容', en: 'Search public memos'),
+                        hintText: context.t.strings.legacy.msg_search_public_memos,
                         border: InputBorder.none,
                         isDense: true,
                       ),
@@ -1334,7 +1335,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   ),
                   if (_searchController.text.trim().isNotEmpty)
                     IconButton(
-                      tooltip: context.tr(zh: '清除', en: 'Clear'),
+                      tooltip: context.t.strings.legacy.msg_clear_2,
                       icon: Icon(Icons.close, size: 16, color: textMuted),
                       onPressed: () {
                         _searchController.clear();
@@ -1351,13 +1352,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final replyUser = replyCreator == null ? null : _creatorCache[replyCreator];
     final replyName = replyCreator == null ? '' : _creatorDisplayName(replyUser, replyCreator);
     final commentHint = commentMemo == null
-        ? context.tr(zh: '写下评论...', en: 'Write a comment...')
+        ? context.t.strings.legacy.msg_write_comment
         : replyCreator != null && replyName.isNotEmpty
-            ? context.tr(zh: '回复 $replyName...', en: 'Reply $replyName...')
-            : context.tr(
-                zh: '回复 ${_creatorDisplayName(commentCreator, commentMemo.creator)}...',
-                en: 'Reply ${_creatorDisplayName(commentCreator, commentMemo.creator)}...',
-              );
+            ? context.t.strings.legacy.msg_reply(replyName: replyName)
+            : context.t.strings.legacy.msg_reply_3(creatorDisplayName_commentCreator_commentMemo_creator: _creatorDisplayName(commentCreator, commentMemo.creator));
 
     return PopScope(
       canPop: false,
@@ -1380,12 +1378,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           surfaceTintColor: Colors.transparent,
           iconTheme: IconThemeData(color: textMain),
           title: Text(
-            context.tr(zh: '探索', en: 'Explore'),
+            context.t.strings.legacy.msg_explore,
             style: TextStyle(fontWeight: FontWeight.w800, color: textMain),
           ),
           actions: [
             IconButton(
-              tooltip: showSearchBar ? context.tr(zh: '关闭搜索', en: 'Close search') : context.tr(zh: '搜索', en: 'Search'),
+              tooltip: showSearchBar ? context.t.strings.legacy.msg_close_search : context.t.strings.legacy.msg_search,
               icon: Icon(showSearchBar ? Icons.close : Icons.search, color: textMain),
               onPressed: _toggleSearch,
             ),
@@ -1400,10 +1398,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: Text(
-                      context.tr(
-                        zh: '旧版本服务器不支持搜索过滤，结果可能不完整。',
-                        en: 'Legacy servers do not support search filters; results may be incomplete.',
-                      ),
+                      context.t.strings.legacy.msg_legacy_servers_not_support_search_filters,
                       style: TextStyle(fontSize: 11, color: textMuted),
                     ),
                   ),
@@ -1516,7 +1511,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       final cleaned = lines.map((l) => l.replaceFirst(RegExp(r'^\s*>\s?'), '')).join('\n').trim();
       return cleaned.isEmpty ? trimmed : cleaned;
     }
-    return '$main\n\n${trByLanguage(language: language, zh: '引用 $quoteLines 行', en: 'Quoted $quoteLines lines')}';
+    return '$main\n\n${trByLanguageKey(language: language, key: 'legacy.msg_quoted_lines', params: {'quoteLines': quoteLines})}';
   }
 
   static ({String title, String body}) _splitTitleAndBody(String content) {
@@ -1585,9 +1580,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     if (username.isNotEmpty) return username;
     final trimmed = fallback.trim();
     if (trimmed.startsWith('users/')) {
-      return '${context.tr(zh: '用户', en: 'User')} ${trimmed.substring('users/'.length)}';
+      return '${context.t.strings.legacy.msg_user} ${trimmed.substring('users/'.length)}';
     }
-    return trimmed.isEmpty ? context.tr(zh: '未知用户', en: 'Unknown') : trimmed;
+    return trimmed.isEmpty ? context.t.strings.legacy.msg_unknown : trimmed;
   }
 
   @override
@@ -1632,8 +1627,8 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final screenSize = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final likeLabel = context.tr(zh: '赞', en: 'Like');
-    final commentLabel = context.tr(zh: '评论', en: 'Comment');
+    final likeLabel = context.t.strings.legacy.msg_like;
+    final commentLabel = context.t.strings.legacy.msg_comment;
     final textColor = Colors.white.withValues(alpha: 0.9);
     final textStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor);
     final menuSize = _measureQuickMenu(context, [likeLabel, commentLabel], textStyle);
@@ -2127,11 +2122,8 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final previewName = preview == null ? '' : _commentAuthor(context, previewCreator, preview.creator);
 
     final label = widget.commentCount <= 0
-        ? context.tr(zh: '暂无评论', en: 'No comments yet')
-        : context.tr(
-            zh: '${widget.commentCount} 条评论',
-            en: '${widget.commentCount} comment${widget.commentCount == 1 ? '' : 's'}',
-          );
+        ? context.t.strings.legacy.msg_no_comments_yet
+        : context.t.strings.legacy.msg_comments(widget_commentCount: widget.commentCount);
 
     return Material(
       color: Colors.transparent,
@@ -2356,7 +2348,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               ] else if (title.isEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
-                  context.tr(zh: '无内容', en: 'No content'),
+                  context.t.strings.legacy.msg_no_content,
                   style: TextStyle(fontSize: 12, color: textMuted),
                 ),
               ],
@@ -2372,7 +2364,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
-                      _expanded ? context.tr(zh: '收起', en: 'Collapse') : context.tr(zh: '展开', en: 'Expand'),
+                      _expanded ? context.t.strings.legacy.msg_collapse : context.t.strings.legacy.msg_expand,
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
                     ),
                   ),
@@ -2458,7 +2450,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                         builder: (buttonContext) => IconButton(
                           icon: Icon(Icons.more_horiz, size: 18, color: textMuted),
                           onPressed: () => _toggleQuickMenu(buttonContext),
-                          tooltip: context.tr(zh: '更多', en: 'More'),
+                          tooltip: context.t.strings.legacy.msg_more,
                         ),
                       ),
                     ],
@@ -2487,10 +2479,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                           ),
                           child: Text(
-                            context.tr(
-                              zh: '还有 $remainingComments 条评论',
-                              en: '$remainingComments more comments',
-                            ),
+                            context.t.strings.legacy.msg_more_comments(remainingComments: remainingComments),
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                           ),
                         ),
@@ -2518,7 +2507,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Text(
-                      context.tr(zh: '暂无评论', en: 'No comments yet'),
+                      context.t.strings.legacy.msg_no_comments_yet,
                       style: TextStyle(fontSize: 12, color: textMuted),
                     ),
                   )
@@ -2582,19 +2571,19 @@ class _VisibilityChip extends StatelessWidget {
     switch (raw.trim().toUpperCase()) {
       case 'PUBLIC':
         return (
-          context.tr(zh: '公开', en: 'Public'),
+          context.t.strings.legacy.msg_public,
           Icons.public,
           const Color(0xFF3B8C52),
         );
       case 'PROTECTED':
         return (
-          context.tr(zh: '受保护', en: 'Protected'),
+          context.t.strings.legacy.msg_protected,
           Icons.verified_user,
           const Color(0xFFB26A2B),
         );
       default:
         return (
-          context.tr(zh: '私密', en: 'Private'),
+          context.t.strings.legacy.msg_private_2,
           Icons.lock,
           const Color(0xFF7C7C7C),
         );

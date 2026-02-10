@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../core/app_localization.dart';
+import '../../state/preferences_provider.dart';
+
 class AiQuickPrompt {
   const AiQuickPrompt({
     required this.title,
@@ -66,15 +69,22 @@ class AiSettings {
     'GPT-4o',
   ];
 
-  static const defaults = AiSettings(
-    apiUrl: 'https://api.deepseek.com',
-    apiKey: '',
-    model: 'deepseek-chat',
-    modelOptions: defaultModelOptions,
-    prompt: '你是一位极简主义的笔记助手，擅长提炼核心观点并以优雅的格式排版。在回复时，请保持专业、温和且简洁的语气。尽量使用列表和简短的段落。',
-    userProfile: '',
-    quickPrompts: <AiQuickPrompt>[],
-  );
+  static AiSettings defaultsFor(AppLanguage language) {
+    return AiSettings(
+      apiUrl: 'https://api.deepseek.com',
+      apiKey: '',
+      model: 'deepseek-chat',
+      modelOptions: defaultModelOptions,
+      prompt: trByLanguageKey(
+        language: language,
+        key: 'legacy.ai_summary.default_prompt',
+      ),
+      userProfile: '',
+      quickPrompts: const <AiQuickPrompt>[],
+    );
+  }
+
+  static final defaults = defaultsFor(AppLanguage.en);
 
   const AiSettings({
     required this.apiUrl,
@@ -229,9 +239,10 @@ class AiSettingsRepository {
     return '$_kPrefix$key';
   }
 
-  Future<AiSettings> read() async {
+  Future<AiSettings> read({AppLanguage language = AppLanguage.en}) async {
+    final fallback = AiSettings.defaultsFor(language);
     final storageKey = _storageKey;
-    if (storageKey == null) return AiSettings.defaults;
+    if (storageKey == null) return fallback;
     final raw = await _storage.read(key: storageKey);
     if (raw == null || raw.trim().isEmpty) {
       final legacy = await _readLegacy();
@@ -239,7 +250,7 @@ class AiSettingsRepository {
         await write(legacy);
         return legacy;
       }
-      return AiSettings.defaults;
+      return fallback;
     }
 
     try {
@@ -248,7 +259,7 @@ class AiSettingsRepository {
         return AiSettings.fromJson(decoded.cast<String, dynamic>());
       }
     } catch (_) {}
-    return AiSettings.defaults;
+    return fallback;
   }
 
   Future<void> write(AiSettings settings) async {

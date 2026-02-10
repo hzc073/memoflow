@@ -5,6 +5,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import 'widgets_service.dart';
+import '../../i18n/strings.g.dart';
 
 class WidgetsScreen extends StatelessWidget {
   const WidgetsScreen({super.key});
@@ -23,7 +24,7 @@ class WidgetsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
         children: [
           _Section(
-            title: context.tr(zh: '随机漫步', en: 'Random Review'),
+            title: context.t.strings.legacy.msg_random_review,
             textMuted: textMuted,
             child: _WidgetCard(
               card: card,
@@ -39,7 +40,7 @@ class WidgetsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _Section(
-            title: context.tr(zh: '快速输入', en: 'Quick Input'),
+            title: context.t.strings.legacy.msg_quick_input,
             textMuted: textMuted,
             child: _WidgetCard(
               card: card,
@@ -55,7 +56,7 @@ class WidgetsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _Section(
-            title: context.tr(zh: '统计', en: 'Stats'),
+            title: context.t.strings.legacy.msg_stats,
             textMuted: textMuted,
             child: _WidgetCard(
               card: card,
@@ -93,11 +94,11 @@ class WidgetsScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '小组件', en: 'Widgets')),
+        title: Text(context.t.strings.legacy.msg_widgets),
         centerTitle: false,
       ),
       body: isDark
@@ -129,10 +130,7 @@ class WidgetsScreen extends StatelessWidget {
     if (defaultTargetPlatform != TargetPlatform.android) {
       showTopToast(
         context,
-        context.tr(
-          zh: 'iOS 请长按桌面添加 MemoFlow 小组件',
-          en: 'On iOS, long-press the home screen to add MemoFlow widgets',
-        ),
+        context.t.strings.legacy.msg_ios_long_press_home_screen_add,
       );
       return;
     }
@@ -141,8 +139,8 @@ class WidgetsScreen extends StatelessWidget {
     showTopToast(
       context,
       ok
-          ? context.tr(zh: '已发送请求，请在系统提示中确认', en: 'Request sent. Confirm in the system prompt')
-          : context.tr(zh: '不支持一键添加，请从小组件列表添加', en: 'One-tap add not supported. Add it from the widget picker'),
+          ? context.t.strings.legacy.msg_request_sent_confirm_system_prompt
+          : context.t.strings.legacy.msg_one_tap_add_not_supported_add,
     );
   }
 }
@@ -235,7 +233,7 @@ class _WidgetCardState extends State<_WidgetCard> {
                 ),
                 child: Center(
                   child: Text(
-                    context.tr(zh: '添加到桌面', en: 'Add to Home Screen'),
+                    context.t.strings.legacy.msg_add_home_screen,
                     style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
                   ),
                 ),
@@ -285,10 +283,7 @@ class _QuotePreview extends StatelessWidget {
     final text = isDark ? Colors.white.withValues(alpha: 0.75) : Colors.black.withValues(alpha: 0.65);
     return Center(
       child: Text(
-        context.tr(
-          zh: '记住这一刻，感受生活的温度。\n每天来一次随机漫步。',
-          en: 'Remember the moment, feel the warmth of life.\nTake a quick review every day.',
-        ),
+        context.t.strings.legacy.msg_remember_moment_feel_warmth_life_take,
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 12, height: 1.3, color: text, fontWeight: FontWeight.w600),
       ),
@@ -317,7 +312,7 @@ class _QuickInputPreview extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                context.tr(zh: '写点什么…', en: "What's new?"),
+                context.t.strings.legacy.msg_what_s,
                 style: TextStyle(color: text, fontWeight: FontWeight.w600),
               ),
             ),
@@ -352,7 +347,7 @@ class _HeatmapPreview extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          context.tr(zh: '记录热力图', en: 'ACTIVITY HEATMAP'),
+          context.t.strings.legacy.msg_activity_heatmap_2,
           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: text),
         ),
         const SizedBox(height: 8),
@@ -361,12 +356,12 @@ class _HeatmapPreview extends StatelessWidget {
             Text('128', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: dotHot)),
             const SizedBox(width: 6),
             Text(
-              context.tr(zh: '总记录', en: 'Total notes'),
+              context.t.strings.legacy.msg_total_notes,
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: text),
             ),
             const Spacer(),
             Text(
-              context.tr(zh: '最近 14 天', en: 'Last 14 days'),
+              context.t.strings.legacy.msg_last_14_days,
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: text),
             ),
           ],

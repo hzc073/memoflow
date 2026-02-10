@@ -6,6 +6,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/settings/ai_settings_repository.dart';
 import '../../state/ai_settings_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class AiProviderSettingsScreen extends ConsumerStatefulWidget {
   const AiProviderSettingsScreen({super.key});
@@ -156,13 +157,13 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(context.tr(zh: '模型', en: 'Model')),
+                        Text(context.t.strings.legacy.msg_model),
                         TextButton(
                           onPressed: () => setModalState(() => isEditing = !isEditing),
                           child: Text(
                             isEditing
-                                ? context.tr(zh: '完成', en: 'Done')
-                                : context.tr(zh: '编辑', en: 'Edit'),
+                                ? context.t.strings.legacy.msg_done
+                                : context.t.strings.legacy.msg_edit,
                           ),
                         ),
                       ],
@@ -173,7 +174,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                       title: Text(_modelLabel(context, m)),
                       trailing: isEditing
                           ? IconButton(
-                              tooltip: context.tr(zh: '删除', en: 'Delete'),
+                              tooltip: context.t.strings.legacy.msg_delete,
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () => deleteModel(m),
                             )
@@ -183,7 +184,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                   ),
                   ListTile(
                     leading: const Icon(Icons.add),
-                    title: Text(context.tr(zh: '添加自定义模型', en: 'Add custom model')),
+                    title: Text(context.t.strings.legacy.msg_add_custom_model),
                     onTap: addCustomModel,
                   ),
                 ],
@@ -230,12 +231,12 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
       setState(() => _dirty = false);
       showTopToast(
         context,
-        context.tr(zh: '设置已保存', en: 'Settings saved'),
+        context.t.strings.legacy.msg_settings_saved,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -297,10 +298,10 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                           ),
                           validator: (v) {
                             final raw = (v ?? '').trim();
-                            if (raw.isEmpty) return context.tr(zh: '请输入 API URL', en: 'Please enter API URL');
+                            if (raw.isEmpty) return context.t.strings.legacy.msg_enter_api_url;
                             final uri = Uri.tryParse(raw);
                             if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
-                              return context.tr(zh: '请输入有效的 URL', en: 'Please enter a valid URL');
+                              return context.t.strings.legacy.msg_enter_valid_url;
                             }
                             return null;
                           },
@@ -325,7 +326,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                       ),
                       Divider(height: 1, color: border),
                       _FieldBlock(
-                        label: context.tr(zh: '模型', en: 'Model'),
+                        label: context.t.strings.legacy.msg_model,
                         textMuted: textMuted,
                         child: Material(
                           color: Colors.transparent,
@@ -336,7 +337,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                                 Expanded(
                                   child: Text(
                                     _model.trim().isEmpty
-                                        ? context.tr(zh: '请选择', en: 'Select')
+                                        ? context.t.strings.legacy.msg_select
                                         : _model.trim(),
                                     style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
                                   ),
@@ -378,7 +379,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      context.tr(zh: '提示词 (Prompt)', en: 'Prompt'),
+                      context.t.strings.legacy.msg_prompt,
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
                     ),
                     const SizedBox(height: 10),
@@ -390,10 +391,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                       maxLines: 10,
                       style: TextStyle(fontWeight: FontWeight.w600, color: textMain, height: 1.35),
                       decoration: InputDecoration(
-                        hintText: context.tr(
-                          zh: '用于 AI 总结/报告的默认提示词',
-                          en: 'Default prompt for AI summaries/reports',
-                        ),
+                        hintText: context.t.strings.legacy.msg_default_prompt_ai_summaries_reports,
                         hintStyle: TextStyle(color: textMuted),
                         border: InputBorder.none,
                         isDense: true,
@@ -424,7 +422,7 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
                   child: _saving
                       ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : Text(
-                          context.tr(zh: '保存设置', en: 'Save Settings'),
+                          context.t.strings.legacy.msg_save_settings,
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                 ),
@@ -443,11 +441,11 @@ class _AiProviderSettingsScreenState extends ConsumerState<AiProviderSettingsScr
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: 'AI 设置', en: 'AI Settings')),
+        title: Text(context.t.strings.legacy.msg_ai_settings),
         centerTitle: false,
       ),
       body: isDark
@@ -531,17 +529,17 @@ class _CustomModelDialogState extends State<_CustomModelDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(context.tr(zh: '自定义模型', en: 'Custom Model')),
+      title: Text(context.t.strings.legacy.msg_custom_model),
       content: TextField(
         controller: _controller,
         decoration: InputDecoration(
-          hintText: context.tr(zh: '例如 claude-3-5-sonnet-20241022', en: 'e.g. claude-3-5-sonnet-20241022'),
+          hintText: context.t.strings.legacy.msg_e_g_claude_3_5_sonnet,
           border: const OutlineInputBorder(),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => _close(null), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-        FilledButton(onPressed: () => _close(_controller.text), child: Text(context.tr(zh: '确定', en: 'OK'))),
+        TextButton(onPressed: () => _close(null), child: Text(context.t.strings.legacy.msg_cancel_2)),
+        FilledButton(onPressed: () => _close(_controller.text), child: Text(context.t.strings.legacy.msg_ok)),
       ],
     );
   }

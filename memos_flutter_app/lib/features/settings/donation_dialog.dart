@@ -13,6 +13,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/preferences_provider.dart';
+import '../../i18n/strings.g.dart';
 
 enum _DonationStep { request, success }
 
@@ -120,7 +121,7 @@ class _DonationDialogState extends ConsumerState<DonationDialog>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              context.tr(zh: '需要相册权限以保存二维码', en: 'Gallery permission required'),
+              context.t.strings.legacy.msg_gallery_permission_required,
             ),
           ),
         );
@@ -140,20 +141,20 @@ class _DonationDialogState extends ConsumerState<DonationDialog>
       if (!ok) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '保存失败', en: 'Save failed'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_save_failed)),
         );
         return;
       }
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '二维码已保存到系统相册', en: 'QR saved to gallery'),
+        context.t.strings.legacy.msg_qr_saved_gallery,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e')),
+          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
         ),
       );
     } finally {
@@ -294,11 +295,8 @@ class _DonationRequestCard extends StatelessWidget {
       fontWeight: FontWeight.w700,
       color: danger,
     );
-    final bodyPrefix = context.tr(
-      zh: 'MemoFlow 是我用业余时间肝出来的孩子。目前开发者已连续熬夜修 Bug，急需一杯冰美式“续命”。你的投喂不仅能恢复我的电量，还能让新功能提早 ',
-      en: 'MemoFlow is a side project I build in my spare time. I have been up late fixing bugs and could really use an iced Americano. Your support refuels my battery and helps new features ship ',
-    );
-    final bodySuffix = context.tr(zh: ' 上线！', en: ' sooner!');
+    final bodyPrefix = context.t.strings.legacy.msg_memoflow_side_project_i_build_my;
+    final bodySuffix = context.t.strings.legacy.msg_sooner;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
@@ -317,7 +315,7 @@ class _DonationRequestCard extends StatelessWidget {
           Text('bolt 10% ENERGY LEFT', style: labelStyle),
           const SizedBox(height: 6),
           Text(
-            context.tr(zh: '能量值告急！', en: 'Energy critically low!'),
+            context.t.strings.legacy.msg_energy_critically_low,
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -348,10 +346,7 @@ class _DonationRequestCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            context.tr(
-              zh: '点击确认赞赏后，将解锁限定版金色标识 or 永久去广告承诺（虽然本来就没广告）',
-              en: 'After confirming support, you will unlock a limited gold badge or a forever ad-free promise (though there were never ads).',
-            ),
+            context.t.strings.legacy.msg_after_confirming_support_unlock_limited_gold,
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 11, height: 1.4, color: textMuted),
           ),
@@ -376,10 +371,7 @@ class _DonationRequestCard extends StatelessWidget {
                 size: 18,
               ),
               label: Text(
-                context.tr(
-                  zh: '☕ 这就是我要的咖啡/加个鸡腿',
-                  en: '☕ Coffee it is / add a drumstick',
-                ),
+                context.t.strings.legacy.msg_coffee_add_drumstick,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
@@ -392,10 +384,7 @@ class _DonationRequestCard extends StatelessWidget {
           TextButton(
             onPressed: onCancel,
             child: Text(
-              context.tr(
-                zh: '👀 下次一定，先去修 Bug',
-                en: '👀 Next time, back to fixing bugs',
-              ),
+              context.t.strings.legacy.msg_next_time_back_fixing_bugs,
               style: TextStyle(color: textMuted, fontWeight: FontWeight.w600),
             ),
           ),
@@ -451,7 +440,7 @@ class _DonationSuccessCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
-              context.tr(zh: '⚡ ENERGY RESTORED', en: '⚡ ENERGY RESTORED'),
+              context.t.strings.legacy.msg_energy_restored,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -461,10 +450,7 @@ class _DonationSuccessCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            context.tr(
-              zh: '收到心意！能量已充满 ⚡',
-              en: 'Thanks! Energy fully restored ⚡',
-            ),
+            context.t.strings.legacy.msg_thanks_energy_fully_restored,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 20,
@@ -474,10 +460,7 @@ class _DonationSuccessCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            context.tr(
-              zh: '为了对得起这杯咖啡，今晚我决定不睡了，写它个一百行代码！',
-              en: "To deserve this coffee, I'm pulling an all-nighter to write 100 lines of code!",
-            ),
+            context.t.strings.legacy.msg_deserve_coffee_i_m_pulling_all,
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
           ),
@@ -498,7 +481,7 @@ class _DonationSuccessCard extends StatelessWidget {
               ),
               onPressed: onClose,
               child: Text(
-                context.tr(zh: '太棒啦！ ❤️', en: 'Awesome! ❤️'),
+                context.t.strings.legacy.msg_awesome,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
@@ -613,10 +596,7 @@ class _QrPlaceholder extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              context.tr(
-                zh: '长按保存后打开支付宝扫一扫',
-                en: 'Save and open Alipay to scan',
-              ),
+              context.t.strings.legacy.msg_save_open_alipay_scan,
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,

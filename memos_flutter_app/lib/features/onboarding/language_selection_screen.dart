@@ -10,6 +10,7 @@ import '../../core/app_localization.dart';
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/local_library.dart';
+import '../../i18n/strings.g.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
 import '../../state/preferences_provider.dart';
@@ -42,21 +43,11 @@ class _LanguageSelectionScreenState
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          trByLanguage(
-            language: _selected,
-            zh: '本地库名称',
-            en: 'Local library name',
-          ),
-        ),
+        title: Text(context.t.strings.onboarding.localLibraryNameTitle),
         content: TextFormField(
           initialValue: initialName,
           decoration: InputDecoration(
-            hintText: trByLanguage(
-              language: _selected,
-              zh: '请输入名称',
-              en: 'Enter a name',
-            ),
+            hintText: context.t.strings.onboarding.localLibraryNameHint,
           ),
           onChanged: (value) => name = value,
           onFieldSubmitted: (_) => context.safePop(name.trim()),
@@ -64,15 +55,11 @@ class _LanguageSelectionScreenState
         actions: [
           TextButton(
             onPressed: () => context.safePop(null),
-            child: Text(
-              trByLanguage(language: _selected, zh: '取消', en: 'Cancel'),
-            ),
+            child: Text(context.t.strings.common.cancel),
           ),
           FilledButton(
             onPressed: () => context.safePop(name.trim()),
-            child: Text(
-              trByLanguage(language: _selected, zh: '确认', en: 'Confirm'),
-            ),
+            child: Text(context.t.strings.common.confirm),
           ),
         ],
       ),
@@ -90,7 +77,7 @@ class _LanguageSelectionScreenState
       );
       if (doc == null) return null;
       final name = doc.name.trim().isEmpty
-          ? trByLanguage(language: _selected, zh: '本地库', en: 'Local library')
+          ? context.t.strings.onboarding.localLibraryDefaultName
           : doc.name.trim();
       return (treeUri: doc.uri, rootPath: null, defaultName: name);
     }
@@ -101,7 +88,7 @@ class _LanguageSelectionScreenState
       treeUri: null,
       rootPath: path.trim(),
       defaultName: name.isEmpty
-          ? trByLanguage(language: _selected, zh: '本地库', en: 'Local library')
+          ? context.t.strings.onboarding.localLibraryDefaultName
           : name,
     );
   }
@@ -114,6 +101,67 @@ class _LanguageSelectionScreenState
     } catch (_) {
       // Silent on purpose; users can re-scan from settings later.
     }
+  }
+
+  List<AppLanguage> get _languageOptions => const [
+        AppLanguage.system,
+        AppLanguage.zhHans,
+        AppLanguage.zhHantTw,
+        AppLanguage.en,
+        AppLanguage.ja,
+        AppLanguage.de,
+      ];
+
+  String _languageTitle(AppLanguage language) {
+    final labels = context.t.strings.languages;
+    return switch (language) {
+      AppLanguage.system => labels.system,
+      AppLanguage.zhHans => labels.zhHans,
+      AppLanguage.zhHantTw => labels.zhHantTw,
+      AppLanguage.en => labels.en,
+      AppLanguage.ja => labels.ja,
+      AppLanguage.de => labels.de,
+    };
+  }
+
+  String _languageSubtitle(AppLanguage language) {
+    final labels = context.t.strings.languagesNative;
+    return switch (language) {
+      AppLanguage.system => labels.system,
+      AppLanguage.zhHans => labels.zhHans,
+      AppLanguage.zhHantTw => labels.zhHantTw,
+      AppLanguage.en => labels.en,
+      AppLanguage.ja => labels.ja,
+      AppLanguage.de => labels.de,
+    };
+  }
+
+  void _handleLanguageChanged(AppLanguage? language) {
+    if (language == null || language == _selected) return;
+    setState(() => _selected = language);
+    ref.read(appPreferencesProvider.notifier).setLanguage(language);
+  }
+
+  Widget _languageLabel({
+    required AppLanguage language,
+    required Color textMain,
+    required Color textMuted,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _languageTitle(language),
+          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          _languageSubtitle(language),
+          style: TextStyle(fontSize: 12, color: textMuted),
+        ),
+      ],
+    );
   }
 
   Future<bool> _createLocalLibrary() async {
@@ -171,8 +219,20 @@ class _LanguageSelectionScreenState
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    String tr({required String zh, required String en}) =>
-        trByLanguage(language: _selected, zh: zh, en: en);
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final dropdownItems = [
+      for (final language in _languageOptions)
+        DropdownMenuItem<AppLanguage>(
+          value: language,
+          child: _languageLabel(
+            language: language,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+        ),
+    ];
 
     return Scaffold(
       backgroundColor: bg,
@@ -229,14 +289,14 @@ class _LanguageSelectionScreenState
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    tr(zh: '简约而强大的笔记流', en: 'Minimal, powerful note stream'),
+                    context.t.strings.onboarding.tagline,
                     style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                   const SizedBox(height: 24),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      tr(zh: '选择语言', en: 'Select language'),
+                      context.t.strings.onboarding.selectLanguage,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -245,38 +305,56 @@ class _LanguageSelectionScreenState
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _LanguageCard(
-                          language: AppLanguage.zhHans,
-                          selected: _selected == AppLanguage.zhHans,
-                          background: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () =>
-                              setState(() => _selected = AppLanguage.zhHans),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: card,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: border),
+                      boxShadow: isDark
+                          ? null
+                          : [
+                              BoxShadow(
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                                color: Colors.black.withValues(alpha: 0.06),
+                              ),
+                            ],
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<AppLanguage>(
+                        value: _selected,
+                        isExpanded: true,
+                        items: dropdownItems,
+                        onChanged: _handleLanguageChanged,
+                        icon: Icon(
+                          Icons.expand_more,
+                          size: 20,
+                          color: textMuted,
                         ),
+                        dropdownColor: card,
+                        selectedItemBuilder: (context) => [
+                          for (final language in _languageOptions)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: _languageLabel(
+                                language: language,
+                                textMain: textMain,
+                                textMuted: textMuted,
+                              ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _LanguageCard(
-                          language: AppLanguage.en,
-                          selected: _selected == AppLanguage.en,
-                          background: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () =>
-                              setState(() => _selected = AppLanguage.en),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      tr(zh: '选择工作模式', en: 'Choose a mode'),
+                      context.t.strings.onboarding.selectMode,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -288,10 +366,7 @@ class _LanguageSelectionScreenState
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      tr(
-                        zh: '您可以随时在设置中更改此项',
-                        en: 'You can change this later in Settings.',
-                      ),
+                      context.t.strings.onboarding.modeHint,
                       style: TextStyle(fontSize: 12, color: textMuted),
                     ),
                   ),
@@ -301,12 +376,9 @@ class _LanguageSelectionScreenState
                     background: card,
                     textMain: textMain,
                     textMuted: textMuted,
-                    title: tr(zh: '单机模式', en: 'Local mode'),
-                    label: 'LOCAL MODE',
-                    description: tr(
-                      zh: '数据仅保存在手机本地，无需配置服务器，适合追求极致隐私与离线使用的用户。',
-                      en: 'Data stays on device. No server setup required, ideal for privacy and offline use.',
-                    ),
+                    title: context.t.strings.onboarding.modeLocalTitle,
+                    label: context.t.strings.onboarding.modeLocalLabel,
+                    description: context.t.strings.onboarding.modeLocalDesc,
                     icon: Icons.folder_rounded,
                     onTap: () => setState(() => _mode = OnboardingMode.local),
                   ),
@@ -316,12 +388,9 @@ class _LanguageSelectionScreenState
                     background: card,
                     textMain: textMain,
                     textMuted: textMuted,
-                    title: tr(zh: '联机模式', en: 'Server mode'),
-                    label: 'SERVER MODE',
-                    description: tr(
-                      zh: '连接到你的 Memos 后端，实现多端实时同步。支持 Web、移动端等多平台无缝衔接。',
-                      en: 'Connect to your Memos backend for real-time multi-device sync.',
-                    ),
+                    title: context.t.strings.onboarding.modeServerTitle,
+                    label: context.t.strings.onboarding.modeServerLabel,
+                    description: context.t.strings.onboarding.modeServerDesc,
                     icon: Icons.cloud_rounded,
                     onTap: () => setState(() => _mode = OnboardingMode.server),
                   ),
@@ -347,7 +416,7 @@ class _LanguageSelectionScreenState
                               ),
                             )
                           : Text(
-                              tr(zh: '开始使用', en: 'Get started'),
+                              context.t.strings.onboarding.getStarted,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -359,87 +428,6 @@ class _LanguageSelectionScreenState
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LanguageCard extends StatelessWidget {
-  const _LanguageCard({
-    required this.language,
-    required this.selected,
-    required this.background,
-    required this.textMain,
-    required this.textMuted,
-    required this.onTap,
-  });
-
-  final AppLanguage language;
-  final bool selected;
-  final Color background;
-  final Color textMain;
-  final Color textMuted;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = selected
-        ? MemoFlowPalette.primary
-        : (isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight);
-    final fill = selected
-        ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.22 : 0.1)
-        : background;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: border),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                      color: Colors.black.withValues(alpha: 0.06),
-                    ),
-                  ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                language.labelFor(AppLanguage.en),
-                style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      language.labelFor(AppLanguage.zhHans),
-                      style: TextStyle(fontSize: 12, color: textMuted),
-                    ),
-                  ),
-                  Icon(
-                    selected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    color: selected ? MemoFlowPalette.primary : textMuted,
-                    size: 18,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -27,6 +27,7 @@ import 'password_lock_screen.dart';
 import 'preferences_settings_screen.dart';
 import 'user_guide_screen.dart';
 import 'widgets_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -105,7 +106,7 @@ class SettingsScreen extends ConsumerWidget {
         ? localLibrary.locationLabel
         : description.isNotEmpty
         ? description
-        : context.tr(zh: '记录每一个瞬间', en: 'Capture every moment you record');
+        : context.t.strings.legacy.msg_capture_every_moment_record;
     final avatarUrl = localLibrary != null
         ? ''
         : _resolveAvatarUrl((account?.user.avatarUrl ?? ''), account?.baseUrl);
@@ -120,11 +121,11 @@ class SettingsScreen extends ConsumerWidget {
         backgroundColor: bg,
         appBar: AppBar(
           leading: IconButton(
-            tooltip: context.tr(zh: '关闭', en: 'Close'),
+            tooltip: context.t.strings.legacy.msg_close,
             icon: const Icon(Icons.close),
             onPressed: () => _close(context),
           ),
-          title: Text(context.tr(zh: '设置', en: 'Settings')),
+          title: Text(context.t.strings.legacy.msg_settings),
           centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
@@ -174,7 +175,7 @@ class SettingsScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         icon: Icons.calendar_month_outlined,
-                        label: context.tr(zh: '统计', en: 'Stats'),
+                        label: context.t.strings.legacy.msg_stats,
                         onTap: () {
                           haptic();
                           Navigator.of(context).push(
@@ -192,7 +193,7 @@ class SettingsScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         icon: Icons.widgets_outlined,
-                        label: context.tr(zh: '小组件', en: 'Widgets'),
+                        label: context.t.strings.legacy.msg_widgets,
                         onTap: () {
                           haptic();
                           Navigator.of(context).push(
@@ -210,7 +211,7 @@ class SettingsScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         icon: Icons.code,
-                        label: context.tr(zh: 'API 与插件', en: 'API & Plugins'),
+                        label: context.t.strings.legacy.msg_api_plugins,
                         onTap: () {
                           haptic();
                           Navigator.of(context).push(
@@ -230,7 +231,7 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     _SettingRow(
                       icon: Icons.menu_book_outlined,
-                      label: context.tr(zh: '使用指南', en: 'User Guide'),
+                      label: context.t.strings.legacy.msg_user_guide,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -251,7 +252,7 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     _SettingRow(
                       icon: Icons.person_outline,
-                      label: context.tr(zh: '账号与安全', en: 'Account & Security'),
+                      label: context.t.strings.legacy.msg_account_security,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -265,7 +266,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.tune,
-                      label: context.tr(zh: '偏好设置', en: 'Preferences'),
+                      label: context.t.strings.legacy.msg_preferences,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -279,7 +280,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.smart_toy_outlined,
-                      label: context.tr(zh: 'AI 设置', en: 'AI Settings'),
+                      label: context.t.strings.legacy.msg_ai_settings,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -293,7 +294,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.lock_outline,
-                      label: context.tr(zh: '应用锁', en: 'App Lock'),
+                      label: context.t.strings.legacy.msg_app_lock,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -314,7 +315,7 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     _SettingRow(
                       icon: Icons.science_outlined,
-                      label: context.tr(zh: '实验室', en: 'Laboratory'),
+                      label: context.t.strings.legacy.msg_laboratory,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -328,7 +329,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.extension_outlined,
-                      label: context.tr(zh: '功能组件', en: 'Components'),
+                      label: context.t.strings.legacy.msg_components,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -349,7 +350,7 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     _SettingRow(
                       icon: Icons.chat_bubble_outline,
-                      label: context.tr(zh: '反馈', en: 'Feedback'),
+                      label: context.t.strings.legacy.msg_feedback,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -363,7 +364,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.bolt_outlined,
-                      label: context.tr(zh: '充电站', en: 'Charging Station'),
+                      label: context.t.strings.legacy.msg_charging_station,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -373,7 +374,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.import_export,
-                      label: context.tr(zh: '导入 / 导出', en: 'Import / Export'),
+                      label: context.t.strings.legacy.msg_import_export,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -387,7 +388,7 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     _SettingRow(
                       icon: Icons.info_outline,
-                      label: context.tr(zh: '关于', en: 'About'),
+                      label: context.t.strings.legacy.msg_about,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () {
@@ -409,20 +410,14 @@ class SettingsScreen extends ConsumerWidget {
                       builder: (context, snapshot) {
                         final version = snapshot.data?.version.trim() ?? '';
                         final label = version.isEmpty
-                            ? context.tr(zh: '版本', en: 'Version')
-                            : context.tr(
-                                zh: '版本 v$version',
-                                en: 'Version v$version',
-                              );
+                            ? context.t.strings.legacy.msg_version
+                            : context.t.strings.legacy.msg_version_v(version: version);
                         return Text(label, style: versionStyle);
                       },
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      context.tr(
-                        zh: '为记录而生',
-                        en: 'Made with love for note-taking',
-                      ),
+                      context.t.strings.legacy.msg_made_love_note_taking,
                       style: versionStyle,
                     ),
                   ],

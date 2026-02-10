@@ -13,6 +13,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/logging_provider.dart';
 import '../../state/preferences_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class SubmitLogsScreen extends ConsumerStatefulWidget {
   const SubmitLogsScreen({super.key});
@@ -92,12 +93,12 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
       setState(() => _lastPath = outPath);
       showTopToast(
         context,
-        context.tr(zh: '日志文件已生成', en: 'Log file created'),
+        context.t.strings.legacy.msg_log_file_created,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '生成失败：$e', en: 'Failed to generate: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_generate(e: e))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -129,11 +130,11 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '提交日志', en: 'Submit Logs')),
+        title: Text(context.t.strings.legacy.msg_submit_logs),
         centerTitle: false,
       ),
       body: Stack(
@@ -158,7 +159,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: [
               Text(
-                context.tr(zh: '包含', en: 'Include'),
+                context.t.strings.legacy.msg_include,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -168,7 +169,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 children: [
                   _ToggleRow(
                     icon: Icons.report_gmailerrorred_outlined,
-                    label: context.tr(zh: '包含错误详情', en: 'Include error details'),
+                    label: context.t.strings.legacy.msg_include_error_details,
                     value: _includeErrors,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -179,7 +180,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   ),
                   _ToggleRow(
                     icon: Icons.outbox_outlined,
-                    label: context.tr(zh: '包含待处理队列', en: 'Include pending queue'),
+                    label: context.t.strings.legacy.msg_include_pending_queue,
                     value: _includeOutbox,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -190,7 +191,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   ),
                   _ToggleRow(
                     icon: Icons.swap_horiz,
-                    label: context.tr(zh: '记录请求/响应日志', en: 'Record request/response logs'),
+                    label: context.t.strings.legacy.msg_record_request_response_logs,
                     value: networkLoggingEnabled,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -203,7 +204,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(zh: '补充说明（可选）', en: 'Additional notes (optional)'),
+                context.t.strings.legacy.msg_additional_notes_optional,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -218,7 +219,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   minLines: 3,
                   maxLines: 5,
                   decoration: InputDecoration(
-                    hintText: context.tr(zh: '描述问题、时间、复现步骤等', en: 'Describe the issue, time, repro steps, etc.'),
+                    hintText: context.t.strings.legacy.msg_describe_issue_time_repro_steps_etc,
                     border: InputBorder.none,
                     hintStyle: TextStyle(color: textMuted),
                   ),
@@ -227,7 +228,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(zh: '操作', en: 'Actions'),
+                context.t.strings.legacy.msg_actions,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -237,7 +238,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 children: [
                   _ActionRow(
                     icon: Icons.content_copy,
-                    label: context.tr(zh: '复制日志文本', en: 'Copy log text'),
+                    label: context.t.strings.legacy.msg_copy_log_text,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
@@ -247,12 +248,12 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                         if (!context.mounted) return;
                         showTopToast(
                           context,
-                          context.tr(zh: '日志已复制', en: 'Log copied'),
+                          context.t.strings.legacy.msg_log_copied,
                         );
                       } catch (e) {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.tr(zh: '复制失败：$e', en: 'Copy failed: $e'))),
+                          SnackBar(content: Text(context.t.strings.legacy.msg_copy_failed(e: e))),
                         );
                       }
                     },
@@ -260,8 +261,8 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                   _ActionRow(
                     icon: Icons.file_present_outlined,
                     label: _busy
-                        ? context.tr(zh: '生成中…', en: 'Generating?')
-                        : context.tr(zh: '生成日志文件', en: 'Generate log file'),
+                        ? context.t.strings.legacy.msg_generating
+                        : context.t.strings.legacy.msg_generate_log_file,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: _busy
@@ -285,7 +286,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        context.tr(zh: '日志文件', en: 'Log file'),
+                        context.t.strings.legacy.msg_log_file,
                         style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
                       ),
                       const SizedBox(height: 6),
@@ -300,10 +301,10 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                             if (!context.mounted) return;
                             showTopToast(
                               context,
-                              context.tr(zh: '路径已复制', en: 'Path copied'),
+                              context.t.strings.legacy.msg_path_copied,
                             );
                           },
-                          child: Text(context.tr(zh: '复制路径', en: 'Copy path')),
+                          child: Text(context.t.strings.legacy.msg_copy_path),
                         ),
                       ),
                     ],
@@ -312,10 +313,7 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
               ],
               const SizedBox(height: 16),
               Text(
-                context.tr(
-                  zh: '提示：日志已自动去除敏感信息，如仍包含敏感数据，请提交前自行处理。',
-                  en: 'Note: logs are sanitized automatically. If sensitive data remains, redact before submitting.',
-                ),
+                context.t.strings.legacy.msg_note_logs_sanitized_automatically_sensitive_data,
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.75)),
               ),
             ],

@@ -13,6 +13,7 @@ import 'package:record/record.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class VoiceRecordResult {
   const VoiceRecordResult({
@@ -136,7 +137,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     if (!mic.isGranted) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '需要麦克风权限', en: 'Microphone permission required'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_microphone_permission_required)),
       );
       return;
     }
@@ -173,7 +174,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '启动录音失败：$e', en: 'Failed to start recording: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_start_recording(e: e))),
       );
       return;
     }
@@ -227,7 +228,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '操作失败：$e', en: 'Operation failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_operation_failed(e: e))),
       );
     }
   }
@@ -247,7 +248,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '停止录音失败：$e', en: 'Failed to stop recording: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_stop_recording(e: e))),
       );
       _resetToIdle();
       return;
@@ -279,7 +280,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     if (filePath == null || fileName == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '录音信息缺失', en: 'Recording info missing'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_recording_info_missing)),
         );
       }
       _resetToIdle();
@@ -290,7 +291,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     if (!file.existsSync()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '录音文件不存在', en: 'Recording file not found'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_recording_file_not_found)),
         );
       }
       _resetToIdle();
@@ -304,17 +305,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       final language = ref.read(appPreferencesProvider).language;
       final createdAt = DateFormat('yyyy-MM-dd HH:mm').format(now);
 
-      final content = trByLanguage(
-        language: language,
-        zh: '🎙️ 语音记录\n'
-            '\n'
-            '- 时长：$durationText\n'
-            '- 创建：$createdAt\n',
-        en: '🎙️ Voice memo\n'
-            '\n'
-            '- Duration: $durationText\n'
-            '- Created: $createdAt\n',
-      );
+      final content = trByLanguageKey(language: language, key: 'legacy.msg_voice_memo');
 
       if (!mounted) return;
       setState(() {
@@ -334,7 +325,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       if (!mounted) return;
       setState(() => _processing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '发送失败：$e', en: 'Send failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_send_failed(e: e))),
       );
     }
   }

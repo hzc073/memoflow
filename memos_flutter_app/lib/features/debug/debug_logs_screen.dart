@@ -10,6 +10,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/logs/debug_log_store.dart';
 import '../../state/debug_log_provider.dart';
+import '../../i18n/strings.g.dart';
 
 enum _DebugLogFilter { all, action, api }
 
@@ -56,11 +57,11 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(context.tr(zh: '清空记录', en: 'Clear logs')),
-          content: Text(context.tr(zh: '确认清空调试记录？', en: 'Clear all debug logs?')),
+          title: Text(context.t.strings.legacy.msg_clear_logs),
+          content: Text(context.t.strings.legacy.msg_clear_all_debug_logs),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr(zh: '清空', en: 'Clear'))),
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
+            TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.t.strings.legacy.msg_clear)),
           ],
         );
       },
@@ -77,7 +78,7 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
     if (!mounted) return;
     showTopToast(
       context,
-      context.tr(zh: '记录已复制', en: 'Logs copied'),
+      context.t.strings.legacy.msg_logs_copied,
     );
   }
 
@@ -189,20 +190,20 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '调试记录', en: 'Debug Logs')),
+        title: Text(context.t.strings.legacy.msg_debug_logs),
         centerTitle: false,
         actions: [
           IconButton(
-            tooltip: context.tr(zh: '复制', en: 'Copy'),
+            tooltip: context.t.strings.legacy.msg_copy,
             icon: const Icon(Icons.copy_all_outlined),
             onPressed: _entries.isEmpty ? null : _copyAll,
           ),
           IconButton(
-            tooltip: context.tr(zh: '清空', en: 'Clear'),
+            tooltip: context.t.strings.legacy.msg_clear,
             icon: const Icon(Icons.delete_outline),
             onPressed: _entries.isEmpty ? null : _clearLogs,
           ),
@@ -235,7 +236,7 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: context.tr(zh: '搜索内容', en: 'Search logs'),
+                    hintText: context.t.strings.legacy.msg_search_logs,
                     border: InputBorder.none,
                     hintStyle: TextStyle(color: textMuted),
                     prefixIcon: Icon(Icons.search, color: textMuted),
@@ -247,7 +248,7 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
               Row(
                 children: [
                   Text(
-                    context.tr(zh: '筛选', en: 'Filter'),
+                    context.t.strings.legacy.msg_filter,
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textMuted),
                   ),
                   const SizedBox(width: 12),
@@ -257,15 +258,15 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
                     items: [
                       DropdownMenuItem(
                         value: _DebugLogFilter.all,
-                        child: Text(context.tr(zh: '全部', en: 'All'), style: TextStyle(color: textMain)),
+                        child: Text(context.t.strings.legacy.msg_all_2, style: TextStyle(color: textMain)),
                       ),
                       DropdownMenuItem(
                         value: _DebugLogFilter.action,
-                        child: Text(context.tr(zh: '本地', en: 'Local'), style: TextStyle(color: textMain)),
+                        child: Text(context.t.strings.legacy.msg_local_2, style: TextStyle(color: textMain)),
                       ),
                       DropdownMenuItem(
                         value: _DebugLogFilter.api,
-                        child: Text(context.tr(zh: '接口', en: 'API'), style: TextStyle(color: textMain)),
+                        child: Text(context.t.strings.legacy.msg_api, style: TextStyle(color: textMain)),
                       ),
                     ],
                     onChanged: (value) {
@@ -275,7 +276,7 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
                   ),
                   const Spacer(),
                   IconButton(
-                    tooltip: context.tr(zh: '刷新', en: 'Refresh'),
+                    tooltip: context.t.strings.legacy.msg_refresh,
                     icon: _loading ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh),
                     onPressed: _loading ? null : _refresh,
                   ),
@@ -290,7 +291,7 @@ class _DebugLogsScreenState extends ConsumerState<DebugLogsScreen> {
               else if (entries.isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 24),
-                  child: Center(child: Text(context.tr(zh: '暂无记录', en: 'No logs yet'), style: TextStyle(color: textMuted))),
+                  child: Center(child: Text(context.t.strings.legacy.msg_no_logs_yet, style: TextStyle(color: textMuted))),
                 )
               else
                 for (final entry in entries.reversed) ...[

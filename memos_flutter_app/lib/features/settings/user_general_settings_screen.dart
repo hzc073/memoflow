@@ -10,6 +10,7 @@ import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/user_settings_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class UserGeneralSettingsScreen extends ConsumerStatefulWidget {
   const UserGeneralSettingsScreen({super.key});
@@ -46,12 +47,12 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '已更新设置', en: 'Settings updated'),
+        context.t.strings.legacy.msg_settings_updated,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '更新失败：$e', en: 'Update failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_update_failed(e: e))),
       );
     } finally {
       if (mounted) {
@@ -73,7 +74,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(context.tr(zh: '语言', en: 'Locale')),
+                child: Text(context.t.strings.legacy.msg_locale),
               ),
             ),
             for (final option in options)
@@ -106,7 +107,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(context.tr(zh: '默认可见性', en: 'Default visibility')),
+                child: Text(context.t.strings.legacy.msg_default_visibility),
               ),
             ),
             for (final option in const ['PRIVATE', 'PROTECTED', 'PUBLIC'])
@@ -126,27 +127,27 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
   String _visibilityLabel(String value) {
     switch (value) {
       case 'PUBLIC':
-        return context.tr(zh: '公开', en: 'Public');
+        return context.t.strings.legacy.msg_public;
       case 'PROTECTED':
-        return context.tr(zh: '受保护', en: 'Protected');
+        return context.t.strings.legacy.msg_protected;
       default:
-        return context.tr(zh: '私密', en: 'Private');
+        return context.t.strings.legacy.msg_private_2;
     }
   }
 
   String _localeLabel(String value) {
     final normalized = value.trim().toLowerCase();
     if (normalized.isEmpty) {
-      return context.tr(zh: '默认', en: 'Default');
+      return context.t.strings.legacy.msg_default;
     }
     if (normalized == 'en' || normalized.startsWith('en-')) {
-      return context.tr(zh: '英语', en: 'English');
+      return context.t.strings.legacy.msg_english;
     }
     if (normalized == 'zh-hans' || normalized == 'zh_cn' || normalized == 'zh-cn') {
-      return context.tr(zh: '简体中文', en: 'Chinese (Simplified)');
+      return context.t.strings.legacy.msg_chinese_simplified;
     }
     if (normalized == 'zh-hant' || normalized == 'zh_tw' || normalized == 'zh-tw') {
-      return context.tr(zh: '繁體中文', en: 'Chinese (Traditional)');
+      return context.t.strings.legacy.msg_chinese_traditional;
     }
     return value;
   }
@@ -177,11 +178,11 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '用户通用设置', en: 'User General Settings')),
+        title: Text(context.t.strings.legacy.msg_user_general_settings),
         centerTitle: false,
       ),
       body: Stack(
@@ -218,7 +219,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                     divider: divider,
                     children: [
                       _SelectRow(
-                        label: context.tr(zh: '语言', en: 'Locale'),
+                        label: context.t.strings.legacy.msg_locale,
                         value: localeLabel,
                         textMain: textMain,
                         textMuted: textMuted,
@@ -230,7 +231,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                               },
                       ),
                       _SelectRow(
-                        label: context.tr(zh: '默认可见性', en: 'Default visibility'),
+                        label: context.t.strings.legacy.msg_default_visibility,
                         value: _visibilityLabel(visibility),
                         textMain: textMain,
                         textMuted: textMuted,
@@ -245,10 +246,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    context.tr(
-                      zh: '此设置将应用于新建的 Memo。',
-                      en: 'These settings apply to newly created memos.',
-                    ),
+                    context.t.strings.legacy.msg_these_settings_apply_newly_created_memos,
                     style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                 ],
@@ -262,7 +260,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      context.tr(zh: '加载失败', en: 'Failed to load'),
+                      context.t.strings.legacy.msg_failed_load_2,
                       style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
                     ),
                     const SizedBox(height: 8),
@@ -274,7 +272,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () => ref.invalidate(userGeneralSettingProvider),
-                      child: Text(context.tr(zh: '重试', en: 'Retry')),
+                      child: Text(context.t.strings.legacy.msg_retry),
                     ),
                   ],
                 ),

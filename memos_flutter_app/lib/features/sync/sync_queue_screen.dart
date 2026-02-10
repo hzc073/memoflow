@@ -11,6 +11,7 @@ import '../../state/database_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
 import '../memos/memos_list_screen.dart';
+import '../../i18n/strings.g.dart';
 
 final _syncQueueProvider = StreamProvider<List<_SyncQueueItem>>((ref) async* {
   final db = ref.watch(databaseProvider);
@@ -224,19 +225,16 @@ class SyncQueueScreen extends ConsumerWidget {
       final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text(context.tr(zh: '\u5220\u9664\u540c\u6b65\u4efb\u52a1', en: 'Delete sync task')),
-              content: Text(context.tr(
-                zh: '\u4ec5\u5220\u9664\u540c\u6b65\u4efb\u52a1\uff0c\u7b14\u8bb0\u4f1a\u4fdd\u7559\u3002',
-                en: 'Only delete the sync task; the memo will be kept.',
-              )),
+              title: Text(context.t.strings.legacy.msg_delete_sync_task),
+              content: Text(context.t.strings.legacy.msg_only_delete_sync_task_memo_kept),
               actions: [
                 TextButton(
                   onPressed: () => context.safePop(false),
-                  child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+                  child: Text(context.t.strings.legacy.msg_cancel_2),
                 ),
                 FilledButton(
                   onPressed: () => context.safePop(true),
-                  child: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
+                  child: Text(context.t.strings.legacy.msg_delete_task),
                 ),
               ],
             ),
@@ -258,19 +256,16 @@ class SyncQueueScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '\u5220\u9664\u540c\u6b65\u4efb\u52a1', en: 'Delete sync task')),
-            content: Text(context.tr(
-              zh: '\u4ec5\u5220\u9664\u540c\u6b65\u4efb\u52a1\u3002',
-              en: 'Only delete the sync task.',
-            )),
+            title: Text(context.t.strings.legacy.msg_delete_sync_task),
+            content: Text(context.t.strings.legacy.msg_only_delete_sync_task),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
-                child: Text(context.tr(zh: '\u53d6\u6d88', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '\u5220\u9664\u4efb\u52a1', en: 'Delete task')),
+                child: Text(context.t.strings.legacy.msg_delete_task),
               ),
             ],
           ),
@@ -301,7 +296,7 @@ class SyncQueueScreen extends ConsumerWidget {
 
     final lastSuccess = syncSnapshot.lastSuccess;
     final lastSuccessLabel = lastSuccess == null
-        ? context.tr(zh: '\u6682\u65e0\u8bb0\u5f55', en: 'No record yet')
+        ? context.t.strings.legacy.msg_no_record_yet
         : DateFormat('MM-dd HH:mm').format(lastSuccess);
 
     return PopScope(
@@ -313,20 +308,20 @@ class SyncQueueScreen extends ConsumerWidget {
       child: Scaffold(
         backgroundColor: bg,
         appBar: AppBar(
-          title: Text(context.tr(zh: '\u540c\u6b65\u961f\u5217', en: 'Sync queue')),
+          title: Text(context.t.strings.legacy.msg_sync_queue),
           centerTitle: false,
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           leading: IconButton(
-            tooltip: context.tr(zh: '\u8fd4\u56de', en: 'Back'),
+            tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
             onPressed: () => _handleBack(context),
           ),
           actions: [
             IconButton(
-              tooltip: context.tr(zh: '\u540c\u6b65', en: 'Sync'),
+              tooltip: context.t.strings.legacy.msg_sync,
               onPressed: syncing ? null : () => _syncAll(ref),
               icon: const Icon(Icons.sync),
             ),
@@ -349,7 +344,7 @@ class SyncQueueScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  context.tr(zh: '\u6b63\u5728\u8fdb\u884c\u7684\u4efb\u52a1', en: 'Active tasks'),
+                  context.t.strings.legacy.msg_active_tasks,
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain),
                 ),
                 const SizedBox(height: 12),
@@ -383,7 +378,7 @@ class SyncQueueScreen extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(
             child: Text(
-              context.tr(zh: '\u52a0\u8f7d\u5931\u8d25\uff1a$e', en: 'Failed to load: $e'),
+              context.t.strings.legacy.msg_failed_load_4(e: e),
               style: TextStyle(color: textMuted),
             ),
           ),
@@ -401,8 +396,8 @@ class SyncQueueScreen extends ConsumerWidget {
                 : const Icon(Icons.sync),
             label: Text(
               syncing
-                  ? context.tr(zh: '\u540c\u6b65\u4e2d...', en: 'Syncing...')
-                  : context.tr(zh: '\u5168\u90e8\u540c\u6b65', en: 'Sync all'),
+                  ? context.t.strings.legacy.msg_syncing
+                  : context.t.strings.legacy.msg_sync_all,
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -439,11 +434,11 @@ String? _resolveItemSubtitle(_SyncQueueItem item) {
 
 String _actionLabel(BuildContext context, String type) {
   return switch (type) {
-    'create_memo' => context.tr(zh: '\u521b\u5efa\u7b14\u8bb0', en: 'Create memo'),
-    'update_memo' => context.tr(zh: '\u66f4\u65b0\u7b14\u8bb0', en: 'Update memo'),
-    'delete_memo' => context.tr(zh: '\u5220\u9664\u7b14\u8bb0', en: 'Delete memo'),
-    'upload_attachment' => context.tr(zh: '\u4e0a\u4f20\u9644\u4ef6', en: 'Upload attachment'),
-    _ => context.tr(zh: '\u540c\u6b65\u4efb\u52a1', en: 'Sync task'),
+    'create_memo' => context.t.strings.legacy.msg_create_memo,
+    'update_memo' => context.t.strings.legacy.msg_update_memo,
+    'delete_memo' => context.t.strings.legacy.msg_delete_memo_2,
+    'upload_attachment' => context.t.strings.legacy.msg_upload_attachment,
+    _ => context.t.strings.legacy.msg_sync_task,
   };
 }
 
@@ -475,7 +470,7 @@ class _SyncSummaryCard extends StatelessWidget {
         ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.12)
         : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04));
     final statusText = syncing ? MemoFlowPalette.primary : textMuted;
-    final statusLabel = syncing ? context.tr(zh: '\u540c\u6b65\u4e2d', en: 'Syncing') : context.tr(zh: '\u7a7a\u95f2', en: 'Idle');
+    final statusLabel = syncing ? context.t.strings.legacy.msg_syncing_2 : context.t.strings.legacy.msg_idle;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -499,7 +494,7 @@ class _SyncSummaryCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                context.tr(zh: '\u540c\u6b65\u6982\u89c8', en: 'Sync overview'),
+                context.t.strings.legacy.msg_sync_overview,
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain),
               ),
               const Spacer(),
@@ -522,7 +517,7 @@ class _SyncSummaryCard extends StatelessWidget {
               Expanded(
                 child: _SummaryMetric(
                   value: '$pendingCount',
-                  label: context.tr(zh: '\u5f85\u540c\u6b65', en: 'Pending'),
+                  label: context.t.strings.legacy.msg_pending_2,
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
@@ -531,7 +526,7 @@ class _SyncSummaryCard extends StatelessWidget {
               Expanded(
                 child: _SummaryMetric(
                   value: '$failedCount',
-                  label: context.tr(zh: '\u5931\u8d25', en: 'Failed'),
+                  label: context.t.strings.legacy.msg_failed,
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
@@ -540,7 +535,7 @@ class _SyncSummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            context.tr(zh: '\u6700\u8fd1\u6210\u529f', en: 'Last success'),
+            context.t.strings.legacy.msg_last_success,
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
           ),
           const SizedBox(height: 4),
@@ -617,7 +612,7 @@ class _EmptyQueueCard extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              context.tr(zh: '\u6682\u65e0\u5f85\u540c\u6b65\u4efb\u52a1', en: 'No pending sync tasks'),
+              context.t.strings.legacy.msg_no_pending_sync_tasks,
               style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
             ),
           ),
@@ -719,7 +714,7 @@ class _SyncQueueItemCard extends StatelessWidget {
               Text(timeLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textMuted)),
               const Spacer(),
               IconButton(
-                tooltip: context.tr(zh: '\u5220\u9664', en: 'Delete'),
+                tooltip: context.t.strings.legacy.msg_delete,
                 onPressed: onDelete,
                 icon: Icon(Icons.delete_outline, color: textMuted),
               ),
@@ -731,7 +726,7 @@ class _SyncQueueItemCard extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
                 ),
                 child: Text(
-                  context.tr(zh: '\u540c\u6b65', en: 'Sync'),
+                  context.t.strings.legacy.msg_sync,
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: MemoFlowPalette.primary),
                 ),
               ),
@@ -757,12 +752,10 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final label = failed
-        ? context.tr(
-            zh: attempts > 0 ? '\u5931\u8d25 $attempts\u6b21' : '\u5931\u8d25',
-            en: attempts > 0 ? 'Failed $attempts' : 'Failed',
-          )
-        : context.tr(zh: '\u5f85\u540c\u6b65', en: 'Pending');
+    final failedLabel = attempts > 0
+        ? context.t.strings.legacy.msg_failed_2(attempts: attempts)
+        : context.t.strings.legacy.msg_failed;
+    final label = failed ? failedLabel : context.t.strings.legacy.msg_pending_2;
     final bg = failed
         ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.25 : 0.15)
         : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04));

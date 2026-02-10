@@ -29,6 +29,7 @@ import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
+import '../../i18n/strings.g.dart';
 
 enum _NotificationAction {
   markRead,
@@ -63,7 +64,7 @@ class NotificationsScreen extends ConsumerWidget {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+          title: context.t.strings.legacy.msg_archive,
           state: 'ARCHIVED',
           showDrawer: true,
         ),
@@ -118,9 +119,9 @@ class NotificationsScreen extends ConsumerWidget {
           onOpenNotifications: () => _openNotifications(context),
         ),
         appBar: AppBar(
-          title: Text(context.tr(zh: '通知', en: 'Notifications')),
+          title: Text(context.t.strings.legacy.msg_notifications),
           leading: IconButton(
-            tooltip: context.tr(zh: '返回', en: 'Back'),
+            tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
             onPressed: () => _backToAllMemos(context),
           ),
@@ -128,7 +129,7 @@ class NotificationsScreen extends ConsumerWidget {
         body: notificationsAsync.when(
           data: (items) {
             if (items.isEmpty) {
-              return Center(child: Text(context.tr(zh: '暂无通知', en: 'No notifications')));
+              return Center(child: Text(context.t.strings.legacy.msg_no_notifications));
             }
             return RefreshIndicator(
               onRefresh: () async {
@@ -168,17 +169,17 @@ class NotificationsScreen extends ConsumerWidget {
                         _StatusPill(status: item.status, isUnread: item.isUnread, isDark: isDark),
                         const SizedBox(width: 6),
                         PopupMenuButton<_NotificationAction>(
-                          tooltip: context.tr(zh: '操作', en: 'Actions'),
+                          tooltip: context.t.strings.legacy.msg_actions,
                           onSelected: (action) => _handleAction(context, ref, item, action),
                           itemBuilder: (context) => [
                             if (item.isUnread)
                               PopupMenuItem(
                                 value: _NotificationAction.markRead,
-                                child: Text(context.tr(zh: '标记已读', en: 'Mark as read')),
+                                child: Text(context.t.strings.legacy.msg_mark_read),
                               ),
                             PopupMenuItem(
                               value: _NotificationAction.delete,
-                              child: Text(context.tr(zh: '删除', en: 'Delete')),
+                              child: Text(context.t.strings.legacy.msg_delete),
                             ),
                           ],
                         ),
@@ -191,7 +192,7 @@ class NotificationsScreen extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+          error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
         ),
       ),
     );
@@ -200,7 +201,7 @@ class NotificationsScreen extends ConsumerWidget {
   String _metaText(BuildContext context, AppNotification item, DateFormat dateFmt) {
     final parts = <String>[];
     if (item.sender.trim().isNotEmpty) {
-      parts.add(context.tr(zh: '来自 ${_shortUserName(item.sender)}', en: 'From ${_shortUserName(item.sender)}'));
+      parts.add(context.t.strings.legacy.msg_text(shortUserName_item_sender: _shortUserName(item.sender)));
     }
     parts.add(dateFmt.format(item.createTime.toLocal()));
     return parts.join(' · ');
@@ -216,9 +217,9 @@ class NotificationsScreen extends ConsumerWidget {
   String _typeLabel(BuildContext context, AppNotification item) {
     final type = item.type.toUpperCase();
     return switch (type) {
-      'MEMO_COMMENT' => context.tr(zh: '新评论', en: 'New comment'),
-      'VERSION_UPDATE' => context.tr(zh: '版本更新', en: 'Version update'),
-      _ => context.tr(zh: '通知', en: 'Notification'),
+      'MEMO_COMMENT' => context.t.strings.legacy.msg_comment_2,
+      'VERSION_UPDATE' => context.t.strings.legacy.msg_version_update,
+      _ => context.t.strings.legacy.msg_notification,
     };
   }
 
@@ -241,7 +242,7 @@ class NotificationsScreen extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '通知缺少内容', en: 'Notification content unavailable'),
+            context.t.strings.legacy.msg_notification_content_unavailable,
           ),
         ),
       );
@@ -326,15 +327,12 @@ class NotificationsScreen extends ConsumerWidget {
         }
         showTopToast(
           context,
-          context.tr(
-            zh: '通知对应的内容已被删除',
-            en: 'The related memo was deleted',
-          ),
+          context.t.strings.legacy.msg_related_memo_was_deleted,
         );
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '打开通知失败：$e', en: 'Failed to open notification: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_notification(e: e))),
       );
     }
   }
@@ -365,13 +363,13 @@ class NotificationsScreen extends ConsumerWidget {
       ref.invalidate(notificationsProvider);
       if (!context.mounted) return;
       final message = action == _NotificationAction.markRead
-          ? context.tr(zh: '已标记为已读', en: 'Marked as read')
-          : context.tr(zh: '通知已删除', en: 'Notification deleted');
+          ? context.t.strings.legacy.msg_marked_read
+          : context.t.strings.legacy.msg_notification_deleted;
       showTopToast(context, message);
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '操作失败：$e', en: 'Action failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_action_failed(e: e))),
       );
     }
   }
@@ -549,7 +547,7 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                   const SizedBox(height: 4),
                   Text(
                     displayContent.isEmpty
-                        ? context.tr(zh: '评论内容不可用', en: 'Comment unavailable')
+                        ? context.t.strings.legacy.msg_comment_unavailable
                         : displayContent,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -564,7 +562,7 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
-                        context.tr(zh: '加载中...', en: 'Loading...'),
+                        context.t.strings.legacy.msg_loading,
                         style: TextStyle(fontSize: 11, color: widget.textMuted),
                       ),
                     ),
@@ -572,7 +570,7 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
-                        context.tr(zh: '加载失败', en: 'Load failed'),
+                        context.t.strings.legacy.msg_load_failed,
                         style: TextStyle(fontSize: 11, color: widget.textMuted),
                       ),
                     ),
@@ -591,17 +589,17 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                   isDark: widget.isDark,
                 ),
                 PopupMenuButton<_NotificationAction>(
-                  tooltip: context.tr(zh: '操作', en: 'Actions'),
+                  tooltip: context.t.strings.legacy.msg_actions,
                   onSelected: widget.onAction,
                   itemBuilder: (context) => [
                     if (item.isUnread)
                       PopupMenuItem(
                         value: _NotificationAction.markRead,
-                        child: Text(context.tr(zh: '标记已读', en: 'Mark as read')),
+                        child: Text(context.t.strings.legacy.msg_mark_read),
                       ),
                     PopupMenuItem(
                       value: _NotificationAction.delete,
-                      child: Text(context.tr(zh: '删除', en: 'Delete')),
+                      child: Text(context.t.strings.legacy.msg_delete),
                     ),
                   ],
                 ),
@@ -757,9 +755,9 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     if (username.isNotEmpty) return username;
     final trimmed = fallback.trim();
     if (trimmed.startsWith('users/')) {
-      return '${context.tr(zh: '用户', en: 'User')} ${trimmed.substring('users/'.length)}';
+      return '${context.t.strings.legacy.msg_user} ${trimmed.substring('users/'.length)}';
     }
-    return trimmed.isEmpty ? context.tr(zh: '未知用户', en: 'Unknown') : trimmed;
+    return trimmed.isEmpty ? context.t.strings.legacy.msg_unknown : trimmed;
   }
 
   String _creatorInitial(User? creator, String fallback, BuildContext context) {
@@ -789,8 +787,8 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = isUnread ? MemoFlowPalette.primary : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.45);
     final label = isUnread
-        ? context.tr(zh: '未读', en: 'Unread')
-        : (status.isEmpty ? context.tr(zh: '已读', en: 'Read') : context.tr(zh: '已读', en: 'Read'));
+        ? context.t.strings.legacy.msg_unread
+        : (status.isEmpty ? context.t.strings.legacy.msg_read : context.t.strings.legacy.msg_read);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

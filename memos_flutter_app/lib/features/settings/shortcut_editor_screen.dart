@@ -8,6 +8,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/shortcut.dart';
 import '../../state/memos_providers.dart';
+import '../../i18n/strings.g.dart';
 
 class ShortcutEditorResult {
   const ShortcutEditorResult({required this.title, required this.filter});
@@ -119,14 +120,14 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
     if (title.isEmpty) {
       showTopToast(
         context,
-        context.tr(zh: '请输入筛选名称', en: 'Please enter a name.'),
+        context.t.strings.legacy.msg_enter_name,
       );
       return;
     }
     if (filter.isEmpty) {
       showTopToast(
         context,
-        context.tr(zh: '请至少设置一个条件', en: 'Please add at least one condition.'),
+        context.t.strings.legacy.msg_add_least_one_condition,
       );
       return;
     }
@@ -155,14 +156,14 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
         leading: TextButton(
           onPressed: () => context.safePop(),
           child: Text(
-            context.tr(zh: '取消', en: 'Cancel'),
+            context.t.strings.legacy.msg_cancel_2,
             style: TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
           ),
         ),
         title: Text(
           widget.shortcut == null
-              ? context.tr(zh: '新建快捷筛选', en: 'New Shortcut')
-              : context.tr(zh: '编辑快捷筛选', en: 'Edit Shortcut'),
+              ? context.t.strings.legacy.msg_shortcut_2
+              : context.t.strings.legacy.msg_edit_shortcut,
           style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
         ),
         centerTitle: true,
@@ -170,7 +171,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
           TextButton(
             onPressed: canSubmit ? _submit : null,
             child: Text(
-              context.tr(zh: '完成', en: 'Done'),
+              context.t.strings.legacy.msg_done,
               style: TextStyle(
                 color: canSubmit ? MemoFlowPalette.primary : textMuted,
                 fontWeight: FontWeight.w600,
@@ -200,24 +201,24 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
           ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
             children: [
-              _FieldLabel(text: context.tr(zh: '筛选名称', en: 'Name'), textColor: textMain),
+              _FieldLabel(text: context.t.strings.legacy.msg_name, textColor: textMain),
               const SizedBox(height: 8),
               _TextFieldCard(
                 cardColor: card,
                 borderColor: border,
                 controller: _titleController,
-                hintText: context.tr(zh: '输入名称', en: 'Shortcut name'),
+                hintText: context.t.strings.legacy.msg_shortcut_name,
                 textColor: textMain,
               ),
               const SizedBox(height: 16),
-              _FieldLabel(text: context.tr(zh: '匹配方式', en: 'Match'), textColor: textMain),
+              _FieldLabel(text: context.t.strings.legacy.msg_match, textColor: textMain),
               const SizedBox(height: 8),
               _SegmentedControl<_MatchMode>(
                 value: _matchAll ? _MatchMode.all : _MatchMode.any,
                 onChanged: (value) => setState(() => _matchAll = value == _MatchMode.all),
                 options: [
-                  _SegmentOption(value: _MatchMode.all, label: context.tr(zh: '满足所有条件', en: 'Match all')),
-                  _SegmentOption(value: _MatchMode.any, label: context.tr(zh: '满足任一条件', en: 'Match any')),
+                  _SegmentOption(value: _MatchMode.all, label: context.t.strings.legacy.msg_match_all),
+                  _SegmentOption(value: _MatchMode.any, label: context.t.strings.legacy.msg_match_any),
                 ],
               ),
               const SizedBox(height: 16),
@@ -225,14 +226,11 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                 _WarningCard(
                   cardColor: card,
                   borderColor: border,
-                  text: context.tr(
-                    zh: '该快捷筛选包含高级条件，保存将覆盖这些条件。',
-                    en: 'This shortcut includes advanced conditions. Saving will overwrite them.',
-                  ),
+                  text: context.t.strings.legacy.msg_shortcut_includes_advanced_conditions_saving_overwrite,
                 ),
               if (_hasUnsupportedFilter) const SizedBox(height: 12),
               _ShortcutConditionCard(
-                title: context.tr(zh: '标签', en: 'Tags'),
+                title: context.t.strings.legacy.msg_tags,
                 onClear: _selectedTags.isEmpty ? null : _clearTags,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,8 +239,8 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                       value: _tagMatchMode,
                       onChanged: (value) => setState(() => _tagMatchMode = value),
                       options: [
-                        _SegmentOption(value: _TagMatchMode.any, label: context.tr(zh: '包含任一', en: 'Any')),
-                        _SegmentOption(value: _TagMatchMode.all, label: context.tr(zh: '包含全部', en: 'All')),
+                        _SegmentOption(value: _TagMatchMode.any, label: context.t.strings.legacy.msg_any),
+                        _SegmentOption(value: _TagMatchMode.all, label: context.t.strings.legacy.msg_all),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -251,7 +249,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () => _openTagPicker(tags),
                         icon: const Icon(Icons.add, size: 16),
-                        label: Text(context.tr(zh: '选择标签', en: 'Select tags')),
+                        label: Text(context.t.strings.legacy.msg_select_tags),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: MemoFlowPalette.primary,
                           side: BorderSide(color: border),
@@ -283,7 +281,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
               ),
               const SizedBox(height: 12),
               _ShortcutConditionCard(
-                title: context.tr(zh: '创建时间', en: 'Created'),
+                title: context.t.strings.legacy.msg_created_2,
                 onClear: _createdMode == _CreatedMode.range
                     ? (_createdRange == null ? null : _clearDateRange)
                     : (_createdLastDays == null ? null : _clearLastDays),
@@ -294,14 +292,14 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                       value: _createdMode,
                       onChanged: (value) => setState(() => _createdMode = value),
                       options: [
-                        _SegmentOption(value: _CreatedMode.range, label: context.tr(zh: '日期范围', en: 'Date range')),
-                        _SegmentOption(value: _CreatedMode.lastDays, label: context.tr(zh: '过去天数', en: 'Past days')),
+                        _SegmentOption(value: _CreatedMode.range, label: context.t.strings.legacy.msg_date_range_2),
+                        _SegmentOption(value: _CreatedMode.lastDays, label: context.t.strings.legacy.msg_past_days),
                       ],
                     ),
                     const SizedBox(height: 10),
                     if (_createdMode == _CreatedMode.range) ...[
                       Text(
-                        context.tr(zh: '在时间范围内', en: 'Within range'),
+                        context.t.strings.legacy.msg_within_range,
                         style: TextStyle(fontSize: 12, color: textMuted),
                       ),
                       const SizedBox(height: 8),
@@ -310,7 +308,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                         icon: const Icon(Icons.date_range, size: 18),
                         label: Text(
                           _createdRange == null
-                              ? context.tr(zh: '选择时间范围', en: 'Select date range')
+                              ? context.t.strings.legacy.msg_select_date_range
                               : '${dateFormat.format(_createdRange!.start)} - ${dateFormat.format(_createdRange!.end)}',
                         ),
                         style: OutlinedButton.styleFrom(
@@ -321,7 +319,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                       ),
                     ] else ...[
                       Text(
-                        context.tr(zh: '过去多少天', en: 'How many days back'),
+                        context.t.strings.legacy.msg_how_many_days_back,
                         style: TextStyle(fontSize: 12, color: textMuted),
                       ),
                       const SizedBox(height: 8),
@@ -340,7 +338,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                 decoration: InputDecoration(
-                                  hintText: context.tr(zh: '输入天数', en: 'Enter days'),
+                                  hintText: context.t.strings.legacy.msg_enter_days,
                                   border: InputBorder.none,
                                   isDense: true,
                                 ),
@@ -352,7 +350,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                               ),
                             ),
                             Text(
-                              context.tr(zh: '天', en: 'days'),
+                              context.t.strings.legacy.msg_days_4,
                               style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
                             ),
                           ],
@@ -364,15 +362,15 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
               ),
               const SizedBox(height: 12),
               _ShortcutConditionCard(
-                title: context.tr(zh: '可见性', en: 'Visibility'),
+                title: context.t.strings.legacy.msg_visibility,
                 onClear: _visibilityMode == _VisibilityMode.all ? null : _clearVisibility,
                 child: _SegmentedControl<_VisibilityMode>(
                   value: _visibilityMode,
                   onChanged: (value) => setState(() => _visibilityMode = value),
                   options: [
-                    _SegmentOption(value: _VisibilityMode.private, label: context.tr(zh: '仅私密', en: 'Private')),
-                    _SegmentOption(value: _VisibilityMode.public, label: context.tr(zh: '公开', en: 'Public')),
-                    _SegmentOption(value: _VisibilityMode.all, label: context.tr(zh: '全部', en: 'All')),
+                    _SegmentOption(value: _VisibilityMode.private, label: context.t.strings.legacy.msg_private),
+                    _SegmentOption(value: _VisibilityMode.public, label: context.t.strings.legacy.msg_public),
+                    _SegmentOption(value: _VisibilityMode.all, label: context.t.strings.legacy.msg_all_2),
                   ],
                 ),
               ),
@@ -755,7 +753,7 @@ class _ShortcutConditionCard extends StatelessWidget {
                 IconButton(
                   onPressed: onClear,
                   icon: Icon(Icons.close, size: 18, color: textMain.withValues(alpha: 0.6)),
-                  tooltip: context.tr(zh: '清空', en: 'Clear'),
+                  tooltip: context.t.strings.legacy.msg_clear,
                 ),
             ],
           ),
@@ -863,20 +861,20 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
                 TextButton(
                   onPressed: () => context.safePop(),
                   child: Text(
-                    context.tr(zh: '取消', en: 'Cancel'),
+                    context.t.strings.legacy.msg_cancel_2,
                     style: TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
                   ),
                 ),
                 const Spacer(),
                 Text(
-                  context.tr(zh: '选择标签', en: 'Select tags'),
+                  context.t.strings.legacy.msg_select_tags,
                   style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
                 ),
                 const Spacer(),
                 TextButton(
                   onPressed: () => context.safePop(_selected),
                   child: Text(
-                    context.tr(zh: '完成', en: 'Done'),
+                    context.t.strings.legacy.msg_done,
                     style: TextStyle(color: MemoFlowPalette.primary, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -888,7 +886,7 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
                 ? Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      context.tr(zh: '暂无标签', en: 'No tags'),
+                      context.t.strings.legacy.msg_no_tags,
                       style: TextStyle(color: textMuted),
                     ),
                   )

@@ -15,6 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
+import '../../i18n/strings.g.dart';
 
 class AttachmentImageSource {
   const AttachmentImageSource({
@@ -194,7 +195,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              context.tr(zh: '需要相册权限以保存图片', en: 'Gallery permission required'),
+              context.t.strings.legacy.msg_gallery_permission_required_2,
             ),
           ),
         );
@@ -210,18 +211,18 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       if (!mounted) return;
       if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '保存失败', en: 'Save failed'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_save_failed)),
         );
         return;
       }
       showTopToast(
         context,
-        context.tr(zh: '已保存到相册', en: 'Saved to gallery'),
+        context.t.strings.legacy.msg_saved_gallery,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败: $e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_2(e: e))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -238,7 +239,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              context.tr(zh: '需要相册权限以保存图片', en: 'Gallery permission required'),
+              context.t.strings.legacy.msg_gallery_permission_required_2,
             ),
           ),
         );
@@ -253,18 +254,18 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       if (!mounted) return;
       if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '保存失败', en: 'Save failed'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_save_failed)),
         );
         return;
       }
       showTopToast(
         context,
-        context.tr(zh: '已保存到相册', en: 'Saved to gallery'),
+        context.t.strings.legacy.msg_saved_gallery,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败: $e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_2(e: e))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -284,7 +285,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     if (bytes == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法打开照片', en: 'Unable to open photo'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_unable_open_photo)),
       );
       return;
     }
@@ -312,7 +313,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     if (bytes == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法打开照片', en: 'Unable to open photo'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_unable_open_photo)),
       );
       return;
     }
@@ -332,21 +333,18 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     final action = await showDialog<_EditAction>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(context.tr(zh: '编辑完成', en: 'Edit completed')),
+        title: Text(context.t.strings.legacy.msg_edit_completed),
         content: Text(
-          context.tr(
-            zh: '请选择要执行的操作',
-            en: 'Choose what to do with the edited image.',
-          ),
+          context.t.strings.legacy.msg_choose_what_edited_image,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(_EditAction.saveLocal),
-            child: Text(context.tr(zh: '保存到相册', en: 'Save to gallery')),
+            child: Text(context.t.strings.legacy.msg_save_gallery),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(_EditAction.replace),
-            child: Text(context.tr(zh: '替换笔记图片', en: 'Replace memo image')),
+            child: Text(context.t.strings.legacy.msg_replace_memo_image),
           ),
         ],
       ),
@@ -364,21 +362,18 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '确认替换？', en: 'Replace image?')),
+            title: Text(context.t.strings.legacy.msg_replace_image),
             content: Text(
-              context.tr(
-                zh: '替换后将删除原图片附件，是否继续？',
-                en: 'Replacing will delete the original attachment. Continue?',
-              ),
+              context.t.strings.legacy.msg_replacing_delete_original_attachment_continue,
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: Text(context.tr(zh: '继续', en: 'Continue')),
+                child: Text(context.t.strings.legacy.msg_continue),
               ),
             ],
           ),
@@ -445,7 +440,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         ),
         body: Center(
           child: Text(
-            context.tr(zh: '没有可显示的图片', en: 'No image available'),
+            context.t.strings.legacy.msg_no_image_available,
             style: const TextStyle(color: Colors.white70),
           ),
         ),

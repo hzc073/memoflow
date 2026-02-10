@@ -133,11 +133,7 @@ class LocalSyncController extends SyncControllerBase {
           _ => null,
         };
         if (memoUid != null && memoUid.isNotEmpty) {
-          final errorText = trByLanguage(
-            language: language,
-            zh: '本地同步失败（$type）：$memoError',
-            en: 'Local sync failed ($type): $memoError',
-          );
+          final errorText = trByLanguageKey(language: language, key: 'legacy.msg_local_sync_failed', params: {'type': type, 'memoError': memoError});
           await db.updateMemoSyncState(
             memoUid,
             syncState: 2,

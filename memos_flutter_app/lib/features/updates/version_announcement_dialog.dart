@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
+import '../../i18n/strings.g.dart';
 
 enum ReleaseNoteCategory {
   feature,
@@ -12,15 +12,15 @@ enum ReleaseNoteCategory {
 
 extension ReleaseNoteCategoryX on ReleaseNoteCategory {
   String label(BuildContext context) => switch (this) {
-        ReleaseNoteCategory.feature => context.tr(zh: '新增', en: 'New'),
-        ReleaseNoteCategory.improvement => context.tr(zh: '优化', en: 'Improved'),
-        ReleaseNoteCategory.fix => context.tr(zh: '修复', en: 'Fixed'),
+        ReleaseNoteCategory.feature => context.t.strings.legacy.msg_text_3,
+        ReleaseNoteCategory.improvement => context.t.strings.legacy.msg_improved,
+        ReleaseNoteCategory.fix => context.t.strings.legacy.msg_fixed_2,
       };
 
   String labelWithColon(BuildContext context) => switch (this) {
-        ReleaseNoteCategory.feature => context.tr(zh: '新增：', en: 'New: '),
-        ReleaseNoteCategory.improvement => context.tr(zh: '优化：', en: 'Improved: '),
-        ReleaseNoteCategory.fix => context.tr(zh: '修复：', en: 'Fixed: '),
+        ReleaseNoteCategory.feature => context.t.strings.legacy.msg_text_2,
+        ReleaseNoteCategory.improvement => context.t.strings.legacy.msg_improved_2,
+        ReleaseNoteCategory.fix => context.t.strings.legacy.msg_fixed,
       };
 
   Color tone({required bool isDark}) => switch (this) {
@@ -109,10 +109,7 @@ class VersionAnnouncementDialog extends StatelessWidget {
                   Icon(Icons.rocket_launch_rounded, size: 48, color: accent),
                   const SizedBox(height: 10),
                   Text(
-                    context.tr(
-                      zh: '版本公告 v$version',
-                      en: 'Release Notes v$version',
-                    ),
+                    context.t.strings.legacy.msg_release_notes_v(version: version),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 18,
@@ -148,7 +145,7 @@ class VersionAnnouncementDialog extends StatelessWidget {
                       ),
                       onPressed: () => Navigator.of(context).pop(true),
                       child: Text(
-                        context.tr(zh: '知道了', en: 'Got it'),
+                        context.t.strings.legacy.msg_got,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -173,6 +170,13 @@ class VersionAnnouncementItem {
   final ReleaseNoteCategory category;
   final String detailZh;
   final String detailEn;
+}
+
+extension VersionAnnouncementItemLocalizationX on VersionAnnouncementItem {
+  String localizedDetail(BuildContext context) {
+    final languageCode = Localizations.localeOf(context).languageCode.toLowerCase();
+    return languageCode == 'zh' ? detailZh : detailEn;
+  }
 }
 
 class VersionAnnouncementEntry {
@@ -279,7 +283,7 @@ class _AnnouncementItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = item.category.labelWithColon(context);
     final highlight = item.category.tone(isDark: isDark);
-    final detail = context.tr(zh: item.detailZh, en: item.detailEn);
+    final detail = item.localizedDetail(context);
 
     return Text.rich(
       TextSpan(

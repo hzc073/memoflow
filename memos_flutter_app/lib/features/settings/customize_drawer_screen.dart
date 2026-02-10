@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class CustomizeDrawerScreen extends ConsumerWidget {
   const CustomizeDrawerScreen({super.key});
@@ -25,11 +26,11 @@ class CustomizeDrawerScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '自定义侧边栏', en: 'Customize Sidebar')),
+        title: Text(context.t.strings.legacy.msg_customize_sidebar),
         centerTitle: false,
       ),
       body: Stack(
@@ -58,31 +59,31 @@ class CustomizeDrawerScreen extends ConsumerWidget {
                 divider: divider,
                 children: [
                   _ToggleRow(
-                    label: context.tr(zh: '探索', en: 'Explore'),
+                    label: context.t.strings.legacy.msg_explore,
                     value: prefs.showDrawerExplore,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerExplore(v),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '随机漫步', en: 'Random Review'),
+                    label: context.t.strings.legacy.msg_random_review,
                     value: prefs.showDrawerDailyReview,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerDailyReview(v),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: 'AI 总结', en: 'AI Summary'),
+                    label: context.t.strings.legacy.msg_ai_summary,
                     value: prefs.showDrawerAiSummary,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerAiSummary(v),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '附件', en: 'Attachments'),
+                    label: context.t.strings.legacy.msg_attachments,
                     value: prefs.showDrawerResources,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerResources(v),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+                    label: context.t.strings.legacy.msg_archive,
                     value: prefs.showDrawerArchive,
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowDrawerArchive(v),

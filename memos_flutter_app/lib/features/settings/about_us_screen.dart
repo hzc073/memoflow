@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../state/update_config_provider.dart';
@@ -12,6 +11,7 @@ import '../updates/donors_wall_screen.dart';
 import '../updates/update_announcement_dialog.dart';
 import '../updates/version_announcement_dialog.dart';
 import '../updates/release_notes_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class AboutUsScreen extends StatelessWidget {
   const AboutUsScreen({super.key});
@@ -30,11 +30,11 @@ class AboutUsScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '关于', en: 'About')),
+        title: Text(context.t.strings.legacy.msg_about),
         centerTitle: false,
       ),
       body: const AboutUsContent(),
@@ -67,7 +67,7 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '未获取到公告配置', en: 'Failed to load announcement config'),
+            context.t.strings.legacy.msg_failed_load_announcement_config,
           ),
         ),
       );
@@ -159,10 +159,7 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
                     Text('MemoFlow', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
                     const SizedBox(height: 8),
                     Text(
-                      context.tr(
-                        zh: '一个基于 Memos 后端的离线优先客户端。',
-                        en: 'An offline-first client for the Memos backend.',
-                      ),
+                      context.t.strings.legacy.msg_offline_first_client_memos_backend,
                       style: TextStyle(fontSize: 13, height: 1.4, color: textMuted),
                     ),
                   ],
@@ -176,29 +173,29 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
               children: [
                 _FeatureRow(
                   icon: Icons.cloud_sync_outlined,
-                  title: context.tr(zh: '离线同步', en: 'Offline Sync'),
-                  subtitle: context.tr(zh: '本地数据库 + 待同步队列', en: 'Local DB + outbox queue'),
+                  title: context.t.strings.legacy.msg_offline_sync,
+                  subtitle: context.t.strings.legacy.msg_local_db_outbox_queue,
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
                 _FeatureRow(
                   icon: Icons.auto_awesome,
-                  title: context.tr(zh: 'AI 总结', en: 'AI Reports'),
-                  subtitle: context.tr(zh: '支持按时间范围总结', en: 'Summaries over selected range'),
+                  title: context.t.strings.legacy.msg_ai_reports,
+                  subtitle: context.t.strings.legacy.msg_summaries_selected_range,
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
                 _FeatureRow(
                   icon: Icons.graphic_eq,
-                  title: context.tr(zh: '语音备忘', en: 'Voice Memos'),
-                  subtitle: context.tr(zh: '录音生成 memo（可稍后同步）', en: 'Record and create memos (sync later)'),
+                  title: context.t.strings.legacy.msg_voice_memos,
+                  subtitle: context.t.strings.legacy.msg_record_create_memos_sync_later,
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
                 _FeatureRow(
                   icon: Icons.search,
-                  title: context.tr(zh: '全文搜索', en: 'Full-Text Search'),
-                  subtitle: context.tr(zh: '内容 + 标签', en: 'Content + tags'),
+                  title: context.t.strings.legacy.msg_full_text_search,
+                  subtitle: context.t.strings.legacy.msg_content_tags,
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
@@ -227,7 +224,7 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
                       children: [
                         const SizedBox(height: 12),
                         Text(
-                          context.tr(zh: '更新日志', en: 'Release Notes'),
+                          context.t.strings.legacy.msg_release_notes_2,
                           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textMain),
                         ),
                         const SizedBox(height: 10),
@@ -266,7 +263,7 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
                       children: [
                         _LinkRow(
                           icon: Icons.favorite_border,
-                          label: context.tr(zh: '贡献与致谢', en: 'Contributors'),
+                          label: context.t.strings.legacy.msg_contributors,
                           textMain: textMain,
                           textMuted: textMuted,
                           onTap: () {
@@ -289,7 +286,7 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
                 children: [
                   _LinkRow(
                     icon: Icons.bug_report_outlined,
-                    label: context.tr(zh: '调试：预览更新公告', en: 'Debug: Preview update dialog'),
+                    label: context.t.strings.legacy.msg_debug_preview_update_dialog,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _showDebugAnnouncement(context),
@@ -305,14 +302,14 @@ class _AboutUsContentState extends ConsumerState<AboutUsContent> {
                   builder: (context, snapshot) {
                     final version = snapshot.data?.version.trim() ?? '';
                     final label = version.isEmpty
-                        ? context.tr(zh: '版本', en: 'Version')
-                        : context.tr(zh: '版本 v$version', en: 'Version v$version');
+                        ? context.t.strings.legacy.msg_version
+                        : context.t.strings.legacy.msg_version_v(version: version);
                     return Text(label, style: TextStyle(fontSize: 11, color: textMuted));
                   },
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  context.tr(zh: '为记录而生', en: 'Made with love for note-taking'),
+                  context.t.strings.legacy.msg_made_love_note_taking,
                   style: TextStyle(fontSize: 11, color: textMuted),
                 ),
               ],
@@ -498,7 +495,7 @@ class _ReleaseNotesPreviewCard extends StatelessWidget {
               const SizedBox(height: 8),
               if (entry.items.isEmpty)
                 Text(
-                  context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
+                  context.t.strings.legacy.msg_no_release_notes_yet,
                   style: TextStyle(fontSize: 12.5, height: 1.35, color: textMuted),
                 )
               else
@@ -535,7 +532,7 @@ class _ReleaseNotePreviewItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = item.category.labelWithColon(context);
-    final detail = context.tr(zh: item.detailZh, en: item.detailEn);
+    final detail = item.localizedDetail(context);
     final accent = item.category.tone(isDark: isDark);
 
     return Row(

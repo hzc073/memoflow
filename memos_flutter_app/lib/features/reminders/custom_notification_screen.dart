@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../i18n/strings.g.dart';
 
 class CustomNotificationScreen extends StatefulWidget {
   const CustomNotificationScreen({
@@ -60,15 +61,15 @@ class _CustomNotificationScreenState extends State<CustomNotificationScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '自定义通知', en: 'Customize Notification')),
+        title: Text(context.t.strings.legacy.msg_customize_notification),
         actions: [
           TextButton(
             onPressed: _save,
-            child: Text(context.tr(zh: '确定', en: 'Done')),
+            child: Text(context.t.strings.legacy.msg_done_2),
           ),
         ],
       ),
@@ -97,7 +98,7 @@ class _CustomNotificationScreenState extends State<CustomNotificationScreen> {
                 card: card,
                 textMain: textMain,
                 textMuted: textMuted,
-                title: context.tr(zh: '通知标题', en: 'Title'),
+                title: context.t.strings.legacy.msg_title,
                 controller: _titleController,
                 onChanged: (_) => setState(() {}),
               ),
@@ -106,13 +107,13 @@ class _CustomNotificationScreenState extends State<CustomNotificationScreen> {
                 card: card,
                 textMain: textMain,
                 textMuted: textMuted,
-                title: context.tr(zh: '通知正文', en: 'Body'),
+                title: context.t.strings.legacy.msg_body,
                 controller: _bodyController,
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 18),
               Text(
-                context.tr(zh: '预览效果', en: 'Preview'),
+                context.t.strings.legacy.msg_preview_2,
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
               ),
               const SizedBox(height: 8),
@@ -256,7 +257,7 @@ class _PreviewCard extends StatelessWidget {
             ),
           ),
           Text(
-            context.tr(zh: '现在', en: 'Now'),
+            context.t.strings.legacy.msg_now,
             style: TextStyle(fontSize: 11, color: textMuted),
           ),
         ],

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
+import '../../i18n/strings.g.dart';
 
 class NoticeDialog extends StatelessWidget {
   const NoticeDialog({
@@ -48,7 +49,7 @@ class NoticeDialog extends StatelessWidget {
     final shadow = Colors.black.withValues(alpha: 0.12);
 
     final title = notice.title.trim().isEmpty
-        ? context.tr(zh: '通知', en: 'Notice')
+        ? context.t.strings.legacy.msg_notice
         : notice.title.trim();
     final items =
         notice.contentsForLanguageCode(Localizations.localeOf(context).languageCode);
@@ -113,7 +114,7 @@ class NoticeDialog extends StatelessWidget {
                       ),
                       onPressed: () => Navigator.of(context).pop(true),
                       child: Text(
-                        context.tr(zh: '知道了', en: 'Got it'),
+                        context.t.strings.legacy.msg_got,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),

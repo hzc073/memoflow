@@ -11,6 +11,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_localization.dart';
+import '../../i18n/strings.g.dart';
 
 final RegExp _tagTokenPattern = RegExp(
   r'^#(?!#|\s)[\p{L}\p{N}\p{S}_/\-]{1,100}$',
@@ -676,10 +677,7 @@ class MemoMarkdown extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                context.tr(
-                  zh: '无法打开浏览器，请检查是否安装了浏览器',
-                  en: 'Unable to open browser. Please install a browser app.',
-                ),
+                context.t.strings.legacy.msg_unable_open_browser_install_browser_app,
               ),
             ),
           );

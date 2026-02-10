@@ -4,6 +4,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import 'ai_provider_settings_screen.dart';
 import 'ai_user_profile_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class AiSettingsScreen extends StatelessWidget {
   const AiSettingsScreen({super.key});
@@ -24,11 +25,11 @@ class AiSettingsScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: 'AI 设置', en: 'AI Settings')),
+        title: Text(context.t.strings.legacy.msg_ai_settings),
         centerTitle: false,
       ),
       body: Stack(
@@ -54,8 +55,8 @@ class AiSettingsScreen extends StatelessWidget {
             children: [
               _CardRow(
                 card: card,
-                title: context.tr(zh: 'AI 提供方', en: 'AI Provider'),
-                subtitle: context.tr(zh: '帮助 AI 更了解你', en: 'Help AI understand you better'),
+                title: context.t.strings.legacy.msg_ai_provider,
+                subtitle: context.t.strings.legacy.msg_help_ai_understand_better,
                 textMain: textMain,
                 textMuted: textMuted,
                 onTap: () {
@@ -67,7 +68,7 @@ class AiSettingsScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _CardRow(
                 card: card,
-                title: context.tr(zh: '我的资料', en: 'My Profile'),
+                title: context.t.strings.legacy.msg_my_profile,
                 subtitle: '',
                 textMain: textMain,
                 textMuted: textMuted,

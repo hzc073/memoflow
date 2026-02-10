@@ -13,6 +13,7 @@ import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import 'submit_logs_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class FeedbackScreen extends ConsumerWidget {
   const FeedbackScreen({super.key});
@@ -38,7 +39,7 @@ class FeedbackScreen extends ConsumerWidget {
       final accountKey = session?.currentKey;
       if (accountKey == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '请先登录', en: 'Please sign in first'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_sign_first)),
         );
         return;
       }
@@ -46,21 +47,18 @@ class FeedbackScreen extends ConsumerWidget {
       final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text(context.tr(zh: '重置热力图？', en: 'Reset heatmap?')),
+              title: Text(context.t.strings.legacy.msg_reset_heatmap),
               content: Text(
-                context.tr(
-                  zh: '这会清空本地缓存（离线笔记/待同步队列）并重新全量同步。未同步内容会丢失，可能需要一些时间。是否继续？',
-                  en: 'This clears local cache (offline memos/pending queue) and triggers a full resync. Unsynced content will be lost and it may take a while. Continue?',
-                ),
+                context.t.strings.legacy.msg_clears_local_cache_offline_memos_pending,
               ),
               actions: [
                 TextButton(
                   onPressed: () => context.safePop(false),
-                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                  child: Text(context.t.strings.legacy.msg_cancel_2),
                 ),
                 FilledButton(
                   onPressed: () => context.safePop(true),
-                  child: Text(context.tr(zh: '继续', en: 'Continue')),
+                  child: Text(context.t.strings.legacy.msg_continue),
                 ),
               ],
             ),
@@ -71,7 +69,7 @@ class FeedbackScreen extends ConsumerWidget {
 
       showTopToast(
         context,
-        context.tr(zh: '正在重置本地数据...', en: 'Resetting local data...'),
+        context.t.strings.legacy.msg_resetting_local_data,
       );
 
       try {
@@ -86,7 +84,7 @@ class FeedbackScreen extends ConsumerWidget {
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '重置失败：$e', en: 'Reset failed: $e'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_reset_failed(e: e))),
         );
         return;
       }
@@ -95,7 +93,7 @@ class FeedbackScreen extends ConsumerWidget {
       if (!context.mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '已重置，开始重新同步', en: 'Reset done. Syncing...'),
+        context.t.strings.legacy.msg_reset_done_syncing,
       );
     }
 
@@ -107,11 +105,11 @@ class FeedbackScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '反馈', en: 'Feedback')),
+        title: Text(context.t.strings.legacy.msg_feedback),
         centerTitle: false,
       ),
       body: Stack(
@@ -141,7 +139,7 @@ class FeedbackScreen extends ConsumerWidget {
                 children: [
                   _ActionRow(
                     icon: Icons.bug_report_outlined,
-                    label: context.tr(zh: '提交日志', en: 'Submit Logs'),
+                    label: context.t.strings.legacy.msg_submit_logs,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -153,7 +151,7 @@ class FeedbackScreen extends ConsumerWidget {
                   ),
                   _ActionRow(
                     icon: Icons.restart_alt,
-                    label: context.tr(zh: '自助修复：重置热力图', en: 'Self repair: reset heatmap'),
+                    label: context.t.strings.legacy.msg_self_repair_reset_heatmap,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
@@ -163,7 +161,7 @@ class FeedbackScreen extends ConsumerWidget {
                   ),
                   _ActionRow(
                     icon: Icons.help_outline,
-                    label: context.tr(zh: '如何反馈？', en: 'How to report?'),
+                    label: context.t.strings.legacy.msg_how_report,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -176,33 +174,12 @@ class FeedbackScreen extends ConsumerWidget {
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
                             children: [
                               Text(
-                                context.tr(zh: '如何反馈？', en: 'How to report?'),
+                                context.t.strings.legacy.msg_how_report,
                                 style: const TextStyle(fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                context.tr(
-                                  zh: '如果您在使用 MemoFlow 时遇到问题（如同步失败、崩溃等），请按照以下步骤向我们反馈，这将帮助开发者快速定位并修复问题。\n\n'
-                                      '获取日志：点击本页面的“提交日志”按钮，将日志文件（.zip 或 .txt）保存到您的手机存储中。(注：日志已自动去除敏感信息，请放心发送)\n\n'
-                                      '前往反馈中心：点击下方链接访问我们的 GitHub Issues 页面：\n\n'
-                                      '🔗 https://github.com/hzc073/MemoFlow/issues\n\n'
-                                      '提交反馈：\n\n'
-                                      '点击右上角的绿色 "New Issue" 按钮。\n\n'
-                                      '简要描述您遇到的问题。\n\n'
-                                      '重要： 将第 1 步保存的日志文件直接拖入输入框，或点击输入框下方的回形针图标上传。\n\n'
-                                      '点击 "Submit new issue" 提交。\n\n'
-                                      '非常感谢您帮助 MemoFlow 变得更好！❤️',
-                                  en: 'If you run into issues in MemoFlow (e.g. sync failures, crashes), please follow the steps below to help us diagnose and fix the problem faster.\n\n'
-                                      'Get logs: Tap the "Submit Logs" button on this page to save the log file (.zip or .txt) to your device storage. (Note: logs are already sanitized; it is safe to share.)\n\n'
-                                      'Go to the feedback center: open our GitHub Issues page:\n\n'
-                                      '🔗 https://github.com/hzc073/MemoFlow/issues\n\n'
-                                      'Submit your report:\n\n'
-                                      'Click the green "New Issue" button in the top-right corner.\n\n'
-                                      'Briefly describe the problem you encountered.\n\n'
-                                      'Important: Drag the log file saved in step 1 into the input area, or click the paperclip icon below the input box to upload it.\n\n'
-                                      'Click "Submit new issue".\n\n'
-                                      'Thank you for helping MemoFlow get better! ❤️',
-                                ),
+                                context.t.strings.legacy.msg_run_issues_memoflow_e_g_sync,
                                 style: const TextStyle(height: 1.5),
                               ),
                             ],
@@ -215,10 +192,7 @@ class FeedbackScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(
-                  zh: '提示：Token 可能只返回一次，之后无法再次获取，请妥善保存。',
-                  en: 'Note: Some tokens are returned only once and cannot be retrieved later. Please keep them safe.',
-                ),
+                context.t.strings.legacy.msg_note_some_tokens_returned_only_once,
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],

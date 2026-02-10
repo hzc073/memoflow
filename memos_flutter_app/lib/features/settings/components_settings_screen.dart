@@ -17,6 +17,7 @@ import '../reminders/reminder_settings_screen.dart';
 import 'image_bed_settings_screen.dart';
 import 'location_settings_screen.dart';
 import 'webdav_sync_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class ComponentsSettingsScreen extends ConsumerWidget {
   const ComponentsSettingsScreen({super.key});
@@ -42,11 +43,11 @@ class ComponentsSettingsScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '功能组件', en: 'Components')),
+        title: Text(context.t.strings.legacy.msg_components),
         centerTitle: false,
       ),
       body: Stack(
@@ -72,11 +73,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
             children: [
               _ToggleCard(
                 card: card,
-                label: context.tr(zh: '笔记提醒', en: 'Memo reminders'),
-                description: context.tr(
-                  zh: '开启后可为笔记设置提醒时间。',
-                  en: 'Enable reminders for your memos.',
-                ),
+                label: context.t.strings.legacy.msg_memo_reminders_2,
+                description: context.t.strings.legacy.msg_enable_reminders_memos,
                 value: reminderSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -95,11 +93,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
-                label: context.tr(zh: '第三方分享', en: 'Third-party Share'),
-                description: context.tr(
-                  zh: '允许从其他应用分享链接或图片到 MemoFlow。',
-                  en: 'Allow sharing links or images from other apps into MemoFlow.',
-                ),
+                label: context.t.strings.legacy.msg_third_party_share,
+                description: context.t.strings.legacy.msg_allow_sharing_links_images_other_apps,
                 value: prefs.thirdPartyShareEnabled,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -109,11 +104,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
-                label: context.tr(zh: '图床', en: 'Image Bed'),
-                description: context.tr(
-                  zh: '开启后自动将图片上传到图床，并在文末插入图片链接。',
-                  en: 'Upload images to the image bed and append links to the memo.',
-                ),
+                label: context.t.strings.legacy.msg_image_bed_2,
+                description: context.t.strings.legacy.msg_upload_images_image_bed_append_links,
                 value: imageBedSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -125,11 +117,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
-                label: context.tr(zh: '定位', en: 'Location'),
-                description: context.tr(
-                  zh: '为笔记记录定位信息，并展示简洁地名。',
-                  en: 'Attach location info to memos and show subtle place names.',
-                ),
+                label: context.t.strings.legacy.msg_location_2,
+                description: context.t.strings.legacy.msg_attach_location_info_memos_show_subtle,
                 value: locationSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -141,11 +130,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
-                label: context.tr(zh: 'WebDAV 同步', en: 'WebDAV Sync'),
-                description: context.tr(
-                  zh: '将设置同步到 WebDAV，在设备之间保持一致。',
-                  en: 'Sync settings to WebDAV across devices.',
-                ),
+                label: context.t.strings.legacy.msg_webdav_sync,
+                description: context.t.strings.legacy.msg_sync_settings_webdav_across_devices,
                 value: webDavSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -166,18 +152,15 @@ Future<bool> _requestReminderPermissions(BuildContext context) async {
   final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(context.tr(zh: '启用提醒权限', en: 'Enable reminder permissions')),
+          title: Text(context.t.strings.legacy.msg_enable_reminder_permissions),
           content: Text(
-            context.tr(
-              zh: '需要通知权限与精确闹钟权限，才能在指定时间发送提醒。',
-              en: 'Notification and exact alarm permissions are required to send reminders on time.',
-            ),
+            context.t.strings.legacy.msg_notification_exact_alarm_permissions_required_send,
           ),
           actions: [
-            TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+            TextButton(onPressed: () => context.safePop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
             FilledButton(
               onPressed: () => context.safePop(true),
-              child: Text(context.tr(zh: '去授权', en: 'Grant')),
+              child: Text(context.t.strings.legacy.msg_grant),
             ),
           ],
         ),
@@ -198,7 +181,7 @@ Future<bool> _requestReminderPermissions(BuildContext context) async {
   if (!context.mounted) return granted;
   if (!granted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(zh: '权限未授予，提醒未开启', en: 'Permissions denied. Reminders disabled.'))),
+      SnackBar(content: Text(context.t.strings.legacy.msg_permissions_denied_reminders_disabled)),
     );
   }
   return granted;

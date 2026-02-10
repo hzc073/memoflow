@@ -6,6 +6,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/app_lock_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class PasswordLockScreen extends ConsumerWidget {
   const PasswordLockScreen({super.key});
@@ -33,7 +34,7 @@ class PasswordLockScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(context.tr(zh: '自动锁定时间', en: 'Auto-lock time')),
+                  child: Text(context.t.strings.legacy.msg_auto_lock_time),
                 ),
               ),
               ...AutoLockTime.values.map((v) {
@@ -73,11 +74,11 @@ class PasswordLockScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '应用锁', en: 'App Lock')),
+        title: Text(context.t.strings.legacy.msg_app_lock),
         centerTitle: false,
       ),
       body: Stack(
@@ -111,7 +112,7 @@ class PasswordLockScreen extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            context.tr(zh: '启用应用锁', en: 'Enable App Lock'),
+                            context.t.strings.legacy.msg_enable_app_lock,
                             style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
                           ),
                         ),
@@ -151,7 +152,7 @@ class PasswordLockScreen extends ConsumerWidget {
                   divider: divider,
                   children: [
                     _ActionRow(
-                      label: context.tr(zh: '修改密码', en: 'Change Password'),
+                      label: context.t.strings.legacy.msg_change_password,
                       trailingText: null,
                       enabled: state.enabled,
                       textMain: textMain,
@@ -164,12 +165,12 @@ class PasswordLockScreen extends ConsumerWidget {
                         if (!context.mounted) return;
                         showTopToast(
                           context,
-                          context.tr(zh: '密码已更新（仅本地）', en: 'Password updated (local)'),
+                          context.t.strings.legacy.msg_password_updated_local,
                         );
                       },
                     ),
                     _ActionRow(
-                      label: context.tr(zh: '自动锁定时间', en: 'Auto-lock time'),
+                      label: context.t.strings.legacy.msg_auto_lock_time,
                       trailingText: state.autoLockTime.labelFor(context.appLanguage),
                       enabled: state.enabled,
                       textMain: textMain,
@@ -181,10 +182,7 @@ class PasswordLockScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(
-                  zh: '开启后每次进入应用需要验证。自动锁定时间决定应用进入后台后多久需要再次验证。',
-                  en: 'When enabled, you must verify on each app launch. Auto-lock time controls how soon verification is required after the app goes to background.',
-                ),
+                context.t.strings.legacy.msg_when_enabled_must_verify_each_app,
                 style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
               ),
             ],
@@ -227,11 +225,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     final p1 = _pwdController.text.trim();
     final p2 = _confirmController.text.trim();
     if (p1.isEmpty) {
-      setState(() => _error = context.tr(zh: '请输入密码', en: 'Please enter a password'));
+      setState(() => _error = context.t.strings.legacy.msg_enter_password_4);
       return;
     }
     if (p1 != p2) {
-      setState(() => _error = context.tr(zh: '两次密码不一致', en: 'Passwords do not match'));
+      setState(() => _error = context.t.strings.legacy.msg_passwords_not_match);
       return;
     }
     context.safePop(p1);
@@ -242,8 +240,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     return AlertDialog(
       title: Text(
         widget.isChange
-            ? context.tr(zh: '修改密码', en: 'Change Password')
-            : context.tr(zh: '设置密码', en: 'Set Password'),
+            ? context.t.strings.legacy.msg_change_password
+            : context.t.strings.legacy.msg_set_password,
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -257,7 +255,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             enableSuggestions: false,
             autocorrect: false,
             decoration: InputDecoration(
-              labelText: context.tr(zh: '新密码', en: 'New Password'),
+              labelText: context.t.strings.legacy.msg_password_2,
               border: const OutlineInputBorder(),
             ),
           ),
@@ -271,7 +269,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             enableSuggestions: false,
             autocorrect: false,
             decoration: InputDecoration(
-              labelText: context.tr(zh: '确认密码', en: 'Confirm Password'),
+              labelText: context.t.strings.legacy.msg_confirm_password,
               border: const OutlineInputBorder(),
             ),
           ),
@@ -288,8 +286,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => context.safePop(null), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-        FilledButton(onPressed: _submit, child: Text(context.tr(zh: '确定', en: 'OK'))),
+        TextButton(onPressed: () => context.safePop(null), child: Text(context.t.strings.legacy.msg_cancel_2)),
+        FilledButton(onPressed: _submit, child: Text(context.t.strings.legacy.msg_ok)),
       ],
     );
   }

@@ -35,6 +35,7 @@ import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import 'daily_review_screen.dart';
 import 'quick_prompt_editor_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class AiSummaryScreen extends ConsumerStatefulWidget {
   const AiSummaryScreen({super.key});
@@ -78,7 +79,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+          title: context.t.strings.legacy.msg_archive,
           state: 'ARCHIVED',
           showDrawer: true,
         ),
@@ -231,14 +232,14 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (settings.apiKey.trim().isEmpty) {
       showTopToast(
         context,
-        context.tr(zh: '请先在 AI 设置中填写 API Key', en: 'Please enter API Key in AI settings'),
+        context.t.strings.legacy.msg_enter_api_key_ai_settings,
       );
       return;
     }
     if (settings.apiUrl.trim().isEmpty) {
       showTopToast(
         context,
-        context.tr(zh: '请先在 AI 设置中填写 API URL', en: 'Please enter API URL in AI settings'),
+        context.t.strings.legacy.msg_enter_api_url_ai_settings,
       );
       return;
     }
@@ -252,12 +253,13 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         setState(() => _isLoading = false);
         showTopToast(
           context,
-          context.tr(zh: '该时间范围内没有可总结的笔记', en: 'No memos to summarize in this range'),
+          context.t.strings.legacy.msg_no_memos_summarize_range,
         );
         return;
       }
 
       final result = await _aiService.generateSummary(
+        language: context.appLanguage,
         settings: settings,
         memoText: memoSource.text,
         rangeLabel: _rangeLabel(),
@@ -276,7 +278,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       if (!mounted || requestId != _requestId) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: 'AI 总结失败：${_formatSummaryError(e)}', en: 'AI summary failed: ${_formatSummaryError(e)}'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_ai_summary_failed(formatSummaryError_e: _formatSummaryError(e)))),
       );
     }
   }
@@ -285,32 +287,32 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (error is DioException) {
       switch (error.type) {
         case DioExceptionType.connectionTimeout:
-          return context.tr(zh: '连接超时，请检查网络或 API URL', en: 'Connection timeout. Check network or API URL.');
+          return context.t.strings.legacy.msg_connection_timeout_check_network_api_url;
         case DioExceptionType.sendTimeout:
-          return context.tr(zh: '请求发送超时，请稍后重试', en: 'Request send timeout. Try again.');
+          return context.t.strings.legacy.msg_request_send_timeout_try;
         case DioExceptionType.receiveTimeout:
-          return context.tr(zh: '服务器响应超时，请稍后重试', en: 'Server response timeout. Try again.');
+          return context.t.strings.legacy.msg_server_response_timeout_try;
         case DioExceptionType.badResponse:
           final code = error.response?.statusCode;
           if (code == 401 || code == 403) {
-            return context.tr(zh: 'API Key 无效或无权限', en: 'Invalid API key or insufficient permissions.');
+            return context.t.strings.legacy.msg_invalid_api_key_insufficient_permissions;
           }
           if (code == 404) {
-            return context.tr(zh: 'API URL 不正确', en: 'API URL is incorrect.');
+            return context.t.strings.legacy.msg_api_url_incorrect;
           }
           if (code == 429) {
-            return context.tr(zh: '请求过于频繁，请稍后重试', en: 'Too many requests. Try again later.');
+            return context.t.strings.legacy.msg_too_many_requests_try_later;
           }
           if (code != null) {
-            return context.tr(zh: '服务返回错误（$code）', en: 'Server returned error ($code).');
+            return context.t.strings.legacy.msg_server_returned_error(code: code);
           }
-          return context.tr(zh: '服务响应异常', en: 'Server response error.');
+          return context.t.strings.legacy.msg_server_response_error;
         case DioExceptionType.connectionError:
-          return context.tr(zh: '网络连接失败，请检查网络', en: 'Network connection failed.');
+          return context.t.strings.legacy.msg_network_connection_failed;
         case DioExceptionType.cancel:
-          return context.tr(zh: '请求已取消', en: 'Request cancelled.');
+          return context.t.strings.legacy.msg_request_cancelled;
         case DioExceptionType.badCertificate:
-          return context.tr(zh: '证书校验失败', en: 'Bad SSL certificate.');
+          return context.t.strings.legacy.msg_bad_ssl_certificate;
         case DioExceptionType.unknown:
           break;
       }
@@ -331,30 +333,30 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required AiSummaryResult summary,
     required bool forMemo,
   }) {
-    final title = context.tr(zh: 'AI 总结报告', en: 'AI Summary Report');
+    final title = context.t.strings.legacy.msg_ai_summary_report;
     final header = forMemo ? '# $title' : title;
     final insights = summary.insights.isNotEmpty
         ? summary.insights
-        : [context.tr(zh: '暂无总结结果', en: 'No summary yet')];
+        : [context.t.strings.legacy.msg_no_summary_yet];
     final moodTrend = summary.moodTrend.isNotEmpty
         ? summary.moodTrend
-        : context.tr(zh: '暂无情绪趋势', en: 'No mood trend');
+        : context.t.strings.legacy.msg_no_mood_trend;
     final keywordText = summary.keywords.isNotEmpty
         ? summary.keywords.map(_normalizeKeyword).join(' ')
-        : context.tr(zh: '暂无关键词', en: 'No keywords');
+        : context.t.strings.legacy.msg_no_keywords;
 
     final buffer = StringBuffer();
     buffer.writeln(header);
-    buffer.writeln('${context.tr(zh: '时间范围', en: 'Range')}: ${_rangeLabel()}');
+    buffer.writeln('${context.t.strings.legacy.msg_range}: ${_rangeLabel()}');
     buffer.writeln('');
-    buffer.writeln(context.tr(zh: '核心洞察', en: 'Key insights'));
+    buffer.writeln(context.t.strings.legacy.msg_key_insights);
     for (final insight in insights) {
       buffer.writeln('- $insight');
     }
     buffer.writeln('');
-    buffer.writeln('${context.tr(zh: '情绪趋势', en: 'Mood trend')}: $moodTrend');
+    buffer.writeln('${context.t.strings.legacy.msg_mood_trend}: $moodTrend');
     buffer.writeln('');
-    buffer.writeln('${context.tr(zh: '关键词', en: 'Keywords')}: $keywordText');
+    buffer.writeln('${context.t.strings.legacy.msg_keywords}: $keywordText');
     return buffer.toString().trim();
   }
 
@@ -363,7 +365,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (summary == null) {
       showTopToast(
         context,
-        context.tr(zh: '暂无可分享的总结', en: 'No summary to share'),
+        context.t.strings.legacy.msg_no_summary_share,
       );
       return;
     }
@@ -372,13 +374,13 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       await SharePlus.instance.share(
         ShareParams(
           text: text,
-          subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+          subject: context.t.strings.legacy.msg_ai_summary_report,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_share_failed(e: e))),
       );
     }
   }
@@ -388,7 +390,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (summary == null) {
       showTopToast(
         context,
-        context.tr(zh: '暂无可分享的总结', en: 'No summary to share'),
+        context.t.strings.legacy.msg_no_summary_share,
       );
       return;
     }
@@ -396,7 +398,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (boundary is! RenderRepaintBoundary) {
       showTopToast(
         context,
-        context.tr(zh: '暂时无法生成海报', en: 'Poster is not ready yet'),
+        context.t.strings.legacy.msg_poster_not_ready_yet,
       );
       return;
     }
@@ -410,7 +412,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       if (byteData == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '海报生成失败', en: 'Poster generation failed'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_poster_generation_failed)),
         );
         return;
       }
@@ -426,13 +428,13 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         ShareParams(
           files: [XFile(file.path)],
           text: _buildSummaryText(summary: summary, forMemo: false),
-          subject: context.tr(zh: 'AI 总结报告', en: 'AI Summary Report'),
+          subject: context.t.strings.legacy.msg_ai_summary_report,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '分享失败：$e', en: 'Share failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_share_failed(e: e))),
       );
     }
   }
@@ -442,7 +444,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (summary == null) {
       showTopToast(
         context,
-        context.tr(zh: '暂无可保存的总结', en: 'No summary to save'),
+        context.t.strings.legacy.msg_no_summary_save,
       );
       return;
     }
@@ -479,12 +481,12 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '已保存为笔记', en: 'Saved as memo'),
+        context.t.strings.legacy.msg_saved_memo,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
       );
     }
   }
@@ -517,12 +519,12 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final range = _effectiveRange();
     final days = range.end.difference(range.start).inDays + 1;
     if (_range == _AiRange.last7Days || days <= 7) {
-      return context.tr(zh: '本周回顾', en: 'This Week');
+      return context.t.strings.legacy.msg_week;
     }
     if (_range == _AiRange.last30Days || days <= 31) {
-      return context.tr(zh: '本月回顾', en: 'This Month');
+      return context.t.strings.legacy.msg_month;
     }
-    return context.tr(zh: '阶段回顾', en: 'Period Review');
+    return context.t.strings.legacy.msg_period_review;
   }
 
   String _reportRangeLabel() {
@@ -530,33 +532,26 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final locale = Localizations.localeOf(context).toString();
     final sameYear = range.start.year == range.end.year;
     final sameMonth = sameYear && range.start.month == range.end.month;
-    if (context.appLanguage == AppLanguage.en) {
-      final startFmt = DateFormat(sameYear ? 'MMM d' : 'yyyy MMM d', locale);
-      final endFmt = DateFormat(
-        sameMonth ? 'd' : (sameYear ? 'MMM d' : 'yyyy MMM d'),
-        locale,
-      );
-      return '${startFmt.format(range.start)} - ${endFmt.format(range.end)}';
-    }
-    final startFmt = DateFormat(sameYear ? 'M月d日' : 'yyyy年M月d日', locale);
-    final endFmt = DateFormat(
-      sameMonth ? 'd日' : (sameYear ? 'M月d日' : 'yyyy年M月d日'),
-      locale,
-    );
+    final startFmt = sameYear
+        ? DateFormat.MMMd(locale)
+        : DateFormat.yMMMd(locale);
+    final endFmt = sameYear
+        ? (sameMonth ? DateFormat.d(locale) : DateFormat.MMMd(locale))
+        : DateFormat.yMMMd(locale);
     return '${startFmt.format(range.start)} - ${endFmt.format(range.end)}';
   }
 
   String _buildInsightMarkdown(AiSummaryResult summary) {
     final insights = summary.insights.isNotEmpty
         ? summary.insights
-        : [context.tr(zh: '暂无总结结果', en: 'No summary yet')];
+        : [context.t.strings.legacy.msg_no_summary_yet];
     final moodTrend = summary.moodTrend.isNotEmpty
         ? summary.moodTrend
-        : context.tr(zh: '暂无情绪趋势', en: 'No mood trend');
+        : context.t.strings.legacy.msg_no_mood_trend;
     final buffer = StringBuffer();
-    buffer.writeln('### ${context.tr(zh: '核心洞察', en: 'Key insights')}');
+    buffer.writeln('### ${context.t.strings.legacy.msg_key_insights}');
     buffer.writeln('');
-    buffer.writeln('> ${context.tr(zh: '引言', en: 'Intro')}: $moodTrend');
+    buffer.writeln('> ${context.t.strings.legacy.msg_intro}: $moodTrend');
     buffer.writeln('');
     for (var i = 0; i < insights.length; i++) {
       final text = insights[i].trim();
@@ -625,7 +620,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color textMain,
   }) {
     return AppBar(
-      title: Text(isReport ? context.tr(zh: 'AI 总结报告', en: 'AI Summary Report') : context.tr(zh: 'AI 总结', en: 'AI Summary')),
+      title: Text(isReport ? context.t.strings.legacy.msg_ai_summary_report : context.t.strings.legacy.msg_ai_summary),
       centerTitle: true,
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -782,7 +777,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                context.tr(zh: '时间范围', en: 'Date range'),
+                context.t.strings.legacy.msg_date_range_3,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -833,7 +828,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
               ),
               const SizedBox(height: 20),
               Text(
-                context.tr(zh: '总结指令 (可选)', en: 'Summary prompt (optional)'),
+                context.t.strings.legacy.msg_summary_prompt_optional,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -851,7 +846,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                   color: textMain,
                 ),
                 decoration: InputDecoration(
-                  hintText: context.tr(zh: '输入你想总结的内容或指令...', en: 'Enter what you want to summarize...'),
+                  hintText: context.t.strings.legacy.msg_enter_what_want_summarize,
                   hintStyle: TextStyle(
                     color: textMuted.withValues(alpha: 0.7),
                   ),
@@ -881,7 +876,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      context.tr(zh: '允许发送私有权限笔记', en: 'Allow private memos'),
+                      context.t.strings.legacy.msg_allow_private_memos,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -910,7 +905,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         Row(
           children: [
             Text(
-              context.tr(zh: '快速提示词', en: 'Quick prompts'),
+              context.t.strings.legacy.msg_quick_prompts,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -931,7 +926,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: Text(
-                  context.tr(zh: '管理', en: 'Manage'),
+                  context.t.strings.legacy.msg_manage,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -975,8 +970,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
               textColor:
                   _isQuickPromptEditing ? MemoFlowPalette.primary : textMuted,
               label: _isQuickPromptEditing
-                  ? context.tr(zh: '完成', en: 'Done')
-                  : context.tr(zh: '添加', en: 'Add'),
+                  ? context.t.strings.legacy.msg_done
+                  : context.t.strings.legacy.msg_add_2,
               icon: _isQuickPromptEditing ? Icons.check : Icons.add,
               onTap: _isQuickPromptEditing
                   ? _exitQuickPromptEditing
@@ -1011,7 +1006,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final dateLabel = _reportRangeLabel();
     final rawKeywords = summary.keywords.isNotEmpty
         ? summary.keywords
-        : [context.tr(zh: '#暂无关键词', en: '#No keywords')];
+        : [context.t.strings.legacy.msg_no_keywords_2];
     final keywords =
         rawKeywords.map(_normalizeKeyword).toList(growable: false);
     final insightMarkdown = _buildInsightMarkdown(summary);
@@ -1222,7 +1217,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                                     size: 18,
                                   ),
                                   label: Text(
-                                    context.tr(zh: '展开更多', en: 'Expand'),
+                                    context.t.strings.legacy.msg_expand_2,
                                   ),
                                   style: TextButton.styleFrom(
                                     foregroundColor: textMain.withValues(alpha: 0.65),
@@ -1243,10 +1238,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                     child: Center(
                       child: Text(
-                        context.tr(
-                          zh: '由 AI 生成 · MemoFlow',
-                          en: 'Generated by AI · MemoFlow',
-                        ),
+                        context.t.strings.legacy.msg_generated_ai_memoflow,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -1303,8 +1295,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                   ),
                   label: Text(
                     isReport
-                        ? context.tr(zh: '生成分享海报', en: 'Generate share poster')
-                        : context.tr(zh: '开始生成总结', en: 'Generate summary'),
+                        ? context.t.strings.legacy.msg_generate_share_poster
+                        : context.t.strings.legacy.msg_generate_summary,
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: MemoFlowPalette.primary,
@@ -1326,7 +1318,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _saveAsMemo,
                     icon: const Icon(Icons.save_as, size: 20),
-                    label: Text(context.tr(zh: '保存为笔记', en: 'Save as memo')),
+                    label: Text(context.t.strings.legacy.msg_save_memo),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: textMain,
                       side: BorderSide(color: border),
@@ -1389,7 +1381,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                         ),
                         const SizedBox(height: 24),
                         Text(
-                          context.tr(zh: '正在深度分析您的笔记...', en: 'Analyzing your memos...'),
+                          context.t.strings.legacy.msg_analyzing_memos,
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 17,
@@ -1399,7 +1391,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          context.tr(zh: '预计还需 15 秒', en: 'About 15 seconds left'),
+                          context.t.strings.legacy.msg_about_15_seconds_left,
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -1421,7 +1413,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                       style: TextButton.styleFrom(
                         foregroundColor: textMain.withValues(alpha: 0.4),
                       ),
-                      child: Text(context.tr(zh: '取消生成', en: 'Cancel')),
+                      child: Text(context.t.strings.legacy.msg_cancel),
                     ),
                   ),
                 ),
@@ -1442,9 +1434,9 @@ enum _AiRange {
 
 extension _AiRangeLabel on _AiRange {
   String labelFor(AppLanguage language) => switch (this) {
-        _AiRange.last7Days => trByLanguage(language: language, zh: '最近一周', en: 'Last 7 days'),
-        _AiRange.last30Days => trByLanguage(language: language, zh: '最近一月', en: 'Last 30 days'),
-        _AiRange.custom => trByLanguage(language: language, zh: '自定义', en: 'Custom'),
+        _AiRange.last7Days => trByLanguageKey(language: language, key: 'legacy.msg_last_7_days'),
+        _AiRange.last30Days => trByLanguageKey(language: language, key: 'legacy.msg_last_30_days'),
+        _AiRange.custom => trByLanguageKey(language: language, key: 'legacy.msg_custom'),
       };
 }
 

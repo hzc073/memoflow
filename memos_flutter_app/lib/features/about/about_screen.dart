@@ -14,6 +14,7 @@ import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -42,7 +43,7 @@ class AboutScreen extends StatelessWidget {
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.tr(zh: '\u5f52\u6863', en: 'Archive'),
+          title: context.t.strings.legacy.msg_archive,
           state: 'ARCHIVED',
           showDrawer: true,
         ),
@@ -99,11 +100,11 @@ class AboutScreen extends StatelessWidget {
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           leading: IconButton(
-            tooltip: context.tr(zh: '返回', en: 'Back'),
+            tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
             onPressed: () => _backToAllMemos(context),
           ),
-          title: Text(context.tr(zh: '关于', en: 'About')),
+          title: Text(context.t.strings.legacy.msg_about),
           centerTitle: false,
         ),
         body: const AboutUsContent(),

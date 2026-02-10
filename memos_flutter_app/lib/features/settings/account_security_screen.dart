@@ -22,6 +22,7 @@ import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';
 import 'user_general_settings_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class AccountSecurityScreen extends ConsumerWidget {
   const AccountSecurityScreen({super.key});
@@ -59,14 +60,14 @@ class AccountSecurityScreen extends ConsumerWidget {
     final currentName = currentLocalLibrary != null
         ? (currentLocalLibrary.name.isNotEmpty
               ? currentLocalLibrary.name
-              : context.tr(zh: '本地库', en: 'Local library'))
+              : context.t.strings.legacy.msg_local_library)
         : currentAccount == null
-        ? context.tr(zh: '未登录', en: 'Not signed in')
+        ? context.t.strings.legacy.msg_not_signed
         : (currentAccount.user.displayName.isNotEmpty
               ? currentAccount.user.displayName
               : (currentAccount.user.name.isNotEmpty
                     ? currentAccount.user.name
-                    : context.tr(zh: '账号', en: 'Account')));
+                    : context.t.strings.legacy.msg_account));
     final currentSubtitle = currentLocalLibrary != null
         ? currentLocalLibrary.locationLabel
         : currentAccount?.baseUrl.toString() ?? "";
@@ -76,10 +77,10 @@ class AccountSecurityScreen extends ConsumerWidget {
         context: context,
         builder: (context) => _LocalLibraryNameDialog(
           initialName: initialName,
-          title: context.tr(zh: '本地库名称', en: 'Local library name'),
-          hintText: context.tr(zh: '请输入名称', en: 'Enter a name'),
-          cancelLabel: context.tr(zh: '取消', en: 'Cancel'),
-          confirmLabel: context.tr(zh: '确认', en: 'Confirm'),
+          title: context.t.strings.legacy.msg_local_library_name,
+          hintText: context.t.strings.legacy.msg_enter_name_2,
+          cancelLabel: context.t.strings.legacy.msg_cancel_2,
+          confirmLabel: context.t.strings.legacy.msg_confirm,
         ),
       );
       if (result == null || result.trim().isEmpty) return null;
@@ -95,7 +96,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         );
         if (doc == null) return null;
         final name = doc.name.trim().isEmpty
-            ? context.tr(zh: '本地库', en: 'Local library')
+            ? context.t.strings.legacy.msg_local_library
             : doc.name.trim();
         return (treeUri: doc.uri, rootPath: null, defaultName: name);
       }
@@ -106,7 +107,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         treeUri: null,
         rootPath: path.trim(),
         defaultName: name.isEmpty
-            ? context.tr(zh: '本地库', en: 'Local library')
+            ? context.t.strings.legacy.msg_local_library
             : name,
       );
     }
@@ -119,21 +120,18 @@ class AccountSecurityScreen extends ConsumerWidget {
           await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text(context.tr(zh: '扫描本地库', en: 'Scan local library')),
+              title: Text(context.t.strings.legacy.msg_scan_local_library),
               content: Text(
-                context.tr(
-                  zh: '扫描磁盘目录并合并到本地数据库？缺失文件将视为删除。',
-                  en: 'Scan disk directory and merge into local database? Missing files will be treated as deletions.',
-                ),
+                context.t.strings.legacy.msg_scan_disk_directory_merge_local_database,
               ),
               actions: [
                 TextButton(
                   onPressed: () => context.safePop(false),
-                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                  child: Text(context.t.strings.legacy.msg_cancel_2),
                 ),
                 FilledButton(
                   onPressed: () => context.safePop(true),
-                  child: Text(context.tr(zh: '扫描', en: 'Scan')),
+                  child: Text(context.t.strings.legacy.msg_scan),
                 ),
               ],
             ),
@@ -147,13 +145,13 @@ class AccountSecurityScreen extends ConsumerWidget {
         if (!context.mounted) return;
         showTopToast(
           context,
-          context.tr(zh: '扫描完成', en: 'Scan completed'),
+          context.t.strings.legacy.msg_scan_completed,
         );
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.tr(zh: '扫描失败：$e', en: 'Scan failed: $e')),
+            content: Text(context.t.strings.legacy.msg_scan_failed(e: e)),
           ),
         );
       }
@@ -185,7 +183,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!context.mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '本地库已添加', en: 'Local library added'),
+        context.t.strings.legacy.msg_local_library_added,
       );
     }
 
@@ -195,22 +193,19 @@ class AccountSecurityScreen extends ConsumerWidget {
             context: context,
             builder: (context) => AlertDialog(
               title: Text(
-                context.tr(zh: '移除本地库？', en: 'Remove local library?'),
+                context.t.strings.legacy.msg_remove_local_library,
               ),
               content: Text(
-                context.tr(
-                  zh: '仅移除本地索引，磁盘文件保留。此操作无法撤销。',
-                  en: 'Only local index will be removed; disk files are kept. This cannot be undone.',
-                ),
+                context.t.strings.legacy.msg_only_local_index_removed_disk_files,
               ),
               actions: [
                 TextButton(
                   onPressed: () => context.safePop(false),
-                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                  child: Text(context.t.strings.legacy.msg_cancel_2),
                 ),
                 FilledButton(
                   onPressed: () => context.safePop(true),
-                  child: Text(context.tr(zh: '确认', en: 'Confirm')),
+                  child: Text(context.t.strings.legacy.msg_confirm),
                 ),
               ],
             ),
@@ -246,7 +241,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!context.mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '本地库已移除', en: 'Local library removed'),
+        context.t.strings.legacy.msg_local_library_removed,
       );
     }
 
@@ -267,23 +262,20 @@ class AccountSecurityScreen extends ConsumerWidget {
             builder: (context) => AlertDialog(
               title: Text(
                 wasCurrent
-                    ? context.tr(zh: '退出登录？', en: 'Sign out?')
-                    : context.tr(zh: '移除账号？', en: 'Remove account?'),
+                    ? context.t.strings.legacy.msg_sign
+                    : context.t.strings.legacy.msg_remove_account,
               ),
               content: Text(
-                context.tr(
-                  zh: '这会同时清除该账号的本地缓存（离线数据/草稿/待同步队列）。此操作无法撤销。',
-                  en: 'This will also clear local cache for this account (offline data/drafts/pending sync queue). This action cannot be undone.',
-                ),
+                context.t.strings.legacy.msg_also_clear_local_cache_account_offline,
               ),
               actions: [
                 TextButton(
                   onPressed: () => context.safePop(false),
-                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                  child: Text(context.t.strings.legacy.msg_cancel_2),
                 ),
                 FilledButton(
                   onPressed: () => context.safePop(true),
-                  child: Text(context.tr(zh: '确认', en: 'Confirm')),
+                  child: Text(context.t.strings.legacy.msg_confirm),
                 ),
               ],
             ),
@@ -304,7 +296,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         if (!context.mounted || shouldPopBeforeRemoval) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.tr(zh: '本地缓存已清除', en: 'Local cache cleared')),
+            content: Text(context.t.strings.legacy.msg_local_cache_cleared),
           ),
         );
         if (wasCurrent) {
@@ -314,7 +306,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         if (!context.mounted || shouldPopBeforeRemoval) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(context.tr(zh: '操作失败：$e', en: 'Action failed: $e')),
+            content: Text(context.t.strings.legacy.msg_action_failed(e: e)),
           ),
         );
       }
@@ -328,11 +320,11 @@ class AccountSecurityScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '账号与安全', en: 'Account & Security')),
+        title: Text(context.t.strings.legacy.msg_account_security),
         centerTitle: false,
       ),
       body: Stack(
@@ -366,7 +358,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                 children: [
                   _SettingRow(
                     icon: Icons.person_add,
-                    label: context.tr(zh: '添加账号', en: 'Add Account'),
+                    label: context.t.strings.legacy.msg_add_account,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -380,7 +372,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                   ),
                   _SettingRow(
                     icon: Icons.folder_open,
-                    label: context.tr(zh: '添加本地库', en: 'Add local library'),
+                    label: context.t.strings.legacy.msg_add_local_library,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
@@ -390,10 +382,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                   ),
                   _SettingRow(
                     icon: Icons.settings_outlined,
-                    label: context.tr(
-                      zh: '用户通用设置',
-                      en: 'User General Settings',
-                    ),
+                    label: context.t.strings.legacy.msg_user_general_settings,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
@@ -408,7 +397,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                   if (currentKey != null)
                     _SettingRow(
                       icon: Icons.logout,
-                      label: context.tr(zh: '退出登录', en: 'Sign Out'),
+                      label: context.t.strings.legacy.msg_sign_2,
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () async {
@@ -421,7 +410,7 @@ class AccountSecurityScreen extends ConsumerWidget {
               if (accounts.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(
-                  context.tr(zh: '账号', en: 'Accounts'),
+                  context.t.strings.legacy.msg_accounts,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -459,7 +448,7 @@ class AccountSecurityScreen extends ConsumerWidget {
               if (localLibraries.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(
-                  context.tr(zh: '本地库', en: 'Local libraries'),
+                  context.t.strings.legacy.msg_local_libraries,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -476,7 +465,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                         isCurrent: l.key == currentKey,
                         title: l.name.isNotEmpty
                             ? l.name
-                            : context.tr(zh: '本地库', en: 'Local library'),
+                            : context.t.strings.legacy.msg_local_library,
                         subtitle: l.locationLabel,
                         textMain: textMain,
                         textMuted: textMuted,
@@ -500,10 +489,7 @@ class AccountSecurityScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 16),
               Text(
-                context.tr(
-                  zh: '移除/退出将清除该账号的本地缓存（离线数据/草稿/待同步队列）。',
-                  en: 'Removing/signing out will clear local cache for this account (offline data/drafts/pending sync queue).',
-                ),
+                context.t.strings.legacy.msg_removing_signing_clear_local_cache_account,
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.4,
@@ -728,7 +714,7 @@ class _AccountRow extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: context.tr(zh: '移除', en: 'Remove'),
+                tooltip: context.t.strings.legacy.msg_remove,
                 icon: Icon(Icons.delete_outline, color: textMuted),
                 onPressed: onDelete,
               ),

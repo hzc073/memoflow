@@ -33,6 +33,7 @@ import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
 import 'memo_video_grid.dart';
 import '../settings/location_settings_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class MemoEditorScreen extends ConsumerStatefulWidget {
   const MemoEditorScreen({super.key, this.existing});
@@ -277,7 +278,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final hasAttachments = existingAttachments.isNotEmpty || pendingAttachments.isNotEmpty;
     if (content.trim().isEmpty && !hasAttachments) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '内容不能为空', en: 'Content cannot be empty'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_content_cannot_empty)),
       );
       return;
     }
@@ -380,7 +381,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '保存失败：$e', en: 'Save failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
       );
     } finally {
       if (mounted) {
@@ -572,10 +573,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '定位未启用，请先在设置中开启。', en: 'Location is disabled. Enable it in settings first.'),
+            context.t.strings.legacy.msg_location_disabled_enable_settings_first,
           ),
           action: SnackBarAction(
-            label: context.tr(zh: '设置', en: 'Settings'),
+            label: context.t.strings.legacy.msg_settings,
             onPressed: _openLocationSettings,
           ),
         ),
@@ -611,10 +612,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       setState(() => _location = next);
       showTopToast(
         context,
-        context.tr(
-          zh: '定位成功：${next.displayText(fractionDigits: 6)}',
-          en: 'Location updated: ${next.displayText(fractionDigits: 6)}',
-        ),
+        context.t.strings.legacy.msg_location_updated(next_displayText_fractionDigits_6: next.displayText(fractionDigits: 6)),
         duration: const Duration(seconds: 2),
       );
     } catch (e) {
@@ -632,17 +630,17 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   String _locationErrorText(Object error) {
     if (error is LocationException) {
       return switch (error.code) {
-        'service_disabled' => context.tr(zh: '定位服务未开启', en: 'Location services are disabled'),
-        'permission_denied' => context.tr(zh: '定位权限被拒绝', en: 'Location permission denied'),
-        'permission_denied_forever' => context.tr(zh: '定位权限被永久拒绝', en: 'Location permission denied permanently'),
-        'timeout' => context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.'),
-        _ => context.tr(zh: '定位失败', en: 'Failed to get location'),
+        'service_disabled' => context.t.strings.legacy.msg_location_services_disabled,
+        'permission_denied' => context.t.strings.legacy.msg_location_permission_denied,
+        'permission_denied_forever' => context.t.strings.legacy.msg_location_permission_denied_permanently,
+        'timeout' => context.t.strings.legacy.msg_location_timed_try,
+        _ => context.t.strings.legacy.msg_failed_get_location,
       };
     }
     if (error is TimeoutException) {
-      return context.tr(zh: '定位超时，请重试', en: 'Location timed out. Please try again.');
+      return context.t.strings.legacy.msg_location_timed_try;
     }
-    return context.tr(zh: '定位失败', en: 'Failed to get location');
+    return context.t.strings.legacy.msg_failed_get_location;
   }
 
   bool _sameLocation(MemoLocation? a, MemoLocation? b) {
@@ -753,7 +751,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (_relationsLoading) {
       showTopToast(
         context,
-        context.tr(zh: '正在加载引用', en: 'Loading references'),
+        context.t.strings.legacy.msg_loading_references,
       );
       return;
     }
@@ -762,7 +760,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       if (!_relationsLoaded) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '加载引用失败', en: 'Failed to load references'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_failed_load_references)),
         );
         return;
       }
@@ -1486,7 +1484,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             children: [
               const Icon(Icons.lock, size: 18),
               const SizedBox(width: 8),
-              Text(context.tr(zh: '私密', en: 'Private')),
+              Text(context.t.strings.legacy.msg_private_2),
             ],
           ),
         ),
@@ -1497,7 +1495,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             children: [
               const Icon(Icons.verified_user, size: 18),
               const SizedBox(width: 8),
-              Text(context.tr(zh: '受保护', en: 'Protected')),
+              Text(context.t.strings.legacy.msg_protected),
             ],
           ),
         ),
@@ -1508,7 +1506,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             children: [
               const Icon(Icons.public, size: 18),
               const SizedBox(width: 8),
-              Text(context.tr(zh: '公开', en: 'Public')),
+              Text(context.t.strings.legacy.msg_public),
             ],
           ),
         ),
@@ -1522,19 +1520,19 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     switch (raw.trim().toUpperCase()) {
       case 'PUBLIC':
         return (
-          context.tr(zh: '公开', en: 'Public'),
+          context.t.strings.legacy.msg_public,
           Icons.public,
           const Color(0xFF3B8C52),
         );
       case 'PROTECTED':
         return (
-          context.tr(zh: '受保护', en: 'Protected'),
+          context.t.strings.legacy.msg_protected,
           Icons.verified_user,
           const Color(0xFFB26A2B),
         );
       default:
         return (
-          context.tr(zh: '私密', en: 'Private'),
+          context.t.strings.legacy.msg_private_2,
           Icons.lock,
           const Color(0xFF7C7C7C),
         );
@@ -1570,10 +1568,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: Text(existing == null ? context.tr(zh: '新建 Memo', en: 'New Memo') : context.tr(zh: '编辑 Memo', en: 'Edit Memo')),
+        title: Text(existing == null ? context.t.strings.legacy.msg_memo_2 : context.t.strings.legacy.msg_edit_memo),
         actions: [
           IconButton(
-            tooltip: context.tr(zh: '保存', en: 'Save'),
+            tooltip: context.t.strings.legacy.msg_save,
             onPressed: _saving ? null : _save,
             icon: _saving
                 ? SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoFlowPalette.primary))
@@ -1611,10 +1609,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                   expands: true,
                                   style: TextStyle(fontSize: 16, height: 1.35, color: textColor),
                                   decoration: InputDecoration(
-                                    hintText: context.tr(
-                                      zh: '写点什么... 支持 #tag 和任务 [ ] / [x]',
-                                      en: 'Write something... Supports #tag and tasks [ ] / [x]',
-                                    ),
+                                    hintText: context.t.strings.legacy.msg_write_something_supports_tag_tasks_x,
                                     hintStyle: TextStyle(color: hintColor),
                                     border: InputBorder.none,
                                   ),
@@ -1659,7 +1654,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                context.tr(zh: '正在定位…', en: 'Locating...'),
+                                context.t.strings.legacy.msg_locating,
                                 style: TextStyle(fontSize: 12, color: chipText),
                               ),
                             ],
@@ -1771,7 +1766,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                       ),
                                     ),
                                     Tooltip(
-                                      message: context.tr(zh: '可见性：$visibilityLabel', en: 'Visibility: $visibilityLabel'),
+                                      message: context.t.strings.legacy.msg_visibility_2(visibilityLabel: visibilityLabel),
                                       child: InkResponse(
                                         key: _visibilityMenuKey,
                                         onTap: _saving

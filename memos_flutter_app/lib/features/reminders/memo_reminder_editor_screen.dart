@@ -13,6 +13,7 @@ import '../../state/database_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
 import 'reminder_settings_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class MemoReminderEditorScreen extends ConsumerStatefulWidget {
   const MemoReminderEditorScreen({super.key, required this.memo});
@@ -64,7 +65,7 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
       if (mounted) {
         showTopToast(
           context,
-          context.tr(zh: '最多设置 9 个提醒时间', en: 'Up to 9 times allowed'),
+          context.t.strings.legacy.msg_v_9_times_allowed,
         );
       }
       return;
@@ -109,7 +110,7 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
       if (mounted) {
         showTopToast(
           context,
-          context.tr(zh: '请选择未来时间', en: 'Pick a future time'),
+          context.t.strings.legacy.msg_pick_future_time,
         );
       }
       return null;
@@ -121,14 +122,14 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
     if (_times.isEmpty) {
       showTopToast(
         context,
-        context.tr(zh: '请设置提醒时间', en: 'Select reminder time'),
+        context.t.strings.legacy.msg_select_reminder_time,
       );
       return;
     }
     if (_mode == ReminderMode.repeat && _times.length > 9) {
       showTopToast(
         context,
-        context.tr(zh: '最多设置 9 个提醒时间', en: 'Up to 9 times allowed'),
+        context.t.strings.legacy.msg_v_9_times_allowed,
       );
       return;
     }
@@ -149,11 +150,11 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '删除提醒', en: 'Delete reminder')),
-            content: Text(context.tr(zh: '将移除该笔记的全部提醒时间。', en: 'Remove all reminder times for this memo.')),
+            title: Text(context.t.strings.legacy.msg_delete_reminder),
+            content: Text(context.t.strings.legacy.msg_remove_all_reminder_times_memo),
             actions: [
-              TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
-              FilledButton(onPressed: () => context.safePop(true), child: Text(context.tr(zh: '删除', en: 'Delete'))),
+              TextButton(onPressed: () => context.safePop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
+              FilledButton(onPressed: () => context.safePop(true), child: Text(context.t.strings.legacy.msg_delete)),
             ],
           ),
         ) ??
@@ -184,15 +185,15 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '提醒设置', en: 'Reminder')),
+        title: Text(context.t.strings.legacy.msg_reminder_2),
         actions: [
           TextButton(
             onPressed: _loading ? null : _save,
-            child: Text(context.tr(zh: '确定', en: 'Save')),
+            child: Text(context.t.strings.legacy.msg_save_2),
           ),
         ],
       ),
@@ -235,7 +236,7 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
                   divider: divider,
                   children: [
                     _ModeRow(
-                      label: context.tr(zh: '提醒模式', en: 'Mode'),
+                      label: context.t.strings.legacy.msg_mode,
                       textMain: textMain,
                       textMuted: textMuted,
                       mode: _mode,
@@ -249,19 +250,19 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
                   divider: divider,
                   children: [
                     _TimesHeader(
-                      label: context.tr(zh: '提醒时间', en: 'Times'),
+                      label: context.t.strings.legacy.msg_times,
                       textMain: textMain,
                       textMuted: textMuted,
                       onAdd: () => _addOrEditTime(),
                       canAdd: _mode == ReminderMode.single ? true : _times.length < 9,
                       addLabel: _mode == ReminderMode.single
-                          ? context.tr(zh: '设置时间', en: 'Set time')
-                          : context.tr(zh: '添加', en: 'Add'),
+                          ? context.t.strings.legacy.msg_set_time
+                          : context.t.strings.legacy.msg_add_2,
                     ),
                     if (_times.isEmpty)
                       _EmptyRow(
                         textMuted: textMuted,
-                        text: context.tr(zh: '尚未设置提醒时间', en: 'No times set'),
+                        text: context.t.strings.legacy.msg_no_times_set,
                       )
                     else
                       for (final time in _times)
@@ -279,7 +280,7 @@ class _MemoReminderEditorScreenState extends ConsumerState<MemoReminderEditorScr
                   TextButton.icon(
                     onPressed: _deleteReminder,
                     icon: const Icon(Icons.delete_outline),
-                    label: Text(context.tr(zh: '删除提醒', en: 'Delete reminder')),
+                    label: Text(context.t.strings.legacy.msg_delete_reminder),
                     style: TextButton.styleFrom(
                       foregroundColor: MemoFlowPalette.primary,
                     ),
@@ -329,13 +330,13 @@ class _DisabledBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              context.tr(zh: '提醒功能已关闭', en: 'Reminders are disabled'),
+              context.t.strings.legacy.msg_reminders_disabled,
               style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
             ),
           ),
           TextButton(
             onPressed: onOpenSettings,
-            child: Text(context.tr(zh: '去开启', en: 'Enable')),
+            child: Text(context.t.strings.legacy.msg_enable),
           ),
         ],
       ),
@@ -414,12 +415,12 @@ class _ModeRow extends StatelessWidget {
             spacing: 8,
             children: [
               ChoiceChip(
-                label: Text(context.tr(zh: '单次', en: 'Single')),
+                label: Text(context.t.strings.legacy.msg_single),
                 selected: mode == ReminderMode.single,
                 onSelected: (_) => onModeChanged(ReminderMode.single),
               ),
               ChoiceChip(
-                label: Text(context.tr(zh: '重复', en: 'Repeat')),
+                label: Text(context.t.strings.legacy.msg_repeat),
                 selected: mode == ReminderMode.repeat,
                 onSelected: (_) => onModeChanged(ReminderMode.repeat),
               ),

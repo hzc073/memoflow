@@ -5,6 +5,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/location_settings.dart';
 import '../../state/location_settings_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class LocationSettingsScreen extends ConsumerStatefulWidget {
   const LocationSettingsScreen({super.key});
@@ -67,11 +68,11 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '定位设置', en: 'Location')),
+        title: Text(context.t.strings.legacy.msg_location),
         centerTitle: false,
       ),
       body: Stack(
@@ -99,17 +100,14 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                 card: card,
                 textMain: textMain,
                 textMuted: textMuted,
-                label: context.tr(zh: '启用定位', en: 'Enable memo location'),
-                description: context.tr(
-                  zh: '在笔记中显示定位信息，未配置密钥时将仅显示经纬度。',
-                  en: 'Show location metadata on memos. If not configured, coordinates will be shown instead.',
-                ),
+                label: context.t.strings.legacy.msg_enable_memo_location,
+                description: context.t.strings.legacy.msg_show_location_metadata_memos_not_configured,
                 value: settings.enabled,
                 onChanged: (value) => ref.read(locationSettingsProvider.notifier).setEnabled(value),
               ),
               const SizedBox(height: 16),
               Text(
-                context.tr(zh: '高德 Web API', en: 'Amap Web API'),
+                context.t.strings.legacy.msg_amap_web_api,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
               ),
               const SizedBox(height: 10),
@@ -118,8 +116,8 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                 divider: divider,
                 children: [
                   _InputRow(
-                    label: context.tr(zh: 'Web API Key', en: 'Web API Key'),
-                    hint: context.tr(zh: '请输入高德 Web API Key', en: 'Enter your Amap Web API Key'),
+                    label: context.t.strings.legacy.msg_web_api_key,
+                    hint: context.t.strings.legacy.msg_enter_amap_web_api_key,
                     controller: _webKeyController,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -129,8 +127,8 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                     },
                   ),
                   _InputRow(
-                    label: context.tr(zh: '安全密钥（sig）', en: 'Security Key (sig)'),
-                    hint: context.tr(zh: '选填，用于签名请求', en: 'Optional. Used to sign requests.'),
+                    label: context.t.strings.legacy.msg_security_key_sig,
+                    hint: context.t.strings.legacy.msg_optional_used_sign_requests,
                     controller: _securityKeyController,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -140,7 +138,7 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                     },
                   ),
                   _PrecisionRow(
-                    label: context.tr(zh: '定位精度', en: 'Location precision'),
+                    label: context.t.strings.legacy.msg_location_precision,
                     value: settings.precision,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -153,10 +151,7 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                context.tr(
-                  zh: '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析地址，可在上方选择显示精度。',
-                  en: 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via Amap Web API. You can choose the display precision above.',
-                ),
+                context.t.strings.legacy.msg_memoflow_uses_system_location_permission_get,
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
             ],
@@ -330,10 +325,10 @@ class _PrecisionRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
     final options = <(LocationPrecision, String)>[
-      (LocationPrecision.province, context.tr(zh: '省', en: 'Province')),
-      (LocationPrecision.city, context.tr(zh: '市', en: 'City')),
-      (LocationPrecision.district, context.tr(zh: '区', en: 'District')),
-      (LocationPrecision.street, context.tr(zh: '街道', en: 'Street')),
+      (LocationPrecision.province, context.t.strings.legacy.msg_province),
+      (LocationPrecision.city, context.t.strings.legacy.msg_city),
+      (LocationPrecision.district, context.t.strings.legacy.msg_district),
+      (LocationPrecision.street, context.t.strings.legacy.msg_street),
     ];
 
     return Padding(

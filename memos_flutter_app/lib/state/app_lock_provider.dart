@@ -6,21 +6,23 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../core/app_localization.dart';
 import 'preferences_provider.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
 enum AutoLockTime {
-  immediately('立即', 'Immediately'),
-  after1Min('1 分钟', '1 minute'),
-  after5Min('5 分钟', '5 minutes'),
-  after15Min('15 分钟', '15 minutes');
+  immediately('legacy.auto_lock_time.immediately'),
+  after1Min('legacy.auto_lock_time.after_1_min'),
+  after5Min('legacy.auto_lock_time.after_5_min'),
+  after15Min('legacy.auto_lock_time.after_15_min');
 
-  const AutoLockTime(this.labelZh, this.labelEn);
-  final String labelZh;
-  final String labelEn;
+  const AutoLockTime(this.labelKey);
+  final String labelKey;
 
-  String labelFor(AppLanguage language) => language == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage language) {
+    return trByLanguageKey(language: language, key: labelKey);
+  }
 
   Duration get duration => switch (this) {
         AutoLockTime.immediately => Duration.zero,

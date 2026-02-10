@@ -14,6 +14,7 @@ import 'custom_notification_screen.dart';
 import 'ringtone_picker.dart';
 import 'reminder_utils.dart';
 import 'system_settings_launcher.dart';
+import '../../i18n/strings.g.dart';
 
 class ReminderSettingsScreen extends ConsumerStatefulWidget {
   const ReminderSettingsScreen({super.key});
@@ -61,17 +62,14 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
           ? '--:--'
           : _formatTime(TimeOfDay.fromDateTime(scheduledAt));
       final suffix = result.ok && !result.exactUsed
-          ? context.tr(zh: '（可能延迟）', en: ' (may be delayed)')
+          ? context.t.strings.legacy.msg_may_delayed
           : '';
       final pendingLabel = result.ok
-          ? context.tr(zh: '（待发送 ${result.pendingCount}）', en: ' (pending ${result.pendingCount})')
+          ? context.t.strings.legacy.msg_pending(result_pendingCount: result.pendingCount)
           : '';
       final message = result.ok
-          ? context.tr(
-              zh: '已安排测试提醒：$timeLabel$suffix$pendingLabel',
-              en: 'Test scheduled at $timeLabel$suffix$pendingLabel',
-            )
-          : context.tr(zh: '权限未授予', en: 'Permissions denied');
+          ? context.t.strings.legacy.msg_test_scheduled(timeLabel: timeLabel, suffix: suffix, pendingLabel: pendingLabel)
+          : context.t.strings.legacy.msg_permissions_denied;
       if (result.ok) {
         showTopToast(context, message);
       } else {
@@ -80,7 +78,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '发送失败：$e', en: 'Send failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_send_failed(e: e))),
       );
     } finally {
       if (mounted) {
@@ -95,7 +93,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法打开系统设置', en: 'Failed to open system settings'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_system_settings)),
       );
     }
   }
@@ -106,7 +104,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (ignoring) {
       showTopToast(
         context,
-        context.tr(zh: '已在电池白名单', en: 'Already whitelisted'),
+        context.t.strings.legacy.msg_already_whitelisted,
       );
       return;
     }
@@ -114,7 +112,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法申请电池白名单', en: 'Failed to request whitelist'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_request_whitelist)),
       );
     }
   }
@@ -123,18 +121,15 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.tr(zh: '开启提醒权限', en: 'Enable reminder permissions')),
+            title: Text(context.t.strings.legacy.msg_enable_reminder_permissions_2),
             content: Text(
-              context.tr(
-                zh: '需要通知权限与精确闹钟权限，才能在指定时间发送提醒。',
-                en: 'Notification and exact alarm permissions are required to send reminders on time.',
-              ),
+              context.t.strings.legacy.msg_notification_exact_alarm_permissions_required_send,
             ),
             actions: [
-              TextButton(onPressed: () => context.safePop(false), child: Text(context.tr(zh: '取消', en: 'Cancel'))),
+              TextButton(onPressed: () => context.safePop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '去授权', en: 'Grant')),
+                child: Text(context.t.strings.legacy.msg_grant),
               ),
             ],
           ),
@@ -155,21 +150,18 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
         final go = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                title: Text(context.tr(zh: '需要闹钟与提醒权限', en: 'Exact alarm permission required')),
+                title: Text(context.t.strings.legacy.msg_exact_alarm_permission_required),
                 content: Text(
-                  context.tr(
-                    zh: '未开启闹钟与提醒权限，定时提醒可能无法触发。是否前往开启？',
-                    en: 'Exact alarm permission is off. Reminders may not fire on time. Open settings now?',
-                  ),
+                  context.t.strings.legacy.msg_exact_alarm_permission_off_reminders_may,
                 ),
                 actions: [
                   TextButton(
                     onPressed: () => context.safePop(false),
-                    child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                    child: Text(context.t.strings.legacy.msg_cancel_2),
                   ),
                   FilledButton(
                     onPressed: () => context.safePop(true),
-                    child: Text(context.tr(zh: '去开启', en: 'Open')),
+                    child: Text(context.t.strings.legacy.msg_open_2),
                   ),
                 ],
               ),
@@ -186,7 +178,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (!mounted) return granted;
     if (!granted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '权限未授予，提醒未开启', en: 'Permissions denied. Reminders disabled.'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_permissions_denied_reminders_disabled)),
       );
     }
     return granted;
@@ -255,13 +247,13 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
 
   String _soundLabel(ReminderSettings settings) {
     if (settings.soundMode == ReminderSoundMode.silent) {
-      return context.tr(zh: '静音', en: 'Silent');
+      return context.t.strings.legacy.msg_silent;
     }
     final title = settings.soundTitle?.trim();
     if (title != null && title.isNotEmpty) {
       return title;
     }
-    return context.tr(zh: '系统默认', en: 'System default');
+    return context.t.strings.legacy.msg_system_default;
   }
 
   @override
@@ -282,11 +274,11 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '提醒设置', en: 'Reminder Settings')),
+        title: Text(context.t.strings.legacy.msg_reminder_settings),
         centerTitle: false,
       ),
       body: Stack(
@@ -314,31 +306,28 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                 card: card,
                 textMain: textMain,
                 textMuted: textMuted,
-                label: context.tr(zh: '开启提醒', en: 'Enable reminders'),
-                description: context.tr(
-                  zh: '开启后将按计划发送笔记提醒通知。',
-                  en: 'Enable scheduled reminder notifications.',
-                ),
+                label: context.t.strings.legacy.msg_enable_reminders,
+                description: context.t.strings.legacy.msg_enable_scheduled_reminder_notifications,
                 value: settings.enabled,
                 onChanged: _toggleEnabled,
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.tr(zh: '权限与系统设置', en: 'Permissions & system settings'), textMuted: textMuted),
+              _SectionLabel(label: context.t.strings.legacy.msg_permissions_system_settings, textMuted: textMuted),
               const SizedBox(height: 8),
               _Group(
                 card: card,
                 divider: divider,
                 children: [
                   _ActionRow(
-                    label: context.tr(zh: '通知设置', en: 'Notification settings'),
-                    actionLabel: context.tr(zh: '打开', en: 'Open'),
+                    label: context.t.strings.legacy.msg_notification_settings,
+                    actionLabel: context.t.strings.legacy.msg_open,
                     textMain: textMain,
                     textMuted: textMuted,
                     onPressed: () => _openSystemSetting(SystemSettingsTarget.notifications),
                   ),
                   _ActionRow(
-                    label: context.tr(zh: '提醒通知渠道', en: 'Reminder channel'),
-                    actionLabel: context.tr(zh: '打开', en: 'Open'),
+                    label: context.t.strings.legacy.msg_reminder_channel,
+                    actionLabel: context.t.strings.legacy.msg_open,
                     textMain: textMain,
                     textMuted: textMuted,
                     onPressed: () {
@@ -351,29 +340,29 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                     },
                   ),
                   _ActionRow(
-                    label: context.tr(zh: '闹钟与提醒', en: 'Exact alarms'),
-                    actionLabel: context.tr(zh: '打开', en: 'Open'),
+                    label: context.t.strings.legacy.msg_exact_alarms,
+                    actionLabel: context.t.strings.legacy.msg_open,
                     textMain: textMain,
                     textMuted: textMuted,
                     onPressed: () => _openSystemSetting(SystemSettingsTarget.exactAlarm),
                   ),
                   _ActionRow(
-                    label: context.tr(zh: '电池优化', en: 'Battery optimization'),
-                    actionLabel: context.tr(zh: '打开', en: 'Open'),
+                    label: context.t.strings.legacy.msg_battery_optimization,
+                    actionLabel: context.t.strings.legacy.msg_open,
                     textMain: textMain,
                     textMuted: textMuted,
                     onPressed: () => _openSystemSetting(SystemSettingsTarget.batteryOptimization),
                   ),
                   _ActionRow(
-                    label: context.tr(zh: '电池白名单', en: 'Battery whitelist'),
-                    actionLabel: context.tr(zh: '申请', en: 'Request'),
+                    label: context.t.strings.legacy.msg_battery_whitelist,
+                    actionLabel: context.t.strings.legacy.msg_request,
                     textMain: textMain,
                     textMuted: textMuted,
                     onPressed: _requestBatteryWhitelist,
                   ),
                   _ActionRow(
-                    label: context.tr(zh: '应用设置', en: 'App settings'),
-                    actionLabel: context.tr(zh: '打开', en: 'Open'),
+                    label: context.t.strings.legacy.msg_app_settings,
+                    actionLabel: context.t.strings.legacy.msg_open,
                     textMain: textMain,
                     textMuted: textMuted,
                     onPressed: () => _openSystemSetting(SystemSettingsTarget.app),
@@ -381,29 +370,29 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.tr(zh: '通知内容', en: 'Notification content'), textMuted: textMuted),
+              _SectionLabel(label: context.t.strings.legacy.msg_notification_content, textMuted: textMuted),
               const SizedBox(height: 8),
               _Group(
                 card: card,
                 divider: divider,
                 children: [
                   _SelectRow(
-                    label: context.tr(zh: '通知标题', en: 'Title'),
+                    label: context.t.strings.legacy.msg_title,
                     value: settings.notificationTitle,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _openNotificationTemplate(settings),
                   ),
                   _SelectRow(
-                    label: context.tr(zh: '通知正文', en: 'Body'),
+                    label: context.t.strings.legacy.msg_body,
                     value: settings.notificationBody,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _openNotificationTemplate(settings),
                   ),
                   _ActionRow(
-                    label: context.tr(zh: '测试提醒', en: 'Test reminder'),
-                    actionLabel: context.tr(zh: '发送', en: 'Send'),
+                    label: context.t.strings.legacy.msg_test_reminder,
+                    actionLabel: context.t.strings.legacy.msg_send,
                     textMain: textMain,
                     textMuted: textMuted,
                     enabled: !_testing,
@@ -412,21 +401,21 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.tr(zh: '声音与反馈', en: 'Sound & feedback'), textMuted: textMuted),
+              _SectionLabel(label: context.t.strings.legacy.msg_sound_feedback, textMuted: textMuted),
               const SizedBox(height: 8),
               _Group(
                 card: card,
                 divider: divider,
                 children: [
                   _SelectRow(
-                    label: context.tr(zh: '提醒铃声', en: 'Ringtone'),
+                    label: context.t.strings.legacy.msg_ringtone,
                     value: _soundLabel(settings),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _pickRingtone(settings),
                   ),
                   _ToggleRow(
-                    label: context.tr(zh: '震动', en: 'Vibration'),
+                    label: context.t.strings.legacy.msg_vibration,
                     value: settings.vibrationEnabled,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -438,14 +427,14 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.tr(zh: '休息时间', en: 'Quiet hours'), textMuted: textMuted),
+              _SectionLabel(label: context.t.strings.legacy.msg_quiet_hours, textMuted: textMuted),
               const SizedBox(height: 8),
               _Group(
                 card: card,
                 divider: divider,
                 children: [
                   _ToggleRow(
-                    label: context.tr(zh: '免打扰模式', en: 'Do not disturb'),
+                    label: context.t.strings.legacy.msg_not_disturb,
                     value: settings.dndEnabled,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -455,14 +444,14 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                     },
                   ),
                   _SelectRow(
-                    label: context.tr(zh: '开始时间', en: 'Start time'),
+                    label: context.t.strings.legacy.msg_start_time,
                     value: _formatTime(settings.dndStartTime),
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () => _pickDndTime(isStart: true, settings: settings),
                   ),
                   _SelectRow(
-                    label: context.tr(zh: '结束时间', en: 'End time'),
+                    label: context.t.strings.legacy.msg_end_time,
                     value: _formatTime(settings.dndEndTime),
                     textMain: textMain,
                     textMuted: textMuted,
@@ -472,10 +461,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                context.tr(
-                  zh: '在免打扰期间，应用将保持静默，不会弹出任何提醒。',
-                  en: 'During quiet hours, reminders will be silenced.',
-                ),
+                context.t.strings.legacy.msg_during_quiet_hours_reminders_silenced,
                 style: TextStyle(fontSize: 12, color: textMuted),
               ),
             ],

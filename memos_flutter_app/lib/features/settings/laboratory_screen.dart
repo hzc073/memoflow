@@ -7,6 +7,7 @@ import '../../state/preferences_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
 import 'webhooks_settings_screen.dart';
+import '../../i18n/strings.g.dart';
 
 class LaboratoryScreen extends ConsumerWidget {
   const LaboratoryScreen({super.key});
@@ -28,11 +29,11 @@ class LaboratoryScreen extends ConsumerWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '实验室', en: 'Laboratory')),
+        title: Text(context.t.strings.legacy.msg_laboratory),
         centerTitle: false,
       ),
       body: Stack(
@@ -62,8 +63,8 @@ class LaboratoryScreen extends ConsumerWidget {
                     children: [
                       _ToggleCard(
                         card: card,
-                        label: context.tr(zh: '旧版 API 兼容', en: 'Legacy API Compatibility'),
-                        description: context.tr(zh: '使用旧版接口（适配旧版 Memos）', en: 'Use legacy endpoints (for older Memos servers).'),
+                        label: context.t.strings.legacy.msg_legacy_api_compatibility,
+                        description: context.t.strings.legacy.msg_use_legacy_endpoints_older_memos_servers,
                         value: prefs.useLegacyApi,
                         textMain: textMain,
                         textMuted: textMuted,
@@ -72,7 +73,7 @@ class LaboratoryScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
                       _CardRow(
                         card: card,
-                        label: context.tr(zh: '自定义侧边栏', en: 'Customize Sidebar'),
+                        label: context.t.strings.legacy.msg_customize_sidebar,
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
@@ -82,7 +83,7 @@ class LaboratoryScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
                       _CardRow(
                         card: card,
-                        label: context.tr(zh: '快捷筛选', en: 'Shortcuts'),
+                        label: context.t.strings.legacy.msg_shortcuts,
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
@@ -92,7 +93,7 @@ class LaboratoryScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
                       _CardRow(
                         card: card,
-                        label: context.tr(zh: 'Webhooks', en: 'Webhooks'),
+                        label: context.t.strings.legacy.msg_webhooks,
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(

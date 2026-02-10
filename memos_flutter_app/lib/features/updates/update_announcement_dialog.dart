@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import 'donors_wall_screen.dart';
 import 'version_announcement_dialog.dart';
+import '../../i18n/strings.g.dart';
 
 enum AnnouncementAction {
   update,
@@ -63,7 +63,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              context.tr(zh: '无效的更新链接', en: 'Invalid download link'),
+              context.t.strings.legacy.msg_invalid_download_link,
             ),
           ),
         );
@@ -75,7 +75,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr(zh: '无法打开浏览器', en: 'Unable to open browser'),
+            context.t.strings.legacy.msg_unable_open_browser,
           ),
         ),
       );
@@ -108,7 +108,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
     final latestVersion = config.versionInfo.latestVersion.trim();
     final targetVersion = latestVersion.isEmpty ? version : latestVersion;
     final rawTitle = activeAnnouncement.title.trim();
-    final fallbackTitle = context.tr(zh: '版本公告', en: 'Release Notes');
+    final fallbackTitle = context.t.strings.legacy.msg_release_notes;
     final titleBase = rawTitle.isEmpty ? fallbackTitle : rawTitle;
     final title = targetVersion.isEmpty ? titleBase : '$titleBase v$targetVersion';
     final releaseEntry = useDebugAnnouncement ? null : config.releaseNoteForVersion(targetVersion);
@@ -130,7 +130,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
     Widget buildAnnouncementItems() {
       if (announcementItems.isEmpty) {
         return Text(
-          context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
+          context.t.strings.legacy.msg_no_release_notes_yet,
           style: TextStyle(fontSize: 13.5, height: 1.35, color: textMuted),
         );
       }
@@ -160,10 +160,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
           if (newDonorLabels.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              context.tr(
-                zh: '本次更新特别鸣谢：${newDonorLabels.join(' ')}',
-                en: 'Special thanks: ${newDonorLabels.join(' ')}',
-              ),
+              context.t.strings.legacy.msg_special_thanks,
               style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
             ),
           ],
@@ -177,7 +174,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                 );
               },
               child: Text(
-                context.tr(zh: '查看完整致谢名单', en: 'View full contributors'),
+                context.t.strings.legacy.msg_view_full_contributors,
                 style: TextStyle(
                   fontSize: 12,
                   color: accent,
@@ -261,7 +258,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                                 }
                               },
                               child: Text(
-                                context.tr(zh: '立即获取新版本', en: 'Get the new version'),
+                                context.t.strings.legacy.msg_get_version,
                                 style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                             ),
@@ -273,7 +270,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                               SystemNavigator.pop();
                             },
                             child: Text(
-                              context.tr(zh: '退出应用', en: 'Exit app'),
+                              context.t.strings.legacy.msg_exit_app,
                               style: TextStyle(fontSize: 12.5, color: textMuted),
                             ),
                           )
@@ -281,7 +278,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(AnnouncementAction.later),
                             child: Text(
-                              context.tr(zh: '稍后再说', en: 'Maybe later'),
+                              context.t.strings.legacy.msg_maybe_later,
                               style: TextStyle(fontSize: 12.5, color: textMuted),
                             ),
                           ),
@@ -315,7 +312,7 @@ class _ReleaseNoteRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = item.category.labelWithColon(context);
     final highlight = item.category.tone(isDark: isDark);
-    final detail = context.tr(zh: item.detailZh, en: item.detailEn);
+    final detail = item.localizedDetail(context);
 
     return Text.rich(
       TextSpan(

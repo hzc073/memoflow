@@ -14,74 +14,78 @@ import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
 enum AppLanguage {
-  zhHans('简体中文', 'Chinese (Simplified)'),
-  en('English', 'English');
+  system('legacy.app_language.system'),
+  zhHans('legacy.app_language.zh_hans'),
+  zhHantTw('legacy.app_language.zh_hant_tw'),
+  en('legacy.app_language.en'),
+  ja('legacy.app_language.ja'),
+  de('legacy.app_language.de');
 
-  const AppLanguage(this.labelZh, this.labelEn);
-  final String labelZh;
-  final String labelEn;
+  const AppLanguage(this.labelKey);
+  final String labelKey;
 
-  String labelFor(AppLanguage current) =>
-      current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) {
+    return trByLanguageKey(language: current, key: labelKey);
+  }
 }
 
 enum AppThemeMode {
-  system('系统', 'System'),
-  light('浅色', 'Light'),
-  dark('深色', 'Dark');
+  system('legacy.app_theme.system'),
+  light('legacy.app_theme.light'),
+  dark('legacy.app_theme.dark');
 
-  const AppThemeMode(this.labelZh, this.labelEn);
-  final String labelZh;
-  final String labelEn;
+  const AppThemeMode(this.labelKey);
+  final String labelKey;
 
-  String labelFor(AppLanguage current) =>
-      current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) {
+    return trByLanguageKey(language: current, key: labelKey);
+  }
 }
 
 enum AppFontSize {
-  standard('标准', 'Standard'),
-  large('大', 'Large'),
-  small('小', 'Small');
+  standard('legacy.app_font_size.standard'),
+  large('legacy.app_font_size.large'),
+  small('legacy.app_font_size.small');
 
-  const AppFontSize(this.labelZh, this.labelEn);
-  final String labelZh;
-  final String labelEn;
+  const AppFontSize(this.labelKey);
+  final String labelKey;
 
-  String labelFor(AppLanguage current) =>
-      current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) {
+    return trByLanguageKey(language: current, key: labelKey);
+  }
 }
 
 enum AppLineHeight {
-  classic('经典', 'Classic'),
-  compact('紧凑', 'Compact'),
-  relaxed('舒适', 'Relaxed');
+  classic('legacy.app_line_height.classic'),
+  compact('legacy.app_line_height.compact'),
+  relaxed('legacy.app_line_height.relaxed');
 
-  const AppLineHeight(this.labelZh, this.labelEn);
-  final String labelZh;
-  final String labelEn;
+  const AppLineHeight(this.labelKey);
+  final String labelKey;
 
-  String labelFor(AppLanguage current) =>
-      current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) {
+    return trByLanguageKey(language: current, key: labelKey);
+  }
 }
 
 enum LaunchAction {
-  none('无', 'None'),
-  sync('同步', 'Sync'),
-  quickInput('快速记录', 'Quick Input'),
-  dailyReview('随机漫步', 'Random Review');
+  none('legacy.launch_action.none'),
+  sync('legacy.launch_action.sync'),
+  quickInput('legacy.launch_action.quick_input'),
+  dailyReview('legacy.launch_action.daily_review');
 
-  const LaunchAction(this.labelZh, this.labelEn);
-  final String labelZh;
-  final String labelEn;
+  const LaunchAction(this.labelKey);
+  final String labelKey;
 
-  String labelFor(AppLanguage current) =>
-      current == AppLanguage.en ? labelEn : labelZh;
+  String labelFor(AppLanguage current) {
+    return trByLanguageKey(language: current, key: labelKey);
+  }
 }
 
 class AppPreferences {
   static const Object _unset = Object();
   static const defaults = AppPreferences(
-    language: AppLanguage.zhHans,
+    language: AppLanguage.system,
     hasSelectedLanguage: false,
     fontSize: AppFontSize.standard,
     lineHeight: AppLineHeight.classic,
@@ -617,10 +621,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   Future<void> _writeChain = Future<void>.value();
 
   Future<void> _loadFromStorage() async {
-    final systemLanguage = appLanguageFromLocale(
-      WidgetsBinding.instance.platformDispatcher.locale,
-    );
-    final stored = await _repo.read(systemLanguage: systemLanguage);
+    final stored = await _repo.read();
     if (!mounted) return;
     state = stored;
     _onLoaded?.call();
@@ -822,7 +823,7 @@ class AppPreferencesRepository {
     } catch (_) {}
   }
 
-  Future<AppPreferences> read({required AppLanguage systemLanguage}) async {
+  Future<AppPreferences> read() async {
     final storageKey = _storageKey;
     if (storageKey == null) {
       final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
@@ -833,7 +834,7 @@ class AppPreferencesRepository {
         );
         await _writeFallback(_kDeviceKey, device);
       }
-      return device ?? _defaultsForFirstRun(systemLanguage);
+      return device ?? _defaultsForFirstRun();
     }
 
     final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
@@ -863,7 +864,7 @@ class AppPreferencesRepository {
         await write(fallback);
         return fallback;
       }
-      return _defaultsForFirstRun(systemLanguage);
+      return _defaultsForFirstRun();
     }
     try {
       final decoded = jsonDecode(raw);
@@ -886,12 +887,12 @@ class AppPreferencesRepository {
       await write(resolved);
       return resolved;
     }
-    return _defaultsForFirstRun(systemLanguage);
+    return _defaultsForFirstRun();
   }
 
-  AppPreferences _defaultsForFirstRun(AppLanguage systemLanguage) {
+  AppPreferences _defaultsForFirstRun() {
     return AppPreferences.defaults.copyWith(
-      language: systemLanguage,
+      language: AppLanguage.system,
       hasSelectedLanguage: false,
     );
   }

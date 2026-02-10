@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/app_lock_provider.dart';
+import '../../i18n/strings.g.dart';
 
 class AppLockGate extends ConsumerStatefulWidget {
   const AppLockGate({super.key, required this.child});
@@ -110,7 +111,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
     final text = _controller.text.trim();
     if (text.isEmpty) {
       _clearInput();
-      setState(() => _error = context.tr(zh: '请输入密码', en: 'Please enter password'));
+      setState(() => _error = context.t.strings.legacy.msg_enter_password);
       return;
     }
     setState(() {
@@ -123,7 +124,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
       _clearInput();
       FocusScope.of(context).requestFocus(_focusNode);
       setState(() {
-        _error = context.tr(zh: '密码错误', en: 'Incorrect password');
+        _error = context.t.strings.legacy.msg_incorrect_password;
         _unlocking = false;
       });
       return;
@@ -187,12 +188,12 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          context.tr(zh: '需要密码', en: 'Password required'),
+                          context.t.strings.legacy.msg_password_required,
                           style: TextStyle(fontWeight: FontWeight.w800, color: textMain, fontSize: 16),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          context.tr(zh: '请输入密码以继续', en: 'Enter password to continue'),
+                          context.t.strings.legacy.msg_enter_password_continue,
                           style: TextStyle(color: textMuted, fontSize: 12),
                         ),
                         const SizedBox(height: 16),
@@ -213,7 +214,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                           enableSuggestions: false,
                           autocorrect: false,
                           decoration: InputDecoration(
-                            hintText: context.tr(zh: '输入密码', en: 'Enter password'),
+                            hintText: context.t.strings.legacy.msg_enter_password_3,
                             errorText: _error,
                             isDense: true,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -236,7 +237,7 @@ class _AppLockOverlayState extends ConsumerState<_AppLockOverlay> {
                                     dimension: 18,
                                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                   )
-                                : Text(context.tr(zh: '解锁', en: 'Unlock'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                                : Text(context.t.strings.legacy.msg_unlock, style: const TextStyle(fontWeight: FontWeight.w700)),
                           ),
                         ),
                       ],

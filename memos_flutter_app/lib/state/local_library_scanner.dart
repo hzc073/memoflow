@@ -16,6 +16,7 @@ import '../data/models/local_memo.dart';
 import 'database_provider.dart';
 import 'local_library_provider.dart';
 import 'preferences_provider.dart';
+import '../i18n/strings.g.dart';
 
 final localLibraryScannerProvider = Provider<LocalLibraryScanner?>((ref) {
   final library = ref.watch(currentLocalLibraryProvider);
@@ -268,16 +269,10 @@ class LocalLibraryScanner {
     String memoUid, {
     required bool isDeletion,
   }) async {
-    final title = context.tr(zh: '冲突处理', en: 'Resolve conflict');
+    final title = context.t.strings.legacy.msg_resolve_conflict;
     final content = isDeletion
-        ? context.tr(
-            zh: '磁盘缺失该笔记，但本地还有未同步改动。选择“以磁盘为准”将删除本地记录。',
-            en: 'The memo is missing on disk but has local pending changes. Use disk to delete locally.',
-          )
-        : context.tr(
-            zh: '磁盘与本地未同步内容冲突。选择“以磁盘为准”将覆盖本地内容。',
-            en: 'Disk content conflicts with local pending changes. Use disk to overwrite local content.',
-          );
+        ? context.t.strings.legacy.msg_memo_missing_disk_but_has_local
+        : context.t.strings.legacy.msg_disk_content_conflicts_local_pending_changes;
     final result =
         await showDialog<bool>(
           context: context,
@@ -287,11 +282,11 @@ class LocalLibraryScanner {
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
-                child: Text(context.tr(zh: '以本地为准', en: 'Keep local')),
+                child: Text(context.t.strings.legacy.msg_keep_local),
               ),
               FilledButton(
                 onPressed: () => context.safePop(true),
-                child: Text(context.tr(zh: '以磁盘为准', en: 'Use disk')),
+                child: Text(context.t.strings.legacy.msg_use_disk),
               ),
             ],
           ),

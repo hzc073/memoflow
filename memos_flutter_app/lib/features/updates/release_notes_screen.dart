@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../state/update_config_provider.dart';
 import 'version_announcement_dialog.dart';
+import '../../i18n/strings.g.dart';
 
 class ReleaseNotesScreen extends ConsumerStatefulWidget {
   const ReleaseNotesScreen({super.key});
@@ -40,11 +40,11 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '更新日志', en: 'Release Notes')),
+        title: Text(context.t.strings.legacy.msg_release_notes_2),
         centerTitle: false,
       ),
       body: Stack(
@@ -72,7 +72,7 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
               if (entries.isEmpty) {
                 return Center(
                   child: Text(
-                    context.tr(zh: '暂无更新日志', en: 'No release notes yet'),
+                    context.t.strings.legacy.msg_no_release_notes_yet,
                     style: TextStyle(color: textMuted),
                   ),
                 );
@@ -105,10 +105,7 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
                       const SizedBox(height: 14),
                       Center(
                         child: Text(
-                          context.tr(
-                            zh: '以上是全部历史内容\nMEMOFLOW SINCE 2023',
-                            en: 'That is all the history so far\nMEMOFLOW SINCE 2023',
-                          ),
+                          context.t.strings.legacy.msg_all_history_so_far_memoflow_since,
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 11, height: 1.4, color: textMuted),
                         ),
@@ -228,7 +225,7 @@ class _TimelineItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final detail = context.tr(zh: item.detailZh, en: item.detailEn);
+    final detail = item.localizedDetail(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

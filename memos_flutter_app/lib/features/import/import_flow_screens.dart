@@ -17,6 +17,7 @@ import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../memos/memos_list_screen.dart';
 import 'flomo_import_service.dart';
+import '../../i18n/strings.g.dart';
 
 class ImportSourceScreen extends StatelessWidget {
   const ImportSourceScreen({
@@ -65,7 +66,7 @@ class ImportSourceScreen extends StatelessWidget {
     if (path == null || path.trim().isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法获取文件路径', en: 'Unable to read file path.'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_unable_read_file_path)),
       );
       return;
     }
@@ -115,7 +116,7 @@ class ImportSourceScreen extends StatelessWidget {
     if (path == null || path.trim().isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法获取文件路径', en: 'Unable to read file path.'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_unable_read_file_path)),
       );
       return;
     }
@@ -158,11 +159,11 @@ class ImportSourceScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '导入', en: 'Import')),
+        title: Text(context.t.strings.legacy.msg_import),
       ),
       body: Stack(
         children: [
@@ -194,19 +195,13 @@ class ImportSourceScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            context.tr(
-                              zh: '选择一个数据来源开始导入您的笔记',
-                              en: 'Choose a data source to start importing your memos',
-                            ),
+                            context.t.strings.legacy.msg_choose_data_source_start_importing_memos,
                             style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
                           ),
                           const SizedBox(height: 16),
                           _ImportSourceTile(
-                            title: context.tr(zh: '从 Flomo 导入', en: 'Import from Flomo'),
-                            subtitle: context.tr(
-                              zh: '导入导出的 HTML 或压缩包',
-                              en: 'Import exported HTML or ZIP package',
-                            ),
+                            title: context.t.strings.legacy.msg_import_flomo,
+                            subtitle: context.t.strings.legacy.msg_import_exported_html_zip_package,
                             icon: Icons.auto_awesome_rounded,
                             iconBg: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.12),
                             iconColor: MemoFlowPalette.primary,
@@ -218,11 +213,8 @@ class ImportSourceScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                           _ImportSourceTile(
-                            title: context.tr(zh: '从 Markdown 导入', en: 'Import from Markdown'),
-                            subtitle: context.tr(
-                              zh: '请上传包含 .md 文件的 .zip 压缩包',
-                              en: 'Upload a .zip package with .md files',
-                            ),
+                            title: context.t.strings.legacy.msg_import_markdown,
+                            subtitle: context.t.strings.legacy.msg_upload_zip_package_md_files,
                             icon: Icons.description_rounded,
                             iconBg: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.1),
                             iconColor: MemoFlowPalette.primary.withValues(alpha: 0.9),
@@ -234,10 +226,7 @@ class ImportSourceScreen extends StatelessWidget {
                           ),
                           const Spacer(),
                           _ImportNoteCard(
-                            text: context.tr(
-                              zh: '导入完成后，您的笔记将自动同步到笔记列表。对于压缩包导入，请确保文件结构完整。',
-                              en: 'After import, your memos sync to the list automatically. For ZIP imports, ensure the file structure is intact.',
-                            ),
+                            text: context.t.strings.legacy.msg_after_import_memos_sync_list_automatically,
                             textMuted: textMuted,
                             isDark: isDark,
                           ),
@@ -291,7 +280,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     if (account == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '未登录账号', en: 'Not authenticated.'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_not_authenticated_2)),
         );
         context.safePop();
       }
@@ -335,7 +324,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
       if (!mounted) return;
       showTopToast(
         context,
-        context.tr(zh: '已取消导入', en: 'Import canceled.'),
+        context.t.strings.legacy.msg_import_canceled,
       );
       context.safePop();
     } on ImportException catch (e) {
@@ -345,7 +334,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '导入失败: $e', en: 'Import failed: $e'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_import_failed(e: e))),
       );
       context.safePop();
     }
@@ -365,9 +354,9 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     if (_cancelRequested) return;
     setState(() {
       _cancelRequested = true;
-      _statusText = context.tr(zh: '正在取消...', en: 'Cancelling...');
-      _progressLabel = context.tr(zh: '取消中', en: 'Cancelling');
-      _progressDetail = context.tr(zh: '正在等待任务停止', en: 'Waiting for tasks to stop');
+      _statusText = context.t.strings.legacy.msg_cancelling_2;
+      _progressLabel = context.t.strings.legacy.msg_cancelling;
+      _progressDetail = context.t.strings.legacy.msg_waiting_tasks_stop;
     });
   }
 
@@ -420,9 +409,9 @@ class ImportProgressScreen extends StatelessWidget {
           ];
     final clamped = progress.clamp(0.0, 1.0).toDouble();
     final percentText = '${(clamped * 100).round()}%';
-    final label = progressLabel ?? context.tr(zh: '解析进度', en: 'Parsing progress');
-    final status = statusText ?? context.tr(zh: '正在解析文件...', en: 'Parsing file...');
-    final detail = progressDetail ?? context.tr(zh: '正在处理内容...', en: 'Processing content...');
+    final label = progressLabel ?? context.t.strings.legacy.msg_parsing_progress;
+    final status = statusText ?? context.t.strings.legacy.msg_parsing_file;
+    final detail = progressDetail ?? context.t.strings.legacy.msg_processing_content;
 
     return Scaffold(
       backgroundColor: bg,
@@ -432,11 +421,11 @@ class ImportProgressScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '导入文件', en: 'Import File')),
+        title: Text(context.t.strings.legacy.msg_import_file),
         centerTitle: true,
       ),
       body: Stack(
@@ -524,7 +513,7 @@ class ImportProgressScreen extends StatelessWidget {
                           foregroundColor: MemoFlowPalette.primary,
                           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                         ),
-                        child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                        child: Text(context.t.strings.legacy.msg_cancel_2),
                       ),
                     ],
                   ),
@@ -575,9 +564,16 @@ class ImportResultScreen extends StatelessWidget {
           ];
     final formatter = NumberFormat.decimalPattern();
 
-    String formatCount(int value, {String? suffix}) {
-      final raw = formatter.format(value);
-      return suffix == null ? raw : '$raw$suffix';
+    String formatCount(int value) {
+      return formatter.format(value);
+    }
+
+    String formatCountLabel(int value, String key) {
+      return trByLanguageKey(
+        language: context.appLanguage,
+        key: key,
+        params: {'count': formatCount(value)},
+      );
     }
 
     return Scaffold(
@@ -588,11 +584,11 @@ class ImportResultScreen extends StatelessWidget {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
+          tooltip: context.t.strings.legacy.msg_back,
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
-        title: Text(context.tr(zh: '导入结果', en: 'Import Result')),
+        title: Text(context.t.strings.legacy.msg_import_result),
         centerTitle: true,
       ),
       body: Stack(
@@ -644,15 +640,12 @@ class ImportResultScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  context.tr(zh: '导入完成', en: 'Import Complete'),
+                                  context.t.strings.legacy.msg_import_complete_2,
                                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain),
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  context.tr(
-                                    zh: '您的数据已成功迁移至本应用。',
-                                    en: 'Your data has been migrated to this app successfully.',
-                                  ),
+                                  context.t.strings.legacy.msg_data_has_been_migrated_app_successfully,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
                                 ),
@@ -660,27 +653,27 @@ class ImportResultScreen extends StatelessWidget {
                                 Divider(height: 1, color: divider),
                                 const SizedBox(height: 12),
                                 _ResultRow(
-                                  label: context.tr(zh: '导入笔记', en: 'Imported memos'),
-                                  value: context.tr(
-                                    zh: formatCount(memoCount, suffix: '条'),
-                                    en: formatCount(memoCount),
+                                  label: context.t.strings.legacy.msg_imported_memos,
+                                  value: formatCountLabel(
+                                    memoCount,
+                                    'legacy.import_count_memos',
                                   ),
                                   textMain: textMain,
                                   textMuted: textMuted,
                                 ),
                                 const SizedBox(height: 8),
                                 _ResultRow(
-                                  label: context.tr(zh: '附件资源', en: 'Attachments'),
-                                  value: context.tr(
-                                    zh: formatCount(attachmentCount, suffix: '个'),
-                                    en: formatCount(attachmentCount),
+                                  label: context.t.strings.legacy.msg_attachments_2,
+                                  value: formatCountLabel(
+                                    attachmentCount,
+                                    'legacy.import_count_attachments',
                                   ),
                                   textMain: textMain,
                                   textMuted: textMuted,
                                 ),
                                 const SizedBox(height: 8),
                                 _ResultRow(
-                                  label: context.tr(zh: '失败条数', en: 'Failed items'),
+                                  label: context.t.strings.legacy.msg_failed_items,
                                   value: formatCount(failedCount),
                                   textMain: textMain,
                                   textMuted: textMuted,
@@ -691,7 +684,7 @@ class ImportResultScreen extends StatelessWidget {
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
-                                    context.tr(zh: '新生成的标签', en: 'New tags created'),
+                                    context.t.strings.legacy.msg_tags_created,
                                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: textMain),
                                   ),
                                 ),
@@ -700,7 +693,7 @@ class ImportResultScreen extends StatelessWidget {
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: Text(
-                                      context.tr(zh: '无', en: 'None'),
+                                      context.t.strings.legacy.msg_none,
                                       style: TextStyle(fontSize: 12.5, color: textMuted),
                                     ),
                                   )
@@ -725,14 +718,14 @@ class ImportResultScreen extends StatelessWidget {
                           ),
                           const Spacer(),
                           _ActionButton(
-                            label: context.tr(zh: '返回主页', en: 'Back to Home'),
+                            label: context.t.strings.legacy.msg_back_home,
                             onTap: onGoHome,
                             background: MemoFlowPalette.primary,
                             foreground: Colors.white,
                           ),
                           const SizedBox(height: 12),
                           _ActionButton(
-                            label: context.tr(zh: '查看导入笔记', en: 'View imported memos'),
+                            label: context.t.strings.legacy.msg_view_imported_memos,
                             onTap: onViewImported,
                             background: isDark ? MemoFlowPalette.cardDark : const Color(0xFFF0ECE6),
                             foreground: textMain,
@@ -758,7 +751,7 @@ class ImportedMemosScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MemosListScreen(
-      title: context.tr(zh: '查看导入笔记', en: 'Imported memos'),
+      title: context.t.strings.legacy.msg_imported_memos_2,
       state: 'NORMAL',
       showDrawer: false,
       enableCompose: false,

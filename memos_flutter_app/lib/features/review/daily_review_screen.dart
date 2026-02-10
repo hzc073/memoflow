@@ -25,6 +25,7 @@ import '../memos/memo_image_grid.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
 import '../memos/widgets/audio_row.dart';
+import '../../i18n/strings.g.dart';
 
 class DailyReviewScreen extends ConsumerStatefulWidget {
   const DailyReviewScreen({super.key});
@@ -290,7 +291,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     if (source == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr(zh: '无法读取音频资源', en: 'Unable to load audio source.'))),
+        SnackBar(content: Text(context.t.strings.legacy.msg_unable_load_audio_source)),
       );
       return;
     }
@@ -333,7 +334,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       _stopAudioProgressTimer();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr(zh: '播放失败：$e', en: 'Playback failed: $e'))),
+          SnackBar(content: Text(context.t.strings.legacy.msg_playback_failed_2(e: e))),
         );
         setState(() {
           _audioLoading = false;
@@ -411,17 +412,17 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           leading: IconButton(
-            tooltip: context.tr(zh: '返回', en: 'Back'),
+            tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
             onPressed: _back,
           ),
-          title: Text(context.tr(zh: '随机漫步', en: 'Random Review')),
+          title: Text(context.t.strings.legacy.msg_random_review),
           centerTitle: true,
         ),
         body: memosAsync.when(
         data: (memos) {
           if (memos.isEmpty) {
-            return Center(child: Text(context.tr(zh: '暂无内容', en: 'No content yet'), style: TextStyle(color: textMuted)));
+            return Center(child: Text(context.t.strings.legacy.msg_no_content_yet, style: TextStyle(color: textMuted)));
           }
 
           final deck = _deck;
@@ -437,7 +438,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        context.tr(zh: '随机抽取你的卡片笔记', en: 'Randomly draw your memo cards'),
+                        context.t.strings.legacy.msg_randomly_draw_memo_cards,
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
                       ),
                     ),
@@ -502,7 +503,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(context.tr(zh: '加载失败：$e', en: 'Failed to load: $e'))),
+        error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
         ),
       ),
     );
@@ -547,7 +548,7 @@ class _RandomWalkCard extends StatelessWidget {
     final language = context.appLanguage;
     final relative = _relative(dt, language);
     final content = memo.content.trim().isEmpty
-        ? context.tr(zh: '（空内容）', en: '(Empty content)')
+        ? context.t.strings.legacy.msg_empty_content
         : memo.content.trim();
     final contentStyle = TextStyle(fontSize: 16, height: 1.6, fontWeight: FontWeight.w600, color: textMain);
     final imageEntries = collectMemoImageEntries(
@@ -797,18 +798,30 @@ class _RandomWalkCard extends StatelessWidget {
   String _relative(DateTime dt, AppLanguage language) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inDays < 1) return trByLanguage(language: language, zh: '今天', en: 'Today');
-    if (diff.inDays < 7) return trByLanguage(language: language, zh: '${diff.inDays}天前', en: '${diff.inDays}d ago');
+    if (diff.inDays < 1) return trByLanguageKey(language: language, key: 'legacy.msg_today');
+    if (diff.inDays < 7) return trByLanguageKey(language: language, key: 'legacy.msg_ago_3', params: {'diff_inDays': diff.inDays});
     if (diff.inDays < 30) {
       final weeks = (diff.inDays / 7).floor();
-      return trByLanguage(language: language, zh: '$weeks周前', en: '${weeks}w ago');
+      return trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_ago_4',
+        params: {'weeks': weeks},
+      );
     }
     if (diff.inDays < 365) {
       final months = (diff.inDays / 30).floor();
-      return trByLanguage(language: language, zh: '$months个月前', en: '${months}mo ago');
+      return trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_ago',
+        params: {'months': months},
+      );
     }
     final years = (diff.inDays / 365).floor();
-    return trByLanguage(language: language, zh: '$years年前', en: '${years}y ago');
+    return trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_ago_2',
+      params: {'years': years},
+    );
   }
 
   static String? _parseVoiceDuration(String content) {
