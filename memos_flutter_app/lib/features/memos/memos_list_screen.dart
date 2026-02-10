@@ -49,8 +49,10 @@ import '../tags/tags_screen.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
+import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
+import 'memo_video_grid.dart';
 import 'note_input_sheet.dart';
 import 'widgets/audio_row.dart';
 
@@ -1918,6 +1920,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       baseUrl: baseUrl,
       authHeader: authHeader,
     );
+    final videoEntries = collectMemoVideoEntries(
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
+    final mediaEntries = buildMemoMediaEntries(
+      images: imageEntries,
+      videos: videoEntries,
+    );
     final hapticsEnabled = prefs.hapticsEnabled;
 
     void maybeHaptic() {
@@ -1953,6 +1964,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       audioPositionListenable: removing ? null : audioPositionListenable,
       audioDurationListenable: removing ? null : audioDurationListenable,
       imageEntries: imageEntries,
+      mediaEntries: mediaEntries,
       onAudioSeek: removing || !isAudioActive
           ? null
           : (pos) => _seekAudioPosition(memo, pos),
@@ -3309,6 +3321,7 @@ class _MemoCard extends StatefulWidget {
     required this.audioPositionListenable,
     required this.audioDurationListenable,
     required this.imageEntries,
+    required this.mediaEntries,
     required this.onAudioSeek,
     required this.onAudioTap,
     required this.syncStatus,
@@ -3330,6 +3343,7 @@ class _MemoCard extends StatefulWidget {
   final ValueListenable<Duration>? audioPositionListenable;
   final ValueListenable<Duration?>? audioDurationListenable;
   final List<MemoImageEntry> imageEntries;
+  final List<MemoMediaEntry> mediaEntries;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
   final _MemoSyncStatus syncStatus;
@@ -3402,7 +3416,7 @@ class _MemoCardState extends State<_MemoCard> {
     final audioPositionListenable = widget.audioPositionListenable;
     final audioDurationListenable = widget.audioDurationListenable;
     final onAudioSeek = widget.onAudioSeek;
-    final imageEntries = widget.imageEntries;
+    final mediaEntries = widget.mediaEntries;
     final syncStatus = widget.syncStatus;
     final onSyncStatusTap = widget.onSyncStatusTap;
     final onDoubleTap = widget.onDoubleTap;
@@ -3517,16 +3531,15 @@ class _MemoCardState extends State<_MemoCard> {
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
     final audioDurationFallback = _parseVoiceDurationValue(memo.content);
 
-    Widget buildImageGrid() {
-      if (imageEntries.isEmpty) return const SizedBox.shrink();
+    Widget buildMediaGrid() {
+      if (mediaEntries.isEmpty) return const SizedBox.shrink();
       final previewBorder = borderColor.withValues(alpha: 0.65);
       final previewBg = isDark
           ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
           : MemoFlowPalette.audioSurfaceLight;
       final maxHeight = MediaQuery.of(context).size.height * 0.4;
-
-      return MemoImageGrid(
-        images: imageEntries,
+      return MemoMediaGrid(
+        entries: mediaEntries,
         columns: 3,
         maxCount: 9,
         maxHeight: maxHeight,
@@ -3646,9 +3659,9 @@ class _MemoCardState extends State<_MemoCard> {
                 ),
               ),
             ],
-            if (imageEntries.isNotEmpty) ...[
+            if (mediaEntries.isNotEmpty) ...[
               const SizedBox(height: 2),
-              buildImageGrid(),
+              buildMediaGrid(),
             ],
             if (hasAudio) ...[const SizedBox(height: 2), audioRow],
             if (attachmentCount > 0) ...[

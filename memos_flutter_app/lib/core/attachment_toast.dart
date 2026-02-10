@@ -16,7 +16,9 @@ List<Attachment> filterNonMediaAttachments(List<Attachment> attachments) {
   return attachments
       .where((attachment) {
         final type = attachment.type.trim().toLowerCase();
-        return !type.startsWith('image') && !type.startsWith('audio');
+        return !type.startsWith('image') &&
+            !type.startsWith('audio') &&
+            !type.startsWith('video');
       })
       .toList(growable: false);
 }

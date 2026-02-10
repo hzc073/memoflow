@@ -25,6 +25,8 @@ import '../about/about_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
+import '../memos/memo_media_grid.dart';
+import '../memos/memo_video_grid.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -2252,6 +2254,15 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       baseUrl: widget.baseUrl,
       authHeader: widget.authHeader,
     );
+    final videoEntries = collectMemoVideoEntries(
+      attachments: memo.attachments,
+      baseUrl: widget.baseUrl,
+      authHeader: widget.authHeader,
+    );
+    final mediaEntries = buildMemoMediaEntries(
+      images: imageEntries,
+      videos: videoEntries,
+    );
     final nonMediaAttachments = filterNonMediaAttachments(memo.attachments);
     final attachmentLines = attachmentNameLines(nonMediaAttachments);
     final attachmentCount = nonMediaAttachments.length;
@@ -2367,10 +2378,10 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   ),
                 ),
               ],
-              if (imageEntries.isNotEmpty) ...[
+              if (mediaEntries.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                MemoImageGrid(
-                  images: imageEntries,
+                MemoMediaGrid(
+                  entries: mediaEntries,
                   columns: 3,
                   maxCount: 9,
                   maxHeight: MediaQuery.of(context).size.height * 0.4,

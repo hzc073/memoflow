@@ -20,8 +20,10 @@ import '../../state/session_provider.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../memos/attachment_video_screen.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/memo_video_grid.dart';
 import '../notifications/notifications_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
@@ -180,6 +182,7 @@ class ResourcesScreen extends ConsumerWidget {
   }) {
     final isImage = attachment.type.startsWith('image/');
     final isAudio = attachment.type.startsWith('audio');
+    final isVideo = attachment.type.startsWith('video');
     final localFile = _localAttachmentFile(attachment);
 
     if (isImage) {
@@ -195,6 +198,27 @@ class ResourcesScreen extends ConsumerWidget {
             localFile: localFile,
             imageUrl: url,
             authHeader: authHeader,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (isVideo) {
+      final entry = memoVideoEntryFromAttachment(attachment, baseUrl, authHeader);
+      if (entry == null || (entry.localFile == null && (entry.videoUrl ?? '').isEmpty)) {
+        _showUnsupportedPreview(context);
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AttachmentVideoScreen(
+            title: entry.title,
+            localFile: entry.localFile,
+            videoUrl: entry.videoUrl,
+            headers: entry.headers,
+            cacheId: entry.id,
+            cacheSize: entry.size,
           ),
         ),
       );
@@ -320,6 +344,7 @@ class ResourcesScreen extends ConsumerWidget {
                     final a = entry.attachment;
                     final isImage = a.type.startsWith('image/');
                     final isAudio = a.type.startsWith('audio');
+                    final isVideo = a.type.startsWith('video');
 
                     final displayName = a.filename.trim().isNotEmpty
                         ? a.filename
@@ -327,6 +352,7 @@ class ResourcesScreen extends ConsumerWidget {
                     final localFile = _localAttachmentFile(a);
                     final thumbnailUrl = _resolveRemoteUrl(baseUrl, a, thumbnail: true);
                     final remoteUrl = _resolveRemoteUrl(baseUrl, a, thumbnail: false);
+                    final videoEntry = isVideo ? memoVideoEntryFromAttachment(a, baseUrl, authHeader) : null;
                     final leading = isImage && localFile != null
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(8),
@@ -353,9 +379,22 @@ class ResourcesScreen extends ConsumerWidget {
                                   ),
                                 ),
                               )
-                            : Icon(isAudio ? Icons.mic : Icons.attach_file);
+                            : isVideo && videoEntry != null
+                                ? SizedBox(
+                                    width: 44,
+                                    height: 44,
+                                    child: AttachmentVideoThumbnail(
+                                      entry: videoEntry,
+                                      borderRadius: 8,
+                                      showPlayIcon: true,
+                                    ),
+                                  )
+                                : Icon(isAudio ? Icons.mic : Icons.attach_file);
 
-                    final canPreview = (isImage || isAudio) && (localFile != null || remoteUrl != null);
+                    final hasVideoSource = videoEntry != null &&
+                        (videoEntry.localFile != null || (videoEntry.videoUrl ?? '').isNotEmpty);
+                    final canPreview = (isImage || isAudio || isVideo) &&
+                        (localFile != null || remoteUrl != null || hasVideoSource);
                     final canDownload = localFile != null || remoteUrl != null;
 
                     return ListTile(

@@ -29,9 +29,11 @@ import '../../state/session_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
+import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
 import 'memos_list_screen.dart';
+import 'memo_video_grid.dart';
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
   const MemoDetailScreen({
@@ -458,11 +460,22 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       baseUrl: baseUrl,
       authHeader: authHeader,
     );
+    final videoEntries = collectMemoVideoEntries(
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+    );
+    final mediaEntries = buildMemoMediaEntries(
+      images: imageEntries,
+      videos: videoEntries,
+    );
     final allowImageEdit = canEditAttachments &&
         imageEntries.any((entry) => entry.isAttachment) &&
         !imageEntries.any((entry) => !entry.isAttachment);
     final nonImageAttachments = memo.attachments
-        .where((attachment) => !attachment.type.startsWith('image/'))
+        .where((attachment) =>
+            !attachment.type.startsWith('image/') &&
+            !attachment.type.startsWith('video/'))
         .toList(growable: false);
     final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
     final imageBg =
@@ -505,10 +518,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         const SizedBox(height: 8),
         contentWidget,
         const SizedBox(height: 12),
-        if (imageEntries.isNotEmpty) ...[
-          MemoImageGrid(
-            images: imageEntries,
+        if (mediaEntries.isNotEmpty) ...[
+          MemoMediaGrid(
+            entries: mediaEntries,
             columns: 3,
+            maxCount: 9,
+            maxHeight: MediaQuery.of(context).size.height * 0.4,
             borderColor: borderColor.withValues(alpha: 0.65),
             backgroundColor: imageBg,
             textColor: textMain,

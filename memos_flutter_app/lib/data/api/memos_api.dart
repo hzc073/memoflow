@@ -355,16 +355,8 @@ class MemosApi {
   Future<User> getCurrentUser() async {
     DioException? lastDio;
     FormatException? lastFormat;
-    for (final attempt in <Future<User> Function()>[
-      _getCurrentUserByAuthMe,
-      _getCurrentUserByAuthStatusPost,
-      _getCurrentUserByAuthStatusGet,
-      _getCurrentUserByAuthStatusV2,
-      _getCurrentUserBySessionCurrent,
-      _getCurrentUserByUserMeV1,
-      _getCurrentUserByUsersMeV1,
-      _getCurrentUserByUserMeLegacy,
-    ]) {
+    final attempts = _currentUserAttempts();
+    for (final attempt in attempts) {
       try {
         return await attempt();
       } on DioException catch (e) {
@@ -378,6 +370,55 @@ class MemosApi {
     if (lastFormat != null) throw lastFormat;
     if (lastDio != null) throw lastDio;
     throw StateError('Unable to determine current user');
+  }
+
+  List<Future<User> Function()> _currentUserAttempts() {
+    if (useLegacyApi || _serverFlavor == _ServerApiFlavor.v0_21) {
+      return <Future<User> Function()>[
+        _getCurrentUserByAuthStatusV2,
+        _getCurrentUserByUserMeV1,
+        _getCurrentUserByUserMeLegacy,
+        _getCurrentUserByUsersMeV1,
+        _getCurrentUserByAuthStatusPost,
+        _getCurrentUserByAuthStatusGet,
+        _getCurrentUserByAuthMe,
+        _getCurrentUserBySessionCurrent,
+      ];
+    }
+    if (_serverFlavor == _ServerApiFlavor.v0_24 || _serverFlavor == _ServerApiFlavor.v0_22) {
+      return <Future<User> Function()>[
+        _getCurrentUserByAuthStatusPost,
+        _getCurrentUserByAuthStatusGet,
+        _getCurrentUserByUserMeV1,
+        _getCurrentUserByUserMeLegacy,
+        _getCurrentUserByUsersMeV1,
+        _getCurrentUserByAuthStatusV2,
+        _getCurrentUserByAuthMe,
+        _getCurrentUserBySessionCurrent,
+      ];
+    }
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      return <Future<User> Function()>[
+        _getCurrentUserByAuthMe,
+        _getCurrentUserByAuthStatusPost,
+        _getCurrentUserByAuthStatusGet,
+        _getCurrentUserByAuthStatusV2,
+        _getCurrentUserBySessionCurrent,
+        _getCurrentUserByUserMeV1,
+        _getCurrentUserByUsersMeV1,
+        _getCurrentUserByUserMeLegacy,
+      ];
+    }
+    return <Future<User> Function()>[
+      _getCurrentUserByAuthMe,
+      _getCurrentUserByAuthStatusPost,
+      _getCurrentUserByAuthStatusGet,
+      _getCurrentUserByAuthStatusV2,
+      _getCurrentUserBySessionCurrent,
+      _getCurrentUserByUserMeV1,
+      _getCurrentUserByUsersMeV1,
+      _getCurrentUserByUserMeLegacy,
+    ];
   }
 
   static bool _shouldFallback(DioException e) {
