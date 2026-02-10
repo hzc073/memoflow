@@ -69,21 +69,22 @@ class MemoMediaGrid extends StatelessWidget {
     final overflow = total - visibleCount;
     final visible = entries.take(visibleCount).toList(growable: false);
 
-    final imageEntries = entries.where((e) => e.isImage).map((e) => e.image!).toList(growable: false);
-    final gallerySources = imageEntries.map((e) => e.toGallerySource()).toList(growable: false);
-    final imageIndexById = <String, int>{};
-    for (var i = 0; i < imageEntries.length; i++) {
-      imageIndexById[imageEntries[i].id] = i;
-    }
+    final galleryItems = entries
+        .map(
+          (entry) => entry.isVideo
+              ? AttachmentGalleryItem.video(entry.video!)
+              : AttachmentGalleryItem.image(entry.image!.toGallerySource()),
+        )
+        .toList(growable: false);
 
-    void openGallery(String id) {
-      final index = imageIndexById[id] ?? 0;
-      if (gallerySources.isEmpty) return;
+    void openGallery(int mediaIndex) {
+      if (galleryItems.isEmpty) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => AttachmentGalleryScreen(
-            images: gallerySources,
-            initialIndex: index,
+            images: const [],
+            items: galleryItems,
+            initialIndex: mediaIndex,
             onReplace: onReplace,
             enableDownload: enableDownload,
           ),
@@ -122,7 +123,8 @@ class MemoMediaGrid extends StatelessWidget {
         image = Image.file(
           file,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => placeholder(Icons.broken_image_outlined),
+          errorBuilder: (context, error, stackTrace) =>
+              placeholder(Icons.broken_image_outlined),
         );
       } else if (url.isNotEmpty) {
         image = CachedNetworkImage(
@@ -138,7 +140,7 @@ class MemoMediaGrid extends StatelessWidget {
       }
 
       return GestureDetector(
-        onTap: () => openGallery(entry.id),
+        onTap: () => openGallery(index),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           child: Container(
@@ -164,10 +166,7 @@ class MemoMediaGrid extends StatelessWidget {
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(color: borderColor),
             ),
-            child: AttachmentVideoThumbnail(
-              entry: entry,
-              borderRadius: radius,
-            ),
+            child: AttachmentVideoThumbnail(entry: entry, borderRadius: radius),
           ),
         ),
       );
@@ -180,7 +179,11 @@ class MemoMediaGrid extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 '+$overflow',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             )
           : null;
@@ -191,19 +194,15 @@ class MemoMediaGrid extends StatelessWidget {
 
       if (overlay == null) return content;
 
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          content,
-          overlay,
-        ],
-      );
+      return Stack(fit: StackFit.expand, children: [content, overlay]);
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final rawWidth = constraints.maxWidth;
-        final maxWidth = rawWidth.isFinite && rawWidth > 0 ? rawWidth : MediaQuery.of(context).size.width;
+        final maxWidth = rawWidth.isFinite && rawWidth > 0
+            ? rawWidth
+            : MediaQuery.of(context).size.width;
         final totalSpacing = spacing * (columns - 1);
         final tileWidth = (maxWidth - totalSpacing) / columns;
         var tileHeight = tileWidth;
@@ -219,7 +218,9 @@ class MemoMediaGrid extends StatelessWidget {
           }
         }
 
-        final aspectRatio = tileWidth > 0 && tileHeight > 0 ? tileWidth / tileHeight : 1.0;
+        final aspectRatio = tileWidth > 0 && tileHeight > 0
+            ? tileWidth / tileHeight
+            : 1.0;
         return GridView.builder(
           shrinkWrap: true,
           primary: false,

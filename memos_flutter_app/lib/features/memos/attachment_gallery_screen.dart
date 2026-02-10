@@ -7,15 +7,16 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_editor_plus/image_editor_plus.dart';
-import 'package:image_editor_plus/options.dart';
+import 'package:image_editor_plus/options.dart' as editor_options;
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
+import 'attachment_video_screen.dart';
+import 'memo_video_grid.dart';
 
 class AttachmentImageSource {
   const AttachmentImageSource({
@@ -33,6 +34,17 @@ class AttachmentImageSource {
   final File? localFile;
   final String? imageUrl;
   final Map<String, String>? headers;
+}
+
+class AttachmentGalleryItem {
+  const AttachmentGalleryItem.image(this.image) : video = null;
+  const AttachmentGalleryItem.video(this.video) : image = null;
+
+  final AttachmentImageSource? image;
+  final MemoVideoEntry? video;
+
+  bool get isImage => image != null;
+  bool get isVideo => video != null;
 }
 
 class EditedImageResult {
@@ -56,32 +68,39 @@ class AttachmentGalleryScreen extends StatefulWidget {
     super.key,
     required this.images,
     required this.initialIndex,
+    this.items,
     this.onReplace,
     this.enableDownload = true,
     this.albumName = 'MemoFlow',
   });
 
   final List<AttachmentImageSource> images;
+  final List<AttachmentGalleryItem>? items;
   final int initialIndex;
   final Future<void> Function(EditedImageResult result)? onReplace;
   final bool enableDownload;
   final String albumName;
 
   @override
-  State<AttachmentGalleryScreen> createState() => _AttachmentGalleryScreenState();
+  State<AttachmentGalleryScreen> createState() =>
+      _AttachmentGalleryScreenState();
 }
 
 class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
   late final PageController _controller;
+  late final List<AttachmentGalleryItem> _items;
   int _index = 0;
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    final safeIndex = widget.images.isEmpty
+    _items =
+        widget.items ??
+        widget.images.map(AttachmentGalleryItem.image).toList(growable: false);
+    final safeIndex = _items.isEmpty
         ? 0
-        : widget.initialIndex.clamp(0, widget.images.length - 1);
+        : widget.initialIndex.clamp(0, _items.length - 1);
     _index = safeIndex;
     _controller = PageController(initialPage: safeIndex);
   }
@@ -92,7 +111,10 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     super.dispose();
   }
 
-  AttachmentImageSource get _current => widget.images[_index];
+  AttachmentImageSource? get _currentImage {
+    if (_items.isEmpty) return null;
+    return _items[_index].image;
+  }
 
   Future<Uint8List?> _loadBytes(AttachmentImageSource source) async {
     final file = source.localFile;
@@ -185,7 +207,10 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     return Uint8List.fromList(encoded);
   }
 
-  Future<void> _saveBytesToGallery(Uint8List bytes, {required String name}) async {
+  Future<void> _saveBytesToGallery(
+    Uint8List bytes, {
+    required String name,
+  }) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -215,14 +240,13 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         );
         return;
       }
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_saved_gallery,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_saved_gallery);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_2(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_2(e: e)),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -258,14 +282,13 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         );
         return;
       }
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_saved_gallery,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_saved_gallery);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_2(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_2(e: e)),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -273,7 +296,8 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
   }
 
   Future<void> _downloadCurrent() async {
-    final source = _current;
+    final source = _currentImage;
+    if (source == null) return;
     final file = source.localFile;
     if (file != null && file.existsSync()) {
       final base = _safeBaseName(source.title);
@@ -303,12 +327,16 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     }
     final tempFile = File(path);
     await tempFile.writeAsBytes(bytes, flush: true);
-    await _saveFileToGallery(tempFile, name: p.basenameWithoutExtension(filename));
+    await _saveFileToGallery(
+      tempFile,
+      name: p.basenameWithoutExtension(filename),
+    );
   }
 
   Future<void> _editCurrent() async {
     if (widget.onReplace == null) return;
-    final source = _current;
+    final source = _currentImage;
+    if (source == null) return;
     final bytes = await _loadBytes(source);
     if (bytes == null) {
       if (!mounted) return;
@@ -323,7 +351,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       MaterialPageRoute(
         builder: (_) => ImageEditor(
           image: bytes,
-          outputFormat: OutputFormat.jpeg,
+          outputFormat: editor_options.OutputFormat.jpeg,
         ),
       ),
     );
@@ -334,9 +362,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(context.t.strings.legacy.msg_edit_completed),
-        content: Text(
-          context.t.strings.legacy.msg_choose_what_edited_image,
-        ),
+        content: Text(context.t.strings.legacy.msg_choose_what_edited_image),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(_EditAction.saveLocal),
@@ -359,12 +385,17 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_replace_image),
             content: Text(
-              context.t.strings.legacy.msg_replacing_delete_original_attachment_continue,
+              context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_replacing_delete_original_attachment_continue,
             ),
             actions: [
               TextButton(
@@ -386,13 +417,29 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     await widget.onReplace?.call(result);
   }
 
+  void _openVideo(MemoVideoEntry entry) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AttachmentVideoScreen(
+          title: entry.title,
+          localFile: entry.localFile,
+          videoUrl: entry.videoUrl,
+          headers: entry.headers,
+          cacheId: entry.id,
+          cacheSize: entry.size,
+        ),
+      ),
+    );
+  }
+
   Widget _buildImage(AttachmentImageSource source) {
     final file = source.localFile;
     if (file != null && file.existsSync()) {
       return Image.file(
         file,
         fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.white),
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.broken_image, color: Colors.white),
       );
     }
     final url = source.imageUrl?.trim() ?? '';
@@ -401,36 +448,72 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         imageUrl: url,
         httpHeaders: source.headers,
         fit: BoxFit.contain,
-        placeholder: (context, _) => const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, _, _) => const Icon(Icons.broken_image, color: Colors.white),
+        placeholder: (context, _) =>
+            const Center(child: CircularProgressIndicator()),
+        errorWidget: (context, _, _) =>
+            const Icon(Icons.broken_image, color: Colors.white),
       );
     }
     return const Icon(Icons.broken_image, color: Colors.white);
   }
 
-  Widget _actionButton({
-    required Widget child,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildVideoPage(MemoVideoEntry entry) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openVideo(entry),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                AttachmentVideoThumbnail(
+                  entry: entry,
+                  borderRadius: 12,
+                  fit: BoxFit.contain,
+                ),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButton({required Widget child, required VoidCallback onTap}) {
     return Material(
       color: Colors.black.withValues(alpha: 0.55),
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: _busy ? null : onTap,
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: Center(child: child),
-        ),
+        child: SizedBox(width: 44, height: 44, child: Center(child: child)),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = widget.onReplace != null;
-    if (widget.images.isEmpty) {
+    final current = _items.isEmpty ? null : _items[_index];
+    final canEdit = widget.onReplace != null && (current?.isImage ?? false);
+    final canDownload = widget.enableDownload && (current?.isImage ?? false);
+    if (_items.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(
@@ -453,7 +536,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         title: Text(
-          '${_index + 1}/${widget.images.length}',
+          '${_index + 1}/${_items.length}',
           style: const TextStyle(color: Colors.white),
         ),
       ),
@@ -461,10 +544,14 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         children: [
           PageView.builder(
             controller: _controller,
-            itemCount: widget.images.length,
+            itemCount: _items.length,
             onPageChanged: (value) => setState(() => _index = value),
             itemBuilder: (context, index) {
-              final source = widget.images[index];
+              final item = _items[index];
+              if (item.isVideo) {
+                return _buildVideoPage(item.video!);
+              }
+              final source = item.image!;
               return InteractiveViewer(
                 minScale: 1,
                 maxScale: 4,
@@ -481,13 +568,21 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
                 if (canEdit)
                   _actionButton(
                     onTap: _editCurrent,
-                    child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
-                if (canEdit && widget.enableDownload) const SizedBox(width: 12),
-                if (widget.enableDownload)
+                if (canEdit && canDownload) const SizedBox(width: 12),
+                if (canDownload)
                   _actionButton(
                     onTap: _downloadCurrent,
-                    child: const Icon(Icons.download_rounded, color: Colors.white, size: 22),
+                    child: const Icon(
+                      Icons.download_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
               ],
             ),
@@ -498,7 +593,4 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
   }
 }
 
-enum _EditAction {
-  replace,
-  saveLocal,
-}
+enum _EditAction { replace, saveLocal }
