@@ -6,7 +6,7 @@
 /// Locales: 5
 /// Strings: 4985 (997 per locale)
 ///
-/// Built on 2026-02-10 at 13:12 UTC
+/// Built on 2026-02-10 at 14:23 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -196,7 +196,7 @@ class _StringsStringsLanguagesEn {
 	// Translations
 	String get system => 'Follow System';
 	String get zhHans => 'Chinese (Simplified)';
-	String get zhHantTw => 'Chinese (Traditional, Taiwan)';
+	String get zhHantTw => 'Chinese (Traditional, China Taiwan)';
 	String get en => 'English';
 	String get ja => 'Japanese';
 	String get de => 'German';
@@ -211,7 +211,7 @@ class _StringsStringsLanguagesNativeEn {
 	// Translations
 	String get system => 'System';
 	String get zhHans => '简体中文';
-	String get zhHantTw => '繁體中文（台灣）';
+	String get zhHantTw => '繁體中文（中國台灣）';
 	String get en => 'English';
 	String get ja => '日本語';
 	String get de => 'Deutsch';
@@ -1261,7 +1261,7 @@ class _StringsStringsLegacyAppLanguageEn {
 	// Translations
 	String get system => 'Follow System';
 	String get zh_hans => 'Chinese (Simplified)';
-	String get zh_hant_tw => 'Chinese (Traditional, Taiwan)';
+	String get zh_hant_tw => 'Chinese (Traditional, China Taiwan)';
 	String get en => 'English';
 	String get ja => 'Japanese';
 	String get de => 'German';
@@ -1501,7 +1501,7 @@ class _StringsStringsLanguagesDe extends _StringsStringsLanguagesEn {
 	// Translations
 	@override String get system => 'System folgen';
 	@override String get zhHans => 'Chinesisch (Vereinfacht)';
-	@override String get zhHantTw => 'Chinesisch (Traditionell, Taiwan)';
+	@override String get zhHantTw => 'Chinesisch (Traditionell, China Taiwan)';
 	@override String get en => 'Englisch';
 	@override String get ja => 'Japanisch';
 	@override String get de => 'Deutsch';
@@ -1516,7 +1516,7 @@ class _StringsStringsLanguagesNativeDe extends _StringsStringsLanguagesNativeEn 
 	// Translations
 	@override String get system => 'System';
 	@override String get zhHans => '简体中文';
-	@override String get zhHantTw => '繁體中文（台灣）';
+	@override String get zhHantTw => '繁體中文（中國台灣）';
 	@override String get en => 'English';
 	@override String get ja => '日本語';
 	@override String get de => 'Deutsch';
@@ -2566,7 +2566,7 @@ class _StringsStringsLegacyAppLanguageDe extends _StringsStringsLegacyAppLanguag
 	// Translations
 	@override String get system => 'System';
 	@override String get zh_hans => 'Chinesisch (Vereinfacht)';
-	@override String get zh_hant_tw => 'Chinesisch (Traditionell, Taiwan)';
+	@override String get zh_hant_tw => 'Chinesisch (Traditionell, China Taiwan)';
 	@override String get en => 'Englisch';
 	@override String get ja => 'Japanisch';
 	@override String get de => 'Deutsch';
@@ -2806,7 +2806,7 @@ class _StringsStringsLanguagesJa extends _StringsStringsLanguagesEn {
 	// Translations
 	@override String get system => 'システムに従う';
 	@override String get zhHans => '中国語（簡体字）';
-	@override String get zhHantTw => '中国語（繁体字・台湾）';
+	@override String get zhHantTw => '中国語（繁体字・中国台湾）';
 	@override String get en => '英語';
 	@override String get ja => '日本語';
 	@override String get de => 'ドイツ語';
@@ -2821,7 +2821,7 @@ class _StringsStringsLanguagesNativeJa extends _StringsStringsLanguagesNativeEn 
 	// Translations
 	@override String get system => 'システム';
 	@override String get zhHans => '简体中文';
-	@override String get zhHantTw => '繁體中文（台灣）';
+	@override String get zhHantTw => '繁體中文（中國台灣）';
 	@override String get en => 'English';
 	@override String get ja => '日本語';
 	@override String get de => 'Deutsch';
@@ -3871,7 +3871,7 @@ class _StringsStringsLegacyAppLanguageJa extends _StringsStringsLegacyAppLanguag
 	// Translations
 	@override String get system => 'システムに従う';
 	@override String get zh_hans => '中国語（簡体）';
-	@override String get zh_hant_tw => '中国語（繁体・台湾）';
+	@override String get zh_hant_tw => '中国語（繁体・中国台湾）';
 	@override String get en => '英語';
 	@override String get ja => '日本語';
 	@override String get de => 'ドイツ語';
@@ -4111,7 +4111,7 @@ class _StringsStringsLanguagesZhHans extends _StringsStringsLanguagesEn {
 	// Translations
 	@override String get system => '跟随系统';
 	@override String get zhHans => '简体中文';
-	@override String get zhHantTw => '繁体中文（台湾）';
+	@override String get zhHantTw => '繁体中文（中国台湾）';
 	@override String get en => '英语';
 	@override String get ja => '日语';
 	@override String get de => '德语';
@@ -4126,7 +4126,7 @@ class _StringsStringsLanguagesNativeZhHans extends _StringsStringsLanguagesNativ
 	// Translations
 	@override String get system => '系统';
 	@override String get zhHans => '简体中文';
-	@override String get zhHantTw => '繁體中文（台灣）';
+	@override String get zhHantTw => '繁體中文（中國台灣）';
 	@override String get en => '英语';
 	@override String get ja => '日本語';
 	@override String get de => 'Deutsch';
@@ -5176,7 +5176,7 @@ class _StringsStringsLegacyAppLanguageZhHans extends _StringsStringsLegacyAppLan
 	// Translations
 	@override String get system => '跟随系统';
 	@override String get zh_hans => '简体中文';
-	@override String get zh_hant_tw => '繁体中文（台湾）';
+	@override String get zh_hant_tw => '繁体中文（中国台湾）';
 	@override String get en => '英语';
 	@override String get ja => '日语';
 	@override String get de => '德语';
@@ -5416,7 +5416,7 @@ class _StringsStringsLanguagesZhHantTw extends _StringsStringsLanguagesEn {
 	// Translations
 	@override String get system => '跟隨系統';
 	@override String get zhHans => '簡體中文';
-	@override String get zhHantTw => '繁體中文（台灣）';
+	@override String get zhHantTw => '繁體中文（中國台灣）';
 	@override String get en => '英文';
 	@override String get ja => '日文';
 	@override String get de => '德文';
@@ -5431,7 +5431,7 @@ class _StringsStringsLanguagesNativeZhHantTw extends _StringsStringsLanguagesNat
 	// Translations
 	@override String get system => '系統';
 	@override String get zhHans => '简体中文';
-	@override String get zhHantTw => '繁體中文（台灣）';
+	@override String get zhHantTw => '繁體中文（中國台灣）';
 	@override String get en => 'English';
 	@override String get ja => '日本語';
 	@override String get de => 'Deutsch';
@@ -6481,7 +6481,7 @@ class _StringsStringsLegacyAppLanguageZhHantTw extends _StringsStringsLegacyAppL
 	// Translations
 	@override String get system => '跟隨系統';
 	@override String get zh_hans => '簡體中文';
-	@override String get zh_hant_tw => '繁體中文（台灣）';
+	@override String get zh_hant_tw => '繁體中文（中國台灣）';
 	@override String get en => '英語';
 	@override String get ja => '日語';
 	@override String get de => '德語';
@@ -6666,13 +6666,13 @@ extension on Translations {
 			case 'strings.common.copiedToClipboard': return 'Copied to clipboard';
 			case 'strings.languages.system': return 'Follow System';
 			case 'strings.languages.zhHans': return 'Chinese (Simplified)';
-			case 'strings.languages.zhHantTw': return 'Chinese (Traditional, Taiwan)';
+			case 'strings.languages.zhHantTw': return 'Chinese (Traditional, China Taiwan)';
 			case 'strings.languages.en': return 'English';
 			case 'strings.languages.ja': return 'Japanese';
 			case 'strings.languages.de': return 'German';
 			case 'strings.languagesNative.system': return 'System';
 			case 'strings.languagesNative.zhHans': return '简体中文';
-			case 'strings.languagesNative.zhHantTw': return '繁體中文（台灣）';
+			case 'strings.languagesNative.zhHantTw': return '繁體中文（中國台灣）';
 			case 'strings.languagesNative.en': return 'English';
 			case 'strings.languagesNative.ja': return '日本語';
 			case 'strings.languagesNative.de': return 'Deutsch';
@@ -7594,7 +7594,7 @@ extension on Translations {
 			case 'strings.legacy.msg_connection_timeout_check_network_api_url': return 'Connection timeout. Check network or API URL.';
 			case 'strings.legacy.app_language.system': return 'Follow System';
 			case 'strings.legacy.app_language.zh_hans': return 'Chinese (Simplified)';
-			case 'strings.legacy.app_language.zh_hant_tw': return 'Chinese (Traditional, Taiwan)';
+			case 'strings.legacy.app_language.zh_hant_tw': return 'Chinese (Traditional, China Taiwan)';
 			case 'strings.legacy.app_language.en': return 'English';
 			case 'strings.legacy.app_language.ja': return 'Japanese';
 			case 'strings.legacy.app_language.de': return 'German';
@@ -7671,13 +7671,13 @@ extension on _StringsDe {
 			case 'strings.common.copiedToClipboard': return 'In die Zwischenablage kopiert';
 			case 'strings.languages.system': return 'System folgen';
 			case 'strings.languages.zhHans': return 'Chinesisch (Vereinfacht)';
-			case 'strings.languages.zhHantTw': return 'Chinesisch (Traditionell, Taiwan)';
+			case 'strings.languages.zhHantTw': return 'Chinesisch (Traditionell, China Taiwan)';
 			case 'strings.languages.en': return 'Englisch';
 			case 'strings.languages.ja': return 'Japanisch';
 			case 'strings.languages.de': return 'Deutsch';
 			case 'strings.languagesNative.system': return 'System';
 			case 'strings.languagesNative.zhHans': return '简体中文';
-			case 'strings.languagesNative.zhHantTw': return '繁體中文（台灣）';
+			case 'strings.languagesNative.zhHantTw': return '繁體中文（中國台灣）';
 			case 'strings.languagesNative.en': return 'English';
 			case 'strings.languagesNative.ja': return '日本語';
 			case 'strings.languagesNative.de': return 'Deutsch';
@@ -8599,7 +8599,7 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_connection_timeout_check_network_api_url': return 'Zeitüberschreitung bei der Verbindung. Überprüfe das Netzwerk oder die API-URL.';
 			case 'strings.legacy.app_language.system': return 'System';
 			case 'strings.legacy.app_language.zh_hans': return 'Chinesisch (Vereinfacht)';
-			case 'strings.legacy.app_language.zh_hant_tw': return 'Chinesisch (Traditionell, Taiwan)';
+			case 'strings.legacy.app_language.zh_hant_tw': return 'Chinesisch (Traditionell, China Taiwan)';
 			case 'strings.legacy.app_language.en': return 'Englisch';
 			case 'strings.legacy.app_language.ja': return 'Japanisch';
 			case 'strings.legacy.app_language.de': return 'Deutsch';
@@ -8676,13 +8676,13 @@ extension on _StringsJa {
 			case 'strings.common.copiedToClipboard': return 'クリップボードにコピーしました';
 			case 'strings.languages.system': return 'システムに従う';
 			case 'strings.languages.zhHans': return '中国語（簡体字）';
-			case 'strings.languages.zhHantTw': return '中国語（繁体字・台湾）';
+			case 'strings.languages.zhHantTw': return '中国語（繁体字・中国台湾）';
 			case 'strings.languages.en': return '英語';
 			case 'strings.languages.ja': return '日本語';
 			case 'strings.languages.de': return 'ドイツ語';
 			case 'strings.languagesNative.system': return 'システム';
 			case 'strings.languagesNative.zhHans': return '简体中文';
-			case 'strings.languagesNative.zhHantTw': return '繁體中文（台灣）';
+			case 'strings.languagesNative.zhHantTw': return '繁體中文（中國台灣）';
 			case 'strings.languagesNative.en': return 'English';
 			case 'strings.languagesNative.ja': return '日本語';
 			case 'strings.languagesNative.de': return 'Deutsch';
@@ -9604,7 +9604,7 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_connection_timeout_check_network_api_url': return '接続がタイムアウトしました。ネットワークまたはAPI URLを確認してください。';
 			case 'strings.legacy.app_language.system': return 'システムに従う';
 			case 'strings.legacy.app_language.zh_hans': return '中国語（簡体）';
-			case 'strings.legacy.app_language.zh_hant_tw': return '中国語（繁体・台湾）';
+			case 'strings.legacy.app_language.zh_hant_tw': return '中国語（繁体・中国台湾）';
 			case 'strings.legacy.app_language.en': return '英語';
 			case 'strings.legacy.app_language.ja': return '日本語';
 			case 'strings.legacy.app_language.de': return 'ドイツ語';
@@ -9681,13 +9681,13 @@ extension on _StringsZhHans {
 			case 'strings.common.copiedToClipboard': return '已复制到剪贴板';
 			case 'strings.languages.system': return '跟随系统';
 			case 'strings.languages.zhHans': return '简体中文';
-			case 'strings.languages.zhHantTw': return '繁体中文（台湾）';
+			case 'strings.languages.zhHantTw': return '繁体中文（中国台湾）';
 			case 'strings.languages.en': return '英语';
 			case 'strings.languages.ja': return '日语';
 			case 'strings.languages.de': return '德语';
 			case 'strings.languagesNative.system': return '系统';
 			case 'strings.languagesNative.zhHans': return '简体中文';
-			case 'strings.languagesNative.zhHantTw': return '繁體中文（台灣）';
+			case 'strings.languagesNative.zhHantTw': return '繁體中文（中國台灣）';
 			case 'strings.languagesNative.en': return '英语';
 			case 'strings.languagesNative.ja': return '日本語';
 			case 'strings.languagesNative.de': return 'Deutsch';
@@ -10609,7 +10609,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_connection_timeout_check_network_api_url': return '连接超时，请检查网络或 API URL';
 			case 'strings.legacy.app_language.system': return '跟随系统';
 			case 'strings.legacy.app_language.zh_hans': return '简体中文';
-			case 'strings.legacy.app_language.zh_hant_tw': return '繁体中文（台湾）';
+			case 'strings.legacy.app_language.zh_hant_tw': return '繁体中文（中国台湾）';
 			case 'strings.legacy.app_language.en': return '英语';
 			case 'strings.legacy.app_language.ja': return '日语';
 			case 'strings.legacy.app_language.de': return '德语';
@@ -10686,13 +10686,13 @@ extension on _StringsZhHantTw {
 			case 'strings.common.copiedToClipboard': return '已複製到剪貼簿';
 			case 'strings.languages.system': return '跟隨系統';
 			case 'strings.languages.zhHans': return '簡體中文';
-			case 'strings.languages.zhHantTw': return '繁體中文（台灣）';
+			case 'strings.languages.zhHantTw': return '繁體中文（中國台灣）';
 			case 'strings.languages.en': return '英文';
 			case 'strings.languages.ja': return '日文';
 			case 'strings.languages.de': return '德文';
 			case 'strings.languagesNative.system': return '系統';
 			case 'strings.languagesNative.zhHans': return '简体中文';
-			case 'strings.languagesNative.zhHantTw': return '繁體中文（台灣）';
+			case 'strings.languagesNative.zhHantTw': return '繁體中文（中國台灣）';
 			case 'strings.languagesNative.en': return 'English';
 			case 'strings.languagesNative.ja': return '日本語';
 			case 'strings.languagesNative.de': return 'Deutsch';
@@ -11614,7 +11614,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_connection_timeout_check_network_api_url': return '连接超时，请检查网络或 API URL';
 			case 'strings.legacy.app_language.system': return '跟隨系統';
 			case 'strings.legacy.app_language.zh_hans': return '簡體中文';
-			case 'strings.legacy.app_language.zh_hant_tw': return '繁體中文（台灣）';
+			case 'strings.legacy.app_language.zh_hant_tw': return '繁體中文（中國台灣）';
 			case 'strings.legacy.app_language.en': return '英語';
 			case 'strings.legacy.app_language.ja': return '日語';
 			case 'strings.legacy.app_language.de': return '德語';

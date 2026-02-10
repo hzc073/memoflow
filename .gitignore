@@ -36,3 +36,5 @@
 **/.vscode/
 **/*.iml
 memos_flutter_app/tool/
+__tmp_app_drawer_numbered.txt
+__tmp_memos_list_numbered.txt
