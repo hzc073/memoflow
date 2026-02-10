@@ -82,12 +82,17 @@ class AppDrawer extends ConsumerWidget {
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);
-    final prefs = ref.watch(appPreferencesProvider);
-    final pendingOutboxAsync = ref.watch(_pendingOutboxCountProvider);
-    final pendingOutboxCount = pendingOutboxAsync.valueOrNull ?? 0;
-    final showSyncBadge = pendingOutboxCount > 0;
-    final unreadNotifications = ref.watch(unreadNotificationCountProvider);
-    final showNotificationBadge = unreadNotifications > 0;
+    final drawerPrefs = ref.watch(
+      appPreferencesProvider.select(
+        (prefs) => (
+          showDrawerExplore: prefs.showDrawerExplore,
+          showDrawerDailyReview: prefs.showDrawerDailyReview,
+          showDrawerAiSummary: prefs.showDrawerAiSummary,
+          showDrawerResources: prefs.showDrawerResources,
+          showDrawerArchive: prefs.showDrawerArchive,
+        ),
+      ),
+    );
 
     final bg = isDark ? const Color(0xFF181818) : MemoFlowPalette.backgroundLight;
     final textMain = isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight;
@@ -123,25 +128,36 @@ class AppDrawer extends ConsumerWidget {
                       IconButton(
                         tooltip: context.t.strings.legacy.msg_sync_queue,
                         onPressed: () => onSelect(AppDrawerDestination.syncQueue),
-                        icon: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Icon(Icons.sync, color: textMuted),
-                            if (showSyncBadge)
-                              Positioned(
-                                right: -2,
-                                top: -2,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: MemoFlowPalette.primary,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: bg, width: 1),
+                        icon: Consumer(
+                          builder: (context, ref, child) {
+                            final pendingOutboxAsync = ref.watch(
+                              _pendingOutboxCountProvider,
+                            );
+                            final pendingOutboxCount =
+                                pendingOutboxAsync.valueOrNull ?? 0;
+                            final showSyncBadge = pendingOutboxCount > 0;
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                child!,
+                                if (showSyncBadge)
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: MemoFlowPalette.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: bg, width: 1),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                          ],
+                              ],
+                            );
+                          },
+                          child: Icon(Icons.sync, color: textMuted),
                         ),
                       ),
                       IconButton(
@@ -157,25 +173,35 @@ class AppDrawer extends ConsumerWidget {
                           }
                           handler();
                         },
-                        icon: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Icon(Icons.notifications, color: textMuted),
-                            if (showNotificationBadge)
-                              Positioned(
-                                right: -2,
-                                top: -2,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE05555),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: bg, width: 1),
+                        icon: Consumer(
+                          builder: (context, ref, child) {
+                            final unreadNotifications = ref.watch(
+                              unreadNotificationCountProvider,
+                            );
+                            final showNotificationBadge =
+                                unreadNotifications > 0;
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                child!,
+                                if (showNotificationBadge)
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE05555),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: bg, width: 1),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                          ],
+                              ],
+                            );
+                          },
+                          child: Icon(Icons.notifications, color: textMuted),
                         ),
                       ),
                       IconButton(
@@ -269,7 +295,7 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
-                    if (prefs.showDrawerExplore)
+                    if (drawerPrefs.showDrawerExplore)
                     _NavButton(
                       selected: selected == AppDrawerDestination.explore,
                       label: context.t.strings.legacy.msg_explore,
@@ -278,7 +304,7 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
-                    if (prefs.showDrawerDailyReview)
+                    if (drawerPrefs.showDrawerDailyReview)
                     _NavButton(
                       selected: selected == AppDrawerDestination.dailyReview,
                       label: context.t.strings.legacy.msg_random_review,
@@ -287,7 +313,7 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
-                  if (prefs.showDrawerAiSummary)
+                  if (drawerPrefs.showDrawerAiSummary)
                     _NavButton(
                       selected: selected == AppDrawerDestination.aiSummary,
                       label: context.t.strings.legacy.msg_ai_summary,
@@ -296,7 +322,7 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
-                  if (prefs.showDrawerResources)
+                  if (drawerPrefs.showDrawerResources)
                     _NavButton(
                       selected: selected == AppDrawerDestination.resources,
                       label: context.t.strings.legacy.msg_attachments,
@@ -305,7 +331,7 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
-                  if (prefs.showDrawerArchive)
+                  if (drawerPrefs.showDrawerArchive)
                     _NavButton(
                       selected: selected == AppDrawerDestination.archived,
                       label: context.t.strings.legacy.msg_archive,
@@ -575,6 +601,7 @@ class _DrawerHeatmap extends StatelessWidget {
     final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
     final currentWeekStart = endLocal.subtract(Duration(days: endLocal.weekday - 1));
     final alignedStart = currentWeekStart.subtract(Duration(days: (weeks - 1) * daysPerWeek));
+    final locale = Localizations.localeOf(context).toString();
 
     final maxCount = dailyCounts.values.fold<int>(0, (max, v) => v > max ? v : max);
 
@@ -600,7 +627,6 @@ class _DrawerHeatmap extends StatelessWidget {
     }
 
     String monthLabel(DateTime d) {
-      final locale = Localizations.localeOf(context).toString();
       return DateFormat.MMM(locale).format(d.toLocal());
     }
 
@@ -609,7 +635,6 @@ class _DrawerHeatmap extends StatelessWidget {
     final labelColor = (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35);
 
     String weekdayLabel(DateTime d) {
-      final locale = Localizations.localeOf(context).toString();
       return DateFormat.E(locale).format(d);
     }
 
@@ -648,6 +673,8 @@ class _DrawerHeatmap extends StatelessWidget {
       navigator.pushNamed('/memos/day', arguments: d);
     }
 
+    final tooltipCache = <DateTime, String>{};
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -668,8 +695,12 @@ class _DrawerHeatmap extends StatelessWidget {
             final count = dailyCounts[day] ?? 0;
             final isToday = day == today;
             final color = colorFor(count);
+            final tooltip = tooltipCache.putIfAbsent(
+              day,
+              () => tooltipLabel(day, count),
+            );
             return Tooltip(
-              message: tooltipLabel(day, count),
+              message: tooltip,
               triggerMode: TooltipTriggerMode.longPress,
               child: Material(
                 color: Colors.transparent,

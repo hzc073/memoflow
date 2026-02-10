@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/tags.dart';
@@ -66,7 +67,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
-    context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
           title: 'MemoFlow',
@@ -89,9 +89,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
     };
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+    closeDrawerThenPushReplacement(context, route);
   }
   void _backToAllMemos(BuildContext context) {
     Navigator.of(context).pushAndRemoveUntil(
@@ -108,25 +106,20 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _openTag(BuildContext context, String tag) {
-    context.safePop();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => MemosListScreen(
-          title: '#$tag',
-          state: 'NORMAL',
-          tag: tag,
-          showDrawer: true,
-          enableCompose: true,
-        ),
+    closeDrawerThenPushReplacement(
+      context,
+      MemosListScreen(
+        title: '#$tag',
+        state: 'NORMAL',
+        tag: tag,
+        showDrawer: true,
+        enableCompose: true,
       ),
     );
   }
 
   void _openNotifications(BuildContext context) {
-    context.safePop();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
-    );
+    closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
   void _applyPrompt(String text) {

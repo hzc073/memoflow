@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
+import '../../core/drawer_navigation.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
@@ -259,7 +260,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
-    context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
@@ -278,27 +278,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
     };
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+    closeDrawerThenPushReplacement(context, route);
   }
 
   void _openTag(BuildContext context, String tag) {
-    context.safePop();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => MemosListScreen(
-          title: '#$tag',
-          state: 'NORMAL',
-          tag: tag,
-          showDrawer: true,
-          enableCompose: true,
-        ),
+    closeDrawerThenPushReplacement(
+      context,
+      MemosListScreen(
+        title: '#$tag',
+        state: 'NORMAL',
+        tag: tag,
+        showDrawer: true,
+        enableCompose: true,
       ),
     );
   }
 
   void _openNotifications(BuildContext context) {
-    context.safePop();
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
+    closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
   void _toggleSearch() {

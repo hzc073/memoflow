@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
+import '../../core/drawer_navigation.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
@@ -1126,7 +1127,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
-    context.safePop();
     final hasAccount =
         ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     if (!hasAccount && dest == AppDrawerDestination.explore) {
@@ -1158,16 +1158,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
     };
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+    closeDrawerThenPushReplacement(context, route);
   }
 
   void _openNotifications() {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
-    context.safePop();
     final hasAccount =
         ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     if (!hasAccount) {
@@ -1177,9 +1174,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       );
       return;
     }
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
-    );
+    closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
   void _openSyncQueue() {
@@ -1195,16 +1190,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (ref.read(appPreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
-    context.safePop();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => MemosListScreen(
-          title: '#$tag',
-          state: 'NORMAL',
-          tag: tag,
-          showDrawer: true,
-          enableCompose: true,
-        ),
+    closeDrawerThenPushReplacement(
+      context,
+      MemosListScreen(
+        title: '#$tag',
+        state: 'NORMAL',
+        tag: tag,
+        showDrawer: true,
+        enableCompose: true,
       ),
     );
   }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_localization.dart';
+import '../../core/drawer_navigation.dart';
 import '../../state/memos_providers.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
@@ -35,7 +35,6 @@ class TagsScreen extends ConsumerWidget {
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
-    context.safePop();
     final route = switch (dest) {
       AppDrawerDestination.memos =>
         const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
@@ -54,27 +53,24 @@ class TagsScreen extends ConsumerWidget {
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
     };
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => route));
+    closeDrawerThenPushReplacement(context, route);
   }
 
   void _openTag(BuildContext context, String tag) {
-    context.safePop();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => MemosListScreen(
-          title: '#$tag',
-          state: 'NORMAL',
-          tag: tag,
-          showDrawer: true,
-          enableCompose: true,
-        ),
+    closeDrawerThenPushReplacement(
+      context,
+      MemosListScreen(
+        title: '#$tag',
+        state: 'NORMAL',
+        tag: tag,
+        showDrawer: true,
+        enableCompose: true,
       ),
     );
   }
 
   void _openNotifications(BuildContext context) {
-    context.safePop();
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
+    closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
   @override
