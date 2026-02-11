@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:highlight/highlight.dart' as hi;
 import 'package:html/dom.dart' as dom;
@@ -653,7 +654,24 @@ class MemoMarkdown extends StatelessWidget {
                 },
                 errorBuilder: (context, error, stackTrace) {
                   logImageError(src, error, stackTrace);
-                  return imageError();
+                  final lower = src.toLowerCase();
+                  final isSvg = lower.endsWith('.svg') ||
+                      lower.contains('format=svg') ||
+                      lower.contains('mime=image/svg+xml');
+                  if (!isSvg) {
+                    return imageError();
+                  }
+                  return SvgPicture.network(
+                    src,
+                    width: targetWidth,
+                    height: targetHeight,
+                    fit: BoxFit.contain,
+                    placeholderBuilder: (_) => imagePlaceholder(),
+                    errorBuilder: (_, svgError, svgStack) {
+                      logImageError(src, svgError, svgStack);
+                      return imageError();
+                    },
+                  );
                 },
               );
 
@@ -1298,10 +1316,16 @@ String? _extractCodeLanguage(dom.Element? codeElement) {
 
 String _normalizeImageSrc(String value) {
   final trimmed = value.trim();
+  String normalized;
   if (trimmed.startsWith('//')) {
-    return _normalizeGithubBlobImageUrl('https:$trimmed');
+    normalized = 'https:$trimmed';
+  } else {
+    normalized = trimmed;
   }
-  return _normalizeGithubBlobImageUrl(trimmed);
+  normalized = _normalizeGithubBlobImageUrl(normalized);
+  normalized = _normalizeGitlabBlobImageUrl(normalized);
+  normalized = _normalizeGiteeBlobImageUrl(normalized);
+  return normalized;
 }
 
 String _normalizeGithubBlobImageUrl(String value) {
@@ -1336,6 +1360,44 @@ String _normalizeGithubBlobImageUrl(String value) {
     queryParameters: uri.queryParameters.isEmpty ? null : uri.queryParameters,
     fragment: uri.fragment.isEmpty ? null : uri.fragment,
   ).toString();
+}
+
+String _normalizeGitlabBlobImageUrl(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri == null || !uri.hasScheme) return value;
+  final host = uri.host.toLowerCase();
+  if (host != 'gitlab.com' && host != 'www.gitlab.com') {
+    return value;
+  }
+
+  final marker = '/-/blob/';
+  final path = uri.path;
+  final idx = path.indexOf(marker);
+  if (idx <= 0) {
+    return value;
+  }
+
+  final convertedPath = '${path.substring(0, idx)}/-/raw/${path.substring(idx + marker.length)}';
+  return uri.replace(path: convertedPath).toString();
+}
+
+String _normalizeGiteeBlobImageUrl(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri == null || !uri.hasScheme) return value;
+  final host = uri.host.toLowerCase();
+  if (host != 'gitee.com' && host != 'www.gitee.com') {
+    return value;
+  }
+
+  final marker = '/blob/';
+  final path = uri.path;
+  final idx = path.indexOf(marker);
+  if (idx <= 0) {
+    return value;
+  }
+
+  final convertedPath = '${path.substring(0, idx)}/raw/${path.substring(idx + marker.length)}';
+  return uri.replace(path: convertedPath).toString();
 }
 
 String _appendGithubRawQuery(Uri uri) {

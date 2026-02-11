@@ -15,6 +15,7 @@ import '../../core/top_toast.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
+import '../../core/image_error_logger.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/content_fingerprint.dart';
 import '../../data/models/local_memo.dart';
@@ -1185,11 +1186,23 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
             height: 80,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
-          errorWidget: (context, url, error) => const SizedBox(
-            width: 110,
-            height: 80,
-            child: Icon(Icons.broken_image),
-          ),
+          errorWidget: (context, _, error) {
+            logImageLoadError(
+              scope: 'memo_detail_comment_image',
+              source: displayUrl,
+              error: error,
+              extraContext: <String, Object?>{
+                'attachmentName': attachment.name,
+                'attachmentType': attachment.type,
+                'hasAuthHeader': authHeader?.trim().isNotEmpty ?? false,
+              },
+            );
+            return const SizedBox(
+              width: 110,
+              height: 80,
+              child: Icon(Icons.broken_image),
+            );
+          },
         ),
       ),
     );
@@ -1228,7 +1241,19 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => fallbackWidget,
+          errorBuilder: (_, error, stackTrace) {
+            logImageLoadError(
+              scope: 'memo_detail_avatar_data_uri',
+              source: avatarUrl,
+              error: error,
+              stackTrace: stackTrace,
+              extraContext: <String, Object?>{
+                'userName': creator?.name,
+                'avatarKind': 'data_uri',
+              },
+            );
+            return fallbackWidget;
+          },
         ),
       );
     }
@@ -1240,7 +1265,18 @@ class _MemoEngagementSectionState extends ConsumerState<_MemoEngagementSection> 
         height: size,
         fit: BoxFit.cover,
         placeholder: (context, url) => fallbackWidget,
-        errorWidget: (context, url, error) => fallbackWidget,
+        errorWidget: (context, _, error) {
+          logImageLoadError(
+            scope: 'memo_detail_avatar_network',
+            source: avatarUrl,
+            error: error,
+            extraContext: <String, Object?>{
+              'userName': creator?.name,
+              'avatarKind': 'network',
+            },
+          );
+          return fallbackWidget;
+        },
       ),
     );
   }

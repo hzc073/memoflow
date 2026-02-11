@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/image_error_logger.dart';
 import 'attachment_gallery_screen.dart';
 import 'attachment_video_screen.dart';
 import 'memo_image_grid.dart';
@@ -123,8 +124,19 @@ class MemoMediaGrid extends StatelessWidget {
         image = Image.file(
           file,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              placeholder(Icons.broken_image_outlined),
+          errorBuilder: (context, error, stackTrace) {
+            logImageLoadError(
+              scope: 'memo_media_grid_local',
+              source: file.path,
+              error: error,
+              stackTrace: stackTrace,
+              extraContext: <String, Object?>{
+                'entryId': entry.id,
+                'mimeType': entry.mimeType,
+              },
+            );
+            return placeholder(Icons.broken_image_outlined);
+          },
         );
       } else if (url.isNotEmpty) {
         image = CachedNetworkImage(
@@ -132,8 +144,20 @@ class MemoMediaGrid extends StatelessWidget {
           httpHeaders: entry.headers,
           fit: BoxFit.cover,
           placeholder: (context, _) => placeholder(Icons.image_outlined),
-          errorWidget: (context, error, stackTrace) =>
-              placeholder(Icons.broken_image_outlined),
+          errorWidget: (context, _, error) {
+            logImageLoadError(
+              scope: 'memo_media_grid_network',
+              source: url,
+              error: error,
+              extraContext: <String, Object?>{
+                'entryId': entry.id,
+                'mimeType': entry.mimeType,
+                'hasAuthHeader':
+                    entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+              },
+            );
+            return placeholder(Icons.broken_image_outlined);
+          },
         );
       } else {
         image = placeholder(Icons.image_outlined);

@@ -3,7 +3,10 @@ import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../core/image_formats.dart';
+import '../../core/image_error_logger.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import 'attachment_gallery_screen.dart';
@@ -222,19 +225,98 @@ class MemoImageGrid extends StatelessWidget {
       final url = (entry.previewUrl ?? entry.fullUrl ?? '').trim();
       Widget image;
       if (file != null) {
-        image = Image.file(
-          file,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => placeholder(Icons.broken_image_outlined),
+        final isSvg = shouldUseSvgRenderer(
+          url: file.path,
+          mimeType: entry.mimeType,
         );
+        if (isSvg) {
+          image = SvgPicture.file(
+            file,
+            fit: BoxFit.cover,
+            placeholderBuilder: (context) => placeholder(Icons.image_outlined),
+            errorBuilder: (context, error, stackTrace) {
+              logImageLoadError(
+                scope: 'memo_image_grid_local_svg',
+                source: file.path,
+                error: error,
+                stackTrace: stackTrace,
+                extraContext: <String, Object?>{
+                  'entryId': entry.id,
+                  'mimeType': entry.mimeType,
+                  'isAttachment': entry.isAttachment,
+                },
+              );
+              return placeholder(Icons.broken_image_outlined);
+            },
+          );
+        } else {
+          image = Image.file(
+            file,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              logImageLoadError(
+                scope: 'memo_image_grid_local',
+                source: file.path,
+                error: error,
+                stackTrace: stackTrace,
+                extraContext: <String, Object?>{
+                  'entryId': entry.id,
+                  'mimeType': entry.mimeType,
+                  'isAttachment': entry.isAttachment,
+                },
+              );
+              return placeholder(Icons.broken_image_outlined);
+            },
+          );
+        }
       } else if (url.isNotEmpty) {
-        image = CachedNetworkImage(
-          imageUrl: url,
-          httpHeaders: entry.headers,
-          fit: BoxFit.cover,
-          placeholder: (context, _) => placeholder(Icons.image_outlined),
-          errorWidget: (context, _, _) => placeholder(Icons.broken_image_outlined),
-        );
+        final isSvg = shouldUseSvgRenderer(url: url, mimeType: entry.mimeType);
+        if (isSvg) {
+          image = SvgPicture.network(
+            url,
+            headers: entry.headers,
+            fit: BoxFit.cover,
+            placeholderBuilder: (context) => placeholder(Icons.image_outlined),
+            errorBuilder: (context, error, stackTrace) {
+              logImageLoadError(
+                scope: 'memo_image_grid_network_svg',
+                source: url,
+                error: error,
+                stackTrace: stackTrace,
+                extraContext: <String, Object?>{
+                  'entryId': entry.id,
+                  'mimeType': entry.mimeType,
+                  'isAttachment': entry.isAttachment,
+                  'hasAuthHeader':
+                      entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                },
+              );
+              return placeholder(Icons.broken_image_outlined);
+            },
+          );
+        } else {
+          image = CachedNetworkImage(
+            imageUrl: url,
+            httpHeaders: entry.headers,
+            fit: BoxFit.cover,
+            placeholder: (context, _) => placeholder(Icons.image_outlined),
+            errorWidget: (context, _, error) {
+              logImageLoadError(
+                scope: 'memo_image_grid_network',
+                source: url,
+                error: error,
+                extraContext: <String, Object?>{
+                  'entryId': entry.id,
+                  'mimeType': entry.mimeType,
+                  'isAttachment': entry.isAttachment,
+                  'hasAuthHeader':
+                      entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                },
+              );
+              return placeholder(Icons.broken_image_outlined);
+            },
+          );
+        }
       } else {
         image = placeholder(Icons.image_outlined);
       }

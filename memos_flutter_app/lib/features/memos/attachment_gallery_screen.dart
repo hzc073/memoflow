@@ -13,6 +13,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/image_error_logger.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
 import 'attachment_video_screen.dart';
@@ -438,8 +439,19 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
       return Image.file(
         file,
         fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) =>
-            const Icon(Icons.broken_image, color: Colors.white),
+        errorBuilder: (context, error, stackTrace) {
+          logImageLoadError(
+            scope: 'attachment_gallery_local',
+            source: file.path,
+            error: error,
+            stackTrace: stackTrace,
+            extraContext: <String, Object?>{
+              'sourceId': source.id,
+              'mimeType': source.mimeType,
+            },
+          );
+          return const Icon(Icons.broken_image, color: Colors.white);
+        },
       );
     }
     final url = source.imageUrl?.trim() ?? '';
@@ -450,8 +462,20 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
         fit: BoxFit.contain,
         placeholder: (context, _) =>
             const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, _, _) =>
-            const Icon(Icons.broken_image, color: Colors.white),
+        errorWidget: (context, _, error) {
+          logImageLoadError(
+            scope: 'attachment_gallery_network',
+            source: url,
+            error: error,
+            extraContext: <String, Object?>{
+              'sourceId': source.id,
+              'mimeType': source.mimeType,
+              'hasAuthHeader':
+                  source.headers?['Authorization']?.trim().isNotEmpty ?? false,
+            },
+          );
+          return const Icon(Icons.broken_image, color: Colors.white);
+        },
       );
     }
     return const Icon(Icons.broken_image, color: Colors.white);
