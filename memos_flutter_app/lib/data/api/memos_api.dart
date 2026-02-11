@@ -431,6 +431,91 @@ class MemosApi {
     return status == 404 || status == 405;
   }
 
+  bool _legacyMemoEndpointsAllowed() {
+    switch (_serverFlavor) {
+      case _ServerApiFlavor.v0_25Plus:
+      case _ServerApiFlavor.v0_24:
+        return false;
+      case _ServerApiFlavor.unknown:
+      case _ServerApiFlavor.v0_22:
+      case _ServerApiFlavor.v0_21:
+        return true;
+    }
+  }
+
+  void _logMemoFallbackDecision({
+    required String operation,
+    required bool allowed,
+    required String reason,
+    DioException? error,
+    String? endpoint,
+  }) {
+    final requestPath = error?.requestOptions.path;
+    final statusCode = error?.response?.statusCode;
+    final safeEndpoint = (endpoint ?? requestPath ?? '').trim();
+    _logManager?.log(
+      allowed ? LogLevel.info : LogLevel.warn,
+      allowed ? 'Memo legacy fallback enabled' : 'Memo legacy fallback blocked',
+      error: error,
+      context: <String, Object?>{
+        'operation': operation,
+        'reason': reason,
+        'status': statusCode,
+        'endpoint': safeEndpoint,
+        'serverFlavor': _serverFlavor.name,
+        'serverVersion': _serverVersionRaw,
+        'memoLegacy': _memoApiLegacy,
+        'useLegacyApi': useLegacyApi,
+      },
+    );
+  }
+
+  bool _allowMemoFallbackFromError(
+    DioException error, {
+    required String operation,
+    String? endpoint,
+  }) {
+    if (!_shouldFallbackLegacy(error)) return false;
+    final allowed = _legacyMemoEndpointsAllowed();
+    _logMemoFallbackDecision(
+      operation: operation,
+      allowed: allowed,
+      reason: 'http_${error.response?.statusCode ?? 0}',
+      error: error,
+      endpoint: endpoint,
+    );
+    return allowed;
+  }
+
+  bool _allowMemoFallbackFromFormat({
+    required String operation,
+    String? endpoint,
+  }) {
+    final allowed = _legacyMemoEndpointsAllowed();
+    _logMemoFallbackDecision(
+      operation: operation,
+      allowed: allowed,
+      reason: 'format_exception',
+      endpoint: endpoint,
+    );
+    return allowed;
+  }
+
+  bool _ensureLegacyMemoEndpointAllowed(String endpoint, {required String operation}) {
+    if (_legacyMemoEndpointsAllowed()) return true;
+    final wasLegacy = _memoApiLegacy;
+    if (wasLegacy && !useLegacyApi) {
+      _memoApiLegacy = false;
+    }
+    _logMemoFallbackDecision(
+      operation: operation,
+      allowed: false,
+      reason: 'legacy_endpoint_forbidden_by_flavor',
+      endpoint: endpoint,
+    );
+    return false;
+  }
+
   static bool _shouldFallbackProfile(DioException e) {
     final status = e.response?.statusCode ?? 0;
     return status == 401 || status == 403 || status == 404 || status == 405;
@@ -640,17 +725,15 @@ class MemosApi {
     final rawStats = _readMap(body['stats']) ?? body;
     final times = <DateTime>[];
     var total = 0;
-    if (rawStats is Map) {
-      for (final entry in rawStats.entries) {
-        final dateKey = entry.key?.toString() ?? '';
-        final count = _readInt(entry.value);
-        if (count <= 0) continue;
-        final dt = _parseStatsDateKey(dateKey);
-        if (dt == null) continue;
-        total += count;
-        for (var i = 0; i < count; i++) {
-          times.add(dt);
-        }
+    for (final entry in rawStats.entries) {
+      final dateKey = entry.key.toString();
+      final count = _readInt(entry.value);
+      if (count <= 0) continue;
+      final dt = _parseStatsDateKey(dateKey);
+      if (dt == null) continue;
+      total += count;
+      for (var i = 0; i < count; i++) {
+        times.add(dt);
       }
     }
     if (total <= 0) {
@@ -2334,7 +2417,11 @@ class MemosApi {
       try {
         return await callModern();
       } on DioException catch (e) {
-        if (_shouldFallbackLegacy(e)) {
+        if (_allowMemoFallbackFromError(
+          e,
+          operation: 'list_memos_prefer_modern',
+          endpoint: 'api/v1/memo',
+        )) {
           _markMemoLegacy();
           return await _listMemosLegacy(
             pageSize: pageSize,
@@ -2345,6 +2432,12 @@ class MemosApi {
         }
         rethrow;
       } on FormatException {
+        if (!_allowMemoFallbackFromFormat(
+          operation: 'list_memos_prefer_modern',
+          endpoint: 'api/v1/memo',
+        )) {
+          rethrow;
+        }
         _markMemoLegacy();
         return await _listMemosLegacy(
           pageSize: pageSize,
@@ -2356,6 +2449,12 @@ class MemosApi {
     }
 
     if (_memoApiLegacy) {
+      if (!_ensureLegacyMemoEndpointAllowed(
+        'api/v1/memo',
+        operation: 'list_memos_force_legacy',
+      )) {
+        return await callModern();
+      }
       return _listMemosLegacy(
         pageSize: pageSize,
         pageToken: pageToken,
@@ -2366,7 +2465,11 @@ class MemosApi {
     try {
       return await callModern();
     } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
+      if (_allowMemoFallbackFromError(
+        e,
+        operation: 'list_memos',
+        endpoint: 'api/v1/memo',
+      )) {
         _markMemoLegacy();
         return await _listMemosLegacy(
           pageSize: pageSize,
@@ -2377,6 +2480,12 @@ class MemosApi {
       }
       rethrow;
     } on FormatException {
+      if (!_allowMemoFallbackFromFormat(
+        operation: 'list_memos',
+        endpoint: 'api/v1/memo',
+      )) {
+        rethrow;
+      }
       _markMemoLegacy();
       return await _listMemosLegacy(
         pageSize: pageSize,
@@ -2406,6 +2515,13 @@ class MemosApi {
       return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
     } on DioException catch (e) {
       if (!_shouldFallback(e) && !_shouldFallbackLegacy(e)) {
+        rethrow;
+      }
+      if (!_allowMemoFallbackFromError(
+        e,
+        operation: 'list_explore_memos',
+        endpoint: 'api/v1/memo/all',
+      )) {
         rethrow;
       }
       _markMemoLegacy();
@@ -2464,6 +2580,14 @@ class MemosApi {
     required int pageSize,
     String? pageToken,
   }) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo/all',
+      operation: 'list_memos_all_legacy',
+    )) {
+      throw StateError(
+        'Legacy memo/all endpoint is blocked for server flavor ${_serverFlavor.name}',
+      );
+    }
     final normalizedToken = (pageToken ?? '').trim();
     final offset = int.tryParse(normalizedToken) ?? 0;
     final limit = pageSize > 0 ? pageSize : 0;
@@ -2496,17 +2620,33 @@ class MemosApi {
   Future<Memo> getMemo({required String memoUid}) async {
     await _ensureServerHints();
     if (_memoApiLegacy) {
+      if (!_ensureLegacyMemoEndpointAllowed(
+        'api/v1/memo',
+        operation: 'get_memo_force_legacy',
+      )) {
+        return _getMemoModern(memoUid);
+      }
       return _getMemoLegacy(memoUid);
     }
     try {
       return await _getMemoModern(memoUid);
     } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
+      if (_allowMemoFallbackFromError(
+        e,
+        operation: 'get_memo',
+        endpoint: 'api/v1/memo',
+      )) {
         _markMemoLegacy();
         return await _getMemoLegacy(memoUid);
       }
       rethrow;
     } on FormatException {
+      if (!_allowMemoFallbackFromFormat(
+        operation: 'get_memo',
+        endpoint: 'api/v1/memo',
+      )) {
+        rethrow;
+      }
       _markMemoLegacy();
       return _getMemoLegacy(memoUid);
     }
@@ -2518,6 +2658,12 @@ class MemosApi {
   }
 
   Future<Memo> _getMemoLegacy(String memoUid) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo',
+      operation: 'get_memo_legacy',
+    )) {
+      return _getMemoModern(memoUid);
+    }
     try {
       return await _getMemoLegacyV1(memoUid);
     } on DioException catch (e) {
@@ -2533,11 +2679,21 @@ class MemosApi {
     try {
       return await _getMemoModern(memoUid);
     } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e) || _shouldFallback(e)) {
+      if (_allowMemoFallbackFromError(
+        e,
+        operation: 'get_memo_compat',
+        endpoint: 'api/v1/memo',
+      )) {
         return await _getMemoLegacy(memoUid);
       }
       rethrow;
     } on FormatException {
+      if (!_allowMemoFallbackFromFormat(
+        operation: 'get_memo_compat',
+        endpoint: 'api/v1/memo',
+      )) {
+        rethrow;
+      }
       return await _getMemoLegacy(memoUid);
     }
   }
@@ -2566,6 +2722,18 @@ class MemosApi {
   }) async {
     await _ensureServerHints();
     if (_memoApiLegacy) {
+      if (!_ensureLegacyMemoEndpointAllowed(
+        'api/v1/memo',
+        operation: 'create_memo_force_legacy',
+      )) {
+        return _createMemoModern(
+          memoId: memoId,
+          content: content,
+          visibility: visibility,
+          pinned: pinned,
+          location: location,
+        );
+      }
       return _createMemoLegacy(
         memoId: memoId,
         content: content,
@@ -2582,7 +2750,11 @@ class MemosApi {
         location: location,
       );
     } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
+      if (_allowMemoFallbackFromError(
+        e,
+        operation: 'create_memo',
+        endpoint: 'api/v1/memo',
+      )) {
         _markMemoLegacy();
         return await _createMemoLegacy(
           memoId: memoId,
@@ -2593,6 +2765,12 @@ class MemosApi {
       }
       rethrow;
     } on FormatException {
+      if (!_allowMemoFallbackFromFormat(
+        operation: 'create_memo',
+        endpoint: 'api/v1/memo',
+      )) {
+        rethrow;
+      }
       _markMemoLegacy();
       return _createMemoLegacy(
         memoId: memoId,
@@ -2634,6 +2812,20 @@ class MemosApi {
   }) async {
     await _ensureServerHints();
     if (_memoApiLegacy) {
+      if (!_ensureLegacyMemoEndpointAllowed(
+        'api/v1/memo',
+        operation: 'update_memo_force_legacy',
+      )) {
+        return _updateMemoModern(
+          memoUid: memoUid,
+          content: content,
+          visibility: visibility,
+          pinned: pinned,
+          state: state,
+          displayTime: displayTime,
+          location: location,
+        );
+      }
       return _updateMemoLegacy(
         memoUid: memoUid,
         content: content,
@@ -2654,7 +2846,11 @@ class MemosApi {
         location: location,
       );
     } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
+      if (_allowMemoFallbackFromError(
+        e,
+        operation: 'update_memo',
+        endpoint: 'api/v1/memo',
+      )) {
         _markMemoLegacy();
         return await _updateMemoLegacy(
           memoUid: memoUid,
@@ -2667,6 +2863,12 @@ class MemosApi {
       }
       rethrow;
     } on FormatException {
+      if (!_allowMemoFallbackFromFormat(
+        operation: 'update_memo',
+        endpoint: 'api/v1/memo',
+      )) {
+        rethrow;
+      }
       _markMemoLegacy();
       return _updateMemoLegacy(
         memoUid: memoUid,
@@ -2735,6 +2937,13 @@ class MemosApi {
     await _ensureServerHints();
     final normalized = _normalizeMemoUid(memoUid);
     if (_memoApiLegacy) {
+      if (!_ensureLegacyMemoEndpointAllowed(
+        'api/v1/memo',
+        operation: 'delete_memo_force_legacy',
+      )) {
+        await _deleteMemoModern(memoUid: normalized, force: force);
+        return;
+      }
       await _deleteMemoLegacy(memoUid: normalized, force: force);
       return;
     }
@@ -2742,7 +2951,11 @@ class MemosApi {
       await _deleteMemoModern(memoUid: normalized, force: force);
       return;
     } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
+      if (_allowMemoFallbackFromError(
+        e,
+        operation: 'delete_memo',
+        endpoint: 'api/v1/memo',
+      )) {
         _markMemoLegacy();
         await _deleteMemoLegacy(memoUid: normalized, force: force);
         return;
@@ -2761,6 +2974,13 @@ class MemosApi {
   }
 
   Future<void> _deleteMemoLegacy({required String memoUid, required bool force}) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo',
+      operation: 'delete_memo_legacy',
+    )) {
+      await _deleteMemoModern(memoUid: memoUid, force: force);
+      return;
+    }
     try {
       await _dio.delete(
         'api/v1/memos/$memoUid',
@@ -3716,6 +3936,14 @@ class MemosApi {
     String? state,
     String? filter,
   }) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo',
+      operation: 'list_memos_legacy',
+    )) {
+      throw StateError(
+        'Legacy memo endpoint is blocked for server flavor ${_serverFlavor.name}',
+      );
+    }
     final normalizedToken = (pageToken ?? '').trim();
     final offset = int.tryParse(normalizedToken) ?? 0;
     final limit = pageSize > 0 ? pageSize : 0;
@@ -3796,6 +4024,14 @@ class MemosApi {
     required String visibility,
     required bool pinned,
   }) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo',
+      operation: 'create_memo_legacy',
+    )) {
+      throw StateError(
+        'Legacy memo endpoint is blocked for server flavor ${_serverFlavor.name}',
+      );
+    }
     final _ = memoId;
     final response = await _dio.post(
       'api/v1/memo',
@@ -3832,6 +4068,14 @@ class MemosApi {
     String? state,
     DateTime? displayTime,
   }) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo',
+      operation: 'update_memo_legacy',
+    )) {
+      throw StateError(
+        'Legacy memo endpoint is blocked for server flavor ${_serverFlavor.name}',
+      );
+    }
     final _ = displayTime;
     if (pinned != null) {
       await _dio.post(
@@ -3897,6 +4141,14 @@ class MemosApi {
   }
 
   Future<void> _setMemoAttachmentsLegacy(String memoUid, List<String> attachmentNames) async {
+    if (!_ensureLegacyMemoEndpointAllowed(
+      'api/v1/memo',
+      operation: 'set_memo_attachments_legacy',
+    )) {
+      throw StateError(
+        'Legacy memo attachment endpoint is blocked for server flavor ${_serverFlavor.name}',
+      );
+    }
     final resourceIds = attachmentNames
         .map(_tryParseLegacyResourceId)
         .whereType<int>()
