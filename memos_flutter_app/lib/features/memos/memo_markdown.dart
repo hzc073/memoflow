@@ -31,6 +31,18 @@ final RegExp _codeLanguagePattern = RegExp(
 final RegExp _codeBlockHtmlPattern = RegExp(
   r'<pre><code([^>]*)>([\s\S]*?)</code></pre>',
 );
+final RegExp _fullHtmlDoctypeLinePattern = RegExp(
+  r'^\s*<!doctype\s+html(?:\s[^>]*)?>\s*$',
+  caseSensitive: false,
+);
+final RegExp _fullHtmlOpenTagLinePattern = RegExp(
+  r'^\s*<html(?:\s|>)',
+  caseSensitive: false,
+);
+final RegExp _fullHtmlCloseTagPattern = RegExp(
+  r'</html\s*>',
+  caseSensitive: false,
+);
 final RegExp _longWordPattern = RegExp(r'[^\s]{30,}', unicode: true);
 
 const String _zeroWidthSpace = '\u200B';
@@ -688,10 +700,9 @@ class MemoMarkdown extends StatelessWidget {
         } else if (element.classes.contains('memohighlight')) {
           styles.addAll({
             'background-color': _cssColor(highlightStyle.background),
-            'border': '1px solid ${_cssColor(highlightStyle.borderColor)}',
-            'border-radius': '4px',
-            'padding': '1px 4px',
-            'display': 'inline-block',
+            'border-radius': '3px',
+            'padding': '0 4px',
+            'display': 'inline',
           });
         }
       }
@@ -813,7 +824,80 @@ String _sanitizeMarkdown(String text) {
     final url = match.group(1)?.trim();
     return url?.isNotEmpty == true ? url! : '';
   });
-  return _normalizeFencedCodeBlocks(_escapeEmptyTaskHeadings(stripped));
+  final protectedHtml = _protectEmbeddedFullHtmlDocuments(stripped);
+  return _normalizeFencedCodeBlocks(_escapeEmptyTaskHeadings(protectedHtml));
+}
+
+String _protectEmbeddedFullHtmlDocuments(String text) {
+  final lines = text.split('\n');
+  if (lines.isEmpty) return text;
+
+  final output = <String>[];
+  var index = 0;
+  var inFence = false;
+
+  while (index < lines.length) {
+    final line = lines[index];
+    if (_codeFencePattern.hasMatch(line.trimLeft())) {
+      inFence = !inFence;
+      output.add(line);
+      index++;
+      continue;
+    }
+
+    if (!inFence && _isEmbeddedFullHtmlDocumentStart(lines, index)) {
+      final end = _findEmbeddedFullHtmlDocumentEnd(lines, index);
+      if (end >= index) {
+        if (output.isNotEmpty && output.last.trim().isNotEmpty) {
+          output.add('');
+        }
+        output.add('```html');
+        output.addAll(lines.getRange(index, end + 1));
+        output.add('```');
+        if (end + 1 < lines.length && lines[end + 1].trim().isNotEmpty) {
+          output.add('');
+        }
+        index = end + 1;
+        continue;
+      }
+    }
+
+    output.add(line);
+    index++;
+  }
+
+  return output.join('\n');
+}
+
+bool _isEmbeddedFullHtmlDocumentStart(List<String> lines, int index) {
+  final line = lines[index].trimLeft();
+  if (_fullHtmlOpenTagLinePattern.hasMatch(line)) {
+    return true;
+  }
+  if (!_fullHtmlDoctypeLinePattern.hasMatch(line)) {
+    return false;
+  }
+  for (var i = index + 1; i < lines.length; i++) {
+    final next = lines[i].trimLeft();
+    if (next.isEmpty) {
+      continue;
+    }
+    return _fullHtmlOpenTagLinePattern.hasMatch(next);
+  }
+  return false;
+}
+
+int _findEmbeddedFullHtmlDocumentEnd(List<String> lines, int start) {
+  for (var i = start; i < lines.length; i++) {
+    final line = lines[i];
+    if (_fullHtmlCloseTagPattern.hasMatch(line)) {
+      return i;
+    }
+    if (_codeFencePattern.hasMatch(line.trimLeft())) {
+      return -1;
+    }
+  }
+  return -1;
 }
 
 String _escapeEmptyTaskHeadings(String text) {
@@ -943,8 +1027,8 @@ String _escapeHtmlAttribute(String value) {
 
 String _buildMemoHtml(String text) {
   final rawHtml = _renderMarkdownToHtml(text);
-  final sanitized = _sanitizeHtml(rawHtml);
-  return _escapeCodeBlocks(sanitized);
+  final escapedCodeBlocks = _escapeCodeBlocks(rawHtml);
+  return _sanitizeHtml(escapedCodeBlocks);
 }
 
 bool _looksLikeFullHtmlDocument(String text) {
@@ -991,6 +1075,9 @@ void _sanitizeElement(dom.Element element) {
     return;
   }
   if (!_sanitizeAttributes(element, tag)) {
+    return;
+  }
+  if (tag == 'pre' || tag == 'code') {
     return;
   }
   _sanitizeDomNode(element);
