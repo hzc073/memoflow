@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
@@ -93,6 +92,7 @@ class AppPreferences {
     fontFile: null,
     collapseLongContent: true,
     collapseReferences: true,
+    showEngagementInAllMemoDetails: false,
     launchAction: LaunchAction.none,
     quickInputAutoFocus: true,
     hapticsEnabled: true,
@@ -133,6 +133,7 @@ class AppPreferences {
     required this.fontFile,
     required this.collapseLongContent,
     required this.collapseReferences,
+    required this.showEngagementInAllMemoDetails,
     required this.launchAction,
     required this.quickInputAutoFocus,
     required this.hapticsEnabled,
@@ -165,6 +166,7 @@ class AppPreferences {
   final String? fontFile;
   final bool collapseLongContent;
   final bool collapseReferences;
+  final bool showEngagementInAllMemoDetails;
   final LaunchAction launchAction;
   final bool quickInputAutoFocus;
   final bool hapticsEnabled;
@@ -213,6 +215,7 @@ class AppPreferences {
     'fontFile': fontFile,
     'collapseLongContent': collapseLongContent,
     'collapseReferences': collapseReferences,
+    'showEngagementInAllMemoDetails': showEngagementInAllMemoDetails,
     'launchAction': launchAction.name,
     'quickInputAutoFocus': quickInputAutoFocus,
     'hapticsEnabled': hapticsEnabled,
@@ -444,6 +447,10 @@ class AppPreferences {
         'collapseReferences',
         AppPreferences.defaults.collapseReferences,
       ),
+      showEngagementInAllMemoDetails: parseBool(
+        'showEngagementInAllMemoDetails',
+        AppPreferences.defaults.showEngagementInAllMemoDetails,
+      ),
       launchAction: parseLaunchAction(),
       quickInputAutoFocus: parseBool(
         'quickInputAutoFocus',
@@ -514,6 +521,7 @@ class AppPreferences {
     Object? fontFile = _unset,
     bool? collapseLongContent,
     bool? collapseReferences,
+    bool? showEngagementInAllMemoDetails,
     LaunchAction? launchAction,
     bool? quickInputAutoFocus,
     bool? hapticsEnabled,
@@ -550,6 +558,8 @@ class AppPreferences {
           : fontFile as String?,
       collapseLongContent: collapseLongContent ?? this.collapseLongContent,
       collapseReferences: collapseReferences ?? this.collapseReferences,
+      showEngagementInAllMemoDetails:
+          showEngagementInAllMemoDetails ?? this.showEngagementInAllMemoDetails,
       launchAction: launchAction ?? this.launchAction,
       quickInputAutoFocus: quickInputAutoFocus ?? this.quickInputAutoFocus,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
@@ -655,6 +665,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(collapseLongContent: v));
   void setCollapseReferences(bool v) =>
       _setAndPersist(state.copyWith(collapseReferences: v));
+  void setShowEngagementInAllMemoDetails(bool v) =>
+      _setAndPersist(state.copyWith(showEngagementInAllMemoDetails: v));
   void setLaunchAction(LaunchAction v) =>
       _setAndPersist(state.copyWith(launchAction: v));
   void setQuickInputAutoFocus(bool v) =>

@@ -86,6 +86,7 @@ settings:
     loadFontsFailed: "Failed to load fonts: $error"
     collapseLongContent: "Collapse Long Content"
     collapseReferences: "Collapse References"
+    showEngagementInAllMemoDetails: "Show likes and comments in all memo details"
     launchAction: "Launch Action"
     quickInputKeyboard: "Auto-open keyboard for Quick Input"
     appearance: "Appearance"

@@ -266,6 +266,12 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     textMain: textMain,
                     onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseReferences(v),
                   ),
+                  _ToggleRow(
+                    label: context.t.strings.settings.preferences.showEngagementInAllMemoDetails,
+                    value: prefs.showEngagementInAllMemoDetails,
+                    textMain: textMain,
+                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowEngagementInAllMemoDetails(v),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),

@@ -440,6 +440,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
+    final shouldShowEngagement =
+        widget.showEngagement || prefs.showEngagementInAllMemoDetails;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
     void maybeHaptic() {
@@ -658,7 +660,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 header,
-                if (widget.showEngagement)
+                if (shouldShowEngagement)
                   _MemoEngagementSection(memoUid: memo.uid, memoVisibility: memo.visibility),
                 _MemoRelationsSection(memoUid: memo.uid),
                 if (nonImageAttachments.isNotEmpty) ...[

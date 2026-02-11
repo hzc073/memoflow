@@ -86,6 +86,7 @@ settings:
     loadFontsFailed: "フォントの読み込みに失敗しました: $error"
     collapseLongContent: "長文を折りたたむ"
     collapseReferences: "参照を折りたたむ"
+    showEngagementInAllMemoDetails: "すべてのメモ詳細でいいねとコメントを表示"
     launchAction: "起動時の動作"
     quickInputKeyboard: "クイック入力で自動的にキーボードを開く"
     appearance: "外観"

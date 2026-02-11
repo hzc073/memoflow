@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 4985 (997 per locale)
+/// Strings: 4990 (998 per locale)
 ///
-/// Built on 2026-02-10 at 14:23 UTC
+/// Built on 2026-02-11 at 07:47 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1234,6 +1234,7 @@ class _StringsStringsSettingsPreferencesEn {
 	String loadFontsFailed({required Object error}) => 'Failed to load fonts: ${error}';
 	String get collapseLongContent => 'Collapse Long Content';
 	String get collapseReferences => 'Collapse References';
+	String get showEngagementInAllMemoDetails => 'Show likes and comments in all memo details';
 	String get launchAction => 'Launch Action';
 	String get quickInputKeyboard => 'Auto-open keyboard for Quick Input';
 	String get appearance => 'Appearance';
@@ -2539,6 +2540,7 @@ class _StringsStringsSettingsPreferencesDe extends _StringsStringsSettingsPrefer
 	@override String loadFontsFailed({required Object error}) => 'Schriftarten konnten nicht geladen werden: ${error}';
 	@override String get collapseLongContent => 'Lange Inhalte einklappen';
 	@override String get collapseReferences => 'Referenzen einklappen';
+	@override String get showEngagementInAllMemoDetails => 'Likes und Kommentare in allen Memo-Details anzeigen';
 	@override String get launchAction => 'Aktion beim Start';
 	@override String get quickInputKeyboard => 'Tastatur bei Schnellnotiz automatisch öffnen';
 	@override String get appearance => 'Darstellung';
@@ -3844,6 +3846,7 @@ class _StringsStringsSettingsPreferencesJa extends _StringsStringsSettingsPrefer
 	@override String loadFontsFailed({required Object error}) => 'フォントの読み込みに失敗しました: ${error}';
 	@override String get collapseLongContent => '長文を折りたたむ';
 	@override String get collapseReferences => '参照を折りたたむ';
+	@override String get showEngagementInAllMemoDetails => 'すべてのメモ詳細でいいねとコメントを表示';
 	@override String get launchAction => '起動時の動作';
 	@override String get quickInputKeyboard => 'クイック入力で自動的にキーボードを開く';
 	@override String get appearance => '外観';
@@ -5149,6 +5152,7 @@ class _StringsStringsSettingsPreferencesZhHans extends _StringsStringsSettingsPr
 	@override String loadFontsFailed({required Object error}) => '字体加载失败：${error}';
 	@override String get collapseLongContent => '折叠长内容';
 	@override String get collapseReferences => '折叠引用';
+	@override String get showEngagementInAllMemoDetails => '在全部笔记详情中显示点赞和评论';
 	@override String get launchAction => '启动动作';
 	@override String get quickInputKeyboard => '快速记录时唤醒键盘';
 	@override String get appearance => '外观';
@@ -6454,6 +6458,7 @@ class _StringsStringsSettingsPreferencesZhHantTw extends _StringsStringsSettings
 	@override String loadFontsFailed({required Object error}) => '字型載入失敗：${error}';
 	@override String get collapseLongContent => '折疊長內容';
 	@override String get collapseReferences => '折疊引用';
+	@override String get showEngagementInAllMemoDetails => '在全部筆記詳情中顯示按讚和評論';
 	@override String get launchAction => '啟動動作';
 	@override String get quickInputKeyboard => '快速記錄時自動開啟鍵盤';
 	@override String get appearance => '外觀';
@@ -6731,6 +6736,7 @@ extension on Translations {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'Failed to load fonts: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return 'Collapse Long Content';
 			case 'strings.settings.preferences.collapseReferences': return 'Collapse References';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Show likes and comments in all memo details';
 			case 'strings.settings.preferences.launchAction': return 'Launch Action';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Auto-open keyboard for Quick Input';
 			case 'strings.settings.preferences.appearance': return 'Appearance';
@@ -7736,6 +7742,7 @@ extension on _StringsDe {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'Schriftarten konnten nicht geladen werden: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return 'Lange Inhalte einklappen';
 			case 'strings.settings.preferences.collapseReferences': return 'Referenzen einklappen';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Likes und Kommentare in allen Memo-Details anzeigen';
 			case 'strings.settings.preferences.launchAction': return 'Aktion beim Start';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Tastatur bei Schnellnotiz automatisch öffnen';
 			case 'strings.settings.preferences.appearance': return 'Darstellung';
@@ -8741,6 +8748,7 @@ extension on _StringsJa {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'フォントの読み込みに失敗しました: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '長文を折りたたむ';
 			case 'strings.settings.preferences.collapseReferences': return '参照を折りたたむ';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'すべてのメモ詳細でいいねとコメントを表示';
 			case 'strings.settings.preferences.launchAction': return '起動時の動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'クイック入力で自動的にキーボードを開く';
 			case 'strings.settings.preferences.appearance': return '外観';
@@ -9746,6 +9754,7 @@ extension on _StringsZhHans {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => '字体加载失败：${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '折叠长内容';
 			case 'strings.settings.preferences.collapseReferences': return '折叠引用';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在全部笔记详情中显示点赞和评论';
 			case 'strings.settings.preferences.launchAction': return '启动动作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速记录时唤醒键盘';
 			case 'strings.settings.preferences.appearance': return '外观';
@@ -10751,6 +10760,7 @@ extension on _StringsZhHantTw {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => '字型載入失敗：${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '折疊長內容';
 			case 'strings.settings.preferences.collapseReferences': return '折疊引用';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在全部筆記詳情中顯示按讚和評論';
 			case 'strings.settings.preferences.launchAction': return '啟動動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速記錄時自動開啟鍵盤';
 			case 'strings.settings.preferences.appearance': return '外觀';
