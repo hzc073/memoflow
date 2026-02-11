@@ -110,6 +110,7 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
   }
 
   final api = ref.watch(memosApiProvider);
+  final logManager = ref.watch(logManagerProvider);
   final filters = <String>[];
 
   final creatorId = _parseUserId(account.user.name);
@@ -138,27 +139,219 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
   }
 
   final filter = filters.isEmpty ? null : filters.join(' && ');
+  final useLegacySearchFallback = api.usesLegacyMemos;
+  final effectiveFilter = useLegacySearchFallback
+      ? (creatorId == null ? null : 'creator_id == $creatorId')
+      : filter;
+  final traceId = DateTime.now().microsecondsSinceEpoch.toString();
+  logManager.info(
+    'Search flow started',
+    context: {
+      'traceId': traceId,
+      'state': query.state,
+      'queryLength': normalizedSearch.length,
+      'tag': normalizedTag,
+      'pageSize': pageSize,
+      'creatorId': creatorId,
+      'startTimeSec': startTimeSec,
+      'endTimeSecExclusive': endTimeSecExclusive,
+      'legacySearchFallback': useLegacySearchFallback,
+    },
+  );
   var seed = <LocalMemo>[];
   try {
-    final (memos, _) = await api.listMemos(
-      pageSize: pageSize,
-      state: query.state,
-      filter: filter,
-      orderBy: 'display_time desc',
-    );
     final results = <LocalMemo>[];
-    for (final memo in memos) {
-      final uid = memo.uid.trim();
-      if (uid.isEmpty) continue;
-      final row = await db.getMemoByUid(uid);
-      if (row != null) {
-        results.add(LocalMemo.fromDb(row));
+    final seenMemoKeys = <String>{};
+    final targetCount = pageSize > 0 ? pageSize : 200;
+    var nextPageToken = '';
+    var useLegacyV2Search = useLegacySearchFallback && normalizedSearch.isNotEmpty;
+    var legacyV2SearchCompleted = false;
+    var requestPages = 0;
+    var remoteFetchedCount = 0;
+    var dedupSkippedCount = 0;
+    var filteredOutCount = 0;
+    var dbHitCount = 0;
+    var dbMissCount = 0;
+
+    while (results.length < targetCount) {
+      List<Memo> memos = const <Memo>[];
+      var nextToken = '';
+
+      if (useLegacyV2Search && !legacyV2SearchCompleted) {
+        requestPages += 1;
+        logManager.debug(
+          'Search request page',
+          context: {
+            'traceId': traceId,
+            'page': requestPages,
+            'mode': 'legacy_v2_search',
+            'requestSize': targetCount,
+          },
+        );
+        try {
+          memos = await api.searchMemosLegacyV2(
+            searchQuery: normalizedSearch,
+            creatorId: creatorId,
+            state: query.state,
+            tag: normalizedTag.isEmpty ? null : normalizedTag,
+            startTimeSec: startTimeSec,
+            endTimeSecExclusive: endTimeSecExclusive,
+            limit: targetCount,
+          );
+          legacyV2SearchCompleted = true;
+          logManager.debug(
+            'Search response page',
+            context: {
+              'traceId': traceId,
+              'page': requestPages,
+              'mode': 'legacy_v2_search',
+              'returned': memos.length,
+            },
+          );
+        } on DioException catch (e) {
+          final status = e.response?.statusCode;
+          if (status == 404 || status == 405 || status == 400) {
+            logManager.warn(
+              'Legacy v2 search fallback to list',
+              context: {
+                'traceId': traceId,
+                'page': requestPages,
+                'status': status,
+              },
+            );
+            useLegacyV2Search = false;
+            continue;
+          }
+          rethrow;
+        } on FormatException {
+          logManager.warn(
+            'Legacy v2 search parse failed, fallback to list',
+            context: {
+              'traceId': traceId,
+              'page': requestPages,
+            },
+          );
+          useLegacyV2Search = false;
+          continue;
+        }
       } else {
-        results.add(_localMemoFromRemote(memo));
+        final requestSize = targetCount - results.length;
+        requestPages += 1;
+        logManager.debug(
+          'Search request page',
+          context: {
+            'traceId': traceId,
+            'page': requestPages,
+            'mode': 'list_memos',
+            'requestSize': requestSize > 0 ? requestSize : targetCount,
+            'pageToken': _searchTokenPreview(nextPageToken),
+          },
+        );
+        final (listed, listedNextToken) = await api.listMemos(
+          pageSize: requestSize > 0 ? requestSize : targetCount,
+          pageToken: nextPageToken.isEmpty ? null : nextPageToken,
+          state: query.state,
+          filter: effectiveFilter,
+          orderBy: 'display_time desc',
+        );
+        memos = listed;
+        nextToken = listedNextToken;
+        logManager.debug(
+          'Search response page',
+          context: {
+            'traceId': traceId,
+            'page': requestPages,
+            'mode': 'list_memos',
+            'returned': listed.length,
+            'nextPageToken': _searchTokenPreview(nextToken),
+          },
+        );
       }
+
+      if (memos.isEmpty) {
+        break;
+      }
+
+      for (final memo in memos) {
+        remoteFetchedCount += 1;
+        final memoKey = _memoRemoteKey(memo);
+        if (memoKey.isNotEmpty && !seenMemoKeys.add(memoKey)) {
+          dedupSkippedCount += 1;
+          continue;
+        }
+
+        if (useLegacySearchFallback &&
+            !_matchesRemoteSearchMemoLocally(
+              memo: memo,
+              creatorId: creatorId,
+              normalizedSearch: normalizedSearch,
+              normalizedTag: normalizedTag,
+              startTimeSec: startTimeSec,
+              endTimeSecExclusive: endTimeSecExclusive,
+            )) {
+          filteredOutCount += 1;
+          continue;
+        }
+
+        final uid = memo.uid.trim();
+        if (uid.isNotEmpty) {
+          final row = await db.getMemoByUid(uid);
+          if (row != null) {
+            results.add(LocalMemo.fromDb(row));
+            dbHitCount += 1;
+          } else {
+            results.add(_localMemoFromRemote(memo));
+            dbMissCount += 1;
+          }
+        } else {
+          results.add(_localMemoFromRemote(memo));
+          dbMissCount += 1;
+        }
+
+        if (results.length >= targetCount) {
+          break;
+        }
+      }
+
+      if (results.length >= targetCount || useLegacyV2Search) {
+        break;
+      }
+      if (nextToken.isEmpty) {
+        break;
+      }
+      nextPageToken = nextToken;
     }
+
+    logManager.info(
+      'Search flow completed',
+      context: {
+        'traceId': traceId,
+        'resultCount': results.length,
+        'targetCount': targetCount,
+        'requestPages': requestPages,
+        'remoteFetched': remoteFetchedCount,
+        'dedupSkipped': dedupSkippedCount,
+        'filteredOut': filteredOutCount,
+        'dbHit': dbHitCount,
+        'dbMiss': dbMissCount,
+        'usedLegacyV2Search': legacyV2SearchCompleted,
+      },
+    );
+
     seed = results;
-  } catch (_) {
+  } catch (error, stackTrace) {
+    logManager.warn(
+      'Search flow failed, fallback to local cache',
+      error: error,
+      stackTrace: stackTrace,
+      context: {
+        'traceId': traceId,
+        'state': query.state,
+        'queryLength': normalizedSearch.length,
+        'tag': normalizedTag,
+        'pageSize': pageSize,
+      },
+    );
     final rows = await db.listMemos(
       searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
       state: query.state,
@@ -168,6 +361,13 @@ final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQu
       limit: pageSize,
     );
     seed = rows.map(LocalMemo.fromDb).toList(growable: false);
+    logManager.info(
+      'Search local fallback completed',
+      context: {
+        'traceId': traceId,
+        'resultCount': seed.length,
+      },
+    );
   }
   yield seed;
 
@@ -343,6 +543,78 @@ String _normalizeTagInput(String? raw) {
   if (trimmed.isEmpty) return '';
   final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
   return withoutHash.toLowerCase();
+}
+
+String _memoRemoteKey(Memo memo) {
+  final uid = memo.uid.trim();
+  if (uid.isNotEmpty) return uid;
+  return memo.name.trim();
+}
+
+String _searchTokenPreview(String token) {
+  final trimmed = token.trim();
+  if (trimmed.isEmpty) return '';
+  if (trimmed.length <= 24) return trimmed;
+  return '${trimmed.substring(0, 24)}...';
+}
+
+bool _matchesRemoteSearchMemoLocally({
+  required Memo memo,
+  required int? creatorId,
+  required String normalizedSearch,
+  required String normalizedTag,
+  required int? startTimeSec,
+  required int? endTimeSecExclusive,
+}) {
+  if (creatorId != null) {
+    final creatorRaw = memo.creator.trim();
+    if (creatorRaw.isNotEmpty) {
+      final memoCreatorId = _parseUserId(creatorRaw);
+      if (memoCreatorId != null) {
+        if (memoCreatorId != creatorId) return false;
+      } else if (creatorRaw != 'users/$creatorId') {
+        return false;
+      }
+    }
+  }
+
+  if (normalizedSearch.isNotEmpty) {
+    final content = memo.content.toLowerCase();
+    if (!content.contains(normalizedSearch.toLowerCase())) {
+      return false;
+    }
+  }
+
+  if (normalizedTag.isNotEmpty) {
+    final tags = <String>{};
+    for (final tag in memo.tags) {
+      final normalized = _normalizeTagInput(tag);
+      if (normalized.isNotEmpty) {
+        tags.add(normalized);
+      }
+    }
+    if (!tags.contains(normalizedTag)) {
+      for (final tag in extractTags(memo.content)) {
+        final normalized = _normalizeTagInput(tag);
+        if (normalized.isNotEmpty) {
+          tags.add(normalized);
+        }
+      }
+    }
+    if (!tags.contains(normalizedTag)) {
+      return false;
+    }
+  }
+
+  final createdSec = memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000;
+  if (startTimeSec != null && createdSec < startTimeSec) {
+    return false;
+  }
+  if (endTimeSecExclusive != null && createdSec >= endTimeSecExclusive) {
+    return false;
+  }
+
+  return true;
 }
 
 bool _shouldFallbackShortcutFilter(DioException e) {

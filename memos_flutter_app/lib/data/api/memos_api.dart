@@ -3748,6 +3748,48 @@ class MemosApi {
     return (memos, nextOffset.toString());
   }
 
+  Future<List<Memo>> searchMemosLegacyV2({
+    required String searchQuery,
+    int? creatorId,
+    String? state,
+    String? tag,
+    int? startTimeSec,
+    int? endTimeSecExclusive,
+    int limit = 10,
+  }) async {
+    await _ensureServerHints();
+    final filter = _buildLegacyV2SearchFilter(
+      searchQuery: searchQuery,
+      creatorId: creatorId,
+      state: state,
+      tag: tag,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+      limit: limit,
+    );
+    if (filter == null) {
+      return const <Memo>[];
+    }
+
+    final response = await _dio.get(
+      'api/v2/memos:search',
+      queryParameters: <String, Object?>{
+        'filter': filter,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final list = body['memos'];
+    final memos = <Memo>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          memos.add(_memoFromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+    return memos;
+  }
+
   Future<Memo> _createMemoLegacy({
     required String memoId,
     required String content,
@@ -4142,6 +4184,76 @@ class MemosApi {
     final match = RegExp(r'creator_id\s*==\s*(\d+)').firstMatch(raw);
     if (match == null) return null;
     return int.tryParse(match.group(1) ?? '');
+  }
+
+  static String? _buildLegacyV2SearchFilter({
+    required String searchQuery,
+    int? creatorId,
+    String? state,
+    String? tag,
+    int? startTimeSec,
+    int? endTimeSecExclusive,
+    required int limit,
+  }) {
+    final conditions = <String>[];
+
+    if (creatorId != null) {
+      conditions.add("creator == 'users/$creatorId'");
+    }
+
+    final normalizedState = _normalizeLegacyRowStatus(state);
+    if (normalizedState != null && normalizedState.isNotEmpty) {
+      conditions.add("row_status == '${_escapeLegacyFilterString(normalizedState)}'");
+    }
+
+    final terms = <String>{};
+    final normalizedSearch = searchQuery.trim();
+    if (normalizedSearch.isNotEmpty) {
+      terms.add(normalizedSearch);
+    }
+
+    final normalizedTag = _normalizeLegacySearchTag(tag);
+    if (normalizedTag.isNotEmpty) {
+      terms.add('#$normalizedTag');
+      terms.add(normalizedTag);
+    }
+
+    if (terms.isNotEmpty) {
+      final quotedTerms = terms.map((term) => "'${_escapeLegacyFilterString(term)}'").join(', ');
+      conditions.add('content_search in [$quotedTerms]');
+    }
+
+    if (startTimeSec != null) {
+      conditions.add('display_time_after == $startTimeSec');
+    }
+    if (endTimeSecExclusive != null) {
+      final endInclusive = endTimeSecExclusive - 1;
+      if (endInclusive >= 0) {
+        conditions.add('display_time_before == $endInclusive');
+      }
+    }
+
+    var effectiveLimit = limit;
+    if (effectiveLimit <= 0) {
+      effectiveLimit = 10;
+    }
+    if (effectiveLimit > 1000) {
+      effectiveLimit = 1000;
+    }
+    conditions.add('limit == $effectiveLimit');
+
+    if (conditions.isEmpty) return null;
+    return conditions.join(' && ');
+  }
+
+  static String _normalizeLegacySearchTag(String? raw) {
+    final trimmed = (raw ?? '').trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+  }
+
+  static String _escapeLegacyFilterString(String raw) {
+    return raw.replaceAll('\\', r'\\').replaceAll("'", r"\'").replaceAll('\n', ' ');
   }
 
   static int? _tryParseLegacyResourceId(String raw) {
