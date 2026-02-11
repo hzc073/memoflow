@@ -10,6 +10,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/image_error_logger.dart';
 import '../../i18n/strings.g.dart';
 
 final RegExp _tagTokenPattern = RegExp(
@@ -412,7 +413,17 @@ class MemoMarkdown extends StatelessWidget {
       );
     }
 
-    void logImageError(String url, Object error) {
+    void logImageError(String url, Object error, StackTrace? stackTrace) {
+      logImageLoadError(
+        scope: 'memo_markdown_html_img',
+        source: url,
+        error: error,
+        stackTrace: stackTrace,
+        extraContext: <String, Object?>{
+          'renderImages': renderImages,
+          'cacheKey': this.cacheKey,
+        },
+      );
       assert(() {
         debugPrint('MemoMarkdown image failed: $url error=$error');
         return true;
@@ -641,7 +652,7 @@ class MemoMarkdown extends StatelessWidget {
                   return imagePlaceholder();
                 },
                 errorBuilder: (context, error, stackTrace) {
-                  logImageError(src, error);
+                  logImageError(src, error, stackTrace);
                   return imageError();
                 },
               );
@@ -1288,9 +1299,52 @@ String? _extractCodeLanguage(dom.Element? codeElement) {
 String _normalizeImageSrc(String value) {
   final trimmed = value.trim();
   if (trimmed.startsWith('//')) {
-    return 'https:$trimmed';
+    return _normalizeGithubBlobImageUrl('https:$trimmed');
   }
-  return trimmed;
+  return _normalizeGithubBlobImageUrl(trimmed);
+}
+
+String _normalizeGithubBlobImageUrl(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri == null || !uri.hasScheme) return value;
+  final host = uri.host.toLowerCase();
+  if (host != 'github.com' && host != 'www.github.com') {
+    return value;
+  }
+
+  final segments = uri.pathSegments;
+  if (segments.length < 5 || segments[2] != 'blob') {
+    return value;
+  }
+
+  final owner = segments[0];
+  final repo = segments[1];
+  final ref = segments[3];
+  if (owner.isEmpty || repo.isEmpty || ref.isEmpty) {
+    return _appendGithubRawQuery(uri);
+  }
+
+  final pathSegments = segments.skip(4).toList(growable: false);
+  if (pathSegments.isEmpty) {
+    return _appendGithubRawQuery(uri);
+  }
+
+  return Uri(
+    scheme: 'https',
+    host: 'raw.githubusercontent.com',
+    pathSegments: <String>[owner, repo, ref, ...pathSegments],
+    queryParameters: uri.queryParameters.isEmpty ? null : uri.queryParameters,
+    fragment: uri.fragment.isEmpty ? null : uri.fragment,
+  ).toString();
+}
+
+String _appendGithubRawQuery(Uri uri) {
+  final params = Map<String, String>.from(uri.queryParameters);
+  final raw = (params['raw'] ?? '').trim().toLowerCase();
+  if (raw != '1' && raw != 'true') {
+    params['raw'] = '1';
+  }
+  return uri.replace(queryParameters: params).toString();
 }
 
 double? _parseHtmlDimension(String? value) {
