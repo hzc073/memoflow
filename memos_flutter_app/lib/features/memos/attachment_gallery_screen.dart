@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_editor_plus/image_editor_plus.dart';
 import 'package:image_editor_plus/options.dart' as editor_options;
@@ -13,6 +14,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/image_formats.dart';
 import '../../core/image_error_logger.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
@@ -436,6 +438,31 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
   Widget _buildImage(AttachmentImageSource source) {
     final file = source.localFile;
     if (file != null && file.existsSync()) {
+      final isSvg = shouldUseSvgRenderer(
+        url: file.path,
+        mimeType: source.mimeType,
+      );
+      if (isSvg) {
+        return SvgPicture.file(
+          file,
+          fit: BoxFit.contain,
+          placeholderBuilder: (context) =>
+              const Center(child: CircularProgressIndicator()),
+          errorBuilder: (context, error, stackTrace) {
+            logImageLoadError(
+              scope: 'attachment_gallery_local_svg',
+              source: file.path,
+              error: error,
+              stackTrace: stackTrace,
+              extraContext: <String, Object?>{
+                'sourceId': source.id,
+                'mimeType': source.mimeType,
+              },
+            );
+            return const Icon(Icons.broken_image, color: Colors.white);
+          },
+        );
+      }
       return Image.file(
         file,
         fit: BoxFit.contain,
@@ -456,6 +483,31 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
     }
     final url = source.imageUrl?.trim() ?? '';
     if (url.isNotEmpty) {
+      final isSvg = shouldUseSvgRenderer(url: url, mimeType: source.mimeType);
+      if (isSvg) {
+        return SvgPicture.network(
+          url,
+          headers: source.headers,
+          fit: BoxFit.contain,
+          placeholderBuilder: (context) =>
+              const Center(child: CircularProgressIndicator()),
+          errorBuilder: (context, error, stackTrace) {
+            logImageLoadError(
+              scope: 'attachment_gallery_network_svg',
+              source: url,
+              error: error,
+              stackTrace: stackTrace,
+              extraContext: <String, Object?>{
+                'sourceId': source.id,
+                'mimeType': source.mimeType,
+                'hasAuthHeader':
+                    source.headers?['Authorization']?.trim().isNotEmpty ?? false,
+              },
+            );
+            return const Icon(Icons.broken_image, color: Colors.white);
+          },
+        );
+      }
       return CachedNetworkImage(
         imageUrl: url,
         httpHeaders: source.headers,
