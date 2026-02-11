@@ -387,7 +387,7 @@ legacy:
   msg_customize_notification: "自定义通知"
   msg_updated_time: "修改时间 ↓"
   msg_network_connection_failed_check_network: "网络连接失败，请检查网络"
-  msg_special_thanks: "æ¬æ¬¡æ´æ°ç¹å«é¸£è°¢ï¼"
+  msg_special_thanks: "本次更新特别鸣谢："
   msg_failed_comment: "评论失败：$e"
   msg_security_key_sig: "安全密钥（sig）"
   msg_save_gallery: "保存到相册"

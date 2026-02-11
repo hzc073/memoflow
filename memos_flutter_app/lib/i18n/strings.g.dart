@@ -4473,7 +4473,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_customize_notification => '自定义通知';
 	@override String get msg_updated_time => '修改时间 ↓';
 	@override String get msg_network_connection_failed_check_network => '网络连接失败，请检查网络';
-	@override String get msg_special_thanks => 'æ¬æ¬¡æ´æ°ç¹å«é¸£è°¢ï¼';
+	@override String get msg_special_thanks => '本次更新特别鸣谢：';
 	@override String msg_failed_comment({required Object e}) => '评论失败：${e}';
 	@override String get msg_security_key_sig => '安全密钥（sig）';
 	@override String get msg_save_gallery => '保存到相册';
@@ -5779,7 +5779,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_customize_notification => '自定义通知';
 	@override String get msg_updated_time => '修改时间 ↓';
 	@override String get msg_network_connection_failed_check_network => '网络连接失败，请检查网络';
-	@override String get msg_special_thanks => 'æ¬æ¬¡æ´æ°ç¹å¥é³´è¬ï¼';
+	@override String get msg_special_thanks => '本次更新特別鳴謝：';
 	@override String msg_failed_comment({required Object e}) => '评论失败：${e}';
 	@override String get msg_security_key_sig => '安全密钥（sig）';
 	@override String get msg_save_gallery => '保存到相册';
@@ -10053,7 +10053,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_customize_notification': return '自定义通知';
 			case 'strings.legacy.msg_updated_time': return '修改时间 ↓';
 			case 'strings.legacy.msg_network_connection_failed_check_network': return '网络连接失败，请检查网络';
-			case 'strings.legacy.msg_special_thanks': return 'æ¬æ¬¡æ´æ°ç¹å«é¸£è°¢ï¼';
+			case 'strings.legacy.msg_special_thanks': return '本次更新特别鸣谢：';
 			case 'strings.legacy.msg_failed_comment': return ({required Object e}) => '评论失败：${e}';
 			case 'strings.legacy.msg_security_key_sig': return '安全密钥（sig）';
 			case 'strings.legacy.msg_save_gallery': return '保存到相册';
@@ -11059,7 +11059,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_customize_notification': return '自定义通知';
 			case 'strings.legacy.msg_updated_time': return '修改时间 ↓';
 			case 'strings.legacy.msg_network_connection_failed_check_network': return '网络连接失败，请检查网络';
-			case 'strings.legacy.msg_special_thanks': return 'æ¬æ¬¡æ´æ°ç¹å¥é³´è¬ï¼';
+			case 'strings.legacy.msg_special_thanks': return '本次更新特別鳴謝：';
 			case 'strings.legacy.msg_failed_comment': return ({required Object e}) => '评论失败：${e}';
 			case 'strings.legacy.msg_security_key_sig': return '安全密钥（sig）';
 			case 'strings.legacy.msg_save_gallery': return '保存到相册';
