@@ -6,7 +6,7 @@
 /// Locales: 5
 /// Strings: 4990 (998 per locale)
 ///
-/// Built on 2026-02-11 at 07:47 UTC
+/// Built on 2026-02-12 at 04:23 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -4439,7 +4439,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_remove => '移除';
 	@override String get msg_export_format => '导出格式';
 	@override String get msg_idle => '空闲';
-	@override String msg_ago({required Object months}) => '${months}ä¸ªæå';
+	@override String msg_ago({required Object months}) => '${months}个月前';
 	@override String get msg_no_tags_yet => '暂无标签';
 	@override String msg_version_v({required Object version}) => '版本 v${version}';
 	@override String get msg_sync => '同步';
@@ -4550,7 +4550,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String msg_restore_failed({required Object e}) => '恢复失败：${e}';
 	@override String msg_token_tail({required Object tail}) => 'Token 尾号 ${tail}';
 	@override String get msg_manual_token => '手动 Token';
-	@override String msg_ago_2({required Object years}) => '${years}å¹´å';
+	@override String msg_ago_2({required Object years}) => '${years}年前';
 	@override String get msg_recent_searches => '最近搜索';
 	@override String get msg_restored => '已恢复';
 	@override String get msg_no_contributors_yet => '暂无致谢名单';
@@ -4867,7 +4867,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_exporting => '正在导出...';
 	@override String get msg_network_timeout_try => '网络超时，请稍后重试';
 	@override String get msg_unlock => '解锁';
-	@override String msg_ago_3({required Object diff_inDays}) => '${diff_inDays}å¤©å';
+	@override String msg_ago_3({required Object diff_inDays}) => '${diff_inDays}天前';
 	@override String get msg_deserve_coffee_i_m_pulling_all => '为了对得起这杯咖啡，今晚我决定不睡了，写它个一百行代码！';
 	@override String get msg_token_name => 'Token 名称';
 	@override String get msg_restore_completed => '恢复完成';
@@ -5019,7 +5019,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String msg_location_updated({required Object next_displayText_fractionDigits_6}) => '定位成功：${next_displayText_fractionDigits_6}';
 	@override String get msg_checking_server_version => '正在检查后端版本...';
 	@override String get msg_next_time_back_fixing_bugs => '👀 下次一定，先去修 Bug';
-	@override String msg_ago_4({required Object weeks}) => '${weeks}å¨å';
+	@override String msg_ago_4({required Object weeks}) => '${weeks}周前';
 	@override String get msg_import => '导入';
 	@override String get msg_ios_long_press_home_screen_add => 'iOS 请长按桌面添加 MemoFlow 小组件';
 	@override String get msg_create_token_2 => '创建 Token';
@@ -5745,7 +5745,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_remove => '移除';
 	@override String get msg_export_format => '导出格式';
 	@override String get msg_idle => '空闲';
-	@override String msg_ago({required Object months}) => '${months}åæå';
+	@override String msg_ago({required Object months}) => '${months}個月前';
 	@override String get msg_no_tags_yet => '暂无标签';
 	@override String msg_version_v({required Object version}) => '版本 v${version}';
 	@override String get msg_sync => '同步';
@@ -5856,7 +5856,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String msg_restore_failed({required Object e}) => '恢复失败：${e}';
 	@override String msg_token_tail({required Object tail}) => 'Token 尾号 ${tail}';
 	@override String get msg_manual_token => '手动 Token';
-	@override String msg_ago_2({required Object years}) => '${years}å¹´å';
+	@override String msg_ago_2({required Object years}) => '${years}年前';
 	@override String get msg_recent_searches => '最近搜索';
 	@override String get msg_restored => '已恢复';
 	@override String get msg_no_contributors_yet => '暂无致谢名单';
@@ -6173,7 +6173,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_exporting => '正在导出...';
 	@override String get msg_network_timeout_try => '网络超时，请稍后重试';
 	@override String get msg_unlock => '解锁';
-	@override String msg_ago_3({required Object diff_inDays}) => '${diff_inDays}å¤©å';
+	@override String msg_ago_3({required Object diff_inDays}) => '${diff_inDays}天前';
 	@override String get msg_deserve_coffee_i_m_pulling_all => '为了对得起这杯咖啡，今晚我决定不睡了，写它个一百行代码！';
 	@override String get msg_token_name => 'Token 名称';
 	@override String get msg_restore_completed => '恢复完成';
@@ -6325,7 +6325,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String msg_location_updated({required Object next_displayText_fractionDigits_6}) => '定位成功：${next_displayText_fractionDigits_6}';
 	@override String get msg_checking_server_version => '正在检查后端版本...';
 	@override String get msg_next_time_back_fixing_bugs => '👀 下次一定，先去修 Bug';
-	@override String msg_ago_4({required Object weeks}) => '${weeks}é±å';
+	@override String msg_ago_4({required Object weeks}) => '${weeks}週前';
 	@override String get msg_import => '导入';
 	@override String get msg_ios_long_press_home_screen_add => 'iOS 请长按桌面添加 MemoFlow 小组件';
 	@override String get msg_create_token_2 => '创建 Token';
@@ -10019,7 +10019,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_remove': return '移除';
 			case 'strings.legacy.msg_export_format': return '导出格式';
 			case 'strings.legacy.msg_idle': return '空闲';
-			case 'strings.legacy.msg_ago': return ({required Object months}) => '${months}ä¸ªæå';
+			case 'strings.legacy.msg_ago': return ({required Object months}) => '${months}个月前';
 			case 'strings.legacy.msg_no_tags_yet': return '暂无标签';
 			case 'strings.legacy.msg_version_v': return ({required Object version}) => '版本 v${version}';
 			case 'strings.legacy.msg_sync': return '同步';
@@ -10130,7 +10130,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_restore_failed': return ({required Object e}) => '恢复失败：${e}';
 			case 'strings.legacy.msg_token_tail': return ({required Object tail}) => 'Token 尾号 ${tail}';
 			case 'strings.legacy.msg_manual_token': return '手动 Token';
-			case 'strings.legacy.msg_ago_2': return ({required Object years}) => '${years}å¹´å';
+			case 'strings.legacy.msg_ago_2': return ({required Object years}) => '${years}年前';
 			case 'strings.legacy.msg_recent_searches': return '最近搜索';
 			case 'strings.legacy.msg_restored': return '已恢复';
 			case 'strings.legacy.msg_no_contributors_yet': return '暂无致谢名单';
@@ -10447,7 +10447,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_exporting': return '正在导出...';
 			case 'strings.legacy.msg_network_timeout_try': return '网络超时，请稍后重试';
 			case 'strings.legacy.msg_unlock': return '解锁';
-			case 'strings.legacy.msg_ago_3': return ({required Object diff_inDays}) => '${diff_inDays}å¤©å';
+			case 'strings.legacy.msg_ago_3': return ({required Object diff_inDays}) => '${diff_inDays}天前';
 			case 'strings.legacy.msg_deserve_coffee_i_m_pulling_all': return '为了对得起这杯咖啡，今晚我决定不睡了，写它个一百行代码！';
 			case 'strings.legacy.msg_token_name': return 'Token 名称';
 			case 'strings.legacy.msg_restore_completed': return '恢复完成';
@@ -10599,7 +10599,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_location_updated': return ({required Object next_displayText_fractionDigits_6}) => '定位成功：${next_displayText_fractionDigits_6}';
 			case 'strings.legacy.msg_checking_server_version': return '正在检查后端版本...';
 			case 'strings.legacy.msg_next_time_back_fixing_bugs': return '👀 下次一定，先去修 Bug';
-			case 'strings.legacy.msg_ago_4': return ({required Object weeks}) => '${weeks}å¨å';
+			case 'strings.legacy.msg_ago_4': return ({required Object weeks}) => '${weeks}周前';
 			case 'strings.legacy.msg_import': return '导入';
 			case 'strings.legacy.msg_ios_long_press_home_screen_add': return 'iOS 请长按桌面添加 MemoFlow 小组件';
 			case 'strings.legacy.msg_create_token_2': return '创建 Token';
@@ -11025,7 +11025,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_remove': return '移除';
 			case 'strings.legacy.msg_export_format': return '导出格式';
 			case 'strings.legacy.msg_idle': return '空闲';
-			case 'strings.legacy.msg_ago': return ({required Object months}) => '${months}åæå';
+			case 'strings.legacy.msg_ago': return ({required Object months}) => '${months}個月前';
 			case 'strings.legacy.msg_no_tags_yet': return '暂无标签';
 			case 'strings.legacy.msg_version_v': return ({required Object version}) => '版本 v${version}';
 			case 'strings.legacy.msg_sync': return '同步';
@@ -11136,7 +11136,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_restore_failed': return ({required Object e}) => '恢复失败：${e}';
 			case 'strings.legacy.msg_token_tail': return ({required Object tail}) => 'Token 尾号 ${tail}';
 			case 'strings.legacy.msg_manual_token': return '手动 Token';
-			case 'strings.legacy.msg_ago_2': return ({required Object years}) => '${years}å¹´å';
+			case 'strings.legacy.msg_ago_2': return ({required Object years}) => '${years}年前';
 			case 'strings.legacy.msg_recent_searches': return '最近搜索';
 			case 'strings.legacy.msg_restored': return '已恢复';
 			case 'strings.legacy.msg_no_contributors_yet': return '暂无致谢名单';
@@ -11453,7 +11453,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_exporting': return '正在导出...';
 			case 'strings.legacy.msg_network_timeout_try': return '网络超时，请稍后重试';
 			case 'strings.legacy.msg_unlock': return '解锁';
-			case 'strings.legacy.msg_ago_3': return ({required Object diff_inDays}) => '${diff_inDays}å¤©å';
+			case 'strings.legacy.msg_ago_3': return ({required Object diff_inDays}) => '${diff_inDays}天前';
 			case 'strings.legacy.msg_deserve_coffee_i_m_pulling_all': return '为了对得起这杯咖啡，今晚我决定不睡了，写它个一百行代码！';
 			case 'strings.legacy.msg_token_name': return 'Token 名称';
 			case 'strings.legacy.msg_restore_completed': return '恢复完成';
@@ -11605,7 +11605,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_location_updated': return ({required Object next_displayText_fractionDigits_6}) => '定位成功：${next_displayText_fractionDigits_6}';
 			case 'strings.legacy.msg_checking_server_version': return '正在检查后端版本...';
 			case 'strings.legacy.msg_next_time_back_fixing_bugs': return '👀 下次一定，先去修 Bug';
-			case 'strings.legacy.msg_ago_4': return ({required Object weeks}) => '${weeks}é±å';
+			case 'strings.legacy.msg_ago_4': return ({required Object weeks}) => '${weeks}週前';
 			case 'strings.legacy.msg_import': return '导入';
 			case 'strings.legacy.msg_ios_long_press_home_screen_add': return 'iOS 请长按桌面添加 MemoFlow 小组件';
 			case 'strings.legacy.msg_create_token_2': return '创建 Token';

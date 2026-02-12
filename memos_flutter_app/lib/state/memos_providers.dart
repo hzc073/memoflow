@@ -122,6 +122,7 @@ final remoteSearchMemosProvider =
 
       final api = ref.watch(memosApiProvider);
       final logManager = ref.watch(logManagerProvider);
+      await api.ensureServerHintsLoaded();
       final filters = <String>[];
 
       final creatorId = _parseUserId(account.user.name);
@@ -152,10 +153,11 @@ final remoteSearchMemosProvider =
       }
 
       final filter = filters.isEmpty ? null : filters.join(' && ');
-      final useLegacySearchFallback = api.usesLegacyMemos;
-      final effectiveFilter = useLegacySearchFallback
+      final useLegacySearchFallback =
+          api.usesLegacyMemos || api.usesLegacySearchFilterDialect;
+      final effectiveFilter = api.usesLegacyMemos
           ? (creatorId == null ? null : 'creator_id == $creatorId')
-          : filter;
+          : (useLegacySearchFallback ? null : filter);
       final traceId = DateTime.now().microsecondsSinceEpoch.toString();
       logManager.info(
         'Search flow started',

@@ -1424,13 +1424,20 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       return;
     }
     try {
-      final created = await ref
-          .read(memosApiProvider)
-          .createShortcut(
-            userName: account.user.name,
-            title: result.title,
-            filter: result.filter,
-          );
+      final api = ref.read(memosApiProvider);
+      await api.ensureServerHintsLoaded();
+      final useLocalShortcuts =
+          api.usesLegacySearchFilterDialect ||
+          api.shortcutsSupportedHint == false;
+      final created = useLocalShortcuts
+          ? await ref
+                .read(localShortcutsRepositoryProvider)
+                .create(title: result.title, filter: result.filter)
+          : await api.createShortcut(
+              userName: account.user.name,
+              title: result.title,
+              filter: result.filter,
+            );
       ref.invalidate(shortcutsProvider);
       if (!mounted) return;
       setState(() => _selectedShortcutId = created.shortcutId);
@@ -2588,7 +2595,11 @@ class _TitleMenuDropdown extends ConsumerWidget {
     final dividerColor = border.withValues(alpha: 0.6);
 
     final shortcutsAsync = showShortcuts ? ref.watch(shortcutsProvider) : null;
-    final canCreateShortcut = api.shortcutsSupportedHint != false;
+    final useLocalShortcuts =
+        api.usesLegacySearchFilterDialect ||
+        api.shortcutsSupportedHint == false;
+    final canCreateShortcut =
+        useLocalShortcuts || api.shortcutsSupportedHint != false;
     final items = <Widget>[];
 
     void addRow(Widget row) {

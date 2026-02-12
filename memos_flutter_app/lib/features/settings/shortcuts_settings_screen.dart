@@ -18,10 +18,12 @@ class ShortcutsSettingsScreen extends ConsumerStatefulWidget {
   const ShortcutsSettingsScreen({super.key});
 
   @override
-  ConsumerState<ShortcutsSettingsScreen> createState() => _ShortcutsSettingsScreenState();
+  ConsumerState<ShortcutsSettingsScreen> createState() =>
+      _ShortcutsSettingsScreenState();
 }
 
-class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScreen> {
+class _ShortcutsSettingsScreenState
+    extends ConsumerState<ShortcutsSettingsScreen> {
   var _saving = false;
 
   Future<void> _openEditor({Shortcut? shortcut}) async {
@@ -47,34 +49,49 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
     setState(() => _saving = true);
     try {
       final api = ref.read(memosApiProvider);
+      await api.ensureServerHintsLoaded();
+      final useLocalShortcuts =
+          api.usesLegacySearchFilterDialect ||
+          api.shortcutsSupportedHint == false;
       final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
       if (account == null) {
         throw StateError('Not authenticated');
       }
-      if (shortcut == null) {
-        await api.createShortcut(
-          userName: account.user.name,
-          title: title,
-          filter: filter,
-        );
+      if (useLocalShortcuts) {
+        if (shortcut == null) {
+          await ref
+              .read(localShortcutsRepositoryProvider)
+              .create(title: title, filter: filter);
+        } else {
+          await ref
+              .read(localShortcutsRepositoryProvider)
+              .update(shortcut: shortcut, title: title, filter: filter);
+        }
       } else {
-        await api.updateShortcut(
-          userName: account.user.name,
-          shortcut: shortcut,
-          title: title,
-          filter: filter,
-        );
+        if (shortcut == null) {
+          await api.createShortcut(
+            userName: account.user.name,
+            title: title,
+            filter: filter,
+          );
+        } else {
+          await api.updateShortcut(
+            userName: account.user.name,
+            shortcut: shortcut,
+            title: title,
+            filter: filter,
+          );
+        }
       }
       ref.invalidate(shortcutsProvider);
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_saved_2,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_saved_2);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -85,11 +102,14 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
 
   Future<void> _deleteShortcut(Shortcut shortcut) async {
     if (_saving) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_delete_shortcut),
-            content: Text(context.t.strings.legacy.msg_sure_want_delete_shortcut),
+            content: Text(
+              context.t.strings.legacy.msg_sure_want_delete_shortcut,
+            ),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
@@ -107,19 +127,30 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
 
     setState(() => _saving = true);
     try {
+      final api = ref.read(memosApiProvider);
+      await api.ensureServerHintsLoaded();
+      final useLocalShortcuts =
+          api.usesLegacySearchFilterDialect ||
+          api.shortcutsSupportedHint == false;
       final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
       if (account == null) {
         throw StateError('Not authenticated');
       }
-      await ref.read(memosApiProvider).deleteShortcut(
-            userName: account.user.name,
-            shortcut: shortcut,
-          );
+      if (useLocalShortcuts) {
+        await ref.read(localShortcutsRepositoryProvider).delete(shortcut);
+      } else {
+        await api.deleteShortcut(
+          userName: account.user.name,
+          shortcut: shortcut,
+        );
+      }
       ref.invalidate(shortcutsProvider);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_delete_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_delete_failed(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -144,12 +175,20 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
-    final hapticsEnabled = ref.watch(appPreferencesProvider.select((p) => p.hapticsEnabled));
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
+    final hapticsEnabled = ref.watch(
+      appPreferencesProvider.select((p) => p.hapticsEnabled),
+    );
 
     void maybeHaptic() {
       if (hapticsEnabled) {
@@ -195,11 +234,7 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -208,7 +243,10 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
             data: (shortcuts) {
               if (shortcuts.isEmpty) {
                 return Center(
-                  child: Text(context.t.strings.legacy.msg_no_shortcuts_configured, style: TextStyle(color: textMuted)),
+                  child: Text(
+                    context.t.strings.legacy.msg_no_shortcuts_configured,
+                    style: TextStyle(color: textMuted),
+                  ),
                 );
               }
 
@@ -247,7 +285,10 @@ class _ShortcutsSettingsScreenState extends ConsumerState<ShortcutsSettingsScree
                   children: [
                     Text(
                       context.t.strings.legacy.msg_failed_load_2,
-                      style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textMain,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -299,10 +340,19 @@ class _ShortcutRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
                 if (filter.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(filter, style: TextStyle(fontSize: 12, color: textMuted)),
+                  Text(
+                    filter,
+                    style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
                 ],
               ],
             ),
@@ -362,4 +412,3 @@ class _Group extends StatelessWidget {
     );
   }
 }
-

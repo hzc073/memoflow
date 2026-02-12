@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
@@ -24,7 +24,12 @@ import '../models/user_stats.dart';
 
 enum _NotificationApiMode { modern, legacyV1, legacyV2 }
 
-enum _UserStatsApiMode { modernGetStats, legacyStatsPath, legacyMemosStats, legacyMemoStats }
+enum _UserStatsApiMode {
+  modernGetStats,
+  legacyStatsPath,
+  legacyMemosStats,
+  legacyMemoStats,
+}
 
 enum _AttachmentApiMode { attachments, resources, legacy }
 
@@ -187,7 +192,10 @@ class MemosApi {
       useLegacyApi: useLegacyApi,
     );
     _memoApiLegacy = _capabilities.memoLegacyByDefault;
-    if (logStore != null || logManager != null || logBuffer != null || breadcrumbStore != null) {
+    if (logStore != null ||
+        logManager != null ||
+        logBuffer != null ||
+        breadcrumbStore != null) {
       _dio.interceptors.add(
         NetworkLogInterceptor(
           logStore,
@@ -226,7 +234,14 @@ class MemosApi {
     if (_memoApiLegacy) return true;
     return _capabilities.forceLegacyMemoByPreference;
   }
+
   bool get usesLegacyMemos => _useLegacyMemos;
+  bool get usesLegacySearchFilterDialect =>
+      _serverFlavor == _ServerApiFlavor.v0_21 ||
+      _serverFlavor == _ServerApiFlavor.v0_22;
+  bool? get shortcutsSupportedHint => _shortcutsSupported;
+
+  Future<void> ensureServerHintsLoaded() => _ensureServerHints();
 
   void _markMemoLegacy() {
     if (_legacyMemoEndpointsAllowed()) {
@@ -320,7 +335,8 @@ class MemosApi {
         'shortcutsSupported': _shortcutsSupported,
         'allowLegacyMemoEndpoints': _capabilities.allowLegacyMemoEndpoints,
         'preferLegacyAuthChain': _capabilities.preferLegacyAuthChain,
-        'forceLegacyMemoByPreference': _capabilities.forceLegacyMemoByPreference,
+        'forceLegacyMemoByPreference':
+            _capabilities.forceLegacyMemoByPreference,
       },
     );
   }
@@ -397,9 +413,7 @@ class MemosApi {
         baseUrl: dioBaseUrlString(baseUrl),
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 30),
-        headers: <String, Object?>{
-          'Cookie': sessionCookie,
-        },
+        headers: <String, Object?>{'Cookie': sessionCookie},
       ),
     );
     return MemosApi._(
@@ -418,7 +432,8 @@ class MemosApi {
     try {
       final response = await _dio.get('api/v1/instance/profile');
       final profile = InstanceProfile.fromJson(_expectJsonMap(response.data));
-      final hasInfo = profile.version.trim().isNotEmpty ||
+      final hasInfo =
+          profile.version.trim().isNotEmpty ||
           profile.mode.trim().isNotEmpty ||
           profile.instanceUrl.trim().isNotEmpty ||
           profile.owner.trim().isNotEmpty;
@@ -434,7 +449,8 @@ class MemosApi {
       final response = await _dio.get('api/v1/status');
       final body = _expectJsonMap(response.data);
       final profile = _instanceProfileFromStatus(body);
-      final hasInfo = profile.version.trim().isNotEmpty ||
+      final hasInfo =
+          profile.version.trim().isNotEmpty ||
           profile.mode.trim().isNotEmpty ||
           profile.instanceUrl.trim().isNotEmpty ||
           profile.owner.trim().isNotEmpty;
@@ -503,7 +519,8 @@ class MemosApi {
         _CurrentUserEndpoint.authMe,
       ];
     }
-    if (_serverFlavor == _ServerApiFlavor.v0_24 || _serverFlavor == _ServerApiFlavor.v0_22) {
+    if (_serverFlavor == _ServerApiFlavor.v0_24 ||
+        _serverFlavor == _ServerApiFlavor.v0_22) {
       return <_CurrentUserEndpoint>[
         _CurrentUserEndpoint.authStatusPost,
         _CurrentUserEndpoint.authStatusGet,
@@ -553,7 +570,8 @@ class MemosApi {
 
   Future<User> _runCurrentUserAttempt(_CurrentUserEndpoint endpoint) {
     return switch (endpoint) {
-      _CurrentUserEndpoint.authSessionCurrent => _getCurrentUserBySessionCurrent(),
+      _CurrentUserEndpoint.authSessionCurrent =>
+        _getCurrentUserBySessionCurrent(),
       _CurrentUserEndpoint.authMe => _getCurrentUserByAuthMe(),
       _CurrentUserEndpoint.authStatusPost => _getCurrentUserByAuthStatusPost(),
       _CurrentUserEndpoint.authStatusGet => _getCurrentUserByAuthStatusGet(),
@@ -642,7 +660,10 @@ class MemosApi {
     return allowed;
   }
 
-  bool _ensureLegacyMemoEndpointAllowed(String endpoint, {required String operation}) {
+  bool _ensureLegacyMemoEndpointAllowed(
+    String endpoint, {
+    required String operation,
+  }) {
     if (_legacyMemoEndpointsAllowed()) return true;
     final wasLegacy = _memoApiLegacy;
     if (wasLegacy) {
@@ -695,7 +716,10 @@ class MemosApi {
   }
 
   Future<User> _getCurrentUserByAuthStatusPost() async {
-    final response = await _dio.post('api/v1/auth/status', data: const <String, Object?>{});
+    final response = await _dio.post(
+      'api/v1/auth/status',
+      data: const <String, Object?>{},
+    );
     final body = _expectJsonMap(response.data);
     final userJson = body['user'];
     if (userJson is Map) {
@@ -716,7 +740,10 @@ class MemosApi {
   }
 
   Future<User> _getCurrentUserByAuthStatusV2() async {
-    final response = await _dio.post('api/v2/auth/status', data: const <String, Object?>{});
+    final response = await _dio.post(
+      'api/v2/auth/status',
+      data: const <String, Object?>{},
+    );
     final body = _expectJsonMap(response.data);
     final userJson = body['user'];
     if (userJson is Map) {
@@ -765,13 +792,17 @@ class MemosApi {
     }
 
     Future<User> callLegacy() async {
-      var legacyKey = raw.startsWith('users/') ? raw.substring('users/'.length) : raw;
+      var legacyKey = raw.startsWith('users/')
+          ? raw.substring('users/'.length)
+          : raw;
       legacyKey = legacyKey.trim();
       if (legacyKey.isEmpty) {
         throw const FormatException('Invalid legacy user identifier');
       }
       final numeric = int.tryParse(legacyKey);
-      final path = numeric != null ? 'api/v1/user/$numeric' : 'api/v1/user/name/$legacyKey';
+      final path = numeric != null
+          ? 'api/v1/user/$numeric'
+          : 'api/v1/user/name/$legacyKey';
       final response = await _dio.get(path);
       return User.fromJson(_expectJsonMap(response.data));
     }
@@ -850,27 +881,31 @@ class MemosApi {
     return summary;
   }
 
-  Future<UserStatsSummary> _getUserStatsModernGetStats({String? userName}) async {
+  Future<UserStatsSummary> _getUserStatsModernGetStats({
+    String? userName,
+  }) async {
     final name = await _resolveUserName(userName: userName);
     final response = await _dio.get('api/v1/$name:getStats');
     final body = _expectJsonMap(response.data);
     return _parseUserStats(body);
   }
 
-  Future<UserStatsSummary> _getUserStatsLegacyStatsPath({String? userName}) async {
+  Future<UserStatsSummary> _getUserStatsLegacyStatsPath({
+    String? userName,
+  }) async {
     final name = await _resolveUserName(userName: userName);
     final response = await _dio.get('api/v1/$name/stats');
     final body = _expectJsonMap(response.data);
     return _parseUserStats(body);
   }
 
-  Future<UserStatsSummary> _getUserStatsLegacyMemosStats({String? userName}) async {
+  Future<UserStatsSummary> _getUserStatsLegacyMemosStats({
+    String? userName,
+  }) async {
     final name = await _resolveUserName(userName: userName);
     final response = await _dio.get(
       'api/v1/memos/stats',
-      queryParameters: <String, Object?>{
-        'name': name,
-      },
+      queryParameters: <String, Object?>{'name': name},
     );
     final body = _expectJsonMap(response.data);
     final rawStats = _readMap(body['stats']) ?? body;
@@ -890,19 +925,16 @@ class MemosApi {
     if (total <= 0) {
       total = times.length;
     }
-    return UserStatsSummary(
-      memoDisplayTimes: times,
-      totalMemoCount: total,
-    );
+    return UserStatsSummary(memoDisplayTimes: times, totalMemoCount: total);
   }
 
-  Future<UserStatsSummary> _getUserStatsLegacyMemoStats({String? userName}) async {
+  Future<UserStatsSummary> _getUserStatsLegacyMemoStats({
+    String? userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final response = await _dio.get(
       'api/v1/memo/stats',
-      queryParameters: <String, Object?>{
-        'creatorId': numericUserId,
-      },
+      queryParameters: <String, Object?>{'creatorId': numericUserId},
     );
     final list = response.data;
     final times = <DateTime>[];
@@ -921,7 +953,8 @@ class MemosApi {
   }
 
   UserStatsSummary _parseUserStats(Map<String, dynamic> body) {
-    final list = body['memoDisplayTimestamps'] ?? body['memo_display_timestamps'];
+    final list =
+        body['memoDisplayTimestamps'] ?? body['memo_display_timestamps'];
     final times = <DateTime>[];
     if (list is List) {
       for (final item in list) {
@@ -935,10 +968,7 @@ class MemosApi {
     if (total <= 0) {
       total = times.length;
     }
-    return UserStatsSummary(
-      memoDisplayTimes: times,
-      totalMemoCount: total,
-    );
+    return UserStatsSummary(memoDisplayTimes: times, totalMemoCount: total);
   }
 
   static InstanceProfile _instanceProfileFromStatus(Map<String, dynamic> body) {
@@ -946,7 +976,9 @@ class MemosApi {
     final version = _readString(profile?['version']);
     final mode = _readString(profile?['mode']);
 
-    final customizedProfile = _readMap(body['customizedProfile'] ?? body['customized_profile']);
+    final customizedProfile = _readMap(
+      body['customizedProfile'] ?? body['customized_profile'],
+    );
     final instanceUrl = _readString(
       customizedProfile?['externalUrl'] ??
           customizedProfile?['external_url'] ??
@@ -955,7 +987,9 @@ class MemosApi {
     );
 
     final host = _readMap(body['host']);
-    final owner = _readString(host?['name'] ?? host?['username'] ?? host?['nickname'] ?? host?['id']);
+    final owner = _readString(
+      host?['name'] ?? host?['username'] ?? host?['nickname'] ?? host?['id'],
+    );
 
     return InstanceProfile(
       version: version,
@@ -982,7 +1016,9 @@ class MemosApi {
       if (numericUserId != null) return;
       if (effectiveUserName.isEmpty) return;
 
-      final identifier = effectiveUserName.contains('/') ? effectiveUserName.split('/').last.trim() : effectiveUserName;
+      final identifier = effectiveUserName.contains('/')
+          ? effectiveUserName.split('/').last.trim()
+          : effectiveUserName;
       if (identifier.isEmpty) return;
 
       try {
@@ -1012,7 +1048,9 @@ class MemosApi {
     await resolveFromUserName();
     await resolveFromCurrentUser();
     if (numericUserId == null) {
-      throw FormatException('Unable to determine numeric user id from "$effectiveUserName"');
+      throw FormatException(
+        'Unable to determine numeric user id from "$effectiveUserName"',
+      );
     }
     return numericUserId!;
   }
@@ -1062,7 +1100,8 @@ class MemosApi {
     }
   }
 
-  Future<({PersonalAccessToken personalAccessToken, String token})> createPersonalAccessToken({
+  Future<({PersonalAccessToken personalAccessToken, String token})>
+  createPersonalAccessToken({
     String? userName,
     required String description,
     required int expiresInDays,
@@ -1081,14 +1120,18 @@ class MemosApi {
           expiresInDays: expiresInDays,
         );
       }
-      if (_capabilities.forceLegacyMemoByPreference && _shouldFallbackLegacy(e)) {
-        throw UnsupportedError('Legacy API does not support personal access tokens');
+      if (_capabilities.forceLegacyMemoByPreference &&
+          _shouldFallbackLegacy(e)) {
+        throw UnsupportedError(
+          'Legacy API does not support personal access tokens',
+        );
       }
       rethrow;
     }
   }
 
-  Future<({PersonalAccessToken personalAccessToken, String token})> _createPersonalAccessTokenModern({
+  Future<({PersonalAccessToken personalAccessToken, String token})>
+  _createPersonalAccessTokenModern({
     String? userName,
     required String description,
     required int expiresInDays,
@@ -1138,16 +1181,16 @@ class MemosApi {
       final data = <String, Object?>{
         if (includeParent) 'parent': parent,
         'description': trimmedDescription,
-        if (includeExpires) (useSnakeCaseExpires ? 'expires_in_days' : 'expiresInDays'): expiresInDays,
+        if (includeExpires)
+          (useSnakeCaseExpires ? 'expires_in_days' : 'expiresInDays'):
+              expiresInDays,
       };
-      final response = await _dio.post(
-        path,
-        data: data,
-      );
+      final response = await _dio.post(path, data: data);
       final body = _expectJsonMap(response.data);
       final token = extractToken(body);
 
-      final patJson = body['personalAccessToken'] ?? body['personal_access_token'];
+      final patJson =
+          body['personalAccessToken'] ?? body['personal_access_token'];
       final personalAccessToken = patJson is Map
           ? PersonalAccessToken.fromJson(patJson.cast<String, dynamic>())
           : PersonalAccessToken(
@@ -1160,36 +1203,59 @@ class MemosApi {
       return (personalAccessToken: personalAccessToken, token: token);
     }
 
-    Future<({PersonalAccessToken personalAccessToken, String token})> createViaPersonalAccessTokens() async {
+    Future<({PersonalAccessToken personalAccessToken, String token})>
+    createViaPersonalAccessTokens() async {
       final expiresOptional = expiresInDays == 0;
 
       try {
-        return await request(includeParent: true, useSnakeCaseExpires: false, includeExpires: true);
+        return await request(
+          includeParent: true,
+          useSnakeCaseExpires: false,
+          includeExpires: true,
+        );
       } on DioException catch (e) {
         final status = e.response?.statusCode ?? 0;
         if (status != 400) rethrow;
 
         final message = tryExtractErrorMessage(e);
-        final unknownExpires = message.contains('expiresInDays') && message.toLowerCase().contains('unknown');
+        final unknownExpires =
+            message.contains('expiresInDays') &&
+            message.toLowerCase().contains('unknown');
 
         if (expiresOptional) {
           try {
-            return await request(includeParent: true, useSnakeCaseExpires: false, includeExpires: false);
+            return await request(
+              includeParent: true,
+              useSnakeCaseExpires: false,
+              includeExpires: false,
+            );
           } on DioException catch (_) {}
         }
 
         if (unknownExpires) {
           try {
-            return await request(includeParent: true, useSnakeCaseExpires: true, includeExpires: true);
+            return await request(
+              includeParent: true,
+              useSnakeCaseExpires: true,
+              includeExpires: true,
+            );
           } on DioException catch (_) {}
         }
 
         try {
-          return await request(includeParent: false, useSnakeCaseExpires: false, includeExpires: true);
+          return await request(
+            includeParent: false,
+            useSnakeCaseExpires: false,
+            includeExpires: true,
+          );
         } on DioException catch (_) {}
 
         if (unknownExpires) {
-          return await request(includeParent: false, useSnakeCaseExpires: true, includeExpires: true);
+          return await request(
+            includeParent: false,
+            useSnakeCaseExpires: true,
+            includeExpires: true,
+          );
         }
         rethrow;
       }
@@ -1209,28 +1275,40 @@ class MemosApi {
     }
   }
 
-  Future<({PersonalAccessToken personalAccessToken, String token})> _createUserAccessTokenCompat({
+  Future<({PersonalAccessToken personalAccessToken, String token})>
+  _createUserAccessTokenCompat({
     required String parent,
     required String description,
     required int expiresInDays,
   }) async {
-    final expiresAt = expiresInDays > 0 ? DateTime.now().toUtc().add(Duration(days: expiresInDays)) : null;
+    final expiresAt = expiresInDays > 0
+        ? DateTime.now().toUtc().add(Duration(days: expiresInDays))
+        : null;
 
-    Future<({PersonalAccessToken personalAccessToken, String token})> request({required bool useSnakeCaseExpires}) async {
+    Future<({PersonalAccessToken personalAccessToken, String token})> request({
+      required bool useSnakeCaseExpires,
+    }) async {
       final data = <String, Object?>{
         'description': description,
-        if (expiresAt != null) (useSnakeCaseExpires ? 'expires_at' : 'expiresAt'): expiresAt.toIso8601String(),
+        if (expiresAt != null)
+          (useSnakeCaseExpires ? 'expires_at' : 'expiresAt'): expiresAt
+              .toIso8601String(),
       };
       final response = await _dio.post(
         'api/v1/$parent/accessTokens',
         data: data,
       );
       final body = _expectJsonMap(response.data);
-      final tokenValue = _readString(body['accessToken'] ?? body['access_token'] ?? body['token']);
+      final tokenValue = _readString(
+        body['accessToken'] ?? body['access_token'] ?? body['token'],
+      );
       if (tokenValue.isEmpty) {
         throw const FormatException('Token missing in response');
       }
-      final personalAccessToken = _personalAccessTokenFromAccessTokensJson(body, tokenValue: tokenValue);
+      final personalAccessToken = _personalAccessTokenFromAccessTokensJson(
+        body,
+        tokenValue: tokenValue,
+      );
       return (personalAccessToken: personalAccessToken, token: tokenValue);
     }
 
@@ -1248,7 +1326,8 @@ class MemosApi {
     return request(useSnakeCaseExpires: true);
   }
 
-  Future<({PersonalAccessToken personalAccessToken, String token})> _createPersonalAccessTokenLegacy({
+  Future<({PersonalAccessToken personalAccessToken, String token})>
+  _createPersonalAccessTokenLegacy({
     String? userName,
     required String description,
     required int expiresInDays,
@@ -1260,7 +1339,9 @@ class MemosApi {
 
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final name = 'users/$numericUserId';
-    final expiresAt = expiresInDays > 0 ? DateTime.now().toUtc().add(Duration(days: expiresInDays)) : null;
+    final expiresAt = expiresInDays > 0
+        ? DateTime.now().toUtc().add(Duration(days: expiresInDays))
+        : null;
 
     final response = await _dio.post(
       'api/v1/$name/access_tokens',
@@ -1281,21 +1362,28 @@ class MemosApi {
     return (personalAccessToken: pat, token: token);
   }
 
-  Future<List<PersonalAccessToken>> listPersonalAccessTokens({String? userName}) async {
+  Future<List<PersonalAccessToken>> listPersonalAccessTokens({
+    String? userName,
+  }) async {
     try {
       return await _listPersonalAccessTokensModern(userName: userName);
     } on DioException catch (e) {
       if (_shouldFallback(e)) {
         return await _listPersonalAccessTokensLegacy(userName: userName);
       }
-      if (_capabilities.forceLegacyMemoByPreference && _shouldFallbackLegacy(e)) {
-        throw UnsupportedError('Legacy API does not support personal access tokens');
+      if (_capabilities.forceLegacyMemoByPreference &&
+          _shouldFallbackLegacy(e)) {
+        throw UnsupportedError(
+          'Legacy API does not support personal access tokens',
+        );
       }
       rethrow;
     }
   }
 
-  Future<List<PersonalAccessToken>> _listPersonalAccessTokensModern({String? userName}) async {
+  Future<List<PersonalAccessToken>> _listPersonalAccessTokensModern({
+    String? userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final parent = 'users/$numericUserId';
 
@@ -1305,12 +1393,15 @@ class MemosApi {
         queryParameters: const <String, Object?>{'pageSize': 1000},
       );
       final body = _expectJsonMap(response.data);
-      final list = body['personalAccessTokens'] ?? body['personal_access_tokens'];
+      final list =
+          body['personalAccessTokens'] ?? body['personal_access_tokens'];
       final tokens = <PersonalAccessToken>[];
       if (list is List) {
         for (final item in list) {
           if (item is Map) {
-            tokens.add(PersonalAccessToken.fromJson(item.cast<String, dynamic>()));
+            tokens.add(
+              PersonalAccessToken.fromJson(item.cast<String, dynamic>()),
+            );
           }
         }
       }
@@ -1327,7 +1418,9 @@ class MemosApi {
     return _listPersonalAccessTokensAccessTokens(parent: parent);
   }
 
-  Future<List<PersonalAccessToken>> _listPersonalAccessTokensAccessTokens({required String parent}) async {
+  Future<List<PersonalAccessToken>> _listPersonalAccessTokensAccessTokens({
+    required String parent,
+  }) async {
     final response = await _dio.get(
       'api/v1/$parent/accessTokens',
       queryParameters: const <String, Object?>{'pageSize': 1000},
@@ -1338,7 +1431,11 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          tokens.add(_personalAccessTokenFromAccessTokensJson(item.cast<String, dynamic>()));
+          tokens.add(
+            _personalAccessTokenFromAccessTokensJson(
+              item.cast<String, dynamic>(),
+            ),
+          );
         }
       }
     }
@@ -1351,7 +1448,9 @@ class MemosApi {
     return tokens;
   }
 
-  Future<List<PersonalAccessToken>> _listPersonalAccessTokensLegacy({String? userName}) async {
+  Future<List<PersonalAccessToken>> _listPersonalAccessTokensLegacy({
+    String? userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final name = 'users/$numericUserId';
 
@@ -1364,9 +1463,13 @@ class MemosApi {
       for (final item in list) {
         if (item is Map) {
           final map = item.cast<String, dynamic>();
-          final tokenValue = _readString(map['accessToken'] ?? map['access_token']);
+          final tokenValue = _readString(
+            map['accessToken'] ?? map['access_token'],
+          );
           if (tokenValue.isEmpty) continue;
-          tokens.add(_personalAccessTokenFromLegacyJson(map, tokenValue: tokenValue));
+          tokens.add(
+            _personalAccessTokenFromLegacyJson(map, tokenValue: tokenValue),
+          );
         }
       }
     }
@@ -1384,14 +1487,20 @@ class MemosApi {
     DioException? lastError;
 
     try {
-      return await _getUserGeneralSettingModern(userName: resolvedName, settingKey: 'GENERAL');
+      return await _getUserGeneralSettingModern(
+        userName: resolvedName,
+        settingKey: 'GENERAL',
+      );
     } on DioException catch (e) {
       lastError = e;
       if (!_shouldFallback(e)) rethrow;
     }
 
     try {
-      return await _getUserGeneralSettingModern(userName: resolvedName, settingKey: 'general');
+      return await _getUserGeneralSettingModern(
+        userName: resolvedName,
+        settingKey: 'general',
+      );
     } on DioException catch (e) {
       lastError = e;
       if (!_shouldFallback(e)) rethrow;
@@ -1442,7 +1551,8 @@ class MemosApi {
             updateMask: mask,
           );
         } on DioException catch (inner) {
-          if (!_shouldFallback(inner) && inner.response?.statusCode != 400) rethrow;
+          if (!_shouldFallback(inner) && inner.response?.statusCode != 400)
+            rethrow;
         }
       } else {
         rethrow;
@@ -1506,12 +1616,7 @@ class MemosApi {
     try {
       final response = await _dio.post(
         'api/v1/$parent/shortcuts',
-        data: <String, Object?>{
-          'shortcut': <String, Object?>{
-            'title': trimmedTitle,
-            'filter': filter,
-          },
-        },
+        data: <String, Object?>{'title': trimmedTitle, 'filter': filter},
       );
       _shortcutsSupported = true;
       return Shortcut.fromJson(_expectJsonMap(response.data));
@@ -1557,9 +1662,7 @@ class MemosApi {
           'updateMask': 'title,filter',
           'update_mask': 'title,filter',
         },
-        data: <String, Object?>{
-          'shortcut': shortcutPayload,
-        },
+        data: shortcutPayload,
       );
       _shortcutsSupported = true;
       return Shortcut.fromJson(_expectJsonMap(response.data));
@@ -1732,9 +1835,7 @@ class MemosApi {
     }
   }
 
-  Future<void> deleteUserWebhook({
-    required UserWebhook webhook,
-  }) async {
+  Future<void> deleteUserWebhook({required UserWebhook webhook}) async {
     if (webhook.isLegacy) {
       try {
         await _deleteUserWebhookLegacyV1(webhook: webhook);
@@ -1780,7 +1881,9 @@ class MemosApi {
     return setting.generalSetting ?? const UserGeneralSetting();
   }
 
-  Future<UserGeneralSetting> _getUserGeneralSettingLegacyV1({required String userName}) async {
+  Future<UserGeneralSetting> _getUserGeneralSettingLegacyV1({
+    required String userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final name = 'users/$numericUserId/setting';
     final response = await _dio.get('api/v1/$name');
@@ -1791,7 +1894,9 @@ class MemosApi {
     return setting.generalSetting ?? const UserGeneralSetting();
   }
 
-  Future<UserGeneralSetting> _getUserGeneralSettingLegacyV2({required String userName}) async {
+  Future<UserGeneralSetting> _getUserGeneralSettingLegacyV2({
+    required String userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final name = 'users/$numericUserId/setting';
     final response = await _dio.get('api/v2/$name');
@@ -1885,14 +1990,18 @@ class MemosApi {
     return shortcuts;
   }
 
-  Future<List<UserWebhook>> _listUserWebhooksModern({required String userName}) async {
+  Future<List<UserWebhook>> _listUserWebhooksModern({
+    required String userName,
+  }) async {
     final response = await _dio.get('api/v1/$userName/webhooks');
     final body = _expectJsonMap(response.data);
     final list = body['webhooks'];
     return _parseUserWebhooks(list);
   }
 
-  Future<List<UserWebhook>> _listUserWebhooksLegacyV1({required String userName}) async {
+  Future<List<UserWebhook>> _listUserWebhooksLegacyV1({
+    required String userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final creatorName = 'users/$numericUserId';
     final response = await _dio.get(
@@ -1904,7 +2013,9 @@ class MemosApi {
     return _parseUserWebhooks(list);
   }
 
-  Future<List<UserWebhook>> _listUserWebhooksLegacyV2({required String userName}) async {
+  Future<List<UserWebhook>> _listUserWebhooksLegacyV2({
+    required String userName,
+  }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final response = await _dio.get(
       'api/v2/webhooks',
@@ -1943,10 +2054,7 @@ class MemosApi {
     final label = displayName.trim().isNotEmpty ? displayName.trim() : url;
     final response = await _dio.post(
       'api/v1/webhooks',
-      data: <String, Object?>{
-        'name': label,
-        'url': url,
-      },
+      data: <String, Object?>{'name': label, 'url': url},
     );
     final body = _expectJsonMap(response.data);
     final json = _unwrapWebhookPayload(body);
@@ -1961,10 +2069,7 @@ class MemosApi {
     final label = displayName.trim().isNotEmpty ? displayName.trim() : url;
     final response = await _dio.post(
       'api/v2/webhooks',
-      data: <String, Object?>{
-        'name': label,
-        'url': url,
-      },
+      data: <String, Object?>{'name': label, 'url': url},
     );
     final body = _expectJsonMap(response.data);
     final json = _unwrapWebhookPayload(body);
@@ -2014,7 +2119,9 @@ class MemosApi {
       },
       data: <String, Object?>{
         'id': id,
-        'name': displayName.trim().isNotEmpty ? displayName.trim() : webhook.name,
+        'name': displayName.trim().isNotEmpty
+            ? displayName.trim()
+            : webhook.name,
         'url': url,
       },
     );
@@ -2040,7 +2147,9 @@ class MemosApi {
       },
       data: <String, Object?>{
         'id': id,
-        'name': displayName.trim().isNotEmpty ? displayName.trim() : webhook.name,
+        'name': displayName.trim().isNotEmpty
+            ? displayName.trim()
+            : webhook.name,
         'url': url,
       },
     );
@@ -2067,7 +2176,9 @@ class MemosApi {
     await _dio.delete('api/v1/webhooks/$id');
   }
 
-  Future<void> _deleteUserWebhookLegacyV2({required UserWebhook webhook}) async {
+  Future<void> _deleteUserWebhookLegacyV2({
+    required UserWebhook webhook,
+  }) async {
     final id = webhook.legacyId;
     if (id == null || id <= 0) {
       throw ArgumentError('deleteUserWebhook requires legacy id');
@@ -2095,14 +2206,16 @@ class MemosApi {
     return body;
   }
 
-  static Map<String, dynamic> _legacyUserSettingPayload(String name, {required UserGeneralSetting setting}) {
-    final data = <String, dynamic>{
-      'name': name,
-    };
+  static Map<String, dynamic> _legacyUserSettingPayload(
+    String name, {
+    required UserGeneralSetting setting,
+  }) {
+    final data = <String, dynamic>{'name': name};
     if (setting.locale != null && setting.locale!.trim().isNotEmpty) {
       data['locale'] = setting.locale!.trim();
     }
-    if (setting.memoVisibility != null && setting.memoVisibility!.trim().isNotEmpty) {
+    if (setting.memoVisibility != null &&
+        setting.memoVisibility!.trim().isNotEmpty) {
       data['memoVisibility'] = setting.memoVisibility!.trim();
     }
     if (setting.theme != null && setting.theme!.trim().isNotEmpty) {
@@ -2179,19 +2292,24 @@ class MemosApi {
     final trimmed = reactionType.trim();
     if (trimmed.isEmpty) return 'HEART';
     if (trimmed == 'HEART' || trimmed == 'THUMBS_UP') return trimmed;
-    if (trimmed == '\u{2764}\u{FE0F}' || trimmed == '\u{2764}' || trimmed == '\u{2665}') return 'HEART';
+    if (trimmed == '\u{2764}\u{FE0F}' ||
+        trimmed == '\u{2764}' ||
+        trimmed == '\u{2665}')
+      return 'HEART';
     if (trimmed == '\u{1F44D}') return 'THUMBS_UP';
     return 'HEART';
   }
 
-  Future<(List<AppNotification> notifications, String nextPageToken)> listNotifications({
+  Future<(List<AppNotification> notifications, String nextPageToken)>
+  listNotifications({
     int pageSize = 50,
     String? pageToken,
     String? userName,
     String? filter,
   }) async {
     await _ensureServerHints();
-    Future<(List<AppNotification> notifications, String nextPageToken)> callModern() {
+    Future<(List<AppNotification> notifications, String nextPageToken)>
+    callModern() {
       return _listNotificationsModern(
         pageSize: pageSize,
         pageToken: pageToken,
@@ -2200,14 +2318,16 @@ class MemosApi {
       );
     }
 
-    Future<(List<AppNotification> notifications, String nextPageToken)> callLegacyV1() {
+    Future<(List<AppNotification> notifications, String nextPageToken)>
+    callLegacyV1() {
       return _listNotificationsLegacyV1(
         pageSize: pageSize,
         pageToken: pageToken,
       );
     }
 
-    Future<(List<AppNotification> notifications, String nextPageToken)> callLegacyV2() {
+    Future<(List<AppNotification> notifications, String nextPageToken)>
+    callLegacyV2() {
       return _listNotificationsLegacyV2(
         pageSize: pageSize,
         pageToken: pageToken,
@@ -2280,7 +2400,8 @@ class MemosApi {
     return result;
   }
 
-  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsModern({
+  Future<(List<AppNotification> notifications, String nextPageToken)>
+  _listNotificationsModern({
     required int pageSize,
     String? pageToken,
     String? userName,
@@ -2307,18 +2428,22 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          notifications.add(AppNotification.fromModernJson(item.cast<String, dynamic>()));
+          notifications.add(
+            AppNotification.fromModernJson(item.cast<String, dynamic>()),
+          );
         }
       }
     }
-    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    final nextToken = _readStringField(
+      body,
+      'nextPageToken',
+      'next_page_token',
+    );
     return (notifications, nextToken);
   }
 
-  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsLegacyV1({
-    required int pageSize,
-    String? pageToken,
-  }) async {
+  Future<(List<AppNotification> notifications, String nextPageToken)>
+  _listNotificationsLegacyV1({required int pageSize, String? pageToken}) async {
     final normalizedToken = (pageToken ?? '').trim();
     final response = await _dio.get(
       'api/v1/inboxes',
@@ -2336,18 +2461,22 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          notifications.add(AppNotification.fromLegacyJson(item.cast<String, dynamic>()));
+          notifications.add(
+            AppNotification.fromLegacyJson(item.cast<String, dynamic>()),
+          );
         }
       }
     }
-    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    final nextToken = _readStringField(
+      body,
+      'nextPageToken',
+      'next_page_token',
+    );
     return (notifications, nextToken);
   }
 
-  Future<(List<AppNotification> notifications, String nextPageToken)> _listNotificationsLegacyV2({
-    required int pageSize,
-    String? pageToken,
-  }) async {
+  Future<(List<AppNotification> notifications, String nextPageToken)>
+  _listNotificationsLegacyV2({required int pageSize, String? pageToken}) async {
     final normalizedToken = (pageToken ?? '').trim();
     final response = await _dio.get(
       'api/v2/inboxes',
@@ -2365,11 +2494,17 @@ class MemosApi {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          notifications.add(AppNotification.fromLegacyJson(item.cast<String, dynamic>()));
+          notifications.add(
+            AppNotification.fromLegacyJson(item.cast<String, dynamic>()),
+          );
         }
       }
     }
-    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    final nextToken = _readStringField(
+      body,
+      'nextPageToken',
+      'next_page_token',
+    );
     return (notifications, nextToken);
   }
 
@@ -2391,7 +2526,10 @@ class MemosApi {
       await _updateInboxStatus(name: trimmedName, status: trimmedStatus);
       return;
     }
-    await _updateUserNotificationStatus(name: trimmedName, status: trimmedStatus);
+    await _updateUserNotificationStatus(
+      name: trimmedName,
+      status: trimmedStatus,
+    );
   }
 
   Future<void> deleteNotification({
@@ -2417,21 +2555,24 @@ class MemosApi {
     await _dio.delete('api/v1/$trimmedName');
   }
 
-  Future<void> _updateUserNotificationStatus({required String name, required String status}) async {
+  Future<void> _updateUserNotificationStatus({
+    required String name,
+    required String status,
+  }) async {
     await _dio.patch(
       'api/v1/$name',
       queryParameters: const <String, Object?>{
         'updateMask': 'status',
         'update_mask': 'status',
       },
-      data: <String, Object?>{
-        'name': name,
-        'status': status,
-      },
+      data: <String, Object?>{'name': name, 'status': status},
     );
   }
 
-  Future<void> _updateInboxStatus({required String name, required String status}) async {
+  Future<void> _updateInboxStatus({
+    required String name,
+    required String status,
+  }) async {
     try {
       await _dio.patch(
         'api/v1/$name',
@@ -2439,10 +2580,7 @@ class MemosApi {
           'updateMask': 'status',
           'update_mask': 'status',
         },
-        data: <String, Object?>{
-          'name': name,
-          'status': status,
-        },
+        data: <String, Object?>{'name': name, 'status': status},
       );
     } on DioException catch (e) {
       if (_shouldFallbackLegacy(e)) {
@@ -2452,10 +2590,7 @@ class MemosApi {
             'updateMask': 'status',
             'update_mask': 'status',
           },
-          data: <String, Object?>{
-            'name': name,
-            'status': status,
-          },
+          data: <String, Object?>{'name': name, 'status': status},
         );
         return;
       }
@@ -2479,9 +2614,8 @@ class MemosApi {
     return raw;
   }
 
-  Future<({String commentMemoUid, String relatedMemoUid})> getMemoCommentActivityRefs({
-    required int activityId,
-  }) async {
+  Future<({String commentMemoUid, String relatedMemoUid})>
+  getMemoCommentActivityRefs({required int activityId}) async {
     if (activityId <= 0) {
       return (commentMemoUid: '', relatedMemoUid: '');
     }
@@ -2514,15 +2648,22 @@ class MemosApi {
     return activity ?? body;
   }
 
-  ({String commentMemoUid, String relatedMemoUid}) _extractMemoCommentRefs(Map<String, dynamic> activity) {
+  ({String commentMemoUid, String relatedMemoUid}) _extractMemoCommentRefs(
+    Map<String, dynamic> activity,
+  ) {
     final payload = _readMap(activity['payload']);
-    final memoComment = _readMap(payload?['memoComment'] ?? payload?['memo_comment']);
+    final memoComment = _readMap(
+      payload?['memoComment'] ?? payload?['memo_comment'],
+    );
     if (memoComment == null) {
       return (commentMemoUid: '', relatedMemoUid: '');
     }
 
-    final commentName =
-        _readString(memoComment['memo'] ?? memoComment['memoName'] ?? memoComment['memo_name']);
+    final commentName = _readString(
+      memoComment['memo'] ??
+          memoComment['memoName'] ??
+          memoComment['memo_name'],
+    );
     final relatedName = _readString(
       memoComment['relatedMemo'] ??
           memoComment['relatedMemoName'] ??
@@ -2530,7 +2671,9 @@ class MemosApi {
           memoComment['related_memo_name'],
     );
     final commentId = _readInt(memoComment['memoId'] ?? memoComment['memo_id']);
-    final relatedId = _readInt(memoComment['relatedMemoId'] ?? memoComment['related_memo_id']);
+    final relatedId = _readInt(
+      memoComment['relatedMemoId'] ?? memoComment['related_memo_id'],
+    );
 
     final commentUid = _normalizeMemoUid(
       commentName.isNotEmpty
@@ -2652,7 +2795,8 @@ class MemosApi {
     }
   }
 
-  Future<({List<Memo> memos, String nextPageToken, bool usedLegacyAll})> listExploreMemos({
+  Future<({List<Memo> memos, String nextPageToken, bool usedLegacyAll})>
+  listExploreMemos({
     int pageSize = 50,
     String? pageToken,
     String? state,
@@ -2728,7 +2872,11 @@ class MemosApi {
         }
       }
     }
-    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    final nextToken = _readStringField(
+      body,
+      'nextPageToken',
+      'next_page_token',
+    );
     return (memos, nextToken);
   }
 
@@ -3047,9 +3195,7 @@ class MemosApi {
     required Object? location,
   }) async {
     final updateMask = <String>[];
-    final data = <String, Object?>{
-      'name': 'memos/$memoUid',
-    };
+    final data = <String, Object?>{'name': 'memos/$memoUid'};
     if (content != null) {
       updateMask.add('content');
       data['content'] = content;
@@ -3072,7 +3218,9 @@ class MemosApi {
     }
     if (!identical(location, _unset)) {
       updateMask.add('location');
-      data['location'] = location == null ? null : (location as MemoLocation).toJson();
+      data['location'] = location == null
+          ? null
+          : (location as MemoLocation).toJson();
     }
     if (updateMask.isEmpty) {
       throw ArgumentError('updateMemo requires at least one field');
@@ -3120,16 +3268,20 @@ class MemosApi {
     }
   }
 
-  Future<void> _deleteMemoModern({required String memoUid, required bool force}) async {
+  Future<void> _deleteMemoModern({
+    required String memoUid,
+    required bool force,
+  }) async {
     await _dio.delete(
       'api/v1/memos/$memoUid',
-      queryParameters: <String, Object?>{
-        if (force) 'force': true,
-      },
+      queryParameters: <String, Object?>{if (force) 'force': true},
     );
   }
 
-  Future<void> _deleteMemoLegacy({required String memoUid, required bool force}) async {
+  Future<void> _deleteMemoLegacy({
+    required String memoUid,
+    required bool force,
+  }) async {
     if (!_ensureLegacyMemoEndpointAllowed(
       'api/v1/memo',
       operation: 'delete_memo_legacy',
@@ -3140,9 +3292,7 @@ class MemosApi {
     try {
       await _dio.delete(
         'api/v1/memos/$memoUid',
-        queryParameters: <String, Object?>{
-          if (force) 'force': true,
-        },
+        queryParameters: <String, Object?>{if (force) 'force': true},
       );
       return;
     } on DioException catch (e) {
@@ -3602,24 +3752,34 @@ class MemosApi {
     await _setMemoAttachmentsLegacy(memoUid, attachmentNames);
   }
 
-  Future<void> _setMemoAttachmentsModern(String memoUid, List<String> attachmentNames) async {
+  Future<void> _setMemoAttachmentsModern(
+    String memoUid,
+    List<String> attachmentNames,
+  ) async {
     await _dio.patch(
       'api/v1/memos/$memoUid/attachments',
       data: <String, Object?>{
         'name': 'memos/$memoUid',
-        'attachments': attachmentNames.map((n) => <String, Object?>{'name': n}).toList(growable: false),
+        'attachments': attachmentNames
+            .map((n) => <String, Object?>{'name': n})
+            .toList(growable: false),
       },
       options: _attachmentOptions(),
     );
     _attachmentMode = _AttachmentApiMode.attachments;
   }
 
-  Future<void> _setMemoResources(String memoUid, List<String> attachmentNames) async {
+  Future<void> _setMemoResources(
+    String memoUid,
+    List<String> attachmentNames,
+  ) async {
     await _dio.patch(
       'api/v1/memos/$memoUid/resources',
       data: <String, Object?>{
         'name': 'memos/$memoUid',
-        'resources': attachmentNames.map((n) => <String, Object?>{'name': n}).toList(growable: false),
+        'resources': attachmentNames
+            .map((n) => <String, Object?>{'name': n})
+            .toList(growable: false),
       },
       options: _attachmentOptions(),
     );
@@ -3643,17 +3803,18 @@ class MemosApi {
     }
   }
 
-  Future<void> _setMemoRelationsModern(String memoUid, List<Map<String, dynamic>> relations) async {
+  Future<void> _setMemoRelationsModern(
+    String memoUid,
+    List<Map<String, dynamic>> relations,
+  ) async {
     await _dio.patch(
       'api/v1/memos/$memoUid/relations',
-      data: <String, Object?>{
-        'name': 'memos/$memoUid',
-        'relations': relations,
-      },
+      data: <String, Object?>{'name': 'memos/$memoUid', 'relations': relations},
     );
   }
 
-  Future<(List<MemoRelation> relations, String nextPageToken)> listMemoRelations({
+  Future<(List<MemoRelation> relations, String nextPageToken)>
+  listMemoRelations({
     required String memoUid,
     int pageSize = 50,
     String? pageToken,
@@ -3664,8 +3825,10 @@ class MemosApi {
         queryParameters: <String, Object?>{
           if (pageSize > 0) 'pageSize': pageSize,
           if (pageSize > 0) 'page_size': pageSize,
-          if (pageToken != null && pageToken.trim().isNotEmpty) 'pageToken': pageToken,
-          if (pageToken != null && pageToken.trim().isNotEmpty) 'page_token': pageToken,
+          if (pageToken != null && pageToken.trim().isNotEmpty)
+            'pageToken': pageToken,
+          if (pageToken != null && pageToken.trim().isNotEmpty)
+            'page_token': pageToken,
         },
       );
       final body = _expectJsonMap(response.data);
@@ -3678,7 +3841,11 @@ class MemosApi {
           }
         }
       }
-      final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+      final nextToken = _readStringField(
+        body,
+        'nextPageToken',
+        'next_page_token',
+      );
       return (relations, nextToken);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
@@ -3689,7 +3856,8 @@ class MemosApi {
     }
   }
 
-  Future<({List<Memo> memos, String nextPageToken, int totalSize})> listMemoComments({
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})>
+  listMemoComments({
     required String memoUid,
     int pageSize = 30,
     String? pageToken,
@@ -3715,7 +3883,8 @@ class MemosApi {
     }
   }
 
-  Future<({List<Memo> memos, String nextPageToken, int totalSize})> _listMemoCommentsModern({
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})>
+  _listMemoCommentsModern({
     required String memoUid,
     required int pageSize,
     String? pageToken,
@@ -3726,10 +3895,14 @@ class MemosApi {
       queryParameters: <String, Object?>{
         if (pageSize > 0) 'pageSize': pageSize,
         if (pageSize > 0) 'page_size': pageSize,
-        if (pageToken != null && pageToken.trim().isNotEmpty) 'pageToken': pageToken,
-        if (pageToken != null && pageToken.trim().isNotEmpty) 'page_token': pageToken,
-        if (orderBy != null && orderBy.trim().isNotEmpty) 'orderBy': orderBy.trim(),
-        if (orderBy != null && orderBy.trim().isNotEmpty) 'order_by': orderBy.trim(),
+        if (pageToken != null && pageToken.trim().isNotEmpty)
+          'pageToken': pageToken,
+        if (pageToken != null && pageToken.trim().isNotEmpty)
+          'page_token': pageToken,
+        if (orderBy != null && orderBy.trim().isNotEmpty)
+          'orderBy': orderBy.trim(),
+        if (orderBy != null && orderBy.trim().isNotEmpty)
+          'order_by': orderBy.trim(),
       },
     );
     final body = _expectJsonMap(response.data);
@@ -3742,7 +3915,11 @@ class MemosApi {
         }
       }
     }
-    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    final nextToken = _readStringField(
+      body,
+      'nextPageToken',
+      'next_page_token',
+    );
     var totalSize = 0;
     final totalRaw = body['totalSize'] ?? body['total_size'];
     if (totalRaw is num) {
@@ -3755,9 +3932,8 @@ class MemosApi {
     return (memos: memos, nextPageToken: nextToken, totalSize: totalSize);
   }
 
-  Future<({List<Memo> memos, String nextPageToken, int totalSize})> _listMemoCommentsLegacyV2({
-    required String memoUid,
-  }) async {
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})>
+  _listMemoCommentsLegacyV2({required String memoUid}) async {
     final response = await _dio.get('api/v2/memos/$memoUid/comments');
     final body = _expectJsonMap(response.data);
     final list = body['memos'];
@@ -3772,7 +3948,8 @@ class MemosApi {
     return (memos: memos, nextPageToken: '', totalSize: memos.length);
   }
 
-  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})> listMemoReactions({
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})>
+  listMemoReactions({
     required String memoUid,
     int pageSize = 50,
     String? pageToken,
@@ -3796,7 +3973,8 @@ class MemosApi {
     }
   }
 
-  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})> _listMemoReactionsModern({
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})>
+  _listMemoReactionsModern({
     required String memoUid,
     required int pageSize,
     String? pageToken,
@@ -3806,8 +3984,10 @@ class MemosApi {
       queryParameters: <String, Object?>{
         if (pageSize > 0) 'pageSize': pageSize,
         if (pageSize > 0) 'page_size': pageSize,
-        if (pageToken != null && pageToken.trim().isNotEmpty) 'pageToken': pageToken,
-        if (pageToken != null && pageToken.trim().isNotEmpty) 'page_token': pageToken,
+        if (pageToken != null && pageToken.trim().isNotEmpty)
+          'pageToken': pageToken,
+        if (pageToken != null && pageToken.trim().isNotEmpty)
+          'page_token': pageToken,
       },
     );
     final body = _expectJsonMap(response.data);
@@ -3820,7 +4000,11 @@ class MemosApi {
         }
       }
     }
-    final nextToken = _readStringField(body, 'nextPageToken', 'next_page_token');
+    final nextToken = _readStringField(
+      body,
+      'nextPageToken',
+      'next_page_token',
+    );
     var totalSize = 0;
     final totalRaw = body['totalSize'] ?? body['total_size'];
     if (totalRaw is num) {
@@ -3830,12 +4014,15 @@ class MemosApi {
     } else {
       totalSize = reactions.length;
     }
-    return (reactions: reactions, nextPageToken: nextToken, totalSize: totalSize);
+    return (
+      reactions: reactions,
+      nextPageToken: nextToken,
+      totalSize: totalSize,
+    );
   }
 
-  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})> _listMemoReactionsLegacyV2({
-    required String memoUid,
-  }) async {
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})>
+  _listMemoReactionsLegacyV2({required String memoUid}) async {
     final response = await _dio.get('api/v2/memos/$memoUid/reactions');
     final body = _expectJsonMap(response.data);
     final list = body['reactions'];
@@ -3847,7 +4034,11 @@ class MemosApi {
         }
       }
     }
-    return (reactions: reactions, nextPageToken: '', totalSize: reactions.length);
+    return (
+      reactions: reactions,
+      nextPageToken: '',
+      totalSize: reactions.length,
+    );
   }
 
   Future<Reaction> upsertMemoReaction({
@@ -3926,7 +4117,9 @@ class MemosApi {
     final legacyId = reaction.legacyId ?? parsedId;
     final normalizedName = _normalizeReactionName(rawName, contentId, parsedId);
 
-    if (!_useLegacyMemos && normalizedName != null && normalizedName.isNotEmpty) {
+    if (!_useLegacyMemos &&
+        normalizedName != null &&
+        normalizedName.isNotEmpty) {
       try {
         await _deleteMemoReactionModern(name: normalizedName);
         return;
@@ -3949,7 +4142,9 @@ class MemosApi {
       return;
     }
 
-    throw ArgumentError('deleteMemoReaction requires reaction name or legacy id');
+    throw ArgumentError(
+      'deleteMemoReaction requires reaction name or legacy id',
+    );
   }
 
   int? _parseReactionIdFromName(String name) {
@@ -3985,7 +4180,9 @@ class MemosApi {
       throw ArgumentError('deleteMemoReaction requires name');
     }
     final path =
-        (trimmed.startsWith('memos/') || trimmed.startsWith('reactions/')) ? 'api/v1/$trimmed' : 'api/v1/memos/$trimmed';
+        (trimmed.startsWith('memos/') || trimmed.startsWith('reactions/'))
+        ? 'api/v1/$trimmed'
+        : 'api/v1/memos/$trimmed';
     await _dio.delete(path);
   }
 
@@ -4058,10 +4255,7 @@ class MemosApi {
   }) async {
     final response = await _dio.post(
       'api/v1/memos/$memoUid/comments',
-      data: <String, Object?>{
-        'content': content,
-        'visibility': visibility,
-      },
+      data: <String, Object?>{'content': content, 'visibility': visibility},
     );
     return _memoFromJson(_expectJsonMap(response.data));
   }
@@ -4157,9 +4351,7 @@ class MemosApi {
 
     final response = await _dio.get(
       'api/v2/memos:search',
-      queryParameters: <String, Object?>{
-        'filter': filter,
-      },
+      queryParameters: <String, Object?>{'filter': filter},
     );
     final body = _expectJsonMap(response.data);
     final list = body['memos'];
@@ -4191,10 +4383,7 @@ class MemosApi {
     final _ = memoId;
     final response = await _dio.post(
       'api/v1/memo',
-      data: <String, Object?>{
-        'content': content,
-        'visibility': visibility,
-      },
+      data: <String, Object?>{'content': content, 'visibility': visibility},
     );
     var memo = _memoFromLegacy(_expectJsonMap(response.data));
     if (!pinned) return memo;
@@ -4251,10 +4440,7 @@ class MemosApi {
       return _legacyPlaceholderMemo(memoUid, pinned: pinned ?? false);
     }
 
-    final response = await _dio.patch(
-      'api/v1/memo/$memoUid',
-      data: data,
-    );
+    final response = await _dio.patch('api/v1/memo/$memoUid', data: data);
     return _memoFromLegacy(_expectJsonMap(response.data));
   }
 
@@ -4296,7 +4482,10 @@ class MemosApi {
     throw StateError('Legacy attachment not found: $attachmentUid');
   }
 
-  Future<void> _setMemoAttachmentsLegacy(String memoUid, List<String> attachmentNames) async {
+  Future<void> _setMemoAttachmentsLegacy(
+    String memoUid,
+    List<String> attachmentNames,
+  ) async {
     if (!_ensureLegacyMemoEndpointAllowed(
       'api/v1/memo',
       operation: 'set_memo_attachments_legacy',
@@ -4367,7 +4556,9 @@ class MemosApi {
 
   Memo _normalizeMemoForServer(Memo memo) {
     if (_serverFlavor != _ServerApiFlavor.v0_22) return memo;
-    final normalizedAttachments = _normalizeAttachmentsForServer(memo.attachments);
+    final normalizedAttachments = _normalizeAttachmentsForServer(
+      memo.attachments,
+    );
     if (identical(normalizedAttachments, memo.attachments)) return memo;
     return Memo(
       name: memo.name,
@@ -4388,8 +4579,11 @@ class MemosApi {
     );
   }
 
-  List<Attachment> _normalizeAttachmentsForServer(List<Attachment> attachments) {
-    if (_serverFlavor != _ServerApiFlavor.v0_22 || attachments.isEmpty) return attachments;
+  List<Attachment> _normalizeAttachmentsForServer(
+    List<Attachment> attachments,
+  ) {
+    if (_serverFlavor != _ServerApiFlavor.v0_22 || attachments.isEmpty)
+      return attachments;
     var changed = false;
     final normalized = <Attachment>[];
     for (final attachment in attachments) {
@@ -4423,19 +4617,25 @@ class MemosApi {
     final name = id.isNotEmpty
         ? 'memos/$id'
         : rawName.startsWith('memos/')
-            ? rawName
-            : rawName.isNotEmpty
-                ? 'memos/$rawName'
-                : '';
+        ? rawName
+        : rawName.isNotEmpty
+        ? 'memos/$rawName'
+        : '';
 
     final creatorId = _readString(json['creatorId'] ?? json['creator_id']);
-    final creatorName = _readString(json['creatorName'] ?? json['creator_name']);
+    final creatorName = _readString(
+      json['creatorName'] ?? json['creator_name'],
+    );
     final creator = creatorId.isNotEmpty ? 'users/$creatorId' : creatorName;
 
-    final stateRaw = _readString(json['rowStatus'] ?? json['row_status'] ?? json['state']);
+    final stateRaw = _readString(
+      json['rowStatus'] ?? json['row_status'] ?? json['state'],
+    );
     final state = _normalizeLegacyRowStatus(stateRaw) ?? 'NORMAL';
 
-    final attachments = _readLegacyAttachments(json['resourceList'] ?? json['resources'] ?? json['attachments']);
+    final attachments = _readLegacyAttachments(
+      json['resourceList'] ?? json['resources'] ?? json['attachments'],
+    );
 
     final content = _readString(json['content']);
 
@@ -4444,11 +4644,17 @@ class MemosApi {
       creator: creator,
       content: content,
       contentFingerprint: computeContentFingerprint(content),
-      visibility: _readString(json['visibility']).isNotEmpty ? _readString(json['visibility']) : 'PRIVATE',
+      visibility: _readString(json['visibility']).isNotEmpty
+          ? _readString(json['visibility'])
+          : 'PRIVATE',
       pinned: _readBool(json['pinned']),
       state: state,
-      createTime: _readLegacyTime(json['createdTs'] ?? json['created_ts'] ?? json['createTime']),
-      updateTime: _readLegacyTime(json['updatedTs'] ?? json['updated_ts'] ?? json['updateTime']),
+      createTime: _readLegacyTime(
+        json['createdTs'] ?? json['created_ts'] ?? json['createTime'],
+      ),
+      updateTime: _readLegacyTime(
+        json['updatedTs'] ?? json['updated_ts'] ?? json['updateTime'],
+      ),
       tags: const [],
       attachments: attachments,
     );
@@ -4468,7 +4674,9 @@ class MemosApi {
     final id = _readString(json['id']);
     final nameRaw = _readString(json['name']);
     final uidRaw = _readString(json['uid']);
-    final externalRaw = _readString(json['externalLink'] ?? json['external_link']);
+    final externalRaw = _readString(
+      json['externalLink'] ?? json['external_link'],
+    );
     var name = nameRaw.isNotEmpty ? nameRaw : uidRaw;
     if (name.isEmpty && id.isNotEmpty) {
       name = id;
@@ -4500,7 +4708,12 @@ class MemosApi {
     }
     if (value is Map) {
       final map = value.cast<String, dynamic>();
-      final list = map['memos'] ?? map['memoList'] ?? map['resources'] ?? map['attachments'] ?? map['data'];
+      final list =
+          map['memos'] ??
+          map['memoList'] ??
+          map['resources'] ??
+          map['attachments'] ??
+          map['data'];
       if (list is List) return list;
     }
     return const [];
@@ -4538,10 +4751,12 @@ class MemosApi {
 
   static DateTime _readLegacyTime(dynamic value) {
     if (value is String && value.trim().isNotEmpty) {
-      return DateTime.tryParse(value.trim()) ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      return DateTime.tryParse(value.trim()) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     }
     final seconds = _readInt(value);
-    if (seconds <= 0) return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    if (seconds <= 0)
+      return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
   }
 
@@ -4611,7 +4826,9 @@ class MemosApi {
 
     final normalizedState = _normalizeLegacyRowStatus(state);
     if (normalizedState != null && normalizedState.isNotEmpty) {
-      conditions.add("row_status == '${_escapeLegacyFilterString(normalizedState)}'");
+      conditions.add(
+        "row_status == '${_escapeLegacyFilterString(normalizedState)}'",
+      );
     }
 
     final terms = <String>{};
@@ -4627,7 +4844,9 @@ class MemosApi {
     }
 
     if (terms.isNotEmpty) {
-      final quotedTerms = terms.map((term) => "'${_escapeLegacyFilterString(term)}'").join(', ');
+      final quotedTerms = terms
+          .map((term) => "'${_escapeLegacyFilterString(term)}'")
+          .join(', ');
       conditions.add('content_search == [$quotedTerms]');
     }
 
@@ -4661,13 +4880,18 @@ class MemosApi {
   }
 
   static String _escapeLegacyFilterString(String raw) {
-    return raw.replaceAll('\\', r'\\').replaceAll("'", r"\'").replaceAll('\n', ' ');
+    return raw
+        .replaceAll('\\', r'\\')
+        .replaceAll("'", r"\'")
+        .replaceAll('\n', ' ');
   }
 
   static int? _tryParseLegacyResourceId(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
-    final normalized = trimmed.startsWith('resources/') ? trimmed.substring('resources/'.length) : trimmed;
+    final normalized = trimmed.startsWith('resources/')
+        ? trimmed.substring('resources/'.length)
+        : trimmed;
     final numeric = int.tryParse(normalized);
     if (numeric != null) return numeric;
     return int.tryParse(trimmed.replaceAll(RegExp(r'[^0-9]'), ''));
@@ -4684,7 +4908,9 @@ class MemosApi {
     if (value is String) {
       final trimmed = value.trimLeft();
       if (_looksLikeHtml(trimmed)) {
-        throw const FormatException('Unexpected HTML response. Check server URL or reverse proxy.');
+        throw const FormatException(
+          'Unexpected HTML response. Check server URL or reverse proxy.',
+        );
       }
       final decoded = jsonDecode(value);
       if (decoded is Map<String, dynamic>) return decoded;
@@ -4698,7 +4924,11 @@ class MemosApi {
     return lower.startsWith('<!doctype html') || lower.startsWith('<html');
   }
 
-  static String _readStringField(Map<String, dynamic> body, String key, String altKey) {
+  static String _readStringField(
+    Map<String, dynamic> body,
+    String key,
+    String altKey,
+  ) {
     final primary = body[key];
     if (primary is String) return primary;
     if (primary is num) return primary.toString();
@@ -4716,7 +4946,8 @@ class MemosApi {
     final description = _readString(json['description']);
     final issuedAt = _readString(json['issuedAt'] ?? json['issued_at']);
     final expiresAt = _readString(json['expiresAt'] ?? json['expires_at']);
-    final token = tokenValue ?? _readString(json['accessToken'] ?? json['access_token']);
+    final token =
+        tokenValue ?? _readString(json['accessToken'] ?? json['access_token']);
     final resolvedName = name.isNotEmpty ? name : token;
     return PersonalAccessToken.fromJson({
       'name': resolvedName,
@@ -4726,7 +4957,10 @@ class MemosApi {
     });
   }
 
-  static PersonalAccessToken _personalAccessTokenFromLegacyJson(Map<String, dynamic> json, {required String tokenValue}) {
+  static PersonalAccessToken _personalAccessTokenFromLegacyJson(
+    Map<String, dynamic> json, {
+    required String tokenValue,
+  }) {
     final issuedAt = _readString(json['issuedAt'] ?? json['issued_at']);
     final expiresAt = _readString(json['expiresAt'] ?? json['expires_at']);
     final description = _readString(json['description']);
@@ -4738,4 +4972,3 @@ class MemosApi {
     });
   }
 }
-
