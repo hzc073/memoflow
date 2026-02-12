@@ -68,6 +68,7 @@ const Set<String> _htmlBlockTags = {
   'h4',
   'h5',
   'h6',
+  'details',
   _mathBlockTag,
 };
 
@@ -79,6 +80,7 @@ const Set<String> _allowedHtmlTags = {
   'br',
   'code',
   'del',
+  'details',
   'em',
   'h1',
   'h2',
@@ -93,6 +95,7 @@ const Set<String> _allowedHtmlTags = {
   'ol',
   'p',
   'pre',
+  'summary',
   'span',
   'strong',
   'sub',
@@ -118,6 +121,7 @@ const Map<String, Set<String>> _allowedHtmlAttributes = {
   'ul': {'class'},
   'ol': {'class'},
   'p': {'class'},
+  'details': {'open'},
   'input': {'type', 'checked', 'disabled'},
 };
 
@@ -581,12 +585,6 @@ class MemoMarkdown extends StatelessWidget {
         );
       }
       if (localName == 'img') {
-        if (!renderImages) {
-          return const InlineCustomWidget(
-            alignment: PlaceholderAlignment.middle,
-            child: SizedBox.shrink(),
-          );
-        }
         final rawSrc = element.attributes['src'];
         if (rawSrc == null) return null;
         final src = _normalizeImageSrc(rawSrc);
@@ -598,8 +596,8 @@ class MemoMarkdown extends StatelessWidget {
           return null;
         }
 
-        final widthAttr = _parseHtmlDimension(element.attributes['width']);
-        final heightAttr = _parseHtmlDimension(element.attributes['height']);
+        final widthAttr = _parseHtmlLength(element.attributes['width']);
+        final heightAttr = _parseHtmlLength(element.attributes['height']);
 
         return InlineCustomWidget(
           alignment: PlaceholderAlignment.middle,
@@ -607,8 +605,8 @@ class MemoMarkdown extends StatelessWidget {
             builder: (context, constraints) {
               final maxWidth = _resolveImageMaxWidth(constraints, context);
               final maxHeight = maxImageHeight;
-              double? targetWidth = widthAttr;
-              double? targetHeight = heightAttr;
+              double? targetWidth = _resolveHtmlLength(widthAttr, maxWidth);
+              double? targetHeight = _resolveHtmlLength(heightAttr, maxHeight);
 
               if (targetWidth != null &&
                   targetWidth > 0 &&
@@ -655,7 +653,8 @@ class MemoMarkdown extends StatelessWidget {
                 errorBuilder: (context, error, stackTrace) {
                   logImageError(src, error, stackTrace);
                   final lower = src.toLowerCase();
-                  final isSvg = lower.endsWith('.svg') ||
+                  final isSvg =
+                      lower.endsWith('.svg') ||
                       lower.contains('format=svg') ||
                       lower.contains('mime=image/svg+xml');
                   if (!isSvg) {
@@ -1377,7 +1376,8 @@ String _normalizeGitlabBlobImageUrl(String value) {
     return value;
   }
 
-  final convertedPath = '${path.substring(0, idx)}/-/raw/${path.substring(idx + marker.length)}';
+  final convertedPath =
+      '${path.substring(0, idx)}/-/raw/${path.substring(idx + marker.length)}';
   return uri.replace(path: convertedPath).toString();
 }
 
@@ -1396,7 +1396,8 @@ String _normalizeGiteeBlobImageUrl(String value) {
     return value;
   }
 
-  final convertedPath = '${path.substring(0, idx)}/raw/${path.substring(idx + marker.length)}';
+  final convertedPath =
+      '${path.substring(0, idx)}/raw/${path.substring(idx + marker.length)}';
   return uri.replace(path: convertedPath).toString();
 }
 
@@ -1409,13 +1410,33 @@ String _appendGithubRawQuery(Uri uri) {
   return uri.replace(queryParameters: params).toString();
 }
 
-double? _parseHtmlDimension(String? value) {
+class _HtmlLength {
+  const _HtmlLength({required this.value, required this.isPercent});
+
+  final double value;
+  final bool isPercent;
+}
+
+_HtmlLength? _parseHtmlLength(String? value) {
   if (value == null) return null;
   final trimmed = value.trim();
   if (trimmed.isEmpty) return null;
-  final match = RegExp(r'^\d+(?:\.\d+)?').firstMatch(trimmed);
+  final match = RegExp(
+    r'^(\d+(?:\.\d+)?)(%|px)?$',
+    caseSensitive: false,
+  ).firstMatch(trimmed);
   if (match == null) return null;
-  return double.tryParse(match.group(0)!);
+  final parsed = double.tryParse(match.group(1)!);
+  if (parsed == null || parsed <= 0) return null;
+  final unit = (match.group(2) ?? '').toLowerCase();
+  return _HtmlLength(value: parsed, isPercent: unit == '%');
+}
+
+double? _resolveHtmlLength(_HtmlLength? value, double maxExtent) {
+  if (value == null) return null;
+  if (!value.isPercent) return value.value;
+  final percent = value.value.clamp(0.0, 100.0);
+  return maxExtent * (percent / 100.0);
 }
 
 double _resolveImageMaxWidth(BoxConstraints constraints, BuildContext context) {
