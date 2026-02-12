@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'dart:async';
 import 'dart:io';
@@ -62,13 +62,18 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   String? _playingMemoUid;
   String? _playingAudioUrl;
   bool _audioLoading = false;
+  List<LocalMemo> _allMemos = const [];
+  Set<String> _selectedTags = <String>{};
+  DateTimeRange? _selectedDateRange;
 
   @override
   void initState() {
     super.initState();
     ref.listenManual(_memosProvider, (prev, next) {
       next.whenData((memos) {
-        final changed = _syncDeck(memos);
+        _allMemos = memos;
+        final filtered = _filterMemos(memos);
+        final changed = _syncDeck(filtered);
         if (!changed || !mounted) return;
         setState(() {});
       });
@@ -198,7 +203,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     _audioProgressBase = _audioPlayer.position;
     _audioProgressLast = _audioProgressBase;
     _audioProgressStart = DateTime.now();
-    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (
+      _,
+    ) {
       if (!mounted || _playingMemoUid == null) return;
       final now = DateTime.now();
       var position = _audioPlayer.position;
@@ -231,9 +238,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     return path;
   }
 
-  ({String url, String? localPath, Map<String, String>? headers})? _resolveAudioSource(
-    Attachment attachment,
-  ) {
+  ({String url, String? localPath, Map<String, String>? headers})?
+  _resolveAudioSource(Attachment attachment) {
     final rawLink = attachment.externalLink.trim();
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
@@ -250,7 +256,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       }
       final isAbsolute = isAbsoluteUrl(rawLink);
       final resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
-      final headers = (!isAbsolute && authHeader != null) ? {'Authorization': authHeader} : null;
+      final headers = (!isAbsolute && authHeader != null)
+          ? {'Authorization': authHeader}
+          : null;
       return (url: resolved, localPath: null, headers: headers);
     }
 
@@ -283,15 +291,18 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
 
   Future<void> _toggleAudioPlayback(LocalMemo memo) async {
     if (_audioLoading) return;
-    final audioAttachments =
-        memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    final audioAttachments = memo.attachments
+        .where((a) => a.type.startsWith('audio'))
+        .toList(growable: false);
     if (audioAttachments.isEmpty) return;
     final attachment = audioAttachments.first;
     final source = _resolveAudioSource(attachment);
     if (source == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_unable_load_audio_source)),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_unable_load_audio_source),
+        ),
       );
       return;
     }
@@ -325,7 +336,10 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       if (source.localPath != null) {
         loadedDuration = await _audioPlayer.setFilePath(source.localPath!);
       } else {
-        loadedDuration = await _audioPlayer.setUrl(url, headers: source.headers);
+        loadedDuration = await _audioPlayer.setUrl(
+          url,
+          headers: source.headers,
+        );
       }
       _audioDurationNotifier.value = loadedDuration ?? _audioPlayer.duration;
       _startAudioProgressTimer();
@@ -334,7 +348,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       _stopAudioProgressTimer();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_playback_failed_2(e: e))),
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_playback_failed_2(e: e)),
+          ),
         );
         setState(() {
           _audioLoading = false;
@@ -367,7 +383,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       tags: tags,
-      attachments: memo.attachments.map((a) => a.toJson()).toList(growable: false),
+      attachments: memo.attachments
+          .map((a) => a.toJson())
+          .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
       syncState: 1,
@@ -384,13 +402,427 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     );
   }
 
+  List<LocalMemo> _filterMemos(List<LocalMemo> memos) {
+    final normalizedTagKeys = _selectedTags
+        .map(_tagKey)
+        .where((key) => key.isNotEmpty)
+        .toSet();
+    final range = _selectedDateRange;
+
+    final hasTagFilter = normalizedTagKeys.isNotEmpty;
+    final hasDateFilter = range != null;
+    if (!hasTagFilter && !hasDateFilter) {
+      return memos;
+    }
+
+    final dateWindow = range == null
+        ? null
+        : (
+            start: DateTime(
+              range.start.year,
+              range.start.month,
+              range.start.day,
+            ),
+            endExclusive: DateTime(
+              range.end.year,
+              range.end.month,
+              range.end.day,
+            ).add(const Duration(days: 1)),
+          );
+
+    final filtered = <LocalMemo>[];
+    for (final memo in memos) {
+      if (hasTagFilter) {
+        final memoTagKeys = memo.tags
+            .map(_tagKey)
+            .where((key) => key.isNotEmpty)
+            .toSet();
+        if (memoTagKeys.intersection(normalizedTagKeys).isEmpty) {
+          continue;
+        }
+      }
+      if (hasDateFilter) {
+        final createdAt = memo.createTime;
+        if (createdAt.isBefore(dateWindow!.start) ||
+            !createdAt.isBefore(dateWindow.endExclusive)) {
+          continue;
+        }
+      }
+      filtered.add(memo);
+    }
+    return filtered;
+  }
+
+  List<String> _availableTags() {
+    final tagMap = <String, String>{};
+    for (final memo in _allMemos) {
+      for (final rawTag in memo.tags) {
+        final normalized = _normalizeTag(rawTag);
+        final key = _tagKey(normalized);
+        if (key.isEmpty) continue;
+        tagMap.putIfAbsent(key, () => normalized);
+      }
+    }
+    final tags = tagMap.values.toList(growable: false);
+    tags.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return tags;
+  }
+
+  String _normalizeTag(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.startsWith('#') ? trimmed.substring(1).trim() : trimmed;
+  }
+
+  String _tagKey(String raw) {
+    final normalized = _normalizeTag(raw);
+    return normalized.toLowerCase();
+  }
+
+  DateTimeRange _normalizeRange(DateTimeRange range) {
+    final start = DateTime(
+      range.start.year,
+      range.start.month,
+      range.start.day,
+    );
+    final end = DateTime(range.end.year, range.end.month, range.end.day);
+    if (end.isBefore(start)) {
+      return DateTimeRange(start: start, end: start);
+    }
+    return DateTimeRange(start: start, end: end);
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatRangeLabel(DateTimeRange? range, BuildContext context) {
+    if (range == null) return context.t.strings.legacy.msg_select_date_range;
+    return '${_formatDate(range.start)} ~ ${_formatDate(range.end)}';
+  }
+
+  Future<DateTimeRange?> _pickDateRange(DateTimeRange? initial) {
+    final now = DateTime.now();
+    final normalizedInitial = _normalizeRange(
+      initial ??
+          DateTimeRange(
+            start: DateTime(
+              now.year,
+              now.month,
+              now.day,
+            ).subtract(const Duration(days: 29)),
+            end: DateTime(now.year, now.month, now.day),
+          ),
+    );
+    return showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: normalizedInitial,
+    );
+  }
+
+  void _applyFilters({
+    required Set<String> tags,
+    required DateTimeRange? dateRange,
+  }) {
+    final normalizedTags = tags
+        .map(_normalizeTag)
+        .where((tag) => tag.isNotEmpty)
+        .toSet();
+    final normalizedRange = dateRange == null
+        ? null
+        : _normalizeRange(dateRange);
+    _selectedTags = normalizedTags;
+    _selectedDateRange = normalizedRange;
+    final changed = _syncDeck(_filterMemos(_allMemos));
+    if (changed) {
+      _swiperController.setCardIndex(0);
+    }
+    unawaited(_stopAudioPlayback());
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _openFilterSheet() async {
+    final availableTags = _availableTags();
+    var draftTags = Set<String>.from(_selectedTags);
+    var draftRange = _selectedDateRange;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final chipBg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
+    final accent = MemoFlowPalette.primary;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            return Padding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: SafeArea(
+                top: false,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: sheetBg,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    border: Border(top: BorderSide(color: border)),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: border,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              context.t.strings.legacy.msg_filter,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: textMain,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setModalState(() {
+                                draftTags = <String>{};
+                                draftRange = null;
+                              });
+                            },
+                            child: Text(context.t.strings.legacy.msg_clear_2),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        context.t.strings.legacy.msg_select_tags,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (availableTags.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            context.t.strings.legacy.msg_no_tags_yet,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: textMuted,
+                            ),
+                          ),
+                        )
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilterChip(
+                              label: Text(context.t.strings.legacy.msg_all_2),
+                              selected: draftTags.isEmpty,
+                              onSelected: (_) {
+                                setModalState(() {
+                                  draftTags.clear();
+                                });
+                              },
+                              backgroundColor: chipBg,
+                              selectedColor: accent.withValues(
+                                alpha: isDark ? 0.24 : 0.15,
+                              ),
+                              side: BorderSide(
+                                color: draftTags.isEmpty
+                                    ? accent.withValues(
+                                        alpha: isDark ? 0.62 : 0.55,
+                                      )
+                                    : border,
+                              ),
+                              labelStyle: TextStyle(
+                                color: draftTags.isEmpty ? accent : textMain,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              showCheckmark: false,
+                            ),
+                            for (final tag in availableTags)
+                              FilterChip(
+                                label: Text('#$tag'),
+                                selected: draftTags.contains(tag),
+                                onSelected: (selected) {
+                                  setModalState(() {
+                                    if (selected) {
+                                      draftTags.add(tag);
+                                    } else {
+                                      draftTags.remove(tag);
+                                    }
+                                  });
+                                },
+                                backgroundColor: chipBg,
+                                selectedColor: accent.withValues(
+                                  alpha: isDark ? 0.24 : 0.15,
+                                ),
+                                side: BorderSide(
+                                  color: draftTags.contains(tag)
+                                      ? accent.withValues(
+                                          alpha: isDark ? 0.62 : 0.55,
+                                        )
+                                      : border,
+                                ),
+                                labelStyle: TextStyle(
+                                  color: draftTags.contains(tag)
+                                      ? accent
+                                      : textMain,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                showCheckmark: false,
+                              ),
+                          ],
+                        ),
+                      const SizedBox(height: 18),
+                      Text(
+                        context.t.strings.legacy.msg_select_date_range,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                        decoration: BoxDecoration(
+                          color: chipBg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: border),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.date_range_outlined,
+                              size: 18,
+                              color: textMuted,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _formatRangeLabel(draftRange, context),
+                                style: TextStyle(
+                                  color: draftRange == null
+                                      ? textMuted
+                                      : textMain,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                final picked = await _pickDateRange(draftRange);
+                                if (picked == null) return;
+                                setModalState(() {
+                                  draftRange = _normalizeRange(picked);
+                                });
+                              },
+                              child: Text(context.t.strings.legacy.msg_select),
+                            ),
+                            if (draftRange != null)
+                              TextButton(
+                                onPressed: () {
+                                  setModalState(() {
+                                    draftRange = null;
+                                  });
+                                },
+                                child: Text(
+                                  context.t.strings.legacy.msg_clear_2,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () =>
+                                  Navigator.of(bottomSheetContext).pop(),
+                              child: Text(
+                                context.t.strings.legacy.msg_cancel_2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () {
+                                _applyFilters(
+                                  tags: draftTags,
+                                  dateRange: draftRange,
+                                );
+                                Navigator.of(bottomSheetContext).pop();
+                              },
+                              child: Text(context.t.strings.legacy.msg_apply),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final hasActiveFilter =
+        _selectedTags.isNotEmpty || _selectedDateRange != null;
+    final selectedTags = _selectedTags.toList(growable: false)
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
     final token = account?.personalAccessToken ?? '';
@@ -418,92 +850,181 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           ),
           title: Text(context.t.strings.legacy.msg_random_review),
           centerTitle: true,
+          actions: [
+            IconButton(
+              tooltip: context.t.strings.legacy.msg_filter,
+              icon: Icon(
+                Icons.tune_rounded,
+                color: hasActiveFilter ? MemoFlowPalette.primary : null,
+              ),
+              onPressed: _openFilterSheet,
+            ),
+          ],
         ),
         body: memosAsync.when(
-        data: (memos) {
-          if (memos.isEmpty) {
-            return Center(child: Text(context.t.strings.legacy.msg_no_content_yet, style: TextStyle(color: textMuted)));
-          }
-
-          final deck = _deck;
-          final total = deck.length;
-          final displayIndex = total == 0 ? 0 : (_cursor + 1).clamp(1, total);
-
-          return Column(
-            children: [
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        context.t.strings.legacy.msg_randomly_draw_memo_cards,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
-                      ),
-                    ),
-                    Text(
-                      '$displayIndex / $total',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
-                    ),
-                  ],
+          data: (memos) {
+            if (memos.isEmpty) {
+              return Center(
+                child: Text(
+                  context.t.strings.legacy.msg_no_content_yet,
+                  style: TextStyle(color: textMuted),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 60, 24, 140),
-                  child: AppinioSwiper(
-                    controller: _swiperController,
-                    cardCount: deck.length,
-                    backgroundCardCount: 3,
-                    backgroundCardScale: 0.92,
-                    backgroundCardOffset: const Offset(0, 24),
-                    swipeOptions: const SwipeOptions.symmetric(horizontal: true),
-                    maxAngle: 14,
-                    onSwipeEnd: (previousIndex, targetIndex, activity) {
-                      if (!mounted) return;
-                      unawaited(_stopAudioPlayback());
-                      setState(() {
-                        if (activity.direction == AxisDirection.right) {
-                          _rotateRight();
-                          _cursor = (_cursor - 1 + deck.length) % deck.length;
-                        } else {
-                          _rotateLeft();
-                          _cursor = (_cursor + 1) % deck.length;
-                        }
-                        _swiperController.setCardIndex(0);
-                      });
-                    },
-                    cardBuilder: (context, index) {
-                      final memo = deck[index];
-                      final isAudioActive = _playingMemoUid == memo.uid;
-                      return _RandomWalkCard(
-                        memo: memo,
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        isDark: isDark,
-                        baseUrl: baseUrl,
-                        authHeader: authHeader,
-                        audioPlaying: isAudioActive && _audioPlayer.playing,
-                        audioLoading: isAudioActive && _audioLoading,
-                        audioPositionListenable: isAudioActive ? _audioPositionNotifier : null,
-                        audioDurationListenable: isAudioActive ? _audioDurationNotifier : null,
-                        onAudioTap: () => unawaited(_toggleAudioPlayback(memo)),
-                        onToggleTask: (request) =>
-                            unawaited(_toggleMemoCheckbox(memo, request.taskIndex)),
-                      );
-                    },
+              );
+            }
+
+            final deck = _deck;
+            if (deck.isEmpty) {
+              return Center(
+                child: Text(
+                  context.t.strings.legacy.msg_no_content_yet,
+                  style: TextStyle(color: textMuted),
+                ),
+              );
+            }
+            final total = deck.length;
+            final displayIndex = total == 0 ? 0 : (_cursor + 1).clamp(1, total);
+
+            return Column(
+              children: [
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          context.t.strings.legacy.msg_randomly_draw_memo_cards,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: textMuted,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '$displayIndex / $total',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 22),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
+                if (hasActiveFilter)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final tag in selectedTags)
+                          _ActiveFilterChip(label: '#$tag', isDark: isDark),
+                        if (_selectedDateRange != null)
+                          _ActiveFilterChip(
+                            label: _formatRangeLabel(
+                              _selectedDateRange,
+                              context,
+                            ),
+                            isDark: isDark,
+                          ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 60, 24, 140),
+                    child: AppinioSwiper(
+                      controller: _swiperController,
+                      cardCount: deck.length,
+                      backgroundCardCount: 3,
+                      backgroundCardScale: 0.92,
+                      backgroundCardOffset: const Offset(0, 24),
+                      swipeOptions: const SwipeOptions.symmetric(
+                        horizontal: true,
+                      ),
+                      maxAngle: 14,
+                      onSwipeEnd: (previousIndex, targetIndex, activity) {
+                        if (!mounted) return;
+                        unawaited(_stopAudioPlayback());
+                        setState(() {
+                          if (activity.direction == AxisDirection.right) {
+                            _rotateRight();
+                            _cursor = (_cursor - 1 + deck.length) % deck.length;
+                          } else {
+                            _rotateLeft();
+                            _cursor = (_cursor + 1) % deck.length;
+                          }
+                          _swiperController.setCardIndex(0);
+                        });
+                      },
+                      cardBuilder: (context, index) {
+                        final memo = deck[index];
+                        final isAudioActive = _playingMemoUid == memo.uid;
+                        return _RandomWalkCard(
+                          memo: memo,
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          isDark: isDark,
+                          baseUrl: baseUrl,
+                          authHeader: authHeader,
+                          audioPlaying: isAudioActive && _audioPlayer.playing,
+                          audioLoading: isAudioActive && _audioLoading,
+                          audioPositionListenable: isAudioActive
+                              ? _audioPositionNotifier
+                              : null,
+                          audioDurationListenable: isAudioActive
+                              ? _audioDurationNotifier
+                              : null,
+                          onAudioTap: () =>
+                              unawaited(_toggleAudioPlayback(memo)),
+                          onToggleTask: (request) => unawaited(
+                            _toggleMemoCheckbox(memo, request.taskIndex),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(
+            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveFilterChip extends StatelessWidget {
+  const _ActiveFilterChip({required this.label, required this.isDark});
+
+  final String label;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = MemoFlowPalette.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: accent.withValues(alpha: isDark ? 0.6 : 0.5)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: accent,
         ),
       ),
     );
@@ -544,30 +1065,40 @@ class _RandomWalkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dt = memo.updateTime;
-    final dateText = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    final dateText =
+        '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
     final language = context.appLanguage;
     final relative = _relative(dt, language);
     final content = memo.content.trim().isEmpty
         ? context.t.strings.legacy.msg_empty_content
         : memo.content.trim();
-    final contentStyle = TextStyle(fontSize: 16, height: 1.6, fontWeight: FontWeight.w600, color: textMain);
+    final contentStyle = TextStyle(
+      fontSize: 16,
+      height: 1.6,
+      fontWeight: FontWeight.w600,
+      color: textMain,
+    );
     final imageEntries = collectMemoImageEntries(
       content: memo.content,
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
     );
-    final audioAttachments =
-        memo.attachments.where((a) => a.type.startsWith('audio')).toList(growable: false);
+    final audioAttachments = memo.attachments
+        .where((a) => a.type.startsWith('audio'))
+        .toList(growable: false);
     final hasAudio = audioAttachments.isNotEmpty;
     final nonMediaAttachments = filterNonMediaAttachments(memo.attachments);
     final attachmentLines = attachmentNameLines(nonMediaAttachments);
     final attachmentCount = nonMediaAttachments.length;
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
     final audioDurationFallback = _parseVoiceDurationValue(memo.content);
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final imageBg =
-        isDark ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6) : MemoFlowPalette.audioSurfaceLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final imageBg = isDark
+        ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
+        : MemoFlowPalette.audioSurfaceLight;
     final maxGridHeight = MediaQuery.of(context).size.height * 0.4;
     final resolvedAudioTap = hasAudio ? onAudioTap : null;
 
@@ -584,7 +1115,8 @@ class _RandomWalkCard extends StatelessWidget {
 
     Widget buildAudioRow(Duration position, Duration? duration) {
       final effectiveDuration = duration ?? audioDurationFallback;
-      final clampedPosition = effectiveDuration != null && position > effectiveDuration
+      final clampedPosition =
+          effectiveDuration != null && position > effectiveDuration
           ? effectiveDuration
           : position;
       final totalText = effectiveDuration != null
@@ -626,23 +1158,26 @@ class _RandomWalkCard extends StatelessWidget {
       onTap: () {
         Navigator.of(context).push(
           PageRouteBuilder<void>(
-            pageBuilder: (context, animation, secondaryAnimation) => MemoDetailScreen(initialMemo: memo),
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                MemoDetailScreen(initialMemo: memo),
             transitionDuration: const Duration(milliseconds: 320),
             reverseTransitionDuration: const Duration(milliseconds: 260),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              final fade = CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-                reverseCurve: Curves.easeInCubic,
-              );
-              return FadeTransition(opacity: fade, child: child);
-            },
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  final fade = CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                    reverseCurve: Curves.easeInCubic,
+                  );
+                  return FadeTransition(opacity: fade, child: child);
+                },
           ),
         );
       },
       child: Hero(
         tag: memo.uid,
-        createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+        createRectTween: (begin, end) =>
+            MaterialRectArcTween(begin: begin, end: end),
         child: RepaintBoundary(
           child: Container(
             decoration: BoxDecoration(
@@ -667,18 +1202,29 @@ class _RandomWalkCard extends StatelessWidget {
                     children: [
                       Text(
                         dateText,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.7)),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: textMuted.withValues(alpha: 0.7),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Container(
                         width: 4,
                         height: 4,
-                        decoration: BoxDecoration(color: textMuted.withValues(alpha: 0.5), shape: BoxShape.circle),
+                        decoration: BoxDecoration(
+                          color: textMuted.withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Text(
                         relative,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted.withValues(alpha: 0.6)),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: textMuted.withValues(alpha: 0.6),
+                        ),
                       ),
                     ],
                   ),
@@ -714,7 +1260,9 @@ class _RandomWalkCard extends StatelessWidget {
                                         maxHeight: maxGridHeight,
                                         radius: 10,
                                         spacing: 8,
-                                        borderColor: borderColor.withValues(alpha: 0.65),
+                                        borderColor: borderColor.withValues(
+                                          alpha: 0.65,
+                                        ),
                                         backgroundColor: imageBg,
                                         textColor: textMain,
                                         enableDownload: true,
@@ -730,10 +1278,11 @@ class _RandomWalkCard extends StatelessWidget {
                                         builder: (context) {
                                           return GestureDetector(
                                             behavior: HitTestBehavior.opaque,
-                                            onTap: () => showAttachmentNamesToast(
-                                              context,
-                                              attachmentLines,
-                                            ),
+                                            onTap: () =>
+                                                showAttachmentNamesToast(
+                                                  context,
+                                                  attachmentLines,
+                                                ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
@@ -772,10 +1321,7 @@ class _RandomWalkCard extends StatelessWidget {
                                     gradient: LinearGradient(
                                       begin: Alignment.topCenter,
                                       end: Alignment.bottomCenter,
-                                      colors: [
-                                        card.withAlpha(0),
-                                        card,
-                                      ],
+                                      colors: [card.withAlpha(0), card],
                                     ),
                                   ),
                                 ),
@@ -798,8 +1344,16 @@ class _RandomWalkCard extends StatelessWidget {
   String _relative(DateTime dt, AppLanguage language) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inDays < 1) return trByLanguageKey(language: language, key: 'legacy.msg_today');
-    if (diff.inDays < 7) return trByLanguageKey(language: language, key: 'legacy.msg_ago_3', params: {'diff_inDays': diff.inDays});
+    if (diff.inDays < 1) {
+      return trByLanguageKey(language: language, key: 'legacy.msg_today');
+    }
+    if (diff.inDays < 7) {
+      return trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_ago_3',
+        params: {'diff_inDays': diff.inDays},
+      );
+    }
     if (diff.inDays < 30) {
       final weeks = (diff.inDays / 7).floor();
       return trByLanguageKey(
