@@ -56,7 +56,14 @@ final memosApiProvider = Provider<MemosApi>((ref) {
   if (account == null) {
     throw StateError('Not authenticated');
   }
-  final useLegacyApi = ref.watch(appPreferencesProvider.select((p) => p.useLegacyApi));
+  final globalLegacyDefault = ref.watch(
+    appPreferencesProvider.select((p) => p.useLegacyApi),
+  );
+  final sessionController = ref.read(appSessionProvider.notifier);
+  final useLegacyApi = sessionController.resolveUseLegacyApiForAccount(
+    account: account,
+    globalDefault: globalLegacyDefault,
+  );
   final logStore = ref.watch(networkLogStoreProvider);
   final logBuffer = ref.watch(networkLogBufferProvider);
   final breadcrumbStore = ref.watch(breadcrumbStoreProvider);
@@ -73,7 +80,10 @@ final memosApiProvider = Provider<MemosApi>((ref) {
   );
 });
 
-final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((ref, query) {
+final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
+  ref,
+  query,
+) {
   final db = ref.watch(databaseProvider);
   final search = query.searchQuery.trim();
   final pageSize = query.pageSize > 0 ? query.pageSize : 200;
@@ -89,395 +99,413 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
       .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
 });
 
-final remoteSearchMemosProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((ref, query) async* {
-  final db = ref.watch(databaseProvider);
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  final normalizedSearch = query.searchQuery.trim();
-  final normalizedTag = _normalizeTagInput(query.tag);
-  final pageSize = query.pageSize > 0 ? query.pageSize : 200;
-  if (account == null) {
-    await for (final rows in db.watchMemos(
-      searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
-      state: query.state,
-      tag: normalizedTag.isEmpty ? null : normalizedTag,
-      startTimeSec: query.startTimeSec,
-      endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: pageSize,
-    )) {
-      yield rows.map(LocalMemo.fromDb).toList(growable: false);
-    }
-    return;
-  }
+final remoteSearchMemosProvider =
+    StreamProvider.family<List<LocalMemo>, MemosQuery>((ref, query) async* {
+      final db = ref.watch(databaseProvider);
+      final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+      final normalizedSearch = query.searchQuery.trim();
+      final normalizedTag = _normalizeTagInput(query.tag);
+      final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+      if (account == null) {
+        await for (final rows in db.watchMemos(
+          searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
+          state: query.state,
+          tag: normalizedTag.isEmpty ? null : normalizedTag,
+          startTimeSec: query.startTimeSec,
+          endTimeSecExclusive: query.endTimeSecExclusive,
+          limit: pageSize,
+        )) {
+          yield rows.map(LocalMemo.fromDb).toList(growable: false);
+        }
+        return;
+      }
 
-  final api = ref.watch(memosApiProvider);
-  final logManager = ref.watch(logManagerProvider);
-  final filters = <String>[];
+      final api = ref.watch(memosApiProvider);
+      final logManager = ref.watch(logManagerProvider);
+      final filters = <String>[];
 
-  final creatorId = _parseUserId(account.user.name);
-  if (creatorId != null) {
-    filters.add('creator_id == $creatorId');
-  }
+      final creatorId = _parseUserId(account.user.name);
+      if (creatorId != null) {
+        filters.add('creator_id == $creatorId');
+      }
 
-  if (normalizedSearch.isNotEmpty) {
-    filters.add('content.contains("${_escapeFilterValue(normalizedSearch)}")');
-  }
-
-  if (normalizedTag.isNotEmpty) {
-    filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
-  }
-
-  final startTimeSec = query.startTimeSec;
-  final endTimeSecExclusive = query.endTimeSecExclusive;
-  if (startTimeSec != null) {
-    filters.add('created_ts >= $startTimeSec');
-  }
-  if (endTimeSecExclusive != null) {
-    final endInclusive = endTimeSecExclusive - 1;
-    if (endInclusive >= 0) {
-      filters.add('created_ts <= $endInclusive');
-    }
-  }
-
-  final filter = filters.isEmpty ? null : filters.join(' && ');
-  final useLegacySearchFallback = api.usesLegacyMemos;
-  final effectiveFilter = useLegacySearchFallback
-      ? (creatorId == null ? null : 'creator_id == $creatorId')
-      : filter;
-  final traceId = DateTime.now().microsecondsSinceEpoch.toString();
-  logManager.info(
-    'Search flow started',
-    context: {
-      'traceId': traceId,
-      'state': query.state,
-      'queryLength': normalizedSearch.length,
-      'tag': normalizedTag,
-      'pageSize': pageSize,
-      'creatorId': creatorId,
-      'startTimeSec': startTimeSec,
-      'endTimeSecExclusive': endTimeSecExclusive,
-      'legacySearchFallback': useLegacySearchFallback,
-    },
-  );
-  var seed = <LocalMemo>[];
-  try {
-    final results = <LocalMemo>[];
-    final seenMemoKeys = <String>{};
-    final targetCount = pageSize > 0 ? pageSize : 200;
-    var nextPageToken = '';
-    var useLegacyV2Search = useLegacySearchFallback && normalizedSearch.isNotEmpty;
-    var legacyV2SearchCompleted = false;
-    var requestPages = 0;
-    var remoteFetchedCount = 0;
-    var dedupSkippedCount = 0;
-    var filteredOutCount = 0;
-    var dbHitCount = 0;
-    var dbMissCount = 0;
-
-    while (results.length < targetCount) {
-      List<Memo> memos = const <Memo>[];
-      var nextToken = '';
-
-      if (useLegacyV2Search && !legacyV2SearchCompleted) {
-        requestPages += 1;
-        logManager.debug(
-          'Search request page',
-          context: {
-            'traceId': traceId,
-            'page': requestPages,
-            'mode': 'legacy_v2_search',
-            'requestSize': targetCount,
-          },
+      if (normalizedSearch.isNotEmpty) {
+        filters.add(
+          'content.contains("${_escapeFilterValue(normalizedSearch)}")',
         );
-        try {
-          memos = await api.searchMemosLegacyV2(
-            searchQuery: normalizedSearch,
-            creatorId: creatorId,
-            state: query.state,
-            tag: normalizedTag.isEmpty ? null : normalizedTag,
-            startTimeSec: startTimeSec,
-            endTimeSecExclusive: endTimeSecExclusive,
-            limit: targetCount,
-          );
-          legacyV2SearchCompleted = true;
-          logManager.debug(
-            'Search response page',
-            context: {
-              'traceId': traceId,
-              'page': requestPages,
-              'mode': 'legacy_v2_search',
-              'returned': memos.length,
-            },
-          );
-        } on DioException catch (e) {
-          final status = e.response?.statusCode;
-          if (status == 404 || status == 405 || status == 400) {
-            logManager.warn(
-              'Legacy v2 search fallback to list',
+      }
+
+      if (normalizedTag.isNotEmpty) {
+        filters.add('tag in ["${_escapeFilterValue(normalizedTag)}"]');
+      }
+
+      final startTimeSec = query.startTimeSec;
+      final endTimeSecExclusive = query.endTimeSecExclusive;
+      if (startTimeSec != null) {
+        filters.add('created_ts >= $startTimeSec');
+      }
+      if (endTimeSecExclusive != null) {
+        final endInclusive = endTimeSecExclusive - 1;
+        if (endInclusive >= 0) {
+          filters.add('created_ts <= $endInclusive');
+        }
+      }
+
+      final filter = filters.isEmpty ? null : filters.join(' && ');
+      final useLegacySearchFallback = api.usesLegacyMemos;
+      final effectiveFilter = useLegacySearchFallback
+          ? (creatorId == null ? null : 'creator_id == $creatorId')
+          : filter;
+      final traceId = DateTime.now().microsecondsSinceEpoch.toString();
+      logManager.info(
+        'Search flow started',
+        context: {
+          'traceId': traceId,
+          'state': query.state,
+          'queryLength': normalizedSearch.length,
+          'tag': normalizedTag,
+          'pageSize': pageSize,
+          'creatorId': creatorId,
+          'startTimeSec': startTimeSec,
+          'endTimeSecExclusive': endTimeSecExclusive,
+          'legacySearchFallback': useLegacySearchFallback,
+        },
+      );
+      var seed = <LocalMemo>[];
+      try {
+        final results = <LocalMemo>[];
+        final seenMemoKeys = <String>{};
+        final targetCount = pageSize > 0 ? pageSize : 200;
+        var nextPageToken = '';
+        var useLegacyV2Search =
+            useLegacySearchFallback && normalizedSearch.isNotEmpty;
+        var legacyV2SearchCompleted = false;
+        var requestPages = 0;
+        var remoteFetchedCount = 0;
+        var dedupSkippedCount = 0;
+        var filteredOutCount = 0;
+        var dbHitCount = 0;
+        var dbMissCount = 0;
+
+        while (results.length < targetCount) {
+          List<Memo> memos = const <Memo>[];
+          var nextToken = '';
+
+          if (useLegacyV2Search && !legacyV2SearchCompleted) {
+            requestPages += 1;
+            logManager.debug(
+              'Search request page',
               context: {
                 'traceId': traceId,
                 'page': requestPages,
-                'status': status,
+                'mode': 'legacy_v2_search',
+                'requestSize': targetCount,
               },
             );
-            useLegacyV2Search = false;
-            continue;
-          }
-          rethrow;
-        } on FormatException {
-          logManager.warn(
-            'Legacy v2 search parse failed, fallback to list',
-            context: {
-              'traceId': traceId,
-              'page': requestPages,
-            },
-          );
-          useLegacyV2Search = false;
-          continue;
-        }
-      } else {
-        final requestSize = targetCount - results.length;
-        requestPages += 1;
-        logManager.debug(
-          'Search request page',
-          context: {
-            'traceId': traceId,
-            'page': requestPages,
-            'mode': 'list_memos',
-            'requestSize': requestSize > 0 ? requestSize : targetCount,
-            'pageToken': _searchTokenPreview(nextPageToken),
-          },
-        );
-        final (listed, listedNextToken) = await api.listMemos(
-          pageSize: requestSize > 0 ? requestSize : targetCount,
-          pageToken: nextPageToken.isEmpty ? null : nextPageToken,
-          state: query.state,
-          filter: effectiveFilter,
-          orderBy: 'display_time desc',
-        );
-        memos = listed;
-        nextToken = listedNextToken;
-        logManager.debug(
-          'Search response page',
-          context: {
-            'traceId': traceId,
-            'page': requestPages,
-            'mode': 'list_memos',
-            'returned': listed.length,
-            'nextPageToken': _searchTokenPreview(nextToken),
-          },
-        );
-      }
-
-      if (memos.isEmpty) {
-        break;
-      }
-
-      for (final memo in memos) {
-        remoteFetchedCount += 1;
-        final memoKey = _memoRemoteKey(memo);
-        if (memoKey.isNotEmpty && !seenMemoKeys.add(memoKey)) {
-          dedupSkippedCount += 1;
-          continue;
-        }
-
-        if (useLegacySearchFallback &&
-            !_matchesRemoteSearchMemoLocally(
-              memo: memo,
-              creatorId: creatorId,
-              normalizedSearch: normalizedSearch,
-              normalizedTag: normalizedTag,
-              startTimeSec: startTimeSec,
-              endTimeSecExclusive: endTimeSecExclusive,
-            )) {
-          filteredOutCount += 1;
-          continue;
-        }
-
-        final uid = memo.uid.trim();
-        if (uid.isNotEmpty) {
-          final row = await db.getMemoByUid(uid);
-          if (row != null) {
-            results.add(LocalMemo.fromDb(row));
-            dbHitCount += 1;
+            try {
+              memos = await api.searchMemosLegacyV2(
+                searchQuery: normalizedSearch,
+                creatorId: creatorId,
+                state: query.state,
+                tag: normalizedTag.isEmpty ? null : normalizedTag,
+                startTimeSec: startTimeSec,
+                endTimeSecExclusive: endTimeSecExclusive,
+                limit: targetCount,
+              );
+              legacyV2SearchCompleted = true;
+              logManager.debug(
+                'Search response page',
+                context: {
+                  'traceId': traceId,
+                  'page': requestPages,
+                  'mode': 'legacy_v2_search',
+                  'returned': memos.length,
+                },
+              );
+            } on DioException catch (e) {
+              final status = e.response?.statusCode;
+              if (status == 404 || status == 405 || status == 400) {
+                logManager.warn(
+                  'Legacy v2 search fallback to list',
+                  context: {
+                    'traceId': traceId,
+                    'page': requestPages,
+                    'status': status,
+                  },
+                );
+                useLegacyV2Search = false;
+                continue;
+              }
+              if (status == null && _shouldFallbackShortcutFilter(e)) {
+                logManager.warn(
+                  'Legacy v2 search network fallback to list',
+                  context: {
+                    'traceId': traceId,
+                    'page': requestPages,
+                    'dioType': e.type.name,
+                  },
+                );
+                useLegacyV2Search = false;
+                continue;
+              }
+              rethrow;
+            } on FormatException {
+              logManager.warn(
+                'Legacy v2 search parse failed, fallback to list',
+                context: {'traceId': traceId, 'page': requestPages},
+              );
+              useLegacyV2Search = false;
+              continue;
+            }
           } else {
-            results.add(_localMemoFromRemote(memo));
-            dbMissCount += 1;
+            final requestSize = targetCount - results.length;
+            requestPages += 1;
+            logManager.debug(
+              'Search request page',
+              context: {
+                'traceId': traceId,
+                'page': requestPages,
+                'mode': 'list_memos',
+                'requestSize': requestSize > 0 ? requestSize : targetCount,
+                'pageToken': _searchTokenPreview(nextPageToken),
+              },
+            );
+            final (listed, listedNextToken) = await api.listMemos(
+              pageSize: requestSize > 0 ? requestSize : targetCount,
+              pageToken: nextPageToken.isEmpty ? null : nextPageToken,
+              state: query.state,
+              filter: effectiveFilter,
+              orderBy: 'display_time desc',
+            );
+            memos = listed;
+            nextToken = listedNextToken;
+            logManager.debug(
+              'Search response page',
+              context: {
+                'traceId': traceId,
+                'page': requestPages,
+                'mode': 'list_memos',
+                'returned': listed.length,
+                'nextPageToken': _searchTokenPreview(nextToken),
+              },
+            );
           }
-        } else {
-          results.add(_localMemoFromRemote(memo));
-          dbMissCount += 1;
+
+          if (memos.isEmpty) {
+            break;
+          }
+
+          for (final memo in memos) {
+            remoteFetchedCount += 1;
+            final memoKey = _memoRemoteKey(memo);
+            if (memoKey.isNotEmpty && !seenMemoKeys.add(memoKey)) {
+              dedupSkippedCount += 1;
+              continue;
+            }
+
+            if (useLegacySearchFallback &&
+                !_matchesRemoteSearchMemoLocally(
+                  memo: memo,
+                  creatorId: creatorId,
+                  normalizedSearch: normalizedSearch,
+                  normalizedTag: normalizedTag,
+                  startTimeSec: startTimeSec,
+                  endTimeSecExclusive: endTimeSecExclusive,
+                )) {
+              filteredOutCount += 1;
+              continue;
+            }
+
+            final uid = memo.uid.trim();
+            if (uid.isNotEmpty) {
+              final row = await db.getMemoByUid(uid);
+              if (row != null) {
+                results.add(LocalMemo.fromDb(row));
+                dbHitCount += 1;
+              } else {
+                results.add(_localMemoFromRemote(memo));
+                dbMissCount += 1;
+              }
+            } else {
+              results.add(_localMemoFromRemote(memo));
+              dbMissCount += 1;
+            }
+
+            if (results.length >= targetCount) {
+              break;
+            }
+          }
+
+          if (results.length >= targetCount || useLegacyV2Search) {
+            break;
+          }
+          if (nextToken.isEmpty) {
+            break;
+          }
+          nextPageToken = nextToken;
         }
 
-        if (results.length >= targetCount) {
-          break;
+        logManager.info(
+          'Search flow completed',
+          context: {
+            'traceId': traceId,
+            'resultCount': results.length,
+            'targetCount': targetCount,
+            'requestPages': requestPages,
+            'remoteFetched': remoteFetchedCount,
+            'dedupSkipped': dedupSkippedCount,
+            'filteredOut': filteredOutCount,
+            'dbHit': dbHitCount,
+            'dbMiss': dbMissCount,
+            'usedLegacyV2Search': legacyV2SearchCompleted,
+          },
+        );
+
+        seed = results;
+      } catch (error, stackTrace) {
+        logManager.warn(
+          'Search flow failed, fallback to local cache',
+          error: error,
+          stackTrace: stackTrace,
+          context: {
+            'traceId': traceId,
+            'state': query.state,
+            'queryLength': normalizedSearch.length,
+            'tag': normalizedTag,
+            'pageSize': pageSize,
+          },
+        );
+        final rows = await db.listMemos(
+          searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
+          state: query.state,
+          tag: normalizedTag.isEmpty ? null : normalizedTag,
+          startTimeSec: query.startTimeSec,
+          endTimeSecExclusive: query.endTimeSecExclusive,
+          limit: pageSize,
+        );
+        seed = rows.map(LocalMemo.fromDb).toList(growable: false);
+        logManager.info(
+          'Search local fallback completed',
+          context: {'traceId': traceId, 'resultCount': seed.length},
+        );
+      }
+      yield seed;
+
+      await for (final _ in db.changes) {
+        final refreshed = await _refreshRemoteSeedWithLocal(seed: seed, db: db);
+        seed = refreshed;
+        yield refreshed;
+      }
+    });
+
+final shortcutMemosProvider =
+    StreamProvider.family<List<LocalMemo>, ShortcutMemosQuery>((
+      ref,
+      query,
+    ) async* {
+      final db = ref.watch(databaseProvider);
+      final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+      final search = query.searchQuery.trim();
+      final normalizedTag = _normalizeTagInput(query.tag);
+      final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+      const int? localCandidateLimit = null;
+      if (account == null) {
+        await for (final rows in db.watchMemos(
+          searchQuery: search.isEmpty ? null : search,
+          state: query.state,
+          tag: normalizedTag.isEmpty ? null : normalizedTag,
+          startTimeSec: query.startTimeSec,
+          endTimeSecExclusive: query.endTimeSecExclusive,
+          limit: localCandidateLimit,
+        )) {
+          final memos = rows.map(LocalMemo.fromDb).toList(growable: false);
+          yield _applyShortcutPageLimit(memos, pageSize);
         }
+        return;
       }
 
-      if (results.length >= targetCount || useLegacyV2Search) {
-        break;
+      final initialPredicate = _buildShortcutPredicate(query.shortcutFilter);
+
+      if (initialPredicate != null) {
+        await for (final rows in db.watchMemos(
+          searchQuery: search.isEmpty ? null : search,
+          state: query.state,
+          tag: normalizedTag.isEmpty ? null : normalizedTag,
+          startTimeSec: query.startTimeSec,
+          endTimeSecExclusive: query.endTimeSecExclusive,
+          limit: localCandidateLimit,
+        )) {
+          final predicate =
+              _buildShortcutPredicate(query.shortcutFilter) ?? initialPredicate;
+          final filtered = _filterShortcutMemosFromRows(rows, predicate);
+          yield _applyShortcutPageLimit(filtered, pageSize);
+        }
+        return;
       }
-      if (nextToken.isEmpty) {
-        break;
-      }
-      nextPageToken = nextToken;
-    }
 
-    logManager.info(
-      'Search flow completed',
-      context: {
-        'traceId': traceId,
-        'resultCount': results.length,
-        'targetCount': targetCount,
-        'requestPages': requestPages,
-        'remoteFetched': remoteFetchedCount,
-        'dedupSkipped': dedupSkippedCount,
-        'filteredOut': filteredOutCount,
-        'dbHit': dbHitCount,
-        'dbMiss': dbMissCount,
-        'usedLegacyV2Search': legacyV2SearchCompleted,
-      },
-    );
-
-    seed = results;
-  } catch (error, stackTrace) {
-    logManager.warn(
-      'Search flow failed, fallback to local cache',
-      error: error,
-      stackTrace: stackTrace,
-      context: {
-        'traceId': traceId,
-        'state': query.state,
-        'queryLength': normalizedSearch.length,
-        'tag': normalizedTag,
-        'pageSize': pageSize,
-      },
-    );
-    final rows = await db.listMemos(
-      searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
-      state: query.state,
-      tag: normalizedTag.isEmpty ? null : normalizedTag,
-      startTimeSec: query.startTimeSec,
-      endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: pageSize,
-    );
-    seed = rows.map(LocalMemo.fromDb).toList(growable: false);
-    logManager.info(
-      'Search local fallback completed',
-      context: {
-        'traceId': traceId,
-        'resultCount': seed.length,
-      },
-    );
-  }
-  yield seed;
-
-  await for (final _ in db.changes) {
-    final refreshed = await _refreshRemoteSeedWithLocal(seed: seed, db: db);
-    seed = refreshed;
-    yield refreshed;
-  }
-});
-
-final shortcutMemosProvider = StreamProvider.family<List<LocalMemo>, ShortcutMemosQuery>((ref, query) async* {
-  final db = ref.watch(databaseProvider);
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  final search = query.searchQuery.trim();
-  final normalizedTag = _normalizeTagInput(query.tag);
-  final pageSize = query.pageSize > 0 ? query.pageSize : 200;
-  if (account == null) {
-    await for (final rows in db.watchMemos(
-      searchQuery: search.isEmpty ? null : search,
-      state: query.state,
-      tag: normalizedTag.isEmpty ? null : normalizedTag,
-      startTimeSec: query.startTimeSec,
-      endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: pageSize,
-    )) {
-      yield rows.map(LocalMemo.fromDb).toList(growable: false);
-    }
-    return;
-  }
-
-  final initialPredicate = _buildShortcutPredicate(query.shortcutFilter);
-
-  if (initialPredicate != null) {
-    await for (final rows in db.watchMemos(
-      searchQuery: search.isEmpty ? null : search,
-      state: query.state,
-      tag: normalizedTag.isEmpty ? null : normalizedTag,
-      startTimeSec: query.startTimeSec,
-      endTimeSecExclusive: query.endTimeSecExclusive,
-      limit: pageSize,
-    )) {
-      final predicate = _buildShortcutPredicate(query.shortcutFilter) ?? initialPredicate;
-      yield _filterShortcutMemosFromRows(rows, predicate);
-    }
-    return;
-  }
-
-  final api = ref.watch(memosApiProvider);
-  final creatorId = _parseUserId(account.user.name);
-  final parent = _buildShortcutParent(creatorId);
-  final filter = _buildShortcutFilter(
-    creatorId: creatorId,
-    searchQuery: query.searchQuery,
-    tag: query.tag,
-    shortcutFilter: query.shortcutFilter,
-    startTimeSec: query.startTimeSec,
-    endTimeSecExclusive: query.endTimeSecExclusive,
-    includeCreatorId: parent == null,
-  );
-
-  var seed = <LocalMemo>[];
-  try {
-    final (memos, _) = await api.listMemos(
-      pageSize: pageSize,
-      state: query.state,
-      filter: filter,
-      parent: parent,
-    );
-
-    final results = <LocalMemo>[];
-    for (final memo in memos) {
-      final uid = memo.uid.trim();
-      if (uid.isEmpty) continue;
-      final row = await db.getMemoByUid(uid);
-      if (row != null) {
-        results.add(LocalMemo.fromDb(row));
-      } else {
-        results.add(_localMemoFromRemote(memo));
-      }
-    }
-
-    seed = _sortShortcutMemos(results);
-  } on DioException catch (e) {
-    if (_shouldFallbackShortcutFilter(e)) {
-      final local = await _tryListShortcutMemosLocally(
-        db: db,
+      final api = ref.watch(memosApiProvider);
+      final creatorId = _parseUserId(account.user.name);
+      final parent = _buildShortcutParent(creatorId);
+      final filter = _buildShortcutFilter(
+        creatorId: creatorId,
         searchQuery: query.searchQuery,
-        state: query.state,
         tag: query.tag,
         shortcutFilter: query.shortcutFilter,
         startTimeSec: query.startTimeSec,
         endTimeSecExclusive: query.endTimeSecExclusive,
-        pageSize: pageSize,
+        includeCreatorId: parent == null,
       );
-      if (local != null) {
-        seed = local;
-      } else {
-        rethrow;
+
+      var seed = <LocalMemo>[];
+      try {
+        final (memos, _) = await api.listMemos(
+          pageSize: pageSize,
+          state: query.state,
+          filter: filter,
+          parent: parent,
+        );
+
+        final results = <LocalMemo>[];
+        for (final memo in memos) {
+          final uid = memo.uid.trim();
+          if (uid.isEmpty) continue;
+          final row = await db.getMemoByUid(uid);
+          if (row != null) {
+            results.add(LocalMemo.fromDb(row));
+          } else {
+            results.add(_localMemoFromRemote(memo));
+          }
+        }
+
+        seed = _sortShortcutMemos(results);
+      } on DioException catch (e) {
+        if (_shouldFallbackShortcutFilter(e)) {
+          final local = await _tryListShortcutMemosLocally(
+            db: db,
+            searchQuery: query.searchQuery,
+            state: query.state,
+            tag: query.tag,
+            shortcutFilter: query.shortcutFilter,
+            startTimeSec: query.startTimeSec,
+            endTimeSecExclusive: query.endTimeSecExclusive,
+            candidateLimit: localCandidateLimit,
+          );
+          if (local != null) {
+            seed = _applyShortcutPageLimit(local, pageSize);
+          } else {
+            rethrow;
+          }
+        } else {
+          rethrow;
+        }
       }
-    } else {
-      rethrow;
-    }
-  }
 
-  yield seed;
+      yield seed;
 
-  await for (final _ in db.changes) {
-    yield await _refreshShortcutSeedWithLocal(seed: seed, db: db);
-  }
-});
+      await for (final _ in db.changes) {
+        yield await _refreshShortcutSeedWithLocal(seed: seed, db: db);
+      }
+    });
 
 String? _buildShortcutFilter({
   required int? creatorId,
@@ -535,7 +563,10 @@ int? _parseUserId(String raw) {
 }
 
 String _escapeFilterValue(String raw) {
-  return raw.replaceAll('\\', r'\\').replaceAll('"', r'\"').replaceAll('\n', ' ');
+  return raw
+      .replaceAll('\\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('\n', ' ');
 }
 
 String _normalizeTagInput(String? raw) {
@@ -636,7 +667,7 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
   required String shortcutFilter,
   int? startTimeSec,
   int? endTimeSecExclusive,
-  required int pageSize,
+  required int? candidateLimit,
 }) async {
   final predicate = _buildShortcutPredicate(shortcutFilter);
   if (predicate == null) return null;
@@ -649,11 +680,19 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
     tag: normalizedTag.isEmpty ? null : normalizedTag,
     startTimeSec: startTimeSec,
     endTimeSecExclusive: endTimeSecExclusive,
-    limit: pageSize > 0 ? pageSize : 200,
+    limit: candidateLimit,
   );
 
-  final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: true);
+  final memos = rows
+      .map(LocalMemo.fromDb)
+      .where(predicate)
+      .toList(growable: true);
   return _sortShortcutMemos(memos);
+}
+
+List<LocalMemo> _applyShortcutPageLimit(List<LocalMemo> memos, int pageSize) {
+  if (pageSize <= 0 || memos.length <= pageSize) return memos;
+  return memos.take(pageSize).toList(growable: false);
 }
 
 typedef _MemoPredicate = bool Function(LocalMemo memo);
@@ -672,7 +711,10 @@ List<LocalMemo> _filterShortcutMemosFromRows(
   Iterable<Map<String, dynamic>> rows,
   _MemoPredicate predicate,
 ) {
-  final memos = rows.map(LocalMemo.fromDb).where(predicate).toList(growable: true);
+  final memos = rows
+      .map(LocalMemo.fromDb)
+      .where(predicate)
+      .toList(growable: true);
   return _sortShortcutMemos(memos);
 }
 
@@ -841,7 +883,9 @@ List<_FilterToken> _tokenizeShortcutFilter(String input) {
       while (i < input.length && _isDigit(input[i])) {
         i++;
       }
-      tokens.add(_FilterToken(_FilterTokenType.number, input.substring(start, i)));
+      tokens.add(
+        _FilterToken(_FilterTokenType.number, input.substring(start, i)),
+      );
       continue;
     }
 
@@ -932,7 +976,10 @@ class _ShortcutFilterParser {
         if (!_match(_FilterTokenType.inOp)) return null;
         final values = _parseStringList();
         if (values == null) return null;
-        final expected = values.map(_normalizeFilterTag).where((v) => v.isNotEmpty).toSet();
+        final expected = values
+            .map(_normalizeFilterTag)
+            .where((v) => v.isNotEmpty)
+            .toSet();
         return (memo) {
           for (final tag in memo.tags) {
             if (expected.contains(_normalizeFilterTag(tag))) return true;
@@ -1079,24 +1126,27 @@ String _normalizeShortcutFilterForLocal(String raw) {
   );
 }
 
-  LocalMemo _localMemoFromRemote(Memo memo) {
-    return LocalMemo(
-      uid: memo.uid,
-      content: memo.content,
-      contentFingerprint: memo.contentFingerprint,
-      visibility: memo.visibility,
-      pinned: memo.pinned,
-      state: memo.state,
-      createTime: memo.createTime.toLocal(),
-      updateTime: memo.updateTime.toLocal(),
-      tags: memo.tags,
-      attachments: memo.attachments,
-      relationCount: countReferenceRelations(memoUid: memo.uid, relations: memo.relations),
-      location: memo.location,
-      syncState: SyncState.synced,
-      lastError: null,
-    );
-  }
+LocalMemo _localMemoFromRemote(Memo memo) {
+  return LocalMemo(
+    uid: memo.uid,
+    content: memo.content,
+    contentFingerprint: memo.contentFingerprint,
+    visibility: memo.visibility,
+    pinned: memo.pinned,
+    state: memo.state,
+    createTime: memo.createTime.toLocal(),
+    updateTime: memo.updateTime.toLocal(),
+    tags: memo.tags,
+    attachments: memo.attachments,
+    relationCount: countReferenceRelations(
+      memoUid: memo.uid,
+      relations: memo.relations,
+    ),
+    location: memo.location,
+    syncState: SyncState.synced,
+    lastError: null,
+  );
+}
 
 List<MemoRelation> _decodeMemoRelationsCache(String raw) {
   if (raw.trim().isEmpty) return const <MemoRelation>[];
@@ -1120,10 +1170,7 @@ String _encodeMemoRelationsCache(List<MemoRelation> relations) {
   final items = <Map<String, dynamic>>[];
   for (final relation in relations) {
     items.add({
-      'memo': {
-        'name': relation.memo.name,
-        'snippet': relation.memo.snippet,
-      },
+      'memo': {'name': relation.memo.name, 'snippet': relation.memo.snippet},
       'relatedMemo': {
         'name': relation.relatedMemo.name,
         'snippet': relation.relatedMemo.snippet,
@@ -1134,13 +1181,20 @@ String _encodeMemoRelationsCache(List<MemoRelation> relations) {
   return jsonEncode(items);
 }
 
-Future<List<MemoRelation>> _loadMemoRelationsCache(AppDatabase db, String memoUid) async {
+Future<List<MemoRelation>> _loadMemoRelationsCache(
+  AppDatabase db,
+  String memoUid,
+) async {
   final raw = await db.getMemoRelationsCacheJson(memoUid);
   if (raw == null) return const <MemoRelation>[];
   return _decodeMemoRelationsCache(raw);
 }
 
-Future<void> _storeMemoRelationsCache(AppDatabase db, String memoUid, List<MemoRelation> relations) async {
+Future<void> _storeMemoRelationsCache(
+  AppDatabase db,
+  String memoUid,
+  List<MemoRelation> relations,
+) async {
   await db.upsertMemoRelationsCache(
     memoUid,
     relationsJson: _encodeMemoRelationsCache(relations),
@@ -1163,58 +1217,64 @@ Future<void> _refreshMemoRelationsCache(Ref ref, String memoUid) async {
   } catch (_) {}
 }
 
-final memoRelationsProvider = StreamProvider.family<List<MemoRelation>, String>((ref, memoUid) async* {
-  final normalized = memoUid.trim();
-  if (normalized.isEmpty) {
-    yield const <MemoRelation>[];
-    return;
-  }
+final memoRelationsProvider = StreamProvider.family<List<MemoRelation>, String>(
+  (ref, memoUid) async* {
+    final normalized = memoUid.trim();
+    if (normalized.isEmpty) {
+      yield const <MemoRelation>[];
+      return;
+    }
 
-  final db = ref.watch(databaseProvider);
+    final db = ref.watch(databaseProvider);
 
-  Future<List<MemoRelation>> load() async => _loadMemoRelationsCache(db, normalized);
+    Future<List<MemoRelation>> load() async =>
+        _loadMemoRelationsCache(db, normalized);
 
-  unawaited(_refreshMemoRelationsCache(ref, normalized));
+    unawaited(_refreshMemoRelationsCache(ref, normalized));
 
-  yield await load();
-  await for (final _ in db.changes) {
     yield await load();
-  }
-});
+    await for (final _ in db.changes) {
+      yield await load();
+    }
+  },
+);
 
-final syncControllerProvider = StateNotifierProvider<SyncControllerBase, AsyncValue<void>>((ref) {
-  final language = ref.watch(appPreferencesProvider.select((p) => p.language));
-  final localLibrary = ref.watch(currentLocalLibraryProvider);
-  if (localLibrary != null) {
-    return LocalSyncController(
-      db: ref.watch(databaseProvider),
-      fileSystem: LocalLibraryFileSystem(localLibrary),
-      attachmentStore: LocalAttachmentStore(),
-      syncStatusTracker: ref.read(syncStatusTrackerProvider),
-      language: language,
-    );
-  }
-
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-  if (account == null) {
-    throw StateError('Not authenticated');
-  }
-  return RemoteSyncController(
-    db: ref.watch(databaseProvider),
-    api: ref.watch(memosApiProvider),
-    currentUserName: account.user.name,
-    syncStatusTracker: ref.read(syncStatusTrackerProvider),
-    language: language,
-    imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
-    onRelationsSynced: (memoUids) {
-      for (final uid in memoUids) {
-        final trimmed = uid.trim();
-        if (trimmed.isEmpty) continue;
-        ref.invalidate(memoRelationsProvider(trimmed));
+final syncControllerProvider =
+    StateNotifierProvider<SyncControllerBase, AsyncValue<void>>((ref) {
+      final language = ref.watch(
+        appPreferencesProvider.select((p) => p.language),
+      );
+      final localLibrary = ref.watch(currentLocalLibraryProvider);
+      if (localLibrary != null) {
+        return LocalSyncController(
+          db: ref.watch(databaseProvider),
+          fileSystem: LocalLibraryFileSystem(localLibrary),
+          attachmentStore: LocalAttachmentStore(),
+          syncStatusTracker: ref.read(syncStatusTrackerProvider),
+          language: language,
+        );
       }
-    },
-  );
-});
+
+      final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+      if (account == null) {
+        throw StateError('Not authenticated');
+      }
+      return RemoteSyncController(
+        db: ref.watch(databaseProvider),
+        api: ref.watch(memosApiProvider),
+        currentUserName: account.user.name,
+        syncStatusTracker: ref.read(syncStatusTrackerProvider),
+        language: language,
+        imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
+        onRelationsSynced: (memoUids) {
+          for (final uid in memoUids) {
+            final trimmed = uid.trim();
+            if (trimmed.isEmpty) continue;
+            ref.invalidate(memoRelationsProvider(trimmed));
+          }
+        },
+      );
+    });
 
 class TagStat {
   const TagStat({required this.tag, required this.count});
@@ -1284,9 +1344,17 @@ final resourcesProvider = StreamProvider<List<ResourceEntry>>((ref) async* {
       final memoUid = row['uid'] as String?;
       final updateTimeSec = row['update_time'] as int?;
       final raw = row['attachments_json'] as String?;
-      if (memoUid == null || memoUid.isEmpty || updateTimeSec == null || raw == null || raw.isEmpty) continue;
+      if (memoUid == null ||
+          memoUid.isEmpty ||
+          updateTimeSec == null ||
+          raw == null ||
+          raw.isEmpty)
+        continue;
 
-      final memoUpdateTime = DateTime.fromMillisecondsSinceEpoch(updateTimeSec * 1000, isUtc: true).toLocal();
+      final memoUpdateTime = DateTime.fromMillisecondsSinceEpoch(
+        updateTimeSec * 1000,
+        isUtc: true,
+      ).toLocal();
 
       try {
         final decoded = jsonDecode(raw);
@@ -1369,7 +1437,8 @@ class RemoteSyncController extends SyncControllerBase {
       try {
         final decoded = jsonDecode(s);
         if (decoded is Map) {
-          final msg = decoded['message'] ?? decoded['error'] ?? decoded['detail'];
+          final msg =
+              decoded['message'] ?? decoded['error'] ?? decoded['detail'];
           if (msg is String && msg.trim().isNotEmpty) return msg.trim();
         }
       } catch (_) {}
@@ -1383,31 +1452,70 @@ class RemoteSyncController extends SyncControllerBase {
     final msg = _extractErrorMessage(e.response?.data);
 
     if (status == null) {
-      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
-        return trByLanguageKey(language: language, key: 'legacy.msg_network_timeout_try');
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        return trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_network_timeout_try',
+        );
       }
       if (e.type == DioExceptionType.connectionError) {
-        return trByLanguageKey(language: language, key: 'legacy.msg_network_connection_failed_check_network');
+        return trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_network_connection_failed_check_network',
+        );
       }
       final raw = e.message ?? '';
       if (raw.trim().isNotEmpty) return raw.trim();
-      return trByLanguageKey(language: language, key: 'legacy.msg_network_request_failed');
+      return trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_network_request_failed',
+      );
     }
 
     final base = switch (status) {
-      400 => trByLanguageKey(language: language, key: 'legacy.msg_invalid_request_parameters'),
-      401 => trByLanguageKey(language: language, key: 'legacy.msg_authentication_failed_check_token'),
-      403 => trByLanguageKey(language: language, key: 'legacy.msg_insufficient_permissions'),
-      404 => trByLanguageKey(language: language, key: 'legacy.msg_endpoint_not_found_version_mismatch'),
-      413 => trByLanguageKey(language: language, key: 'legacy.msg_attachment_too_large'),
-      500 => trByLanguageKey(language: language, key: 'legacy.msg_server_error'),
-      _ => trByLanguageKey(language: language, key: 'legacy.msg_request_failed'),
+      400 => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_invalid_request_parameters',
+      ),
+      401 => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_authentication_failed_check_token',
+      ),
+      403 => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_insufficient_permissions',
+      ),
+      404 => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_endpoint_not_found_version_mismatch',
+      ),
+      413 => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_attachment_too_large',
+      ),
+      500 => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_server_error',
+      ),
+      _ => trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_request_failed',
+      ),
     };
 
     if (msg.isEmpty) {
-      return trByLanguageKey(language: language, key: 'legacy.msg_http_2', params: {'base': base, 'status': status});
+      return trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_http_2',
+        params: {'base': base, 'status': status},
+      );
     }
-    return trByLanguageKey(language: language, key: 'legacy.msg_http', params: {'base': base, 'status': status, 'msg': msg});
+    return trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_http',
+      params: {'base': base, 'status': status, 'msg': msg},
+    );
   }
 
   static String _detailHttpError(DioException e) {
@@ -1426,7 +1534,9 @@ class RemoteSyncController extends SyncControllerBase {
   static String _normalizeTag(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return '';
-    final withoutHash = trimmed.startsWith('#') ? trimmed.substring(1) : trimmed;
+    final withoutHash = trimmed.startsWith('#')
+        ? trimmed.substring(1)
+        : trimmed;
     return withoutHash.toLowerCase();
   }
 
@@ -1471,7 +1581,8 @@ class RemoteSyncController extends SyncControllerBase {
       final creatorId = _parseUserId(c);
       if (currentId != null && creatorId != null) return currentId == creatorId;
       if (currentId != null && c == 'users/$currentId') return true;
-      if (creatorId != null && currentUserName == 'users/$creatorId') return true;
+      if (creatorId != null && currentUserName == 'users/$creatorId')
+        return true;
       return false;
     }
 
@@ -1503,9 +1614,16 @@ class RemoteSyncController extends SyncControllerBase {
           final local = await db.getMemoByUid(memo.uid);
           final localSync = (local?['sync_state'] as int?) ?? 0;
           final tags = _mergeTags(memo.tags, memo.content);
-          final attachments = memo.attachments.map((a) => a.toJson()).toList(growable: false);
-          final mergedAttachments = localSync == 0 ? attachments : _mergeAttachmentJson(local, attachments);
-          final relationCount = countReferenceRelations(memoUid: memo.uid, relations: memo.relations);
+          final attachments = memo.attachments
+              .map((a) => a.toJson())
+              .toList(growable: false);
+          final mergedAttachments = localSync == 0
+              ? attachments
+              : _mergeAttachmentJson(local, attachments);
+          final relationCount = countReferenceRelations(
+            memoUid: memo.uid,
+            relations: memo.relations,
+          );
 
           if (memo.uid.isNotEmpty) {
             remoteUids.add(memo.uid);
@@ -1517,8 +1635,13 @@ class RemoteSyncController extends SyncControllerBase {
             visibility: memo.visibility,
             pinned: memo.pinned,
             state: memo.state,
-            createTimeSec: (memo.displayTime ?? memo.createTime).toUtc().millisecondsSinceEpoch ~/ 1000,
-            updateTimeSec: memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            createTimeSec:
+                (memo.displayTime ?? memo.createTime)
+                    .toUtc()
+                    .millisecondsSinceEpoch ~/
+                1000,
+            updateTimeSec:
+                memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
             tags: tags,
             attachments: mergedAttachments,
             location: memo.location,
@@ -1542,7 +1665,9 @@ class RemoteSyncController extends SyncControllerBase {
           completed = false;
           continue;
         }
-        if (usedServerFilter && creatorFilter != null && (status == 400 || status == 500)) {
+        if (usedServerFilter &&
+            creatorFilter != null &&
+            (status == 400 || status == 500)) {
           // Some deployments behave unexpectedly when client-supplied filters are present.
           // Fall back to the default ListMemos behavior and filter locally.
           usedServerFilter = false;
@@ -1553,8 +1678,13 @@ class RemoteSyncController extends SyncControllerBase {
         }
         final method = e.requestOptions.method;
         final path = e.requestOptions.uri.path;
-        final requestLabel = trByLanguageKey(language: language, key: 'legacy.msg_request_2');
-        throw StateError('${_summarizeHttpError(e)} ($requestLabel: $method $path)');
+        final requestLabel = trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_request_2',
+        );
+        throw StateError(
+          '${_summarizeHttpError(e)} ($requestLabel: $method $path)',
+        );
       }
     }
 
@@ -1642,8 +1772,12 @@ class RemoteSyncController extends SyncControllerBase {
             await db.deleteOutbox(id);
         }
       } catch (e) {
-        final memoError = e is DioException ? _summarizeHttpError(e) : e.toString();
-        final outboxError = e is DioException ? _detailHttpError(e) : e.toString();
+        final memoError = e is DioException
+            ? _summarizeHttpError(e)
+            : e.toString();
+        final outboxError = e is DioException
+            ? _detailHttpError(e)
+            : e.toString();
         await db.markOutboxError(id, error: outboxError);
         final memoUid = switch (type) {
           'create_memo' => payload['uid'] as String?,
@@ -1652,8 +1786,16 @@ class RemoteSyncController extends SyncControllerBase {
           _ => null,
         };
         if (memoUid != null && memoUid.isNotEmpty) {
-          final errorText = trByLanguageKey(language: language, key: 'legacy.msg_sync_failed', params: {'type': type, 'memoError': memoError});
-          await db.updateMemoSyncState(memoUid, syncState: 2, lastError: errorText);
+          final errorText = trByLanguageKey(
+            language: language,
+            key: 'legacy.msg_sync_failed',
+            params: {'type': type, 'memoError': memoError},
+          );
+          await db.updateMemoSyncState(
+            memoUid,
+            syncState: 2,
+            lastError: errorText,
+          );
         }
         // Keep ordering: stop processing further ops until this one succeeds.
         break;
@@ -1668,7 +1810,10 @@ class RemoteSyncController extends SyncControllerBase {
     final pinned = payload['pinned'] as bool? ?? false;
     final location = _parseLocationPayload(payload['location']);
     final displayTime = _parsePayloadTime(
-      payload['display_time'] ?? payload['displayTime'] ?? payload['create_time'] ?? payload['createTime'],
+      payload['display_time'] ??
+          payload['displayTime'] ??
+          payload['create_time'] ??
+          payload['createTime'],
     );
     final relationsRaw = payload['relations'];
     final relations = <Map<String, dynamic>>[];
@@ -1760,7 +1905,8 @@ class RemoteSyncController extends SyncControllerBase {
     final hasLocation = payload.containsKey('location');
     final location = _parseLocationPayload(payload['location']);
     final syncAttachments = payload['sync_attachments'] as bool? ?? false;
-    final hasPendingAttachments = payload['has_pending_attachments'] as bool? ?? false;
+    final hasPendingAttachments =
+        payload['has_pending_attachments'] as bool? ?? false;
     final hasRelations = payload.containsKey('relations');
     final relationsRaw = payload['relations'];
     final relations = <Map<String, dynamic>>[];
@@ -1797,7 +1943,10 @@ class RemoteSyncController extends SyncControllerBase {
     }
   }
 
-  Future<void> _applyMemoRelations(String memoUid, List<Map<String, dynamic>> relations) async {
+  Future<void> _applyMemoRelations(
+    String memoUid,
+    List<Map<String, dynamic>> relations,
+  ) async {
     final normalizedUid = _normalizeMemoUid(memoUid);
     if (normalizedUid.isEmpty) return;
     final memoName = 'memos/$normalizedUid';
@@ -1815,7 +1964,10 @@ class RemoteSyncController extends SyncControllerBase {
       });
     }
 
-    await api.setMemoRelations(memoUid: normalizedUid, relations: normalizedRelations);
+    await api.setMemoRelations(
+      memoUid: normalizedUid,
+      relations: normalizedRelations,
+    );
     _notifyRelationsSynced(normalizedUid, normalizedRelations);
   }
 
@@ -1828,7 +1980,10 @@ class RemoteSyncController extends SyncControllerBase {
     return '';
   }
 
-  void _notifyRelationsSynced(String memoUid, List<Map<String, dynamic>> relations) {
+  void _notifyRelationsSynced(
+    String memoUid,
+    List<Map<String, dynamic>> relations,
+  ) {
     final uids = _collectRelationUids(memoUid: memoUid, relations: relations);
     if (uids.isEmpty) return;
     onRelationsSynced?.call(uids);
@@ -1882,8 +2037,14 @@ class RemoteSyncController extends SyncControllerBase {
     final memoUid = payload['memo_uid'] as String?;
     final filePath = payload['file_path'] as String?;
     final filename = payload['filename'] as String?;
-    final mimeType = payload['mime_type'] as String? ?? 'application/octet-stream';
-    if (uid == null || uid.isEmpty || memoUid == null || memoUid.isEmpty || filePath == null || filename == null) {
+    final mimeType =
+        payload['mime_type'] as String? ?? 'application/octet-stream';
+    if (uid == null ||
+        uid.isEmpty ||
+        memoUid == null ||
+        memoUid.isEmpty ||
+        filePath == null ||
+        filename == null) {
       throw const FormatException('upload_attachment missing fields');
     }
 
@@ -2018,7 +2179,12 @@ class RemoteSyncController extends SyncControllerBase {
     if (error is ImageBedRequestException) {
       final status = error.statusCode;
       if (status == null) return true;
-      if (status == 401 || status == 403 || status == 404 || status == 405 || status == 422) return false;
+      if (status == 401 ||
+          status == 403 ||
+          status == 404 ||
+          status == 405 ||
+          status == 422)
+        return false;
       if (status == 429) return true;
       return status >= 500;
     }
@@ -2108,7 +2274,9 @@ class RemoteSyncController extends SyncControllerBase {
       'resources/$localAttachmentUid',
     };
     final remainingAttachments = memo.attachments
-        .where((a) => !expectedNames.contains(a.name) && a.uid != localAttachmentUid)
+        .where(
+          (a) => !expectedNames.contains(a.name) && a.uid != localAttachmentUid,
+        )
         .map((a) => a.toJson())
         .toList(growable: false);
 
@@ -2130,12 +2298,15 @@ class RemoteSyncController extends SyncControllerBase {
       lastError: null,
     );
 
-    await db.enqueueOutbox(type: 'update_memo', payload: {
-      'uid': memo.uid,
-      'content': updatedContent,
-      'visibility': memo.visibility,
-      'pinned': memo.pinned,
-    });
+    await db.enqueueOutbox(
+      type: 'update_memo',
+      payload: {
+        'uid': memo.uid,
+        'content': updatedContent,
+        'visibility': memo.visibility,
+        'pinned': memo.pinned,
+      },
+    );
   }
 
   String _appendImageMarkdown(String content, String url) {
@@ -2151,11 +2322,16 @@ class RemoteSyncController extends SyncControllerBase {
 
   Future<void> _syncMemoAttachments(String memoUid) async {
     final trimmedUid = memoUid.trim();
-    final normalizedUid = trimmedUid.startsWith('memos/') ? trimmedUid.substring('memos/'.length) : trimmedUid;
+    final normalizedUid = trimmedUid.startsWith('memos/')
+        ? trimmedUid.substring('memos/'.length)
+        : trimmedUid;
     if (normalizedUid.isEmpty) return;
     final localNames = await _listLocalAttachmentNames(normalizedUid);
     try {
-      await api.setMemoAttachments(memoUid: normalizedUid, attachmentNames: localNames);
+      await api.setMemoAttachments(
+        memoUid: normalizedUid,
+        attachmentNames: localNames,
+      );
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status == 404 || status == 405) {
@@ -2167,7 +2343,9 @@ class RemoteSyncController extends SyncControllerBase {
 
   Future<void> _handleDeleteAttachment(Map<String, dynamic> payload) async {
     final name =
-        payload['attachment_name'] as String? ?? payload['attachmentName'] as String? ?? payload['name'] as String?;
+        payload['attachment_name'] as String? ??
+        payload['attachmentName'] as String? ??
+        payload['name'] as String?;
     if (name == null || name.trim().isEmpty) {
       throw const FormatException('delete_attachment missing name');
     }
@@ -2295,10 +2473,16 @@ class RemoteSyncController extends SyncControllerBase {
     }
 
     if (!changed) return;
-    await db.updateMemoAttachmentsJson(memoUid, attachmentsJson: jsonEncode(out));
+    await db.updateMemoAttachmentsJson(
+      memoUid,
+      attachmentsJson: jsonEncode(out),
+    );
   }
 
-  static List<Map<String, dynamic>> _mergeAttachmentJson(Map<String, dynamic>? localRow, List<Map<String, dynamic>> remoteAttachments) {
+  static List<Map<String, dynamic>> _mergeAttachmentJson(
+    Map<String, dynamic>? localRow,
+    List<Map<String, dynamic>> remoteAttachments,
+  ) {
     final map = <String, Map<String, dynamic>>{};
     for (final a in remoteAttachments) {
       final name = a['name'];

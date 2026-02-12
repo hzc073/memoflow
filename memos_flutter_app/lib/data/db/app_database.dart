@@ -1159,7 +1159,7 @@ WHERE id = 1;
     String? tag,
     int? startTimeSec,
     int? endTimeSecExclusive,
-    int limit = 100,
+    int? limit = 100,
   }) async {
     final db = await this.db;
     final trimmedTag = (tag ?? '').trim();
@@ -1169,6 +1169,7 @@ WHERE id = 1;
     final normalizedTag = withoutHash.toLowerCase();
     final normalizedState = (state ?? '').trim();
     final normalizedSearch = (searchQuery ?? '').trim();
+    final normalizedLimit = (limit != null && limit > 0) ? limit : null;
 
     final baseWhereClauses = <String>[];
     final baseWhereArgs = <Object?>[];
@@ -1195,7 +1196,7 @@ WHERE id = 1;
         where: baseWhereClauses.isEmpty ? null : baseWhereClauses.join(' AND '),
         whereArgs: baseWhereArgs.isEmpty ? null : baseWhereArgs,
         orderBy: 'pinned DESC, create_time DESC',
-        limit: limit,
+        limit: normalizedLimit,
       );
     }
 
@@ -1225,7 +1226,10 @@ WHERE id = 1;
       whereClauses.add('m.create_time < ?');
       whereArgs.add(endTimeSecExclusive);
     }
-    whereArgs.add(limit);
+    final sqlLimitClause = normalizedLimit == null ? '' : '\nLIMIT ?';
+    if (normalizedLimit != null) {
+      whereArgs.add(normalizedLimit);
+    }
 
     try {
       return await db.rawQuery('''
@@ -1234,7 +1238,7 @@ FROM memos m
 JOIN memos_fts ON memos_fts.rowid = m.id
 WHERE ${whereClauses.join(' AND ')}
 ORDER BY m.pinned DESC, m.create_time DESC
-LIMIT ?;
+$sqlLimitClause;
 ''', whereArgs);
     } on DatabaseException {
       final like = '%$normalizedSearch%';
@@ -1248,7 +1252,7 @@ LIMIT ?;
         where: fallbackClauses.join(' AND '),
         whereArgs: fallbackArgs,
         orderBy: 'pinned DESC, create_time DESC',
-        limit: limit,
+        limit: normalizedLimit,
       );
     }
   }
@@ -1333,7 +1337,7 @@ LIMIT ?;
     String? tag,
     int? startTimeSec,
     int? endTimeSecExclusive,
-    int limit = 100,
+    int? limit = 100,
   }) async* {
     yield await listMemos(
       searchQuery: searchQuery,

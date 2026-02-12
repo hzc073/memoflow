@@ -28,9 +28,9 @@ class AccountsState {
   }
 
   Map<String, dynamic> toJson() => {
-        'currentKey': currentKey,
-        'accounts': accounts.map((a) => a.toJson()).toList(growable: false),
-      };
+    'currentKey': currentKey,
+    'accounts': accounts.map((a) => a.toJson()).toList(growable: false),
+  };
 
   factory AccountsState.fromJson(Map<String, dynamic> json) {
     final rawAccounts = json['accounts'];
@@ -79,15 +79,18 @@ class AccountsRepository {
             personalAccessToken: a.personalAccessToken,
             user: a.user,
             instanceProfile: a.instanceProfile,
+            useLegacyApiOverride: a.useLegacyApiOverride,
           ),
         )
         .toList(growable: false);
     final sanitized = state.copyWith(accounts: sanitizedAccounts);
-    await _storage.write(key: _kStateKey, value: jsonEncode(sanitized.toJson()));
+    await _storage.write(
+      key: _kStateKey,
+      value: jsonEncode(sanitized.toJson()),
+    );
   }
 
   Future<void> clear() async {
     await _storage.delete(key: _kStateKey);
   }
 }
-

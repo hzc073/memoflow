@@ -14,10 +14,7 @@ import '../data/settings/accounts_repository.dart';
 import '../core/url.dart';
 
 class AppSessionState {
-  const AppSessionState({
-    required this.accounts,
-    required this.currentKey,
-  });
+  const AppSessionState({required this.accounts, required this.currentKey});
 
   final List<Account> accounts;
   final String? currentKey;
@@ -40,16 +37,21 @@ final accountsRepositoryProvider = Provider<AccountsRepository>((ref) {
   return AccountsRepository(ref.watch(secureStorageProvider));
 });
 
-final appSessionProvider = StateNotifierProvider<AppSessionController, AsyncValue<AppSessionState>>((ref) {
-  return AppSessionNotifier(ref.watch(accountsRepositoryProvider));
-});
+final appSessionProvider =
+    StateNotifierProvider<AppSessionController, AsyncValue<AppSessionState>>((
+      ref,
+    ) {
+      return AppSessionNotifier(ref.watch(accountsRepositoryProvider));
+    });
 
-abstract class AppSessionController extends StateNotifier<AsyncValue<AppSessionState>> {
+abstract class AppSessionController
+    extends StateNotifier<AsyncValue<AppSessionState>> {
   AppSessionController(super.state);
 
   Future<void> addAccountWithPat({
     required Uri baseUrl,
     required String personalAccessToken,
+    bool? useLegacyApiOverride,
   });
 
   Future<void> addAccountWithPassword({
@@ -68,22 +70,37 @@ abstract class AppSessionController extends StateNotifier<AsyncValue<AppSessionS
   Future<void> removeAccount(String accountKey);
 
   Future<void> refreshCurrentUser({bool ignoreErrors = true});
+
+  bool resolveUseLegacyApiForAccount({
+    required Account account,
+    required bool globalDefault,
+  });
+
+  Future<void> setCurrentAccountUseLegacyApiOverride(bool value);
 }
 
 class AppSessionNotifier extends AppSessionController {
-  AppSessionNotifier(this._accountsRepository) : super(const AsyncValue.loading()) {
+  AppSessionNotifier(this._accountsRepository)
+    : super(const AsyncValue.loading()) {
     _loadFromStorage();
   }
 
+  static final RegExp _versionPattern = RegExp(r'(\d+)\.(\d+)\.(\d+)');
+  static final RegExp _instanceVersionPattern = RegExp(r'(\d+)\.(\d+)\.(\d+)');
+
   @override
   Future<void> setCurrentKey(String? key) async {
-    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
+    final current =
+        state.valueOrNull ??
+        const AppSessionState(accounts: [], currentKey: null);
     final trimmed = key?.trim();
     final nextKey = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
 
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      await _accountsRepository.write(AccountsState(accounts: current.accounts, currentKey: nextKey));
+      await _accountsRepository.write(
+        AccountsState(accounts: current.accounts, currentKey: nextKey),
+      );
       return AppSessionState(accounts: current.accounts, currentKey: nextKey);
     });
   }
@@ -92,12 +109,15 @@ class AppSessionNotifier extends AppSessionController {
 
   Future<void> _loadFromStorage() async {
     final stored = await _accountsRepository.read();
-    state = AsyncValue.data(AppSessionState(accounts: stored.accounts, currentKey: stored.currentKey));
+    state = AsyncValue.data(
+      AppSessionState(accounts: stored.accounts, currentKey: stored.currentKey),
+    );
   }
 
   Future<AppSessionState> _upsertAccount({
     required Uri baseUrl,
     required String personalAccessToken,
+    bool? useLegacyApiOverride,
   }) async {
     InstanceProfile instanceProfile;
     try {
@@ -126,25 +146,37 @@ class AppSessionNotifier extends AppSessionController {
     }
 
     final normalizedBaseUrl = sanitizeUserBaseUrl(baseUrl);
-    final accountKey = '${canonicalBaseUrlString(normalizedBaseUrl)}|${user.name}';
+    final accountKey =
+        '${canonicalBaseUrlString(normalizedBaseUrl)}|${user.name}';
 
-    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
+    final current =
+        state.valueOrNull ??
+        const AppSessionState(accounts: [], currentKey: null);
     final accounts = [...current.accounts];
+    final existingIndex = accounts.indexWhere((a) => a.key == accountKey);
+    final resolvedUseLegacyApiOverride =
+        useLegacyApiOverride ??
+        (existingIndex >= 0
+            ? accounts[existingIndex].useLegacyApiOverride
+            : null);
+
     final account = Account(
       key: accountKey,
       baseUrl: normalizedBaseUrl,
       personalAccessToken: personalAccessToken,
       user: user,
       instanceProfile: instanceProfile,
+      useLegacyApiOverride: resolvedUseLegacyApiOverride,
     );
-    final existingIndex = accounts.indexWhere((a) => a.key == accountKey);
     if (existingIndex >= 0) {
       accounts[existingIndex] = account;
     } else {
       accounts.add(account);
     }
 
-    await _accountsRepository.write(AccountsState(accounts: accounts, currentKey: accountKey));
+    await _accountsRepository.write(
+      AccountsState(accounts: accounts, currentKey: accountKey),
+    );
     return AppSessionState(accounts: accounts, currentKey: accountKey);
   }
 
@@ -152,11 +184,16 @@ class AppSessionNotifier extends AppSessionController {
   Future<void> addAccountWithPat({
     required Uri baseUrl,
     required String personalAccessToken,
+    bool? useLegacyApiOverride,
   }) async {
     // Keep the previous state while connecting so the login form doesn't reset.
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      return _upsertAccount(baseUrl: baseUrl, personalAccessToken: personalAccessToken);
+      return _upsertAccount(
+        baseUrl: baseUrl,
+        personalAccessToken: personalAccessToken,
+        useLegacyApiOverride: useLegacyApiOverride,
+      );
     });
   }
 
@@ -169,55 +206,83 @@ class AppSessionNotifier extends AppSessionController {
   }) async {
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
+      final loginStrategy = await _resolvePasswordLoginStrategy(
+        baseUrl: baseUrl,
+        useLegacyApiPreference: useLegacyApi,
+      );
       final signIn = await _signInWithPassword(
         baseUrl: baseUrl,
         username: username,
         password: password,
-        useLegacyApi: useLegacyApi,
+        useLegacyApi: loginStrategy.useLegacyApi,
+        flavor: loginStrategy.flavor,
       );
       final token = await _createTokenFromPasswordSignIn(
         baseUrl: baseUrl,
         signIn: signIn,
-        useLegacyApi: useLegacyApi,
+        useLegacyApi: loginStrategy.useLegacyApi,
       );
-      return _upsertAccount(baseUrl: baseUrl, personalAccessToken: token);
+      return _upsertAccount(
+        baseUrl: baseUrl,
+        personalAccessToken: token,
+        useLegacyApiOverride: loginStrategy.useLegacyApi,
+      );
     });
   }
 
   @override
   Future<void> switchAccount(String accountKey) async {
-    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
+    final current =
+        state.valueOrNull ??
+        const AppSessionState(accounts: [], currentKey: null);
     if (!current.accounts.any((a) => a.key == accountKey)) return;
 
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      await _accountsRepository.write(AccountsState(accounts: current.accounts, currentKey: accountKey));
-      return AppSessionState(accounts: current.accounts, currentKey: accountKey);
+      await _accountsRepository.write(
+        AccountsState(accounts: current.accounts, currentKey: accountKey),
+      );
+      return AppSessionState(
+        accounts: current.accounts,
+        currentKey: accountKey,
+      );
     });
   }
 
   @override
   Future<void> switchWorkspace(String workspaceKey) async {
-    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
+    final current =
+        state.valueOrNull ??
+        const AppSessionState(accounts: [], currentKey: null);
     final key = workspaceKey.trim();
     if (key.isEmpty) return;
 
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      await _accountsRepository.write(AccountsState(accounts: current.accounts, currentKey: key));
+      await _accountsRepository.write(
+        AccountsState(accounts: current.accounts, currentKey: key),
+      );
       return AppSessionState(accounts: current.accounts, currentKey: key);
     });
   }
 
   @override
   Future<void> removeAccount(String accountKey) async {
-    final current = state.valueOrNull ?? const AppSessionState(accounts: [], currentKey: null);
-    final accounts = current.accounts.where((a) => a.key != accountKey).toList(growable: false);
-    final nextKey = current.currentKey == accountKey ? (accounts.firstOrNull?.key) : current.currentKey;
+    final current =
+        state.valueOrNull ??
+        const AppSessionState(accounts: [], currentKey: null);
+    final accounts = current.accounts
+        .where((a) => a.key != accountKey)
+        .toList(growable: false);
+    final nextKey = current.currentKey == accountKey
+        ? (accounts.firstOrNull?.key)
+        : current.currentKey;
 
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      await _accountsRepository.write(AccountsState(accounts: accounts, currentKey: nextKey));
+      await _accountsRepository.write(
+        AccountsState(accounts: accounts, currentKey: nextKey),
+      );
       return AppSessionState(accounts: accounts, currentKey: nextKey);
     });
   }
@@ -229,10 +294,16 @@ class AppSessionNotifier extends AppSessionController {
     final account = current.currentAccount;
     if (account == null) return;
 
+    final useLegacyApi = resolveUseLegacyApiForAccount(
+      account: account,
+      globalDefault: true,
+    );
+
     try {
       final api = MemosApi.authenticated(
         baseUrl: account.baseUrl,
         personalAccessToken: account.personalAccessToken,
+        useLegacyApi: useLegacyApi,
         logManager: LogManager.instance,
       );
       final user = await api.getCurrentUser();
@@ -249,16 +320,144 @@ class AppSessionNotifier extends AppSessionController {
         personalAccessToken: account.personalAccessToken,
         user: user,
         instanceProfile: instanceProfile,
+        useLegacyApiOverride: account.useLegacyApiOverride,
       );
       final accounts = current.accounts
           .map((a) => a.key == account.key ? updatedAccount : a)
           .toList(growable: false);
-      final next = AppSessionState(accounts: accounts, currentKey: current.currentKey);
+      final next = AppSessionState(
+        accounts: accounts,
+        currentKey: current.currentKey,
+      );
       state = AsyncValue.data(next);
-      await _accountsRepository.write(AccountsState(accounts: accounts, currentKey: current.currentKey));
+      await _accountsRepository.write(
+        AccountsState(accounts: accounts, currentKey: current.currentKey),
+      );
     } catch (e) {
       if (!ignoreErrors) rethrow;
     }
+  }
+
+  bool _shouldUseLegacyApiForAccount(Account account) {
+    final versionRaw = account.instanceProfile.version.trim();
+    final match = _versionPattern.firstMatch(versionRaw);
+    if (match == null) {
+      return true;
+    }
+
+    final major = int.tryParse(match.group(1) ?? '');
+    final minor = int.tryParse(match.group(2) ?? '');
+    final patch = int.tryParse(match.group(3) ?? '');
+    if (major == null || minor == null || patch == null) {
+      return true;
+    }
+
+    if (major == 0 && minor <= 22) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<_PasswordLoginStrategy> _resolvePasswordLoginStrategy({
+    required Uri baseUrl,
+    required bool useLegacyApiPreference,
+  }) async {
+    InstanceProfile profile;
+    try {
+      profile = await MemosApi.unauthenticated(
+        baseUrl,
+        logManager: LogManager.instance,
+      ).getInstanceProfile();
+    } catch (_) {
+      return _PasswordLoginStrategy(
+        useLegacyApi: useLegacyApiPreference,
+        flavor: _inferFlavorFromVersion(''),
+      );
+    }
+
+    final flavor = _inferFlavorFromVersion(profile.version);
+    final useLegacyApi = switch (flavor) {
+      _DetectedServerFlavor.v0_21 || _DetectedServerFlavor.v0_22 => true,
+      _DetectedServerFlavor.v0_24 || _DetectedServerFlavor.v0_25Plus => false,
+      _DetectedServerFlavor.unknown => useLegacyApiPreference,
+    };
+
+    LogManager.instance.info(
+      'Password sign-in strategy resolved',
+      context: <String, Object?>{
+        'baseUrl': canonicalBaseUrlString(baseUrl),
+        'versionRaw': profile.version,
+        'flavor': flavor.name,
+        'useLegacyApi': useLegacyApi,
+        'source': 'instanceProfile',
+      },
+    );
+
+    return _PasswordLoginStrategy(useLegacyApi: useLegacyApi, flavor: flavor);
+  }
+
+  _DetectedServerFlavor _inferFlavorFromVersion(String versionRaw) {
+    final trimmed = versionRaw.trim();
+    final match = _instanceVersionPattern.firstMatch(trimmed);
+    if (match == null) return _DetectedServerFlavor.unknown;
+
+    final major = int.tryParse(match.group(1) ?? '');
+    final minor = int.tryParse(match.group(2) ?? '');
+    if (major == null || minor == null) return _DetectedServerFlavor.unknown;
+    if (major != 0) return _DetectedServerFlavor.v0_25Plus;
+    if (minor >= 25) return _DetectedServerFlavor.v0_25Plus;
+    if (minor >= 24) return _DetectedServerFlavor.v0_24;
+    if (minor >= 22) return _DetectedServerFlavor.v0_22;
+    return _DetectedServerFlavor.v0_21;
+  }
+
+  @override
+  bool resolveUseLegacyApiForAccount({
+    required Account account,
+    required bool globalDefault,
+  }) {
+    final override = account.useLegacyApiOverride;
+    if (override != null) {
+      return override;
+    }
+    final versionRaw = account.instanceProfile.version.trim();
+    if (versionRaw.isEmpty) {
+      return globalDefault;
+    }
+    return _shouldUseLegacyApiForAccount(account);
+  }
+
+  @override
+  Future<void> setCurrentAccountUseLegacyApiOverride(bool value) async {
+    final current = state.valueOrNull;
+    final account = current?.currentAccount;
+    if (current == null || account == null) {
+      return;
+    }
+    if (account.useLegacyApiOverride == value) {
+      return;
+    }
+
+    final updatedAccount = Account(
+      key: account.key,
+      baseUrl: account.baseUrl,
+      personalAccessToken: account.personalAccessToken,
+      user: account.user,
+      instanceProfile: account.instanceProfile,
+      useLegacyApiOverride: value,
+    );
+    final accounts = current.accounts
+        .map((a) => a.key == account.key ? updatedAccount : a)
+        .toList(growable: false);
+    final next = AppSessionState(
+      accounts: accounts,
+      currentKey: current.currentKey,
+    );
+
+    state = AsyncValue.data(next);
+    await _accountsRepository.write(
+      AccountsState(accounts: accounts, currentKey: current.currentKey),
+    );
   }
 
   Future<_PasswordSignInResult> _signInWithPassword({
@@ -266,118 +465,113 @@ class AppSessionNotifier extends AppSessionController {
     required String username,
     required String password,
     required bool useLegacyApi,
+    required _DetectedServerFlavor flavor,
   }) async {
-    final attempts = useLegacyApi
-        ? <_PasswordSignInAttempt>[
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.grpcWebSessionV1,
-              () => _signInGrpcWeb(baseUrl: baseUrl, username: username, password: password),
-            ),
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.signinV2,
-              () => _signInV2(baseUrl: baseUrl, username: username, password: password),
-            ),
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.sessionV1,
-              () => _signInSessions(baseUrl: baseUrl, username: username, password: password),
-            ),
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.signinV1,
-              () => _signInV1(baseUrl: baseUrl, username: username, password: password, useLegacyApi: useLegacyApi),
-            ),
-          ]
-        : <_PasswordSignInAttempt>[
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.grpcWebSessionV1,
-              () => _signInGrpcWeb(baseUrl: baseUrl, username: username, password: password),
-            ),
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.sessionV1,
-              () => _signInSessions(baseUrl: baseUrl, username: username, password: password),
-            ),
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.signinV1,
-              () => _signInV1(baseUrl: baseUrl, username: username, password: password, useLegacyApi: useLegacyApi),
-            ),
-            _PasswordSignInAttempt(
-              _PasswordSignInEndpoint.signinV2,
-              () => _signInV2(baseUrl: baseUrl, username: username, password: password),
-            ),
-          ];
-
-    DioException? lastNonFallback;
-    DioException? lastFallback;
-    FormatException? lastFormat;
-    Object? lastOtherError;
-
+    final usernameCandidates = _buildSignInUsernameCandidates(username);
     LogManager.instance.info(
       'Password sign-in start',
       context: <String, Object?>{
         'baseUrl': canonicalBaseUrlString(baseUrl),
         'mode': useLegacyApi ? 'legacy' : 'new',
-        'attempts': attempts.map((a) => a.endpoint.label).toList(),
+        'usernameCandidateCount': usernameCandidates.length,
       },
     );
 
-    for (final attempt in attempts) {
-      try {
-        LogManager.instance.debug(
-          'Password sign-in attempt',
-          context: <String, Object?>{'endpoint': attempt.endpoint.label},
-        );
-        final result = await attempt.run();
-        LogManager.instance.info(
-          'Password sign-in success',
-          context: <String, Object?>{
-            'endpoint': attempt.endpoint.label,
-            'user': result.user.name,
-            'hasSessionCookie': result.sessionCookie?.isNotEmpty ?? false,
-            'hasAccessToken': result.accessToken?.isNotEmpty ?? false,
-          },
-        );
-        return result;
-      } on DioException catch (e) {
-        LogManager.instance.warn(
-          'Password sign-in failed',
-          error: e,
-          context: <String, Object?>{
-            'endpoint': attempt.endpoint.label,
-            'status': e.response?.statusCode,
-            'message': _extractDioMessage(e),
-            'url': e.requestOptions.uri.toString(),
-            'fallback': _shouldFallback(e),
-          },
-        );
-        if (_shouldFallback(e)) {
-          lastFallback = e;
-          continue;
+    for (
+      var candidateIndex = 0;
+      candidateIndex < usernameCandidates.length;
+      candidateIndex++
+    ) {
+      final signInUsername = usernameCandidates[candidateIndex];
+      final hasNextCandidate = candidateIndex < usernameCandidates.length - 1;
+
+      final attempts = _buildPasswordSignInAttempts(
+        baseUrl: baseUrl,
+        username: signInUsername,
+        password: password,
+        useLegacyApi: useLegacyApi,
+        flavor: flavor,
+      );
+
+      DioException? lastNonFallback;
+      DioException? lastFallback;
+      FormatException? lastFormat;
+      Object? lastOtherError;
+
+      for (final attempt in attempts) {
+        try {
+          LogManager.instance.debug(
+            'Password sign-in attempt',
+            context: <String, Object?>{'endpoint': attempt.endpoint.label},
+          );
+          final result = await attempt.run();
+          LogManager.instance.info(
+            'Password sign-in success',
+            context: <String, Object?>{
+              'endpoint': attempt.endpoint.label,
+              'user': result.user.name,
+              'hasSessionCookie': result.sessionCookie?.isNotEmpty ?? false,
+              'hasAccessToken': result.accessToken?.isNotEmpty ?? false,
+            },
+          );
+          return result;
+        } on DioException catch (e) {
+          LogManager.instance.warn(
+            'Password sign-in failed',
+            error: e,
+            context: <String, Object?>{
+              'endpoint': attempt.endpoint.label,
+              'status': e.response?.statusCode,
+              'message': _extractDioMessage(e),
+              'url': e.requestOptions.uri.toString(),
+              'fallback': _shouldFallback(e),
+            },
+          );
+          if (_shouldFallback(e)) {
+            lastFallback = e;
+            continue;
+          }
+          lastNonFallback = e;
+        } on FormatException catch (e) {
+          LogManager.instance.warn(
+            'Password sign-in failed',
+            error: e,
+            context: <String, Object?>{
+              'endpoint': attempt.endpoint.label,
+              'format': e.message,
+            },
+          );
+          lastFormat = e;
+        } catch (e, stackTrace) {
+          LogManager.instance.error(
+            'Password sign-in failed',
+            error: e,
+            stackTrace: stackTrace,
+            context: <String, Object?>{'endpoint': attempt.endpoint.label},
+          );
+          lastOtherError = e;
         }
-        lastNonFallback = e;
-      } on FormatException catch (e) {
+      }
+
+      final candidateError =
+          lastNonFallback ?? lastOtherError ?? lastFallback ?? lastFormat;
+
+      if (hasNextCandidate &&
+          candidateError is DioException &&
+          _shouldTryNextUsernameCandidate(candidateError)) {
         LogManager.instance.warn(
-          'Password sign-in failed',
-          error: e,
+          'Password sign-in retry with normalized username',
           context: <String, Object?>{
-            'endpoint': attempt.endpoint.label,
-            'format': e.message,
+            'candidateIndex': candidateIndex + 2,
+            'candidateCount': usernameCandidates.length,
           },
         );
-        lastFormat = e;
-      } catch (e, stackTrace) {
-        LogManager.instance.error(
-          'Password sign-in failed',
-          error: e,
-          stackTrace: stackTrace,
-          context: <String, Object?>{'endpoint': attempt.endpoint.label},
-        );
-        lastOtherError = e;
+        continue;
       }
+
+      if (candidateError != null) throw candidateError;
     }
 
-    if (lastNonFallback != null) throw lastNonFallback;
-    if (lastOtherError != null) throw lastOtherError;
-    if (lastFallback != null) throw lastFallback;
-    if (lastFormat != null) throw lastFormat;
     throw StateError('Unable to sign in');
   }
 
@@ -400,7 +594,10 @@ class AppSessionNotifier extends AppSessionController {
     final body = _expectJsonMap(response.data);
     final userJson = body['user'] is Map ? body['user'] as Map : body;
     final user = User.fromJson(userJson.cast<String, dynamic>());
-    final sessionValue = _extractCookieValue(response.headers, _kSessionCookieName);
+    final sessionValue = _extractCookieValue(
+      response.headers,
+      _kSessionCookieName,
+    );
     if (sessionValue == null || sessionValue.isEmpty) {
       throw const FormatException('Session cookie missing in response');
     }
@@ -417,7 +614,10 @@ class AppSessionNotifier extends AppSessionController {
     required String username,
     required String password,
   }) async {
-    final request = _encodeCreateSessionRequest(username: username, password: password);
+    final request = _encodeCreateSessionRequest(
+      username: username,
+      password: password,
+    );
     final response = await _grpcWebPost(
       baseUrl: baseUrl,
       path: _kGrpcWebCreateSessionPath,
@@ -426,7 +626,10 @@ class AppSessionNotifier extends AppSessionController {
     final message = _parseGrpcWebResponse(response.bytes);
     final user = _parseCreateSessionUser(message.messageBytes);
 
-    final sessionValue = _extractCookieValue(response.headers, _kSessionCookieName);
+    final sessionValue = _extractCookieValue(
+      response.headers,
+      _kSessionCookieName,
+    );
     if (sessionValue == null || sessionValue.isEmpty) {
       throw const FormatException('Session cookie missing in response');
     }
@@ -444,22 +647,32 @@ class AppSessionNotifier extends AppSessionController {
     required String password,
     required bool useLegacyApi,
   }) async {
-    if (!useLegacyApi) {
-      return _signInV1Modern(baseUrl: baseUrl, username: username, password: password);
+    if (useLegacyApi) {
+      return _signInV1Legacy(
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+      );
     }
 
     try {
-      return await _signInV1Legacy(baseUrl: baseUrl, username: username, password: password);
+      return await _signInV1Modern(
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+      );
     } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 400 && status != 404 && status != 405) {
+      if (!_shouldFallbackV1Payload(e)) {
         rethrow;
       }
     } on FormatException {
-      // Fallback to modern payload below.
+      // Fallback to legacy payload below.
     }
-
-    return _signInV1Modern(baseUrl: baseUrl, username: username, password: password);
+    return _signInV1Legacy(
+      baseUrl: baseUrl,
+      username: username,
+      password: password,
+    );
   }
 
   Future<_PasswordSignInResult> _signInV1Legacy({
@@ -474,16 +687,24 @@ class AppSessionNotifier extends AppSessionController {
     );
     final response = await dio.post(
       'api/v1/auth/signin',
+      queryParameters: <String, Object?>{
+        'username': username,
+        'password': password,
+        'neverExpire': false,
+        'never_expire': false,
+      },
       data: <String, Object?>{
         'username': username,
         'password': password,
-        'remember': false,
+        'neverExpire': false,
       },
     );
     final body = _expectJsonMap(response.data);
     final userJson = body['user'] is Map ? body['user'] as Map : body;
     final user = User.fromJson(userJson.cast<String, dynamic>());
-    final token = _extractAccessToken(body) ?? _extractCookieValue(response.headers, _kAccessTokenCookieName);
+    final token =
+        _extractAccessToken(body) ??
+        _extractCookieValue(response.headers, _kAccessTokenCookieName);
     if (token == null || token.isEmpty) {
       throw const FormatException('Access token missing in response');
     }
@@ -513,7 +734,9 @@ class AppSessionNotifier extends AppSessionController {
     final body = _expectJsonMap(response.data);
     final userJson = body['user'] is Map ? body['user'] as Map : body;
     final user = User.fromJson(userJson.cast<String, dynamic>());
-    final token = _extractAccessToken(body) ?? _extractCookieValue(response.headers, _kAccessTokenCookieName);
+    final token =
+        _extractAccessToken(body) ??
+        _extractCookieValue(response.headers, _kAccessTokenCookieName);
     if (token == null || token.isEmpty) {
       throw const FormatException('Access token missing in response');
     }
@@ -536,16 +759,14 @@ class AppSessionNotifier extends AppSessionController {
     );
     final response = await dio.post(
       'api/v2/auth/signin',
-      data: {
-        'username': username,
-        'password': password,
-        'neverExpire': false,
-      },
+      data: {'username': username, 'password': password, 'neverExpire': false},
     );
     final body = _expectJsonMap(response.data);
     final userJson = body['user'] is Map ? body['user'] as Map : body;
     final user = User.fromJson(userJson.cast<String, dynamic>());
-    final token = _extractAccessToken(body) ?? _extractCookieValue(response.headers, _kAccessTokenCookieName);
+    final token =
+        _extractAccessToken(body) ??
+        _extractCookieValue(response.headers, _kAccessTokenCookieName);
     if (token == null || token.isEmpty) {
       throw const FormatException('Access token missing in response');
     }
@@ -554,6 +775,88 @@ class AppSessionNotifier extends AppSessionController {
       endpoint: _PasswordSignInEndpoint.signinV2,
       accessToken: token,
     );
+  }
+
+  List<_PasswordSignInAttempt> _buildPasswordSignInAttempts({
+    required Uri baseUrl,
+    required String username,
+    required String password,
+    required bool useLegacyApi,
+    required _DetectedServerFlavor flavor,
+  }) {
+    _PasswordSignInAttempt grpcWeb() => _PasswordSignInAttempt(
+      _PasswordSignInEndpoint.grpcWebSessionV1,
+      () => _signInGrpcWeb(
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+      ),
+    );
+
+    _PasswordSignInAttempt sessionsV1() => _PasswordSignInAttempt(
+      _PasswordSignInEndpoint.sessionV1,
+      () => _signInSessions(
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+      ),
+    );
+
+    _PasswordSignInAttempt signinV1() => _PasswordSignInAttempt(
+      _PasswordSignInEndpoint.signinV1,
+      () => _signInV1(
+        baseUrl: baseUrl,
+        username: username,
+        password: password,
+        useLegacyApi: useLegacyApi,
+      ),
+    );
+
+    _PasswordSignInAttempt signinV2() => _PasswordSignInAttempt(
+      _PasswordSignInEndpoint.signinV2,
+      () => _signInV2(baseUrl: baseUrl, username: username, password: password),
+    );
+
+    return switch (flavor) {
+      _DetectedServerFlavor.v0_25Plus => <_PasswordSignInAttempt>[
+        grpcWeb(),
+        sessionsV1(),
+        signinV1(),
+        signinV2(),
+      ],
+      _DetectedServerFlavor.v0_24 => <_PasswordSignInAttempt>[
+        grpcWeb(),
+        signinV1(),
+        signinV2(),
+        sessionsV1(),
+      ],
+      _DetectedServerFlavor.v0_22 => <_PasswordSignInAttempt>[
+        grpcWeb(),
+        signinV1(),
+        signinV2(),
+        sessionsV1(),
+      ],
+      _DetectedServerFlavor.v0_21 => <_PasswordSignInAttempt>[
+        grpcWeb(),
+        signinV2(),
+        signinV1(),
+        sessionsV1(),
+      ],
+      _DetectedServerFlavor.unknown =>
+        useLegacyApi
+            ? <_PasswordSignInAttempt>[
+                grpcWeb(),
+                signinV2(),
+                sessionsV1(),
+                signinV1(),
+              ]
+            : <_PasswordSignInAttempt>[
+                grpcWeb(),
+                sessionsV1(),
+                signinV1(),
+                signinV2(),
+              ],
+    };
   }
 
   Future<String> _createTokenFromPasswordSignIn({
@@ -698,8 +1001,12 @@ class AppSessionNotifier extends AppSessionController {
       connectTimeout: _kLoginConnectTimeout,
       receiveTimeout: _kLoginReceiveTimeout,
     );
-    final expiresAt = expiresInDays > 0 ? DateTime.now().toUtc().add(Duration(days: expiresInDays)) : null;
-    final path = userName.startsWith('users/') ? 'api/v2/$userName/access_tokens' : 'api/v2/users/$userName/access_tokens';
+    final expiresAt = expiresInDays > 0
+        ? DateTime.now().toUtc().add(Duration(days: expiresInDays))
+        : null;
+    final path = userName.startsWith('users/')
+        ? 'api/v2/$userName/access_tokens'
+        : 'api/v2/users/$userName/access_tokens';
     final response = await dio.post(
       path,
       data: <String, Object?>{
@@ -710,7 +1017,9 @@ class AppSessionNotifier extends AppSessionController {
     final body = _expectJsonMap(response.data);
     final tokenJson = body['accessToken'] ?? body['access_token'];
     if (tokenJson is Map) {
-      final tokenValue = _readString(tokenJson['accessToken'] ?? tokenJson['access_token']);
+      final tokenValue = _readString(
+        tokenJson['accessToken'] ?? tokenJson['access_token'],
+      );
       if (tokenValue.isNotEmpty) return tokenValue;
     }
     final tokenValue = _readString(body['accessToken'] ?? body['access_token']);
@@ -726,7 +1035,9 @@ class AppSessionNotifier extends AppSessionController {
     required String userName,
     required String description,
   }) async {
-    final normalizedUser = userName.startsWith('users/') ? userName : 'users/$userName';
+    final normalizedUser = userName.startsWith('users/')
+        ? userName
+        : 'users/$userName';
     final request = _encodeCreateUserAccessTokenRequest(
       parent: normalizedUser,
       description: description,
@@ -750,12 +1061,7 @@ extension _FirstOrNullAccountExt<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
-enum _PasswordSignInEndpoint {
-  grpcWebSessionV1,
-  sessionV1,
-  signinV1,
-  signinV2,
-}
+enum _PasswordSignInEndpoint { grpcWebSessionV1, sessionV1, signinV1, signinV2 }
 
 class _PasswordSignInAttempt {
   const _PasswordSignInAttempt(this.endpoint, this.run);
@@ -778,12 +1084,26 @@ class _PasswordSignInResult {
   final String? sessionCookie;
 }
 
+class _PasswordLoginStrategy {
+  const _PasswordLoginStrategy({
+    required this.useLegacyApi,
+    required this.flavor,
+  });
+
+  final bool useLegacyApi;
+  final _DetectedServerFlavor flavor;
+}
+
+enum _DetectedServerFlavor { unknown, v0_25Plus, v0_24, v0_22, v0_21 }
+
 const String _kPasswordLoginTokenDescription = 'MemoFlow (password login)';
 const String _kAccessTokenCookieName = 'memos.access-token';
 const String _kSessionCookieName = 'user_session';
 const String _kGrpcWebContentType = 'application/grpc-web+proto';
-const String _kGrpcWebCreateSessionPath = '/memos.api.v1.AuthService/CreateSession';
-const String _kGrpcWebCreateUserAccessTokenPath = '/memos.api.v1.UserService/CreateUserAccessToken';
+const String _kGrpcWebCreateSessionPath =
+    '/memos.api.v1.AuthService/CreateSession';
+const String _kGrpcWebCreateUserAccessTokenPath =
+    '/memos.api.v1.UserService/CreateUserAccessToken';
 const Duration _kLoginConnectTimeout = Duration(seconds: 20);
 const Duration _kLoginReceiveTimeout = Duration(seconds: 30);
 
@@ -806,6 +1126,58 @@ Dio _newDio(
 bool _shouldFallback(DioException e) {
   final status = e.response?.statusCode ?? 0;
   return status == 404 || status == 405;
+}
+
+bool _shouldFallbackV1Payload(DioException e) {
+  final status = e.response?.statusCode;
+  if (status == null) {
+    return e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.unknown;
+  }
+  return status == 400 || status == 404 || status == 405;
+}
+
+List<String> _buildSignInUsernameCandidates(String username) {
+  final raw = username.trim();
+  if (raw.isEmpty) return const <String>[];
+
+  final candidates = <String>[raw];
+  void add(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return;
+    if (!candidates.contains(normalized)) {
+      candidates.add(normalized);
+    }
+  }
+
+  if (raw.startsWith('users/') && raw.length > 'users/'.length) {
+    add(raw.substring('users/'.length));
+  }
+  final slashIndex = raw.lastIndexOf('/');
+  if (slashIndex > 0 && slashIndex < raw.length - 1) {
+    add(raw.substring(slashIndex + 1));
+  }
+  final atIndex = raw.indexOf('@');
+  if (atIndex > 0) {
+    add(raw.substring(0, atIndex));
+  }
+  add(raw.toLowerCase());
+  return candidates;
+}
+
+bool _shouldTryNextUsernameCandidate(DioException e) {
+  final status = e.response?.statusCode;
+  if (status == null) return false;
+  if (status != 400 && status != 401) return false;
+  final message = _extractDioMessage(e).toLowerCase();
+  if (message.isEmpty) return false;
+  return message.contains('user not found') ||
+      message.contains('unmatched username') ||
+      message.contains('unmatched email') ||
+      message.contains('incorrect login credentials');
 }
 
 String _extractDioMessage(DioException e) {
@@ -840,11 +1212,11 @@ String? _extractCookieValue(Headers headers, String name) {
 
 extension _PasswordSignInEndpointLabel on _PasswordSignInEndpoint {
   String get label => switch (this) {
-        _PasswordSignInEndpoint.grpcWebSessionV1 => 'grpc-web/CreateSession',
-        _PasswordSignInEndpoint.sessionV1 => 'v1/auth/sessions',
-        _PasswordSignInEndpoint.signinV1 => 'v1/auth/signin',
-        _PasswordSignInEndpoint.signinV2 => 'v2/auth/signin',
-      };
+    _PasswordSignInEndpoint.grpcWebSessionV1 => 'grpc-web/CreateSession',
+    _PasswordSignInEndpoint.sessionV1 => 'v1/auth/sessions',
+    _PasswordSignInEndpoint.signinV1 => 'v1/auth/signin',
+    _PasswordSignInEndpoint.signinV2 => 'v2/auth/signin',
+  };
 }
 
 String? _extractAccessToken(Map<String, dynamic> body) {
@@ -871,20 +1243,14 @@ String _readString(Object? value) {
 }
 
 class _GrpcWebResponse {
-  const _GrpcWebResponse({
-    required this.bytes,
-    required this.headers,
-  });
+  const _GrpcWebResponse({required this.bytes, required this.headers});
 
   final Uint8List bytes;
   final Headers headers;
 }
 
 class _GrpcWebMessage {
-  const _GrpcWebMessage({
-    required this.messageBytes,
-    required this.trailers,
-  });
+  const _GrpcWebMessage({required this.messageBytes, required this.trailers});
 
   final Uint8List messageBytes;
   final Map<String, String> trailers;
@@ -946,7 +1312,8 @@ _GrpcWebMessage _parseGrpcWebResponse(Uint8List bytes) {
   var offset = 0;
   while (offset + 5 <= data.length) {
     final flag = data[offset];
-    final length = (data[offset + 1] << 24) |
+    final length =
+        (data[offset + 1] << 24) |
         (data[offset + 2] << 16) |
         (data[offset + 3] << 8) |
         data[offset + 4];
@@ -1010,7 +1377,10 @@ Uint8List _encodeCreateSessionRequest({
   required String username,
   required String password,
 }) {
-  final credentials = _encodePasswordCredentials(username: username, password: password);
+  final credentials = _encodePasswordCredentials(
+    username: username,
+    password: password,
+  );
   final buffer = BytesBuilder();
   _writeBytesField(buffer, 1, credentials);
   return buffer.toBytes();
@@ -1137,8 +1507,12 @@ User _parseUserMessage(Uint8List bytes) {
       reader.skipField(wire);
     }
   }
-  final normalizedName = name.startsWith('users/') || name.isEmpty ? name : 'users/$name';
-  final finalUsername = username.isNotEmpty ? username : normalizedName.split('/').last;
+  final normalizedName = name.startsWith('users/') || name.isEmpty
+      ? name
+      : 'users/$name';
+  final finalUsername = username.isNotEmpty
+      ? username
+      : normalizedName.split('/').last;
   final finalDisplayName = displayName.isNotEmpty ? displayName : finalUsername;
   return User(
     name: normalizedName,

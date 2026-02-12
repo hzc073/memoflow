@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/preferences_provider.dart';
+import '../../state/session_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
 import 'webhooks_settings_screen.dart';
@@ -15,10 +15,24 @@ class LaboratoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(appPreferencesProvider);
+    final sessionState = ref.watch(appSessionProvider).valueOrNull;
+    final currentAccount = sessionState?.currentAccount;
+    final effectiveUseLegacyApi = currentAccount == null
+        ? prefs.useLegacyApi
+        : ref
+              .read(appSessionProvider.notifier)
+              .resolveUseLegacyApiForAccount(
+                account: currentAccount,
+                globalDefault: prefs.useLegacyApi,
+              );
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
 
     return Scaffold(
@@ -45,11 +59,7 @@ class LaboratoryScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -63,12 +73,30 @@ class LaboratoryScreen extends ConsumerWidget {
                     children: [
                       _ToggleCard(
                         card: card,
-                        label: context.t.strings.legacy.msg_legacy_api_compatibility,
-                        description: context.t.strings.legacy.msg_use_legacy_endpoints_older_memos_servers,
-                        value: prefs.useLegacyApi,
+                        label: context
+                            .t
+                            .strings
+                            .legacy
+                            .msg_legacy_api_compatibility,
+                        description: context
+                            .t
+                            .strings
+                            .legacy
+                            .msg_use_legacy_endpoints_older_memos_servers,
+                        value: effectiveUseLegacyApi,
                         textMain: textMain,
                         textMuted: textMuted,
-                        onChanged: (v) => ref.read(appPreferencesProvider.notifier).setUseLegacyApi(v),
+                        onChanged: (v) async {
+                          if (currentAccount != null) {
+                            await ref
+                                .read(appSessionProvider.notifier)
+                                .setCurrentAccountUseLegacyApiOverride(v);
+                            return;
+                          }
+                          ref
+                              .read(appPreferencesProvider.notifier)
+                              .setUseLegacyApi(v);
+                        },
                       ),
                       const SizedBox(height: 12),
                       _CardRow(
@@ -77,7 +105,9 @@ class LaboratoryScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const CustomizeDrawerScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const CustomizeDrawerScreen(),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -87,7 +117,9 @@ class LaboratoryScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const ShortcutsSettingsScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ShortcutsSettingsScreen(),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -97,7 +129,9 @@ class LaboratoryScreen extends ConsumerWidget {
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => const WebhooksSettingsScreen()),
+                          MaterialPageRoute<void>(
+                            builder: (_) => const WebhooksSettingsScreen(),
+                          ),
                         ),
                       ),
                     ],
@@ -113,7 +147,9 @@ class LaboratoryScreen extends ConsumerWidget {
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.2,
-                          color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.85 : 1.0),
+                          color: MemoFlowPalette.primary.withValues(
+                            alpha: isDark ? 0.85 : 1.0,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -123,7 +159,9 @@ class LaboratoryScreen extends ConsumerWidget {
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 1.2,
-                          color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.55 : 0.7),
+                          color: MemoFlowPalette.primary.withValues(
+                            alpha: isDark ? 0.55 : 0.7,
+                          ),
                         ),
                       ),
                     ],
@@ -183,12 +221,15 @@ class _ToggleCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: textMain,
+                    ),
+                  ),
                 ),
-                Switch(
-                  value: value,
-                  onChanged: onChanged,
-                ),
+                Switch(value: value, onChanged: onChanged),
               ],
             ),
             if (description.trim().isNotEmpty)
@@ -247,7 +288,13 @@ class _CardRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
               ),
               Icon(Icons.chevron_right, size: 20, color: textMuted),
             ],
@@ -257,4 +304,3 @@ class _CardRow extends StatelessWidget {
     );
   }
 }
-

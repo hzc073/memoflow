@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:memos_flutter_app/app.dart';
+import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/state/session_provider.dart';
 
 void main() {
@@ -37,6 +38,7 @@ class _TestSessionController extends AppSessionController {
   Future<void> addAccountWithPat({
     required Uri baseUrl,
     required String personalAccessToken,
+    bool? useLegacyApiOverride,
   }) async {}
 
   @override
@@ -61,4 +63,13 @@ class _TestSessionController extends AppSessionController {
 
   @override
   Future<void> refreshCurrentUser({bool ignoreErrors = true}) async {}
+
+  @override
+  bool resolveUseLegacyApiForAccount({
+    required Account account,
+    required bool globalDefault,
+  }) => globalDefault;
+
+  @override
+  Future<void> setCurrentAccountUseLegacyApiOverride(bool value) async {}
 }

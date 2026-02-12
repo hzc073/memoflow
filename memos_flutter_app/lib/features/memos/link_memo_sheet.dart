@@ -12,7 +12,6 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../state/database_provider.dart';
 import '../../state/memos_providers.dart';
-import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../i18n/strings.g.dart';
 
@@ -71,7 +70,6 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
   }
 
   Future<void> _loadMemos(String query) async {
-    final prefs = ref.read(appPreferencesProvider);
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     final userName = account?.user.name ?? '';
     final trimmed = query.trim();
@@ -104,7 +102,8 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
         String? oldFilter;
         String? parent;
 
-        if (prefs.useLegacyApi) {
+        final useLegacyApi = api.useLegacyApi;
+        if (useLegacyApi) {
           if (userName.isNotEmpty) {
             parent = userName;
           }

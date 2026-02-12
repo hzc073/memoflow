@@ -86,15 +86,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
       final serverMessage = _extractServerMessage(error.response?.data);
       if (serverMessage.isNotEmpty) {
-        return context.t.strings.login.errors.connectionFailedWithMessage(message: serverMessage);
+        return context.t.strings.login.errors.connectionFailedWithMessage(
+          message: serverMessage,
+        );
       }
     } else if (error is FormatException) {
       final message = error.message.trim();
       if (message.isNotEmpty) {
-        return context.t.strings.login.errors.connectionFailedWithMessage(message: message);
+        return context.t.strings.login.errors.connectionFailedWithMessage(
+          message: message,
+        );
       }
     }
-    return context.t.strings.login.errors.connectionFailed(error: error.toString());
+    return context.t.strings.login.errors.connectionFailed(
+      error: error.toString(),
+    );
   }
 
   String _formatPasswordLoginError(Object error) {
@@ -105,15 +111,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
       final serverMessage = _extractServerMessage(error.response?.data);
       if (serverMessage.isNotEmpty) {
-        return context.t.strings.login.errors.signInFailedWithMessage(message: serverMessage);
+        return context.t.strings.login.errors.signInFailedWithMessage(
+          message: serverMessage,
+        );
       }
     } else if (error is FormatException) {
       final message = error.message.trim();
       if (message.isNotEmpty) {
-        return context.t.strings.login.errors.signInFailedWithMessage(message: message);
+        return context.t.strings.login.errors.signInFailedWithMessage(
+          message: message,
+        );
       }
     }
-    return context.t.strings.login.errors.signInFailedWithMessage(message: error.toString());
+    return context.t.strings.login.errors.signInFailedWithMessage(
+      message: error.toString(),
+    );
   }
 
   Uri? _resolveBaseUrl() {
@@ -133,10 +145,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _baseUrlController.text = sanitizedBaseUrl.toString();
       ref.read(loginBaseUrlDraftProvider.notifier).state =
           _baseUrlController.text;
-      showTopToast(
-        context,
-        context.t.strings.login.errors.serverUrlNormalized,
-      );
+      showTopToast(context, context.t.strings.login.errors.serverUrlNormalized);
     }
     return sanitizedBaseUrl;
   }
@@ -161,9 +170,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final globalDefault = ref.read(appPreferencesProvider).useLegacyApi;
+    final useLegacyApiOverride = account == null
+        ? null
+        : ref
+              .read(appSessionProvider.notifier)
+              .resolveUseLegacyApiForAccount(
+                account: account,
+                globalDefault: globalDefault,
+              );
+
     await ref
         .read(appSessionProvider.notifier)
-        .addAccountWithPat(baseUrl: baseUrl, personalAccessToken: token);
+        .addAccountWithPat(
+          baseUrl: baseUrl,
+          personalAccessToken: token,
+          useLegacyApiOverride: useLegacyApiOverride,
+        );
 
     final sessionAsync = ref.read(appSessionProvider);
     if (sessionAsync.hasError) {
@@ -190,7 +214,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
-    final useLegacyApi = ref.read(appPreferencesProvider).useLegacyApi;
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final globalDefault = ref.read(appPreferencesProvider).useLegacyApi;
+    final useLegacyApi = account == null
+        ? globalDefault
+        : ref
+              .read(appSessionProvider.notifier)
+              .resolveUseLegacyApiForAccount(
+                account: account,
+                globalDefault: globalDefault,
+              );
 
     await ref
         .read(appSessionProvider.notifier)
@@ -341,6 +374,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionAsync = ref.watch(appSessionProvider);
+    final sessionState = sessionAsync.valueOrNull;
+    final currentAccount = sessionState?.currentAccount;
     final isBusy = sessionAsync.isLoading;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
@@ -351,9 +386,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
-    final useLegacyApi = ref.watch(
+    final globalLegacyDefault = ref.watch(
       appPreferencesProvider.select((p) => p.useLegacyApi),
     );
+    final useLegacyApi = currentAccount == null
+        ? globalLegacyDefault
+        : ref
+              .read(appSessionProvider.notifier)
+              .resolveUseLegacyApiForAccount(
+                account: currentAccount,
+                globalDefault: globalLegacyDefault,
+              );
     final modeDescription = _loginMode == _LoginMode.password
         ? context.t.strings.login.mode.descPassword
         : context.t.strings.login.mode.descToken;
@@ -417,11 +460,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     validator: (v) {
                       final raw = (v ?? '').trim();
                       if (raw.isEmpty) {
-                        return context.t.strings.login.validation.serverUrlRequired;
+                        return context
+                            .t
+                            .strings
+                            .login
+                            .validation
+                            .serverUrlRequired;
                       }
                       final uri = Uri.tryParse(raw);
                       if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
-                        return context.t.strings.login.validation.serverUrlInvalid;
+                        return context
+                            .t
+                            .strings
+                            .login
+                            .validation
+                            .serverUrlInvalid;
                       }
                       return null;
                     },
@@ -455,7 +508,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textMuted: textMuted,
                       validator: (v) {
                         if ((v ?? '').trim().isEmpty) {
-                          return context.t.strings.login.validation.usernameRequired;
+                          return context
+                              .t
+                              .strings
+                              .login
+                              .validation
+                              .usernameRequired;
                         }
                         return null;
                       },
@@ -474,7 +532,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       keyboardType: TextInputType.visiblePassword,
                       validator: (v) {
                         if ((v ?? '').isEmpty) {
-                          return context.t.strings.login.validation.passwordRequired;
+                          return context
+                              .t
+                              .strings
+                              .login
+                              .validation
+                              .passwordRequired;
                         }
                         return null;
                       },
@@ -492,7 +555,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textMuted: textMuted,
                       validator: (v) {
                         if ((v ?? '').trim().isEmpty) {
-                          return context.t.strings.login.validation.tokenRequired;
+                          return context
+                              .t
+                              .strings
+                              .login
+                              .validation
+                              .tokenRequired;
                         }
                         return null;
                       },
@@ -515,9 +583,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         value: useLegacyApi,
                         onChanged: isBusy
                             ? null
-                            : (v) => ref
-                                  .read(appPreferencesProvider.notifier)
-                                  .setUseLegacyApi(v),
+                            : (v) async {
+                                if (currentAccount != null) {
+                                  await ref
+                                      .read(appSessionProvider.notifier)
+                                      .setCurrentAccountUseLegacyApiOverride(v);
+                                  return;
+                                }
+                                ref
+                                    .read(appPreferencesProvider.notifier)
+                                    .setUseLegacyApi(v);
+                              },
                         activeThumbColor: Colors.white,
                         activeTrackColor: MemoFlowPalette.primary,
                         inactiveTrackColor: isDark

@@ -30,6 +30,117 @@ enum _AttachmentApiMode { attachments, resources, legacy }
 
 enum _ServerApiFlavor { unknown, v0_25Plus, v0_24, v0_22, v0_21 }
 
+enum _CurrentUserEndpoint {
+  authSessionCurrent,
+  authMe,
+  authStatusPost,
+  authStatusGet,
+  authStatusV2,
+  userMeV1,
+  usersMeV1,
+  userMeLegacy,
+}
+
+class _ApiCapabilities {
+  const _ApiCapabilities({
+    required this.allowLegacyMemoEndpoints,
+    required this.memoLegacyByDefault,
+    required this.preferLegacyAuthChain,
+    required this.forceLegacyMemoByPreference,
+    required this.defaultAttachmentMode,
+    required this.defaultUserStatsMode,
+    required this.defaultNotificationMode,
+    required this.shortcutsSupportedByDefault,
+  });
+
+  final bool allowLegacyMemoEndpoints;
+  final bool memoLegacyByDefault;
+  final bool preferLegacyAuthChain;
+  final bool forceLegacyMemoByPreference;
+  final _AttachmentApiMode? defaultAttachmentMode;
+  final _UserStatsApiMode? defaultUserStatsMode;
+  final _NotificationApiMode? defaultNotificationMode;
+  final bool? shortcutsSupportedByDefault;
+
+  static _ApiCapabilities resolve({
+    required _ServerApiFlavor flavor,
+    required bool useLegacyApi,
+  }) {
+    final forceLegacyMemoByPreference =
+        useLegacyApi && flavor == _ServerApiFlavor.v0_21;
+    if (forceLegacyMemoByPreference) {
+      return const _ApiCapabilities(
+        allowLegacyMemoEndpoints: true,
+        memoLegacyByDefault: true,
+        preferLegacyAuthChain: true,
+        forceLegacyMemoByPreference: true,
+        defaultAttachmentMode: _AttachmentApiMode.legacy,
+        defaultUserStatsMode: _UserStatsApiMode.legacyMemoStats,
+        defaultNotificationMode: _NotificationApiMode.legacyV2,
+        shortcutsSupportedByDefault: false,
+      );
+    }
+
+    switch (flavor) {
+      case _ServerApiFlavor.v0_25Plus:
+        return const _ApiCapabilities(
+          allowLegacyMemoEndpoints: false,
+          memoLegacyByDefault: false,
+          preferLegacyAuthChain: false,
+          forceLegacyMemoByPreference: false,
+          defaultAttachmentMode: _AttachmentApiMode.attachments,
+          defaultUserStatsMode: _UserStatsApiMode.modernGetStats,
+          defaultNotificationMode: _NotificationApiMode.modern,
+          shortcutsSupportedByDefault: true,
+        );
+      case _ServerApiFlavor.v0_24:
+        return const _ApiCapabilities(
+          allowLegacyMemoEndpoints: false,
+          memoLegacyByDefault: false,
+          preferLegacyAuthChain: false,
+          forceLegacyMemoByPreference: false,
+          defaultAttachmentMode: _AttachmentApiMode.resources,
+          defaultUserStatsMode: _UserStatsApiMode.legacyStatsPath,
+          defaultNotificationMode: _NotificationApiMode.legacyV1,
+          shortcutsSupportedByDefault: true,
+        );
+      case _ServerApiFlavor.v0_22:
+        return const _ApiCapabilities(
+          allowLegacyMemoEndpoints: true,
+          memoLegacyByDefault: false,
+          preferLegacyAuthChain: false,
+          forceLegacyMemoByPreference: false,
+          defaultAttachmentMode: _AttachmentApiMode.resources,
+          defaultUserStatsMode: _UserStatsApiMode.legacyMemosStats,
+          defaultNotificationMode: _NotificationApiMode.legacyV1,
+          shortcutsSupportedByDefault: false,
+        );
+      case _ServerApiFlavor.v0_21:
+        return const _ApiCapabilities(
+          allowLegacyMemoEndpoints: true,
+          memoLegacyByDefault: true,
+          preferLegacyAuthChain: true,
+          forceLegacyMemoByPreference: false,
+          defaultAttachmentMode: _AttachmentApiMode.legacy,
+          defaultUserStatsMode: _UserStatsApiMode.legacyMemoStats,
+          defaultNotificationMode: _NotificationApiMode.legacyV2,
+          shortcutsSupportedByDefault: false,
+        );
+      case _ServerApiFlavor.unknown:
+        return const _ApiCapabilities(
+          allowLegacyMemoEndpoints: true,
+          memoLegacyByDefault: false,
+          preferLegacyAuthChain: false,
+          forceLegacyMemoByPreference: false,
+          defaultAttachmentMode: null,
+          defaultUserStatsMode: null,
+          defaultNotificationMode: null,
+          shortcutsSupportedByDefault: null,
+        );
+    }
+  }
+}
+
 class _ServerVersion implements Comparable<_ServerVersion> {
   const _ServerVersion(this.major, this.minor, this.patch);
 
@@ -71,6 +182,11 @@ class MemosApi {
   }) {
     _instanceProfileHint = instanceProfile;
     _logManager = logManager;
+    _capabilities = _ApiCapabilities.resolve(
+      flavor: _ServerApiFlavor.unknown,
+      useLegacyApi: useLegacyApi,
+    );
+    _memoApiLegacy = _capabilities.memoLegacyByDefault;
     if (logStore != null || logManager != null || logBuffer != null || breadcrumbStore != null) {
       _dio.interceptors.add(
         NetworkLogInterceptor(
@@ -98,14 +214,22 @@ class MemosApi {
   _UserStatsApiMode? _userStatsMode;
   _AttachmentApiMode? _attachmentMode;
   bool? _shortcutsSupported;
+  _CurrentUserEndpoint? _preferredCurrentUserEndpoint;
+  _ApiCapabilities _capabilities = _ApiCapabilities.resolve(
+    flavor: _ServerApiFlavor.unknown,
+    useLegacyApi: false,
+  );
   static const Duration _attachmentTimeout = Duration(seconds: 120);
   static const Object _unset = Object();
 
-  bool get _useLegacyMemos => useLegacyApi || _memoApiLegacy;
+  bool get _useLegacyMemos {
+    if (_memoApiLegacy) return true;
+    return _capabilities.forceLegacyMemoByPreference;
+  }
   bool get usesLegacyMemos => _useLegacyMemos;
 
   void _markMemoLegacy() {
-    if (!useLegacyApi) {
+    if (_legacyMemoEndpointsAllowed()) {
       _memoApiLegacy = true;
     }
   }
@@ -162,48 +286,19 @@ class MemosApi {
   }
 
   void _applyServerHints(_ServerApiFlavor flavor) {
+    if (_serverFlavor != flavor) {
+      _preferredCurrentUserEndpoint = null;
+    }
     _serverFlavor = flavor;
-    if (useLegacyApi) {
-      _memoApiLegacy = true;
-      _attachmentMode ??= _AttachmentApiMode.legacy;
-      _userStatsMode ??= _UserStatsApiMode.legacyMemoStats;
-      _notificationMode ??= _NotificationApiMode.legacyV2;
-      _shortcutsSupported ??= false;
-      return;
-    }
-
-    switch (flavor) {
-      case _ServerApiFlavor.v0_25Plus:
-        if (!_memoApiLegacy) _memoApiLegacy = false;
-        _attachmentMode ??= _AttachmentApiMode.attachments;
-        _userStatsMode ??= _UserStatsApiMode.modernGetStats;
-        _notificationMode ??= _NotificationApiMode.modern;
-        _shortcutsSupported ??= true;
-        break;
-      case _ServerApiFlavor.v0_24:
-        if (!_memoApiLegacy) _memoApiLegacy = false;
-        _attachmentMode ??= _AttachmentApiMode.resources;
-        _userStatsMode ??= _UserStatsApiMode.legacyStatsPath;
-        _notificationMode ??= _NotificationApiMode.legacyV1;
-        _shortcutsSupported ??= true;
-        break;
-      case _ServerApiFlavor.v0_22:
-        if (!_memoApiLegacy) _memoApiLegacy = false;
-        _attachmentMode ??= _AttachmentApiMode.resources;
-        _userStatsMode ??= _UserStatsApiMode.legacyMemosStats;
-        _notificationMode ??= _NotificationApiMode.legacyV1;
-        _shortcutsSupported ??= false;
-        break;
-      case _ServerApiFlavor.v0_21:
-        _memoApiLegacy = true;
-        _attachmentMode ??= _AttachmentApiMode.legacy;
-        _userStatsMode ??= _UserStatsApiMode.legacyMemoStats;
-        _notificationMode ??= _NotificationApiMode.legacyV2;
-        _shortcutsSupported ??= false;
-        break;
-      case _ServerApiFlavor.unknown:
-        break;
-    }
+    _capabilities = _ApiCapabilities.resolve(
+      flavor: flavor,
+      useLegacyApi: useLegacyApi,
+    );
+    _memoApiLegacy = _capabilities.memoLegacyByDefault;
+    _attachmentMode ??= _capabilities.defaultAttachmentMode;
+    _userStatsMode ??= _capabilities.defaultUserStatsMode;
+    _notificationMode ??= _capabilities.defaultNotificationMode;
+    _shortcutsSupported ??= _capabilities.shortcutsSupportedByDefault;
   }
 
   void _logServerHints() {
@@ -223,6 +318,9 @@ class MemosApi {
         'userStatsMode': _userStatsMode?.name ?? '',
         'notificationMode': _notificationMode?.name ?? '',
         'shortcutsSupported': _shortcutsSupported,
+        'allowLegacyMemoEndpoints': _capabilities.allowLegacyMemoEndpoints,
+        'preferLegacyAuthChain': _capabilities.preferLegacyAuthChain,
+        'forceLegacyMemoByPreference': _capabilities.forceLegacyMemoByPreference,
       },
     );
   }
@@ -353,17 +451,27 @@ class MemosApi {
   }
 
   Future<User> getCurrentUser() async {
+    await _ensureServerHints();
+
     DioException? lastDio;
     FormatException? lastFormat;
-    final attempts = _currentUserAttempts();
-    for (final attempt in attempts) {
+    final attempts = _orderedCurrentUserEndpoints();
+    for (final endpoint in attempts) {
       try {
-        return await attempt();
+        final user = await _runCurrentUserAttempt(endpoint);
+        _preferredCurrentUserEndpoint = endpoint;
+        return user;
       } on DioException catch (e) {
         lastDio = e;
+        if (_preferredCurrentUserEndpoint == endpoint) {
+          _preferredCurrentUserEndpoint = null;
+        }
         if (!_shouldFallback(e)) rethrow;
       } on FormatException catch (e) {
         lastFormat = e;
+        if (_preferredCurrentUserEndpoint == endpoint) {
+          _preferredCurrentUserEndpoint = null;
+        }
       }
     }
 
@@ -372,53 +480,94 @@ class MemosApi {
     throw StateError('Unable to determine current user');
   }
 
-  List<Future<User> Function()> _currentUserAttempts() {
-    if (useLegacyApi || _serverFlavor == _ServerApiFlavor.v0_21) {
-      return <Future<User> Function()>[
-        _getCurrentUserByAuthStatusV2,
-        _getCurrentUserByUserMeV1,
-        _getCurrentUserByUserMeLegacy,
-        _getCurrentUserByUsersMeV1,
-        _getCurrentUserByAuthStatusPost,
-        _getCurrentUserByAuthStatusGet,
-        _getCurrentUserByAuthMe,
-        _getCurrentUserBySessionCurrent,
+  List<_CurrentUserEndpoint> _orderedCurrentUserEndpoints() {
+    final attempts = _currentUserAttempts();
+    final preferred = _preferredCurrentUserEndpoint;
+    if (preferred == null) return attempts;
+    return <_CurrentUserEndpoint>[
+      preferred,
+      ...attempts.where((endpoint) => endpoint != preferred),
+    ];
+  }
+
+  List<_CurrentUserEndpoint> _currentUserAttempts() {
+    if (_capabilities.preferLegacyAuthChain) {
+      return <_CurrentUserEndpoint>[
+        _CurrentUserEndpoint.authStatusV2,
+        _CurrentUserEndpoint.userMeV1,
+        _CurrentUserEndpoint.userMeLegacy,
+        _CurrentUserEndpoint.usersMeV1,
+        _CurrentUserEndpoint.authStatusPost,
+        _CurrentUserEndpoint.authStatusGet,
+        _CurrentUserEndpoint.authSessionCurrent,
+        _CurrentUserEndpoint.authMe,
       ];
     }
     if (_serverFlavor == _ServerApiFlavor.v0_24 || _serverFlavor == _ServerApiFlavor.v0_22) {
-      return <Future<User> Function()>[
-        _getCurrentUserByAuthStatusPost,
-        _getCurrentUserByAuthStatusGet,
-        _getCurrentUserByUserMeV1,
-        _getCurrentUserByUserMeLegacy,
-        _getCurrentUserByUsersMeV1,
-        _getCurrentUserByAuthStatusV2,
-        _getCurrentUserByAuthMe,
-        _getCurrentUserBySessionCurrent,
+      return <_CurrentUserEndpoint>[
+        _CurrentUserEndpoint.authStatusPost,
+        _CurrentUserEndpoint.authStatusGet,
+        _CurrentUserEndpoint.userMeV1,
+        _CurrentUserEndpoint.userMeLegacy,
+        _CurrentUserEndpoint.usersMeV1,
+        _CurrentUserEndpoint.authStatusV2,
+        _CurrentUserEndpoint.authSessionCurrent,
+        _CurrentUserEndpoint.authMe,
       ];
     }
     if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
-      return <Future<User> Function()>[
-        _getCurrentUserByAuthMe,
-        _getCurrentUserByAuthStatusPost,
-        _getCurrentUserByAuthStatusGet,
-        _getCurrentUserByAuthStatusV2,
-        _getCurrentUserBySessionCurrent,
-        _getCurrentUserByUserMeV1,
-        _getCurrentUserByUsersMeV1,
-        _getCurrentUserByUserMeLegacy,
+      if (_isServerVersionAtLeast(0, 26, 0)) {
+        return <_CurrentUserEndpoint>[
+          _CurrentUserEndpoint.authMe,
+          _CurrentUserEndpoint.authStatusV2,
+          _CurrentUserEndpoint.authSessionCurrent,
+          _CurrentUserEndpoint.userMeV1,
+          _CurrentUserEndpoint.usersMeV1,
+          _CurrentUserEndpoint.userMeLegacy,
+          _CurrentUserEndpoint.authStatusPost,
+          _CurrentUserEndpoint.authStatusGet,
+        ];
+      }
+      return <_CurrentUserEndpoint>[
+        _CurrentUserEndpoint.authSessionCurrent,
+        _CurrentUserEndpoint.authStatusV2,
+        _CurrentUserEndpoint.authMe,
+        _CurrentUserEndpoint.userMeV1,
+        _CurrentUserEndpoint.usersMeV1,
+        _CurrentUserEndpoint.userMeLegacy,
+        _CurrentUserEndpoint.authStatusPost,
+        _CurrentUserEndpoint.authStatusGet,
       ];
     }
-    return <Future<User> Function()>[
-      _getCurrentUserByAuthMe,
-      _getCurrentUserByAuthStatusPost,
-      _getCurrentUserByAuthStatusGet,
-      _getCurrentUserByAuthStatusV2,
-      _getCurrentUserBySessionCurrent,
-      _getCurrentUserByUserMeV1,
-      _getCurrentUserByUsersMeV1,
-      _getCurrentUserByUserMeLegacy,
+    return <_CurrentUserEndpoint>[
+      _CurrentUserEndpoint.authStatusV2,
+      _CurrentUserEndpoint.authSessionCurrent,
+      _CurrentUserEndpoint.authMe,
+      _CurrentUserEndpoint.authStatusPost,
+      _CurrentUserEndpoint.authStatusGet,
+      _CurrentUserEndpoint.userMeV1,
+      _CurrentUserEndpoint.usersMeV1,
+      _CurrentUserEndpoint.userMeLegacy,
     ];
+  }
+
+  Future<User> _runCurrentUserAttempt(_CurrentUserEndpoint endpoint) {
+    return switch (endpoint) {
+      _CurrentUserEndpoint.authSessionCurrent => _getCurrentUserBySessionCurrent(),
+      _CurrentUserEndpoint.authMe => _getCurrentUserByAuthMe(),
+      _CurrentUserEndpoint.authStatusPost => _getCurrentUserByAuthStatusPost(),
+      _CurrentUserEndpoint.authStatusGet => _getCurrentUserByAuthStatusGet(),
+      _CurrentUserEndpoint.authStatusV2 => _getCurrentUserByAuthStatusV2(),
+      _CurrentUserEndpoint.userMeV1 => _getCurrentUserByUserMeV1(),
+      _CurrentUserEndpoint.usersMeV1 => _getCurrentUserByUsersMeV1(),
+      _CurrentUserEndpoint.userMeLegacy => _getCurrentUserByUserMeLegacy(),
+    };
+  }
+
+  bool _isServerVersionAtLeast(int major, int minor, int patch) {
+    final version = _serverVersion;
+    if (version == null) return false;
+    return version >= _ServerVersion(major, minor, patch);
   }
 
   static bool _shouldFallback(DioException e) {
@@ -432,15 +581,7 @@ class MemosApi {
   }
 
   bool _legacyMemoEndpointsAllowed() {
-    switch (_serverFlavor) {
-      case _ServerApiFlavor.v0_25Plus:
-      case _ServerApiFlavor.v0_24:
-        return false;
-      case _ServerApiFlavor.unknown:
-      case _ServerApiFlavor.v0_22:
-      case _ServerApiFlavor.v0_21:
-        return true;
-    }
+    return _capabilities.allowLegacyMemoEndpoints;
   }
 
   void _logMemoFallbackDecision({
@@ -504,7 +645,7 @@ class MemosApi {
   bool _ensureLegacyMemoEndpointAllowed(String endpoint, {required String operation}) {
     if (_legacyMemoEndpointsAllowed()) return true;
     final wasLegacy = _memoApiLegacy;
-    if (wasLegacy && !useLegacyApi) {
+    if (wasLegacy) {
       _memoApiLegacy = false;
     }
     _logMemoFallbackDecision(
@@ -518,7 +659,17 @@ class MemosApi {
 
   static bool _shouldFallbackProfile(DioException e) {
     final status = e.response?.statusCode ?? 0;
-    return status == 401 || status == 403 || status == 404 || status == 405;
+    if (status == 401 || status == 403 || status == 404 || status == 405) {
+      return true;
+    }
+    if (status == 0) {
+      return e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.unknown;
+    }
+    return false;
   }
 
   Future<User> _getCurrentUserByAuthMe() async {
@@ -625,7 +776,7 @@ class MemosApi {
       return User.fromJson(_expectJsonMap(response.data));
     }
 
-    if (useLegacyApi || _serverFlavor == _ServerApiFlavor.v0_21) {
+    if (_capabilities.preferLegacyAuthChain) {
       try {
         return await callLegacy();
       } on DioException catch (e) {
@@ -649,7 +800,7 @@ class MemosApi {
 
   Future<UserStatsSummary> getUserStatsSummary({String? userName}) async {
     await _ensureServerHints();
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       final summary = await _getUserStatsLegacyMemoStats(userName: userName);
       _userStatsMode = _UserStatsApiMode.legacyMemoStats;
       return summary;
@@ -930,7 +1081,7 @@ class MemosApi {
           expiresInDays: expiresInDays,
         );
       }
-      if (useLegacyApi && _shouldFallbackLegacy(e)) {
+      if (_capabilities.forceLegacyMemoByPreference && _shouldFallbackLegacy(e)) {
         throw UnsupportedError('Legacy API does not support personal access tokens');
       }
       rethrow;
@@ -1137,7 +1288,7 @@ class MemosApi {
       if (_shouldFallback(e)) {
         return await _listPersonalAccessTokensLegacy(userName: userName);
       }
-      if (useLegacyApi && _shouldFallbackLegacy(e)) {
+      if (_capabilities.forceLegacyMemoByPreference && _shouldFallbackLegacy(e)) {
         throw UnsupportedError('Legacy API does not support personal access tokens');
       }
       rethrow;
@@ -1319,7 +1470,7 @@ class MemosApi {
 
   Future<List<Shortcut>> listShortcuts({String? userName}) async {
     await _ensureServerHints();
-    if (_memoApiLegacy || _shortcutsSupported == false) {
+    if (_useLegacyMemos || _shortcutsSupported == false) {
       return const <Shortcut>[];
     }
 
@@ -1343,7 +1494,7 @@ class MemosApi {
     required String filter,
   }) async {
     await _ensureServerHints();
-    if (_memoApiLegacy || _shortcutsSupported == false) {
+    if (_useLegacyMemos || _shortcutsSupported == false) {
       throw UnsupportedError('Shortcuts are not supported on this server');
     }
 
@@ -1356,8 +1507,10 @@ class MemosApi {
       final response = await _dio.post(
         'api/v1/$parent/shortcuts',
         data: <String, Object?>{
-          'title': trimmedTitle,
-          'filter': filter,
+          'shortcut': <String, Object?>{
+            'title': trimmedTitle,
+            'filter': filter,
+          },
         },
       );
       _shortcutsSupported = true;
@@ -1378,7 +1531,7 @@ class MemosApi {
     required String filter,
   }) async {
     await _ensureServerHints();
-    if (_memoApiLegacy || _shortcutsSupported == false) {
+    if (_useLegacyMemos || _shortcutsSupported == false) {
       throw UnsupportedError('Shortcuts are not supported on this server');
     }
 
@@ -1391,6 +1544,12 @@ class MemosApi {
     if (trimmedTitle.isEmpty) {
       throw ArgumentError('updateShortcut requires title');
     }
+    final shortcutPayload = <String, Object?>{
+      if (shortcut.name.trim().isNotEmpty) 'name': shortcut.name.trim(),
+      if (shortcut.id.trim().isNotEmpty) 'id': shortcut.id.trim(),
+      'title': trimmedTitle,
+      'filter': filter,
+    };
     try {
       final response = await _dio.patch(
         'api/v1/$parent/shortcuts/$shortcutId',
@@ -1399,10 +1558,7 @@ class MemosApi {
           'update_mask': 'title,filter',
         },
         data: <String, Object?>{
-          if (shortcut.name.trim().isNotEmpty) 'name': shortcut.name.trim(),
-          if (shortcut.id.trim().isNotEmpty) 'id': shortcut.id.trim(),
-          'title': trimmedTitle,
-          'filter': filter,
+          'shortcut': shortcutPayload,
         },
       );
       _shortcutsSupported = true;
@@ -1421,7 +1577,7 @@ class MemosApi {
     required Shortcut shortcut,
   }) async {
     await _ensureServerHints();
-    if (_memoApiLegacy || _shortcutsSupported == false) {
+    if (_useLegacyMemos || _shortcutsSupported == false) {
       throw UnsupportedError('Shortcuts are not supported on this server');
     }
 
@@ -2058,7 +2214,7 @@ class MemosApi {
       );
     }
 
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       try {
         final result = await callLegacyV2();
         _notificationMode = _NotificationApiMode.legacyV2;
@@ -2448,7 +2604,7 @@ class MemosApi {
       }
     }
 
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
         operation: 'list_memos_force_legacy',
@@ -2619,7 +2775,7 @@ class MemosApi {
 
   Future<Memo> getMemo({required String memoUid}) async {
     await _ensureServerHints();
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
         operation: 'get_memo_force_legacy',
@@ -2721,7 +2877,7 @@ class MemosApi {
     MemoLocation? location,
   }) async {
     await _ensureServerHints();
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
         operation: 'create_memo_force_legacy',
@@ -2811,7 +2967,7 @@ class MemosApi {
     Object? location = _unset,
   }) async {
     await _ensureServerHints();
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
         operation: 'update_memo_force_legacy',
@@ -2936,7 +3092,7 @@ class MemosApi {
   Future<void> deleteMemo({required String memoUid, bool force = false}) async {
     await _ensureServerHints();
     final normalized = _normalizeMemoUid(memoUid);
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
         operation: 'delete_memo_force_legacy',
@@ -3023,7 +3179,7 @@ class MemosApi {
     String? memoUid,
   }) async {
     await _ensureServerHints();
-    if (_memoApiLegacy || useLegacyApi || _attachmentMode == _AttachmentApiMode.legacy) {
+    if (_useLegacyMemos || _attachmentMode == _AttachmentApiMode.legacy) {
       return _createAttachmentLegacy(
         attachmentId: attachmentId,
         filename: filename,
@@ -3162,7 +3318,7 @@ class MemosApi {
 
   Future<Attachment> getAttachment({required String attachmentUid}) async {
     await _ensureServerHints();
-    if (_memoApiLegacy || useLegacyApi || _attachmentMode == _AttachmentApiMode.legacy) {
+    if (_useLegacyMemos || _attachmentMode == _AttachmentApiMode.legacy) {
       return _getAttachmentLegacy(attachmentUid);
     }
     Future<Attachment> attempt() {
@@ -3226,7 +3382,7 @@ class MemosApi {
   Future<void> deleteAttachment({required String attachmentName}) async {
     await _ensureServerHints();
     final attachmentUid = _normalizeAttachmentUid(attachmentName);
-    if (_memoApiLegacy || useLegacyApi || _attachmentMode == _AttachmentApiMode.legacy) {
+    if (_useLegacyMemos || _attachmentMode == _AttachmentApiMode.legacy) {
       await _deleteAttachmentLegacy(attachmentUid);
       return;
     }
@@ -3474,13 +3630,13 @@ class MemosApi {
     required String memoUid,
     required List<Map<String, dynamic>> relations,
   }) async {
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       return;
     }
     try {
       await _setMemoRelationsModern(memoUid, relations);
     } on DioException catch (e) {
-      if (_memoApiLegacy && _shouldFallbackLegacy(e)) {
+      if (_useLegacyMemos && _shouldFallbackLegacy(e)) {
         return;
       }
       rethrow;
@@ -3539,7 +3695,7 @@ class MemosApi {
     String? pageToken,
     String? orderBy,
   }) async {
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       return _listMemoCommentsLegacyV2(memoUid: memoUid);
     }
     try {
@@ -3621,7 +3777,7 @@ class MemosApi {
     int pageSize = 50,
     String? pageToken,
   }) async {
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       return _listMemoReactionsLegacyV2(memoUid: memoUid);
     }
     try {
@@ -3698,7 +3854,7 @@ class MemosApi {
     required String memoUid,
     required String reactionType,
   }) async {
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       return _upsertMemoReactionLegacyV2(
         memoUid: memoUid,
         reactionType: reactionType,
@@ -3770,7 +3926,7 @@ class MemosApi {
     final legacyId = reaction.legacyId ?? parsedId;
     final normalizedName = _normalizeReactionName(rawName, contentId, parsedId);
 
-    if (!_memoApiLegacy && normalizedName != null && normalizedName.isNotEmpty) {
+    if (!_useLegacyMemos && normalizedName != null && normalizedName.isNotEmpty) {
       try {
         await _deleteMemoReactionModern(name: normalizedName);
         return;
@@ -3864,7 +4020,7 @@ class MemosApi {
     required String content,
     String visibility = 'PUBLIC',
   }) async {
-    if (_memoApiLegacy) {
+    if (_useLegacyMemos) {
       return _createMemoCommentLegacyV2(
         memoUid: memoUid,
         content: content,
@@ -4472,7 +4628,7 @@ class MemosApi {
 
     if (terms.isNotEmpty) {
       final quotedTerms = terms.map((term) => "'${_escapeLegacyFilterString(term)}'").join(', ');
-      conditions.add('content_search in [$quotedTerms]');
+      conditions.add('content_search == [$quotedTerms]');
     }
 
     if (startTimeSec != null) {

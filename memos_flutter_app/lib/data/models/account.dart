@@ -8,6 +8,7 @@ class Account {
     required this.personalAccessToken,
     required this.user,
     required this.instanceProfile,
+    this.useLegacyApiOverride,
   });
 
   final String key;
@@ -15,14 +16,16 @@ class Account {
   final String personalAccessToken;
   final User user;
   final InstanceProfile instanceProfile;
+  final bool? useLegacyApiOverride;
 
   Map<String, dynamic> toJson() => {
-        'key': key,
-        'baseUrl': baseUrl.toString(),
-        'personalAccessToken': personalAccessToken,
-        'user': user.toJson(),
-        'instanceProfile': instanceProfile.toJson(),
-      };
+    'key': key,
+    'baseUrl': baseUrl.toString(),
+    'personalAccessToken': personalAccessToken,
+    'user': user.toJson(),
+    'instanceProfile': instanceProfile.toJson(),
+    'useLegacyApiOverride': useLegacyApiOverride,
+  };
 
   factory Account.fromJson(Map<String, dynamic> json) {
     final baseUrlRaw = (json['baseUrl'] as String?) ?? '';
@@ -30,15 +33,31 @@ class Account {
 
     final userJson = json['user'];
     final profileJson = json['instanceProfile'];
+    final useLegacyApiOverrideRaw = json['useLegacyApiOverride'];
+
+    bool? useLegacyApiOverride;
+    if (useLegacyApiOverrideRaw is bool) {
+      useLegacyApiOverride = useLegacyApiOverrideRaw;
+    } else if (useLegacyApiOverrideRaw is String) {
+      final normalized = useLegacyApiOverrideRaw.trim().toLowerCase();
+      if (normalized == 'true') {
+        useLegacyApiOverride = true;
+      } else if (normalized == 'false') {
+        useLegacyApiOverride = false;
+      }
+    }
 
     return Account(
       key: (json['key'] as String?) ?? '',
       baseUrl: baseUrl,
       personalAccessToken: (json['personalAccessToken'] as String?) ?? '',
-      user: userJson is Map ? User.fromJson(userJson.cast<String, dynamic>()) : const User.empty(),
-      instanceProfile:
-          profileJson is Map ? InstanceProfile.fromJson(profileJson.cast<String, dynamic>()) : const InstanceProfile.empty(),
+      user: userJson is Map
+          ? User.fromJson(userJson.cast<String, dynamic>())
+          : const User.empty(),
+      instanceProfile: profileJson is Map
+          ? InstanceProfile.fromJson(profileJson.cast<String, dynamic>())
+          : const InstanceProfile.empty(),
+      useLegacyApiOverride: useLegacyApiOverride,
     );
   }
 }
-
