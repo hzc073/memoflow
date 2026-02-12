@@ -3485,6 +3485,7 @@ class MemosApi {
     required String mimeType,
     required List<int> bytes,
     String? memoUid,
+    void Function(int sentBytes, int totalBytes)? onSendProgress,
   }) async {
     await _ensureServerHints();
     if (_useLegacyMemos || _attachmentMode == _AttachmentApiMode.legacy) {
@@ -3494,6 +3495,7 @@ class MemosApi {
         mimeType: mimeType,
         bytes: bytes,
         memoUid: memoUid,
+        onSendProgress: onSendProgress,
       );
     }
     Future<Attachment> attempt() {
@@ -3504,6 +3506,7 @@ class MemosApi {
           mimeType: mimeType,
           bytes: bytes,
           memoUid: memoUid,
+          onSendProgress: onSendProgress,
         );
       }
       if (_attachmentMode == _AttachmentApiMode.attachments) {
@@ -3513,6 +3516,7 @@ class MemosApi {
           mimeType: mimeType,
           bytes: bytes,
           memoUid: memoUid,
+          onSendProgress: onSendProgress,
         );
       }
       return _createAttachmentModern(
@@ -3521,6 +3525,7 @@ class MemosApi {
         mimeType: mimeType,
         bytes: bytes,
         memoUid: memoUid,
+        onSendProgress: onSendProgress,
       );
     }
 
@@ -3534,6 +3539,7 @@ class MemosApi {
           mimeType: mimeType,
           bytes: bytes,
           memoUid: memoUid,
+          onSendProgress: onSendProgress,
         );
       }
       rethrow;
@@ -3546,6 +3552,7 @@ class MemosApi {
     required String mimeType,
     required List<int> bytes,
     String? memoUid,
+    void Function(int sentBytes, int totalBytes)? onSendProgress,
   }) async {
     final data = <String, Object?>{
       'filename': filename,
@@ -3561,6 +3568,7 @@ class MemosApi {
         queryParameters: <String, Object?>{'attachmentId': attachmentId},
         data: data,
         options: _attachmentOptions(),
+        onSendProgress: onSendProgress,
       );
       _attachmentMode = _AttachmentApiMode.attachments;
       final attachment = Attachment.fromJson(_expectJsonMap(response.data));
@@ -3576,6 +3584,7 @@ class MemosApi {
       queryParameters: <String, Object?>{'resourceId': attachmentId},
       data: data,
       options: _attachmentOptions(),
+      onSendProgress: onSendProgress,
     );
     _attachmentMode = _AttachmentApiMode.resources;
     final attachment = Attachment.fromJson(_expectJsonMap(response.data));
@@ -3588,6 +3597,7 @@ class MemosApi {
     required String mimeType,
     required List<int> bytes,
     String? memoUid,
+    void Function(int sentBytes, int totalBytes)? onSendProgress,
   }) async {
     final data = <String, Object?>{
       'filename': filename,
@@ -3603,6 +3613,7 @@ class MemosApi {
         queryParameters: <String, Object?>{'resourceId': attachmentId},
         data: data,
         options: _attachmentOptions(),
+        onSendProgress: onSendProgress,
       );
       _attachmentMode = _AttachmentApiMode.resources;
       final attachment = Attachment.fromJson(_expectJsonMap(response.data));
@@ -3618,6 +3629,7 @@ class MemosApi {
       queryParameters: <String, Object?>{'attachmentId': attachmentId},
       data: data,
       options: _attachmentOptions(),
+      onSendProgress: onSendProgress,
     );
     _attachmentMode = _AttachmentApiMode.attachments;
     final attachment = Attachment.fromJson(_expectJsonMap(response.data));
@@ -4608,6 +4620,7 @@ class MemosApi {
     required String mimeType,
     required List<int> bytes,
     String? memoUid,
+    void Function(int sentBytes, int totalBytes)? onSendProgress,
   }) async {
     final _ = [attachmentId, mimeType, memoUid];
     final formData = FormData.fromMap({
@@ -4617,6 +4630,7 @@ class MemosApi {
       'api/v1/resource/blob',
       data: formData,
       options: _attachmentOptions(),
+      onSendProgress: onSendProgress,
     );
     _attachmentMode = _AttachmentApiMode.legacy;
     return _attachmentFromLegacy(_expectJsonMap(response.data));

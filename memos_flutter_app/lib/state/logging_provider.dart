@@ -7,6 +7,7 @@ import '../data/logs/log_manager.dart';
 import '../data/logs/logger_service.dart';
 import '../data/logs/log_report_generator.dart';
 import '../data/logs/network_log_buffer.dart';
+import '../data/logs/sync_queue_progress_tracker.dart';
 import '../data/logs/sync_status_tracker.dart';
 import 'database_provider.dart';
 import 'session_provider.dart';
@@ -28,6 +29,13 @@ final logManagerProvider = Provider<LogManager>((ref) {
 final syncStatusTrackerProvider = Provider<SyncStatusTracker>((ref) {
   return SyncStatusTracker();
 });
+
+final syncQueueProgressTrackerProvider =
+    ChangeNotifierProvider<SyncQueueProgressTracker>((ref) {
+      final tracker = SyncQueueProgressTracker();
+      ref.onDispose(tracker.dispose);
+      return tracker;
+    });
 
 final loggerServiceProvider = Provider<LoggerService>((ref) {
   final service = LoggerService(

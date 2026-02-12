@@ -10,6 +10,7 @@ import '../data/local_library/local_attachment_store.dart';
 import '../data/local_library/local_library_fs.dart';
 import '../data/local_library/local_library_markdown.dart';
 import '../data/local_library/local_library_naming.dart';
+import '../data/logs/sync_queue_progress_tracker.dart';
 import '../data/models/attachment.dart';
 import '../data/models/local_memo.dart';
 import '../data/logs/sync_status_tracker.dart';
@@ -22,6 +23,7 @@ class LocalSyncController extends SyncControllerBase {
     required this.fileSystem,
     required this.attachmentStore,
     required this.syncStatusTracker,
+    required this.syncQueueProgressTracker,
     required this.language,
   }) : super(const AsyncValue.data(null));
 
@@ -29,12 +31,14 @@ class LocalSyncController extends SyncControllerBase {
   final LocalLibraryFileSystem fileSystem;
   final LocalAttachmentStore attachmentStore;
   final SyncStatusTracker syncStatusTracker;
+  final SyncQueueProgressTracker syncQueueProgressTracker;
   final AppLanguage language;
 
   @override
   Future<void> syncNow() async {
     if (state.isLoading) return;
     syncStatusTracker.markSyncStarted();
+    syncQueueProgressTracker.markSyncStarted();
     state = const AsyncValue.loading();
     final next = await AsyncValue.guard(() async {
       await fileSystem.ensureStructure();
@@ -47,6 +51,7 @@ class LocalSyncController extends SyncControllerBase {
     } else {
       syncStatusTracker.markSyncSuccess();
     }
+    syncQueueProgressTracker.markSyncFinished();
   }
 
   Future<void> _ensureIndex() async {
@@ -78,6 +83,8 @@ class LocalSyncController extends SyncControllerBase {
         continue;
       }
 
+      var shouldStop = false;
+      syncQueueProgressTracker.markTaskStarted(id);
       try {
         switch (type) {
           case 'create_memo':
@@ -133,13 +140,23 @@ class LocalSyncController extends SyncControllerBase {
           _ => null,
         };
         if (memoUid != null && memoUid.isNotEmpty) {
-          final errorText = trByLanguageKey(language: language, key: 'legacy.msg_local_sync_failed', params: {'type': type, 'memoError': memoError});
+          final errorText = trByLanguageKey(
+            language: language,
+            key: 'legacy.msg_local_sync_failed',
+            params: {'type': type, 'memoError': memoError},
+          );
           await db.updateMemoSyncState(
             memoUid,
             syncState: 2,
             lastError: errorText,
           );
         }
+        shouldStop = true;
+      } finally {
+        syncQueueProgressTracker.clearCurrentTask(outboxId: id);
+      }
+
+      if (shouldStop) {
         break;
       }
     }

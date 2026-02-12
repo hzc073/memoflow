@@ -60,7 +60,10 @@ class _SyncQueueItem {
   final String? attachmentUid;
 }
 
-Future<_SyncQueueItem?> _buildQueueItem(AppDatabase db, Map<String, dynamic> row) async {
+Future<_SyncQueueItem?> _buildQueueItem(
+  AppDatabase db,
+  Map<String, dynamic> row,
+) async {
   final id = row['id'];
   final type = row['type'];
   if (id is! int || type is! String) return null;
@@ -120,7 +123,9 @@ Map<String, dynamic> _decodePayload(Object? raw) {
 
 String? _extractMemoUid(String type, Map<String, dynamic> payload) {
   return switch (type) {
-    'create_memo' || 'update_memo' || 'delete_memo' => payload['uid'] as String?,
+    'create_memo' ||
+    'update_memo' ||
+    'delete_memo' => payload['uid'] as String?,
     'upload_attachment' => payload['memo_uid'] as String?,
     _ => null,
   };
@@ -182,7 +187,10 @@ Future<void> _removePendingAttachmentFromMemo(
   }
 
   if (!changed) return;
-  await db.updateMemoAttachmentsJson(trimmedMemoUid, attachmentsJson: jsonEncode(next));
+  await db.updateMemoAttachmentsJson(
+    trimmedMemoUid,
+    attachmentsJson: jsonEncode(next),
+  );
 }
 
 Future<void> _clearMemoSyncErrorIfIdle(AppDatabase db, String memoUid) async {
@@ -218,15 +226,22 @@ class SyncQueueScreen extends ConsumerWidget {
     _backToAllMemos(context);
   }
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, _SyncQueueItem item) async {
+  Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    _SyncQueueItem item,
+  ) async {
     final db = ref.read(databaseProvider);
     final memoUid = item.memoUid?.trim();
     if (memoUid != null && memoUid.isNotEmpty) {
-      final confirmed = await showDialog<bool>(
+      final confirmed =
+          await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
               title: Text(context.t.strings.legacy.msg_delete_sync_task),
-              content: Text(context.t.strings.legacy.msg_only_delete_sync_task_memo_kept),
+              content: Text(
+                context.t.strings.legacy.msg_only_delete_sync_task_memo_kept,
+              ),
               actions: [
                 TextButton(
                   onPressed: () => context.safePop(false),
@@ -253,7 +268,8 @@ class SyncQueueScreen extends ConsumerWidget {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_delete_sync_task),
@@ -282,17 +298,39 @@ class SyncQueueScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.5 : 0.6);
-    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
 
     final queueAsync = ref.watch(_syncQueueProvider);
     final items = queueAsync.valueOrNull ?? const <_SyncQueueItem>[];
     final failedCount = items.where((item) => item.state == 2).length;
-    final syncing = ref.watch(syncControllerProvider).isLoading;
+    final queueProgress = ref.watch(syncQueueProgressTrackerProvider).snapshot;
+    final syncing =
+        ref.watch(syncControllerProvider).isLoading || queueProgress.syncing;
     final syncSnapshot = ref.watch(syncStatusTrackerProvider).snapshot;
+    int? firstPendingId;
+    final itemIds = <int>{};
+    for (final item in items) {
+      itemIds.add(item.id);
+      if (firstPendingId == null && item.state != 2) {
+        firstPendingId = item.id;
+      }
+    }
+    final trackedOutboxId = queueProgress.currentOutboxId;
+    final activeOutboxId = syncing
+        ? (trackedOutboxId != null && itemIds.contains(trackedOutboxId)
+              ? trackedOutboxId
+              : firstPendingId)
+        : null;
 
     final lastSuccess = syncSnapshot.lastSuccess;
     final lastSuccessLabel = lastSuccess == null
@@ -345,14 +383,15 @@ class SyncQueueScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Text(
                   context.t.strings.legacy.msg_active_tasks,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: textMain,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (items.isEmpty)
-                  _EmptyQueueCard(
-                    card: card,
-                    textMuted: textMuted,
-                  )
+                  _EmptyQueueCard(card: card, textMuted: textMuted)
                 else
                   ...items.map((item) {
                     final title = _resolveItemTitle(context, item);
@@ -367,6 +406,8 @@ class SyncQueueScreen extends ConsumerWidget {
                         border: border,
                         textMain: textMain,
                         textMuted: textMuted,
+                        activeOutboxId: activeOutboxId,
+                        activeProgress: queueProgress.currentProgress,
                         onDelete: () => _confirmDelete(context, ref, item),
                         onSync: syncing ? null : () => _syncAll(ref),
                       ),
@@ -401,7 +442,9 @@ class SyncQueueScreen extends ConsumerWidget {
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),
@@ -468,9 +511,13 @@ class _SyncSummaryCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final statusBg = syncing
         ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.12)
-        : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04));
+        : (isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.04));
     final statusText = syncing ? MemoFlowPalette.primary : textMuted;
-    final statusLabel = syncing ? context.t.strings.legacy.msg_syncing_2 : context.t.strings.legacy.msg_idle;
+    final statusLabel = syncing
+        ? context.t.strings.legacy.msg_syncing_2
+        : context.t.strings.legacy.msg_idle;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -495,18 +542,29 @@ class _SyncSummaryCard extends StatelessWidget {
             children: [
               Text(
                 context.t.strings.legacy.msg_sync_overview,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: textMain,
+                ),
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: statusBg,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   statusLabel,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: statusText),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: statusText,
+                  ),
                 ),
               ),
             ],
@@ -536,12 +594,20 @@ class _SyncSummaryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             context.t.strings.legacy.msg_last_success,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textMuted,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             lastSuccessLabel,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: textMain),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: textMain,
+            ),
           ),
         ],
       ),
@@ -575,12 +641,20 @@ class _SummaryMetric extends StatelessWidget {
         children: [
           Text(
             value,
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: textMain),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: textMain,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textMuted),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: textMuted,
+            ),
           ),
         ],
       ),
@@ -589,10 +663,7 @@ class _SummaryMetric extends StatelessWidget {
 }
 
 class _EmptyQueueCard extends StatelessWidget {
-  const _EmptyQueueCard({
-    required this.card,
-    required this.textMuted,
-  });
+  const _EmptyQueueCard({required this.card, required this.textMuted});
 
   final Color card;
   final Color textMuted;
@@ -631,6 +702,8 @@ class _SyncQueueItemCard extends StatelessWidget {
     required this.border,
     required this.textMain,
     required this.textMuted,
+    required this.activeOutboxId,
+    required this.activeProgress,
     required this.onDelete,
     required this.onSync,
   });
@@ -642,6 +715,8 @@ class _SyncQueueItemCard extends StatelessWidget {
   final Color border;
   final Color textMain;
   final Color textMuted;
+  final int? activeOutboxId;
+  final double? activeProgress;
   final VoidCallback onDelete;
   final VoidCallback? onSync;
 
@@ -649,6 +724,7 @@ class _SyncQueueItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final failed = item.state == 2;
+    final active = !failed && activeOutboxId == item.id;
     final timeLabel = DateFormat('MM-dd HH:mm:ss.SSS').format(item.createdAt);
 
     return Container(
@@ -677,7 +753,11 @@ class _SyncQueueItemCard extends StatelessWidget {
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: textMain),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: textMain,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -685,6 +765,8 @@ class _SyncQueueItemCard extends StatelessWidget {
                 failed: failed,
                 attempts: item.attempts,
                 textMuted: textMuted,
+                active: active,
+                progress: active ? activeProgress : null,
               ),
             ],
           ),
@@ -694,16 +776,26 @@ class _SyncQueueItemCard extends StatelessWidget {
               subtitle!,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: textMuted,
+              ),
             ),
           ],
-          if (failed && item.lastError != null && item.lastError!.trim().isNotEmpty) ...[
+          if (failed &&
+              item.lastError != null &&
+              item.lastError!.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
               item.lastError!,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: MemoFlowPalette.primary,
+              ),
             ),
           ],
           const SizedBox(height: 12),
@@ -711,7 +803,14 @@ class _SyncQueueItemCard extends StatelessWidget {
             children: [
               Icon(Icons.schedule, size: 16, color: textMuted),
               const SizedBox(width: 6),
-              Text(timeLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textMuted)),
+              Text(
+                timeLabel,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: textMuted,
+                ),
+              ),
               const Spacer(),
               IconButton(
                 tooltip: context.t.strings.legacy.msg_delete,
@@ -721,13 +820,24 @@ class _SyncQueueItemCard extends StatelessWidget {
               OutlinedButton(
                 onPressed: onSync,
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  side: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  side: BorderSide(
+                    color: MemoFlowPalette.primary.withValues(alpha: 0.6),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
                 child: Text(
                   context.t.strings.legacy.msg_sync,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: MemoFlowPalette.primary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: MemoFlowPalette.primary,
+                  ),
                 ),
               ),
             ],
@@ -743,31 +853,86 @@ class _StatusChip extends StatelessWidget {
     required this.failed,
     required this.attempts,
     required this.textMuted,
+    required this.active,
+    required this.progress,
   });
 
   final bool failed;
   final int attempts;
   final Color textMuted;
+  final bool active;
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final failedLabel = attempts > 0
-        ? context.t.strings.legacy.msg_failed_2(attempts: attempts)
-        : context.t.strings.legacy.msg_failed;
-    final label = failed ? failedLabel : context.t.strings.legacy.msg_pending_2;
-    final bg = failed
-        ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.25 : 0.15)
-        : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04));
-    final fg = failed ? MemoFlowPalette.primary : textMuted;
+    if (failed) {
+      final failedLabel = attempts > 0
+          ? context.t.strings.legacy.msg_failed_2(attempts: attempts)
+          : context.t.strings.legacy.msg_failed;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: MemoFlowPalette.primary.withValues(
+            alpha: isDark ? 0.25 : 0.15,
+          ),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          failedLabel,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: MemoFlowPalette.primary,
+          ),
+        ),
+      );
+    }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
+    final clamped = progress?.clamp(0.0, 1.0).toDouble();
+    final indicatorValue = active ? clamped : 0.0;
+    final label = active
+        ? (clamped == null
+              ? context.t.strings.legacy.msg_syncing_2
+              : '${(clamped * 100).round()}%')
+        : '0%';
+    final baseBg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.05);
+    final fill = MemoFlowPalette.primary.withValues(
+      alpha: isDark ? 0.78 : 0.72,
+    );
+    final labelColor = active && clamped != null ? Colors.white : textMuted;
+
+    return SizedBox(
+      width: 86,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            LinearProgressIndicator(
+              value: indicatorValue,
+              minHeight: 22,
+              backgroundColor: baseBg,
+              valueColor: AlwaysStoppedAnimation<Color>(fill),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: labelColor,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: fg)),
     );
   }
 }

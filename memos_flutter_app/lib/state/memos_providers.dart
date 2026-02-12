@@ -22,6 +22,7 @@ import '../data/models/memo_relation.dart';
 import '../data/settings/image_bed_settings_repository.dart';
 import '../data/local_library/local_attachment_store.dart';
 import '../data/local_library/local_library_fs.dart';
+import '../data/logs/sync_queue_progress_tracker.dart';
 import '../state/database_provider.dart';
 import '../state/image_bed_settings_provider.dart';
 import '../state/local_library_provider.dart';
@@ -1255,6 +1256,7 @@ final syncControllerProvider =
           fileSystem: LocalLibraryFileSystem(localLibrary),
           attachmentStore: LocalAttachmentStore(),
           syncStatusTracker: ref.read(syncStatusTrackerProvider),
+          syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
           language: language,
         );
       }
@@ -1268,6 +1270,7 @@ final syncControllerProvider =
         api: ref.watch(memosApiProvider),
         currentUserName: account.user.name,
         syncStatusTracker: ref.read(syncStatusTrackerProvider),
+        syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
         language: language,
         imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
         onRelationsSynced: (memoUids) {
@@ -1394,6 +1397,7 @@ class RemoteSyncController extends SyncControllerBase {
     required this.api,
     required this.currentUserName,
     required this.syncStatusTracker,
+    required this.syncQueueProgressTracker,
     required this.language,
     required this.imageBedRepository,
     this.onRelationsSynced,
@@ -1403,6 +1407,7 @@ class RemoteSyncController extends SyncControllerBase {
   final MemosApi api;
   final String currentUserName;
   final SyncStatusTracker syncStatusTracker;
+  final SyncQueueProgressTracker syncQueueProgressTracker;
   final AppLanguage language;
   final ImageBedSettingsRepository imageBedRepository;
   final void Function(Set<String> memoUids)? onRelationsSynced;
@@ -1562,6 +1567,7 @@ class RemoteSyncController extends SyncControllerBase {
   Future<void> syncNow() async {
     if (state.isLoading) return;
     syncStatusTracker.markSyncStarted();
+    syncQueueProgressTracker.markSyncStarted();
     state = const AsyncValue.loading();
     final next = await AsyncValue.guard(() async {
       await _processOutbox();
@@ -1574,6 +1580,7 @@ class RemoteSyncController extends SyncControllerBase {
     } else {
       syncStatusTracker.markSyncSuccess();
     }
+    syncQueueProgressTracker.markSyncFinished();
   }
 
   Future<void> _syncStateMemos({required String state}) async {
@@ -1733,6 +1740,8 @@ class RemoteSyncController extends SyncControllerBase {
         continue;
       }
 
+      var shouldStop = false;
+      syncQueueProgressTracker.markTaskStarted(id);
       try {
         switch (type) {
           case 'create_memo':
@@ -1756,7 +1765,10 @@ class RemoteSyncController extends SyncControllerBase {
             await db.deleteOutbox(id);
             break;
           case 'upload_attachment':
-            final isFinalized = await _handleUploadAttachment(payload);
+            final isFinalized = await _handleUploadAttachment(
+              payload,
+              currentOutboxId: id,
+            );
             final memoUid = payload['memo_uid'] as String?;
             if (isFinalized && memoUid != null && memoUid.isNotEmpty) {
               await db.updateMemoSyncState(memoUid, syncState: 0);
@@ -1802,6 +1814,12 @@ class RemoteSyncController extends SyncControllerBase {
           );
         }
         // Keep ordering: stop processing further ops until this one succeeds.
+        shouldStop = true;
+      } finally {
+        syncQueueProgressTracker.clearCurrentTask(outboxId: id);
+      }
+
+      if (shouldStop) {
         break;
       }
     }
@@ -2036,7 +2054,10 @@ class RemoteSyncController extends SyncControllerBase {
     }
   }
 
-  Future<bool> _handleUploadAttachment(Map<String, dynamic> payload) async {
+  Future<bool> _handleUploadAttachment(
+    Map<String, dynamic> payload, {
+    required int currentOutboxId,
+  }) async {
     final uid = payload['uid'] as String?;
     final memoUid = payload['memo_uid'] as String?;
     final filePath = payload['file_path'] as String?;
@@ -2082,6 +2103,13 @@ class RemoteSyncController extends SyncControllerBase {
         mimeType: mimeType,
         bytes: bytes,
         memoUid: null,
+        onSendProgress: (sentBytes, totalBytes) {
+          syncQueueProgressTracker.updateCurrentTaskProgress(
+            outboxId: currentOutboxId,
+            sentBytes: sentBytes,
+            totalBytes: totalBytes,
+          );
+        },
       );
 
       await _updateLocalMemoAttachment(
@@ -2118,6 +2146,13 @@ class RemoteSyncController extends SyncControllerBase {
       mimeType: mimeType,
       bytes: bytes,
       memoUid: supportsSetAttachments ? null : memoUid,
+      onSendProgress: (sentBytes, totalBytes) {
+        syncQueueProgressTracker.updateCurrentTaskProgress(
+          outboxId: currentOutboxId,
+          sentBytes: sentBytes,
+          totalBytes: totalBytes,
+        );
+      },
     );
 
     await _updateLocalMemoAttachment(
@@ -2414,6 +2449,7 @@ class RemoteSyncController extends SyncControllerBase {
     required String mimeType,
     required List<int> bytes,
     required String? memoUid,
+    void Function(int sentBytes, int totalBytes)? onSendProgress,
   }) async {
     try {
       return await api.createAttachment(
@@ -2422,6 +2458,7 @@ class RemoteSyncController extends SyncControllerBase {
         mimeType: mimeType,
         bytes: bytes,
         memoUid: memoUid,
+        onSendProgress: onSendProgress,
       );
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
