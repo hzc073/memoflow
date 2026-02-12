@@ -4582,8 +4582,7 @@ class MemosApi {
   List<Attachment> _normalizeAttachmentsForServer(
     List<Attachment> attachments,
   ) {
-    if (_serverFlavor != _ServerApiFlavor.v0_22 || attachments.isEmpty)
-      return attachments;
+    if (attachments.isEmpty) return attachments;
     var changed = false;
     final normalized = <Attachment>[];
     for (final attachment in attachments) {
@@ -4597,11 +4596,16 @@ class MemosApi {
   }
 
   Attachment _normalizeAttachmentForServer(Attachment attachment) {
-    if (_serverFlavor != _ServerApiFlavor.v0_22) return attachment;
+    final name = attachment.name.trim();
+    final isLegacyResource = name.startsWith('resources/');
+    if (!isLegacyResource) return attachment;
+    final shouldUseLegacyResourceBinaryPath =
+        _serverFlavor == _ServerApiFlavor.v0_22 ||
+        (_serverFlavor == _ServerApiFlavor.unknown &&
+            RegExp(r'^resources/\d+$').hasMatch(name));
+    if (!shouldUseLegacyResourceBinaryPath) return attachment;
     final external = attachment.externalLink.trim();
     if (external.isNotEmpty) return attachment;
-    final name = attachment.name.trim();
-    if (!name.startsWith('resources/')) return attachment;
     return Attachment(
       name: attachment.name,
       filename: attachment.filename,

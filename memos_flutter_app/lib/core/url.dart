@@ -50,7 +50,23 @@ String dioBaseUrlString(Uri baseUrl) => '${canonicalBaseUrlString(baseUrl)}/';
 String joinBaseUrl(Uri baseUrl, String path) {
   final base = canonicalBaseUrlString(baseUrl);
   final p = path.startsWith('/') ? path.substring(1) : path;
-  return '$base/$p';
+  final normalized = _normalizeLegacyResourceBinaryPath(p);
+  return '$base/$normalized';
+}
+
+String _normalizeLegacyResourceBinaryPath(String path) {
+  final trimmed = path.trim();
+  if (trimmed.isEmpty) return trimmed;
+  final queryIndex = trimmed.indexOf('?');
+  final rawPath = queryIndex >= 0 ? trimmed.substring(0, queryIndex) : trimmed;
+  final suffix = queryIndex >= 0 ? trimmed.substring(queryIndex) : '';
+  // Memos v0.22 expects /file/resources/{id}; later versions use /file/resources/{id}/{filename}.
+  // When the resource id is numeric, prefer the v0.22 route for compatibility.
+  final match = RegExp(r'^file/resources/(\d+)/[^/?]+$').firstMatch(rawPath);
+  if (match == null) return trimmed;
+  final resourceId = match.group(1);
+  if (resourceId == null || resourceId.isEmpty) return trimmed;
+  return 'file/resources/$resourceId$suffix';
 }
 
 bool isAbsoluteUrl(String raw) {
@@ -82,7 +98,9 @@ String appendThumbnailParam(String url) {
   var useNumeric = isLegacyResource;
   if (!useNumeric) {
     final segments = uri.pathSegments;
-    if (segments.length == 3 && segments[0] == 'file' && segments[1] == 'resources') {
+    if (segments.length == 3 &&
+        segments[0] == 'file' &&
+        segments[1] == 'resources') {
       useNumeric = true;
     }
   }
