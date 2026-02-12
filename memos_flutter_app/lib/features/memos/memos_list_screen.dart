@@ -572,7 +572,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (!_scrollController.hasClients) return;
     final metrics = _scrollController.position;
     if (metrics.maxScrollExtent <= 0) return;
-    final triggerOffset = metrics.maxScrollExtent - (metrics.viewportDimension * 0.6);
+    final triggerOffset =
+        metrics.maxScrollExtent - (metrics.viewportDimension * 0.6);
     if (metrics.pixels < triggerOffset) return;
     if (_currentResultCount < _pageSize) {
       _reachedEnd = true;
@@ -866,7 +867,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       }
       final isAbsolute = isAbsoluteUrl(rawLink);
       final resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
-      final headers = (!isAbsolute && authHeader != null) ? {'Authorization': authHeader} : null;
+      final headers = (!isAbsolute && authHeader != null)
+          ? {'Authorization': authHeader}
+          : null;
       return (url: resolved, localPath: null, headers: headers);
     }
     if (baseUrl == null) return null;
@@ -891,9 +894,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_unable_load_audio_source,
-          ),
+          content: Text(context.t.strings.legacy.msg_unable_load_audio_source),
         ),
       );
       return;
@@ -1317,7 +1318,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_scan_local_library),
             content: Text(
-              context.t.strings.legacy.msg_scan_disk_directory_merge_local_database,
+              context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_scan_disk_directory_merge_local_database,
             ),
             actions: [
               TextButton(
@@ -1338,16 +1343,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     try {
       await scanner.scanAndMerge(context);
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_scan_completed,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_scan_completed);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_scan_failed(e: e)),
-        ),
+        SnackBar(content: Text(context.t.strings.legacy.msg_scan_failed(e: e))),
       );
     }
   }
@@ -1419,9 +1419,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (account == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_not_authenticated),
-        ),
+        SnackBar(content: Text(context.t.strings.legacy.msg_not_authenticated)),
       );
       return;
     }
@@ -1613,7 +1611,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_delete_memo),
             content: Text(
-              context.t.strings.legacy.msg_removed_locally_now_deleted_server_when,
+              context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_removed_locally_now_deleted_server_when,
             ),
             actions: [
               TextButton(
@@ -1661,9 +1663,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_restore_failed(e: e),
-          ),
+          content: Text(context.t.strings.legacy.msg_restore_failed(e: e)),
         ),
       );
     }
@@ -1674,17 +1674,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       await _updateMemo(memo, state: 'ARCHIVED');
       _removeMemoWithAnimation(memo);
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_archived,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_archived);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_archive_failed(e: e),
-          ),
+          content: Text(context.t.strings.legacy.msg_archive_failed(e: e)),
         ),
       );
     }
@@ -2131,8 +2126,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
               )
             : null,
         drawerEnableOpenDragGesture: widget.showDrawer && !_searching,
-        drawerEdgeDragWidth:
-            widget.showDrawer && !_searching ? screenWidth : null,
+        drawerEdgeDragWidth: widget.showDrawer && !_searching
+            ? screenWidth
+            : null,
         body: Stack(
           children: [
             RefreshIndicator(
@@ -2202,10 +2198,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(
-                                        widget.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+                                      Flexible(
+                                        child: Text(
+                                          widget.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 4),
@@ -2222,6 +2222,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                 )
                               : Text(
                                   widget.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -2249,7 +2251,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                       isDark: isDark,
                                     ),
                                   IconButton(
-                                    tooltip: context.t.strings.legacy.msg_search,
+                                    tooltip:
+                                        context.t.strings.legacy.msg_search,
                                     onPressed: _openSearch,
                                     icon: const Icon(Icons.search),
                                   ),
@@ -2356,7 +2359,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                       hasScrollBody: false,
                       child: Center(
                         child: Text(
-                          context.t.strings.legacy.msg_failed_load_3(memosError: memosError),
+                          context.t.strings.legacy.msg_failed_load_3(
+                            memosError: memosError,
+                          ),
                         ),
                       ),
                     )
@@ -2570,6 +2575,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final api = ref.watch(memosApiProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
     final border = isDark
@@ -2582,6 +2588,7 @@ class _TitleMenuDropdown extends ConsumerWidget {
     final dividerColor = border.withValues(alpha: 0.6);
 
     final shortcutsAsync = showShortcuts ? ref.watch(shortcutsProvider) : null;
+    final canCreateShortcut = api.shortcutsSupportedHint != false;
     final items = <Widget>[];
 
     void addRow(Widget row) {
@@ -2640,16 +2647,18 @@ class _TitleMenuDropdown extends ConsumerWidget {
             }
           }
 
-          addRow(
-            _TitleMenuItem(
-              icon: Icons.add_circle_outline,
-              label: context.t.strings.legacy.msg_shortcut,
-              accent: true,
-              onTap: () => Navigator.of(
-                context,
-              ).pop(const _TitleMenuAction.createShortcut()),
-            ),
-          );
+          if (canCreateShortcut) {
+            addRow(
+              _TitleMenuItem(
+                icon: Icons.add_circle_outline,
+                label: context.t.strings.legacy.msg_shortcut,
+                accent: true,
+                onTap: () => Navigator.of(
+                  context,
+                ).pop(const _TitleMenuAction.createShortcut()),
+              ),
+            );
+          }
         },
         loading: () {
           addRow(
@@ -2672,16 +2681,18 @@ class _TitleMenuDropdown extends ConsumerWidget {
               iconColor: textMuted,
             ),
           );
-          addRow(
-            _TitleMenuItem(
-              icon: Icons.add_circle_outline,
-              label: context.t.strings.legacy.msg_shortcut,
-              accent: true,
-              onTap: () => Navigator.of(
-                context,
-              ).pop(const _TitleMenuAction.createShortcut()),
-            ),
-          );
+          if (canCreateShortcut) {
+            addRow(
+              _TitleMenuItem(
+                icon: Icons.add_circle_outline,
+                label: context.t.strings.legacy.msg_shortcut,
+                accent: true,
+                onTap: () => Navigator.of(
+                  context,
+                ).pop(const _TitleMenuAction.createShortcut()),
+              ),
+            );
+          }
         },
         error: (error, _) {
           addRow(
@@ -2704,16 +2715,18 @@ class _TitleMenuDropdown extends ConsumerWidget {
               iconColor: textMuted,
             ),
           );
-          addRow(
-            _TitleMenuItem(
-              icon: Icons.add_circle_outline,
-              label: context.t.strings.legacy.msg_shortcut,
-              accent: true,
-              onTap: () => Navigator.of(
-                context,
-              ).pop(const _TitleMenuAction.createShortcut()),
-            ),
-          );
+          if (canCreateShortcut) {
+            addRow(
+              _TitleMenuItem(
+                icon: Icons.add_circle_outline,
+                label: context.t.strings.legacy.msg_shortcut,
+                accent: true,
+                onTap: () => Navigator.of(
+                  context,
+                ).pop(const _TitleMenuAction.createShortcut()),
+              ),
+            );
+          }
         },
       );
     }
@@ -3723,7 +3736,8 @@ class _MemoCardState extends State<_MemoCard> {
                             textColor: textMain.withValues(
                               alpha: isDark ? 0.4 : 0.5,
                             ),
-                            onTap: () => openAmapLocation(context, memo.location!),
+                            onTap: () =>
+                                openAmapLocation(context, memo.location!),
                           ),
                         ],
                       ],
@@ -3802,13 +3816,21 @@ class _MemoCardState extends State<_MemoCard> {
                                           PopupMenuItem(
                                             value: _MemoCardAction.restore,
                                             child: Text(
-                                              context.t.strings.legacy.msg_restore,
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .legacy
+                                                  .msg_restore,
                                             ),
                                           ),
                                           PopupMenuItem(
                                             value: _MemoCardAction.delete,
                                             child: Text(
-                                              context.t.strings.legacy.msg_delete,
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .legacy
+                                                  .msg_delete,
                                               style: TextStyle(
                                                 color: deleteColor,
                                                 fontWeight: FontWeight.w600,
@@ -3821,8 +3843,16 @@ class _MemoCardState extends State<_MemoCard> {
                                             value: _MemoCardAction.togglePinned,
                                             child: Text(
                                               memo.pinned
-                                                  ? context.t.strings.legacy.msg_unpin
-                                                  : context.t.strings.legacy.msg_pin,
+                                                  ? context
+                                                        .t
+                                                        .strings
+                                                        .legacy
+                                                        .msg_unpin
+                                                  : context
+                                                        .t
+                                                        .strings
+                                                        .legacy
+                                                        .msg_pin,
                                             ),
                                           ),
                                           PopupMenuItem(
@@ -3834,20 +3864,32 @@ class _MemoCardState extends State<_MemoCard> {
                                           PopupMenuItem(
                                             value: _MemoCardAction.reminder,
                                             child: Text(
-                                              context.t.strings.legacy.msg_reminder,
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .legacy
+                                                  .msg_reminder,
                                             ),
                                           ),
                                           PopupMenuItem(
                                             value: _MemoCardAction.archive,
                                             child: Text(
-                                              context.t.strings.legacy.msg_archive,
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .legacy
+                                                  .msg_archive,
                                             ),
                                           ),
                                           const PopupMenuDivider(),
                                           PopupMenuItem(
                                             value: _MemoCardAction.delete,
                                             child: Text(
-                                              context.t.strings.legacy.msg_delete,
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .legacy
+                                                  .msg_delete,
                                               style: TextStyle(
                                                 color: deleteColor,
                                                 fontWeight: FontWeight.w600,
@@ -4182,9 +4224,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                context.t.strings.legacy.msg_failed_load_4(e: e),
-              ),
+              content: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
             ),
           );
           return;
@@ -4196,9 +4236,7 @@ class _MemoRelationsSectionState extends ConsumerState<_MemoRelationsSection> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_memo_not_found_locally,
-          ),
+          content: Text(context.t.strings.legacy.msg_memo_not_found_locally),
         ),
       );
       return;
