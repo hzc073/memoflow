@@ -80,6 +80,7 @@ class AccountsRepository {
             user: a.user,
             instanceProfile: a.instanceProfile,
             useLegacyApiOverride: a.useLegacyApiOverride,
+            serverVersionOverride: a.serverVersionOverride,
           ),
         )
         .toList(growable: false);

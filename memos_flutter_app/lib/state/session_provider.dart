@@ -52,6 +52,7 @@ abstract class AppSessionController
     required Uri baseUrl,
     required String personalAccessToken,
     bool? useLegacyApiOverride,
+    String? serverVersionOverride,
   });
 
   Future<void> addAccountWithPassword({
@@ -59,6 +60,7 @@ abstract class AppSessionController
     required String username,
     required String password,
     required bool useLegacyApi,
+    String? serverVersionOverride,
   });
 
   Future<void> setCurrentKey(String? key);
@@ -76,7 +78,17 @@ abstract class AppSessionController
     required bool globalDefault,
   });
 
+  InstanceProfile resolveEffectiveInstanceProfileForAccount({
+    required Account account,
+  });
+
+  String resolveEffectiveServerVersionForAccount({required Account account});
+
   Future<void> setCurrentAccountUseLegacyApiOverride(bool value);
+
+  Future<void> setCurrentAccountServerVersionOverride(String? version);
+
+  Future<InstanceProfile> detectCurrentAccountInstanceProfile();
 }
 
 class AppSessionNotifier extends AppSessionController {
@@ -118,15 +130,29 @@ class AppSessionNotifier extends AppSessionController {
     required Uri baseUrl,
     required String personalAccessToken,
     bool? useLegacyApiOverride,
+    String? serverVersionOverride,
   }) async {
+    final normalizedServerVersionOverride = _normalizeVersionOverride(
+      serverVersionOverride,
+    );
     InstanceProfile instanceProfile;
-    try {
-      instanceProfile = await MemosApi.unauthenticated(
-        baseUrl,
-        logManager: LogManager.instance,
-      ).getInstanceProfile();
-    } catch (_) {
-      instanceProfile = const InstanceProfile.empty();
+    if (normalizedServerVersionOverride != null) {
+      // Respect manual version selection and skip pre-login version probing.
+      instanceProfile = InstanceProfile(
+        version: normalizedServerVersionOverride,
+        mode: '',
+        instanceUrl: '',
+        owner: '',
+      );
+    } else {
+      try {
+        instanceProfile = await MemosApi.unauthenticated(
+          baseUrl,
+          logManager: LogManager.instance,
+        ).getInstanceProfile();
+      } catch (_) {
+        instanceProfile = const InstanceProfile.empty();
+      }
     }
 
     final user = await MemosApi.authenticated(
@@ -135,7 +161,8 @@ class AppSessionNotifier extends AppSessionController {
       logManager: LogManager.instance,
     ).getCurrentUser();
 
-    if (instanceProfile.version.trim().isEmpty) {
+    if (normalizedServerVersionOverride == null &&
+        instanceProfile.version.trim().isEmpty) {
       try {
         instanceProfile = await MemosApi.authenticated(
           baseUrl: baseUrl,
@@ -159,6 +186,11 @@ class AppSessionNotifier extends AppSessionController {
         (existingIndex >= 0
             ? accounts[existingIndex].useLegacyApiOverride
             : null);
+    final resolvedServerVersionOverride =
+        normalizedServerVersionOverride ??
+        (existingIndex >= 0
+            ? accounts[existingIndex].serverVersionOverride
+            : null);
 
     final account = Account(
       key: accountKey,
@@ -167,6 +199,7 @@ class AppSessionNotifier extends AppSessionController {
       user: user,
       instanceProfile: instanceProfile,
       useLegacyApiOverride: resolvedUseLegacyApiOverride,
+      serverVersionOverride: resolvedServerVersionOverride,
     );
     if (existingIndex >= 0) {
       accounts[existingIndex] = account;
@@ -185,6 +218,7 @@ class AppSessionNotifier extends AppSessionController {
     required Uri baseUrl,
     required String personalAccessToken,
     bool? useLegacyApiOverride,
+    String? serverVersionOverride,
   }) async {
     // Keep the previous state while connecting so the login form doesn't reset.
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
@@ -193,6 +227,7 @@ class AppSessionNotifier extends AppSessionController {
         baseUrl: baseUrl,
         personalAccessToken: personalAccessToken,
         useLegacyApiOverride: useLegacyApiOverride,
+        serverVersionOverride: serverVersionOverride,
       );
     });
   }
@@ -203,13 +238,24 @@ class AppSessionNotifier extends AppSessionController {
     required String username,
     required String password,
     required bool useLegacyApi,
+    String? serverVersionOverride,
   }) async {
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      final loginStrategy = await _resolvePasswordLoginStrategy(
-        baseUrl: baseUrl,
-        useLegacyApiPreference: useLegacyApi,
+      final normalizedServerVersionOverride = _normalizeVersionOverride(
+        serverVersionOverride,
       );
+      final loginStrategy = normalizedServerVersionOverride != null
+          ? _PasswordLoginStrategy(
+              useLegacyApi: _shouldUseLegacyApiForVersion(
+                normalizedServerVersionOverride,
+              ),
+              flavor: _inferFlavorFromVersion(normalizedServerVersionOverride),
+            )
+          : await _resolvePasswordLoginStrategy(
+              baseUrl: baseUrl,
+              useLegacyApiPreference: useLegacyApi,
+            );
       final signIn = await _signInWithPassword(
         baseUrl: baseUrl,
         username: username,
@@ -226,6 +272,7 @@ class AppSessionNotifier extends AppSessionController {
         baseUrl: baseUrl,
         personalAccessToken: token,
         useLegacyApiOverride: loginStrategy.useLegacyApi,
+        serverVersionOverride: normalizedServerVersionOverride,
       );
     });
   }
@@ -321,6 +368,7 @@ class AppSessionNotifier extends AppSessionController {
         user: user,
         instanceProfile: instanceProfile,
         useLegacyApiOverride: account.useLegacyApiOverride,
+        serverVersionOverride: account.serverVersionOverride,
       );
       final accounts = current.accounts
           .map((a) => a.key == account.key ? updatedAccount : a)
@@ -338,9 +386,8 @@ class AppSessionNotifier extends AppSessionController {
     }
   }
 
-  bool _shouldUseLegacyApiForAccount(Account account) {
-    final versionRaw = account.instanceProfile.version.trim();
-    final match = _versionPattern.firstMatch(versionRaw);
+  bool _shouldUseLegacyApiForVersion(String versionRaw) {
+    final match = _versionPattern.firstMatch(versionRaw.trim());
     if (match == null) {
       return true;
     }
@@ -420,11 +467,38 @@ class AppSessionNotifier extends AppSessionController {
     if (override != null) {
       return override;
     }
-    final versionRaw = account.instanceProfile.version.trim();
+    final versionRaw = resolveEffectiveServerVersionForAccount(
+      account: account,
+    );
     if (versionRaw.isEmpty) {
       return globalDefault;
     }
-    return _shouldUseLegacyApiForAccount(account);
+    return _shouldUseLegacyApiForVersion(versionRaw);
+  }
+
+  @override
+  InstanceProfile resolveEffectiveInstanceProfileForAccount({
+    required Account account,
+  }) {
+    final version = resolveEffectiveServerVersionForAccount(account: account);
+    if (version.isEmpty || version == account.instanceProfile.version.trim()) {
+      return account.instanceProfile;
+    }
+    return InstanceProfile(
+      version: version,
+      mode: account.instanceProfile.mode,
+      instanceUrl: account.instanceProfile.instanceUrl,
+      owner: account.instanceProfile.owner,
+    );
+  }
+
+  @override
+  String resolveEffectiveServerVersionForAccount({required Account account}) {
+    final override = account.serverVersionOverride?.trim() ?? '';
+    if (override.isNotEmpty) {
+      return override;
+    }
+    return account.instanceProfile.version.trim();
   }
 
   @override
@@ -445,6 +519,7 @@ class AppSessionNotifier extends AppSessionController {
       user: account.user,
       instanceProfile: account.instanceProfile,
       useLegacyApiOverride: value,
+      serverVersionOverride: account.serverVersionOverride,
     );
     final accounts = current.accounts
         .map((a) => a.key == account.key ? updatedAccount : a)
@@ -458,6 +533,189 @@ class AppSessionNotifier extends AppSessionController {
     await _accountsRepository.write(
       AccountsState(accounts: accounts, currentKey: current.currentKey),
     );
+  }
+
+  @override
+  Future<void> setCurrentAccountServerVersionOverride(String? version) async {
+    final current = state.valueOrNull;
+    final account = current?.currentAccount;
+    if (current == null || account == null) {
+      return;
+    }
+
+    final normalized = _normalizeVersionOverride(version);
+    final derivedLegacyOverride = normalized == null
+        ? account.useLegacyApiOverride
+        : _shouldUseLegacyApiForVersion(normalized);
+
+    if (account.serverVersionOverride == normalized &&
+        account.useLegacyApiOverride == derivedLegacyOverride) {
+      return;
+    }
+
+    final updatedAccount = Account(
+      key: account.key,
+      baseUrl: account.baseUrl,
+      personalAccessToken: account.personalAccessToken,
+      user: account.user,
+      instanceProfile: account.instanceProfile,
+      useLegacyApiOverride: derivedLegacyOverride,
+      serverVersionOverride: normalized,
+    );
+    final accounts = current.accounts
+        .map((a) => a.key == account.key ? updatedAccount : a)
+        .toList(growable: false);
+    final next = AppSessionState(
+      accounts: accounts,
+      currentKey: current.currentKey,
+    );
+
+    state = AsyncValue.data(next);
+    await _accountsRepository.write(
+      AccountsState(accounts: accounts, currentKey: current.currentKey),
+    );
+  }
+
+  @override
+  Future<InstanceProfile> detectCurrentAccountInstanceProfile() async {
+    final current = state.valueOrNull;
+    final account = current?.currentAccount;
+    if (current == null || account == null) {
+      throw StateError('No current account');
+    }
+
+    final profile = await _detectInstanceProfile(account);
+    final mergedProfile = _mergeInstanceProfile(
+      oldProfile: account.instanceProfile,
+      newProfile: profile,
+    );
+
+    final updatedAccount = Account(
+      key: account.key,
+      baseUrl: account.baseUrl,
+      personalAccessToken: account.personalAccessToken,
+      user: account.user,
+      instanceProfile: mergedProfile,
+      useLegacyApiOverride: account.useLegacyApiOverride,
+      serverVersionOverride: account.serverVersionOverride,
+    );
+    final accounts = current.accounts
+        .map((a) => a.key == account.key ? updatedAccount : a)
+        .toList(growable: false);
+    final next = AppSessionState(
+      accounts: accounts,
+      currentKey: current.currentKey,
+    );
+
+    state = AsyncValue.data(next);
+    await _accountsRepository.write(
+      AccountsState(accounts: accounts, currentKey: current.currentKey),
+    );
+    return mergedProfile;
+  }
+
+  Future<InstanceProfile> _detectInstanceProfile(Account account) async {
+    DioException? lastDio;
+    FormatException? lastFormat;
+
+    try {
+      final unauthenticated = MemosApi.unauthenticated(
+        account.baseUrl,
+        logManager: LogManager.instance,
+      );
+      final profile = await unauthenticated.getInstanceProfile();
+      if (_hasAnyInstanceProfileValue(profile)) {
+        return profile;
+      }
+    } on DioException catch (e) {
+      if (_isInstanceProfileEndpointUnsupported(e)) {
+        return const InstanceProfile.empty();
+      }
+      lastDio = e;
+    } on FormatException catch (e) {
+      lastFormat = e;
+    }
+
+    try {
+      final authenticated = MemosApi.authenticated(
+        baseUrl: account.baseUrl,
+        personalAccessToken: account.personalAccessToken,
+        useLegacyApi: resolveUseLegacyApiForAccount(
+          account: account,
+          globalDefault: true,
+        ),
+        instanceProfile: resolveEffectiveInstanceProfileForAccount(
+          account: account,
+        ),
+        logManager: LogManager.instance,
+      );
+      final profile = await authenticated.getInstanceProfile();
+      if (_hasAnyInstanceProfileValue(profile)) {
+        return profile;
+      }
+      return profile;
+    } on DioException catch (e) {
+      if (_isInstanceProfileEndpointUnsupported(e)) {
+        return const InstanceProfile.empty();
+      }
+      lastDio = e;
+    } on FormatException catch (e) {
+      lastFormat = e;
+    }
+
+    if (lastFormat != null) throw lastFormat;
+    if (lastDio != null) throw lastDio;
+    return const InstanceProfile.empty();
+  }
+
+  static bool _isInstanceProfileEndpointUnsupported(DioException error) {
+    final status = error.response?.statusCode ?? 0;
+    return status == 404 || status == 405;
+  }
+
+  static bool _hasAnyInstanceProfileValue(InstanceProfile profile) {
+    return profile.version.trim().isNotEmpty ||
+        profile.mode.trim().isNotEmpty ||
+        profile.instanceUrl.trim().isNotEmpty ||
+        profile.owner.trim().isNotEmpty;
+  }
+
+  static InstanceProfile _mergeInstanceProfile({
+    required InstanceProfile oldProfile,
+    required InstanceProfile newProfile,
+  }) {
+    return InstanceProfile(
+      version: newProfile.version.trim().isNotEmpty
+          ? newProfile.version
+          : oldProfile.version,
+      mode: newProfile.mode.trim().isNotEmpty
+          ? newProfile.mode
+          : oldProfile.mode,
+      instanceUrl: newProfile.instanceUrl.trim().isNotEmpty
+          ? newProfile.instanceUrl
+          : oldProfile.instanceUrl,
+      owner: newProfile.owner.trim().isNotEmpty
+          ? newProfile.owner
+          : oldProfile.owner,
+    );
+  }
+
+  static String? _normalizeVersionOverride(String? version) {
+    final trimmed = (version ?? '').trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^(\d+)\.(\d+)(?:\.(\d+))?$').firstMatch(trimmed);
+    if (match == null) {
+      throw const FormatException('Version must be like 0.22 or 0.22.0');
+    }
+    final major = int.tryParse(match.group(1) ?? '');
+    final minor = int.tryParse(match.group(2) ?? '');
+    final patch = int.tryParse(match.group(3) ?? '0');
+    if (major == null || minor == null || patch == null) {
+      throw const FormatException('Invalid version');
+    }
+    return '$major.$minor.$patch';
   }
 
   Future<_PasswordSignInResult> _signInWithPassword({

@@ -839,15 +839,21 @@ class MemosApi {
 
     final cached = _userStatsMode;
     if (cached != null) {
-      switch (cached) {
-        case _UserStatsApiMode.modernGetStats:
-          return _getUserStatsModernGetStats(userName: userName);
-        case _UserStatsApiMode.legacyStatsPath:
-          return _getUserStatsLegacyStatsPath(userName: userName);
-        case _UserStatsApiMode.legacyMemosStats:
-          return _getUserStatsLegacyMemosStats(userName: userName);
-        case _UserStatsApiMode.legacyMemoStats:
-          return _getUserStatsLegacyMemoStats(userName: userName);
+      if (cached == _UserStatsApiMode.modernGetStats) {
+        try {
+          return await _getUserStatsModernGetStats(userName: userName);
+        } on DioException catch (e) {
+          if (!_shouldFallbackUserStatsModernGetStats(e)) {
+            rethrow;
+          }
+          _userStatsMode = null;
+        }
+      } else if (cached == _UserStatsApiMode.legacyStatsPath) {
+        return _getUserStatsLegacyStatsPath(userName: userName);
+      } else if (cached == _UserStatsApiMode.legacyMemosStats) {
+        return _getUserStatsLegacyMemosStats(userName: userName);
+      } else if (cached == _UserStatsApiMode.legacyMemoStats) {
+        return _getUserStatsLegacyMemoStats(userName: userName);
       }
     }
 
@@ -856,7 +862,7 @@ class MemosApi {
       _userStatsMode = _UserStatsApiMode.modernGetStats;
       return summary;
     } on DioException catch (e) {
-      if (!_shouldFallback(e)) rethrow;
+      if (!_shouldFallbackUserStatsModernGetStats(e)) rethrow;
     }
 
     try {
@@ -879,6 +885,24 @@ class MemosApi {
     _userStatsMode = _UserStatsApiMode.legacyMemoStats;
     _markMemoLegacy();
     return summary;
+  }
+
+  bool _shouldFallbackUserStatsModernGetStats(DioException error) {
+    if (_shouldFallback(error)) {
+      return true;
+    }
+    final status = error.response?.statusCode ?? 0;
+    if (status != 400) {
+      return false;
+    }
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) {
+      return false;
+    }
+    return message.contains('invalid user name') ||
+        message.contains('invalid user id') ||
+        message.contains(':getstats') ||
+        message.contains('getstats');
   }
 
   Future<UserStatsSummary> _getUserStatsModernGetStats({
@@ -2804,25 +2828,57 @@ class MemosApi {
     String? orderBy,
   }) async {
     await _ensureServerHints();
+    final effectiveFilter = _normalizeExploreFilterForServer(
+      filter: filter,
+      state: state,
+    );
+    final forcedLegacyFilter = _normalizeExploreFilterForServer(
+      filter: filter,
+      state: state,
+      forceLegacyDialect: true,
+    );
     try {
       final (memos, nextToken) = await _listMemosModern(
         pageSize: pageSize,
         pageToken: pageToken,
         state: state,
-        filter: filter,
+        filter: effectiveFilter,
         orderBy: orderBy,
       );
       return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
     } on DioException catch (e) {
-      if (!_shouldFallback(e) && !_shouldFallbackLegacy(e)) {
-        rethrow;
+      DioException error = e;
+      if (_shouldRetryExploreWithLegacyFilter(
+        error: e,
+        attemptedFilter: effectiveFilter,
+        forcedLegacyFilter: forcedLegacyFilter,
+      )) {
+        try {
+          final (memos, nextToken) = await _listMemosModern(
+            pageSize: pageSize,
+            pageToken: pageToken,
+            state: state,
+            filter: forcedLegacyFilter,
+            orderBy: orderBy,
+          );
+          if (_serverFlavor == _ServerApiFlavor.unknown) {
+            _applyServerHints(_ServerApiFlavor.v0_22);
+          }
+          return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
+        } on DioException catch (retryError) {
+          error = retryError;
+        }
+      }
+
+      if (!_shouldFallback(error) && !_shouldFallbackLegacy(error)) {
+        throw error;
       }
       if (!_allowMemoFallbackFromError(
-        e,
+        error,
         operation: 'list_explore_memos',
         endpoint: 'api/v1/memo/all',
       )) {
-        rethrow;
+        throw error;
       }
       _markMemoLegacy();
     }
@@ -2832,6 +2888,108 @@ class MemosApi {
       pageToken: pageToken,
     );
     return (memos: memos, nextPageToken: nextToken, usedLegacyAll: true);
+  }
+
+  String _normalizeExploreFilterForServer({
+    String? filter,
+    String? state,
+    bool forceLegacyDialect = false,
+  }) {
+    final normalized = (filter ?? '').trim();
+    if (!forceLegacyDialect && _serverFlavor != _ServerApiFlavor.v0_22) {
+      return normalized;
+    }
+
+    final conditions = <String>[];
+    final rowStatus = _normalizeLegacyRowStatus(state);
+    if (rowStatus != null && rowStatus.isNotEmpty) {
+      conditions.add('row_status == "${_escapeLegacyFilterString(rowStatus)}"');
+    }
+
+    var includeProtected = true;
+    final visibilityMatch = RegExp(
+      r'''visibility\s+in\s+\[([^\]]*)\]''',
+    ).firstMatch(normalized);
+    if (visibilityMatch != null) {
+      includeProtected = RegExp(
+        r'''["']PROTECTED["']''',
+      ).hasMatch(visibilityMatch.group(1) ?? '');
+    }
+    final visibilities = includeProtected
+        ? "'PUBLIC', 'PROTECTED'"
+        : "'PUBLIC'";
+    conditions.add('visibilities == [$visibilities]');
+
+    final query = _extractExploreModernContentQuery(normalized);
+    if (query.isNotEmpty) {
+      conditions.add('content_search == [${jsonEncode(query)}]');
+    }
+
+    return conditions.join(' && ');
+  }
+
+  bool _shouldRetryExploreWithLegacyFilter({
+    required DioException error,
+    required String attemptedFilter,
+    required String forcedLegacyFilter,
+  }) {
+    if (attemptedFilter.isEmpty) return false;
+    if (forcedLegacyFilter.isEmpty || forcedLegacyFilter == attemptedFilter) {
+      return false;
+    }
+    return _isExploreLegacyFilterError(error);
+  }
+
+  bool _isExploreLegacyFilterError(DioException error) {
+    if ((error.response?.statusCode ?? 0) != 400) return false;
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) return false;
+    if (!message.contains('invalid filter') &&
+        !message.contains('failed to build find memos with filter')) {
+      return false;
+    }
+    return message.contains("undeclared reference to 'visibility'") ||
+        message.contains('undeclared reference to "visibility"') ||
+        message.contains("undeclared reference to 'content'") ||
+        message.contains('undeclared reference to "content"') ||
+        message.contains('visibility in') ||
+        message.contains('content.contains');
+  }
+
+  static String _extractDioErrorMessage(DioException error) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final message = _readString(
+        data['message'] ?? data['error'] ?? data['detail'],
+      );
+      if (message.isNotEmpty) {
+        return message;
+      }
+    } else if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+    return (error.message ?? '').trim();
+  }
+
+  static String _extractExploreModernContentQuery(String filter) {
+    final normalized = filter.trim();
+    if (normalized.isEmpty) return '';
+    final match = RegExp(
+      r'''content\.contains\("((?:\\.|[^"\\])*)"\)''',
+    ).firstMatch(normalized);
+    if (match == null) return '';
+    return _decodeEscapedFilterString(match.group(1) ?? '');
+  }
+
+  static String _decodeEscapedFilterString(String escaped) {
+    if (escaped.isEmpty) return '';
+    try {
+      final decoded = jsonDecode('"$escaped"');
+      if (decoded is String) return decoded;
+    } catch (_) {
+      // Fall back to a conservative unescape for malformed payloads.
+    }
+    return escaped.replaceAll(r'\"', '"').replaceAll(r'\\', '\\');
   }
 
   Future<(List<Memo> memos, String nextPageToken)> _listMemosModern({

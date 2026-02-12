@@ -9,6 +9,7 @@ class Account {
     required this.user,
     required this.instanceProfile,
     this.useLegacyApiOverride,
+    this.serverVersionOverride,
   });
 
   final String key;
@@ -17,6 +18,7 @@ class Account {
   final User user;
   final InstanceProfile instanceProfile;
   final bool? useLegacyApiOverride;
+  final String? serverVersionOverride;
 
   Map<String, dynamic> toJson() => {
     'key': key,
@@ -25,6 +27,7 @@ class Account {
     'user': user.toJson(),
     'instanceProfile': instanceProfile.toJson(),
     'useLegacyApiOverride': useLegacyApiOverride,
+    'serverVersionOverride': serverVersionOverride,
   };
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -34,6 +37,7 @@ class Account {
     final userJson = json['user'];
     final profileJson = json['instanceProfile'];
     final useLegacyApiOverrideRaw = json['useLegacyApiOverride'];
+    final serverVersionOverrideRaw = json['serverVersionOverride'];
 
     bool? useLegacyApiOverride;
     if (useLegacyApiOverrideRaw is bool) {
@@ -44,6 +48,14 @@ class Account {
         useLegacyApiOverride = true;
       } else if (normalized == 'false') {
         useLegacyApiOverride = false;
+      }
+    }
+
+    String? serverVersionOverride;
+    if (serverVersionOverrideRaw is String) {
+      final normalized = serverVersionOverrideRaw.trim();
+      if (normalized.isNotEmpty) {
+        serverVersionOverride = normalized;
       }
     }
 
@@ -58,6 +70,7 @@ class Account {
           ? InstanceProfile.fromJson(profileJson.cast<String, dynamic>())
           : const InstanceProfile.empty(),
       useLegacyApiOverride: useLegacyApiOverride,
+      serverVersionOverride: serverVersionOverride,
     );
   }
 }

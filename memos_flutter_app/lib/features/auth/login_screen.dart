@@ -23,12 +23,22 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  static const List<String> _serverVersionOptions = <String>[
+    '0.26.0',
+    '0.25.0',
+    '0.24.0',
+    '0.23.0',
+    '0.22.0',
+    '0.21.0',
+  ];
+
   final _formKey = GlobalKey<FormState>();
   final _baseUrlController = TextEditingController();
   final _tokenController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   var _loginMode = _LoginMode.password;
+  var _selectedServerVersion = '0.26.0';
   var _shownInitialError = false;
 
   @override
@@ -38,6 +48,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (draft.isNotEmpty) {
       _baseUrlController.text = draft;
     }
+    _selectedServerVersion = _resolveInitialServerVersion();
   }
 
   @override
@@ -150,6 +161,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return sanitizedBaseUrl;
   }
 
+  String _resolveInitialServerVersion() {
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final overrideVersion = account?.serverVersionOverride?.trim() ?? '';
+    final detectedVersion = account?.instanceProfile.version.trim() ?? '';
+    final normalizedOverride = _normalizeServerVersion(overrideVersion);
+    if (normalizedOverride.isNotEmpty) {
+      return normalizedOverride;
+    }
+    final normalizedDetected = _normalizeServerVersion(detectedVersion);
+    if (normalizedDetected.isNotEmpty) {
+      return normalizedDetected;
+    }
+    final globalLegacyDefault = ref.read(appPreferencesProvider).useLegacyApi;
+    return globalLegacyDefault ? '0.22.0' : '0.26.0';
+  }
+
+  static String _normalizeServerVersion(String raw) {
+    final match = RegExp(r'^(\d+)\.(\d+)(?:\.(\d+))?$').firstMatch(raw.trim());
+    if (match == null) return '';
+    final major = int.tryParse(match.group(1) ?? '');
+    final minor = int.tryParse(match.group(2) ?? '');
+    final patch = int.tryParse(match.group(3) ?? '0');
+    if (major == null || minor == null || patch == null) return '';
+    return '$major.$minor.$patch';
+  }
+
+  static bool _shouldUseLegacyApiByVersion(String version) {
+    final match = RegExp(r'^(\d+)\.(\d+)(?:\.(\d+))?$').firstMatch(version);
+    if (match == null) return true;
+    final major = int.tryParse(match.group(1) ?? '');
+    final minor = int.tryParse(match.group(2) ?? '');
+    if (major == null || minor == null) return true;
+    return major == 0 && minor <= 22;
+  }
+
   Future<void> _connect() async {
     if (_loginMode == _LoginMode.password) {
       return _connectWithPassword();
@@ -169,17 +215,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (baseUrl == null) {
       return;
     }
-
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final globalDefault = ref.read(appPreferencesProvider).useLegacyApi;
-    final useLegacyApiOverride = account == null
-        ? null
-        : ref
-              .read(appSessionProvider.notifier)
-              .resolveUseLegacyApiForAccount(
-                account: account,
-                globalDefault: globalDefault,
-              );
+    final selectedVersion = _normalizeServerVersion(_selectedServerVersion);
+    final useLegacyApiOverride = _shouldUseLegacyApiByVersion(selectedVersion);
 
     await ref
         .read(appSessionProvider.notifier)
@@ -187,6 +224,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           baseUrl: baseUrl,
           personalAccessToken: token,
           useLegacyApiOverride: useLegacyApiOverride,
+          serverVersionOverride: selectedVersion,
         );
 
     final sessionAsync = ref.read(appSessionProvider);
@@ -214,16 +252,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final globalDefault = ref.read(appPreferencesProvider).useLegacyApi;
-    final useLegacyApi = account == null
-        ? globalDefault
-        : ref
-              .read(appSessionProvider.notifier)
-              .resolveUseLegacyApiForAccount(
-                account: account,
-                globalDefault: globalDefault,
-              );
+    final selectedVersion = _normalizeServerVersion(_selectedServerVersion);
+    final useLegacyApi = _shouldUseLegacyApiByVersion(selectedVersion);
 
     await ref
         .read(appSessionProvider.notifier)
@@ -232,6 +262,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           username: username,
           password: password,
           useLegacyApi: useLegacyApi,
+          serverVersionOverride: selectedVersion,
         );
 
     final sessionAsync = ref.read(appSessionProvider);
@@ -374,8 +405,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionAsync = ref.watch(appSessionProvider);
-    final sessionState = sessionAsync.valueOrNull;
-    final currentAccount = sessionState?.currentAccount;
     final isBusy = sessionAsync.isLoading;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
@@ -386,17 +415,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
-    final globalLegacyDefault = ref.watch(
-      appPreferencesProvider.select((p) => p.useLegacyApi),
-    );
-    final useLegacyApi = currentAccount == null
-        ? globalLegacyDefault
-        : ref
-              .read(appSessionProvider.notifier)
-              .resolveUseLegacyApiForAccount(
-                account: currentAccount,
-                globalDefault: globalLegacyDefault,
-              );
+    final versionOptions = <String>{
+      ..._serverVersionOptions,
+      if (_selectedServerVersion.trim().isNotEmpty)
+        _normalizeServerVersion(_selectedServerVersion),
+    }.where((v) => v.isNotEmpty).toList(growable: false);
     final modeDescription = _loginMode == _LoginMode.password
         ? context.t.strings.login.mode.descPassword
         : context.t.strings.login.mode.descToken;
@@ -568,47 +591,53 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ],
                   const SizedBox(height: 18),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          context.t.strings.login.compatibility.title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: textMain,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: useLegacyApi,
-                        onChanged: isBusy
-                            ? null
-                            : (v) async {
-                                if (currentAccount != null) {
-                                  await ref
-                                      .read(appSessionProvider.notifier)
-                                      .setCurrentAccountUseLegacyApiOverride(v);
-                                  return;
-                                }
-                                ref
-                                    .read(appPreferencesProvider.notifier)
-                                    .setUseLegacyApi(v);
-                              },
-                        activeThumbColor: Colors.white,
-                        activeTrackColor: MemoFlowPalette.primary,
-                        inactiveTrackColor: isDark
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.black.withValues(alpha: 0.12),
-                        inactiveThumbColor: isDark
-                            ? Colors.white.withValues(alpha: 0.6)
-                            : Colors.white,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
                   Text(
-                    context.t.strings.login.compatibility.description,
-                    style: TextStyle(fontSize: 12, color: textMuted),
+                    context.t.strings.legacy.msg_version,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: textMain,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: card,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: isDark
+                          ? null
+                          : [
+                              BoxShadow(
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                                color: Colors.black.withValues(alpha: 0.08),
+                              ),
+                            ],
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _normalizeServerVersion(
+                        _selectedServerVersion,
+                      ),
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                      ),
+                      items: [
+                        for (final version in versionOptions)
+                          DropdownMenuItem<String>(
+                            value: version,
+                            child: Text('v$version'),
+                          ),
+                      ],
+                      onChanged: isBusy
+                          ? null
+                          : (value) {
+                              if (value == null || value.trim().isEmpty) return;
+                              setState(() {
+                                _selectedServerVersion = value.trim();
+                              });
+                            },
+                    ),
                   ),
                   const SizedBox(height: 24),
                   SizedBox(

@@ -2,29 +2,123 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
-import '../../state/preferences_provider.dart';
+import '../../core/top_toast.dart';
+import '../../data/models/account.dart';
 import '../../state/session_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
 import 'webhooks_settings_screen.dart';
 import '../../i18n/strings.g.dart';
 
-class LaboratoryScreen extends ConsumerWidget {
+class LaboratoryScreen extends ConsumerStatefulWidget {
   const LaboratoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final prefs = ref.watch(appPreferencesProvider);
+  ConsumerState<LaboratoryScreen> createState() => _LaboratoryScreenState();
+}
+
+class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
+  static const List<String> _presetServerVersions = <String>[
+    '0.26.0',
+    '0.25.0',
+    '0.24.0',
+    '0.23.0',
+    '0.22.0',
+    '0.21.0',
+  ];
+
+  bool _savingVersion = false;
+
+  Future<void> _selectServerVersion(Account? currentAccount) async {
+    if (currentAccount == null || _savingVersion) return;
+    final selected =
+        currentAccount.serverVersionOverride?.trim().isNotEmpty == true
+        ? currentAccount.serverVersionOverride!.trim()
+        : '';
+    final detected = currentAccount.instanceProfile.version.trim();
+    final options = <String>{
+      '',
+      ..._presetServerVersions,
+      if (detected.isNotEmpty) detected,
+      if (selected.isNotEmpty) selected,
+    }.toList(growable: false);
+
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) {
+        String pending = selected;
+        return AlertDialog(
+          title: Text(context.t.strings.legacy.msg_version),
+          content: StatefulBuilder(
+            builder: (context, setLocalState) {
+              return DropdownButtonFormField<String>(
+                initialValue: pending,
+                isExpanded: true,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                items: [
+                  DropdownMenuItem<String>(
+                    value: '',
+                    child: Text(context.t.strings.common.auto),
+                  ),
+                  for (final v in options.where((v) => v.isNotEmpty))
+                    DropdownMenuItem<String>(value: v, child: Text(v)),
+                ],
+                onChanged: (value) {
+                  setLocalState(() => pending = (value ?? '').trim());
+                },
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: Text(context.t.strings.common.cancel),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(pending);
+              },
+              child: Text(context.t.strings.legacy.msg_apply),
+            ),
+          ],
+        );
+      },
+    );
+    if (result == null) return;
+
+    setState(() => _savingVersion = true);
+    try {
+      await ref
+          .read(appSessionProvider.notifier)
+          .setCurrentAccountServerVersionOverride(result);
+      if (!mounted) return;
+      final value = result.trim().isEmpty
+          ? context.t.strings.common.auto
+          : result;
+      showTopToast(context, '${context.t.strings.legacy.msg_version}: $value');
+    } catch (_) {
+      if (!mounted) return;
+      showTopToast(context, context.t.strings.legacy.msg_failed_load_try);
+    } finally {
+      if (mounted) {
+        setState(() => _savingVersion = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final sessionState = ref.watch(appSessionProvider).valueOrNull;
     final currentAccount = sessionState?.currentAccount;
-    final effectiveUseLegacyApi = currentAccount == null
-        ? prefs.useLegacyApi
-        : ref
-              .read(appSessionProvider.notifier)
-              .resolveUseLegacyApiForAccount(
-                account: currentAccount,
-                globalDefault: prefs.useLegacyApi,
-              );
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final detectedVersion =
+        currentAccount?.instanceProfile.version.trim() ?? '';
+    final effectiveVersion = currentAccount == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: currentAccount,
+          );
+    final manualVersion = currentAccount?.serverVersionOverride?.trim() ?? '';
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
@@ -71,32 +165,18 @@ class LaboratoryScreen extends ConsumerWidget {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                     children: [
-                      _ToggleCard(
+                      _CompatibilityCard(
                         card: card,
-                        label: context
-                            .t
-                            .strings
-                            .legacy
-                            .msg_legacy_api_compatibility,
-                        description: context
-                            .t
-                            .strings
-                            .legacy
-                            .msg_use_legacy_endpoints_older_memos_servers,
-                        value: effectiveUseLegacyApi,
+                        label: context.t.strings.legacy.msg_version,
+                        detectedVersion: detectedVersion,
+                        effectiveVersion: effectiveVersion,
+                        manualVersion: manualVersion,
+                        busy: _savingVersion,
                         textMain: textMain,
                         textMuted: textMuted,
-                        onChanged: (v) async {
-                          if (currentAccount != null) {
-                            await ref
-                                .read(appSessionProvider.notifier)
-                                .setCurrentAccountUseLegacyApiOverride(v);
-                            return;
-                          }
-                          ref
-                              .read(appPreferencesProvider.notifier)
-                              .setUseLegacyApi(v);
-                        },
+                        allowVersionControl: currentAccount != null,
+                        onEditVersion: () =>
+                            _selectServerVersion(currentAccount),
                       ),
                       const SizedBox(height: 12),
                       _CardRow(
@@ -176,28 +256,43 @@ class LaboratoryScreen extends ConsumerWidget {
   }
 }
 
-class _ToggleCard extends StatelessWidget {
-  const _ToggleCard({
+class _CompatibilityCard extends StatelessWidget {
+  const _CompatibilityCard({
     required this.card,
     required this.label,
-    required this.description,
-    required this.value,
+    required this.detectedVersion,
+    required this.effectiveVersion,
+    required this.manualVersion,
+    required this.busy,
     required this.textMain,
     required this.textMuted,
-    required this.onChanged,
+    required this.allowVersionControl,
+    required this.onEditVersion,
   });
 
   final Color card;
   final String label;
-  final String description;
-  final bool value;
+  final String detectedVersion;
+  final String effectiveVersion;
+  final String manualVersion;
+  final bool busy;
   final Color textMain;
   final Color textMuted;
-  final ValueChanged<bool> onChanged;
+  final bool allowVersionControl;
+  final VoidCallback onEditVersion;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final detectedLabel = detectedVersion.trim().isEmpty
+        ? '-'
+        : detectedVersion.trim();
+    final effectiveLabel = effectiveVersion.trim().isEmpty
+        ? '-'
+        : effectiveVersion.trim();
+    final manualLabel = manualVersion.trim().isEmpty
+        ? context.t.strings.common.auto
+        : manualVersion.trim();
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -218,31 +313,79 @@ class _ToggleCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: textMain,
-                    ),
-                  ),
-                ),
-                Switch(value: value, onChanged: onChanged),
-              ],
+            Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
             ),
-            if (description.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, right: 44),
-                child: Text(
-                  description,
-                  style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
-                ),
-              ),
+            const SizedBox(height: 10),
+            _CompatInfoLine(
+              textMain: textMain,
+              textMuted: textMuted,
+              label: context.t.strings.legacy.msg_server,
+              value: detectedLabel,
+            ),
+            const SizedBox(height: 4),
+            _CompatInfoLine(
+              textMain: textMain,
+              textMuted: textMuted,
+              label: context.t.strings.legacy.msg_version,
+              value: effectiveLabel,
+            ),
+            const SizedBox(height: 4),
+            _CompatInfoLine(
+              textMain: textMain,
+              textMuted: textMuted,
+              label: context.t.strings.common.manual,
+              value: manualLabel,
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: allowVersionControl && !busy ? onEditVersion : null,
+              icon: busy
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.tune, size: 16),
+              label: Text(context.t.strings.common.manual),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CompatInfoLine extends StatelessWidget {
+  const _CompatInfoLine({
+    required this.textMain,
+    required this.textMuted,
+    required this.label,
+    required this.value,
+  });
+
+  final Color textMain;
+  final Color textMuted;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, style: TextStyle(fontSize: 12, color: textMuted)),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            color: textMain,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

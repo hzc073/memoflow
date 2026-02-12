@@ -64,6 +64,8 @@ final memosApiProvider = Provider<MemosApi>((ref) {
     account: account,
     globalDefault: globalLegacyDefault,
   );
+  final effectiveInstanceProfile = sessionController
+      .resolveEffectiveInstanceProfileForAccount(account: account);
   final logStore = ref.watch(networkLogStoreProvider);
   final logBuffer = ref.watch(networkLogBufferProvider);
   final breadcrumbStore = ref.watch(breadcrumbStoreProvider);
@@ -72,7 +74,7 @@ final memosApiProvider = Provider<MemosApi>((ref) {
     baseUrl: account.baseUrl,
     personalAccessToken: account.personalAccessToken,
     useLegacyApi: useLegacyApi,
-    instanceProfile: account.instanceProfile,
+    instanceProfile: effectiveInstanceProfile,
     logStore: logStore,
     logBuffer: logBuffer,
     breadcrumbStore: breadcrumbStore,

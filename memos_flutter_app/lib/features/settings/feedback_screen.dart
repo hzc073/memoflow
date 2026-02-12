@@ -1,17 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
-import '../../core/top_toast.dart';
-import '../../data/db/app_database.dart';
-import '../../state/database_provider.dart';
-import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
-import '../../state/session_provider.dart';
 import 'submit_logs_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -21,80 +14,25 @@ class FeedbackScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
-    final hapticsEnabled = ref.watch(appPreferencesProvider.select((p) => p.hapticsEnabled));
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
+    final hapticsEnabled = ref.watch(
+      appPreferencesProvider.select((p) => p.hapticsEnabled),
+    );
 
     void haptic() {
       if (hapticsEnabled) {
         HapticFeedback.selectionClick();
       }
-    }
-
-    Future<void> forceResetHeatmap() async {
-      final session = ref.read(appSessionProvider).valueOrNull;
-      final accountKey = session?.currentKey;
-      if (accountKey == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_sign_first)),
-        );
-        return;
-      }
-
-      final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.t.strings.legacy.msg_reset_heatmap),
-              content: Text(
-                context.t.strings.legacy.msg_clears_local_cache_offline_memos_pending,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => context.safePop(false),
-                  child: Text(context.t.strings.legacy.msg_cancel_2),
-                ),
-                FilledButton(
-                  onPressed: () => context.safePop(true),
-                  child: Text(context.t.strings.legacy.msg_continue),
-                ),
-              ],
-            ),
-          ) ??
-          false;
-      if (!confirmed) return;
-      if (!context.mounted) return;
-
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_resetting_local_data,
-      );
-
-      try {
-        final db = ref.read(databaseProvider);
-        await db.close();
-      } catch (_) {}
-
-      try {
-        await AppDatabase.deleteDatabaseFile(dbName: databaseNameForAccountKey(accountKey));
-        ref.invalidate(databaseProvider);
-        ref.invalidate(syncControllerProvider);
-      } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_reset_failed(e: e))),
-        );
-        return;
-      }
-
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
-      if (!context.mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_reset_done_syncing,
-      );
     }
 
     return Scaffold(
@@ -121,11 +59,7 @@ class FeedbackScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -145,55 +79,68 @@ class FeedbackScreen extends ConsumerWidget {
                     onTap: () {
                       haptic();
                       Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => const SubmitLogsScreen()),
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SubmitLogsScreen(),
+                        ),
                       );
-                    },
-                  ),
-                  _ActionRow(
-                    icon: Icons.restart_alt,
-                    label: context.t.strings.legacy.msg_self_repair_reset_heatmap,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () async {
-                      haptic();
-                      await forceResetHeatmap();
                     },
                   ),
                   _ActionRow(
                     icon: Icons.help_outline,
                     label: context.t.strings.legacy.msg_how_report,
+                    subtitle: 'github.com/hzc073/memoflow/issues/new',
+                    external: true,
                     textMain: textMain,
                     textMuted: textMuted,
-                    onTap: () {
+                    onTap: () async {
                       haptic();
-                      showModalBottomSheet<void>(
-                        context: context,
-                        showDragHandle: true,
-                        builder: (context) => SafeArea(
-                          child: ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                            children: [
-                              Text(
-                                context.t.strings.legacy.msg_how_report,
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                context.t.strings.legacy.msg_run_issues_memoflow_e_g_sync,
-                                style: const TextStyle(height: 1.5),
-                              ),
-                            ],
-                          ),
-                        ),
+                      final uri = Uri.parse(
+                        'https://github.com/hzc073/memoflow/issues/new',
                       );
+                      try {
+                        final launched = await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                        if (!launched && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                context
+                                    .t
+                                    .strings
+                                    .legacy
+                                    .msg_unable_open_browser_try,
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              context.t.strings.legacy.msg_failed_open_try,
+                            ),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ],
               ),
               const SizedBox(height: 16),
               Text(
-                context.t.strings.legacy.msg_note_some_tokens_returned_only_once,
-                style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_note_some_tokens_returned_only_once,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: textMuted.withValues(alpha: 0.7),
+                ),
               ),
             ],
           ),
@@ -247,6 +194,8 @@ class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.icon,
     required this.label,
+    this.subtitle,
+    this.external = false,
     required this.textMain,
     required this.textMuted,
     required this.onTap,
@@ -254,6 +203,8 @@ class _ActionRow extends StatelessWidget {
 
   final IconData icon;
   final String label;
+  final String? subtitle;
+  final bool external;
   final Color textMain;
   final Color textMuted;
   final VoidCallback onTap;
@@ -270,8 +221,32 @@ class _ActionRow extends StatelessWidget {
             children: [
               Icon(icon, size: 20, color: textMuted),
               const SizedBox(width: 12),
-              Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textMain))),
-              Icon(Icons.chevron_right, size: 20, color: textMuted),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textMain,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(fontSize: 12, color: textMuted),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                external ? Icons.open_in_new : Icons.chevron_right,
+                size: 20,
+                color: textMuted,
+              ),
             ],
           ),
         ),
@@ -279,4 +254,3 @@ class _ActionRow extends StatelessWidget {
     );
   }
 }
-
