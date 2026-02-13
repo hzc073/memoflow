@@ -243,6 +243,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     final rawLink = attachment.externalLink.trim();
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     if (rawLink.isNotEmpty) {
@@ -254,9 +261,18 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           headers: null,
         );
       }
-      final isAbsolute = isAbsoluteUrl(rawLink);
-      final resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
-      final headers = (!isAbsolute && authHeader != null)
+      var resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
+      if (rebaseAbsoluteFileUrlForV024) {
+        final rebased = rebaseAbsoluteFileUrlToBase(baseUrl, resolved);
+        if (rebased != null && rebased.isNotEmpty) {
+          resolved = rebased;
+        }
+      }
+      final isAbsolute = isAbsoluteUrl(resolved);
+      final canAttachAuth = rebaseAbsoluteFileUrlForV024
+          ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
+          : !isAbsolute;
+      final headers = (canAttachAuth && authHeader != null)
           ? {'Authorization': authHeader}
           : null;
       return (url: resolved, localPath: null, headers: headers);
@@ -825,6 +841,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
 
@@ -971,6 +994,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                           isDark: isDark,
                           baseUrl: baseUrl,
                           authHeader: authHeader,
+                          rebaseAbsoluteFileUrlForV024:
+                              rebaseAbsoluteFileUrlForV024,
                           audioPlaying: isAudioActive && _audioPlayer.playing,
                           audioLoading: isAudioActive && _audioLoading,
                           audioPositionListenable: isAudioActive
@@ -1040,6 +1065,7 @@ class _RandomWalkCard extends StatelessWidget {
     required this.isDark,
     required this.baseUrl,
     required this.authHeader,
+    required this.rebaseAbsoluteFileUrlForV024,
     required this.audioPlaying,
     required this.audioLoading,
     this.audioPositionListenable,
@@ -1055,6 +1081,7 @@ class _RandomWalkCard extends StatelessWidget {
   final bool isDark;
   final Uri? baseUrl;
   final String? authHeader;
+  final bool rebaseAbsoluteFileUrlForV024;
   final bool audioPlaying;
   final bool audioLoading;
   final ValueListenable<Duration>? audioPositionListenable;
@@ -1083,6 +1110,7 @@ class _RandomWalkCard extends StatelessWidget {
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
     );
     final audioAttachments = memo.attachments
         .where((a) => a.type.startsWith('audio'))

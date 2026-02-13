@@ -51,6 +51,7 @@ List<MemoImageEntry> collectMemoImageEntries({
   required List<Attachment> attachments,
   required Uri? baseUrl,
   required String? authHeader,
+  bool rebaseAbsoluteFileUrlForV024 = false,
 }) {
   final entries = <MemoImageEntry>[];
   final seen = <String>{};
@@ -74,9 +75,16 @@ List<MemoImageEntry> collectMemoImageEntries({
   for (final attachment in attachments) {
     final type = attachment.type.trim().toLowerCase();
     if (!type.startsWith('image')) continue;
-    final entry = _entryFromAttachment(attachment, baseUrl, authHeader);
+    final entry = _entryFromAttachment(
+      attachment,
+      baseUrl,
+      authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+    );
     if (entry == null) continue;
-    final key = (entry.localFile?.path ?? entry.fullUrl ?? entry.previewUrl ?? '').trim();
+    final key =
+        (entry.localFile?.path ?? entry.fullUrl ?? entry.previewUrl ?? '')
+            .trim();
     if (key.isEmpty || !seen.add(key)) continue;
     entries.add(entry);
   }
@@ -84,11 +92,20 @@ List<MemoImageEntry> collectMemoImageEntries({
   return entries;
 }
 
-MemoImageEntry? _entryFromAttachment(Attachment attachment, Uri? baseUrl, String? authHeader) {
+MemoImageEntry? _entryFromAttachment(
+  Attachment attachment,
+  Uri? baseUrl,
+  String? authHeader, {
+  bool rebaseAbsoluteFileUrlForV024 = false,
+}) {
   final external = attachment.externalLink.trim();
   final localFile = _resolveLocalFile(external);
-  final mimeType = attachment.type.trim().isEmpty ? 'image/*' : attachment.type.trim();
-  final title = attachment.filename.trim().isNotEmpty ? attachment.filename.trim() : attachment.uid;
+  final mimeType = attachment.type.trim().isEmpty
+      ? 'image/*'
+      : attachment.type.trim();
+  final title = attachment.filename.trim().isNotEmpty
+      ? attachment.filename.trim()
+      : attachment.uid;
 
   if (localFile != null) {
     return MemoImageEntry(
@@ -104,10 +121,20 @@ MemoImageEntry? _entryFromAttachment(Attachment attachment, Uri? baseUrl, String
   }
 
   if (external.isNotEmpty) {
-    final isAbsolute = isAbsoluteUrl(external);
-    final resolved = resolveMaybeRelativeUrl(baseUrl, external);
+    var resolved = resolveMaybeRelativeUrl(baseUrl, external);
+    if (rebaseAbsoluteFileUrlForV024) {
+      final rebased = rebaseAbsoluteFileUrlToBase(baseUrl, resolved);
+      if (rebased != null && rebased.isNotEmpty) {
+        resolved = rebased;
+      }
+    }
+    final isAbsolute = isAbsoluteUrl(resolved);
     final previewUrl = isAbsolute ? resolved : appendThumbnailParam(resolved);
-    final headers = (!isAbsolute && authHeader != null && authHeader.trim().isNotEmpty)
+    final canAttachAuth = rebaseAbsoluteFileUrlForV024
+        ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
+        : !isAbsolute;
+    final headers =
+        (canAttachAuth && authHeader != null && authHeader.trim().isNotEmpty)
         ? {'Authorization': authHeader.trim()}
         : null;
     return MemoImageEntry(
@@ -196,7 +223,9 @@ class MemoImageGrid extends StatelessWidget {
     final visibleCount = maxCount == null ? total : math.min(maxCount!, total);
     final overflow = total - visibleCount;
     final visible = images.take(visibleCount).toList(growable: false);
-    final gallerySources = images.map((e) => e.toGallerySource()).toList(growable: false);
+    final gallerySources = images
+        .map((e) => e.toGallerySource())
+        .toList(growable: false);
 
     Widget placeholder(IconData icon) {
       return Container(
@@ -288,7 +317,8 @@ class MemoImageGrid extends StatelessWidget {
                   'mimeType': entry.mimeType,
                   'isAttachment': entry.isAttachment,
                   'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                      entry.headers?['Authorization']?.trim().isNotEmpty ??
+                      false,
                 },
               );
               return placeholder(Icons.broken_image_outlined);
@@ -310,7 +340,8 @@ class MemoImageGrid extends StatelessWidget {
                   'mimeType': entry.mimeType,
                   'isAttachment': entry.isAttachment,
                   'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                      entry.headers?['Authorization']?.trim().isNotEmpty ??
+                      false,
                 },
               );
               return placeholder(Icons.broken_image_outlined);
@@ -327,7 +358,11 @@ class MemoImageGrid extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 '+$overflow',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             )
           : null;
@@ -344,10 +379,7 @@ class MemoImageGrid extends StatelessWidget {
             ),
             child: Stack(
               fit: StackFit.expand,
-              children: [
-                image,
-                if (overlay != null) overlay,
-              ],
+              children: [image, if (overlay != null) overlay],
             ),
           ),
         ),
@@ -375,7 +407,9 @@ class MemoImageGrid extends StatelessWidget {
           }
         }
 
-        final aspectRatio = tileWidth > 0 && tileHeight > 0 ? tileWidth / tileHeight : 1.0;
+        final aspectRatio = tileWidth > 0 && tileHeight > 0
+            ? tileWidth / tileHeight
+            : 1.0;
         return GridView.builder(
           shrinkWrap: true,
           primary: false,

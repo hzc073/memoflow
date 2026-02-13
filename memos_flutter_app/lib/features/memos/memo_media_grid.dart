@@ -242,7 +242,11 @@ class MemoMediaGrid extends StatelessWidget {
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(color: borderColor),
             ),
-            child: AttachmentVideoThumbnail(entry: entry, borderRadius: radius),
+            child: AttachmentVideoThumbnail(
+              key: ValueKey<String>(memoVideoThumbnailWidgetKey(entry)),
+              entry: entry,
+              borderRadius: radius,
+            ),
           ),
         ),
       );

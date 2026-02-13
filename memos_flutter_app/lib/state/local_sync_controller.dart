@@ -84,6 +84,7 @@ class LocalSyncController extends SyncControllerBase {
       }
 
       var shouldStop = false;
+      final isUploadTask = type == 'upload_attachment';
       syncQueueProgressTracker.markTaskStarted(id);
       try {
         switch (type) {
@@ -153,6 +154,9 @@ class LocalSyncController extends SyncControllerBase {
         }
         shouldStop = true;
       } finally {
+        if (!shouldStop && isUploadTask) {
+          await syncQueueProgressTracker.markTaskCompleted(outboxId: id);
+        }
         syncQueueProgressTracker.clearCurrentTask(outboxId: id);
       }
 

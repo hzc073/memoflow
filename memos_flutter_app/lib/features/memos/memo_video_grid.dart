@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -32,10 +31,16 @@ class MemoVideoEntry {
   final Map<String, String>? headers;
 }
 
+String memoVideoThumbnailWidgetKey(MemoVideoEntry entry) {
+  final source = (entry.localFile?.path ?? entry.videoUrl ?? '').trim();
+  return '${entry.id}|${entry.size}|$source';
+}
+
 List<MemoVideoEntry> collectMemoVideoEntries({
   required List<Attachment> attachments,
   required Uri? baseUrl,
   required String? authHeader,
+  bool rebaseAbsoluteFileUrlForV024 = false,
 }) {
   final entries = <MemoVideoEntry>[];
   final seen = <String>{};
@@ -43,7 +48,12 @@ List<MemoVideoEntry> collectMemoVideoEntries({
   for (final attachment in attachments) {
     final type = attachment.type.trim().toLowerCase();
     if (!type.startsWith('video')) continue;
-    final entry = memoVideoEntryFromAttachment(attachment, baseUrl, authHeader);
+    final entry = memoVideoEntryFromAttachment(
+      attachment,
+      baseUrl,
+      authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+    );
     if (entry == null) continue;
     final key = (entry.localFile?.path ?? entry.videoUrl ?? entry.id).trim();
     if (key.isEmpty || !seen.add(key)) continue;
@@ -56,12 +66,17 @@ List<MemoVideoEntry> collectMemoVideoEntries({
 MemoVideoEntry? memoVideoEntryFromAttachment(
   Attachment attachment,
   Uri? baseUrl,
-  String? authHeader,
-) {
+  String? authHeader, {
+  bool rebaseAbsoluteFileUrlForV024 = false,
+}) {
   final external = attachment.externalLink.trim();
   final localFile = _resolveLocalFile(external);
-  final mimeType = attachment.type.trim().isEmpty ? 'video/*' : attachment.type.trim();
-  final title = attachment.filename.trim().isNotEmpty ? attachment.filename.trim() : attachment.uid;
+  final mimeType = attachment.type.trim().isEmpty
+      ? 'video/*'
+      : attachment.type.trim();
+  final title = attachment.filename.trim().isNotEmpty
+      ? attachment.filename.trim()
+      : attachment.uid;
 
   if (localFile != null) {
     return MemoVideoEntry(
@@ -76,13 +91,18 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
   }
 
   if (external.isNotEmpty) {
-    final isAbsolute = isAbsoluteUrl(external);
-    final resolved = resolveMaybeRelativeUrl(baseUrl, external);
+    var resolved = resolveMaybeRelativeUrl(baseUrl, external);
+    if (rebaseAbsoluteFileUrlForV024) {
+      final rebased = rebaseAbsoluteFileUrlToBase(baseUrl, resolved);
+      if (rebased != null && rebased.isNotEmpty) {
+        resolved = rebased;
+      }
+    }
     final headers = _authHeadersForUrl(
       resolved,
       baseUrl: baseUrl,
-      isAbsolute: isAbsolute,
       authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
     );
     return MemoVideoEntry(
       id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
@@ -102,8 +122,8 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
   final headers = _authHeadersForUrl(
     videoUrl,
     baseUrl: baseUrl,
-    isAbsolute: true,
     authHeader: authHeader,
+    rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
   );
   return MemoVideoEntry(
     id: name,
@@ -138,20 +158,29 @@ String _titleFromUrl(String url) {
 Map<String, String>? _authHeadersForUrl(
   String url, {
   required Uri? baseUrl,
-  required bool isAbsolute,
   required String? authHeader,
+  required bool rebaseAbsoluteFileUrlForV024,
 }) {
   final trimmed = authHeader?.trim() ?? '';
   if (trimmed.isEmpty) return null;
-  if (!isAbsolute) {
+  if (!isAbsoluteUrl(url)) {
     return {'Authorization': trimmed};
   }
   if (baseUrl == null) return null;
-  final uri = Uri.tryParse(url);
-  if (uri == null || !uri.hasScheme) return null;
-  final basePort = baseUrl.hasPort ? baseUrl.port : null;
-  final uriPort = uri.hasPort ? uri.port : null;
-  if (uri.scheme != baseUrl.scheme || uri.host != baseUrl.host || uriPort != basePort) {
+  bool sameOrigin;
+  if (rebaseAbsoluteFileUrlForV024) {
+    sameOrigin = isSameOriginWithBase(baseUrl, url);
+  } else {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) return null;
+    final basePort = baseUrl.hasPort ? baseUrl.port : null;
+    final uriPort = uri.hasPort ? uri.port : null;
+    sameOrigin =
+        uri.scheme == baseUrl.scheme &&
+        uri.host == baseUrl.host &&
+        uriPort == basePort;
+  }
+  if (!sameOrigin) {
     return null;
   }
   return {'Authorization': trimmed};
@@ -176,21 +205,14 @@ class AttachmentVideoThumbnail extends StatefulWidget {
   final bool showPlayIcon;
 
   @override
-  State<AttachmentVideoThumbnail> createState() => _AttachmentVideoThumbnailState();
-}
-
-class _VideoThumbPayload {
-  const _VideoThumbPayload({this.bytes, this.file});
-
-  final Uint8List? bytes;
-  final File? file;
+  State<AttachmentVideoThumbnail> createState() =>
+      _AttachmentVideoThumbnailState();
 }
 
 class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
   Uint8List? _bytes;
   File? _file;
   bool _loading = false;
-  bool _loggedBuild = false;
   String _entryKey = '';
   int _loadToken = 0;
   Timer? _retryTimer;
@@ -228,18 +250,46 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
 
   void _startLoad(MemoVideoEntry entry) {
     _entryKey = _buildEntryKey(entry);
-    _bytes = null;
-    _file = null;
-    _loading = true;
+    final isLegacyResourceEntry = entry.id.trim().startsWith('resources/');
+    final warmBytes = VideoThumbnailCache.peekThumbnailBytes(
+      id: entry.id,
+      size: entry.size,
+      localFile: entry.localFile,
+      videoUrl: entry.videoUrl,
+    );
+    final warmFile = VideoThumbnailCache.peekThumbnailFile(
+      id: entry.id,
+      size: entry.size,
+      localFile: entry.localFile,
+      videoUrl: entry.videoUrl,
+    );
+    _bytes = warmBytes;
+    _file = warmFile;
+    _loading =
+        (warmBytes == null || warmBytes.isEmpty) && !_hasUsableFile(warmFile);
     _retryCount = 0;
     _retryTimer?.cancel();
     final token = ++_loadToken;
+    if (_loading) {
+      _load(entry, token);
+      return;
+    }
+    // 0.22 legacy resources frequently rebuild their tiles; avoid redundant
+    // async thumbnail loading when warm cache already exists.
+    if (isLegacyResourceEntry) {
+      return;
+    }
     _load(entry, token);
   }
 
+  bool _hasUsableFile(File? file) {
+    if (file == null) return false;
+    if (!file.existsSync()) return false;
+    return file.lengthSync() > 0;
+  }
+
   String _buildEntryKey(MemoVideoEntry entry) {
-    final source = (entry.localFile?.path ?? entry.videoUrl ?? '').trim();
-    return '${entry.id}|${entry.size}|$source';
+    return memoVideoThumbnailWidgetKey(entry);
   }
 
   Future<void> _load(MemoVideoEntry entry, int token) async {
@@ -250,7 +300,7 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         localFile: entry.localFile,
         videoUrl: entry.videoUrl,
         headers: entry.headers,
-      ).timeout(const Duration(seconds: 12));
+      ).timeout(const Duration(seconds: 30));
       if (!mounted || token != _loadToken) return;
       setState(() {
         _file = file;
@@ -260,7 +310,8 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         _scheduleRetry(entry, token);
       }
       assert(() {
-        final hasFile = _file != null && _file!.existsSync() && _file!.lengthSync() > 0;
+        final hasFile =
+            _file != null && _file!.existsSync() && _file!.lengthSync() > 0;
         debugPrint(
           'Video thumbnail widget result | {entry: $_entryKey, hasBytes: false, bytes: 0, hasFile: $hasFile, fileBytes: ${hasFile ? _file?.lengthSync() ?? 0 : 0}}',
         );
@@ -272,14 +323,14 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         'Video thumbnail load failed',
         error: e,
         stackTrace: stackTrace,
-        context: {
-          'entry': _entryKey,
-        },
+        context: {'entry': _entryKey},
       );
       setState(() => _loading = false);
       _scheduleRetry(entry, token);
       assert(() {
-        debugPrint('Video thumbnail widget result | {entry: $_entryKey, error: $e}');
+        debugPrint(
+          'Video thumbnail widget result | {entry: $_entryKey, error: $e}',
+        );
         return true;
       }());
       return;
@@ -293,7 +344,7 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         localFile: entry.localFile,
         videoUrl: entry.videoUrl,
         headers: entry.headers,
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 15));
       if (!mounted || token != _loadToken) return;
       if (bytes != null && bytes.isNotEmpty) {
         setState(() => _bytes = bytes);
@@ -332,14 +383,6 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
     final borderRadius = widget.borderRadius;
     final fit = widget.fit;
     final showPlayIcon = widget.showPlayIcon;
-    if (!_loggedBuild) {
-      _loggedBuild = true;
-      assert(() {
-        debugPrint('Video thumbnail widget build | $_entryKey');
-        return true;
-      }());
-    }
-
     Widget placeholder({IconData icon = Icons.videocam_outlined}) {
       return Container(
         width: width,
@@ -357,7 +400,7 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
 
     Widget image;
     if (hasBytes) {
-      final imageKey = ValueKey('${_entryKey}|${bytes!.length}');
+      final imageKey = ValueKey('$_entryKey|${bytes.length}');
       image = Image.memory(
         bytes,
         key: imageKey,
@@ -370,16 +413,13 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
             'Video thumbnail decode failed',
             error: error,
             stackTrace: stackTrace,
-            context: {
-              'id': entry.id,
-              'bytes': bytes.length,
-            },
+            context: {'id': entry.id, 'bytes': bytes.length},
           );
           return placeholder(icon: Icons.broken_image_outlined);
         },
       );
     } else if (hasFile) {
-      final tag = '${file!.path}|${file.lengthSync()}';
+      final tag = '${file.path}|${file.lengthSync()}';
       image = Image.file(
         file,
         key: ValueKey(tag),
@@ -391,16 +431,15 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
             'Video thumbnail file decode failed',
             error: error,
             stackTrace: stackTrace,
-            context: {
-              'id': entry.id,
-              'path': file.path,
-            },
+            context: {'id': entry.id, 'path': file.path},
           );
           return placeholder(icon: Icons.broken_image_outlined);
         },
       );
     } else {
-      image = placeholder(icon: _loading ? Icons.hourglass_empty : Icons.videocam_outlined);
+      image = placeholder(
+        icon: _loading ? Icons.hourglass_empty : Icons.videocam_outlined,
+      );
     }
 
     if (!showPlayIcon) {
@@ -491,7 +530,11 @@ class MemoVideoGrid extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 '+$overflow',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             )
           : null;
@@ -503,7 +546,12 @@ class MemoVideoGrid extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              AttachmentVideoThumbnail(entry: entry, borderRadius: radius),
+              // Keep state stable across list/grid rebuilds.
+              AttachmentVideoThumbnail(
+                key: ValueKey<String>(memoVideoThumbnailWidgetKey(entry)),
+                entry: entry,
+                borderRadius: radius,
+              ),
               if (overlay != null) overlay,
             ],
           ),
@@ -514,7 +562,9 @@ class MemoVideoGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final rawWidth = constraints.maxWidth;
-        final maxWidth = rawWidth.isFinite && rawWidth > 0 ? rawWidth : MediaQuery.of(context).size.width;
+        final maxWidth = rawWidth.isFinite && rawWidth > 0
+            ? rawWidth
+            : MediaQuery.of(context).size.width;
         final totalSpacing = spacing * (columns - 1);
         final tileWidth = (maxWidth - totalSpacing) / columns;
         var tileHeight = tileWidth;
@@ -530,7 +580,9 @@ class MemoVideoGrid extends StatelessWidget {
           }
         }
 
-        final aspectRatio = tileWidth > 0 && tileHeight > 0 ? tileWidth / tileHeight : 1.0;
+        final aspectRatio = tileWidth > 0 && tileHeight > 0
+            ? tileWidth / tileHeight
+            : 1.0;
         return GridView.builder(
           shrinkWrap: true,
           primary: false,

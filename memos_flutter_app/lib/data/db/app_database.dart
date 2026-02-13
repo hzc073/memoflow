@@ -916,6 +916,15 @@ WHERE id = 1;
     _notifyChanged();
   }
 
+  Future<void> markOutboxRetryPending(int id, {required String error}) async {
+    final db = await this.db;
+    await db.rawUpdate(
+      'UPDATE outbox SET state = 0, attempts = attempts + 1, last_error = ? WHERE id = ?',
+      [error, id],
+    );
+    _notifyChanged();
+  }
+
   Future<void> deleteOutbox(int id) async {
     final db = await this.db;
     await db.delete('outbox', where: 'id = ?', whereArgs: [id]);
@@ -1264,7 +1273,7 @@ $sqlLimitClause;
     final normalizedState = (state ?? '').trim();
     return db.query(
       'memos',
-      columns: const ['uid', 'sync_state'],
+      columns: const ['uid', 'sync_state', 'visibility'],
       where: normalizedState.isEmpty ? null : 'state = ?',
       whereArgs: normalizedState.isEmpty ? null : [normalizedState],
     );

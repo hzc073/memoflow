@@ -49,7 +49,10 @@ class SyncQueueProgressTracker extends ChangeNotifier {
     required int totalBytes,
   }) {
     if (_snapshot.currentOutboxId != outboxId || totalBytes <= 0) return;
-    final progress = (sentBytes / totalBytes).clamp(0.0, 1.0).toDouble();
+    final rawProgress = sentBytes / totalBytes;
+    final progress = rawProgress >= 1.0
+        ? 0.99
+        : rawProgress.clamp(0.0, 0.99).toDouble();
     _setSnapshot(
       SyncQueueProgressSnapshot(
         syncing: true,
@@ -57,6 +60,23 @@ class SyncQueueProgressTracker extends ChangeNotifier {
         currentProgress: progress,
       ),
     );
+  }
+
+  Future<void> markTaskCompleted({
+    required int outboxId,
+    Duration hold = const Duration(milliseconds: 120),
+  }) async {
+    if (_snapshot.currentOutboxId != outboxId) return;
+    _setSnapshot(
+      SyncQueueProgressSnapshot(
+        syncing: true,
+        currentOutboxId: outboxId,
+        currentProgress: 1.0,
+      ),
+    );
+    if (hold > Duration.zero) {
+      await Future<void>.delayed(hold);
+    }
   }
 
   void clearCurrentTask({required int outboxId}) {

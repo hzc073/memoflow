@@ -144,7 +144,10 @@ String _truncatePreviewText(String text, int maxCompactRunes) {
   return text;
 }
 
-_PreviewResult _truncatePreview(String text, {required bool collapseLongContent}) {
+_PreviewResult _truncatePreview(
+  String text, {
+  required bool collapseLongContent,
+}) {
   if (!collapseLongContent) {
     return (text: text, truncated: false);
   }
@@ -171,7 +174,10 @@ _PreviewResult _truncatePreview(String text, {required bool collapseLongContent}
 }
 
 String _escapeFilterValue(String raw) {
-  return raw.replaceAll('\\', r'\\').replaceAll('"', r'\"').replaceAll('\n', ' ');
+  return raw
+      .replaceAll('\\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('\n', ' ');
 }
 
 class ExploreScreen extends ConsumerStatefulWidget {
@@ -222,12 +228,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void initState() {
     super.initState();
     _activeAccountKey = ref.read(appSessionProvider).valueOrNull?.currentKey;
-    _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(appSessionProvider, (prev, next) {
-      final prevKey = prev?.valueOrNull?.currentKey;
-      final nextKey = next.valueOrNull?.currentKey;
-      if (prevKey == nextKey) return;
-      _handleAccountChange(nextKey);
-    });
+    _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(
+      appSessionProvider,
+      (prev, next) {
+        final prevKey = prev?.valueOrNull?.currentKey;
+        final nextKey = next.valueOrNull?.currentKey;
+        if (prevKey == nextKey) return;
+        _handleAccountChange(nextKey);
+      },
+    );
     _scrollController.addListener(_handleScroll);
     _searchController.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
@@ -261,17 +270,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
     final route = switch (dest) {
-      AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.memos => const MemosListScreen(
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
       AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.t.strings.legacy.msg_archive,
-          state: 'ARCHIVED',
-          showDrawer: true,
-        ),
+        title: context.t.strings.legacy.msg_archive,
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -318,7 +331,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   void _handleScroll() {
     if (_loading || _nextPageToken.isEmpty) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - _scrollLoadThreshold) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - _scrollLoadThreshold) {
       _fetchPage();
     }
   }
@@ -388,27 +402,27 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final filter = _buildFilter(query, includeProtected: includeProtected);
 
     if (!mounted) return;
-      setState(() {
-        _loading = true;
-        if (reset) {
-          _error = null;
-          _legacySearchLimited = false;
-          _nextPageToken = '';
-          _memos = [];
-          _commentCache.clear();
-          _commentTotals.clear();
-          _commentErrors.clear();
-          _commentLoading.clear();
-          _reactionCache.clear();
-          _reactionTotals.clear();
-          _reactionErrors.clear();
-          _reactionLoading.clear();
-          _reactionUpdating.clear();
-          _commentedByMe.clear();
-          _reactionPreviewRequested.clear();
-          _commentPreviewRequested.clear();
-        }
-      });
+    setState(() {
+      _loading = true;
+      if (reset) {
+        _error = null;
+        _legacySearchLimited = false;
+        _nextPageToken = '';
+        _memos = [];
+        _commentCache.clear();
+        _commentTotals.clear();
+        _commentErrors.clear();
+        _commentLoading.clear();
+        _reactionCache.clear();
+        _reactionTotals.clear();
+        _reactionErrors.clear();
+        _reactionLoading.clear();
+        _reactionUpdating.clear();
+        _commentedByMe.clear();
+        _reactionPreviewRequested.clear();
+        _commentPreviewRequested.clear();
+      }
+    });
 
     try {
       final api = ref.read(memosApiProvider);
@@ -419,7 +433,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         filter: filter,
         orderBy: _orderBy,
       );
-      if (!mounted || requestId != _requestId || _activeAccountKey != accountKey) return;
+      if (!mounted ||
+          requestId != _requestId ||
+          _activeAccountKey != accountKey)
+        return;
       setState(() {
         if (reset) {
           _memos = result.memos;
@@ -433,7 +450,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _seedReactionCache(result.memos);
       unawaited(_prefetchCreators(result.memos));
     } catch (e) {
-      if (!mounted || requestId != _requestId || _activeAccountKey != accountKey) return;
+      if (!mounted ||
+          requestId != _requestId ||
+          _activeAccountKey != accountKey)
+        return;
       setState(() {
         if (reset) {
           _error = e.toString();
@@ -442,18 +462,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       });
       if (!reset) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+          ),
         );
       }
     } finally {
-      if (mounted && requestId == _requestId && _activeAccountKey == accountKey) {
+      if (mounted &&
+          requestId == _requestId &&
+          _activeAccountKey == accountKey) {
         setState(() => _loading = false);
       }
     }
   }
 
   String _buildFilter(String query, {required bool includeProtected}) {
-    final visibilities = includeProtected ? ['PUBLIC', 'PROTECTED'] : ['PUBLIC'];
+    final visibilities = includeProtected
+        ? ['PUBLIC', 'PROTECTED']
+        : ['PUBLIC'];
     final visibilityExpr = visibilities.map((v) => '"$v"').join(', ');
     final conditions = <String>['visibility in [$visibilityExpr]'];
     if (query.isNotEmpty) {
@@ -484,7 +510,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       try {
         final user = await api.getUser(name: creator);
         updates[creator] = user;
-      } catch (_) {} finally {
+      } catch (_) {
+      } finally {
         _creatorFetching.remove(creator);
       }
     }
@@ -525,7 +552,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('data:')) return trimmed;
     final lower = trimmed.toLowerCase();
-    if (lower.startsWith('http://') || lower.startsWith('https://')) return trimmed;
+    if (lower.startsWith('http://') || lower.startsWith('https://'))
+      return trimmed;
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);
   }
@@ -566,14 +594,22 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   String _currentUserName() {
-    return ref.read(appSessionProvider).valueOrNull?.currentAccount?.user.name.trim() ?? '';
+    return ref
+            .read(appSessionProvider)
+            .valueOrNull
+            ?.currentAccount
+            ?.user
+            .name
+            .trim() ??
+        '';
   }
 
   int _commentCountFor(Memo memo) {
     final memoName = memo.name.trim();
     var count = 0;
     for (final relation in memo.relations) {
-      if (relation.type.toUpperCase() == 'COMMENT' && relation.relatedMemo.name.trim() == memoName) {
+      if (relation.type.toUpperCase() == 'COMMENT' &&
+          relation.relatedMemo.name.trim() == memoName) {
         count++;
       }
     }
@@ -660,7 +696,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     });
     _commentController.clear();
     _commentFocusNode.requestFocus();
-    if (!_commentLoading.contains(memo.uid) && !_commentCache.containsKey(memo.uid)) {
+    if (!_commentLoading.contains(memo.uid) &&
+        !_commentCache.containsKey(memo.uid)) {
       unawaited(_loadComments(memo));
     }
   }
@@ -691,7 +728,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       );
       if (!mounted) return;
       final existing = _commentCache[uid] ?? const <Memo>[];
-      final optimistic = existing.where((m) => m.name.startsWith('local/')).toList(growable: false);
+      final optimistic = existing
+          .where((m) => m.name.startsWith('local/'))
+          .toList(growable: false);
       final resultNames = <String>{};
       for (final m in result.memos) {
         resultNames.add(m.name);
@@ -699,7 +738,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       final merged = <Memo>[
         ...optimistic,
         ...result.memos,
-        ...existing.where((m) => !m.name.startsWith('local/') && !resultNames.contains(m.name)),
+        ...existing.where(
+          (m) => !m.name.startsWith('local/') && !resultNames.contains(m.name),
+        ),
       ];
       _commentCache[uid] = merged;
       _commentTotals[uid] = result.totalSize;
@@ -766,7 +807,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _reactionCache[uid] = result.reactions;
       _reactionTotals[uid] = result.reactions.where(_isLikeReaction).length;
       if (result.reactions.isNotEmpty) {
-        unawaited(_prefetchCreatorsByName(result.reactions.map((r) => r.creator)));
+        unawaited(
+          _prefetchCreatorsByName(result.reactions.map((r) => r.creator)),
+        );
       }
       return result.reactions;
     } catch (e) {
@@ -796,7 +839,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     try {
       final api = ref.read(memosApiProvider);
       if (mine.isNotEmpty) {
-        final updated = reactions.where((r) => !mine.contains(r)).toList(growable: false);
+        final updated = reactions
+            .where((r) => !mine.contains(r))
+            .toList(growable: false);
         _updateMemoReactions(uid, updated);
         for (final reaction in mine) {
           await api.deleteMemoReaction(reaction: reaction);
@@ -810,7 +855,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         );
         final updated = [...reactions, optimistic];
         _updateMemoReactions(uid, updated);
-        final created = await api.upsertMemoReaction(memoUid: uid, reactionType: _likeReactionType);
+        final created = await api.upsertMemoReaction(
+          memoUid: uid,
+          reactionType: _likeReactionType,
+        );
         if (!mounted) return;
         final currentList = List<Reaction>.from(_reactionCache[uid] ?? updated);
         final idx = currentList.indexWhere(
@@ -830,7 +878,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       if (!mounted) return;
       _updateMemoReactions(uid, reactions);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_react(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_failed_react(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -845,9 +895,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _reactionCache[uid] = reactions;
       _reactionTotals[uid] = updatedTotal;
       _memos = _memos
-          .map(
-            (m) => m.uid == uid ? _copyMemoWithReactions(m, reactions) : m,
-          )
+          .map((m) => m.uid == uid ? _copyMemoWithReactions(m, reactions) : m)
           .toList(growable: false);
     });
   }
@@ -903,9 +951,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (uid == null || uid.trim().isEmpty) return;
     final content = _commentController.text.trim();
     if (content.isEmpty || _commentSending) return;
+    final api = ref.read(memosApiProvider);
 
     final memo = _findMemoByUid(uid);
-    final visibility = (memo?.visibility ?? '').trim().isNotEmpty ? memo!.visibility : 'PUBLIC';
+    final visibility = (memo?.visibility ?? '').trim().isNotEmpty
+        ? memo!.visibility
+        : 'PUBLIC';
     final creator = _currentUserName();
     final optimistic = _buildOptimisticComment(
       memoUid: uid,
@@ -930,9 +981,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       _replyingCommentCreator = null;
       _commentController.clear();
     });
+    _exitCommentEditing();
 
     try {
-      final api = ref.read(memosApiProvider);
       final created = await api.createMemoComment(
         memoUid: uid,
         content: content,
@@ -969,12 +1020,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       } else {
         _commentTotals[uid] = list.length;
       }
-      final hasMine = creator.isNotEmpty && list.any((m) => m.creator.trim() == creator);
+      final hasMine =
+          creator.isNotEmpty && list.any((m) => m.creator.trim() == creator);
       if (!hasMine) {
         _commentedByMe.remove(uid);
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_comment(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_failed_comment(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -990,12 +1044,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     required Color textMuted,
   }) {
     final surface = isDark ? MemoFlowPalette.cardDark : Colors.white;
-    final inputBg = isDark ? MemoFlowPalette.backgroundDark : const Color(0xFFF7F5F1);
+    final inputBg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : const Color(0xFFF7F5F1);
     return TapRegion(
       onTapOutside: (_) => _exitCommentEditing(),
       child: AnimatedPadding(
         duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Align(
           alignment: Alignment.bottomCenter,
           child: SafeArea(
@@ -1004,7 +1062,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               decoration: BoxDecoration(
                 color: surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
                 boxShadow: isDark
                     ? null
                     : [
@@ -1021,7 +1081,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   Row(
                     children: [
                       IconButton(
-                        icon: Icon(Icons.emoji_emotions_outlined, color: textMuted),
+                        icon: Icon(
+                          Icons.emoji_emotions_outlined,
+                          color: textMuted,
+                        ),
                         onPressed: () {},
                         splashRadius: 16,
                         visualDensity: VisualDensity.compact,
@@ -1049,21 +1112,34 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                           style: TextStyle(color: textMain),
                           decoration: InputDecoration(
                             hintText: hint,
-                            hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
+                            hintStyle: TextStyle(
+                              color: textMuted.withValues(alpha: 0.7),
+                            ),
                             filled: true,
                             fillColor: inputBg,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                              borderSide: BorderSide(
+                                color: textMuted.withValues(alpha: 0.2),
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(color: textMuted.withValues(alpha: 0.2)),
+                              borderSide: BorderSide(
+                                color: textMuted.withValues(alpha: 0.2),
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                              borderSide: BorderSide(
+                                color: MemoFlowPalette.primary.withValues(
+                                  alpha: 0.6,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -1073,7 +1149,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                         onPressed: _commentSending ? null : _submitComment,
                         style: TextButton.styleFrom(
                           foregroundColor: MemoFlowPalette.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                         ),
                         child: Text(
                           context.t.strings.legacy.msg_send,
@@ -1103,7 +1182,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       updateTime: memo.updateTime.toLocal(),
       tags: memo.tags,
       attachments: memo.attachments,
-      relationCount: countReferenceRelations(memoUid: memo.uid, relations: memo.relations),
+      relationCount: countReferenceRelations(
+        memoUid: memo.uid,
+        relations: memo.relations,
+      ),
       location: memo.location,
       syncState: SyncState.synced,
       lastError: null,
@@ -1114,22 +1196,42 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   Widget build(BuildContext context) {
     final prefs = ref.watch(appPreferencesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final cardMuted = isDark ? MemoFlowPalette.cardDark : const Color(0xFFE6E2DC);
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final cardMuted = isDark
+        ? MemoFlowPalette.cardDark
+        : const Color(0xFFE6E2DC);
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final border = isDark ? MemoFlowPalette.borderDark.withValues(alpha: 0.7) : MemoFlowPalette.borderLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark.withValues(alpha: 0.7)
+        : MemoFlowPalette.borderLight;
     final hapticsEnabled = prefs.hapticsEnabled;
     final collapseLongContent = prefs.collapseLongContent;
     final collapseReferences = prefs.collapseReferences;
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-    final commentMemo = _commentingMemoUid == null ? null : _findMemoByUid(_commentingMemoUid!);
-    final commentCreator = commentMemo == null ? null : _creatorCache[commentMemo.creator];
+    final commentMemo = _commentingMemoUid == null
+        ? null
+        : _findMemoByUid(_commentingMemoUid!);
+    final commentCreator = commentMemo == null
+        ? null
+        : _creatorCache[commentMemo.creator];
     final commentMode = commentMemo != null;
     final baseUrl = account?.baseUrl;
-    final authHeader =
-        (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final authHeader = (account?.personalAccessToken ?? '').isEmpty
+        ? null
+        : 'Bearer ${account!.personalAccessToken}';
 
     void maybeHaptic() {
       if (hapticsEnabled) {
@@ -1203,9 +1305,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               final displayTime = memo.displayTime ?? memo.updateTime;
               final dateText = _dateFmt.format(displayTime.toLocal());
               final displayName = _creatorDisplayName(creator, memo.creator);
-              final metaLine = _creatorMetaLine(creator, memo.creator, dateText);
+              final metaLine = _creatorMetaLine(
+                creator,
+                memo.creator,
+                dateText,
+              );
               final initial = _creatorInitial(creator, memo.creator);
-              final avatarUrl = _resolveAvatarUrl(creator?.avatarUrl ?? '', baseUrl);
+              final avatarUrl = _resolveAvatarUrl(
+                creator?.avatarUrl ?? '',
+                baseUrl,
+              );
               final comments = _commentCache[memo.uid] ?? const <Memo>[];
               final commentError = _commentErrors[memo.uid];
               final commentsLoading = _commentLoading.contains(memo.uid);
@@ -1216,10 +1325,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               final hasOwnComment = _hasMyComment(memo);
               final likeCreators = _likeCreatorNames(reactions);
 
-              if (commentCount > 0 && comments.isEmpty && !commentsLoading && commentError == null) {
+              if (commentCount > 0 &&
+                  comments.isEmpty &&
+                  !commentsLoading &&
+                  commentError == null) {
                 _requestCommentPreview(memo);
               }
-              if (reactionCount > 0 && reactions.isEmpty && !_reactionLoading.contains(memo.uid)) {
+              if (reactionCount > 0 &&
+                  reactions.isEmpty &&
+                  !_reactionLoading.contains(memo.uid)) {
                 _requestReactionPreview(memo);
               }
 
@@ -1230,6 +1344,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 avatarUrl: avatarUrl,
                 baseUrl: baseUrl,
                 authHeader: authHeader,
+                rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
                 initial: initial,
                 commentCount: commentCount,
                 likeCreators: likeCreators,
@@ -1302,7 +1417,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       );
     }
 
-    final showSearchBar = _searchExpanded || _searchController.text.trim().isNotEmpty;
+    final showSearchBar =
+        _searchExpanded || _searchController.text.trim().isNotEmpty;
     final searchBar = showSearchBar
         ? Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -1323,7 +1439,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       focusNode: _searchFocus,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: context.t.strings.legacy.msg_search_public_memos,
+                        hintText:
+                            context.t.strings.legacy.msg_search_public_memos,
                         border: InputBorder.none,
                         isDense: true,
                       ),
@@ -1345,14 +1462,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           )
         : const SizedBox.shrink();
 
-    final replyCreator = _replyingMemoUid == commentMemo?.uid ? _replyingCommentCreator : null;
+    final replyCreator = _replyingMemoUid == commentMemo?.uid
+        ? _replyingCommentCreator
+        : null;
     final replyUser = replyCreator == null ? null : _creatorCache[replyCreator];
-    final replyName = replyCreator == null ? '' : _creatorDisplayName(replyUser, replyCreator);
+    final replyName = replyCreator == null
+        ? ''
+        : _creatorDisplayName(replyUser, replyCreator);
     final commentHint = commentMemo == null
         ? context.t.strings.legacy.msg_write_comment
         : replyCreator != null && replyName.isNotEmpty
-            ? context.t.strings.legacy.msg_reply(replyName: replyName)
-            : context.t.strings.legacy.msg_reply_3(creatorDisplayName_commentCreator_commentMemo_creator: _creatorDisplayName(commentCreator, commentMemo.creator));
+        ? context.t.strings.legacy.msg_reply(replyName: replyName)
+        : context.t.strings.legacy.msg_reply_3(
+            creatorDisplayName_commentCreator_commentMemo_creator:
+                _creatorDisplayName(commentCreator, commentMemo.creator),
+          );
 
     return PopScope(
       canPop: false,
@@ -1380,8 +1504,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: showSearchBar ? context.t.strings.legacy.msg_close_search : context.t.strings.legacy.msg_search,
-              icon: Icon(showSearchBar ? Icons.close : Icons.search, color: textMain),
+              tooltip: showSearchBar
+                  ? context.t.strings.legacy.msg_close_search
+                  : context.t.strings.legacy.msg_search,
+              icon: Icon(
+                showSearchBar ? Icons.close : Icons.search,
+                color: textMain,
+              ),
               onPressed: _toggleSearch,
             ),
           ],
@@ -1395,7 +1524,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: Text(
-                      context.t.strings.legacy.msg_legacy_servers_not_support_search_filters,
+                      context
+                          .t
+                          .strings
+                          .legacy
+                          .msg_legacy_servers_not_support_search_filters,
                       style: TextStyle(fontSize: 11, color: textMuted),
                     ),
                   ),
@@ -1424,6 +1557,7 @@ class _ExploreMemoCard extends StatefulWidget {
     required this.avatarUrl,
     required this.baseUrl,
     required this.authHeader,
+    required this.rebaseAbsoluteFileUrlForV024,
     required this.initial,
     required this.commentCount,
     required this.likeCreators,
@@ -1453,6 +1587,7 @@ class _ExploreMemoCard extends StatefulWidget {
   final String avatarUrl;
   final Uri? baseUrl;
   final String? authHeader;
+  final bool rebaseAbsoluteFileUrlForV024;
   final String initial;
   final int commentCount;
   final List<String> likeCreators;
@@ -1505,7 +1640,10 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final main = keep.join('\n').trim();
     if (quoteLines == 0) return main;
     if (main.isEmpty) {
-      final cleaned = lines.map((l) => l.replaceFirst(RegExp(r'^\s*>\s?'), '')).join('\n').trim();
+      final cleaned = lines
+          .map((l) => l.replaceFirst(RegExp(r'^\s*>\s?'), ''))
+          .join('\n')
+          .trim();
       return cleaned.isEmpty ? trimmed : cleaned;
     }
     return '$main\n\n${trByLanguageKey(language: language, key: 'legacy.msg_quoted_lines', params: {'quoteLines': quoteLines})}';
@@ -1519,7 +1657,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       if (i == tagBounds.first || i == tagBounds.last) continue;
       lines.add(rawLines[i]);
     }
-    final nonEmpty = lines.where((l) => l.trim().isNotEmpty).toList(growable: false);
+    final nonEmpty = lines
+        .where((l) => l.trim().isNotEmpty)
+        .toList(growable: false);
     if (nonEmpty.length < 2) {
       return (title: '', body: lines.join('\n').trim());
     }
@@ -1544,8 +1684,14 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       firstNonEmpty ??= i;
       lastNonEmpty = i;
     }
-    final firstTag = (firstNonEmpty != null && _isTagOnlyLine(lines[firstNonEmpty])) ? firstNonEmpty : null;
-    final lastTag = (lastNonEmpty != null && _isTagOnlyLine(lines[lastNonEmpty])) ? lastNonEmpty : null;
+    final firstTag =
+        (firstNonEmpty != null && _isTagOnlyLine(lines[firstNonEmpty]))
+        ? firstNonEmpty
+        : null;
+    final lastTag =
+        (lastNonEmpty != null && _isTagOnlyLine(lines[lastNonEmpty]))
+        ? lastNonEmpty
+        : null;
     return (first: firstTag, last: lastTag);
   }
 
@@ -1570,7 +1716,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     return trimmed.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  static String _commentAuthor(BuildContext context, User? creator, String fallback) {
+  static String _commentAuthor(
+    BuildContext context,
+    User? creator,
+    String fallback,
+  ) {
     final display = creator?.displayName.trim() ?? '';
     if (display.isNotEmpty) return display;
     final username = creator?.username.trim() ?? '';
@@ -1602,14 +1752,19 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       textPainter.text = TextSpan(text: labels[i], style: textStyle);
       textPainter.layout();
       maxTextHeight = math.max(maxTextHeight, textPainter.height);
-      final itemWidth = _quickMenuItemHPadding * 2 + _quickMenuIconSize + _quickMenuIconGap + textPainter.width;
+      final itemWidth =
+          _quickMenuItemHPadding * 2 +
+          _quickMenuIconSize +
+          _quickMenuIconGap +
+          textPainter.width;
       width += itemWidth;
       if (i != labels.length - 1) {
         width += _quickMenuDividerWidth;
       }
     }
     final contentHeight = math.max(_quickMenuIconSize, maxTextHeight);
-    final height = _quickMenuPaddingV * 2 + _quickMenuItemVPadding * 2 + contentHeight;
+    final height =
+        _quickMenuPaddingV * 2 + _quickMenuItemVPadding * 2 + contentHeight;
     return (width: width, height: height);
   }
 
@@ -1627,8 +1782,15 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final likeLabel = context.t.strings.legacy.msg_like;
     final commentLabel = context.t.strings.legacy.msg_comment;
     final textColor = Colors.white.withValues(alpha: 0.9);
-    final textStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor);
-    final menuSize = _measureQuickMenu(context, [likeLabel, commentLabel], textStyle);
+    final textStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: textColor,
+    );
+    final menuSize = _measureQuickMenu(context, [
+      likeLabel,
+      commentLabel,
+    ], textStyle);
     final menuWidth = menuSize.width;
     final menuHeight = menuSize.height;
 
@@ -1713,7 +1875,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       BoxShadow(
                         blurRadius: 12,
                         offset: const Offset(0, 4),
-                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.25),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.4 : 0.25,
+                        ),
                       ),
                     ],
                   ),
@@ -1721,7 +1885,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       buildItem(
-                        icon: widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                        icon: widget.isLiked
+                            ? Icons.favorite
+                            : Icons.favorite_border,
                         label: likeLabel,
                         active: widget.isLiked,
                         onTap: widget.onToggleLike,
@@ -1732,7 +1898,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                         color: dividerColor,
                       ),
                       buildItem(
-                        icon: widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                        icon: widget.hasOwnComment
+                            ? Icons.chat_bubble
+                            : Icons.chat_bubble_outline,
                         label: commentLabel,
                         active: widget.hasOwnComment,
                         onTap: widget.onToggleComment,
@@ -1767,16 +1935,24 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     return type.startsWith('image');
   }
 
-  String _resolveAttachmentUrl(Attachment attachment, {required bool thumbnail}) {
+  String _resolveAttachmentUrl(
+    Attachment attachment, {
+    required bool thumbnail,
+  }) {
     final external = attachment.externalLink.trim();
     if (external.isNotEmpty) {
       final isRelative = !isAbsoluteUrl(external);
       final resolved = resolveMaybeRelativeUrl(widget.baseUrl, external);
-      return (thumbnail && isRelative) ? appendThumbnailParam(resolved) : resolved;
+      return (thumbnail && isRelative)
+          ? appendThumbnailParam(resolved)
+          : resolved;
     }
     final baseUrl = widget.baseUrl;
     if (baseUrl == null) return '';
-    final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
+    final url = joinBaseUrl(
+      baseUrl,
+      'file/${attachment.name}/${attachment.filename}',
+    );
     return thumbnail ? appendThumbnailParam(url) : url;
   }
 
@@ -1787,20 +1963,23 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
         child: InteractiveViewer(
           child: CachedNetworkImage(
             imageUrl: url,
-            httpHeaders: widget.authHeader == null ? null : {'Authorization': widget.authHeader!},
-            placeholder: (context, _) => const Center(child: CircularProgressIndicator()),
-            errorWidget: (context, url, error) => const Icon(Icons.broken_image),
+            httpHeaders: widget.authHeader == null
+                ? null
+                : {'Authorization': widget.authHeader!},
+            placeholder: (context, _) =>
+                const Center(child: CircularProgressIndicator()),
+            errorWidget: (context, url, error) =>
+                const Icon(Icons.broken_image),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildCommentItem({
-    required Memo comment,
-    required Color textMain,
-  }) {
-    final images = comment.attachments.where(_isImageAttachment).toList(growable: false);
+  Widget _buildCommentItem({required Memo comment, required Color textMain}) {
+    final images = comment.attachments
+        .where(_isImageAttachment)
+        .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1809,7 +1988,8 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
             style: TextStyle(fontSize: 12, color: textMain),
             children: [
               TextSpan(
-                text: '${_commentAuthor(context, widget.resolveCreator(comment.creator), comment.creator)}: ',
+                text:
+                    '${_commentAuthor(context, widget.resolveCreator(comment.creator), comment.creator)}: ',
                 style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
               ),
               TextSpan(
@@ -1848,7 +2028,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
         borderRadius: BorderRadius.circular(8),
         child: CachedNetworkImage(
           imageUrl: displayUrl,
-          httpHeaders: widget.authHeader == null ? null : {'Authorization': widget.authHeader!},
+          httpHeaders: widget.authHeader == null
+              ? null
+              : {'Authorization': widget.authHeader!},
           width: 100,
           height: 72,
           fit: BoxFit.cover,
@@ -1875,7 +2057,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       height: avatarSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.06),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -1932,7 +2116,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               const SizedBox(width: 6),
               Text(
                 count.toString(),
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
             ],
           ),
@@ -1961,8 +2149,12 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
 
   Widget _buildTinyAvatar(User? user, String fallback, {double size = 20}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
-    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final bg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final border = widget.cardColor;
     final url = _resolveUserAvatarUrl(user);
     final fallbackWidget = Container(
@@ -1976,7 +2168,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       alignment: Alignment.center,
       child: Text(
         _initialForUser(user, fallback),
-        style: TextStyle(fontSize: size * 0.45, fontWeight: FontWeight.w700, color: textColor),
+        style: TextStyle(
+          fontSize: size * 0.45,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
       ),
     );
 
@@ -2016,8 +2212,14 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     );
   }
 
-  Widget _buildAvatarStack(List<String> creators, {double size = 20, int maxCount = 5}) {
-    final names = creators.where((c) => c.trim().isNotEmpty).toList(growable: false);
+  Widget _buildAvatarStack(
+    List<String> creators, {
+    double size = 20,
+    int maxCount = 5,
+  }) {
+    final names = creators
+        .where((c) => c.trim().isNotEmpty)
+        .toList(growable: false);
     if (names.isEmpty) return const SizedBox.shrink();
     final display = names.take(maxCount).toList(growable: false);
     final extra = names.length - display.length;
@@ -2068,10 +2270,17 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
   }
 
   Widget _buildLikeSummary({required Color textMuted}) {
-    final hasLikes = widget.reactionCount > 0 || widget.isLiked || widget.likeCreators.isNotEmpty;
+    final hasLikes =
+        widget.reactionCount > 0 ||
+        widget.isLiked ||
+        widget.likeCreators.isNotEmpty;
     if (!hasLikes) return const SizedBox.shrink();
     final iconColor = widget.isLiked ? MemoFlowPalette.primary : textMuted;
-    final avatars = _buildAvatarStack(widget.likeCreators, size: 20, maxCount: 5);
+    final avatars = _buildAvatarStack(
+      widget.likeCreators,
+      size: 20,
+      maxCount: 5,
+    );
     final remaining = widget.reactionCount - widget.likeCreators.length;
 
     return Material(
@@ -2083,19 +2292,31 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
-              Icon(widget.isLiked ? Icons.favorite : Icons.favorite_border, size: 16, color: iconColor),
+              Icon(
+                widget.isLiked ? Icons.favorite : Icons.favorite_border,
+                size: 16,
+                color: iconColor,
+              ),
               const SizedBox(width: 8),
               if (widget.likeCreators.isNotEmpty) avatars,
               if (widget.likeCreators.isEmpty)
                 Text(
                   widget.reactionCount.toString(),
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
                 ),
               if (remaining > 0 && widget.likeCreators.isNotEmpty) ...[
                 const SizedBox(width: 6),
                 Text(
                   '+$remaining',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
                 ),
               ],
             ],
@@ -2109,18 +2330,29 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     required Color textMain,
     required Color textMuted,
   }) {
-    final hasComments = widget.commentCount > 0 || widget.hasOwnComment || widget.comments.isNotEmpty;
+    final hasComments =
+        widget.commentCount > 0 ||
+        widget.hasOwnComment ||
+        widget.comments.isNotEmpty;
     if (!hasComments) return const SizedBox.shrink();
 
-    final iconColor = widget.hasOwnComment ? MemoFlowPalette.primary : textMuted;
+    final iconColor = widget.hasOwnComment
+        ? MemoFlowPalette.primary
+        : textMuted;
     final preview = widget.comments.isNotEmpty ? widget.comments.first : null;
     final previewText = preview == null ? '' : _commentSnippet(preview.content);
-    final previewCreator = preview == null ? null : widget.resolveCreator(preview.creator);
-    final previewName = preview == null ? '' : _commentAuthor(context, previewCreator, preview.creator);
+    final previewCreator = preview == null
+        ? null
+        : widget.resolveCreator(preview.creator);
+    final previewName = preview == null
+        ? ''
+        : _commentAuthor(context, previewCreator, preview.creator);
 
     final label = widget.commentCount <= 0
         ? context.t.strings.legacy.msg_no_comments_yet
-        : context.t.strings.legacy.msg_comments(widget_commentCount: widget.commentCount);
+        : context.t.strings.legacy.msg_comments(
+            widget_commentCount: widget.commentCount,
+          );
 
     return Material(
       color: Colors.transparent,
@@ -2132,7 +2364,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
           child: Row(
             children: [
               Icon(
-                widget.hasOwnComment ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                widget.hasOwnComment
+                    ? Icons.chat_bubble
+                    : Icons.chat_bubble_outline,
                 size: 16,
                 color: iconColor,
               ),
@@ -2146,7 +2380,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       children: [
                         TextSpan(
                           text: '$previewName ',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMain),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: textMain,
+                          ),
                         ),
                         TextSpan(
                           text: previewText,
@@ -2162,7 +2400,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                 Expanded(
                   child: Text(
                     label,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: textMuted,
+                    ),
                   ),
                 ),
             ],
@@ -2177,7 +2419,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     required Color textMain,
   }) {
     final previewCreator = widget.resolveCreator(comment.creator);
-    final previewName = _commentAuthor(context, previewCreator, comment.creator);
+    final previewName = _commentAuthor(
+      context,
+      previewCreator,
+      comment.creator,
+    );
     final previewText = _commentSnippet(comment.content);
 
     return Row(
@@ -2191,7 +2437,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               children: [
                 TextSpan(
                   text: '$previewName ',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMain),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
                 ),
                 TextSpan(
                   text: previewText,
@@ -2213,7 +2463,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = widget.cardColor;
     final borderColor = widget.borderColor;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final language = context.appLanguage;
 
@@ -2227,26 +2479,39 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       collapseReferences: widget.collapseReferences,
       language: language,
     );
-    final preview = _truncatePreview(previewText, collapseLongContent: widget.collapseLongContent);
+    final preview = _truncatePreview(
+      previewText,
+      collapseLongContent: widget.collapseLongContent,
+    );
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
     final displayText = showCollapsed ? preview.text : previewText;
     final hasBody = displayText.trim().isNotEmpty;
-    final showLike = widget.reactionCount > 0 || widget.isLiked || widget.likeCreators.isNotEmpty;
-    final showComment = widget.commentCount > 0 || widget.hasOwnComment || widget.comments.isNotEmpty;
+    final showLike =
+        widget.reactionCount > 0 ||
+        widget.isLiked ||
+        widget.likeCreators.isNotEmpty;
+    final showComment =
+        widget.commentCount > 0 ||
+        widget.hasOwnComment ||
+        widget.comments.isNotEmpty;
     final previewCount = math.min(widget.comments.length, _commentPreviewCount);
-    final totalCommentCount = widget.commentCount > 0 ? widget.commentCount : widget.comments.length;
+    final totalCommentCount = widget.commentCount > 0
+        ? widget.commentCount
+        : widget.comments.length;
     final remainingComments = math.max(0, totalCommentCount - previewCount);
     final imageEntries = collectMemoImageEntries(
       content: memo.content,
       attachments: memo.attachments,
       baseUrl: widget.baseUrl,
       authHeader: widget.authHeader,
+      rebaseAbsoluteFileUrlForV024: widget.rebaseAbsoluteFileUrlForV024,
     );
     final videoEntries = collectMemoVideoEntries(
       attachments: memo.attachments,
       baseUrl: widget.baseUrl,
       authHeader: widget.authHeader,
+      rebaseAbsoluteFileUrlForV024: widget.rebaseAbsoluteFileUrlForV024,
     );
     final mediaEntries = buildMemoMediaEntries(
       images: imageEntries,
@@ -2295,7 +2560,10 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                           widget.displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: textMain,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -2313,14 +2581,21 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               if (tag.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: MemoFlowPalette.primary,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     '#$tag',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
@@ -2330,14 +2605,21 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textMain),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
                 ),
               ],
               if (hasBody) ...[
                 const SizedBox(height: 6),
                 MemoMarkdown(
                   data: displayText,
-                  textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textMain, height: 1.5),
+                  textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: textMain,
+                    height: 1.5,
+                  ),
                   blockSpacing: 4,
                   normalizeHeadings: true,
                   renderImages: false,
@@ -2361,8 +2643,14 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
-                      _expanded ? context.t.strings.legacy.msg_collapse : context.t.strings.legacy.msg_expand,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoFlowPalette.primary),
+                      _expanded
+                          ? context.t.strings.legacy.msg_collapse
+                          : context.t.strings.legacy.msg_expand,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: MemoFlowPalette.primary,
+                      ),
                     ),
                   ),
                 ),
@@ -2438,14 +2726,16 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   Row(
                     children: [
                       if (showLike)
-                        Expanded(
-                          child: _buildLikeSummary(textMuted: textMuted),
-                        )
+                        Expanded(child: _buildLikeSummary(textMuted: textMuted))
                       else
                         const Spacer(),
                       Builder(
                         builder: (buttonContext) => IconButton(
-                          icon: Icon(Icons.more_horiz, size: 18, color: textMuted),
+                          icon: Icon(
+                            Icons.more_horiz,
+                            size: 18,
+                            color: textMuted,
+                          ),
                           onPressed: () => _toggleQuickMenu(buttonContext),
                           tooltip: context.t.strings.legacy.msg_more,
                         ),
@@ -2454,13 +2744,19 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                   ),
                   if (showComment) ...[
                     const SizedBox(height: 6),
-                    _buildCommentSummary(textMain: textMain, textMuted: textMuted),
+                    _buildCommentSummary(
+                      textMain: textMain,
+                      textMuted: textMuted,
+                    ),
                     if (!widget.isCommenting && previewCount > 1) ...[
                       const SizedBox(height: 6),
                       for (var i = 1; i < previewCount; i++) ...[
                         Padding(
                           padding: const EdgeInsets.only(left: 28),
-                          child: _buildCommentPreviewLine(comment: widget.comments[i], textMain: textMain),
+                          child: _buildCommentPreviewLine(
+                            comment: widget.comments[i],
+                            textMain: textMain,
+                          ),
                         ),
                         if (i != previewCount - 1) const SizedBox(height: 6),
                       ],
@@ -2473,11 +2769,19 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                           onPressed: widget.onToggleComment,
                           style: TextButton.styleFrom(
                             foregroundColor: textMuted,
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
                           ),
                           child: Text(
-                            context.t.strings.legacy.msg_more_comments(remainingComments: remainingComments),
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            context.t.strings.legacy.msg_more_comments(
+                              remainingComments: remainingComments,
+                            ),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
@@ -2490,7 +2794,9 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                 if (widget.commentsLoading)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
                 else if (widget.commentError != null)
                   Padding(
@@ -2514,10 +2820,17 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                     children: [
                       for (var i = 0; i < widget.comments.length; i++) ...[
                         GestureDetector(
-                          onTap: () => widget.onReplyComment(widget.memo, widget.comments[i]),
-                          child: _buildCommentPreviewLine(comment: widget.comments[i], textMain: textMain),
+                          onTap: () => widget.onReplyComment(
+                            widget.memo,
+                            widget.comments[i],
+                          ),
+                          child: _buildCommentPreviewLine(
+                            comment: widget.comments[i],
+                            textMain: textMain,
+                          ),
                         ),
-                        if (i != widget.comments.length - 1) const SizedBox(height: 6),
+                        if (i != widget.comments.length - 1)
+                          const SizedBox(height: 6),
                       ],
                     ],
                   ),
@@ -2532,7 +2845,8 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     if (heroTag.isEmpty) return card;
     return Hero(
       tag: heroTag,
-      createRectTween: (begin, end) => MaterialRectArcTween(begin: begin, end: end),
+      createRectTween: (begin, end) =>
+          MaterialRectArcTween(begin: begin, end: end),
       child: card,
     );
   }
@@ -2558,13 +2872,23 @@ class _VisibilityChip extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  static (String label, IconData icon, Color color) _resolveStyle(BuildContext context, String raw) {
+  static (String label, IconData icon, Color color) _resolveStyle(
+    BuildContext context,
+    String raw,
+  ) {
     switch (raw.trim().toUpperCase()) {
       case 'PUBLIC':
         return (

@@ -44,10 +44,7 @@ class MemoEditorScreen extends ConsumerStatefulWidget {
   ConsumerState<MemoEditorScreen> createState() => _MemoEditorScreenState();
 }
 
-enum _TodoShortcutAction {
-  checkbox,
-  codeBlock,
-}
+enum _TodoShortcutAction { checkbox, codeBlock }
 
 class _PendingAttachment {
   const _PendingAttachment({
@@ -203,7 +200,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         final relatedName = relation.relatedMemo.name.trim();
         if (relatedName.isEmpty || relatedName == memoName) continue;
         if (!seen.add(relatedName)) continue;
-        final label = _linkedMemoLabelFromRelation(relatedName, relation.relatedMemo.snippet);
+        final label = _linkedMemoLabelFromRelation(
+          relatedName,
+          relation.relatedMemo.snippet,
+        );
         linked.add(_LinkedMemo(name: relatedName, label: label));
       }
 
@@ -229,7 +229,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   void _trackHistory() {
     if (_isApplyingHistory) return;
     final value = _contentController.value;
-    if (value.text == _lastValue.text && value.selection == _lastValue.selection) {
+    if (value.text == _lastValue.text &&
+        value.selection == _lastValue.selection) {
       return;
     }
     _undoStack.add(_lastValue);
@@ -269,16 +270,21 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final location = _location;
     final locationChanged = !_sameLocation(_initialLocation, location);
     final existingAttachments = List<Attachment>.from(_existingAttachments);
-    final pendingAttachments = List<_PendingAttachment>.from(_pendingAttachments);
+    final pendingAttachments = List<_PendingAttachment>.from(
+      _pendingAttachments,
+    );
     final hasPendingAttachments = pendingAttachments.isNotEmpty;
     final shouldSyncAttachments = _shouldSyncAttachments(
       existingAttachments: existingAttachments,
       hasPendingAttachments: hasPendingAttachments,
     );
-    final hasAttachments = existingAttachments.isNotEmpty || pendingAttachments.isNotEmpty;
+    final hasAttachments =
+        existingAttachments.isNotEmpty || pendingAttachments.isNotEmpty;
     if (content.trim().isEmpty && !hasAttachments) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_content_cannot_empty)),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_content_cannot_empty),
+        ),
       );
       return;
     }
@@ -289,8 +295,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       final uid = existing?.uid ?? generateUid();
       final createTime = existing?.createTime ?? now;
       final state = existing?.state ?? 'NORMAL';
-      final relations = _linkedMemos.map((m) => m.toRelationJson()).toList(growable: false);
-      final includeRelations = _relationsDirty && (existing != null || relations.isNotEmpty);
+      final relations = _linkedMemos
+          .map((m) => m.toRelationJson())
+          .toList(growable: false);
+      final includeRelations =
+          _relationsDirty && (existing != null || relations.isNotEmpty);
       final attachments = [
         ...existingAttachments.map((a) => a.toJson()),
         ...pendingAttachments.map((p) {
@@ -298,8 +307,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           final externalLink = rawPath.isEmpty
               ? ''
               : rawPath.startsWith('content://')
-                  ? rawPath
-                  : Uri.file(rawPath).toString();
+              ? rawPath
+              : Uri.file(rawPath).toString();
           return Attachment(
             name: 'attachments/${p.uid}',
             filename: p.filename,
@@ -329,44 +338,55 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
 
       if (existing == null) {
-        await db.enqueueOutbox(type: 'create_memo', payload: {
-          'uid': uid,
-          'content': content,
-          'visibility': _visibility,
-          'pinned': _pinned,
-          'has_attachments': attachments.isNotEmpty,
-          if (location != null) 'location': location.toJson(),
-          if (includeRelations) 'relations': relations,
-        });
+        await db.enqueueOutbox(
+          type: 'create_memo',
+          payload: {
+            'uid': uid,
+            'content': content,
+            'visibility': _visibility,
+            'pinned': _pinned,
+            'has_attachments': attachments.isNotEmpty,
+            if (location != null) 'location': location.toJson(),
+            if (includeRelations) 'relations': relations,
+          },
+        );
       } else {
-        await db.enqueueOutbox(type: 'update_memo', payload: {
-          'uid': uid,
-          'content': content,
-          'visibility': _visibility,
-          'pinned': _pinned,
-          if (locationChanged) 'location': location?.toJson(),
-          if (includeRelations) 'relations': relations,
-          if (shouldSyncAttachments) 'sync_attachments': true,
-          if (hasPendingAttachments) 'has_pending_attachments': true,
-        });
+        await db.enqueueOutbox(
+          type: 'update_memo',
+          payload: {
+            'uid': uid,
+            'content': content,
+            'visibility': _visibility,
+            'pinned': _pinned,
+            if (locationChanged) 'location': location?.toJson(),
+            if (includeRelations) 'relations': relations,
+            if (shouldSyncAttachments) 'sync_attachments': true,
+            if (hasPendingAttachments) 'has_pending_attachments': true,
+          },
+        );
       }
 
       for (final attachment in pendingAttachments) {
-        await db.enqueueOutbox(type: 'upload_attachment', payload: {
-          'uid': attachment.uid,
-          'memo_uid': uid,
-          'file_path': attachment.filePath,
-          'filename': attachment.filename,
-          'mime_type': attachment.mimeType,
-        });
+        await db.enqueueOutbox(
+          type: 'upload_attachment',
+          payload: {
+            'uid': attachment.uid,
+            'memo_uid': uid,
+            'file_path': attachment.filePath,
+            'filename': attachment.filename,
+            'mime_type': attachment.mimeType,
+          },
+        );
       }
       for (final attachment in _attachmentsToDelete) {
-        final name = attachment.name.isNotEmpty ? attachment.name : attachment.uid;
+        final name = attachment.name.isNotEmpty
+            ? attachment.name
+            : attachment.uid;
         if (name.isEmpty) continue;
-        await db.enqueueOutbox(type: 'delete_attachment', payload: {
-          'attachment_name': name,
-          'memo_uid': uid,
-        });
+        await db.enqueueOutbox(
+          type: 'delete_attachment',
+          payload: {'attachment_name': name, 'memo_uid': uid},
+        );
       }
 
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
@@ -381,7 +401,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -415,7 +437,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final wrapped = '**$selected**';
     _contentController.value = value.copyWith(
       text: value.text.replaceRange(sel.start, sel.end, wrapped),
-      selection: TextSelection(baseOffset: sel.start, extentOffset: sel.start + wrapped.length),
+      selection: TextSelection(
+        baseOffset: sel.start,
+        extentOffset: sel.start + wrapped.length,
+      ),
       composing: TextRange.empty,
     );
   }
@@ -433,7 +458,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final wrapped = '$prefix$selected$suffix';
     _contentController.value = value.copyWith(
       text: value.text.replaceRange(sel.start, sel.end, wrapped),
-      selection: TextSelection(baseOffset: sel.start, extentOffset: sel.start + wrapped.length),
+      selection: TextSelection(
+        baseOffset: sel.start,
+        extentOffset: sel.start + wrapped.length,
+      ),
       composing: TextRange.empty,
     );
   }
@@ -450,7 +478,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       box.localToGlobal(Offset.zero, ancestor: overlay),
       box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
     );
-    await _openTagMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size), tags);
+    await _openTagMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      tags,
+    );
   }
 
   Future<void> _openTagMenu(RelativeRect position, List<TagStat> tags) async {
@@ -463,13 +494,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             ),
           ]
         : tags
-            .map(
-              (stat) => PopupMenuItem<String>(
-                value: stat.tag,
-                child: Text('#${stat.tag}'),
-              ),
-            )
-            .toList(growable: false);
+              .map(
+                (stat) => PopupMenuItem<String>(
+                  value: stat.tag,
+                  child: Text('#${stat.tag}'),
+                ),
+              )
+              .toList(growable: false);
 
     final selection = await showMenu<String>(
       context: context,
@@ -477,7 +508,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       items: items,
     );
     if (!mounted || selection == null) return;
-    final normalized = selection.startsWith('#') ? selection.substring(1) : selection;
+    final normalized = selection.startsWith('#')
+        ? selection.substring(1)
+        : selection;
     if (normalized.isEmpty) return;
     _insertText('$normalized ');
   }
@@ -494,7 +527,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       box.localToGlobal(Offset.zero, ancestor: overlay),
       box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
     );
-    await _openTodoShortcutMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size));
+    await _openTodoShortcutMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    );
   }
 
   Future<void> _openTodoShortcutMenu(RelativeRect position) async {
@@ -561,7 +596,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (current.enabled) return current;
     final stored = await ref.read(locationSettingsRepositoryProvider).read();
     if (!mounted) return stored;
-    await ref.read(locationSettingsProvider.notifier).setAll(stored, triggerSync: false);
+    await ref
+        .read(locationSettingsProvider.notifier)
+        .setAll(stored, triggerSync: false);
     return stored;
   }
 
@@ -573,7 +610,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.t.strings.legacy.msg_location_disabled_enable_settings_first,
+            context
+                .t
+                .strings
+                .legacy
+                .msg_location_disabled_enable_settings_first,
           ),
           action: SnackBarAction(
             label: context.t.strings.legacy.msg_settings,
@@ -594,7 +635,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           logBuffer: ref.read(networkLogBufferProvider),
           logManager: ref.read(logManagerProvider),
         );
-        placeholder = await geocoder.reverseGeocode(
+        placeholder =
+            await geocoder.reverseGeocode(
               latitude: position.latitude,
               longitude: position.longitude,
               apiKey: settings.amapWebKey,
@@ -612,14 +654,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       setState(() => _location = next);
       showTopToast(
         context,
-        context.t.strings.legacy.msg_location_updated(next_displayText_fractionDigits_6: next.displayText(fractionDigits: 6)),
+        context.t.strings.legacy.msg_location_updated(
+          next_displayText_fractionDigits_6: next.displayText(
+            fractionDigits: 6,
+          ),
+        ),
         duration: const Duration(seconds: 2),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_locationErrorText(e))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_locationErrorText(e))));
     } finally {
       if (mounted) {
         setState(() => _locating = false);
@@ -630,9 +676,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   String _locationErrorText(Object error) {
     if (error is LocationException) {
       return switch (error.code) {
-        'service_disabled' => context.t.strings.legacy.msg_location_services_disabled,
-        'permission_denied' => context.t.strings.legacy.msg_location_permission_denied,
-        'permission_denied_forever' => context.t.strings.legacy.msg_location_permission_denied_permanently,
+        'service_disabled' =>
+          context.t.strings.legacy.msg_location_services_disabled,
+        'permission_denied' =>
+          context.t.strings.legacy.msg_location_permission_denied,
+        'permission_denied_forever' =>
+          context.t.strings.legacy.msg_location_permission_denied_permanently,
         'timeout' => context.t.strings.legacy.msg_location_timed_try,
         _ => context.t.strings.legacy.msg_failed_get_location,
       };
@@ -675,13 +724,19 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
               }
             : null,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: iconButtonSize, height: iconButtonSize),
+        constraints: const BoxConstraints.tightFor(
+          width: iconButtonSize,
+          height: iconButtonSize,
+        ),
         splashRadius: 18,
       );
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+      padding: const EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: verticalPadding,
+      ),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF2B2B2B) : Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -749,10 +804,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Future<void> _openLinkMemoSheet() async {
     if (_saving) return;
     if (_relationsLoading) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_loading_references,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_loading_references);
       return;
     }
     if (widget.existing != null && !_relationsLoaded) {
@@ -760,7 +812,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       if (!_relationsLoaded) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_failed_load_references)),
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_failed_load_references),
+          ),
         );
         return;
       }
@@ -836,8 +890,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             continue;
           }
           tempDir ??= await getTemporaryDirectory();
-          final name = file.name.trim().isNotEmpty ? file.name.trim() : 'attachment_${generateUid()}';
-          final tempFile = File('${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name');
+          final name = file.name.trim().isNotEmpty
+              ? file.name.trim()
+              : 'attachment_${generateUid()}';
+          final tempFile = File(
+            '${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name',
+          );
           if (bytes != null) {
             await tempFile.writeAsBytes(bytes, flush: true);
           } else if (stream != null) {
@@ -859,7 +917,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           continue;
         }
         final size = handle.lengthSync();
-        final filename = file.name.trim().isNotEmpty ? file.name.trim() : path.split(Platform.pathSeparator).last;
+        final filename = file.name.trim().isNotEmpty
+            ? file.name.trim()
+            : path.split(Platform.pathSeparator).last;
         final mimeType = _guessMimeType(filename);
         added.add(
           _PendingAttachment(
@@ -874,7 +934,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
       if (!mounted) return;
       if (added.isEmpty) {
-        final msg = missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.';
+        final msg = missingPathCount > 0
+            ? 'Files unavailable from picker.'
+            : 'No files selected.';
         showTopToast(context, msg);
         return;
       }
@@ -883,14 +945,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         _pendingAttachments.addAll(added);
       });
       final suffix = added.length == 1 ? '' : 's';
-      final skipped = [if (missingPathCount > 0) '$missingPathCount unavailable'];
+      final skipped = [
+        if (missingPathCount > 0) '$missingPathCount unavailable',
+      ];
       final summary = skipped.isEmpty
           ? 'Added ${added.length} file$suffix.'
           : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
       showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
     }
   }
 
@@ -903,13 +969,17 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
       final path = photo.path;
       if (path.trim().isEmpty) {
-        messenger.showSnackBar(const SnackBar(content: Text('Camera file missing.')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Camera file missing.')),
+        );
         return;
       }
 
       final file = File(path);
       if (!file.existsSync()) {
-        messenger.showSnackBar(const SnackBar(content: Text('Camera file missing.')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Camera file missing.')),
+        );
         return;
       }
 
@@ -997,13 +1067,20 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     required Uri? baseUrl,
   }) {
     final raw = attachment.externalLink.trim();
-    if (raw.isNotEmpty && !raw.startsWith('file://') && !raw.startsWith('content://')) {
+    if (raw.isNotEmpty &&
+        !raw.startsWith('file://') &&
+        !raw.startsWith('content://')) {
       final isRelative = !isAbsoluteUrl(raw);
       final resolved = resolveMaybeRelativeUrl(baseUrl, raw);
-      return (thumbnail && isRelative) ? appendThumbnailParam(resolved) : resolved;
+      return (thumbnail && isRelative)
+          ? appendThumbnailParam(resolved)
+          : resolved;
     }
     if (baseUrl == null) return '';
-    final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
+    final url = joinBaseUrl(
+      baseUrl,
+      'file/${attachment.name}/${attachment.filename}',
+    );
     return thumbnail ? appendThumbnailParam(url) : url;
   }
 
@@ -1023,12 +1100,19 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   String _existingSourceId(Attachment attachment) =>
       'existing:${attachment.name.isNotEmpty ? attachment.name : attachment.uid}';
 
-  List<AttachmentImageSource> _editorImageSources(Uri? baseUrl, String? authHeader) {
+  List<AttachmentImageSource> _editorImageSources(
+    Uri? baseUrl,
+    String? authHeader,
+  ) {
     final sources = <AttachmentImageSource>[];
     for (final attachment in _existingAttachments) {
       if (!_isImageMimeType(attachment.type)) continue;
       final localFile = _localExistingAttachmentFile(attachment);
-      final fullUrl = _existingAttachmentUrl(attachment, thumbnail: false, baseUrl: baseUrl);
+      final fullUrl = _existingAttachmentUrl(
+        attachment,
+        thumbnail: false,
+        baseUrl: baseUrl,
+      );
       sources.add(
         AttachmentImageSource(
           id: _existingSourceId(attachment),
@@ -1097,7 +1181,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
     if (!id.startsWith('existing:')) return;
     final name = id.substring('existing:'.length);
-    final index = _existingAttachments.indexWhere((a) => a.name == name || a.uid == name);
+    final index = _existingAttachments.indexWhere(
+      (a) => a.name == name || a.uid == name,
+    );
     if (index < 0) return;
     final removed = _existingAttachments[index];
     final newUid = generateUid();
@@ -1118,7 +1204,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     });
   }
 
-  Widget _buildAttachmentPreview(bool isDark, Uri? baseUrl, String? authHeader) {
+  Widget _buildAttachmentPreview(
+    bool isDark,
+    Uri? baseUrl,
+    String? authHeader,
+    bool rebaseAbsoluteFileUrlForV024,
+  ) {
     if (_pendingAttachments.isEmpty && _existingAttachments.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1133,6 +1224,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           size: tileSize,
           baseUrl: baseUrl,
           authHeader: authHeader,
+          rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
         ),
       );
     }
@@ -1168,10 +1260,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     required Uri? baseUrl,
     required String? authHeader,
   }) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final surfaceColor = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final iconColor = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: 0.6);
-    final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final surfaceColor = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final iconColor =
+        (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
+            .withValues(alpha: 0.6);
+    final removeBg = isDark
+        ? Colors.black.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
     final isImage = _isImageMimeType(attachment.mimeType);
     final isVideo = _isVideoMimeType(attachment.mimeType);
@@ -1185,7 +1285,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         height: size,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          return _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true);
+          return _attachmentFallback(
+            iconColor: iconColor,
+            surfaceColor: surfaceColor,
+            isImage: true,
+          );
         },
       );
     } else if (isVideo && file != null) {
@@ -1230,10 +1334,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: content,
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: content),
     );
 
     return Stack(
@@ -1242,10 +1343,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         GestureDetector(
           onTap: (isImage && file != null)
               ? () => _openAttachmentViewer(
-                    _pendingSourceId(attachment.uid),
-                    baseUrl: baseUrl,
-                    authHeader: authHeader,
-                  )
+                  _pendingSourceId(attachment.uid),
+                  baseUrl: baseUrl,
+                  authHeader: authHeader,
+                )
               : null,
           child: tile,
         ),
@@ -1253,7 +1354,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           top: 4,
           right: 4,
           child: GestureDetector(
-            onTap: _saving ? null : () => _removePendingAttachment(attachment.uid),
+            onTap: _saving
+                ? null
+                : () => _removePendingAttachment(attachment.uid),
             child: Container(
               width: 18,
               height: 18,
@@ -1276,17 +1379,37 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     required double size,
     required Uri? baseUrl,
     required String? authHeader,
+    required bool rebaseAbsoluteFileUrlForV024,
   }) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final surfaceColor = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final iconColor = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: 0.6);
-    final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final surfaceColor = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final iconColor =
+        (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
+            .withValues(alpha: 0.6);
+    final removeBg = isDark
+        ? Colors.black.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
     final isImage = _isImageMimeType(attachment.type);
     final isVideo = _isVideoMimeType(attachment.type);
     final localFile = _localExistingAttachmentFile(attachment);
-    final thumbUrl = _existingAttachmentUrl(attachment, thumbnail: true, baseUrl: baseUrl);
-    final videoEntry = isVideo ? memoVideoEntryFromAttachment(attachment, baseUrl, authHeader) : null;
+    final thumbUrl = _existingAttachmentUrl(
+      attachment,
+      thumbnail: true,
+      baseUrl: baseUrl,
+    );
+    final videoEntry = isVideo
+        ? memoVideoEntryFromAttachment(
+            attachment,
+            baseUrl,
+            authHeader,
+            rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          )
+        : null;
 
     Widget content;
     if (isImage && localFile != null) {
@@ -1296,7 +1419,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         height: size,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          return _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true);
+          return _attachmentFallback(
+            iconColor: iconColor,
+            surfaceColor: surfaceColor,
+            isImage: true,
+          );
         },
       );
     } else if (isImage && thumbUrl.isNotEmpty) {
@@ -1304,10 +1431,16 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         imageUrl: thumbUrl,
         httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
         fit: BoxFit.cover,
-        placeholder: (context, _) =>
-            _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true),
-        errorWidget: (context, url, error) =>
-            _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true),
+        placeholder: (context, _) => _attachmentFallback(
+          iconColor: iconColor,
+          surfaceColor: surfaceColor,
+          isImage: true,
+        ),
+        errorWidget: (context, url, error) => _attachmentFallback(
+          iconColor: iconColor,
+          surfaceColor: surfaceColor,
+          isImage: true,
+        ),
       );
     } else if (videoEntry != null) {
       content = AttachmentVideoThumbnail(
@@ -1352,10 +1485,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         GestureDetector(
           onTap: isImage
               ? () => _openAttachmentViewer(
-                    _existingSourceId(attachment),
-                    baseUrl: baseUrl,
-                    authHeader: authHeader,
-                  )
+                  _existingSourceId(attachment),
+                  baseUrl: baseUrl,
+                  authHeader: authHeader,
+                )
               : null,
           child: tile,
         ),
@@ -1392,7 +1525,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       child: Icon(
         isImage
             ? Icons.image_outlined
-            : (isVideo ? Icons.videocam_outlined : Icons.insert_drive_file_outlined),
+            : (isVideo
+                  ? Icons.videocam_outlined
+                  : Icons.insert_drive_file_outlined),
         size: 22,
         color: iconColor,
       ),
@@ -1434,7 +1569,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     }
     final name = memo.name.trim();
     if (name.isNotEmpty) {
-      return _truncateLabel(name.startsWith('memos/') ? name.substring('memos/'.length) : name);
+      return _truncateLabel(
+        name.startsWith('memos/') ? name.substring('memos/'.length) : name,
+      );
     }
     return _truncateLabel(memo.uid);
   }
@@ -1446,7 +1583,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     }
     final name = relatedName.trim();
     if (name.isNotEmpty) {
-      return _truncateLabel(name.startsWith('memos/') ? name.substring('memos/'.length) : name);
+      return _truncateLabel(
+        name.startsWith('memos/') ? name.substring('memos/'.length) : name,
+      );
     }
     return _truncateLabel(relatedName);
   }
@@ -1468,7 +1607,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       box.localToGlobal(Offset.zero, ancestor: overlay),
       box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
     );
-    await _openVisibilityMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size));
+    await _openVisibilityMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    );
   }
 
   Future<void> _openVisibilityMenu(RelativeRect position) async {
@@ -1516,7 +1657,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     setState(() => _visibility = selection);
   }
 
-  (String label, IconData icon, Color color) _resolveVisibilityStyle(BuildContext context, String raw) {
+  (String label, IconData icon, Color color) _resolveVisibilityStyle(
+    BuildContext context,
+    String raw,
+  ) {
     switch (raw.trim().toUpperCase()) {
       case 'PUBLIC':
         return (
@@ -1543,20 +1687,48 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Widget build(BuildContext context) {
     final existing = widget.existing;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final background = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
-    final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final background = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
+    final cardColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final hintColor = isDark ? const Color(0xFF666666) : Colors.grey.shade500;
-    final dividerColor = isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08);
-    final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : MemoFlowPalette.audioSurfaceLight;
-    final chipText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-    final chipDelete = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.grey.shade500;
-    final moreBg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
-    final moreBorder = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08);
-    final (visibilityLabel, visibilityIcon, visibilityColor) = _resolveVisibilityStyle(context, _visibility);
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.08);
+    final chipBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : MemoFlowPalette.audioSurfaceLight;
+    final chipText = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final chipDelete = isDark
+        ? Colors.white.withValues(alpha: 0.6)
+        : Colors.grey.shade500;
+    final moreBg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+    final moreBorder = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.08);
+    final (visibilityLabel, visibilityIcon, visibilityColor) =
+        _resolveVisibilityStyle(context, _visibility);
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.isEmpty ? null : 'Bearer $token';
     final tagStats = _tagStatsCache;
@@ -1568,13 +1740,23 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: Text(existing == null ? context.t.strings.legacy.msg_memo_2 : context.t.strings.legacy.msg_edit_memo),
+        title: Text(
+          existing == null
+              ? context.t.strings.legacy.msg_memo_2
+              : context.t.strings.legacy.msg_edit_memo,
+        ),
         actions: [
           IconButton(
             tooltip: context.t.strings.legacy.msg_save,
             onPressed: _saving ? null : _save,
             icon: _saving
-                ? SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoFlowPalette.primary))
+                ? SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: MemoFlowPalette.primary,
+                    ),
+                  )
                 : Icon(Icons.check_rounded, color: MemoFlowPalette.primary),
           ),
         ],
@@ -1599,7 +1781,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildAttachmentPreview(isDark, baseUrl, authHeader),
+                              _buildAttachmentPreview(
+                                isDark,
+                                baseUrl,
+                                authHeader,
+                                rebaseAbsoluteFileUrlForV024,
+                              ),
                               Expanded(
                                 child: TextField(
                                   controller: _contentController,
@@ -1607,9 +1794,17 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                   keyboardType: TextInputType.multiline,
                                   maxLines: null,
                                   expands: true,
-                                  style: TextStyle(fontSize: 16, height: 1.35, color: textColor),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    height: 1.35,
+                                    color: textColor,
+                                  ),
                                   decoration: InputDecoration(
-                                    hintText: context.t.strings.legacy.msg_write_something_supports_tag_tasks_x,
+                                    hintText: context
+                                        .t
+                                        .strings
+                                        .legacy
+                                        .msg_write_something_supports_tag_tasks_x,
                                     hintStyle: TextStyle(color: hintColor),
                                     border: InputBorder.none,
                                   ),
@@ -1631,11 +1826,16 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                   (memo) => InputChip(
                                     label: Text(
                                       memo.label,
-                                      style: TextStyle(fontSize: 12, color: chipText),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: chipText,
+                                      ),
                                     ),
                                     backgroundColor: chipBg,
                                     deleteIconColor: chipDelete,
-                                    onDeleted: _saving ? null : () => _removeLinkedMemo(memo.name),
+                                    onDeleted: _saving
+                                        ? null
+                                        : () => _removeLinkedMemo(memo.name),
                                   ),
                                 )
                                 .toList(growable: false),
@@ -1650,7 +1850,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                               const SizedBox(
                                 width: 12,
                                 height: 12,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Text(
@@ -1666,14 +1868,20 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                           child: Align(
                             alignment: Alignment.centerLeft,
                             child: InputChip(
-                              avatar: Icon(Icons.place_outlined, size: 16, color: chipText),
+                              avatar: Icon(
+                                Icons.place_outlined,
+                                size: 16,
+                                color: chipText,
+                              ),
                               label: Text(
                                 _location!.displayText(fractionDigits: 6),
                                 style: TextStyle(fontSize: 12, color: chipText),
                               ),
                               backgroundColor: chipBg,
                               deleteIconColor: chipDelete,
-                              onDeleted: _saving ? null : () => setState(() => _location = null),
+                              onDeleted: _saving
+                                  ? null
+                                  : () => setState(() => _location = null),
                             ),
                           ),
                         ),
@@ -1685,12 +1893,20 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                           return SizeTransition(
                             sizeFactor: animation,
                             axisAlignment: -1,
-                            child: FadeTransition(opacity: animation, child: child),
+                            child: FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            ),
                           );
                         },
                         child: _isMoreToolbarOpen
                             ? Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  4,
+                                  16,
+                                  6,
+                                ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
                                   child: _buildMoreToolbar(context, isDark),
@@ -1716,9 +1932,17 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                           : () async {
                                               _closeMoreToolbar();
                                               _insertText('#');
-                                              await _openTagMenuFromKey(_tagMenuKey, tagStats);
+                                              await _openTagMenuFromKey(
+                                                _tagMenuKey,
+                                                tagStats,
+                                              );
                                             },
-                                      icon: Icon(Icons.tag, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                      icon: Icon(
+                                        Icons.tag,
+                                        color: isDark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
+                                      ),
                                     ),
                                     IconButton(
                                       tooltip: 'Attachment',
@@ -1728,7 +1952,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                               _closeMoreToolbar();
                                               await _pickAttachments();
                                             },
-                                      icon: Icon(Icons.attach_file, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                      icon: Icon(
+                                        Icons.attach_file,
+                                        color: isDark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
+                                      ),
                                     ),
                                     IconButton(
                                       key: _todoMenuKey,
@@ -1737,9 +1966,16 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                           ? null
                                           : () async {
                                               _closeMoreToolbar();
-                                              await _openTodoShortcutMenuFromKey(_todoMenuKey);
+                                              await _openTodoShortcutMenuFromKey(
+                                                _todoMenuKey,
+                                              );
                                             },
-                                      icon: Icon(Icons.playlist_add_check, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                      icon: Icon(
+                                        Icons.playlist_add_check,
+                                        color: isDark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
+                                      ),
                                     ),
                                     IconButton(
                                       tooltip: 'Link',
@@ -1749,24 +1985,52 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                               _closeMoreToolbar();
                                               await _openLinkMemoSheet();
                                             },
-                                      icon: Icon(Icons.alternate_email_rounded, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                      icon: Icon(
+                                        Icons.alternate_email_rounded,
+                                        color: isDark
+                                            ? Colors.grey.shade400
+                                            : Colors.grey.shade600,
+                                      ),
                                     ),
-                                    Container(width: 1, height: 20, color: dividerColor),
+                                    Container(
+                                      width: 1,
+                                      height: 20,
+                                      color: dividerColor,
+                                    ),
                                     AnimatedContainer(
-                                      duration: const Duration(milliseconds: 160),
+                                      duration: const Duration(
+                                        milliseconds: 160,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: _isMoreToolbarOpen ? moreBg : Colors.transparent,
+                                        color: _isMoreToolbarOpen
+                                            ? moreBg
+                                            : Colors.transparent,
                                         borderRadius: BorderRadius.circular(10),
-                                        border: _isMoreToolbarOpen ? Border.all(color: moreBorder, width: 1) : null,
+                                        border: _isMoreToolbarOpen
+                                            ? Border.all(
+                                                color: moreBorder,
+                                                width: 1,
+                                              )
+                                            : null,
                                       ),
                                       child: IconButton(
                                         tooltip: 'More',
-                                        onPressed: _saving ? null : _toggleMoreToolbar,
-                                        icon: Icon(Icons.more_horiz, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                        onPressed: _saving
+                                            ? null
+                                            : _toggleMoreToolbar,
+                                        icon: Icon(
+                                          Icons.more_horiz,
+                                          color: isDark
+                                              ? Colors.grey.shade400
+                                              : Colors.grey.shade600,
+                                        ),
                                       ),
                                     ),
                                     Tooltip(
-                                      message: context.t.strings.legacy.msg_visibility_2(visibilityLabel: visibilityLabel),
+                                      message: context.t.strings.legacy
+                                          .msg_visibility_2(
+                                            visibilityLabel: visibilityLabel,
+                                          ),
                                       child: InkResponse(
                                         key: _visibilityMenuKey,
                                         onTap: _saving
@@ -1781,9 +2045,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                           height: 28,
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
-                                            border: Border.all(color: visibilityColor.withValues(alpha: 0.85), width: 1.6),
+                                            border: Border.all(
+                                              color: visibilityColor.withValues(
+                                                alpha: 0.85,
+                                              ),
+                                              width: 1.6,
+                                            ),
                                           ),
-                                          child: Icon(visibilityIcon, size: 14, color: visibilityColor),
+                                          child: Icon(
+                                            visibilityIcon,
+                                            size: 14,
+                                            color: visibilityColor,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -1805,7 +2078,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.3 : 0.4),
+                                        color: MemoFlowPalette.primary
+                                            .withValues(
+                                              alpha: isDark ? 0.3 : 0.4,
+                                            ),
                                         blurRadius: 16,
                                         offset: const Offset(0, 8),
                                       ),
@@ -1815,9 +2091,16 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                     child: _saving
                                         ? const SizedBox.square(
                                             dimension: 22,
-                                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
                                           )
-                                        : const Icon(Icons.check_rounded, color: Colors.white, size: 24),
+                                        : const Icon(
+                                            Icons.check_rounded,
+                                            color: Colors.white,
+                                            size: 24,
+                                          ),
                                   ),
                                 ),
                               ),

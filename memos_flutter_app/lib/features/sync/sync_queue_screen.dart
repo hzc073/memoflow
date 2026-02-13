@@ -894,7 +894,9 @@ class _StatusChip extends StatelessWidget {
     final label = active
         ? (clamped == null
               ? context.t.strings.legacy.msg_syncing_2
-              : '${(clamped * 100).round()}%')
+              : (clamped >= 1.0
+                    ? context.t.strings.legacy.msg_done
+                    : '${(clamped * 100).round()}%'))
         : '0%';
     final baseBg = isDark
         ? Colors.white.withValues(alpha: 0.08)

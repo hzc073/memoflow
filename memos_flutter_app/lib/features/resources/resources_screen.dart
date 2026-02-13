@@ -48,7 +48,11 @@ class ResourcesScreen extends ConsumerWidget {
     return file;
   }
 
-  String? _resolveRemoteUrl(Uri? baseUrl, Attachment attachment, {required bool thumbnail}) {
+  String? _resolveRemoteUrl(
+    Uri? baseUrl,
+    Attachment attachment, {
+    required bool thumbnail,
+  }) {
     final link = attachment.externalLink.trim();
     if (link.isNotEmpty && !link.startsWith('file://')) {
       final isRelative = !isAbsoluteUrl(link);
@@ -57,7 +61,10 @@ class ResourcesScreen extends ConsumerWidget {
       return appendThumbnailParam(resolved);
     }
     if (baseUrl == null) return null;
-    final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
+    final url = joinBaseUrl(
+      baseUrl,
+      'file/${attachment.name}/${attachment.filename}',
+    );
     return thumbnail ? appendThumbnailParam(url) : url;
   }
 
@@ -97,7 +104,9 @@ class ResourcesScreen extends ConsumerWidget {
         if (await dir.exists()) return dir;
       }
 
-      final external = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+      final external = await getExternalStorageDirectories(
+        type: StorageDirectory.downloads,
+      );
       if (external != null && external.isNotEmpty) return external.first;
 
       final fallback = await getExternalStorageDirectory();
@@ -124,10 +133,7 @@ class ResourcesScreen extends ConsumerWidget {
     final safeName = _sanitizeFilename(rawName);
 
     messenger.hideCurrentSnackBar();
-    showTopToast(
-      context,
-      context.t.strings.legacy.msg_downloading,
-    );
+    showTopToast(context, context.t.strings.legacy.msg_downloading);
 
     try {
       final rootDir = await _resolveDownloadDirectory();
@@ -146,7 +152,11 @@ class ResourcesScreen extends ConsumerWidget {
         if (url == null || url.isEmpty) {
           messenger.hideCurrentSnackBar();
           messenger.showSnackBar(
-            SnackBar(content: Text(context.t.strings.legacy.msg_no_download_url_available)),
+            SnackBar(
+              content: Text(
+                context.t.strings.legacy.msg_no_download_url_available,
+              ),
+            ),
           );
           return;
         }
@@ -170,7 +180,9 @@ class ResourcesScreen extends ConsumerWidget {
       if (!context.mounted) return;
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_download_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_download_failed(e: e)),
+        ),
       );
     }
   }
@@ -180,6 +192,7 @@ class ResourcesScreen extends ConsumerWidget {
     Attachment attachment, {
     required Uri? baseUrl,
     required String? authHeader,
+    required bool rebaseAbsoluteFileUrlForV024,
   }) {
     final isImage = attachment.type.startsWith('image/');
     final isAudio = attachment.type.startsWith('audio');
@@ -206,8 +219,14 @@ class ResourcesScreen extends ConsumerWidget {
     }
 
     if (isVideo) {
-      final entry = memoVideoEntryFromAttachment(attachment, baseUrl, authHeader);
-      if (entry == null || (entry.localFile == null && (entry.videoUrl ?? '').isEmpty)) {
+      final entry = memoVideoEntryFromAttachment(
+        attachment,
+        baseUrl,
+        authHeader,
+        rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      );
+      if (entry == null ||
+          (entry.localFile == null && (entry.videoUrl ?? '').isEmpty)) {
         _showUnsupportedPreview(context);
         return;
       }
@@ -272,17 +291,21 @@ class ResourcesScreen extends ConsumerWidget {
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
     final route = switch (dest) {
-      AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.memos => const MemosListScreen(
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
       AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.t.strings.legacy.msg_archive,
-          state: 'ARCHIVED',
-          showDrawer: true,
-        ),
+        title: context.t.strings.legacy.msg_archive,
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -313,7 +336,16 @@ class ResourcesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
-    final authHeader = (account?.personalAccessToken ?? '').isEmpty ? null : 'Bearer ${account!.personalAccessToken}';
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final authHeader = (account?.personalAccessToken ?? '').isEmpty
+        ? null
+        : 'Bearer ${account!.personalAccessToken}';
 
     final entriesAsync = ref.watch(resourcesProvider);
     final dateFmt = DateFormat('yyyy-MM-dd');
@@ -347,9 +379,25 @@ class ResourcesScreen extends ConsumerWidget {
                         ? a.filename
                         : (a.uid.isNotEmpty ? a.uid : a.name);
                     final localFile = _localAttachmentFile(a);
-                    final thumbnailUrl = _resolveRemoteUrl(baseUrl, a, thumbnail: true);
-                    final remoteUrl = _resolveRemoteUrl(baseUrl, a, thumbnail: false);
-                    final videoEntry = isVideo ? memoVideoEntryFromAttachment(a, baseUrl, authHeader) : null;
+                    final thumbnailUrl = _resolveRemoteUrl(
+                      baseUrl,
+                      a,
+                      thumbnail: true,
+                    );
+                    final remoteUrl = _resolveRemoteUrl(
+                      baseUrl,
+                      a,
+                      thumbnail: false,
+                    );
+                    final videoEntry = isVideo
+                        ? memoVideoEntryFromAttachment(
+                            a,
+                            baseUrl,
+                            authHeader,
+                            rebaseAbsoluteFileUrlForV024:
+                                rebaseAbsoluteFileUrlForV024,
+                          )
+                        : null;
                     final leading = isImage && localFile != null
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(8),
@@ -361,43 +409,53 @@ class ResourcesScreen extends ConsumerWidget {
                             ),
                           )
                         : isImage && thumbnailUrl != null
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: CachedNetworkImage(
-                                  imageUrl: thumbnailUrl,
-                                  httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
-                                  width: 44,
-                                  height: 44,
-                                  fit: BoxFit.cover,
-                                  errorWidget: (context, url, error) => const SizedBox(
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: thumbnailUrl,
+                              httpHeaders: authHeader == null
+                                  ? null
+                                  : {'Authorization': authHeader},
+                              width: 44,
+                              height: 44,
+                              fit: BoxFit.cover,
+                              errorWidget: (context, url, error) =>
+                                  const SizedBox(
                                     width: 44,
                                     height: 44,
                                     child: Icon(Icons.image),
                                   ),
-                                ),
-                              )
-                            : isVideo && videoEntry != null
-                                ? SizedBox(
-                                    width: 44,
-                                    height: 44,
-                                    child: AttachmentVideoThumbnail(
-                                      entry: videoEntry,
-                                      borderRadius: 8,
-                                      showPlayIcon: true,
-                                    ),
-                                  )
-                                : Icon(isAudio ? Icons.mic : Icons.attach_file);
+                            ),
+                          )
+                        : isVideo && videoEntry != null
+                        ? SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: AttachmentVideoThumbnail(
+                              entry: videoEntry,
+                              borderRadius: 8,
+                              showPlayIcon: true,
+                            ),
+                          )
+                        : Icon(isAudio ? Icons.mic : Icons.attach_file);
 
-                    final hasVideoSource = videoEntry != null &&
-                        (videoEntry.localFile != null || (videoEntry.videoUrl ?? '').isNotEmpty);
-                    final canPreview = (isImage || isAudio || isVideo) &&
-                        (localFile != null || remoteUrl != null || hasVideoSource);
+                    final hasVideoSource =
+                        videoEntry != null &&
+                        (videoEntry.localFile != null ||
+                            (videoEntry.videoUrl ?? '').isNotEmpty);
+                    final canPreview =
+                        (isImage || isAudio || isVideo) &&
+                        (localFile != null ||
+                            remoteUrl != null ||
+                            hasVideoSource);
                     final canDownload = localFile != null || remoteUrl != null;
 
                     return ListTile(
                       leading: leading,
                       title: Text(displayName),
-                      subtitle: Text('${a.type} · ${dateFmt.format(entry.memoUpdateTime)}'),
+                      subtitle: Text(
+                        '${a.type} · ${dateFmt.format(entry.memoUpdateTime)}',
+                      ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -406,31 +464,50 @@ class ResourcesScreen extends ConsumerWidget {
                             icon: const Icon(Icons.visibility_outlined),
                             onPressed: canPreview
                                 ? () => _openPreview(
-                                      context,
-                                      a,
-                                      baseUrl: baseUrl,
-                                      authHeader: authHeader,
-                                    )
+                                    context,
+                                    a,
+                                    baseUrl: baseUrl,
+                                    authHeader: authHeader,
+                                    rebaseAbsoluteFileUrlForV024:
+                                        rebaseAbsoluteFileUrlForV024,
+                                  )
                                 : null,
                             visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            constraints: const BoxConstraints(
+                              minWidth: 36,
+                              minHeight: 36,
+                            ),
                           ),
                           IconButton(
                             tooltip: context.t.strings.legacy.msg_download,
                             icon: const Icon(Icons.download),
-                            onPressed: canDownload ? () => _downloadAttachment(context, a, baseUrl, authHeader) : null,
+                            onPressed: canDownload
+                                ? () => _downloadAttachment(
+                                    context,
+                                    a,
+                                    baseUrl,
+                                    authHeader,
+                                  )
+                                : null,
                             visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            constraints: const BoxConstraints(
+                              minWidth: 36,
+                              minHeight: 36,
+                            ),
                           ),
                         ],
                       ),
                       onTap: () async {
-                        final row = await ref.read(databaseProvider).getMemoByUid(entry.memoUid);
+                        final row = await ref
+                            .read(databaseProvider)
+                            .getMemoByUid(entry.memoUid);
                         if (row == null) return;
                         final memo = LocalMemo.fromDb(row);
                         if (!context.mounted) return;
                         Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => MemoDetailScreen(initialMemo: memo)),
+                          MaterialPageRoute<void>(
+                            builder: (_) => MemoDetailScreen(initialMemo: memo),
+                          ),
                         );
                       },
                     );
@@ -439,7 +516,9 @@ class ResourcesScreen extends ConsumerWidget {
                   itemCount: entries.length,
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
+          error: (e, _) => Center(
+            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+          ),
         ),
       ),
     );
@@ -465,18 +544,20 @@ class _ImageViewerScreen extends StatelessWidget {
         ? Image.file(localFile!, fit: BoxFit.contain)
         : CachedNetworkImage(
             imageUrl: imageUrl ?? '',
-            httpHeaders: authHeader == null ? null : {'Authorization': authHeader!},
+            httpHeaders: authHeader == null
+                ? null
+                : {'Authorization': authHeader!},
             fit: BoxFit.contain,
-            placeholder: (context, _) => const Center(child: CircularProgressIndicator()),
-            errorWidget: (context, url, error) => const Icon(Icons.broken_image),
+            placeholder: (context, _) =>
+                const Center(child: CircularProgressIndicator()),
+            errorWidget: (context, url, error) =>
+                const Icon(Icons.broken_image),
           );
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: SafeArea(
-        child: InteractiveViewer(
-          child: Center(child: child),
-        ),
+        child: InteractiveViewer(child: Center(child: child)),
       ),
     );
   }
@@ -517,7 +598,9 @@ class _AudioPreviewSheetState extends State<_AudioPreviewSheet> {
       } else if (widget.audioUrl != null && widget.audioUrl!.isNotEmpty) {
         await _player.setUrl(
           widget.audioUrl!,
-          headers: widget.authHeader == null ? null : {'Authorization': widget.authHeader!},
+          headers: widget.authHeader == null
+              ? null
+              : {'Authorization': widget.authHeader!},
         );
       } else {
         throw StateError('No audio source available');
@@ -564,7 +647,11 @@ class _AudioPreviewSheetState extends State<_AudioPreviewSheet> {
                 Expanded(
                   child: Text(
                     widget.title,
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textMain),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: textMain,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -578,7 +665,9 @@ class _AudioPreviewSheetState extends State<_AudioPreviewSheet> {
             const SizedBox(height: 12),
             if (_error != null)
               Text(
-                context.t.strings.legacy.msg_failed_load(error: _error ?? context.t.strings.legacy.msg_request_failed),
+                context.t.strings.legacy.msg_failed_load(
+                  error: _error ?? context.t.strings.legacy.msg_request_failed,
+                ),
                 style: TextStyle(color: textMuted),
               )
             else if (!_ready)
@@ -596,7 +685,12 @@ class _AudioPreviewSheetState extends State<_AudioPreviewSheet> {
                     children: [
                       IconButton(
                         iconSize: 36,
-                        icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill, color: textMain),
+                        icon: Icon(
+                          playing
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_fill,
+                          color: textMain,
+                        ),
                         onPressed: () async {
                           if (playing) {
                             await _player.pause();

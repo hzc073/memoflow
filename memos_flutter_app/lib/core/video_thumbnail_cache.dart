@@ -21,7 +21,7 @@ const double _darkMeanThreshold = 35.0;
 const double _darkPenalty = 0.6;
 const double _preferBrightThreshold = 50.0;
 const Duration _pendingPollInterval = Duration(milliseconds: 250);
-const Duration _pendingMaxWait = Duration(seconds: 20);
+const Duration _pendingMaxWait = Duration(seconds: 35);
 
 class _FrameStats {
   const _FrameStats({
@@ -62,6 +62,45 @@ class VideoThumbnailCache {
 
   static final Map<String, Future<File?>> _pending = {};
   static final Map<String, Uint8List> _memoryCache = {};
+  static final Map<String, File> _fileCache = {};
+
+  static File? peekThumbnailFile({
+    required String id,
+    required int size,
+    required File? localFile,
+    required String? videoUrl,
+  }) {
+    final key = _cacheKey(
+      id: id,
+      size: size,
+      localFile: localFile,
+      videoUrl: videoUrl,
+    );
+    final file = _fileCache[key];
+    if (file == null) return null;
+    if (!file.existsSync() || file.lengthSync() <= 0) {
+      _fileCache.remove(key);
+      return null;
+    }
+    return file;
+  }
+
+  static Uint8List? peekThumbnailBytes({
+    required String id,
+    required int size,
+    required File? localFile,
+    required String? videoUrl,
+  }) {
+    final key = _cacheKey(
+      id: id,
+      size: size,
+      localFile: localFile,
+      videoUrl: videoUrl,
+    );
+    final bytes = _memoryCache[key];
+    if (bytes == null || bytes.isEmpty) return null;
+    return bytes;
+  }
 
   static Future<File?> getThumbnailFile({
     required String id,
@@ -79,6 +118,7 @@ class VideoThumbnailCache {
     final existingFile = await _tryExistingFile(key);
     if (existingFile != null) {
       _pending.remove(key);
+      _rememberFile(key, existingFile);
       LogManager.instance.debug(
         'Video thumbnail cache hit (direct)',
         context: {
@@ -111,6 +151,7 @@ class VideoThumbnailCache {
       final filePath = p.join(cacheDir.path, '$key.jpg');
       final file = File(filePath);
       if (file.existsSync() && file.lengthSync() > 0) {
+        _rememberFile(key, file);
         return file;
       }
     } catch (_) {}
@@ -136,11 +177,7 @@ class VideoThumbnailCache {
       _pending.remove(key);
       LogManager.instance.debug(
         'Video thumbnail cache hit (pending bypass)',
-        context: {
-          'key': key,
-          'path': filePath,
-          'bytes': file.lengthSync(),
-        },
+        context: {'key': key, 'path': filePath, 'bytes': file.lengthSync()},
       );
       return file;
     }
@@ -152,13 +189,10 @@ class VideoThumbnailCache {
     void completeWithFile(String reason) {
       if (completer.isCompleted) return;
       _pending.remove(key);
+      _rememberFile(key, file);
       LogManager.instance.debug(
         reason,
-        context: {
-          'key': key,
-          'path': filePath,
-          'bytes': file.lengthSync(),
-        },
+        context: {'key': key, 'path': filePath, 'bytes': file.lengthSync()},
       );
       completer.complete(file);
     }
@@ -178,27 +212,27 @@ class VideoThumbnailCache {
       _pending.remove(key);
       LogManager.instance.warn(
         'Video thumbnail pending timeout',
-        context: {
-          'key': key,
-          'path': filePath,
-        },
+        context: {'key': key, 'path': filePath},
       );
       completer.complete(null);
     });
 
-    pending.then((value) {
-      if (completer.isCompleted) return;
-      completer.complete(value);
-    }).catchError((error, stackTrace) {
-      if (completer.isCompleted) return;
-      completer.completeError(error, stackTrace);
-    });
+    pending
+        .then((value) {
+          if (completer.isCompleted) return;
+          _rememberFile(key, value);
+          completer.complete(value);
+        })
+        .catchError((error, stackTrace) {
+          if (completer.isCompleted) return;
+          completer.completeError(error, stackTrace);
+        });
 
     try {
       return await completer.future;
     } finally {
-      pollTimer?.cancel();
-      timeoutTimer?.cancel();
+      pollTimer.cancel();
+      timeoutTimer.cancel();
     }
   }
 
@@ -228,10 +262,7 @@ class VideoThumbnailCache {
     if (file == null || !file.existsSync()) {
       LogManager.instance.warn(
         'Video thumbnail bytes missing (file not found)',
-        context: {
-          'key': key,
-          'path': file?.path ?? '',
-        },
+        context: {'key': key, 'path': file?.path ?? ''},
       );
       return null;
     }
@@ -240,21 +271,14 @@ class VideoThumbnailCache {
       if (bytes.isEmpty) {
         LogManager.instance.warn(
           'Video thumbnail bytes empty',
-          context: {
-            'key': key,
-            'path': file.path,
-          },
+          context: {'key': key, 'path': file.path},
         );
         return null;
       }
       _memoryCache[key] = bytes;
       LogManager.instance.debug(
         'Video thumbnail bytes ready',
-        context: {
-          'key': key,
-          'path': file.path,
-          'bytes': bytes.length,
-        },
+        context: {'key': key, 'path': file.path, 'bytes': bytes.length},
       );
       return bytes;
     } catch (e, stackTrace) {
@@ -262,10 +286,7 @@ class VideoThumbnailCache {
         'Video thumbnail read failed',
         error: e,
         stackTrace: stackTrace,
-        context: {
-          'key': key,
-          'path': file.path,
-        },
+        context: {'key': key, 'path': file.path},
       );
       return null;
     }
@@ -292,13 +313,10 @@ class VideoThumbnailCache {
     final filePath = p.join(cacheDir.path, '$key.jpg');
     final file = File(filePath);
     if (file.existsSync() && file.lengthSync() > 0) {
+      _rememberFile(key, file);
       LogManager.instance.debug(
         'Video thumbnail cache hit',
-        context: {
-          'key': key,
-          'path': filePath,
-          'bytes': file.lengthSync(),
-        },
+        context: {'key': key, 'path': filePath, 'bytes': file.lengthSync()},
       );
       return file;
     }
@@ -330,13 +348,10 @@ class VideoThumbnailCache {
 
     try {
       await file.writeAsBytes(bytes, flush: true);
+      _rememberFile(key, file);
       LogManager.instance.debug(
         'Video thumbnail saved',
-        context: {
-          'key': key,
-          'path': filePath,
-          'bytes': bytes.length,
-        },
+        context: {'key': key, 'path': filePath, 'bytes': bytes.length},
       );
       return file;
     } catch (e, stackTrace) {
@@ -344,13 +359,18 @@ class VideoThumbnailCache {
         'Video thumbnail save failed',
         error: e,
         stackTrace: stackTrace,
-        context: {
-          'key': key,
-          'path': filePath,
-        },
+        context: {'key': key, 'path': filePath},
       );
       return null;
     }
+  }
+
+  static void _rememberFile(String key, File? file) {
+    if (file == null || !file.existsSync() || file.lengthSync() <= 0) {
+      _fileCache.remove(key);
+      return;
+    }
+    _fileCache[key] = file;
   }
 
   static Future<Directory> _cacheDir() async {
@@ -384,10 +404,7 @@ class VideoThumbnailCache {
       return null;
     }
 
-    final tempFile = await _downloadToTemp(
-      url,
-      headers: headers ?? const {},
-    );
+    final tempFile = await _downloadToTemp(url, headers: headers ?? const {});
     if (tempFile == null) {
       LogManager.instance.warn(
         'Video thumbnail download failed, fallback to direct',
@@ -399,7 +416,10 @@ class VideoThumbnailCache {
       return _tryThumbnailData(source: url, headers: headers);
     }
     try {
-      final data = await _tryThumbnailData(source: tempFile.path, headers: null);
+      final data = await _tryThumbnailData(
+        source: tempFile.path,
+        headers: null,
+      );
       if (data != null && data.isNotEmpty) return data;
     } finally {
       if (tempFile.existsSync()) {
@@ -411,9 +431,7 @@ class VideoThumbnailCache {
 
     LogManager.instance.warn(
       'Video thumbnail fallback to direct after file attempt',
-      context: {
-        'videoUrl': url,
-      },
+      context: {'videoUrl': url},
     );
     return _tryThumbnailData(source: url, headers: headers);
   }
@@ -500,10 +518,7 @@ class VideoThumbnailCache {
         if (data == null || data.isEmpty) {
           LogManager.instance.debug(
             'Video thumbnail capture empty',
-            context: {
-              'timeMs': timeMs,
-              'source': source,
-            },
+            context: {'timeMs': timeMs, 'source': source},
           );
         }
       } catch (e, stackTrace) {
@@ -511,10 +526,7 @@ class VideoThumbnailCache {
           'Video thumbnail capture failed',
           error: e,
           stackTrace: stackTrace,
-          context: {
-            'timeMs': timeMs,
-            'source': source,
-          },
+          context: {'timeMs': timeMs, 'source': source},
         );
       }
     }
@@ -581,7 +593,10 @@ class VideoThumbnailCache {
       final totalPixels = image.width * image.height;
       if (totalPixels <= 0) return null;
       const sampleCount = 64;
-      final step = (totalPixels / sampleCount).floor().clamp(1, totalPixels).toInt();
+      final step = (totalPixels / sampleCount)
+          .floor()
+          .clamp(1, totalPixels)
+          .toInt();
       var minL = 255;
       var maxL = 0;
       var sumL = 0.0;
@@ -627,7 +642,6 @@ class VideoThumbnailCache {
     }
   }
 
-
   static Future<ui.Image?> _decodeImage(Uint8List bytes) async {
     try {
       final codec = await ui.instantiateImageCodec(bytes);
@@ -660,10 +674,7 @@ class VideoThumbnailCache {
       if (!file.existsSync() || file.lengthSync() == 0) return null;
       LogManager.instance.debug(
         'Video thumbnail download ok',
-        context: {
-          'videoUrl': url,
-          'bytes': file.lengthSync(),
-        },
+        context: {'videoUrl': url, 'bytes': file.lengthSync()},
       );
       return file;
     } catch (e, stackTrace) {
@@ -671,10 +682,7 @@ class VideoThumbnailCache {
         'Video thumbnail download failed',
         error: e,
         stackTrace: stackTrace,
-        context: {
-          'videoUrl': url,
-          'hasHeaders': headers.isNotEmpty,
-        },
+        context: {'videoUrl': url, 'hasHeaders': headers.isNotEmpty},
       );
       return null;
     }

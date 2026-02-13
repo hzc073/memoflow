@@ -18,6 +18,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
+import '../../data/api/server_api_profile.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/shortcut.dart';
@@ -542,6 +543,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     return withoutHash.toLowerCase();
   }
 
+  String _apiVersionBandLabel(MemosVersionNumber? version) {
+    if (version == null) return '-';
+    if (version.major == 0 && version.minor >= 20 && version.minor < 30) {
+      return '0.2x';
+    }
+    return '${version.major}.${version.minor}x';
+  }
+
+  String _buildDebugApiVersionText(MemosVersionResolution? resolution) {
+    if (resolution == null) return 'API -';
+    final band = _apiVersionBandLabel(resolution.parsedVersion);
+    final effective = resolution.effectiveVersion.trim();
+    if (effective.isEmpty) return 'API $band';
+    return 'API $band ($effective)';
+  }
+
   void _selectTagFilter(String? tag) {
     setState(() => _activeTagFilter = _normalizeTag(tag));
   }
@@ -854,6 +871,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final rawLink = attachment.externalLink.trim();
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     if (rawLink.isNotEmpty) {
@@ -865,9 +889,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           headers: null,
         );
       }
-      final isAbsolute = isAbsoluteUrl(rawLink);
-      final resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
-      final headers = (!isAbsolute && authHeader != null)
+      var resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
+      if (rebaseAbsoluteFileUrlForV024) {
+        final rebased = rebaseAbsoluteFileUrlToBase(baseUrl, resolved);
+        if (rebased != null && rebased.isNotEmpty) {
+          resolved = rebased;
+        }
+      }
+      final isAbsolute = isAbsoluteUrl(resolved);
+      final canAttachAuth = rebaseAbsoluteFileUrlForV024
+          ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
+          : !isAbsolute;
+      final headers = (canAttachAuth && authHeader != null)
           ? {'Authorization': authHeader}
           : null;
       return (url: resolved, localPath: null, headers: headers);
@@ -1864,6 +1897,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         : null;
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
+    final sessionController = ref.read(appSessionProvider.notifier);
+    final serverVersion = account == null
+        ? ''
+        : sessionController.resolveEffectiveServerVersionForAccount(
+            account: account,
+          );
+    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final imageEntries = collectMemoImageEntries(
@@ -1871,11 +1911,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
     );
     final videoEntries = collectMemoVideoEntries(
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
     );
     final mediaEntries = buildMemoMediaEntries(
       images: imageEntries,
@@ -2095,6 +2137,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final listVisualOffset = widget.showPillActions ? 6.0 : 0.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
+    final session = ref.watch(appSessionProvider).valueOrNull;
+    final account = session?.currentAccount;
+    final apiVersionResolution = account == null
+        ? null
+        : MemosServerApiProfiles.resolve(
+            manualVersionOverride: account.serverVersionOverride,
+            detectedVersion: account.instanceProfile.version,
+          );
+    final debugApiVersionText = _buildDebugApiVersionText(apiVersionResolution);
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.padding.bottom;
     final screenWidth = mediaQuery.size.width;
@@ -2235,36 +2286,74 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                     fontWeight: FontWeight.w700,
                                   ),
                                 )),
-                    actions: _searching
-                        ? (widget.enableSearch
-                              ? [
-                                  TextButton(
-                                    onPressed: _closeSearch,
-                                    child: Text(
-                                      context.t.strings.legacy.msg_cancel_2,
-                                      style: TextStyle(
-                                        color: MemoFlowPalette.primary,
-                                        fontWeight: FontWeight.w600,
+                    actions: [
+                      if (kDebugMode)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 150),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: MemoFlowPalette.primary.withValues(
+                                    alpha: isDark ? 0.24 : 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: MemoFlowPalette.primary.withValues(
+                                      alpha: isDark ? 0.45 : 0.25,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  debugApiVersionText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: MemoFlowPalette.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ...?_searching
+                          ? (widget.enableSearch
+                                ? [
+                                    TextButton(
+                                      onPressed: _closeSearch,
+                                      child: Text(
+                                        context.t.strings.legacy.msg_cancel_2,
+                                        style: TextStyle(
+                                          color: MemoFlowPalette.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ]
-                              : null)
-                        : (widget.enableSearch
-                              ? [
-                                  if (enableHomeSort)
-                                    _buildSortMenuButton(
-                                      context,
-                                      isDark: isDark,
+                                  ]
+                                : null)
+                          : (widget.enableSearch
+                                ? [
+                                    if (enableHomeSort)
+                                      _buildSortMenuButton(
+                                        context,
+                                        isDark: isDark,
+                                      ),
+                                    IconButton(
+                                      tooltip:
+                                          context.t.strings.legacy.msg_search,
+                                      onPressed: _openSearch,
+                                      icon: const Icon(Icons.search),
                                     ),
-                                  IconButton(
-                                    tooltip:
-                                        context.t.strings.legacy.msg_search,
-                                    onPressed: _openSearch,
-                                    icon: const Icon(Icons.search),
-                                  ),
-                                ]
-                              : null),
+                                  ]
+                                : null),
+                    ],
                     bottom: _searching
                         ? null
                         : (widget.showPillActions
