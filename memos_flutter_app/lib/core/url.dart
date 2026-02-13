@@ -50,23 +50,7 @@ String dioBaseUrlString(Uri baseUrl) => '${canonicalBaseUrlString(baseUrl)}/';
 String joinBaseUrl(Uri baseUrl, String path) {
   final base = canonicalBaseUrlString(baseUrl);
   final p = path.startsWith('/') ? path.substring(1) : path;
-  final normalized = _normalizeLegacyResourceBinaryPath(p);
-  return '$base/$normalized';
-}
-
-String _normalizeLegacyResourceBinaryPath(String path) {
-  final trimmed = path.trim();
-  if (trimmed.isEmpty) return trimmed;
-  final queryIndex = trimmed.indexOf('?');
-  final rawPath = queryIndex >= 0 ? trimmed.substring(0, queryIndex) : trimmed;
-  final suffix = queryIndex >= 0 ? trimmed.substring(queryIndex) : '';
-  // Memos v0.22 expects /file/resources/{id}; later versions use /file/resources/{id}/{filename}.
-  // When the resource id is numeric, prefer the v0.22 route for compatibility.
-  final match = RegExp(r'^file/resources/(\d+)/[^/?]+$').firstMatch(rawPath);
-  if (match == null) return trimmed;
-  final resourceId = match.group(1);
-  if (resourceId == null || resourceId.isEmpty) return trimmed;
-  return 'file/resources/$resourceId$suffix';
+  return '$base/$p';
 }
 
 bool isAbsoluteUrl(String raw) {
@@ -84,6 +68,55 @@ String resolveMaybeRelativeUrl(Uri? baseUrl, String raw) {
   if (uri == null || uri.hasScheme) return trimmed;
   if (baseUrl == null) return trimmed;
   return joinBaseUrl(baseUrl, trimmed);
+}
+
+bool isServerVersion024(String? versionRaw) {
+  final trimmed = (versionRaw ?? '').trim();
+  if (trimmed.isEmpty) return false;
+  final match = RegExp(r'(\d+)\.(\d+)(?:\.(\d+))?').firstMatch(trimmed);
+  if (match == null) return false;
+  final major = int.tryParse(match.group(1) ?? '');
+  final minor = int.tryParse(match.group(2) ?? '');
+  if (major == null || minor == null) return false;
+  return major == 0 && minor == 24;
+}
+
+int _effectivePort(Uri uri) {
+  if (uri.hasPort) return uri.port;
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme == 'https') return 443;
+  if (scheme == 'http') return 80;
+  return -1;
+}
+
+bool isSameOriginUri(Uri a, Uri b) {
+  final schemeA = a.scheme.toLowerCase();
+  final schemeB = b.scheme.toLowerCase();
+  if (schemeA != schemeB) return false;
+  if (a.host.toLowerCase() != b.host.toLowerCase()) return false;
+  return _effectivePort(a) == _effectivePort(b);
+}
+
+bool isSameOriginWithBase(Uri? baseUrl, String rawUrl) {
+  if (baseUrl == null) return false;
+  final parsed = Uri.tryParse(rawUrl.trim());
+  if (parsed == null || !parsed.hasScheme) return false;
+  return isSameOriginUri(baseUrl, parsed);
+}
+
+String? rebaseAbsoluteFileUrlToBase(Uri? baseUrl, String rawUrl) {
+  if (baseUrl == null) return null;
+  final parsed = Uri.tryParse(rawUrl.trim());
+  if (parsed == null || !parsed.hasScheme) return null;
+  final path = parsed.path;
+  if (!(path.startsWith('/file/') || path.startsWith('file/'))) {
+    return null;
+  }
+  var nextPath = path;
+  if (parsed.hasQuery && parsed.query.isNotEmpty) {
+    nextPath = '$nextPath?${parsed.query}';
+  }
+  return joinBaseUrl(baseUrl, nextPath);
 }
 
 String appendThumbnailParam(String url) {

@@ -98,6 +98,7 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
             .toList(growable: false);
       } else {
         final api = ref.read(memosApiProvider);
+        await api.ensureServerHintsLoaded();
         String? filter;
         String? oldFilter;
         String? parent;
@@ -114,7 +115,12 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
           final userId = _tryExtractUserId(userName);
           final conditions = <String>[];
           if (userId != null) {
-            conditions.add('creator_id == $userId');
+            conditions.add(
+              _buildCreatorFilterExpression(
+                userId,
+                useLegacyDialect: api.usesLegacySearchFilterDialect,
+              ),
+            );
           }
           if (trimmed.isNotEmpty) {
             final escaped = _escapeFilterText(trimmed);
@@ -168,6 +174,16 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
 
   static String _escapeFilterText(String input) {
     return input.replaceAll('\\', r'\\').replaceAll('"', r'\"');
+  }
+
+  static String _buildCreatorFilterExpression(
+    String userId, {
+    required bool useLegacyDialect,
+  }) {
+    if (useLegacyDialect) {
+      return "creator == 'users/$userId'";
+    }
+    return 'creator_id == $userId';
   }
 
   Memo _memoFromLocal(LocalMemo memo) {

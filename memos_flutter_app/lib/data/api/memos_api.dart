@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../../core/url.dart';
+import 'server_api_profile.dart';
+import 'server_route_adapter.dart';
 import '../logs/breadcrumb_store.dart';
 import '../logs/log_manager.dart';
 import '../logs/network_log_buffer.dart';
@@ -33,7 +35,7 @@ enum _UserStatsApiMode {
 
 enum _AttachmentApiMode { attachments, resources, legacy }
 
-enum _ServerApiFlavor { unknown, v0_25Plus, v0_24, v0_22, v0_21 }
+enum _ServerApiFlavor { unknown, v0_25Plus, v0_24, v0_23, v0_22, v0_21 }
 
 enum _CurrentUserEndpoint {
   authSessionCurrent,
@@ -86,63 +88,73 @@ class _ApiCapabilities {
       );
     }
 
-    switch (flavor) {
-      case _ServerApiFlavor.v0_25Plus:
-        return const _ApiCapabilities(
-          allowLegacyMemoEndpoints: false,
-          memoLegacyByDefault: false,
-          preferLegacyAuthChain: false,
-          forceLegacyMemoByPreference: false,
-          defaultAttachmentMode: _AttachmentApiMode.attachments,
-          defaultUserStatsMode: _UserStatsApiMode.modernGetStats,
-          defaultNotificationMode: _NotificationApiMode.modern,
-          shortcutsSupportedByDefault: true,
-        );
-      case _ServerApiFlavor.v0_24:
-        return const _ApiCapabilities(
-          allowLegacyMemoEndpoints: false,
-          memoLegacyByDefault: false,
-          preferLegacyAuthChain: false,
-          forceLegacyMemoByPreference: false,
-          defaultAttachmentMode: _AttachmentApiMode.resources,
-          defaultUserStatsMode: _UserStatsApiMode.legacyStatsPath,
-          defaultNotificationMode: _NotificationApiMode.legacyV1,
-          shortcutsSupportedByDefault: true,
-        );
-      case _ServerApiFlavor.v0_22:
-        return const _ApiCapabilities(
-          allowLegacyMemoEndpoints: true,
-          memoLegacyByDefault: false,
-          preferLegacyAuthChain: false,
-          forceLegacyMemoByPreference: false,
-          defaultAttachmentMode: _AttachmentApiMode.resources,
-          defaultUserStatsMode: _UserStatsApiMode.legacyMemosStats,
-          defaultNotificationMode: _NotificationApiMode.legacyV1,
-          shortcutsSupportedByDefault: false,
-        );
-      case _ServerApiFlavor.v0_21:
-        return const _ApiCapabilities(
-          allowLegacyMemoEndpoints: true,
-          memoLegacyByDefault: true,
-          preferLegacyAuthChain: true,
-          forceLegacyMemoByPreference: false,
-          defaultAttachmentMode: _AttachmentApiMode.legacy,
-          defaultUserStatsMode: _UserStatsApiMode.legacyMemoStats,
-          defaultNotificationMode: _NotificationApiMode.legacyV2,
-          shortcutsSupportedByDefault: false,
-        );
-      case _ServerApiFlavor.unknown:
-        return const _ApiCapabilities(
-          allowLegacyMemoEndpoints: true,
-          memoLegacyByDefault: false,
-          preferLegacyAuthChain: false,
-          forceLegacyMemoByPreference: false,
-          defaultAttachmentMode: null,
-          defaultUserStatsMode: null,
-          defaultNotificationMode: null,
-          shortcutsSupportedByDefault: null,
-        );
-    }
+    final profile = MemosServerApiProfiles.byFlavor(
+      _serverFlavorToPublicFlavor(flavor),
+    );
+    return _ApiCapabilities(
+      allowLegacyMemoEndpoints: profile.allowLegacyMemoEndpoints,
+      memoLegacyByDefault: profile.memoLegacyByDefault,
+      preferLegacyAuthChain: profile.preferLegacyAuthChain,
+      forceLegacyMemoByPreference: false,
+      defaultAttachmentMode: _attachmentModeFromProfile(
+        profile.defaultAttachmentMode,
+      ),
+      defaultUserStatsMode: _userStatsModeFromProfile(
+        profile.defaultUserStatsMode,
+      ),
+      defaultNotificationMode: _notificationModeFromProfile(
+        profile.defaultNotificationMode,
+      ),
+      shortcutsSupportedByDefault: profile.shortcutsSupportedByDefault,
+    );
+  }
+
+  static MemosServerFlavor _serverFlavorToPublicFlavor(
+    _ServerApiFlavor flavor,
+  ) {
+    return switch (flavor) {
+      _ServerApiFlavor.v0_21 => MemosServerFlavor.v0_21,
+      _ServerApiFlavor.v0_22 => MemosServerFlavor.v0_22,
+      _ServerApiFlavor.v0_23 => MemosServerFlavor.v0_23,
+      _ServerApiFlavor.v0_24 => MemosServerFlavor.v0_24,
+      _ServerApiFlavor.v0_25Plus ||
+      _ServerApiFlavor.unknown => MemosServerFlavor.v0_25Plus,
+    };
+  }
+
+  static _AttachmentApiMode _attachmentModeFromProfile(
+    MemosAttachmentRouteMode mode,
+  ) {
+    return switch (mode) {
+      MemosAttachmentRouteMode.legacy => _AttachmentApiMode.legacy,
+      MemosAttachmentRouteMode.resources => _AttachmentApiMode.resources,
+      MemosAttachmentRouteMode.attachments => _AttachmentApiMode.attachments,
+    };
+  }
+
+  static _UserStatsApiMode _userStatsModeFromProfile(
+    MemosUserStatsRouteMode mode,
+  ) {
+    return switch (mode) {
+      MemosUserStatsRouteMode.modernGetStats =>
+        _UserStatsApiMode.modernGetStats,
+      MemosUserStatsRouteMode.legacyStatsPath =>
+        _UserStatsApiMode.legacyStatsPath,
+      MemosUserStatsRouteMode.legacyMemosStats =>
+        _UserStatsApiMode.legacyMemosStats,
+      MemosUserStatsRouteMode.legacyMemoStats =>
+        _UserStatsApiMode.legacyMemoStats,
+    };
+  }
+
+  static _NotificationApiMode _notificationModeFromProfile(
+    MemosNotificationRouteMode mode,
+  ) {
+    return switch (mode) {
+      MemosNotificationRouteMode.modern => _NotificationApiMode.modern,
+      MemosNotificationRouteMode.legacyV1 => _NotificationApiMode.legacyV1,
+      MemosNotificationRouteMode.legacyV2 => _NotificationApiMode.legacyV2,
+    };
   }
 }
 
@@ -156,11 +168,11 @@ class _ServerVersion implements Comparable<_ServerVersion> {
   static _ServerVersion? tryParse(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
-    final match = RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(trimmed);
+    final match = RegExp(r'(\d+)\.(\d+)(?:\.(\d+))?').firstMatch(trimmed);
     if (match == null) return null;
     final major = int.tryParse(match.group(1) ?? '');
     final minor = int.tryParse(match.group(2) ?? '');
-    final patch = int.tryParse(match.group(3) ?? '');
+    final patch = int.tryParse(match.group(3) ?? '0');
     if (major == null || minor == null || patch == null) return null;
     return _ServerVersion(major, minor, patch);
   }
@@ -176,6 +188,8 @@ class _ServerVersion implements Comparable<_ServerVersion> {
 }
 
 class MemosApi {
+  static final Set<String> _creatorFilterDisabledServers = <String>{};
+
   MemosApi._(
     this._dio, {
     this.useLegacyApi = false,
@@ -192,6 +206,8 @@ class MemosApi {
       useLegacyApi: useLegacyApi,
     );
     _memoApiLegacy = _capabilities.memoLegacyByDefault;
+    _disableCreatorScopedFilters = _isCreatorFilterDisabledForServer();
+    _bootstrapServerHintsFromInstanceProfile(instanceProfile);
     if (logStore != null ||
         logManager != null ||
         logBuffer != null ||
@@ -218,17 +234,56 @@ class MemosApi {
   bool _serverHintsApplied = false;
   bool _serverHintsLogged = false;
   bool _memoApiLegacy = false;
+  bool _forceLegacyCreatorFilterSyntax = false;
+  bool _forceRowStatusMemoStateField = false;
+  bool _forceLegacyMemoUpdateEndpoint = false;
+  bool _disableCreatorScopedFilters = false;
   _NotificationApiMode? _notificationMode;
   _UserStatsApiMode? _userStatsMode;
   _AttachmentApiMode? _attachmentMode;
   bool? _shortcutsSupported;
   _CurrentUserEndpoint? _preferredCurrentUserEndpoint;
+  MemosRouteAdapter _routeAdapter = MemosRouteAdapters.fallback();
   _ApiCapabilities _capabilities = _ApiCapabilities.resolve(
     flavor: _ServerApiFlavor.unknown,
     useLegacyApi: false,
   );
   static const Duration _attachmentTimeout = Duration(seconds: 120);
+  static const Duration _largeListReceiveTimeout = Duration(seconds: 90);
   static const Object _unset = Object();
+
+  String _creatorFilterServerKey() {
+    final rawBase = _dio.options.baseUrl.trim();
+    if (rawBase.isEmpty) return '';
+    final parsed = Uri.tryParse(rawBase);
+    if (parsed == null || parsed.host.trim().isEmpty) {
+      return rawBase.toLowerCase();
+    }
+    final scheme = parsed.scheme.toLowerCase();
+    final host = parsed.host.toLowerCase();
+    final resolvedPort = parsed.hasPort
+        ? parsed.port
+        : (scheme == 'https' ? 443 : (scheme == 'http' ? 80 : 0));
+    final portSegment = resolvedPort > 0 ? ':$resolvedPort' : '';
+    return '$scheme://$host$portSegment';
+  }
+
+  bool _isCreatorFilterDisabledForServer() {
+    final key = _creatorFilterServerKey();
+    return key.isNotEmpty && _creatorFilterDisabledServers.contains(key);
+  }
+
+  void _rememberCreatorFilterDisabledForServer() {
+    final key = _creatorFilterServerKey();
+    if (key.isEmpty) return;
+    _creatorFilterDisabledServers.add(key);
+  }
+
+  void _clearCreatorFilterDisabledForServer() {
+    final key = _creatorFilterServerKey();
+    if (key.isEmpty) return;
+    _creatorFilterDisabledServers.remove(key);
+  }
 
   bool get _useLegacyMemos {
     if (_memoApiLegacy) return true;
@@ -237,11 +292,26 @@ class MemosApi {
 
   bool get usesLegacyMemos => _useLegacyMemos;
   bool get usesLegacySearchFilterDialect =>
-      _serverFlavor == _ServerApiFlavor.v0_21 ||
-      _serverFlavor == _ServerApiFlavor.v0_22;
+      _disableCreatorScopedFilters ||
+      _forceLegacyCreatorFilterSyntax ||
+      _routeAdapter.usesRowStatusMemoStateField;
+  bool get supportsMemoParentQuery => _routeAdapter.supportsMemoParentQuery;
+  bool get requiresCreatorScopedListMemos =>
+      _routeAdapter.requiresCreatorScopedListMemos;
+  bool get isRouteProfileV024 =>
+      _routeAdapter.profile.flavor == MemosServerFlavor.v0_24;
   bool? get shortcutsSupportedHint => _shortcutsSupported;
 
   Future<void> ensureServerHintsLoaded() => _ensureServerHints();
+
+  void _bootstrapServerHintsFromInstanceProfile(InstanceProfile? profile) {
+    final rawVersion = profile?.version ?? '';
+    if (rawVersion.trim().isEmpty) return;
+    _serverVersionRaw = rawVersion;
+    _serverVersion = _ServerVersion.tryParse(rawVersion);
+    final flavor = _inferServerFlavor(_serverVersion);
+    _applyServerHints(flavor);
+  }
 
   void _markMemoLegacy() {
     if (_legacyMemoEndpointsAllowed()) {
@@ -290,26 +360,51 @@ class MemosApi {
   }
 
   _ServerApiFlavor _inferServerFlavor(_ServerVersion? version) {
-    if (version == null) return _ServerApiFlavor.unknown;
+    if (version == null) return _ServerApiFlavor.v0_25Plus;
     final v0_25 = _ServerVersion(0, 25, 0);
     final v0_24 = _ServerVersion(0, 24, 0);
+    final v0_23 = _ServerVersion(0, 23, 0);
     final v0_22 = _ServerVersion(0, 22, 0);
     if (version >= v0_25) return _ServerApiFlavor.v0_25Plus;
     if (version >= v0_24) return _ServerApiFlavor.v0_24;
+    if (version >= v0_23) return _ServerApiFlavor.v0_23;
     if (version >= v0_22) return _ServerApiFlavor.v0_22;
     return _ServerApiFlavor.v0_21;
+  }
+
+  MemosRouteAdapter _buildRouteAdapter({
+    required _ServerApiFlavor flavor,
+    required _ServerVersion? version,
+  }) {
+    final profile = MemosServerApiProfiles.byFlavor(
+      _ApiCapabilities._serverFlavorToPublicFlavor(flavor),
+    );
+    final parsedVersion = version == null
+        ? null
+        : MemosVersionNumber(version.major, version.minor, version.patch);
+    return MemosRouteAdapters.resolve(
+      profile: profile,
+      parsedVersion: parsedVersion,
+    );
   }
 
   void _applyServerHints(_ServerApiFlavor flavor) {
     if (_serverFlavor != flavor) {
       _preferredCurrentUserEndpoint = null;
+      _forceLegacyMemoUpdateEndpoint = false;
     }
     _serverFlavor = flavor;
+    _routeAdapter = _buildRouteAdapter(flavor: flavor, version: _serverVersion);
     _capabilities = _ApiCapabilities.resolve(
       flavor: flavor,
       useLegacyApi: useLegacyApi,
     );
     _memoApiLegacy = _capabilities.memoLegacyByDefault;
+    if (_routeAdapter.requiresCreatorScopedListMemos) {
+      // 0.23 requires creator-scoped list requests for private memo visibility.
+      _disableCreatorScopedFilters = false;
+      _clearCreatorFilterDisabledForServer();
+    }
     _attachmentMode ??= _capabilities.defaultAttachmentMode;
     _userStatsMode ??= _capabilities.defaultUserStatsMode;
     _notificationMode ??= _capabilities.defaultNotificationMode;
@@ -329,9 +424,16 @@ class MemosApi {
         'flavor': _serverFlavor.name,
         'useLegacyApi': useLegacyApi,
         'memoLegacy': _memoApiLegacy,
+        'forceLegacyCreatorFilterSyntax': _forceLegacyCreatorFilterSyntax,
+        'disableCreatorScopedFilters': _disableCreatorScopedFilters,
         'attachmentMode': _attachmentMode?.name ?? '',
         'userStatsMode': _userStatsMode?.name ?? '',
         'notificationMode': _notificationMode?.name ?? '',
+        'routeProfile': _routeAdapter.profile.flavor.name,
+        'routeFullView': _routeAdapter.requiresMemoFullView,
+        'routeLegacyRowStatusFilter':
+            _routeAdapter.usesLegacyRowStatusFilterInListMemos,
+        'routeSendState': _routeAdapter.sendsStateInListMemos,
         'shortcutsSupported': _shortcutsSupported,
         'allowLegacyMemoEndpoints': _capabilities.allowLegacyMemoEndpoints,
         'preferLegacyAuthChain': _capabilities.preferLegacyAuthChain,
@@ -507,65 +609,24 @@ class MemosApi {
   }
 
   List<_CurrentUserEndpoint> _currentUserAttempts() {
-    if (_capabilities.preferLegacyAuthChain) {
-      return <_CurrentUserEndpoint>[
-        _CurrentUserEndpoint.authStatusV2,
-        _CurrentUserEndpoint.userMeV1,
-        _CurrentUserEndpoint.userMeLegacy,
-        _CurrentUserEndpoint.usersMeV1,
-        _CurrentUserEndpoint.authStatusPost,
-        _CurrentUserEndpoint.authStatusGet,
+    return _routeAdapter.currentUserRoutes
+        .map(_mapCurrentUserRoute)
+        .toList(growable: false);
+  }
+
+  _CurrentUserEndpoint _mapCurrentUserRoute(MemosCurrentUserRoute route) {
+    return switch (route) {
+      MemosCurrentUserRoute.authSessionCurrent =>
         _CurrentUserEndpoint.authSessionCurrent,
-        _CurrentUserEndpoint.authMe,
-      ];
-    }
-    if (_serverFlavor == _ServerApiFlavor.v0_24 ||
-        _serverFlavor == _ServerApiFlavor.v0_22) {
-      return <_CurrentUserEndpoint>[
+      MemosCurrentUserRoute.authMe => _CurrentUserEndpoint.authMe,
+      MemosCurrentUserRoute.authStatusPost =>
         _CurrentUserEndpoint.authStatusPost,
-        _CurrentUserEndpoint.authStatusGet,
-        _CurrentUserEndpoint.userMeV1,
-        _CurrentUserEndpoint.userMeLegacy,
-        _CurrentUserEndpoint.usersMeV1,
-        _CurrentUserEndpoint.authStatusV2,
-        _CurrentUserEndpoint.authSessionCurrent,
-        _CurrentUserEndpoint.authMe,
-      ];
-    }
-    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
-      if (_isServerVersionAtLeast(0, 26, 0)) {
-        return <_CurrentUserEndpoint>[
-          _CurrentUserEndpoint.authMe,
-          _CurrentUserEndpoint.authStatusV2,
-          _CurrentUserEndpoint.authSessionCurrent,
-          _CurrentUserEndpoint.userMeV1,
-          _CurrentUserEndpoint.usersMeV1,
-          _CurrentUserEndpoint.userMeLegacy,
-          _CurrentUserEndpoint.authStatusPost,
-          _CurrentUserEndpoint.authStatusGet,
-        ];
-      }
-      return <_CurrentUserEndpoint>[
-        _CurrentUserEndpoint.authSessionCurrent,
-        _CurrentUserEndpoint.authStatusV2,
-        _CurrentUserEndpoint.authMe,
-        _CurrentUserEndpoint.userMeV1,
-        _CurrentUserEndpoint.usersMeV1,
-        _CurrentUserEndpoint.userMeLegacy,
-        _CurrentUserEndpoint.authStatusPost,
-        _CurrentUserEndpoint.authStatusGet,
-      ];
-    }
-    return <_CurrentUserEndpoint>[
-      _CurrentUserEndpoint.authStatusV2,
-      _CurrentUserEndpoint.authSessionCurrent,
-      _CurrentUserEndpoint.authMe,
-      _CurrentUserEndpoint.authStatusPost,
-      _CurrentUserEndpoint.authStatusGet,
-      _CurrentUserEndpoint.userMeV1,
-      _CurrentUserEndpoint.usersMeV1,
-      _CurrentUserEndpoint.userMeLegacy,
-    ];
+      MemosCurrentUserRoute.authStatusGet => _CurrentUserEndpoint.authStatusGet,
+      MemosCurrentUserRoute.authStatusV2 => _CurrentUserEndpoint.authStatusV2,
+      MemosCurrentUserRoute.userMeV1 => _CurrentUserEndpoint.userMeV1,
+      MemosCurrentUserRoute.usersMeV1 => _CurrentUserEndpoint.usersMeV1,
+      MemosCurrentUserRoute.userMeLegacy => _CurrentUserEndpoint.userMeLegacy,
+    };
   }
 
   Future<User> _runCurrentUserAttempt(_CurrentUserEndpoint endpoint) {
@@ -582,12 +643,6 @@ class MemosApi {
     };
   }
 
-  bool _isServerVersionAtLeast(int major, int minor, int patch) {
-    final version = _serverVersion;
-    if (version == null) return false;
-    return version >= _ServerVersion(major, minor, patch);
-  }
-
   static bool _shouldFallback(DioException e) {
     final status = e.response?.statusCode ?? 0;
     return status == 404 || status == 405;
@@ -596,6 +651,13 @@ class MemosApi {
   static bool _shouldFallbackLegacy(DioException e) {
     final status = e.response?.statusCode ?? 0;
     return status == 404 || status == 405;
+  }
+
+  bool _usesLegacyUserSettingRoute() {
+    return _serverFlavor == _ServerApiFlavor.v0_21 ||
+        _serverFlavor == _ServerApiFlavor.v0_22 ||
+        _serverFlavor == _ServerApiFlavor.v0_23 ||
+        _serverFlavor == _ServerApiFlavor.v0_24;
   }
 
   bool _legacyMemoEndpointsAllowed() {
@@ -1507,8 +1569,27 @@ class MemosApi {
   }
 
   Future<UserGeneralSetting> getUserGeneralSetting({String? userName}) async {
+    await _ensureServerHints();
     final resolvedName = await _resolveUserName(userName: userName);
     DioException? lastError;
+
+    if (_usesLegacyUserSettingRoute()) {
+      try {
+        return await _getUserGeneralSettingLegacyV1(userName: resolvedName);
+      } on DioException catch (e) {
+        lastError = e;
+        if (!_shouldFallbackLegacy(e)) rethrow;
+      }
+
+      try {
+        return await _getUserGeneralSettingLegacyV2(userName: resolvedName);
+      } on DioException catch (e) {
+        lastError = e;
+        if (!_shouldFallbackLegacy(e)) rethrow;
+      }
+
+      throw lastError;
+    }
 
     try {
       return await _getUserGeneralSettingModern(
@@ -1552,10 +1633,29 @@ class MemosApi {
     required UserGeneralSetting setting,
     required List<String> updateMask,
   }) async {
+    await _ensureServerHints();
     final resolvedName = await _resolveUserName(userName: userName);
     final mask = _normalizeGeneralSettingMask(updateMask);
     if (mask.isEmpty) {
       throw ArgumentError('updateUserGeneralSetting requires updateMask');
+    }
+
+    if (_usesLegacyUserSettingRoute()) {
+      final legacyMask = _normalizeLegacyGeneralSettingMask(updateMask);
+      try {
+        return await _updateUserGeneralSettingLegacyV1(
+          userName: resolvedName,
+          setting: setting,
+          updateMask: legacyMask,
+        );
+      } on DioException catch (e) {
+        if (!_shouldFallbackLegacy(e)) rethrow;
+      }
+      return _updateUserGeneralSettingLegacyV2(
+        userName: resolvedName,
+        setting: setting,
+        updateMask: legacyMask,
+      );
     }
 
     try {
@@ -2724,21 +2824,113 @@ class MemosApi {
     bool preferModern = false,
   }) async {
     await _ensureServerHints();
-    Future<(List<Memo> memos, String nextPageToken)> callModern() {
+    final requiresCreatorScopedList = requiresCreatorScopedListMemos;
+    String? effectiveFilter = filter;
+    String? effectiveOldFilter = oldFilter;
+    if (_disableCreatorScopedFilters && !requiresCreatorScopedList) {
+      effectiveFilter = _removeCreatorScopedFilterExpression(effectiveFilter);
+      effectiveOldFilter = _removeCreatorScopedFilterExpression(
+        effectiveOldFilter,
+      );
+    }
+
+    final attemptedFilter = (effectiveFilter ?? '').trim();
+    final attemptedOldFilter = (effectiveOldFilter ?? '').trim();
+    final forcedLegacyCreatorFilter = _normalizeMemosFilterForLegacyCreator(
+      attemptedFilter,
+    );
+    final creatorFilterRemoved = _removeCreatorScopedFilterExpression(
+      attemptedFilter,
+    );
+    final creatorOldFilterRemoved = _removeCreatorScopedFilterExpression(
+      attemptedOldFilter,
+    );
+    Future<(List<Memo> memos, String nextPageToken)> callModern({
+      Object? filterOverride = _unset,
+      Object? oldFilterOverride = _unset,
+    }) {
+      final requestFilter = identical(filterOverride, _unset)
+          ? effectiveFilter
+          : filterOverride as String?;
+      final requestOldFilter = identical(oldFilterOverride, _unset)
+          ? effectiveOldFilter
+          : oldFilterOverride as String?;
       return _listMemosModern(
         pageSize: pageSize,
         pageToken: pageToken,
         state: state,
-        filter: filter,
+        filter: requestFilter,
         parent: parent,
         orderBy: orderBy,
-        oldFilter: oldFilter,
+        oldFilter: requestOldFilter,
       );
+    }
+
+    Future<(List<Memo> memos, String nextPageToken)>
+    callModernWithFilterRetry() async {
+      try {
+        return await callModern();
+      } on DioException catch (e) {
+        DioException error = e;
+        if (_shouldRetryMemosWithLegacyCreatorFilter(
+          error: e,
+          attemptedFilter: attemptedFilter,
+          forcedLegacyCreatorFilter: forcedLegacyCreatorFilter,
+        )) {
+          try {
+            final result = await callModern(
+              filterOverride: forcedLegacyCreatorFilter,
+            );
+            _forceLegacyCreatorFilterSyntax = true;
+            if (_serverFlavor == _ServerApiFlavor.unknown) {
+              _applyServerHints(_ServerApiFlavor.v0_23);
+            }
+            return result;
+          } on DioException catch (retryError) {
+            error = retryError;
+          }
+        }
+
+        if (!requiresCreatorScopedList &&
+            !_forceLegacyCreatorFilterSyntax &&
+            _shouldRetryMemosWithoutCreatorFilter(
+              error: error,
+              attemptedFilter: attemptedFilter,
+              attemptedOldFilter: attemptedOldFilter,
+              creatorFilterRemoved: creatorFilterRemoved,
+              creatorOldFilterRemoved: creatorOldFilterRemoved,
+            )) {
+          try {
+            final result = await callModern(
+              filterOverride: creatorFilterRemoved,
+              oldFilterOverride: creatorOldFilterRemoved,
+            );
+            _disableCreatorScopedFilters = true;
+            _rememberCreatorFilterDisabledForServer();
+            _logManager?.warn(
+              'Server rejected creator filter; switched to local creator filtering',
+              context: <String, Object?>{
+                'versionRaw': _serverVersionRaw,
+                'flavor': _serverFlavor.name,
+                'serverKey': _creatorFilterServerKey(),
+                'attemptedFilter': attemptedFilter,
+                'retryFilter': creatorFilterRemoved ?? '',
+                'retryOldFilter': creatorOldFilterRemoved ?? '',
+              },
+            );
+            return result;
+          } on DioException catch (retryError) {
+            error = retryError;
+          }
+        }
+
+        throw error;
+      }
     }
 
     if (preferModern) {
       try {
-        return await callModern();
+        return await callModernWithFilterRetry();
       } on DioException catch (e) {
         if (_allowMemoFallbackFromError(
           e,
@@ -2776,7 +2968,7 @@ class MemosApi {
         'api/v1/memo',
         operation: 'list_memos_force_legacy',
       )) {
-        return await callModern();
+        return await callModernWithFilterRetry();
       }
       return _listMemosLegacy(
         pageSize: pageSize,
@@ -2786,7 +2978,7 @@ class MemosApi {
       );
     }
     try {
-      return await callModern();
+      return await callModernWithFilterRetry();
     } on DioException catch (e) {
       if (_allowMemoFallbackFromError(
         e,
@@ -2817,6 +3009,121 @@ class MemosApi {
         filter: filter,
       );
     }
+  }
+
+  String _normalizeMemosFilterForLegacyCreator(String filter) {
+    final normalized = filter.trim();
+    if (normalized.isEmpty) return normalized;
+    return normalized.replaceAllMapped(
+      RegExp(r'''creator_id\s*==\s*(\d+)'''),
+      (match) => "creator == 'users/${match.group(1)}'",
+    );
+  }
+
+  String? _removeCreatorScopedFilterExpression(String? filter) {
+    final normalized = (filter ?? '').trim();
+    if (normalized.isEmpty) return null;
+    if (!_containsCreatorScopedFilter(normalized)) return normalized;
+
+    final clauses = normalized.split(RegExp(r'\s*&&\s*'));
+    final retained = <String>[];
+    for (final clause in clauses) {
+      final trimmed = clause.trim();
+      if (trimmed.isEmpty) continue;
+      if (_isCreatorScopedClause(trimmed)) {
+        continue;
+      }
+      retained.add(trimmed);
+    }
+
+    if (retained.isEmpty) return null;
+    final rebuilt = retained.join(' && ').trim();
+    return rebuilt.isEmpty ? null : rebuilt;
+  }
+
+  bool _containsCreatorScopedFilter(String filter) {
+    if (filter.isEmpty) return false;
+    return RegExp(r'\bcreator_id\s*==\s*\d+\b').hasMatch(filter) ||
+        RegExp(r'''creator\s*==\s*['"]?users/\d+['"]?''').hasMatch(filter);
+  }
+
+  bool _isCreatorScopedClause(String clause) {
+    var normalized = clause.trim();
+    while (normalized.startsWith('(') && normalized.endsWith(')')) {
+      normalized = normalized.substring(1, normalized.length - 1).trim();
+    }
+    if (normalized.isEmpty) return false;
+    return RegExp(r'^creator_id\s*==\s*\d+$').hasMatch(normalized) ||
+        RegExp(
+          r'''^creator\s*==\s*['"]?users/\d+['"]?$''',
+        ).hasMatch(normalized);
+  }
+
+  bool _shouldRetryMemosWithLegacyCreatorFilter({
+    required DioException error,
+    required String attemptedFilter,
+    required String forcedLegacyCreatorFilter,
+  }) {
+    if (attemptedFilter.isEmpty) return false;
+    if (forcedLegacyCreatorFilter.isEmpty ||
+        forcedLegacyCreatorFilter == attemptedFilter) {
+      return false;
+    }
+    return _isLegacyCreatorFilterError(error);
+  }
+
+  bool _isLegacyCreatorFilterError(DioException error) {
+    final status = error.response?.statusCode ?? 0;
+    if (status != 400 && status != 500) return false;
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) return false;
+    if (!message.contains('invalid filter') &&
+        !message.contains('failed to build find memos with filter') &&
+        !message.contains('failed to compile filter')) {
+      return false;
+    }
+    return message.contains("undeclared reference to 'creator_id'") ||
+        message.contains('undeclared reference to "creator_id"');
+  }
+
+  bool _shouldRetryMemosWithoutCreatorFilter({
+    required DioException error,
+    required String attemptedFilter,
+    required String attemptedOldFilter,
+    required String? creatorFilterRemoved,
+    required String? creatorOldFilterRemoved,
+  }) {
+    final hasCreatorFilter =
+        _containsCreatorScopedFilter(attemptedFilter) ||
+        _containsCreatorScopedFilter(attemptedOldFilter);
+    if (!hasCreatorFilter) return false;
+
+    final filterChanged =
+        (creatorFilterRemoved ?? '').trim() != attemptedFilter;
+    final oldFilterChanged =
+        (creatorOldFilterRemoved ?? '').trim() != attemptedOldFilter;
+    if (!filterChanged && !oldFilterChanged) return false;
+
+    return _isCreatorScopedFilterUndeclaredError(error);
+  }
+
+  bool _isCreatorScopedFilterUndeclaredError(DioException error) {
+    final status = error.response?.statusCode ?? 0;
+    if (status != 400 && status != 500) return false;
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) return false;
+    if (!message.contains('invalid filter') &&
+        !message.contains('failed to build find memos with filter') &&
+        !message.contains('failed to compile filter')) {
+      return false;
+    }
+    final creatorIdUndeclared =
+        message.contains("undeclared reference to 'creator_id'") ||
+        message.contains('undeclared reference to "creator_id"');
+    final creatorUndeclared =
+        message.contains("undeclared reference to 'creator'") ||
+        message.contains('undeclared reference to "creator"');
+    return creatorIdUndeclared || creatorUndeclared;
   }
 
   Future<({List<Memo> memos, String nextPageToken, bool usedLegacyAll})>
@@ -2862,7 +3169,7 @@ class MemosApi {
             orderBy: orderBy,
           );
           if (_serverFlavor == _ServerApiFlavor.unknown) {
-            _applyServerHints(_ServerApiFlavor.v0_22);
+            _applyServerHints(_ServerApiFlavor.v0_23);
           }
           return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
         } on DioException catch (retryError) {
@@ -2896,7 +3203,9 @@ class MemosApi {
     bool forceLegacyDialect = false,
   }) {
     final normalized = (filter ?? '').trim();
-    if (!forceLegacyDialect && _serverFlavor != _ServerApiFlavor.v0_22) {
+    if (!forceLegacyDialect &&
+        _serverFlavor != _ServerApiFlavor.v0_22 &&
+        _serverFlavor != _ServerApiFlavor.v0_23) {
       return normalized;
     }
 
@@ -3004,16 +3313,29 @@ class MemosApi {
     final normalizedPageToken = (pageToken ?? '').trim();
     final normalizedParent = (parent ?? '').trim();
     final normalizedOldFilter = (oldFilter ?? '').trim();
+    final effectiveFilter = _routeAdapter.usesLegacyRowStatusFilterInListMemos
+        ? _mergeLegacyRowStatusFilter(filter: filter, state: state)
+        : filter;
     final response = await _dio.get(
       'api/v1/memos',
+      options: pageSize >= 500
+          ? Options(receiveTimeout: _largeListReceiveTimeout)
+          : null,
       queryParameters: <String, Object?>{
         'pageSize': pageSize,
         'page_size': pageSize,
+        if (_routeAdapter.requiresMemoFullView) 'view': 'MEMO_VIEW_FULL',
         if (normalizedPageToken.isNotEmpty) 'pageToken': normalizedPageToken,
         if (normalizedPageToken.isNotEmpty) 'page_token': normalizedPageToken,
-        if (normalizedParent.isNotEmpty) 'parent': normalizedParent,
-        if (state != null && state.isNotEmpty) 'state': state,
-        if (filter != null && filter.isNotEmpty) 'filter': filter,
+        if (_routeAdapter.supportsMemoParentQuery &&
+            normalizedParent.isNotEmpty)
+          'parent': normalizedParent,
+        if (_routeAdapter.sendsStateInListMemos &&
+            state != null &&
+            state.isNotEmpty)
+          'state': state,
+        if (effectiveFilter != null && effectiveFilter.isNotEmpty)
+          'filter': effectiveFilter,
         if (orderBy != null && orderBy.isNotEmpty) 'orderBy': orderBy,
         if (orderBy != null && orderBy.isNotEmpty) 'order_by': orderBy,
         if (normalizedOldFilter.isNotEmpty) 'oldFilter': normalizedOldFilter,
@@ -3115,7 +3437,12 @@ class MemosApi {
   }
 
   Future<Memo> _getMemoModern(String memoUid) async {
-    final response = await _dio.get('api/v1/memos/$memoUid');
+    final response = await _dio.get(
+      'api/v1/memos/$memoUid',
+      queryParameters: <String, Object?>{
+        if (_routeAdapter.requiresMemoFullView) 'view': 'MEMO_VIEW_FULL',
+      },
+    );
     return _memoFromJson(_expectJsonMap(response.data));
   }
 
@@ -3273,6 +3600,10 @@ class MemosApi {
     Object? location = _unset,
   }) async {
     await _ensureServerHints();
+    final canUseLegacyTransportFallback = _canFallbackUpdateMemoToLegacy(
+      location: location,
+      displayTime: displayTime,
+    );
     if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
@@ -3297,6 +3628,18 @@ class MemosApi {
         displayTime: displayTime,
       );
     }
+    if (_forceLegacyMemoUpdateEndpoint &&
+        canUseLegacyTransportFallback &&
+        _legacyMemoEndpointsAllowed()) {
+      return _updateMemoLegacy(
+        memoUid: memoUid,
+        content: content,
+        visibility: visibility,
+        pinned: pinned,
+        state: state,
+        displayTime: displayTime,
+      );
+    }
     try {
       return await _updateMemoModern(
         memoUid: memoUid,
@@ -3308,8 +3651,45 @@ class MemosApi {
         location: location,
       );
     } on DioException catch (e) {
+      DioException error = e;
+      if (_shouldRetryUpdateMemoWithRowStatus(error: e, state: state)) {
+        try {
+          final updated = await _updateMemoModern(
+            memoUid: memoUid,
+            content: content,
+            visibility: visibility,
+            pinned: pinned,
+            state: state,
+            displayTime: displayTime,
+            location: location,
+            forceRowStatusStateField: true,
+          );
+          _forceRowStatusMemoStateField = true;
+          return updated;
+        } on DioException catch (retryError) {
+          error = retryError;
+        }
+      }
+      if (_shouldRetryUpdateMemoWithState(error: error, state: state)) {
+        try {
+          final updated = await _updateMemoModern(
+            memoUid: memoUid,
+            content: content,
+            visibility: visibility,
+            pinned: pinned,
+            state: state,
+            displayTime: displayTime,
+            location: location,
+            forceStateField: true,
+          );
+          _forceRowStatusMemoStateField = false;
+          return updated;
+        } on DioException catch (retryError) {
+          error = retryError;
+        }
+      }
       if (_allowMemoFallbackFromError(
-        e,
+        error,
         operation: 'update_memo',
         endpoint: 'api/v1/memo',
       )) {
@@ -3323,7 +3703,29 @@ class MemosApi {
           displayTime: displayTime,
         );
       }
-      rethrow;
+      if (_shouldFallbackUpdateMemoFromTransportError(error) &&
+          canUseLegacyTransportFallback) {
+        final allowed = _legacyMemoEndpointsAllowed();
+        _logMemoFallbackDecision(
+          operation: 'update_memo_transport',
+          allowed: allowed,
+          reason: 'transport_${error.type.name}',
+          error: error,
+          endpoint: 'api/v1/memo',
+        );
+        if (allowed) {
+          _forceLegacyMemoUpdateEndpoint = true;
+          return await _updateMemoLegacy(
+            memoUid: memoUid,
+            content: content,
+            visibility: visibility,
+            pinned: pinned,
+            state: state,
+            displayTime: displayTime,
+          );
+        }
+      }
+      throw error;
     } on FormatException {
       if (!_allowMemoFallbackFromFormat(
         operation: 'update_memo',
@@ -3351,6 +3753,8 @@ class MemosApi {
     String? state,
     DateTime? displayTime,
     required Object? location,
+    bool forceRowStatusStateField = false,
+    bool forceStateField = false,
   }) async {
     final updateMask = <String>[];
     final data = <String, Object?>{'name': 'memos/$memoUid'};
@@ -3367,11 +3771,20 @@ class MemosApi {
       data['pinned'] = pinned;
     }
     if (state != null) {
-      updateMask.add('state');
-      data['state'] = state;
+      final normalizedState = _normalizeLegacyRowStatus(state) ?? state;
+      if (_usesRowStatusStateField(
+        forceRowStatusStateField: forceRowStatusStateField,
+        forceStateField: forceStateField,
+      )) {
+        updateMask.add('row_status');
+        data['rowStatus'] = _rowStatusStateForUpdate(normalizedState);
+      } else {
+        updateMask.add('state');
+        data['state'] = state;
+      }
     }
     if (displayTime != null) {
-      updateMask.add('display_time');
+      updateMask.add(_displayTimeUpdateMaskField());
       data['displayTime'] = displayTime.toUtc().toIso8601String();
     }
     if (!identical(location, _unset)) {
@@ -3393,6 +3806,120 @@ class MemosApi {
       data: data,
     );
     return _memoFromJson(_expectJsonMap(response.data));
+  }
+
+  bool _usesRowStatusStateField({
+    bool forceRowStatusStateField = false,
+    bool forceStateField = false,
+  }) {
+    if (forceStateField) return false;
+    return forceRowStatusStateField ||
+        _forceRowStatusMemoStateField ||
+        _routeAdapter.usesRowStatusMemoStateField;
+  }
+
+  String _rowStatusStateForUpdate(String state) {
+    final normalized = state.trim().toUpperCase();
+    if (_serverFlavor == _ServerApiFlavor.v0_22 && normalized == 'NORMAL') {
+      return 'ACTIVE';
+    }
+    return normalized;
+  }
+
+  String _displayTimeUpdateMaskField() {
+    if (_serverFlavor == _ServerApiFlavor.v0_22) {
+      return 'display_ts';
+    }
+    return 'display_time';
+  }
+
+  static bool _canFallbackUpdateMemoToLegacy({
+    required Object? location,
+    required DateTime? displayTime,
+  }) {
+    if (!identical(location, _unset)) return false;
+    if (displayTime != null) return false;
+    return true;
+  }
+
+  static bool _shouldFallbackUpdateMemoFromTransportError(DioException error) {
+    if (error.response != null) return false;
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return true;
+      case DioExceptionType.badCertificate:
+      case DioExceptionType.badResponse:
+      case DioExceptionType.cancel:
+        return false;
+      case DioExceptionType.unknown:
+        break;
+    }
+
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) return false;
+    return message.contains(
+          'connection closed before full header was received',
+        ) ||
+        message.contains('connection reset by peer') ||
+        message.contains('connection aborted') ||
+        message.contains('broken pipe') ||
+        message.contains('socketexception') ||
+        message.contains('httpexception');
+  }
+
+  bool _shouldRetryUpdateMemoWithRowStatus({
+    required DioException error,
+    required String? state,
+  }) {
+    if (state == null || state.trim().isEmpty) return false;
+    if (_usesRowStatusStateField()) return false;
+    final status = error.response?.statusCode ?? 0;
+    if (status != 400) return false;
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) return false;
+    return message.contains('could not find field "state"') ||
+        message.contains("could not find field 'state'") ||
+        (message.contains('field "state"') && message.contains('memo'));
+  }
+
+  bool _shouldRetryUpdateMemoWithState({
+    required DioException error,
+    required String? state,
+  }) {
+    if (state == null || state.trim().isEmpty) return false;
+    if (!_usesRowStatusStateField()) return false;
+    final status = error.response?.statusCode ?? 0;
+    if (status != 400) return false;
+    final message = _extractDioErrorMessage(error).toLowerCase();
+    if (message.isEmpty) return false;
+    return message.contains('could not find field "row_status"') ||
+        message.contains("could not find field 'row_status'") ||
+        (message.contains('field "row_status"') && message.contains('memo'));
+  }
+
+  String? _mergeLegacyRowStatusFilter({
+    required String? filter,
+    required String? state,
+  }) {
+    final normalizedState = _normalizeLegacyRowStatus(state);
+    final normalizedFilter = (filter ?? '').trim();
+    if (normalizedState == null || normalizedState.isEmpty) {
+      return normalizedFilter.isEmpty ? null : normalizedFilter;
+    }
+
+    if (RegExp(r'\brow_status\b').hasMatch(normalizedFilter)) {
+      return normalizedFilter;
+    }
+
+    final rowStatusClause =
+        'row_status == "${_escapeLegacyFilterString(normalizedState)}"';
+    if (normalizedFilter.isEmpty) {
+      return rowStatusClause;
+    }
+    return '($normalizedFilter) && ($rowStatusClause)';
   }
 
   Future<void> deleteMemo({required String memoUid, bool force = false}) async {
@@ -4722,7 +5249,17 @@ class MemosApi {
   }
 
   Memo _memoFromJson(Map<String, dynamic> json) {
-    final memo = Memo.fromJson(json);
+    final normalized = Map<String, dynamic>.from(json);
+    final stateRaw = _readString(
+      normalized['state'] ??
+          normalized['rowStatus'] ??
+          normalized['row_status'],
+    );
+    final state = _normalizeLegacyRowStatus(stateRaw);
+    if (state != null && state.isNotEmpty) {
+      normalized['state'] = state;
+    }
+    final memo = Memo.fromJson(normalized);
     return _normalizeMemoForServer(memo);
   }
 
@@ -4771,20 +5308,31 @@ class MemosApi {
     final name = attachment.name.trim();
     final isLegacyResource = name.startsWith('resources/');
     if (!isLegacyResource) return attachment;
-    final shouldUseLegacyResourceBinaryPath =
-        _serverFlavor == _ServerApiFlavor.v0_22 ||
-        (_serverFlavor == _ServerApiFlavor.unknown &&
-            RegExp(r'^resources/\d+$').hasMatch(name));
-    if (!shouldUseLegacyResourceBinaryPath) return attachment;
     final external = attachment.externalLink.trim();
-    if (external.isNotEmpty) return attachment;
-    return Attachment(
-      name: attachment.name,
-      filename: attachment.filename,
-      type: attachment.type,
-      size: attachment.size,
-      externalLink: '/file/$name',
-    );
+    if (_serverFlavor == _ServerApiFlavor.v0_22) {
+      if (external.isNotEmpty) return attachment;
+      return Attachment(
+        name: attachment.name,
+        filename: attachment.filename,
+        type: attachment.type,
+        size: attachment.size,
+        externalLink: '/file/$name',
+      );
+    }
+
+    // Repair stale links generated by old client logic on 0.23+.
+    if (external.isNotEmpty &&
+        RegExp(r'^/file/resources/\d+$').hasMatch(external) &&
+        attachment.filename.trim().isNotEmpty) {
+      return Attachment(
+        name: attachment.name,
+        filename: attachment.filename,
+        type: attachment.type,
+        size: attachment.size,
+        externalLink: '/file/$name/${attachment.filename}',
+      );
+    }
+    return attachment;
   }
 
   static Memo _memoFromLegacy(Map<String, dynamic> json) {
@@ -4973,6 +5521,9 @@ class MemosApi {
     final normalized = (raw ?? '').trim().toUpperCase();
     if (normalized.isEmpty) return null;
     if (normalized.contains('ARCHIVED')) return 'ARCHIVED';
+    if (normalized == 'ACTIVE' || normalized.endsWith('_ACTIVE')) {
+      return 'NORMAL';
+    }
     if (normalized.contains('NORMAL')) return 'NORMAL';
     return normalized;
   }
@@ -4980,9 +5531,15 @@ class MemosApi {
   static int? _tryParseLegacyCreatorId(String? filter) {
     final raw = (filter ?? '').trim();
     if (raw.isEmpty) return null;
-    final match = RegExp(r'creator_id\s*==\s*(\d+)').firstMatch(raw);
-    if (match == null) return null;
-    return int.tryParse(match.group(1) ?? '');
+    final creatorIdMatch = RegExp(r'creator_id\s*==\s*(\d+)').firstMatch(raw);
+    if (creatorIdMatch != null) {
+      return int.tryParse(creatorIdMatch.group(1) ?? '');
+    }
+    final creatorNameMatch = RegExp(
+      r'''creator\s*==\s*['"]users/(\d+)['"]''',
+    ).firstMatch(raw);
+    if (creatorNameMatch == null) return null;
+    return int.tryParse(creatorNameMatch.group(1) ?? '');
   }
 
   static String? _buildLegacyV2SearchFilter({

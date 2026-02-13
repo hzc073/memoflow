@@ -129,8 +129,14 @@ final remoteSearchMemosProvider =
       final filters = <String>[];
 
       final creatorId = _parseUserId(account.user.name);
-      if (creatorId != null) {
-        filters.add('creator_id == $creatorId');
+      final creatorFilter = creatorId == null
+          ? null
+          : _buildCreatorFilterExpression(
+              creatorId: creatorId,
+              useLegacyDialect: api.usesLegacySearchFilterDialect,
+            );
+      if (creatorFilter != null) {
+        filters.add(creatorFilter);
       }
 
       if (normalizedSearch.isNotEmpty) {
@@ -156,11 +162,14 @@ final remoteSearchMemosProvider =
       }
 
       final filter = filters.isEmpty ? null : filters.join(' && ');
+      final requiresCreatorScopedList = api.requiresCreatorScopedListMemos;
       final useLegacySearchFallback =
           api.usesLegacyMemos || api.usesLegacySearchFilterDialect;
       final effectiveFilter = api.usesLegacyMemos
-          ? (creatorId == null ? null : 'creator_id == $creatorId')
-          : (useLegacySearchFallback ? null : filter);
+          ? creatorFilter
+          : (useLegacySearchFallback
+                ? (requiresCreatorScopedList ? creatorFilter : null)
+                : filter);
       final traceId = DateTime.now().microsecondsSinceEpoch.toString();
       logManager.info(
         'Search flow started',
@@ -449,6 +458,7 @@ final shortcutMemosProvider =
       }
 
       final api = ref.watch(memosApiProvider);
+      await api.ensureServerHintsLoaded();
       final creatorId = _parseUserId(account.user.name);
       final parent = _buildShortcutParent(creatorId);
       final filter = _buildShortcutFilter(
@@ -458,7 +468,8 @@ final shortcutMemosProvider =
         shortcutFilter: query.shortcutFilter,
         startTimeSec: query.startTimeSec,
         endTimeSecExclusive: query.endTimeSecExclusive,
-        includeCreatorId: parent == null,
+        includeCreatorId: parent == null || !api.supportsMemoParentQuery,
+        useLegacyDialect: api.usesLegacySearchFilterDialect,
       );
 
       var seed = <LocalMemo>[];
@@ -520,10 +531,16 @@ String? _buildShortcutFilter({
   int? startTimeSec,
   int? endTimeSecExclusive,
   bool includeCreatorId = true,
+  bool useLegacyDialect = false,
 }) {
   final filters = <String>[];
   if (includeCreatorId && creatorId != null) {
-    filters.add('creator_id == $creatorId');
+    filters.add(
+      _buildCreatorFilterExpression(
+        creatorId: creatorId,
+        useLegacyDialect: useLegacyDialect,
+      ),
+    );
   }
 
   final normalizedSearch = searchQuery.trim();
@@ -565,6 +582,16 @@ int? _parseUserId(String raw) {
   if (trimmed.isEmpty) return null;
   final last = trimmed.contains('/') ? trimmed.split('/').last : trimmed;
   return int.tryParse(last.trim());
+}
+
+String _buildCreatorFilterExpression({
+  required int creatorId,
+  required bool useLegacyDialect,
+}) {
+  if (useLegacyDialect) {
+    return "creator == 'users/$creatorId'";
+  }
+  return 'creator_id == $creatorId';
 }
 
 String _escapeFilterValue(String raw) {
@@ -1411,6 +1438,18 @@ class RemoteSyncController extends SyncControllerBase {
   final AppLanguage language;
   final ImageBedSettingsRepository imageBedRepository;
   final void Function(Set<String> memoUids)? onRelationsSynced;
+  Timer? _retrySyncTimer;
+  int _retryBackoffIndex = 0;
+  bool _rerunRequestedWhileLoading = false;
+  bool _isDisposed = false;
+
+  static const List<Duration> _retryBackoffSteps = <Duration>[
+    Duration(seconds: 3),
+    Duration(seconds: 6),
+    Duration(seconds: 12),
+    Duration(seconds: 24),
+    Duration(seconds: 45),
+  ];
 
   static int? _parseUserId(String userName) {
     final raw = userName.trim();
@@ -1422,7 +1461,10 @@ class RemoteSyncController extends SyncControllerBase {
   String? get _creatorFilter {
     final id = _parseUserId(currentUserName);
     if (id == null) return null;
-    return 'creator_id == $id';
+    return _buildCreatorFilterExpression(
+      creatorId: id,
+      useLegacyDialect: api.usesLegacySearchFilterDialect,
+    );
   }
 
   String? get _memoParentName {
@@ -1531,13 +1573,52 @@ class RemoteSyncController extends SyncControllerBase {
     final status = e.response?.statusCode;
     final uri = e.requestOptions.uri;
     final msg = _extractErrorMessage(e.response?.data);
-    final reason = e.message ?? '';
+    final reason = (e.message ?? '').trim();
+    final lowLevel = (e.error?.toString() ?? '').trim();
+    final detail = msg.isNotEmpty
+        ? msg
+        : (reason.isNotEmpty
+              ? reason
+              : (lowLevel.isNotEmpty ? lowLevel : 'unknown'));
     final parts = <String>[
       if (status != null) 'HTTP $status' else 'HTTP ?',
       '${e.requestOptions.method} $uri',
-      if (msg.isNotEmpty) msg else if (reason.trim().isNotEmpty) reason.trim(),
+      detail,
     ];
     return parts.join(' | ');
+  }
+
+  static bool _isTransientOutboxNetworkError(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return true;
+      case DioExceptionType.badCertificate:
+      case DioExceptionType.badResponse:
+      case DioExceptionType.cancel:
+        return false;
+      case DioExceptionType.unknown:
+        break;
+    }
+
+    final texts = <String>[
+      e.message ?? '',
+      e.error?.toString() ?? '',
+      _extractErrorMessage(e.response?.data),
+    ];
+    final combined = texts.join(' | ').toLowerCase();
+    if (combined.trim().isEmpty) return false;
+
+    return combined.contains(
+          'connection closed before full header was received',
+        ) ||
+        combined.contains('connection reset by peer') ||
+        combined.contains('connection aborted') ||
+        combined.contains('broken pipe') ||
+        combined.contains('socketexception') ||
+        combined.contains('httpexception');
   }
 
   static String _normalizeTag(String raw) {
@@ -1564,15 +1645,85 @@ class RemoteSyncController extends SyncControllerBase {
     return list;
   }
 
+  void _cancelRetrySyncTimer() {
+    _retrySyncTimer?.cancel();
+    _retrySyncTimer = null;
+  }
+
+  Duration _consumeRetryDelay() {
+    final index = _retryBackoffIndex < 0
+        ? 0
+        : (_retryBackoffIndex >= _retryBackoffSteps.length
+              ? _retryBackoffSteps.length - 1
+              : _retryBackoffIndex);
+    final delay = _retryBackoffSteps[index];
+    if (_retryBackoffIndex < _retryBackoffSteps.length - 1) {
+      _retryBackoffIndex++;
+    }
+    return delay;
+  }
+
+  void _resetRetryState() {
+    _cancelRetrySyncTimer();
+    _retryBackoffIndex = 0;
+  }
+
+  Future<bool> _hasPendingOutbox() async {
+    final items = await db.listOutboxPending(limit: 1);
+    return items.isNotEmpty;
+  }
+
+  Future<void> _scheduleRetrySyncIfNeeded({
+    required bool hasPendingOutbox,
+    required bool syncFailed,
+  }) async {
+    if (_isDisposed) return;
+    if (_retrySyncTimer?.isActive ?? false) return;
+    if (!hasPendingOutbox && !syncFailed) {
+      _resetRetryState();
+      return;
+    }
+    final delay = _consumeRetryDelay();
+    _retrySyncTimer = Timer(delay, () {
+      _retrySyncTimer = null;
+      if (_isDisposed) return;
+      unawaited(syncNow());
+    });
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _cancelRetrySyncTimer();
+    super.dispose();
+  }
+
+  @override
   Future<void> syncNow() async {
-    if (state.isLoading) return;
+    if (_isDisposed) return;
+    if (state.isLoading) {
+      _rerunRequestedWhileLoading = true;
+      return;
+    }
+    _cancelRetrySyncTimer();
+    _rerunRequestedWhileLoading = false;
     syncStatusTracker.markSyncStarted();
     syncQueueProgressTracker.markSyncStarted();
     state = const AsyncValue.loading();
+    var outboxBlocked = false;
     final next = await AsyncValue.guard(() async {
-      await _processOutbox();
-      await _syncStateMemos(state: 'NORMAL');
-      await _syncStateMemos(state: 'ARCHIVED');
+      await api.ensureServerHintsLoaded();
+      outboxBlocked = await _processOutbox();
+      final allowPrivateVisibilityPrune =
+          await _allowPrivateVisibilityPruneForCurrentServer();
+      await _syncStateMemos(
+        state: 'NORMAL',
+        allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
+      );
+      await _syncStateMemos(
+        state: 'ARCHIVED',
+        allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
+      );
     });
     state = next;
     if (next.hasError) {
@@ -1581,9 +1732,61 @@ class RemoteSyncController extends SyncControllerBase {
       syncStatusTracker.markSyncSuccess();
     }
     syncQueueProgressTracker.markSyncFinished();
+
+    if (!_isDisposed) {
+      final hasPendingOutbox = await _hasPendingOutbox();
+      final syncFailed = next.hasError;
+      if (!hasPendingOutbox && !syncFailed) {
+        _resetRetryState();
+      } else if (outboxBlocked || syncFailed) {
+        await _scheduleRetrySyncIfNeeded(
+          hasPendingOutbox: hasPendingOutbox,
+          syncFailed: syncFailed,
+        );
+      }
+    }
+
+    if (_rerunRequestedWhileLoading && !_isDisposed) {
+      _rerunRequestedWhileLoading = false;
+      unawaited(syncNow());
+    }
   }
 
-  Future<void> _syncStateMemos({required String state}) async {
+  Future<bool> _allowPrivateVisibilityPruneForCurrentServer() async {
+    // 0.24 deployments may intermittently omit private items from list responses.
+    // Keep private/protected rows locally to avoid accidental data loss.
+    if (api.isRouteProfileV024) {
+      return false;
+    }
+    return _isAuthenticatedAsCurrentUser();
+  }
+
+  Future<bool> _isAuthenticatedAsCurrentUser() async {
+    final expectedName = currentUserName.trim();
+    if (expectedName.isEmpty) return false;
+
+    try {
+      final user = await api.getCurrentUser();
+      final actualName = user.name.trim();
+      if (actualName.isEmpty) return false;
+      if (actualName == expectedName) return true;
+
+      final expectedId = _parseUserId(expectedName);
+      final actualId = _parseUserId(actualName);
+      if (expectedId != null && actualId != null) {
+        return expectedId == actualId;
+      }
+
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _syncStateMemos({
+    required String state,
+    required bool allowPrivateVisibilityPrune,
+  }) async {
     bool creatorMatchesCurrentUser(String creator) {
       final c = creator.trim();
       if (c.isEmpty) return false;
@@ -1598,18 +1801,30 @@ class RemoteSyncController extends SyncControllerBase {
     }
 
     var pageToken = '';
+    var syncPageSize = 1000;
     final creatorFilter = _creatorFilter;
     final memoParent = _memoParentName;
     final legacyCompat = api.useLegacyApi;
-    var useParent = legacyCompat && memoParent != null && memoParent.isNotEmpty;
-    var usedServerFilter = !useParent && creatorFilter != null;
+    final needsCreatorScopedList =
+        legacyCompat || api.requiresCreatorScopedListMemos;
+    final preferParentScopedList = api.isRouteProfileV024;
+    var useParent =
+        (legacyCompat || preferParentScopedList) &&
+        memoParent != null &&
+        memoParent.isNotEmpty &&
+        api.supportsMemoParentQuery;
+    // 0.23 requires creator-scoped list requests to include private memos.
+    // Some 0.24.x deployments reject creator filters, so those versions should
+    // fall back to local creator filtering.
+    var usedServerFilter =
+        needsCreatorScopedList && !useParent && creatorFilter != null;
     final remoteUids = <String>{};
     var completed = false;
 
     while (true) {
       try {
         final (memos, nextToken) = await api.listMemos(
-          pageSize: 1000,
+          pageSize: syncPageSize,
           pageToken: pageToken.isEmpty ? null : pageToken,
           state: state,
           filter: usedServerFilter ? creatorFilter : null,
@@ -1667,10 +1882,22 @@ class RemoteSyncController extends SyncControllerBase {
           break;
         }
       } on DioException catch (e) {
+        if ((e.type == DioExceptionType.receiveTimeout ||
+                e.type == DioExceptionType.connectionTimeout) &&
+            syncPageSize > 200) {
+          syncPageSize = syncPageSize > 600 ? 600 : (syncPageSize ~/ 2);
+          if (syncPageSize < 200) {
+            syncPageSize = 200;
+          }
+          pageToken = '';
+          remoteUids.clear();
+          completed = false;
+          continue;
+        }
         final status = e.response?.statusCode;
         if (useParent && (status == 400 || status == 404 || status == 405)) {
           useParent = false;
-          usedServerFilter = creatorFilter != null;
+          usedServerFilter = needsCreatorScopedList && creatorFilter != null;
           pageToken = '';
           remoteUids.clear();
           completed = false;
@@ -1700,13 +1927,18 @@ class RemoteSyncController extends SyncControllerBase {
     }
 
     if (completed) {
-      await _pruneMissingMemos(state: state, remoteUids: remoteUids);
+      await _pruneMissingMemos(
+        state: state,
+        remoteUids: remoteUids,
+        allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
+      );
     }
   }
 
   Future<void> _pruneMissingMemos({
     required String state,
     required Set<String> remoteUids,
+    required bool allowPrivateVisibilityPrune,
   }) async {
     final pendingOutbox = await db.listPendingOutboxMemoUids();
     final locals = await db.listMemoUidSyncStates(state: state);
@@ -1717,14 +1949,21 @@ class RemoteSyncController extends SyncControllerBase {
       if (pendingOutbox.contains(uid)) continue;
       final syncState = row['sync_state'] as int? ?? 0;
       if (syncState != 0) continue;
+      final visibility = ((row['visibility'] as String?) ?? '')
+          .trim()
+          .toUpperCase();
+      if (!allowPrivateVisibilityPrune &&
+          (visibility == 'PRIVATE' || visibility == 'PROTECTED')) {
+        continue;
+      }
       await db.deleteMemoByUid(uid);
     }
   }
 
-  Future<void> _processOutbox() async {
+  Future<bool> _processOutbox() async {
     while (true) {
       final items = await db.listOutboxPending(limit: 1);
-      if (items.isEmpty) return;
+      if (items.isEmpty) return false;
       final row = items.first;
       final id = row['id'] as int?;
       final type = row['type'] as String?;
@@ -1741,6 +1980,7 @@ class RemoteSyncController extends SyncControllerBase {
       }
 
       var shouldStop = false;
+      final isUploadTask = type == 'upload_attachment';
       syncQueueProgressTracker.markTaskStarted(id);
       try {
         switch (type) {
@@ -1788,39 +2028,49 @@ class RemoteSyncController extends SyncControllerBase {
             await db.deleteOutbox(id);
         }
       } catch (e) {
+        final transientNetworkError =
+            e is DioException && _isTransientOutboxNetworkError(e);
         final memoError = e is DioException
             ? _summarizeHttpError(e)
             : e.toString();
         final outboxError = e is DioException
             ? _detailHttpError(e)
             : e.toString();
-        await db.markOutboxError(id, error: outboxError);
-        final memoUid = switch (type) {
-          'create_memo' => payload['uid'] as String?,
-          'upload_attachment' => payload['memo_uid'] as String?,
-          'delete_attachment' => payload['memo_uid'] as String?,
-          _ => null,
-        };
-        if (memoUid != null && memoUid.isNotEmpty) {
-          final errorText = trByLanguageKey(
-            language: language,
-            key: 'legacy.msg_sync_failed',
-            params: {'type': type, 'memoError': memoError},
-          );
-          await db.updateMemoSyncState(
-            memoUid,
-            syncState: 2,
-            lastError: errorText,
-          );
+        if (transientNetworkError) {
+          // Keep this task pending and retry with backoff.
+          await db.markOutboxRetryPending(id, error: outboxError);
+        } else {
+          await db.markOutboxError(id, error: outboxError);
+          final memoUid = switch (type) {
+            'create_memo' => payload['uid'] as String?,
+            'upload_attachment' => payload['memo_uid'] as String?,
+            'delete_attachment' => payload['memo_uid'] as String?,
+            _ => null,
+          };
+          if (memoUid != null && memoUid.isNotEmpty) {
+            final errorText = trByLanguageKey(
+              language: language,
+              key: 'legacy.msg_sync_failed',
+              params: {'type': type, 'memoError': memoError},
+            );
+            await db.updateMemoSyncState(
+              memoUid,
+              syncState: 2,
+              lastError: errorText,
+            );
+          }
         }
         // Keep ordering: stop processing further ops until this one succeeds.
         shouldStop = true;
       } finally {
+        if (!shouldStop && isUploadTask) {
+          await syncQueueProgressTracker.markTaskCompleted(outboxId: id);
+        }
         syncQueueProgressTracker.clearCurrentTask(outboxId: id);
       }
 
       if (shouldStop) {
-        break;
+        return true;
       }
     }
   }

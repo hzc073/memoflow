@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/api/memos_api.dart';
+import '../data/api/server_api_profile.dart';
 import '../data/logs/log_manager.dart';
 import '../data/models/account.dart';
 import '../data/models/instance_profile.dart';
@@ -97,9 +98,6 @@ class AppSessionNotifier extends AppSessionController {
     _loadFromStorage();
   }
 
-  static final RegExp _versionPattern = RegExp(r'(\d+)\.(\d+)\.(\d+)');
-  static final RegExp _instanceVersionPattern = RegExp(r'(\d+)\.(\d+)\.(\d+)');
-
   @override
   Future<void> setCurrentKey(String? key) async {
     final current =
@@ -155,9 +153,12 @@ class AppSessionNotifier extends AppSessionController {
       }
     }
 
+    final authUseLegacy = _shouldUseLegacyApiForVersion(instanceProfile.version);
     final user = await MemosApi.authenticated(
       baseUrl: baseUrl,
       personalAccessToken: personalAccessToken,
+      useLegacyApi: authUseLegacy,
+      instanceProfile: instanceProfile,
       logManager: LogManager.instance,
     ).getCurrentUser();
 
@@ -167,6 +168,8 @@ class AppSessionNotifier extends AppSessionController {
         instanceProfile = await MemosApi.authenticated(
           baseUrl: baseUrl,
           personalAccessToken: personalAccessToken,
+          useLegacyApi: authUseLegacy,
+          instanceProfile: instanceProfile,
           logManager: LogManager.instance,
         ).getInstanceProfile();
       } catch (_) {}
@@ -345,12 +348,16 @@ class AppSessionNotifier extends AppSessionController {
       account: account,
       globalDefault: true,
     );
+    final effectiveProfile = resolveEffectiveInstanceProfileForAccount(
+      account: account,
+    );
 
     try {
       final api = MemosApi.authenticated(
         baseUrl: account.baseUrl,
         personalAccessToken: account.personalAccessToken,
         useLegacyApi: useLegacyApi,
+        instanceProfile: effectiveProfile,
         logManager: LogManager.instance,
       );
       final user = await api.getCurrentUser();
@@ -387,28 +394,14 @@ class AppSessionNotifier extends AppSessionController {
   }
 
   bool _shouldUseLegacyApiForVersion(String versionRaw) {
-    final match = _versionPattern.firstMatch(versionRaw.trim());
-    if (match == null) {
-      return true;
-    }
-
-    final major = int.tryParse(match.group(1) ?? '');
-    final minor = int.tryParse(match.group(2) ?? '');
-    final patch = int.tryParse(match.group(3) ?? '');
-    if (major == null || minor == null || patch == null) {
-      return true;
-    }
-
-    if (major == 0 && minor <= 22) {
-      return true;
-    }
-    return false;
+    return MemosServerApiProfiles.defaultUseLegacyApi(versionRaw);
   }
 
   Future<_PasswordLoginStrategy> _resolvePasswordLoginStrategy({
     required Uri baseUrl,
     required bool useLegacyApiPreference,
   }) async {
+    final _ = useLegacyApiPreference;
     InstanceProfile profile;
     try {
       profile = await MemosApi.unauthenticated(
@@ -416,18 +409,15 @@ class AppSessionNotifier extends AppSessionController {
         logManager: LogManager.instance,
       ).getInstanceProfile();
     } catch (_) {
+      final fallbackProfile = MemosServerApiProfiles.fallbackProfile;
       return _PasswordLoginStrategy(
-        useLegacyApi: useLegacyApiPreference,
-        flavor: _inferFlavorFromVersion(''),
+        useLegacyApi: fallbackProfile.defaultUseLegacyApi,
+        flavor: _detectedFlavorFromServerFlavor(fallbackProfile.flavor),
       );
     }
 
     final flavor = _inferFlavorFromVersion(profile.version);
-    final useLegacyApi = switch (flavor) {
-      _DetectedServerFlavor.v0_21 || _DetectedServerFlavor.v0_22 => true,
-      _DetectedServerFlavor.v0_24 || _DetectedServerFlavor.v0_25Plus => false,
-      _DetectedServerFlavor.unknown => useLegacyApiPreference,
-    };
+    final useLegacyApi = _shouldUseLegacyApiForVersion(profile.version);
 
     LogManager.instance.info(
       'Password sign-in strategy resolved',
@@ -444,18 +434,27 @@ class AppSessionNotifier extends AppSessionController {
   }
 
   _DetectedServerFlavor _inferFlavorFromVersion(String versionRaw) {
-    final trimmed = versionRaw.trim();
-    final match = _instanceVersionPattern.firstMatch(trimmed);
-    if (match == null) return _DetectedServerFlavor.unknown;
+    final flavor = MemosServerApiProfiles.byVersionString(versionRaw).flavor;
+    return _detectedFlavorFromServerFlavor(flavor);
+  }
 
-    final major = int.tryParse(match.group(1) ?? '');
-    final minor = int.tryParse(match.group(2) ?? '');
-    if (major == null || minor == null) return _DetectedServerFlavor.unknown;
-    if (major != 0) return _DetectedServerFlavor.v0_25Plus;
-    if (minor >= 25) return _DetectedServerFlavor.v0_25Plus;
-    if (minor >= 24) return _DetectedServerFlavor.v0_24;
-    if (minor >= 22) return _DetectedServerFlavor.v0_22;
-    return _DetectedServerFlavor.v0_21;
+  _DetectedServerFlavor _detectedFlavorFromServerFlavor(
+    MemosServerFlavor flavor,
+  ) {
+    return switch (flavor) {
+      MemosServerFlavor.v0_21 => _DetectedServerFlavor.v0_21,
+      MemosServerFlavor.v0_22 => _DetectedServerFlavor.v0_22,
+      MemosServerFlavor.v0_23 => _DetectedServerFlavor.v0_23,
+      MemosServerFlavor.v0_24 => _DetectedServerFlavor.v0_24,
+      MemosServerFlavor.v0_25Plus => _DetectedServerFlavor.v0_25Plus,
+    };
+  }
+
+  MemosVersionResolution _resolveVersionForAccount(Account account) {
+    return MemosServerApiProfiles.resolve(
+      manualVersionOverride: account.serverVersionOverride,
+      detectedVersion: account.instanceProfile.version,
+    );
   }
 
   @override
@@ -463,25 +462,21 @@ class AppSessionNotifier extends AppSessionController {
     required Account account,
     required bool globalDefault,
   }) {
+    final _ = globalDefault;
     final override = account.useLegacyApiOverride;
     if (override != null) {
       return override;
     }
-    final versionRaw = resolveEffectiveServerVersionForAccount(
-      account: account,
-    );
-    if (versionRaw.isEmpty) {
-      return globalDefault;
-    }
-    return _shouldUseLegacyApiForVersion(versionRaw);
+    return _resolveVersionForAccount(account).profile.defaultUseLegacyApi;
   }
 
   @override
   InstanceProfile resolveEffectiveInstanceProfileForAccount({
     required Account account,
   }) {
-    final version = resolveEffectiveServerVersionForAccount(account: account);
-    if (version.isEmpty || version == account.instanceProfile.version.trim()) {
+    final resolved = _resolveVersionForAccount(account);
+    final version = resolved.effectiveVersion;
+    if (version == account.instanceProfile.version.trim()) {
       return account.instanceProfile;
     }
     return InstanceProfile(
@@ -494,11 +489,7 @@ class AppSessionNotifier extends AppSessionController {
 
   @override
   String resolveEffectiveServerVersionForAccount({required Account account}) {
-    final override = account.serverVersionOverride?.trim() ?? '';
-    if (override.isNotEmpty) {
-      return override;
-    }
-    return account.instanceProfile.version.trim();
+    return _resolveVersionForAccount(account).effectiveVersion;
   }
 
   @override
@@ -701,21 +692,7 @@ class AppSessionNotifier extends AppSessionController {
   }
 
   static String? _normalizeVersionOverride(String? version) {
-    final trimmed = (version ?? '').trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    final match = RegExp(r'^(\d+)\.(\d+)(?:\.(\d+))?$').firstMatch(trimmed);
-    if (match == null) {
-      throw const FormatException('Version must be like 0.22 or 0.22.0');
-    }
-    final major = int.tryParse(match.group(1) ?? '');
-    final minor = int.tryParse(match.group(2) ?? '');
-    final patch = int.tryParse(match.group(3) ?? '0');
-    if (major == null || minor == null || patch == null) {
-      throw const FormatException('Invalid version');
-    }
-    return '$major.$minor.$patch';
+    return MemosServerApiProfiles.normalizeVersionOverride(version);
   }
 
   Future<_PasswordSignInResult> _signInWithPassword({
@@ -1088,6 +1065,12 @@ class AppSessionNotifier extends AppSessionController {
         signinV2(),
         sessionsV1(),
       ],
+      _DetectedServerFlavor.v0_23 => <_PasswordSignInAttempt>[
+        grpcWeb(),
+        signinV1(),
+        signinV2(),
+        sessionsV1(),
+      ],
       _DetectedServerFlavor.v0_22 => <_PasswordSignInAttempt>[
         grpcWeb(),
         signinV1(),
@@ -1352,7 +1335,7 @@ class _PasswordLoginStrategy {
   final _DetectedServerFlavor flavor;
 }
 
-enum _DetectedServerFlavor { unknown, v0_25Plus, v0_24, v0_22, v0_21 }
+enum _DetectedServerFlavor { unknown, v0_25Plus, v0_24, v0_23, v0_22, v0_21 }
 
 const String _kPasswordLoginTokenDescription = 'MemoFlow (password login)';
 const String _kAccessTokenCookieName = 'memos.access-token';
