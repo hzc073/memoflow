@@ -145,7 +145,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _controller.removeListener(_scheduleDraftSave);
     _controller.removeListener(_trackHistory);
     _smartEnterController.dispose();
-    unawaited(_noteDraftController.setDraft(_controller.text));
+    final draftText = _controller.text;
+    // Defer provider mutation to avoid updating Riverpod state during unmount.
+    unawaited(
+      Future<void>(
+        () => _noteDraftController.setDraft(draftText, triggerSync: false),
+      ),
+    );
     _controller.dispose();
     super.dispose();
   }

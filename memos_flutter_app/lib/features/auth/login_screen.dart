@@ -39,6 +39,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   var _loginMode = _LoginMode.password;
   var _selectedServerVersion = '0.26.0';
+  var _serverVersionManuallySelected = false;
   var _shownInitialError = false;
 
   @override
@@ -196,6 +197,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return major == 0 && minor <= 22;
   }
 
+  String? _resolveServerVersionOverrideForConnect() {
+    final selectedVersion = _normalizeServerVersion(_selectedServerVersion);
+    if (selectedVersion.isEmpty) return null;
+
+    final hasCurrentAccount =
+        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
+
+    // If there is no current account and user didn't manually pick a version,
+    // let session provider auto-detect server flavor on sign-in.
+    if (!_serverVersionManuallySelected && !hasCurrentAccount) {
+      return null;
+    }
+    return selectedVersion;
+  }
+
+  bool _resolveUseLegacyApiForConnect(String? serverVersionOverride) {
+    if (serverVersionOverride != null && serverVersionOverride.isNotEmpty) {
+      return _shouldUseLegacyApiByVersion(serverVersionOverride);
+    }
+    return ref.read(appPreferencesProvider).useLegacyApi;
+  }
+
   Future<void> _connect() async {
     if (_loginMode == _LoginMode.password) {
       return _connectWithPassword();
@@ -215,8 +238,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (baseUrl == null) {
       return;
     }
-    final selectedVersion = _normalizeServerVersion(_selectedServerVersion);
-    final useLegacyApiOverride = _shouldUseLegacyApiByVersion(selectedVersion);
+    final serverVersionOverride = _resolveServerVersionOverrideForConnect();
+    final useLegacyApiOverride = serverVersionOverride == null
+        ? null
+        : _shouldUseLegacyApiByVersion(serverVersionOverride);
 
     await ref
         .read(appSessionProvider.notifier)
@@ -224,7 +249,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           baseUrl: baseUrl,
           personalAccessToken: token,
           useLegacyApiOverride: useLegacyApiOverride,
-          serverVersionOverride: selectedVersion,
+          serverVersionOverride: serverVersionOverride,
         );
 
     final sessionAsync = ref.read(appSessionProvider);
@@ -238,9 +263,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    final hasCurrentAccount =
+        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
+    if (!hasCurrentAccount) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.t.strings.login.errors.connectionFailedWithMessage(
+              message: 'No active session after sign in',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     if (!mounted) return;
     if (Navigator.of(context).canPop()) {
       context.safePop();
+    } else {
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).pushNamedAndRemoveUntil('/', (route) => false);
     }
   }
 
@@ -252,8 +298,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
-    final selectedVersion = _normalizeServerVersion(_selectedServerVersion);
-    final useLegacyApi = _shouldUseLegacyApiByVersion(selectedVersion);
+    final serverVersionOverride = _resolveServerVersionOverrideForConnect();
+    final useLegacyApi = _resolveUseLegacyApiForConnect(serverVersionOverride);
 
     await ref
         .read(appSessionProvider.notifier)
@@ -262,7 +308,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           username: username,
           password: password,
           useLegacyApi: useLegacyApi,
-          serverVersionOverride: selectedVersion,
+          serverVersionOverride: serverVersionOverride,
         );
 
     final sessionAsync = ref.read(appSessionProvider);
@@ -275,9 +321,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    final hasCurrentAccount =
+        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
+    if (!hasCurrentAccount) {
+      if (!mounted) return;
+      _passwordController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.t.strings.login.errors.signInFailed)),
+      );
+      return;
+    }
+
     if (!mounted) return;
     if (Navigator.of(context).canPop()) {
       context.safePop();
+    } else {
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).pushNamedAndRemoveUntil('/', (route) => false);
     }
   }
 
@@ -467,6 +529,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text(
+                    context.t.strings.login.mode.signInMethod,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: textMain,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildLoginModeToggle(
+                    enabled: !isBusy,
+                    isDark: isDark,
+                    card: card,
+                    textMain: textMain,
+                  ),
+                  const SizedBox(height: 14),
                   _buildField(
                     controller: _baseUrlController,
                     label: context.t.strings.login.field.serverUrlLabel,
@@ -501,21 +578,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       }
                       return null;
                     },
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    context.t.strings.login.mode.signInMethod,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLoginModeToggle(
-                    enabled: !isBusy,
-                    isDark: isDark,
-                    card: card,
-                    textMain: textMain,
                   ),
                   const SizedBox(height: 14),
                   if (_loginMode == _LoginMode.password) ...[
@@ -634,6 +696,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : (value) {
                               if (value == null || value.trim().isEmpty) return;
                               setState(() {
+                                _serverVersionManuallySelected = true;
                                 _selectedServerVersion = value.trim();
                               });
                             },

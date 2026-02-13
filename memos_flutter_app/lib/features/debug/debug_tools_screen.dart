@@ -1,14 +1,15 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
+import '../../data/api/server_api_profile.dart';
 import '../../data/logs/debug_log_store.dart';
 import '../../data/models/user.dart';
 import '../../state/debug_log_provider.dart';
@@ -65,7 +66,10 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color));
+    return Text(
+      text,
+      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+    );
   }
 }
 
@@ -157,9 +161,20 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textMuted))),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+            ),
+          ),
           const SizedBox(width: 12),
-          Flexible(child: Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: textMain), textAlign: TextAlign.end)),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+              textAlign: TextAlign.end,
+            ),
+          ),
         ],
       ),
     );
@@ -193,7 +208,15 @@ class _ActionRow extends StatelessWidget {
             children: [
               Icon(icon, size: 20, color: textMuted),
               const SizedBox(width: 12),
-              Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textMain))),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
+                ),
+              ),
               Icon(Icons.chevron_right, size: 20, color: textMuted),
             ],
           ),
@@ -233,7 +256,14 @@ class _Field extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textMuted)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: textMuted,
+          ),
+        ),
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
@@ -249,9 +279,15 @@ class _Field extends StatelessWidget {
             style: TextStyle(color: textMain, fontWeight: FontWeight.w500),
             decoration: InputDecoration(
               hintText: hintText,
-              hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.6), fontWeight: FontWeight.w500),
+              hintStyle: TextStyle(
+                color: textMuted.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w500,
+              ),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
               suffixIcon: suffix,
             ),
           ),
@@ -285,16 +321,28 @@ class _ApiResultCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${result.method} ${result.path}', style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+          Text(
+            '${result.method} ${result.path}',
+            style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+          ),
           const SizedBox(height: 4),
-          Text('$statusLabel · ${result.durationMs}ms', style: TextStyle(fontSize: 12, color: textMuted)),
+          Text(
+            '$statusLabel · ${result.durationMs}ms',
+            style: TextStyle(fontSize: 12, color: textMuted),
+          ),
           if (error != null && error.trim().isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(error, style: const TextStyle(fontSize: 12, color: Colors.redAccent)),
+            Text(
+              error,
+              style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+            ),
           ],
           if (result.responseBody.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
-            SelectableText(result.responseBody, style: TextStyle(fontSize: 12, color: textMain)),
+            SelectableText(
+              result.responseBody,
+              style: TextStyle(fontSize: 12, color: textMain),
+            ),
           ],
         ],
       ),
@@ -303,7 +351,8 @@ class _ApiResultCard extends StatelessWidget {
 }
 
 class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
-  static final Future<PackageInfo> _packageInfoFuture = PackageInfo.fromPlatform();
+  static final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
 
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -345,7 +394,10 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
   String _normalizeTokenInput(String raw) {
     var token = raw.trim();
     if (token.isEmpty) return token;
-    final match = RegExp(r'^(?:authorization:\\s*)?bearer\\s+', caseSensitive: false).firstMatch(token);
+    final match = RegExp(
+      r'^(?:authorization:\\s*)?bearer\\s+',
+      caseSensitive: false,
+    ).firstMatch(token);
     if (match != null) {
       token = token.substring(match.end).trim();
     }
@@ -362,8 +414,27 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     return '$head...$tail';
   }
 
+  String _apiVersionBandLabel(MemosVersionNumber? version) {
+    if (version == null) return '-';
+    if (version.major == 0 && version.minor >= 20 && version.minor < 30) {
+      return '0.2x';
+    }
+    return '${version.major}.${version.minor}x';
+  }
+
+  String _apiRouteVersionLabel(MemosVersionResolution? resolution) {
+    if (resolution == null) return '-';
+    final band = _apiVersionBandLabel(resolution.parsedVersion);
+    final effective = resolution.effectiveVersion.trim();
+    final flavor = resolution.profile.flavor.name;
+    if (effective.isEmpty) return '$band | $flavor';
+    return '$band | $effective | $flavor';
+  }
+
   Future<void> _logAction(String label, {String? detail}) async {
-    await ref.read(debugLogStoreProvider).add(
+    await ref
+        .read(debugLogStoreProvider)
+        .add(
           DebugLogEntry(
             timestamp: DateTime.now().toUtc(),
             category: 'action',
@@ -385,7 +456,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     String? responseBody,
     String? error,
   }) async {
-    await ref.read(debugLogStoreProvider).add(
+    await ref
+        .read(debugLogStoreProvider)
+        .add(
           DebugLogEntry(
             timestamp: DateTime.now().toUtc(),
             category: 'api',
@@ -404,7 +477,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Map<String, String> _flattenHeaders(Headers headers) {
@@ -463,7 +538,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     final body = _expectJsonMap(response.data);
     final userJson = body['user'] is Map ? body['user'] as Map : body;
     final user = User.fromJson(userJson.cast<String, dynamic>());
-    final token = _extractAccessToken(body) ?? _extractAccessTokenFromSetCookie(response.headers);
+    final token =
+        _extractAccessToken(body) ??
+        _extractAccessTokenFromSetCookie(response.headers);
     return _DebugSignInResult(user: user, token: token, response: response);
   }
 
@@ -481,15 +558,14 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     );
     final response = await dio.post(
       'api/v2/auth/signin',
-      data: {
-        'username': username,
-        'password': password,
-      },
+      data: {'username': username, 'password': password},
     );
     final body = _expectJsonMap(response.data);
     final userJson = body['user'] is Map ? body['user'] as Map : body;
     final user = User.fromJson(userJson.cast<String, dynamic>());
-    final token = _extractAccessToken(body) ?? _extractAccessTokenFromSetCookie(response.headers);
+    final token =
+        _extractAccessToken(body) ??
+        _extractAccessTokenFromSetCookie(response.headers);
     return _DebugSignInResult(user: user, token: token, response: response);
   }
 
@@ -516,12 +592,28 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
 
     final attempts = useLegacyApi
         ? <Future<_DebugSignInResult> Function()>[
-            () => _signInV2(baseUrl: baseUrl, username: username, password: password),
-            () => _signInV1(baseUrl: baseUrl, username: username, password: password),
+            () => _signInV2(
+              baseUrl: baseUrl,
+              username: username,
+              password: password,
+            ),
+            () => _signInV1(
+              baseUrl: baseUrl,
+              username: username,
+              password: password,
+            ),
           ]
         : <Future<_DebugSignInResult> Function()>[
-            () => _signInV1(baseUrl: baseUrl, username: username, password: password),
-            () => _signInV2(baseUrl: baseUrl, username: username, password: password),
+            () => _signInV1(
+              baseUrl: baseUrl,
+              username: username,
+              password: password,
+            ),
+            () => _signInV2(
+              baseUrl: baseUrl,
+              username: username,
+              password: password,
+            ),
           ];
 
     for (final attempt in attempts) {
@@ -548,17 +640,27 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
       await _logApi(
         label: 'Sign in',
         method: lastDio?.requestOptions.method.toUpperCase() ?? 'POST',
-        url: lastDio?.requestOptions.uri.toString() ?? joinBaseUrl(baseUrl, 'api/v1/auth/signin'),
+        url:
+            lastDio?.requestOptions.uri.toString() ??
+            joinBaseUrl(baseUrl, 'api/v1/auth/signin'),
         status: lastDio?.response?.statusCode,
         durationMs: DateTime.now().difference(started).inMilliseconds,
-        requestHeaders: lastDio == null ? null : jsonEncode(lastDio.requestOptions.headers),
+        requestHeaders: lastDio == null
+            ? null
+            : jsonEncode(lastDio.requestOptions.headers),
         requestBody: jsonEncode({'username': username, 'password': password}),
-        responseHeaders: lastDio?.response == null ? null : jsonEncode(_flattenHeaders(lastDio!.response!.headers)),
+        responseHeaders: lastDio?.response == null
+            ? null
+            : jsonEncode(_flattenHeaders(lastDio!.response!.headers)),
         responseBody: _stringifyBody(lastDio?.response?.data),
         error: message,
       );
       if (!mounted) return;
-      _showMessage(context.t.strings.legacy.msg_sign_failed(message: message ?? context.t.strings.legacy.msg_request_failed));
+      _showMessage(
+        context.t.strings.legacy.msg_sign_failed(
+          message: message ?? context.t.strings.legacy.msg_request_failed,
+        ),
+      );
       return;
     }
 
@@ -585,7 +687,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     final user = resolved.user;
     final token = resolved.token?.trim();
     setState(() {
-      _lastLoginUser = user.displayName.isNotEmpty ? user.displayName : user.username;
+      _lastLoginUser = user.displayName.isNotEmpty
+          ? user.displayName
+          : user.username;
       if (token != null && token.isNotEmpty) {
         _activeToken = token;
         _activeTokenSource = 'signin';
@@ -666,7 +770,8 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 30),
         headers: {
-          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
         },
       ),
     );
@@ -726,7 +831,9 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
         durationMs: durationMs,
         requestHeaders: jsonEncode(e.requestOptions.headers),
         requestBody: body == null ? null : jsonEncode(body),
-        responseHeaders: e.response == null ? null : jsonEncode(_flattenHeaders(e.response!.headers)),
+        responseHeaders: e.response == null
+            ? null
+            : jsonEncode(_flattenHeaders(e.response!.headers)),
         responseBody: responseBody,
         error: e.message,
       );
@@ -793,17 +900,32 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     final session = ref.watch(appSessionProvider).valueOrNull;
     final account = session?.currentAccount;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
 
     final baseUrl = account?.baseUrl.toString() ?? '';
     final accountUser = account?.user;
     final userLabel = accountUser == null
         ? context.t.strings.legacy.msg_not_signed
-        : (accountUser.displayName.isNotEmpty ? accountUser.displayName : accountUser.username);
+        : (accountUser.displayName.isNotEmpty
+              ? accountUser.displayName
+              : accountUser.username);
+    final apiVersionResolution = account == null
+        ? null
+        : MemosServerApiProfiles.resolve(
+            manualVersionOverride: account.serverVersionOverride,
+            detectedVersion: account.instanceProfile.version,
+          );
+    final apiRouteVersion = _apiRouteVersionLabel(apiVersionResolution);
     final token = _activeToken;
     final tokenLabel = token == null || token.isEmpty
         ? context.t.strings.legacy.msg_none
@@ -834,11 +956,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -846,30 +964,75 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
           ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
-              _SectionTitle(text: context.t.strings.legacy.msg_status, color: textMuted),
+              _SectionTitle(
+                text: context.t.strings.legacy.msg_status,
+                color: textMuted,
+              ),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
                 divider: divider,
                 children: [
-                  _InfoRow(label: context.t.strings.legacy.msg_user, value: userLabel, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.t.strings.legacy.msg_server, value: baseUrl.isEmpty ? '-' : baseUrl, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.t.strings.legacy.msg_token_source, value: tokenSource, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.t.strings.legacy.msg_token, value: tokenLabel, textMain: textMain, textMuted: textMuted),
-                  _InfoRow(label: context.t.strings.legacy.msg_legacy_mode, value: prefs.useLegacyApi ? 'ON' : 'OFF', textMain: textMain, textMuted: textMuted),
+                  _InfoRow(
+                    label: context.t.strings.legacy.msg_user,
+                    value: userLabel,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                  ),
+                  _InfoRow(
+                    label: context.t.strings.legacy.msg_server,
+                    value: baseUrl.isEmpty ? '-' : baseUrl,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                  ),
+                  _InfoRow(
+                    label: context.t.strings.legacy.msg_token_source,
+                    value: tokenSource,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                  ),
+                  _InfoRow(
+                    label: context.t.strings.legacy.msg_token,
+                    value: tokenLabel,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                  ),
+                  _InfoRow(
+                    label: context.t.strings.legacy.msg_legacy_mode,
+                    value: prefs.useLegacyApi ? 'ON' : 'OFF',
+                    textMain: textMain,
+                    textMuted: textMuted,
+                  ),
+                  if (kDebugMode)
+                    _InfoRow(
+                      label: 'API Route',
+                      value: apiRouteVersion,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                    ),
                   FutureBuilder<PackageInfo>(
                     future: _packageInfoFuture,
                     builder: (context, snapshot) {
                       final version = snapshot.data?.version.trim() ?? '';
                       final build = snapshot.data?.buildNumber.trim() ?? '';
-                      final label = version.isEmpty ? '-' : (build.isEmpty ? version : 'v$version ($build)');
-                      return _InfoRow(label: context.t.strings.legacy.msg_version, value: label, textMain: textMain, textMuted: textMuted);
+                      final label = version.isEmpty
+                          ? '-'
+                          : (build.isEmpty ? version : 'v$version ($build)');
+                      return _InfoRow(
+                        label: context.t.strings.legacy.msg_version,
+                        value: label,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                      );
                     },
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.t.strings.legacy.msg_local, color: textMuted),
+              _SectionTitle(
+                text: context.t.strings.legacy.msg_local,
+                color: textMuted,
+              ),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
@@ -877,21 +1040,29 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 children: [
                   _ActionRow(
                     icon: Icons.language_outlined,
-                    label: context.t.strings.legacy.msg_open_language_onboarding,
+                    label:
+                        context.t.strings.legacy.msg_open_language_onboarding,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
                       _logAction('Open language onboarding');
-                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LanguageSelectionScreen()));
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const LanguageSelectionScreen(),
+                        ),
+                      );
                     },
                   ),
                   _ActionRow(
                     icon: Icons.restart_alt,
-                    label: context.t.strings.legacy.msg_reset_language_selection,
+                    label:
+                        context.t.strings.legacy.msg_reset_language_selection,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
-                      ref.read(appPreferencesProvider.notifier).setHasSelectedLanguage(false);
+                      ref
+                          .read(appPreferencesProvider.notifier)
+                          .setHasSelectedLanguage(false);
                       _logAction('Reset language selection');
                       _showMessage(context.t.strings.legacy.msg_reset_complete);
                     },
@@ -903,13 +1074,20 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     textMuted: textMuted,
                     onTap: () {
                       _logAction('Open login screen');
-                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LoginScreen()));
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const LoginScreen(),
+                        ),
+                      );
                     },
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.t.strings.legacy.msg_server_login, color: textMuted),
+              _SectionTitle(
+                text: context.t.strings.legacy.msg_server_login,
+                color: textMuted,
+              ),
               const SizedBox(height: 10),
               _Card(
                 card: card,
@@ -936,8 +1114,16 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                       textMuted: textMuted,
                       enabled: !_loginBusy,
                       suffix: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, size: 18, color: textMuted),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          size: 18,
+                          color: textMuted,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -946,15 +1132,26 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                       child: ElevatedButton.icon(
                         onPressed: _loginBusy ? null : _signIn,
                         icon: _loginBusy
-                            ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Icon(Icons.key),
-                        label: Text(_loginBusy ? context.t.strings.legacy.msg_signing : context.t.strings.legacy.msg_sign_3),
+                        label: Text(
+                          _loginBusy
+                              ? context.t.strings.legacy.msg_signing
+                              : context.t.strings.legacy.msg_sign_3,
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: MemoFlowPalette.primary,
                           foregroundColor: Colors.white,
                           elevation: isDark ? 0 : 6,
                           shape: const StadiumBorder(),
-                          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -971,7 +1168,10 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.t.strings.legacy.msg_manual_token, color: textMuted),
+              _SectionTitle(
+                text: context.t.strings.legacy.msg_manual_token,
+                color: textMuted,
+              ),
               const SizedBox(height: 10),
               _Card(
                 card: card,
@@ -988,8 +1188,15 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                       textMuted: textMuted,
                       enabled: true,
                       suffix: IconButton(
-                        icon: Icon(_obscureToken ? Icons.visibility_off : Icons.visibility, size: 18, color: textMuted),
-                        onPressed: () => setState(() => _obscureToken = !_obscureToken),
+                        icon: Icon(
+                          _obscureToken
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          size: 18,
+                          color: textMuted,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscureToken = !_obscureToken),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -1002,11 +1209,19 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                               onPressed: _setManualToken,
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: MemoFlowPalette.primary,
-                                side: BorderSide(color: MemoFlowPalette.primary.withValues(alpha: 0.6)),
+                                side: BorderSide(
+                                  color: MemoFlowPalette.primary.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
                                 shape: const StadiumBorder(),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                              child: Text(context.t.strings.legacy.msg_apply_token),
+                              child: Text(
+                                context.t.strings.legacy.msg_apply_token,
+                              ),
                             ),
                           ),
                         ),
@@ -1015,7 +1230,10 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                           height: 42,
                           child: TextButton(
                             onPressed: _clearToken,
-                            child: Text(context.t.strings.legacy.msg_clear_2, style: TextStyle(color: textMuted)),
+                            child: Text(
+                              context.t.strings.legacy.msg_clear_2,
+                              style: TextStyle(color: textMuted),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -1025,13 +1243,26 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                             onPressed: token == null || token.isEmpty
                                 ? null
                                 : () async {
-                                    final messenger = ScaffoldMessenger.of(context);
-                                    final message = context.t.strings.legacy.msg_token_copied;
-                                    await Clipboard.setData(ClipboardData(text: token));
+                                    final messenger = ScaffoldMessenger.of(
+                                      context,
+                                    );
+                                    final message = context
+                                        .t
+                                        .strings
+                                        .legacy
+                                        .msg_token_copied;
+                                    await Clipboard.setData(
+                                      ClipboardData(text: token),
+                                    );
                                     if (!mounted) return;
-                                    messenger.showSnackBar(SnackBar(content: Text(message)));
+                                    messenger.showSnackBar(
+                                      SnackBar(content: Text(message)),
+                                    );
                                   },
-                            child: Text(context.t.strings.legacy.msg_copy, style: TextStyle(color: textMuted)),
+                            child: Text(
+                              context.t.strings.legacy.msg_copy,
+                              style: TextStyle(color: textMuted),
+                            ),
                           ),
                         ),
                       ],
@@ -1040,7 +1271,10 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.t.strings.legacy.msg_api_call, color: textMuted),
+              _SectionTitle(
+                text: context.t.strings.legacy.msg_api_call,
+                color: textMuted,
+              ),
               const SizedBox(height: 10),
               _Card(
                 card: card,
@@ -1086,14 +1320,25 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                           child: SizedBox(
                             height: 44,
                             child: ElevatedButton(
-                              onPressed: _apiBusy ? null : () => _sendApiRequest(method: 'GET'),
+                              onPressed: _apiBusy
+                                  ? null
+                                  : () => _sendApiRequest(method: 'GET'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: MemoFlowPalette.primary,
                                 foregroundColor: Colors.white,
                                 shape: const StadiumBorder(),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                              child: _apiBusy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('GET'),
+                              child: _apiBusy
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('GET'),
                             ),
                           ),
                         ),
@@ -1102,12 +1347,16 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                           child: SizedBox(
                             height: 44,
                             child: ElevatedButton(
-                              onPressed: _apiBusy ? null : () => _sendApiRequest(method: 'POST'),
+                              onPressed: _apiBusy
+                                  ? null
+                                  : () => _sendApiRequest(method: 'POST'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: MemoFlowPalette.primary,
                                 foregroundColor: Colors.white,
                                 shape: const StadiumBorder(),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                               child: const Text('POST'),
                             ),
@@ -1127,7 +1376,10 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionTitle(text: context.t.strings.legacy.msg_logs, color: textMuted),
+              _SectionTitle(
+                text: context.t.strings.legacy.msg_logs,
+                color: textMuted,
+              ),
               const SizedBox(height: 10),
               _CardGroup(
                 card: card,
@@ -1139,7 +1391,11 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DebugLogsScreen()));
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const DebugLogsScreen(),
+                        ),
+                      );
                     },
                   ),
                 ],

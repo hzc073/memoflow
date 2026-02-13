@@ -122,7 +122,11 @@ class AccountSecurityScreen extends ConsumerWidget {
             builder: (context) => AlertDialog(
               title: Text(context.t.strings.legacy.msg_scan_local_library),
               content: Text(
-                context.t.strings.legacy.msg_scan_disk_directory_merge_local_database,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_scan_disk_directory_merge_local_database,
               ),
               actions: [
                 TextButton(
@@ -143,10 +147,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       try {
         await scanner.scanAndMerge(context);
         if (!context.mounted) return;
-        showTopToast(
-          context,
-          context.t.strings.legacy.msg_scan_completed,
-        );
+        showTopToast(context, context.t.strings.legacy.msg_scan_completed);
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -181,10 +182,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!context.mounted) return;
       await _maybeScanLocalLibrary();
       if (!context.mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_local_library_added,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_local_library_added);
     }
 
     Future<void> _removeLocalLibrary(LocalLibrary library) async {
@@ -192,11 +190,13 @@ class AccountSecurityScreen extends ConsumerWidget {
           await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text(
-                context.t.strings.legacy.msg_remove_local_library,
-              ),
+              title: Text(context.t.strings.legacy.msg_remove_local_library),
               content: Text(
-                context.t.strings.legacy.msg_only_local_index_removed_disk_files,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_only_local_index_removed_disk_files,
               ),
               actions: [
                 TextButton(
@@ -239,18 +239,16 @@ class AccountSecurityScreen extends ConsumerWidget {
       }
 
       if (!context.mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_local_library_removed,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_local_library_removed);
     }
 
     Future<void> removeAccountAndClearCache(String accountKey) async {
       final wasCurrent = accountKey == currentKey;
       final isLastAccount =
           accounts.length == 1 && accounts.first.key == accountKey;
-      final shouldPopBeforeRemoval = wasCurrent && isLastAccount;
+      final shouldReopenOnboarding = isLastAccount && localLibraries.isEmpty;
       final sessionNotifier = ref.read(appSessionProvider.notifier);
+      final preferencesNotifier = ref.read(appPreferencesProvider.notifier);
       final tokenRepo = ref.read(personalAccessTokenRepositoryProvider);
       final imageBedRepo = ImageBedSettingsRepository(
         ref.read(secureStorageProvider),
@@ -266,7 +264,11 @@ class AccountSecurityScreen extends ConsumerWidget {
                     : context.t.strings.legacy.msg_remove_account,
               ),
               content: Text(
-                context.t.strings.legacy.msg_also_clear_local_cache_account_offline,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_also_clear_local_cache_account_offline,
               ),
               actions: [
                 TextButton(
@@ -285,15 +287,26 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!context.mounted) return;
 
       final dbName = databaseNameForAccountKey(accountKey);
-      if (shouldPopBeforeRemoval) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+      if (shouldReopenOnboarding) {
+        final currentPreferences = ref.read(appPreferencesProvider);
+        await preferencesNotifier.setAll(
+          currentPreferences.copyWith(hasSelectedLanguage: false),
+          triggerSync: false,
+        );
       }
       try {
         await sessionNotifier.removeAccount(accountKey);
         await AppDatabase.deleteDatabaseFile(dbName: dbName);
         await tokenRepo.deleteForAccount(accountKey: accountKey);
         await imageBedRepo.clear();
-        if (!context.mounted || shouldPopBeforeRemoval) return;
+        if (!context.mounted) return;
+        if (shouldReopenOnboarding) {
+          Navigator.of(
+            context,
+            rootNavigator: true,
+          ).pushNamedAndRemoveUntil('/', (route) => false);
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.t.strings.legacy.msg_local_cache_cleared),
@@ -303,7 +316,7 @@ class AccountSecurityScreen extends ConsumerWidget {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
-        if (!context.mounted || shouldPopBeforeRemoval) return;
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.t.strings.legacy.msg_action_failed(e: e)),
@@ -489,7 +502,11 @@ class AccountSecurityScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 16),
               Text(
-                context.t.strings.legacy.msg_removing_signing_clear_local_cache_account,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_removing_signing_clear_local_cache_account,
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.4,
@@ -726,7 +743,6 @@ class _AccountRow extends StatelessWidget {
   }
 }
 
-
 class _LocalLibraryNameDialog extends StatefulWidget {
   const _LocalLibraryNameDialog({
     required this.initialName,
@@ -780,10 +796,7 @@ class _LocalLibraryNameDialogState extends State<_LocalLibraryNameDialog> {
           onPressed: () => Navigator.of(context).pop(null),
           child: Text(widget.cancelLabel),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(widget.confirmLabel),
-        ),
+        FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
     );
   }

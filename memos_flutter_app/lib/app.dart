@@ -26,6 +26,7 @@ import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
 import 'features/updates/notice_dialog.dart';
 import 'features/updates/update_announcement_dialog.dart';
+import 'data/models/account.dart';
 import 'data/updates/update_config.dart';
 import 'state/database_provider.dart';
 import 'state/logging_provider.dart';
@@ -256,7 +257,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   static AppLocale _deviceLocaleToAppLocale(Locale locale) {
     return switch (locale.languageCode.toLowerCase()) {
-      'zh' => _isTraditionalZhLocale(locale) ? AppLocale.zhHantTw : AppLocale.zhHans,
+      'zh' =>
+        _isTraditionalZhLocale(locale) ? AppLocale.zhHantTw : AppLocale.zhHans,
       'ja' => AppLocale.ja,
       'de' => AppLocale.de,
       _ => AppLocale.en,
@@ -375,9 +377,19 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _sessionSubscription = ref.listenManual<AsyncValue<AppSessionState>>(
       appSessionProvider,
       (prev, next) {
-        final prevKey = prev?.valueOrNull?.currentKey;
-        final nextKey = next.valueOrNull?.currentKey;
-        if (nextKey != null && nextKey != prevKey) {
+        final prevState = prev?.valueOrNull;
+        final nextState = next.valueOrNull;
+        final prevKey = prevState?.currentKey;
+        final nextKey = nextState?.currentKey;
+        final prevAccount = prevState?.currentAccount;
+        final nextAccount = nextState?.currentAccount;
+        final shouldTriggerPostLoginSync = _didSessionAuthContextChange(
+          prevKey: prevKey,
+          nextKey: nextKey,
+          prevAccount: prevAccount,
+          nextAccount: nextAccount,
+        );
+        if (shouldTriggerPostLoginSync) {
           _scheduleStatsWidgetUpdate();
           _lastResumeSyncAt = null;
           _lastPauseSyncAt = null;
@@ -395,7 +407,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
             _pendingThemeAccountKey = nextKey;
           }
         }
-        if (next.valueOrNull?.currentAccount != null) {
+        if (nextAccount != null) {
           _scheduleShareHandling();
         }
       },
@@ -738,9 +750,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       await HomeWidgetService.updateStatsWidget(
         total: stats.totalMemoCount,
         days: days,
-        title: trByLanguageKey(language: language, key: 'legacy.msg_activity_heatmap'),
-        totalLabel: trByLanguageKey(language: language, key: 'legacy.msg_total'),
-        rangeLabel: trByLanguageKey(language: language, key: 'legacy.msg_last_14_days'),
+        title: trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_activity_heatmap',
+        ),
+        totalLabel: trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_total',
+        ),
+        rangeLabel: trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_last_14_days',
+        ),
       );
       _statsWidgetAccountKey = account.key;
     } catch (_) {
@@ -762,6 +783,31 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       // Ignore sync errors here; widget update can still proceed.
     }
     await _updateStatsWidgetIfNeeded(force: forceWidgetUpdate);
+  }
+
+  bool _didSessionAuthContextChange({
+    required String? prevKey,
+    required String? nextKey,
+    required Account? prevAccount,
+    required Account? nextAccount,
+  }) {
+    if (nextKey == null || nextAccount == null) return false;
+    if (prevKey != nextKey) return true;
+    if (prevAccount == null) return true;
+    if (prevAccount.baseUrl.toString() != nextAccount.baseUrl.toString()) {
+      return true;
+    }
+    if (prevAccount.personalAccessToken != nextAccount.personalAccessToken) {
+      return true;
+    }
+    if ((prevAccount.serverVersionOverride ?? '').trim() !=
+        (nextAccount.serverVersionOverride ?? '').trim()) {
+      return true;
+    }
+    if (prevAccount.useLegacyApiOverride != nextAccount.useLegacyApiOverride) {
+      return true;
+    }
+    return false;
   }
 
   void _triggerLifecycleSync({required bool isResume}) {
