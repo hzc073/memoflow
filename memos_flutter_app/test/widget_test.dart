@@ -7,9 +7,14 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:memos_flutter_app/app.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
+import 'package:memos_flutter_app/data/models/instance_profile.dart';
+import 'package:memos_flutter_app/features/auth/login_screen.dart';
+import 'package:memos_flutter_app/features/onboarding/language_selection_screen.dart';
+import 'package:memos_flutter_app/state/preferences_provider.dart';
 import 'package:memos_flutter_app/state/session_provider.dart';
 
 void main() {
@@ -18,13 +23,20 @@ void main() {
       ProviderScope(
         overrides: [
           appSessionProvider.overrideWith((ref) => _TestSessionController()),
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref),
+          ),
         ],
         child: const App(),
       ),
     );
 
     await tester.pumpAndSettle();
-    expect(find.text('连接 Memos'), findsOneWidget);
+    final unauthenticatedEntry = find.byWidgetPredicate(
+      (widget) => widget is LoginScreen || widget is LanguageSelectionScreen,
+      description: 'LoginScreen or LanguageSelectionScreen',
+    );
+    expect(unauthenticatedEntry, findsOneWidget);
   });
 }
 
@@ -39,6 +51,7 @@ class _TestSessionController extends AppSessionController {
     required Uri baseUrl,
     required String personalAccessToken,
     bool? useLegacyApiOverride,
+    String? serverVersionOverride,
   }) async {}
 
   @override
@@ -47,6 +60,7 @@ class _TestSessionController extends AppSessionController {
     required String username,
     required String password,
     required bool useLegacyApi,
+    String? serverVersionOverride,
   }) async {}
 
   @override
@@ -71,5 +85,50 @@ class _TestSessionController extends AppSessionController {
   }) => globalDefault;
 
   @override
+  InstanceProfile resolveEffectiveInstanceProfileForAccount({
+    required Account account,
+  }) => account.instanceProfile;
+
+  @override
+  String resolveEffectiveServerVersionForAccount({required Account account}) =>
+      account.serverVersionOverride ?? account.instanceProfile.version;
+
+  @override
   Future<void> setCurrentAccountUseLegacyApiOverride(bool value) async {}
+
+  @override
+  Future<void> setCurrentAccountServerVersionOverride(String? version) async {}
+
+  @override
+  Future<InstanceProfile> detectCurrentAccountInstanceProfile() async {
+    return const InstanceProfile.empty();
+  }
 }
+
+class _TestAppPreferencesRepository extends AppPreferencesRepository {
+  _TestAppPreferencesRepository()
+    : super(const FlutterSecureStorage(), accountKey: null);
+
+  @override
+  Future<AppPreferences> read() async {
+    return AppPreferences.defaultsForLanguage(AppLanguage.en);
+  }
+
+  @override
+  Future<void> write(AppPreferences prefs) async {}
+
+  @override
+  Future<void> clear() async {}
+}
+
+class _TestAppPreferencesController extends AppPreferencesController {
+  _TestAppPreferencesController(Ref ref)
+    : super(
+        ref,
+        _TestAppPreferencesRepository(),
+        onLoaded: () {
+          ref.read(appPreferencesLoadedProvider.notifier).state = true;
+        },
+      );
+}
+
