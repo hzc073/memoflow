@@ -99,11 +99,6 @@ class FlomoImportService {
     );
 
     final backend = await _detectBackendVersion();
-    if (backend == _BackendVersion.v021) {
-      throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_backend_0_21_not_supported_import'),
-      );
-    }
     if (backend == _BackendVersion.unknown) {
       throw ImportException(
         trByLanguageKey(language: language, key: 'legacy.msg_unable_detect_backend_version_check_server'),
