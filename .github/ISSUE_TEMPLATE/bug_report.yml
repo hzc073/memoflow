@@ -1,0 +1,48 @@
+﻿name: 🐛 Bug 反馈
+description: 提交详细的错误报告
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 📢 提交须知
+        - **优先处理：** 严格按照此表单填写、信息详尽的 Issue 将会被优先排查和修复。
+        - **忽略声明：** 只有一句话描述、缺乏复现步骤或版本信息的 Issue 可能会被直接关闭而不予回复。
+        - 感谢你的配合，这能帮我们节省大量沟通成本，让项目迭代更快！
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: 错误描述
+      description: 请清晰简洁地描述这个 Bug 是什么。
+      placeholder: 例如：在同步 Memos 时提示网络错误...
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: 复现步骤
+      description: 请告诉我们如何触发这个错误。
+      placeholder: |
+        1. 打开应用...
+        2. 点击...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      placeholder: 例如：v1.0.2
+    validations:
+      required: true
+  - type: input
+    id: android-version
+    attributes:
+      label: 安卓系统版本
+      placeholder: 例如：Android 14 / HyperOS
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图/日志 (可选)
+      description: 建议上传截图或崩溃日志。
