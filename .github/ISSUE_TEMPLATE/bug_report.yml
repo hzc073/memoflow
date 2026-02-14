@@ -1,5 +1,5 @@
-﻿name: 🐛 Bug 反馈 | Bug Report
-description: 提交详细的错误报告 | Submit a detailed bug report
+﻿name: "🐛 Bug 反馈 | Bug Report"
+description: "提交详细的错误报告 | Submit a detailed bug report"
 labels: ["bug"]
 body:
   - type: markdown
@@ -12,16 +12,16 @@ body:
   - type: textarea
     id: bug-description
     attributes:
-      label: 错误描述 | Bug Description
-      description: 请清晰简洁地描述这个 Bug 是什么。| Describe the bug clearly and concisely.
-      placeholder: 例如：在同步 Memos 时提示网络错误... | Example: A network error appears when syncing Memos...
+      label: "错误描述 | Bug Description"
+      description: "请清晰简洁地描述这个 Bug 是什么。| Describe the bug clearly and concisely."
+      placeholder: "例如：在同步 Memos 时提示网络错误... | Example: A network error appears when syncing Memos..."
     validations:
       required: true
   - type: textarea
     id: steps-to-reproduce
     attributes:
-      label: 复现步骤 | Steps To Reproduce
-      description: 请告诉我们如何触发这个错误。| Tell us how to reproduce this issue.
+      label: "复现步骤 | Steps To Reproduce"
+      description: "请告诉我们如何触发这个错误。| Tell us how to reproduce this issue."
       placeholder: |
         1. 打开应用... | Open the app...
         2. 点击... | Tap...
@@ -30,19 +30,19 @@ body:
   - type: input
     id: version
     attributes:
-      label: 应用版本 | App Version
-      placeholder: 例如：v1.0.2 | Example: v1.0.2
+      label: "应用版本 | App Version"
+      placeholder: "例如：v1.0.2 | Example: v1.0.2"
     validations:
       required: false
   - type: input
     id: android-version
     attributes:
-      label: 安卓系统版本 | Android Version
-      placeholder: 例如：Android 14 / HyperOS | Example: Android 14 / HyperOS
+      label: "安卓系统版本 | Android Version"
+      placeholder: "例如：Android 14 / HyperOS | Example: Android 14 / HyperOS"
     validations:
       required: false
   - type: textarea
     id: screenshots
     attributes:
-      label: 截图/日志 (可选) | Screenshots/Logs (Optional)
-      description: 建议上传截图或崩溃日志。| Screenshots or crash logs are highly recommended.
+      label: "截图/日志 (可选) | Screenshots/Logs (Optional)"
+      description: "建议上传截图或崩溃日志。| Screenshots or crash logs are highly recommended."
