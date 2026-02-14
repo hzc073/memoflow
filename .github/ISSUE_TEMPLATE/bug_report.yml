@@ -26,21 +26,21 @@ body:
         1. 打开应用...
         2. 点击...
     validations:
-      required: true
+      required: false
   - type: input
     id: version
     attributes:
       label: 应用版本
       placeholder: 例如：v1.0.2
     validations:
-      required: true
+      required: false
   - type: input
     id: android-version
     attributes:
       label: 安卓系统版本
       placeholder: 例如：Android 14 / HyperOS
     validations:
-      required: true
+      required: false
   - type: textarea
     id: screenshots
     attributes:
