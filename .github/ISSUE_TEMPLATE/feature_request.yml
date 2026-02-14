@@ -1,35 +1,35 @@
-﻿name: 💡 功能建议
-description: 提交一个新功能建议，帮助 MemoFlow 变得更好
+﻿name: 💡 功能建议 | Feature Request
+description: 提交一个新功能建议，帮助 MemoFlow 变得更好 | Suggest a new feature to improve MemoFlow
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        ### 📢 提交须知
-        - 请先确认是否为现有功能增强（例如：导入导出、每日回顾、AI 总结、标签与归档、资源页等）。
-        - 请尽量描述清楚需求背景、目标和预期效果，信息越完整越容易评估。
-        - 仅一句话且缺乏关键信息的建议，可能无法推进。
-        - 感谢你愿意为项目出谋划策！
+        ### 📢 提交须知 | Notes Before Submitting
+        - 请先确认是否为现有功能增强（例如：导入导出、每日回顾、AI 总结、标签与归档、资源页等）。/ Please first check whether this is an enhancement to existing features (for example: import/export, daily review, AI summary, tags/archive, resources).
+        - 请尽量描述清楚需求背景、目标和预期效果，信息越完整越容易评估。/ Describe the context, goals, and expected result clearly; complete information is easier to evaluate.
+        - 仅一句话且缺乏关键信息的建议，可能无法推进。/ One-line suggestions without key details may not be actionable.
+        - 感谢你愿意为项目出谋划策！/ Thanks for helping us improve the project.
 
   - type: textarea
     id: feature-request
     attributes:
-      label: 你希望增加什么功能？
-      description: 请具体描述你想新增的功能和预期效果。
-      placeholder: 例如：在“导入导出”里增加“按标签导出”，并可与“包含归档”一起使用。
+      label: 你希望增加什么功能？ | What Feature Would You Like to Add?
+      description: 请具体描述你想新增的功能和预期效果。| Describe the feature and expected outcome in detail.
+      placeholder: 例如：在“导入导出”里增加“按标签导出”，并可与“包含归档”一起使用。 | Example: Add "export by tags" in Import/Export and allow using it with "include archived".
     validations:
       required: true
 
   - type: textarea
     id: problem-solved
     attributes:
-      label: 这个功能解决了什么问题？ (可选)
-      description: 可以补充当前使用中的痛点或限制。
-      placeholder: 例如：目前导出支持时间范围，但无法只导出某些标签内容，分享资料时需要手动筛选。
+      label: 这个功能解决了什么问题？ (可选) | What Problem Does This Solve? (Optional)
+      description: 可以补充当前使用中的痛点或限制。| Add current pain points or limitations.
+      placeholder: 例如：目前导出支持时间范围，但无法只导出某些标签内容，分享资料时需要手动筛选。 | Example: Export supports date range, but cannot export by specific tags, so sharing requires manual filtering.
 
   - type: textarea
     id: implementation-suggestion
     attributes:
-      label: 你的实现建议 (可选)
-      description: 如果你有交互或实现思路，可在这里说明。
-      placeholder: 例如：在“导入导出”参数区域新增标签多选项，导出时沿用现有筛选逻辑组合查询。
+      label: 你的实现建议 (可选) | Your Implementation Suggestion (Optional)
+      description: 如果你有交互或实现思路，可在这里说明。| If you have UI/UX or implementation ideas, describe them here.
+      placeholder: 例如：在“导入导出”参数区域新增标签多选项，导出时沿用现有筛选逻辑组合查询。 | Example: Add tag multi-select in Import/Export options and combine with existing filter logic.
