@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../data/api/memo_api_probe.dart';
+import '../../data/api/memo_api_version.dart';
 import '../../data/models/account.dart';
 import '../../state/session_provider.dart';
 import 'customize_drawer_screen.dart';
@@ -28,25 +31,82 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
   ];
 
   bool _savingVersion = false;
+  bool _probingVersion = false;
+
+  Future<void> _showProbeFailureReport(MemoApiVersionProbeReport report) async {
+    final diagnostics = report.failures
+        .map((failure) => failure.toDiagnosticLine())
+        .join('\n');
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('版本探测失败'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(child: SelectableText(diagnostics)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: diagnostics));
+                if (!mounted) return;
+                showTopToast(context, '诊断信息已复制');
+              },
+              child: const Text('复制诊断'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<MemoApiVersionProbeReport?> _probeSingleVersion({
+    required Account currentAccount,
+    required MemoApiVersion version,
+  }) async {
+    setState(() => _probingVersion = true);
+    try {
+      return await const MemoApiProbeService().probeSingle(
+        baseUrl: currentAccount.baseUrl,
+        personalAccessToken: currentAccount.personalAccessToken,
+        version: version,
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _probingVersion = false);
+      }
+    }
+  }
 
   Future<void> _selectServerVersion(Account? currentAccount) async {
-    if (currentAccount == null || _savingVersion) return;
-    final selected =
+    if (currentAccount == null || _savingVersion || _probingVersion) return;
+    final selectedRaw =
         currentAccount.serverVersionOverride?.trim().isNotEmpty == true
         ? currentAccount.serverVersionOverride!.trim()
         : '';
-    final detected = currentAccount.instanceProfile.version.trim();
+    final selectedVersion =
+        parseMemoApiVersion(selectedRaw) ?? MemoApiVersion.v026;
+    final detected = normalizeMemoApiVersion(
+      currentAccount.instanceProfile.version,
+    );
     final options = <String>{
-      '',
       ..._presetServerVersions,
       if (detected.isNotEmpty) detected,
-      if (selected.isNotEmpty) selected,
+      if (selectedRaw.isNotEmpty) selectedRaw,
     }.toList(growable: false);
+    options.sort((a, b) => b.compareTo(a));
 
     final result = await showDialog<String?>(
       context: context,
       builder: (context) {
-        String pending = selected;
+        var pending = selectedVersion.versionString;
         return AlertDialog(
           title: Text(context.t.strings.legacy.msg_version),
           content: StatefulBuilder(
@@ -56,15 +116,13 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
                 isExpanded: true,
                 decoration: const InputDecoration(border: OutlineInputBorder()),
                 items: [
-                  DropdownMenuItem<String>(
-                    value: '',
-                    child: Text(context.t.strings.common.auto),
-                  ),
-                  for (final v in options.where((v) => v.isNotEmpty))
+                  for (final v in options)
                     DropdownMenuItem<String>(value: v, child: Text(v)),
                 ],
                 onChanged: (value) {
-                  setLocalState(() => pending = (value ?? '').trim());
+                  final normalized = (value ?? '').trim();
+                  if (normalized.isEmpty) return;
+                  setLocalState(() => pending = normalized);
                 },
               );
             },
@@ -85,17 +143,33 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
       },
     );
     if (result == null) return;
+    final parsed = parseMemoApiVersion(result);
+    if (parsed == null) {
+      if (!mounted) return;
+      showTopToast(context, '不支持的版本：$result');
+      return;
+    }
+
+    final probeReport = await _probeSingleVersion(
+      currentAccount: currentAccount,
+      version: parsed,
+    );
+    if (!mounted || probeReport == null) return;
+    if (!probeReport.passed) {
+      await _showProbeFailureReport(probeReport);
+      return;
+    }
 
     setState(() => _savingVersion = true);
     try {
       await ref
           .read(appSessionProvider.notifier)
-          .setCurrentAccountServerVersionOverride(result);
+          .setCurrentAccountServerVersionOverride(parsed.versionString);
       if (!mounted) return;
-      final value = result.trim().isEmpty
-          ? context.t.strings.common.auto
-          : result;
-      showTopToast(context, '${context.t.strings.legacy.msg_version}: $value');
+      showTopToast(
+        context,
+        '${context.t.strings.legacy.msg_version}: ${parsed.versionString}',
+      );
     } catch (_) {
       if (!mounted) return;
       showTopToast(context, context.t.strings.legacy.msg_failed_load_try);
@@ -104,6 +178,29 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
         setState(() => _savingVersion = false);
       }
     }
+  }
+
+  Future<void> _reprobeCurrentVersion(Account? currentAccount) async {
+    if (currentAccount == null || _savingVersion || _probingVersion) return;
+    final effectiveVersion = normalizeMemoApiVersion(
+      currentAccount.serverVersionOverride ??
+          currentAccount.instanceProfile.version,
+    );
+    final parsed = parseMemoApiVersion(effectiveVersion);
+    if (parsed == null) {
+      showTopToast(context, '请先手动选择 0.21~0.26 版本');
+      return;
+    }
+    final report = await _probeSingleVersion(
+      currentAccount: currentAccount,
+      version: parsed,
+    );
+    if (!mounted || report == null) return;
+    if (!report.passed) {
+      await _showProbeFailureReport(report);
+      return;
+    }
+    showTopToast(context, 'v${parsed.versionString} 探测通过');
   }
 
   @override
@@ -171,12 +268,14 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
                         detectedVersion: detectedVersion,
                         effectiveVersion: effectiveVersion,
                         manualVersion: manualVersion,
-                        busy: _savingVersion,
+                        busy: _savingVersion || _probingVersion,
                         textMain: textMain,
                         textMuted: textMuted,
                         allowVersionControl: currentAccount != null,
                         onEditVersion: () =>
                             _selectServerVersion(currentAccount),
+                        onReprobeVersion: () =>
+                            _reprobeCurrentVersion(currentAccount),
                       ),
                       const SizedBox(height: 12),
                       _CardRow(
@@ -268,6 +367,7 @@ class _CompatibilityCard extends StatelessWidget {
     required this.textMuted,
     required this.allowVersionControl,
     required this.onEditVersion,
+    required this.onReprobeVersion,
   });
 
   final Color card;
@@ -280,6 +380,7 @@ class _CompatibilityCard extends StatelessWidget {
   final Color textMuted;
   final bool allowVersionControl;
   final VoidCallback onEditVersion;
+  final VoidCallback onReprobeVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -291,7 +392,7 @@ class _CompatibilityCard extends StatelessWidget {
         ? '-'
         : effectiveVersion.trim();
     final manualLabel = manualVersion.trim().isEmpty
-        ? context.t.strings.common.auto
+        ? '-'
         : manualVersion.trim();
     return Material(
       color: Colors.transparent,
@@ -339,16 +440,33 @@ class _CompatibilityCard extends StatelessWidget {
               value: manualLabel,
             ),
             const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: allowVersionControl && !busy ? onEditVersion : null,
-              icon: busy
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.tune, size: 16),
-              label: Text(context.t.strings.common.manual),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: allowVersionControl && !busy
+                        ? onEditVersion
+                        : null,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.tune, size: 16),
+                    label: Text(context.t.strings.common.manual),
+                  ),
+                ),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: allowVersionControl && !busy
+                        ? onReprobeVersion
+                        : null,
+                    icon: const Icon(Icons.science_outlined, size: 16),
+                    label: const Text('重新探测'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

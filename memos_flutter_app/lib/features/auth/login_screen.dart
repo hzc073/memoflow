@@ -1,14 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
+import '../../data/api/memo_api_probe.dart';
+import '../../data/api/memo_api_version.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/login_draft_provider.dart';
-import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 
 enum _LoginMode { token, password }
@@ -39,7 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   var _loginMode = _LoginMode.password;
   var _selectedServerVersion = '0.26.0';
-  var _serverVersionManuallySelected = false;
+  var _probing = false;
   var _shownInitialError = false;
 
   @override
@@ -162,63 +164,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return sanitizedBaseUrl;
   }
 
-  String _resolveInitialServerVersion() {
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final overrideVersion = account?.serverVersionOverride?.trim() ?? '';
-    final detectedVersion = account?.instanceProfile.version.trim() ?? '';
-    final normalizedOverride = _normalizeServerVersion(overrideVersion);
-    if (normalizedOverride.isNotEmpty) {
-      return normalizedOverride;
-    }
-    final normalizedDetected = _normalizeServerVersion(detectedVersion);
-    if (normalizedDetected.isNotEmpty) {
-      return normalizedDetected;
-    }
-    final globalLegacyDefault = ref.read(appPreferencesProvider).useLegacyApi;
-    return globalLegacyDefault ? '0.22.0' : '0.26.0';
-  }
-
-  static String _normalizeServerVersion(String raw) {
-    final match = RegExp(r'^(\d+)\.(\d+)(?:\.(\d+))?$').firstMatch(raw.trim());
-    if (match == null) return '';
-    final major = int.tryParse(match.group(1) ?? '');
-    final minor = int.tryParse(match.group(2) ?? '');
-    final patch = int.tryParse(match.group(3) ?? '0');
-    if (major == null || minor == null || patch == null) return '';
-    return '$major.$minor.$patch';
-  }
-
-  static bool _shouldUseLegacyApiByVersion(String version) {
-    final match = RegExp(r'^(\d+)\.(\d+)(?:\.(\d+))?$').firstMatch(version);
-    if (match == null) return true;
-    final major = int.tryParse(match.group(1) ?? '');
-    final minor = int.tryParse(match.group(2) ?? '');
-    if (major == null || minor == null) return true;
-    return major == 0 && minor <= 22;
-  }
-
-  String? _resolveServerVersionOverrideForConnect() {
-    final selectedVersion = _normalizeServerVersion(_selectedServerVersion);
-    if (selectedVersion.isEmpty) return null;
-
-    final hasCurrentAccount =
-        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
-
-    // If there is no current account and user didn't manually pick a version,
-    // let session provider auto-detect server flavor on sign-in.
-    if (!_serverVersionManuallySelected && !hasCurrentAccount) {
-      return null;
-    }
-    return selectedVersion;
-  }
-
-  bool _resolveUseLegacyApiForConnect(String? serverVersionOverride) {
-    if (serverVersionOverride != null && serverVersionOverride.isNotEmpty) {
-      return _shouldUseLegacyApiByVersion(serverVersionOverride);
-    }
-    return ref.read(appPreferencesProvider).useLegacyApi;
-  }
-
   Future<void> _connect() async {
     if (_loginMode == _LoginMode.password) {
       return _connectWithPassword();
@@ -226,9 +171,191 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return _connectWithToken();
   }
 
+  String _resolveInitialServerVersion() {
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final normalized = _normalizeServerVersion(
+      account?.serverVersionOverride ?? account?.instanceProfile.version ?? '',
+    );
+    if (normalized.isNotEmpty) {
+      return normalized;
+    }
+    return _serverVersionOptions.first;
+  }
+
+  String _normalizeServerVersion(String raw) {
+    return normalizeMemoApiVersion(raw);
+  }
+
+  MemoApiVersion? _selectedProbeVersion() {
+    return parseMemoApiVersion(_normalizeServerVersion(_selectedServerVersion));
+  }
+
+  Future<void> _showProbeSuccessDialog(MemoApiVersion version) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('版本探测完成'),
+          content: Text('当前使用 API ${version.versionString} 版本。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showProbeFailureDialog(MemoApiProbeSummary summary) async {
+    final diagnostics = summary.buildDiagnostics();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('版本探测失败'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(child: SelectableText(diagnostics)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: diagnostics));
+                if (!mounted) return;
+                showTopToast(context, '诊断信息已复制');
+              },
+              child: const Text('复制诊断'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _rollbackProbeFailure({
+    required AppSessionController sessionController,
+    required String failedAccountKey,
+    required String? previousCurrentKey,
+    required bool accountExistedBefore,
+  }) async {
+    if (!accountExistedBefore) {
+      await sessionController.removeAccount(failedAccountKey);
+    }
+    final restoredKey = (previousCurrentKey ?? '').trim();
+    if (restoredKey.isNotEmpty) {
+      await sessionController.setCurrentKey(restoredKey);
+    }
+  }
+
+  Future<MemoApiVersionProbeReport?> _probeSingleVersion({
+    required Uri baseUrl,
+    required String personalAccessToken,
+    required MemoApiVersion version,
+  }) async {
+    setState(() => _probing = true);
+    try {
+      return await const MemoApiProbeService().probeSingle(
+        baseUrl: baseUrl,
+        personalAccessToken: personalAccessToken,
+        version: version,
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('版本探测异常：$error')));
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _probing = false);
+      }
+    }
+  }
+
+  Future<bool> _runSelectedVersionProbeGate({
+    required AppSessionController sessionController,
+    required MemoApiVersion version,
+    required String? previousCurrentKey,
+    required Set<String> previousAccountKeys,
+  }) async {
+    final currentAccount = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    if (currentAccount == null) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.t.strings.login.errors.connectionFailedWithMessage(
+              message: 'No active session after sign in',
+            ),
+          ),
+        ),
+      );
+      return false;
+    }
+
+    final accountExistedBefore = previousAccountKeys.contains(
+      currentAccount.key,
+    );
+    final report = await _probeSingleVersion(
+      baseUrl: currentAccount.baseUrl,
+      personalAccessToken: currentAccount.personalAccessToken,
+      version: version,
+    );
+    if (report == null) {
+      await _rollbackProbeFailure(
+        sessionController: sessionController,
+        failedAccountKey: currentAccount.key,
+        previousCurrentKey: previousCurrentKey,
+        accountExistedBefore: accountExistedBefore,
+      );
+      return false;
+    }
+    if (!report.passed) {
+      if (mounted) {
+        await _showProbeFailureDialog(
+          MemoApiProbeSummary(reports: <MemoApiVersionProbeReport>[report]),
+        );
+      }
+      await _rollbackProbeFailure(
+        sessionController: sessionController,
+        failedAccountKey: currentAccount.key,
+        previousCurrentKey: previousCurrentKey,
+        accountExistedBefore: accountExistedBefore,
+      );
+      return false;
+    }
+
+    await sessionController.setCurrentAccountServerVersionOverride(
+      version.versionString,
+    );
+    if (!mounted) return false;
+    await _showProbeSuccessDialog(version);
+    return true;
+  }
+
+  void _navigateAfterLogin() {
+    if (Navigator.of(context).canPop()) {
+      context.safePop();
+    } else {
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).pushNamedAndRemoveUntil('/', (route) => false);
+    }
+  }
+
   Future<void> _connectWithToken() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    final sessionController = ref.read(appSessionProvider.notifier);
     final tokenRaw = _tokenController.text.trim();
     final token = _normalizeTokenInput(tokenRaw);
     if (token != tokenRaw) {
@@ -238,19 +365,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (baseUrl == null) {
       return;
     }
-    final serverVersionOverride = _resolveServerVersionOverrideForConnect();
-    final useLegacyApiOverride = serverVersionOverride == null
-        ? null
-        : _shouldUseLegacyApiByVersion(serverVersionOverride);
+    final selectedVersion = _selectedProbeVersion();
+    if (selectedVersion == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请选择有效 API 版本')));
+      return;
+    }
 
-    await ref
-        .read(appSessionProvider.notifier)
-        .addAccountWithPat(
-          baseUrl: baseUrl,
-          personalAccessToken: token,
-          useLegacyApiOverride: useLegacyApiOverride,
-          serverVersionOverride: serverVersionOverride,
-        );
+    final probeReport = await _probeSingleVersion(
+      baseUrl: baseUrl,
+      personalAccessToken: token,
+      version: selectedVersion,
+    );
+    if (probeReport == null) return;
+    if (!mounted) return;
+    if (!probeReport.passed) {
+      await _showProbeFailureDialog(
+        MemoApiProbeSummary(reports: <MemoApiVersionProbeReport>[probeReport]),
+      );
+      return;
+    }
+
+    await sessionController.addAccountWithPat(
+      baseUrl: baseUrl,
+      personalAccessToken: token,
+      serverVersionOverride: selectedVersion.versionString,
+    );
+    if (!mounted) return;
 
     final sessionAsync = ref.read(appSessionProvider);
     if (sessionAsync.hasError) {
@@ -263,53 +405,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    final hasCurrentAccount =
-        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
-    if (!hasCurrentAccount) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.login.errors.connectionFailedWithMessage(
-              message: 'No active session after sign in',
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-
     if (!mounted) return;
-    if (Navigator.of(context).canPop()) {
-      context.safePop();
-    } else {
-      Navigator.of(
-        context,
-        rootNavigator: true,
-      ).pushNamedAndRemoveUntil('/', (route) => false);
-    }
+    await _showProbeSuccessDialog(selectedVersion);
+    if (!mounted) return;
+    _navigateAfterLogin();
   }
 
   Future<void> _connectWithPassword() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    final sessionController = ref.read(appSessionProvider.notifier);
     final baseUrl = _resolveBaseUrl();
     if (baseUrl == null) return;
 
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
-    final serverVersionOverride = _resolveServerVersionOverrideForConnect();
-    final useLegacyApi = _resolveUseLegacyApiForConnect(serverVersionOverride);
+    final previousSession = ref.read(appSessionProvider).valueOrNull;
+    final previousCurrentKey = previousSession?.currentKey;
+    final previousAccountKeys =
+        previousSession?.accounts.map((account) => account.key).toSet() ??
+        <String>{};
+    final selectedVersion = _selectedProbeVersion();
+    if (selectedVersion == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请选择有效 API 版本')));
+      return;
+    }
 
-    await ref
-        .read(appSessionProvider.notifier)
-        .addAccountWithPassword(
-          baseUrl: baseUrl,
-          username: username,
-          password: password,
-          useLegacyApi: useLegacyApi,
-          serverVersionOverride: serverVersionOverride,
-        );
+    await sessionController.addAccountWithPassword(
+      baseUrl: baseUrl,
+      username: username,
+      password: password,
+      useLegacyApi: false,
+      serverVersionOverride: selectedVersion.versionString,
+    );
+    if (!mounted) return;
 
     final sessionAsync = ref.read(appSessionProvider);
     if (sessionAsync.hasError) {
@@ -321,26 +452,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    final hasCurrentAccount =
-        ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
-    if (!hasCurrentAccount) {
-      if (!mounted) return;
-      _passwordController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.login.errors.signInFailed)),
-      );
+    // The full probe suite is expensive on 0.23 and significantly delays login.
+    // For an explicitly selected 0.23 target, proceed after successful sign-in.
+    if (selectedVersion == MemoApiVersion.v023) {
+      _navigateAfterLogin();
       return;
     }
 
+    final ready = await _runSelectedVersionProbeGate(
+      sessionController: sessionController,
+      version: selectedVersion,
+      previousCurrentKey: previousCurrentKey,
+      previousAccountKeys: previousAccountKeys,
+    );
+    if (!ready) return;
     if (!mounted) return;
-    if (Navigator.of(context).canPop()) {
-      context.safePop();
-    } else {
-      Navigator.of(
-        context,
-        rootNavigator: true,
-      ).pushNamedAndRemoveUntil('/', (route) => false);
-    }
+    _navigateAfterLogin();
   }
 
   Widget _buildField({
@@ -467,7 +594,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionAsync = ref.watch(appSessionProvider);
-    final isBusy = sessionAsync.isLoading;
+    final isBusy = sessionAsync.isLoading || _probing;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
@@ -477,11 +604,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.7);
-    final versionOptions = <String>{
-      ..._serverVersionOptions,
-      if (_selectedServerVersion.trim().isNotEmpty)
-        _normalizeServerVersion(_selectedServerVersion),
-    }.where((v) => v.isNotEmpty).toList(growable: false);
     final modeDescription = _loginMode == _LoginMode.password
         ? context.t.strings.login.mode.descPassword
         : context.t.strings.login.mode.descToken;
@@ -652,15 +774,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ],
                   const SizedBox(height: 18),
-
-                  Text(
-                    context.t.strings.legacy.msg_version,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Container(
                     decoration: BoxDecoration(
                       color: card,
@@ -675,31 +788,56 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ],
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _normalizeServerVersion(
-                        _selectedServerVersion,
-                      ),
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                      ),
-                      items: [
-                        for (final version in versionOptions)
-                          DropdownMenuItem<String>(
-                            value: version,
-                            child: Text('v$version'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'API 版本',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: textMain,
                           ),
+                        ),
+                        const SizedBox(height: 4),
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedServerVersion,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          items: _serverVersionOptions
+                              .map(
+                                (version) => DropdownMenuItem<String>(
+                                  value: version,
+                                  child: Text('v$version'),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: isBusy
+                              ? null
+                              : (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return;
+                                  }
+                                  setState(() {
+                                    _selectedServerVersion = value.trim();
+                                  });
+                                },
+                        ),
+                        Text(
+                          '登录前将仅检测所选版本的核心 API。',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
-                      onChanged: isBusy
-                          ? null
-                          : (value) {
-                              if (value == null || value.trim().isEmpty) return;
-                              setState(() {
-                                _serverVersionManuallySelected = true;
-                                _selectedServerVersion = value.trim();
-                              });
-                            },
                     ),
                   ),
                   const SizedBox(height: 24),
