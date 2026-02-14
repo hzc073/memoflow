@@ -2968,7 +2968,16 @@ class _SearchLanding extends StatefulWidget {
 
 class _SearchLandingState extends State<_SearchLanding> {
   static const _collapsedTagCount = 6;
+  static const _historyListMaxHeight = 220.0;
+
+  final ScrollController _historyScrollController = ScrollController();
   bool _showAllTags = false;
+
+  @override
+  void dispose() {
+    _historyScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3023,33 +3032,51 @@ class _SearchLandingState extends State<_SearchLanding> {
               ),
             )
           else
-            Column(
-              children: [
-                for (final item in widget.history)
-                  InkWell(
-                    onTap: () => widget.onSelectHistory(item),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          Icon(Icons.history, size: 18, color: textMuted),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              item,
-                              style: TextStyle(fontSize: 14, color: textMain),
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxHeight: _historyListMaxHeight,
+              ),
+              child: Scrollbar(
+                controller: _historyScrollController,
+                thumbVisibility: true,
+                child: ListView.builder(
+                  controller: _historyScrollController,
+                  shrinkWrap: true,
+                  primary: false,
+                  padding: EdgeInsets.zero,
+                  itemCount: widget.history.length,
+                  itemBuilder: (context, index) {
+                    final item = widget.history[index];
+                    return InkWell(
+                      onTap: () => widget.onSelectHistory(item),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Icon(Icons.history, size: 18, color: textMuted),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                item,
+                                style: TextStyle(fontSize: 14, color: textMain),
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => widget.onRemoveHistory(item),
-                            icon: Icon(Icons.close, size: 18, color: textMuted),
-                          ),
-                        ],
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => widget.onRemoveHistory(item),
+                              icon: Icon(
+                                Icons.close,
+                                size: 18,
+                                color: textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-              ],
+                    );
+                  },
+                ),
+              ),
             ),
           const SizedBox(height: 18),
           Row(
