@@ -333,7 +333,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'VERSION 1.0.13',
+                        'VERSION 1.0.14',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,

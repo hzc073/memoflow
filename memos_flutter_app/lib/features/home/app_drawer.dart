@@ -99,7 +99,7 @@ class AppDrawer extends ConsumerWidget {
     final textMuted = textMain.withValues(alpha: isDark ? 0.4 : 0.5);
     final hover = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04);
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
-    const versionLabel = 'V1.0.13';
+    const versionLabel = 'V1.0.14';
 
     return Drawer(
       width: width,
