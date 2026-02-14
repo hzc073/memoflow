@@ -24,6 +24,7 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/shortcut.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/database_provider.dart';
+import '../../state/debug_screenshot_mode_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
 import '../../state/logging_provider.dart';
@@ -2137,6 +2138,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final listVisualOffset = widget.showPillActions ? 6.0 : 0.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
+    final screenshotModeEnabled = kDebugMode
+        ? ref.watch(debugScreenshotModeProvider)
+        : false;
     final session = ref.watch(appSessionProvider).valueOrNull;
     final account = session?.currentAccount;
     final apiVersionResolution = account == null
@@ -2287,7 +2291,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                   ),
                                 )),
                     actions: [
-                      if (kDebugMode)
+                      if (kDebugMode && !screenshotModeEnabled)
                         Padding(
                           padding: const EdgeInsets.only(right: 6),
                           child: Center(

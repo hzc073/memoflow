@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_editor_plus/image_editor_plus.dart';
@@ -29,6 +30,7 @@ import 'features/updates/update_announcement_dialog.dart';
 import 'data/models/account.dart';
 import 'data/updates/update_config.dart';
 import 'state/database_provider.dart';
+import 'state/debug_screenshot_mode_provider.dart';
 import 'state/logging_provider.dart';
 import 'state/local_library_provider.dart';
 import 'state/memos_providers.dart';
@@ -62,6 +64,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   ProviderSubscription<AppPreferences>? _prefsSubscription;
   ProviderSubscription<ReminderSettings>? _reminderSettingsSubscription;
   ProviderSubscription<bool>? _prefsLoadedSubscription;
+  ProviderSubscription<bool>? _debugScreenshotModeSubscription;
   DateTime? _lastResumeSyncAt;
   DateTime? _lastPauseSyncAt;
   DateTime? _lastReminderRescheduleAt;
@@ -364,6 +367,20 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _applyDebugScreenshotMode(bool enabled) async {
+    if (!kDebugMode) return;
+    try {
+      if (enabled) {
+        await SystemChrome.setEnabledSystemUIMode(
+          SystemUiMode.manual,
+          overlays: const <SystemUiOverlay>[],
+        );
+      } else {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -416,8 +433,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       appPreferencesProvider,
       (prev, next) {
         if (prev?.fontFamily == next.fontFamily &&
-            prev?.fontFile == next.fontFile)
+            prev?.fontFile == next.fontFile) {
           return;
+        }
         unawaited(_ensureFontLoaded(next));
       },
     );
@@ -446,6 +464,17 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         unawaited(reminderScheduler.rescheduleAll());
       },
     );
+    if (kDebugMode) {
+      _debugScreenshotModeSubscription = ref.listenManual<bool>(
+        debugScreenshotModeProvider,
+        (prev, next) {
+          unawaited(_applyDebugScreenshotMode(next));
+        },
+      );
+      unawaited(
+        _applyDebugScreenshotMode(ref.read(debugScreenshotModeProvider)),
+      );
+    }
     _scheduleStatsWidgetUpdate();
   }
 
@@ -1025,6 +1054,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       LocaleSettings.setLocale(appLocale);
       _activeLocale = appLocale;
     }
+    final screenshotModeEnabled = kDebugMode
+        ? ref.watch(debugScreenshotModeProvider)
+        : false;
     final scale = _textScaleFor(prefs.fontSize);
     _applyImageEditorI18n(prefs.language);
 
@@ -1044,6 +1076,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return TranslationProvider(
       child: MaterialApp(
         title: 'MemoFlow',
+        debugShowCheckedModeBanner: !screenshotModeEnabled,
         theme: _applyPreferencesToTheme(buildAppTheme(Brightness.light), prefs),
         darkTheme: _applyPreferencesToTheme(
           buildAppTheme(Brightness.dark),
@@ -1089,10 +1122,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (kDebugMode) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     _sessionSubscription?.close();
     _prefsSubscription?.close();
     _prefsLoadedSubscription?.close();
     _reminderSettingsSubscription?.close();
+    _debugScreenshotModeSubscription?.close();
     super.dispose();
   }
 }

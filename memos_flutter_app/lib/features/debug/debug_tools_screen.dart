@@ -13,6 +13,7 @@ import '../../data/api/server_api_profile.dart';
 import '../../data/logs/debug_log_store.dart';
 import '../../data/models/user.dart';
 import '../../state/debug_log_provider.dart';
+import '../../state/debug_screenshot_mode_provider.dart';
 import '../../state/login_draft_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -221,6 +222,60 @@ class _ActionRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.icon,
+    required this.label,
+    required this.detail,
+    required this.value,
+    required this.textMain,
+    required this.textMuted,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final String detail;
+  final bool value;
+  final Color textMain;
+  final Color textMuted;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: textMuted),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(detail, style: TextStyle(fontSize: 12, color: textMuted)),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: value,
+            activeThumbColor: MemoFlowPalette.primary,
+            onChanged: onChanged,
+          ),
+        ],
       ),
     );
   }
@@ -931,6 +986,7 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
         ? context.t.strings.legacy.msg_none
         : _tokenPreview(token);
     final tokenSource = _activeTokenSource.isEmpty ? '-' : _activeTokenSource;
+    final screenshotMode = ref.watch(debugScreenshotModeProvider);
 
     return Scaffold(
       backgroundColor: bg,
@@ -1003,12 +1059,29 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                     textMain: textMain,
                     textMuted: textMuted,
                   ),
-                  if (kDebugMode)
+                  if (kDebugMode && !screenshotMode)
                     _InfoRow(
                       label: 'API Route',
                       value: apiRouteVersion,
                       textMain: textMain,
                       textMuted: textMuted,
+                    ),
+                  if (kDebugMode)
+                    _SwitchRow(
+                      icon: Icons.screenshot_monitor_outlined,
+                      label: 'Screenshot mode',
+                      detail: 'Hide status/navigation bars for clean captures',
+                      value: screenshotMode,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onChanged: (value) {
+                        ref.read(debugScreenshotModeProvider.notifier).state =
+                            value;
+                        _logAction(
+                          'Toggle screenshot mode',
+                          detail: value ? 'enabled' : 'disabled',
+                        );
+                      },
                     ),
                   FutureBuilder<PackageInfo>(
                     future: _packageInfoFuture,
