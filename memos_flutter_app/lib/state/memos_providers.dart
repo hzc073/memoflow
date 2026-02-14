@@ -9,6 +9,8 @@ import '../core/app_localization.dart';
 import '../core/image_bed_url.dart';
 import '../core/memo_relations.dart';
 import '../core/tags.dart';
+import '../data/api/memo_api_facade.dart';
+import '../data/api/memo_api_version.dart';
 import '../data/api/memos_api.dart';
 import '../data/api/image_bed_api.dart';
 import '../data/db/app_database.dart';
@@ -57,25 +59,23 @@ final memosApiProvider = Provider<MemosApi>((ref) {
   if (account == null) {
     throw StateError('Not authenticated');
   }
-  final globalLegacyDefault = ref.watch(
-    appPreferencesProvider.select((p) => p.useLegacyApi),
-  );
   final sessionController = ref.read(appSessionProvider.notifier);
-  final useLegacyApi = sessionController.resolveUseLegacyApiForAccount(
-    account: account,
-    globalDefault: globalLegacyDefault,
-  );
-  final effectiveInstanceProfile = sessionController
-      .resolveEffectiveInstanceProfileForAccount(account: account);
+  final effectiveVersion = sessionController
+      .resolveEffectiveServerVersionForAccount(account: account);
+  final parsedVersion = parseMemoApiVersion(effectiveVersion);
+  if (parsedVersion == null) {
+    throw StateError(
+      'No fixed API version selected for current account. Please select API version manually.',
+    );
+  }
   final logStore = ref.watch(networkLogStoreProvider);
   final logBuffer = ref.watch(networkLogBufferProvider);
   final breadcrumbStore = ref.watch(breadcrumbStoreProvider);
   final logManager = ref.watch(logManagerProvider);
-  return MemosApi.authenticated(
+  return MemoApiFacade.authenticated(
     baseUrl: account.baseUrl,
     personalAccessToken: account.personalAccessToken,
-    useLegacyApi: useLegacyApi,
-    instanceProfile: effectiveInstanceProfile,
+    version: parsedVersion,
     logStore: logStore,
     logBuffer: logBuffer,
     breadcrumbStore: breadcrumbStore,
@@ -1713,18 +1713,26 @@ class RemoteSyncController extends SyncControllerBase {
     var outboxBlocked = false;
     final next = await AsyncValue.guard(() async {
       await api.ensureServerHintsLoaded();
+      if (_isDisposed) return;
       outboxBlocked = await _processOutbox();
+      if (_isDisposed) return;
       final allowPrivateVisibilityPrune =
           await _allowPrivateVisibilityPruneForCurrentServer();
+      if (_isDisposed) return;
       await _syncStateMemos(
         state: 'NORMAL',
         allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
       );
+      if (_isDisposed) return;
       await _syncStateMemos(
         state: 'ARCHIVED',
         allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
       );
     });
+    if (_isDisposed) {
+      syncQueueProgressTracker.markSyncFinished();
+      return;
+    }
     state = next;
     if (next.hasError) {
       syncStatusTracker.markSyncFailed(next.error!);
@@ -1801,7 +1809,8 @@ class RemoteSyncController extends SyncControllerBase {
     }
 
     var pageToken = '';
-    var syncPageSize = 1000;
+    // 0.23 creator-scoped filters are much slower on some deployments.
+    var syncPageSize = api.requiresCreatorScopedListMemos ? 600 : 1000;
     final creatorFilter = _creatorFilter;
     final memoParent = _memoParentName;
     final legacyCompat = api.useLegacyApi;
@@ -1822,6 +1831,7 @@ class RemoteSyncController extends SyncControllerBase {
     var completed = false;
 
     while (true) {
+      if (_isDisposed) return;
       try {
         final (memos, nextToken) = await api.listMemos(
           pageSize: syncPageSize,
@@ -1830,8 +1840,10 @@ class RemoteSyncController extends SyncControllerBase {
           filter: usedServerFilter ? creatorFilter : null,
           parent: useParent ? memoParent : null,
         );
+        if (_isDisposed) return;
 
         for (final memo in memos) {
+          if (_isDisposed) return;
           final creator = memo.creator.trim();
           if (creator.isNotEmpty && !creatorMatchesCurrentUser(creator)) {
             continue;
@@ -1882,6 +1894,7 @@ class RemoteSyncController extends SyncControllerBase {
           break;
         }
       } on DioException catch (e) {
+        if (_isDisposed) return;
         if ((e.type == DioExceptionType.receiveTimeout ||
                 e.type == DioExceptionType.connectionTimeout) &&
             syncPageSize > 200) {
@@ -1926,6 +1939,7 @@ class RemoteSyncController extends SyncControllerBase {
       }
     }
 
+    if (_isDisposed) return;
     if (completed) {
       await _pruneMissingMemos(
         state: state,
@@ -1940,9 +1954,11 @@ class RemoteSyncController extends SyncControllerBase {
     required Set<String> remoteUids,
     required bool allowPrivateVisibilityPrune,
   }) async {
+    if (_isDisposed) return;
     final pendingOutbox = await db.listPendingOutboxMemoUids();
     final locals = await db.listMemoUidSyncStates(state: state);
     for (final row in locals) {
+      if (_isDisposed) return;
       final uid = row['uid'] as String?;
       if (uid == null || uid.trim().isEmpty) continue;
       if (remoteUids.contains(uid)) continue;

@@ -188,11 +188,11 @@ class _ServerVersion implements Comparable<_ServerVersion> {
 }
 
 class MemosApi {
-  static final Set<String> _creatorFilterDisabledServers = <String>{};
-
   MemosApi._(
     this._dio, {
     this.useLegacyApi = false,
+    this.strictRouteLock = false,
+    this.strictServerVersion,
     InstanceProfile? instanceProfile,
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
@@ -206,8 +206,7 @@ class MemosApi {
       useLegacyApi: useLegacyApi,
     );
     _memoApiLegacy = _capabilities.memoLegacyByDefault;
-    _disableCreatorScopedFilters = _isCreatorFilterDisabledForServer();
-    _bootstrapServerHintsFromInstanceProfile(instanceProfile);
+    _initializeRouteMode(instanceProfile);
     if (logStore != null ||
         logManager != null ||
         logBuffer != null ||
@@ -225,24 +224,20 @@ class MemosApi {
 
   final Dio _dio;
   final bool useLegacyApi;
+  final bool strictRouteLock;
+  final String? strictServerVersion;
   InstanceProfile? _instanceProfileHint;
   LogManager? _logManager;
   _ServerApiFlavor _serverFlavor = _ServerApiFlavor.unknown;
   _ServerVersion? _serverVersion;
   String _serverVersionRaw = '';
-  Future<void>? _serverHintsFuture;
   bool _serverHintsApplied = false;
   bool _serverHintsLogged = false;
   bool _memoApiLegacy = false;
-  bool _forceLegacyCreatorFilterSyntax = false;
-  bool _forceRowStatusMemoStateField = false;
-  bool _forceLegacyMemoUpdateEndpoint = false;
-  bool _disableCreatorScopedFilters = false;
   _NotificationApiMode? _notificationMode;
   _UserStatsApiMode? _userStatsMode;
   _AttachmentApiMode? _attachmentMode;
   bool? _shortcutsSupported;
-  _CurrentUserEndpoint? _preferredCurrentUserEndpoint;
   MemosRouteAdapter _routeAdapter = MemosRouteAdapters.fallback();
   _ApiCapabilities _capabilities = _ApiCapabilities.resolve(
     flavor: _ServerApiFlavor.unknown,
@@ -252,39 +247,6 @@ class MemosApi {
   static const Duration _largeListReceiveTimeout = Duration(seconds: 90);
   static const Object _unset = Object();
 
-  String _creatorFilterServerKey() {
-    final rawBase = _dio.options.baseUrl.trim();
-    if (rawBase.isEmpty) return '';
-    final parsed = Uri.tryParse(rawBase);
-    if (parsed == null || parsed.host.trim().isEmpty) {
-      return rawBase.toLowerCase();
-    }
-    final scheme = parsed.scheme.toLowerCase();
-    final host = parsed.host.toLowerCase();
-    final resolvedPort = parsed.hasPort
-        ? parsed.port
-        : (scheme == 'https' ? 443 : (scheme == 'http' ? 80 : 0));
-    final portSegment = resolvedPort > 0 ? ':$resolvedPort' : '';
-    return '$scheme://$host$portSegment';
-  }
-
-  bool _isCreatorFilterDisabledForServer() {
-    final key = _creatorFilterServerKey();
-    return key.isNotEmpty && _creatorFilterDisabledServers.contains(key);
-  }
-
-  void _rememberCreatorFilterDisabledForServer() {
-    final key = _creatorFilterServerKey();
-    if (key.isEmpty) return;
-    _creatorFilterDisabledServers.add(key);
-  }
-
-  void _clearCreatorFilterDisabledForServer() {
-    final key = _creatorFilterServerKey();
-    if (key.isEmpty) return;
-    _creatorFilterDisabledServers.remove(key);
-  }
-
   bool get _useLegacyMemos {
     if (_memoApiLegacy) return true;
     return _capabilities.forceLegacyMemoByPreference;
@@ -292,8 +254,6 @@ class MemosApi {
 
   bool get usesLegacyMemos => _useLegacyMemos;
   bool get usesLegacySearchFilterDialect =>
-      _disableCreatorScopedFilters ||
-      _forceLegacyCreatorFilterSyntax ||
       _routeAdapter.usesRowStatusMemoStateField;
   bool get supportsMemoParentQuery => _routeAdapter.supportsMemoParentQuery;
   bool get requiresCreatorScopedListMemos =>
@@ -301,8 +261,45 @@ class MemosApi {
   bool get isRouteProfileV024 =>
       _routeAdapter.profile.flavor == MemosServerFlavor.v0_24;
   bool? get shortcutsSupportedHint => _shortcutsSupported;
+  bool get isStrictRouteLocked => strictRouteLock;
+  String get effectiveServerVersion {
+    if (_serverVersionRaw.trim().isNotEmpty) return _serverVersionRaw.trim();
+    final strict = (strictServerVersion ?? '').trim();
+    if (strict.isNotEmpty) return strict;
+    return '';
+  }
 
-  Future<void> ensureServerHintsLoaded() => _ensureServerHints();
+  Future<void> ensureServerHintsLoaded() {
+    if (strictRouteLock) return Future<void>.value();
+    return _ensureServerHints();
+  }
+
+  void _initializeRouteMode(InstanceProfile? profile) {
+    if (!strictRouteLock) {
+      _bootstrapServerHintsFromInstanceProfile(profile);
+      return;
+    }
+
+    final strictVersion = (strictServerVersion ?? profile?.version ?? '')
+        .trim();
+    if (strictVersion.isEmpty) {
+      throw ArgumentError(
+        'strictRouteLock requires strictServerVersion or instanceProfile.version',
+      );
+    }
+    _instanceProfileHint = InstanceProfile(
+      version: strictVersion,
+      mode: profile?.mode ?? '',
+      instanceUrl: profile?.instanceUrl ?? '',
+      owner: profile?.owner ?? '',
+    );
+    _serverVersionRaw = strictVersion;
+    _serverVersion = _ServerVersion.tryParse(strictVersion);
+    final flavor = _inferServerFlavor(_serverVersion);
+    _applyServerHints(flavor);
+    _serverHintsApplied = true;
+    _logServerHints();
+  }
 
   void _bootstrapServerHintsFromInstanceProfile(InstanceProfile? profile) {
     final rawVersion = profile?.version ?? '';
@@ -327,18 +324,13 @@ class MemosApi {
   }
 
   Future<void> _ensureServerHints() async {
+    if (strictRouteLock) return;
     if (_serverHintsApplied) return;
-    final existing = _serverHintsFuture;
-    if (existing != null) {
-      await existing;
-      return;
-    }
-    final future = _loadServerHints();
-    _serverHintsFuture = future;
-    await future;
+    await _loadServerHints();
   }
 
   Future<void> _loadServerHints() async {
+    if (strictRouteLock) return;
     if (_serverHintsApplied) return;
     InstanceProfile? profile = _instanceProfileHint;
     if (profile == null || profile.version.trim().isEmpty) {
@@ -389,10 +381,6 @@ class MemosApi {
   }
 
   void _applyServerHints(_ServerApiFlavor flavor) {
-    if (_serverFlavor != flavor) {
-      _preferredCurrentUserEndpoint = null;
-      _forceLegacyMemoUpdateEndpoint = false;
-    }
     _serverFlavor = flavor;
     _routeAdapter = _buildRouteAdapter(flavor: flavor, version: _serverVersion);
     _capabilities = _ApiCapabilities.resolve(
@@ -400,11 +388,6 @@ class MemosApi {
       useLegacyApi: useLegacyApi,
     );
     _memoApiLegacy = _capabilities.memoLegacyByDefault;
-    if (_routeAdapter.requiresCreatorScopedListMemos) {
-      // 0.23 requires creator-scoped list requests for private memo visibility.
-      _disableCreatorScopedFilters = false;
-      _clearCreatorFilterDisabledForServer();
-    }
     _attachmentMode ??= _capabilities.defaultAttachmentMode;
     _userStatsMode ??= _capabilities.defaultUserStatsMode;
     _notificationMode ??= _capabilities.defaultNotificationMode;
@@ -424,8 +407,6 @@ class MemosApi {
         'flavor': _serverFlavor.name,
         'useLegacyApi': useLegacyApi,
         'memoLegacy': _memoApiLegacy,
-        'forceLegacyCreatorFilterSyntax': _forceLegacyCreatorFilterSyntax,
-        'disableCreatorScopedFilters': _disableCreatorScopedFilters,
         'attachmentMode': _attachmentMode?.name ?? '',
         'userStatsMode': _userStatsMode?.name ?? '',
         'notificationMode': _notificationMode?.name ?? '',
@@ -446,6 +427,8 @@ class MemosApi {
   factory MemosApi.unauthenticated(
     Uri baseUrl, {
     bool useLegacyApi = false,
+    bool strictRouteLock = false,
+    String? strictServerVersion,
     InstanceProfile? instanceProfile,
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
@@ -461,6 +444,8 @@ class MemosApi {
         ),
       ),
       useLegacyApi: useLegacyApi,
+      strictRouteLock: strictRouteLock,
+      strictServerVersion: strictServerVersion,
       instanceProfile: instanceProfile,
       logStore: logStore,
       logBuffer: logBuffer,
@@ -473,6 +458,8 @@ class MemosApi {
     required Uri baseUrl,
     required String personalAccessToken,
     bool useLegacyApi = false,
+    bool strictRouteLock = false,
+    String? strictServerVersion,
     InstanceProfile? instanceProfile,
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
@@ -492,6 +479,8 @@ class MemosApi {
     return MemosApi._(
       dio,
       useLegacyApi: useLegacyApi,
+      strictRouteLock: strictRouteLock,
+      strictServerVersion: strictServerVersion,
       instanceProfile: instanceProfile,
       logStore: logStore,
       logBuffer: logBuffer,
@@ -504,6 +493,8 @@ class MemosApi {
     required Uri baseUrl,
     required String sessionCookie,
     bool useLegacyApi = false,
+    bool strictRouteLock = false,
+    String? strictServerVersion,
     InstanceProfile? instanceProfile,
     NetworkLogStore? logStore,
     NetworkLogBuffer? logBuffer,
@@ -521,6 +512,8 @@ class MemosApi {
     return MemosApi._(
       dio,
       useLegacyApi: useLegacyApi,
+      strictRouteLock: strictRouteLock,
+      strictServerVersion: strictServerVersion,
       instanceProfile: instanceProfile,
       logStore: logStore,
       logBuffer: logBuffer,
@@ -570,42 +563,11 @@ class MemosApi {
 
   Future<User> getCurrentUser() async {
     await _ensureServerHints();
-
-    DioException? lastDio;
-    FormatException? lastFormat;
-    final attempts = _orderedCurrentUserEndpoints();
-    for (final endpoint in attempts) {
-      try {
-        final user = await _runCurrentUserAttempt(endpoint);
-        _preferredCurrentUserEndpoint = endpoint;
-        return user;
-      } on DioException catch (e) {
-        lastDio = e;
-        if (_preferredCurrentUserEndpoint == endpoint) {
-          _preferredCurrentUserEndpoint = null;
-        }
-        if (!_shouldFallback(e)) rethrow;
-      } on FormatException catch (e) {
-        lastFormat = e;
-        if (_preferredCurrentUserEndpoint == endpoint) {
-          _preferredCurrentUserEndpoint = null;
-        }
-      }
-    }
-
-    if (lastFormat != null) throw lastFormat;
-    if (lastDio != null) throw lastDio;
-    throw StateError('Unable to determine current user');
-  }
-
-  List<_CurrentUserEndpoint> _orderedCurrentUserEndpoints() {
     final attempts = _currentUserAttempts();
-    final preferred = _preferredCurrentUserEndpoint;
-    if (preferred == null) return attempts;
-    return <_CurrentUserEndpoint>[
-      preferred,
-      ...attempts.where((endpoint) => endpoint != preferred),
-    ];
+    if (attempts.isEmpty) {
+      throw StateError('No current user endpoint configured');
+    }
+    return _runCurrentUserAttempt(attempts.first);
   }
 
   List<_CurrentUserEndpoint> _currentUserAttempts() {
@@ -643,16 +605,6 @@ class MemosApi {
     };
   }
 
-  static bool _shouldFallback(DioException e) {
-    final status = e.response?.statusCode ?? 0;
-    return status == 404 || status == 405;
-  }
-
-  static bool _shouldFallbackLegacy(DioException e) {
-    final status = e.response?.statusCode ?? 0;
-    return status == 404 || status == 405;
-  }
-
   bool _usesLegacyUserSettingRoute() {
     return _serverFlavor == _ServerApiFlavor.v0_21 ||
         _serverFlavor == _ServerApiFlavor.v0_22 ||
@@ -662,6 +614,14 @@ class MemosApi {
 
   bool _legacyMemoEndpointsAllowed() {
     return _capabilities.allowLegacyMemoEndpoints;
+  }
+
+  bool _supportsLegacyMemoUpdateEndpoint() {
+    return _serverFlavor == _ServerApiFlavor.v0_21;
+  }
+
+  bool _legacyMemoUpdateEndpointAllowed() {
+    return _legacyMemoEndpointsAllowed() && _supportsLegacyMemoUpdateEndpoint();
   }
 
   void _logMemoFallbackDecision({
@@ -691,37 +651,6 @@ class MemosApi {
     );
   }
 
-  bool _allowMemoFallbackFromError(
-    DioException error, {
-    required String operation,
-    String? endpoint,
-  }) {
-    if (!_shouldFallbackLegacy(error)) return false;
-    final allowed = _legacyMemoEndpointsAllowed();
-    _logMemoFallbackDecision(
-      operation: operation,
-      allowed: allowed,
-      reason: 'http_${error.response?.statusCode ?? 0}',
-      error: error,
-      endpoint: endpoint,
-    );
-    return allowed;
-  }
-
-  bool _allowMemoFallbackFromFormat({
-    required String operation,
-    String? endpoint,
-  }) {
-    final allowed = _legacyMemoEndpointsAllowed();
-    _logMemoFallbackDecision(
-      operation: operation,
-      allowed: allowed,
-      reason: 'format_exception',
-      endpoint: endpoint,
-    );
-    return allowed;
-  }
-
   bool _ensureLegacyMemoEndpointAllowed(
     String endpoint, {
     required String operation,
@@ -740,7 +669,8 @@ class MemosApi {
     return false;
   }
 
-  static bool _shouldFallbackProfile(DioException e) {
+  bool _shouldFallbackProfile(DioException e) {
+    if (strictRouteLock) return false;
     final status = e.response?.statusCode ?? 0;
     if (status == 401 || status == 403 || status == 404 || status == 405) {
       return true;
@@ -870,101 +800,37 @@ class MemosApi {
     }
 
     if (_capabilities.preferLegacyAuthChain) {
-      try {
-        return await callLegacy();
-      } on DioException catch (e) {
-        if (!_shouldFallbackLegacy(e)) rethrow;
-      } on FormatException {
-        // Fall through to modern.
-      }
+      return callLegacy();
     }
-
-    try {
-      return await callModern();
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return await callLegacy();
-      }
-      rethrow;
-    } on FormatException {
-      return await callLegacy();
-    }
+    return callModern();
   }
 
   Future<UserStatsSummary> getUserStatsSummary({String? userName}) async {
     await _ensureServerHints();
-    if (_useLegacyMemos) {
-      final summary = await _getUserStatsLegacyMemoStats(userName: userName);
-      _userStatsMode = _UserStatsApiMode.legacyMemoStats;
-      return summary;
+    // Memos 0.23 does not expose a stable user-stats endpoint in v1 API.
+    if (_serverFlavor == _ServerApiFlavor.v0_23) {
+      return const UserStatsSummary(
+        memoDisplayTimes: <DateTime>[],
+        totalMemoCount: 0,
+      );
     }
-
-    final cached = _userStatsMode;
-    if (cached != null) {
-      if (cached == _UserStatsApiMode.modernGetStats) {
-        try {
-          return await _getUserStatsModernGetStats(userName: userName);
-        } on DioException catch (e) {
-          if (!_shouldFallbackUserStatsModernGetStats(e)) {
-            rethrow;
-          }
-          _userStatsMode = null;
-        }
-      } else if (cached == _UserStatsApiMode.legacyStatsPath) {
+    final mode =
+        _userStatsMode ??
+        _capabilities.defaultUserStatsMode ??
+        _UserStatsApiMode.modernGetStats;
+    _userStatsMode = mode;
+    switch (mode) {
+      case _UserStatsApiMode.modernGetStats:
+        return _getUserStatsModernGetStats(userName: userName);
+      case _UserStatsApiMode.legacyStatsPath:
         return _getUserStatsLegacyStatsPath(userName: userName);
-      } else if (cached == _UserStatsApiMode.legacyMemosStats) {
+      case _UserStatsApiMode.legacyMemosStats:
         return _getUserStatsLegacyMemosStats(userName: userName);
-      } else if (cached == _UserStatsApiMode.legacyMemoStats) {
-        return _getUserStatsLegacyMemoStats(userName: userName);
-      }
+      case _UserStatsApiMode.legacyMemoStats:
+        final summary = await _getUserStatsLegacyMemoStats(userName: userName);
+        _markMemoLegacy();
+        return summary;
     }
-
-    try {
-      final summary = await _getUserStatsModernGetStats(userName: userName);
-      _userStatsMode = _UserStatsApiMode.modernGetStats;
-      return summary;
-    } on DioException catch (e) {
-      if (!_shouldFallbackUserStatsModernGetStats(e)) rethrow;
-    }
-
-    try {
-      final summary = await _getUserStatsLegacyStatsPath(userName: userName);
-      _userStatsMode = _UserStatsApiMode.legacyStatsPath;
-      return summary;
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    }
-
-    try {
-      final summary = await _getUserStatsLegacyMemosStats(userName: userName);
-      _userStatsMode = _UserStatsApiMode.legacyMemosStats;
-      return summary;
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    }
-
-    final summary = await _getUserStatsLegacyMemoStats(userName: userName);
-    _userStatsMode = _UserStatsApiMode.legacyMemoStats;
-    _markMemoLegacy();
-    return summary;
-  }
-
-  bool _shouldFallbackUserStatsModernGetStats(DioException error) {
-    if (_shouldFallback(error)) {
-      return true;
-    }
-    final status = error.response?.statusCode ?? 0;
-    if (status != 400) {
-      return false;
-    }
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) {
-      return false;
-    }
-    return message.contains('invalid user name') ||
-        message.contains('invalid user id') ||
-        message.contains(':getstats') ||
-        message.contains('getstats');
   }
 
   Future<UserStatsSummary> _getUserStatsModernGetStats({
@@ -1154,36 +1020,22 @@ class MemosApi {
     return name.startsWith('users/') ? name : 'users/$name';
   }
 
+  bool _usesV025AccessTokenRoutes() {
+    final version = _serverVersion;
+    return version != null && version.major == 0 && version.minor == 25;
+  }
+
   Future<String> createUserAccessToken({
     String? userName,
     required String description,
     required int expiresInDays,
   }) async {
-    final trimmedDescription = description.trim();
-    if (trimmedDescription.isEmpty) {
-      throw ArgumentError('createUserAccessToken requires description');
-    }
-
-    try {
-      final numericUserId = await _resolveNumericUserId(userName: userName);
-      final parent = 'users/$numericUserId';
-      final result = await _createUserAccessTokenCompat(
-        parent: parent,
-        description: trimmedDescription,
-        expiresInDays: expiresInDays,
-      );
-      return result.token;
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        final legacy = await _createPersonalAccessTokenLegacy(
-          userName: userName,
-          description: trimmedDescription,
-          expiresInDays: expiresInDays,
-        );
-        return legacy.token;
-      }
-      rethrow;
-    }
+    final result = await createPersonalAccessToken(
+      userName: userName,
+      description: description,
+      expiresInDays: expiresInDays,
+    );
+    return result.token;
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})>
@@ -1192,28 +1044,26 @@ class MemosApi {
     required String description,
     required int expiresInDays,
   }) async {
-    try {
-      return await _createPersonalAccessTokenModern(
+    await _ensureServerHints();
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      return _createPersonalAccessTokenModern(
         userName: userName,
         description: description,
         expiresInDays: expiresInDays,
       );
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        return await _createPersonalAccessTokenLegacy(
-          userName: userName,
-          description: description,
-          expiresInDays: expiresInDays,
-        );
-      }
-      if (_capabilities.forceLegacyMemoByPreference &&
-          _shouldFallbackLegacy(e)) {
-        throw UnsupportedError(
-          'Legacy API does not support personal access tokens',
-        );
-      }
-      rethrow;
     }
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return _createPersonalAccessTokenLegacyV2(
+        userName: userName,
+        description: description,
+        expiresInDays: expiresInDays,
+      );
+    }
+    return _createPersonalAccessTokenLegacy(
+      userName: userName,
+      description: description,
+      expiresInDays: expiresInDays,
+    );
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})>
@@ -1230,186 +1080,96 @@ class MemosApi {
     final numericUserId = await _resolveNumericUserId(userName: userName);
 
     final parent = 'users/$numericUserId';
-    final path = 'api/v1/$parent/personalAccessTokens';
-
-    String extractToken(Map<String, dynamic> body) {
-      final tokenValue = body['token'] ?? body['accessToken'];
-      final String? token;
-      if (tokenValue is String) {
-        token = tokenValue.trim();
-      } else if (tokenValue != null) {
-        token = tokenValue.toString().trim();
-      } else {
-        token = null;
-      }
-      if (token == null || token.isEmpty || token == 'null') {
+    if (_usesV025AccessTokenRoutes()) {
+      final expiresAt = expiresInDays > 0
+          ? DateTime.now().toUtc().add(Duration(days: expiresInDays))
+          : null;
+      final response = await _dio.post(
+        'api/v1/$parent/accessTokens',
+        data: <String, Object?>{
+          'description': trimmedDescription,
+          if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
+        },
+      );
+      final body = _expectJsonMap(response.data);
+      final token = _readString(
+        body['accessToken'] ?? body['access_token'] ?? body['token'],
+      );
+      if (token.isEmpty || token == 'null') {
         throw const FormatException('Token missing in response');
       }
-      return token;
-    }
-
-    String tryExtractErrorMessage(DioException e) {
-      final data = e.response?.data;
-      if (data is Map) {
-        final msg = data['message'] ?? data['error'] ?? data['detail'];
-        if (msg is String && msg.trim().isNotEmpty) return msg.trim();
-      } else if (data is String && data.trim().isNotEmpty) {
-        return data.trim();
-      }
-      return '';
-    }
-
-    Future<({PersonalAccessToken personalAccessToken, String token})> request({
-      required bool includeParent,
-      required bool useSnakeCaseExpires,
-      required bool includeExpires,
-    }) async {
-      final data = <String, Object?>{
-        if (includeParent) 'parent': parent,
-        'description': trimmedDescription,
-        if (includeExpires)
-          (useSnakeCaseExpires ? 'expires_in_days' : 'expiresInDays'):
-              expiresInDays,
-      };
-      final response = await _dio.post(path, data: data);
-      final body = _expectJsonMap(response.data);
-      final token = extractToken(body);
-
-      final patJson =
-          body['personalAccessToken'] ?? body['personal_access_token'];
-      final personalAccessToken = patJson is Map
-          ? PersonalAccessToken.fromJson(patJson.cast<String, dynamic>())
-          : PersonalAccessToken(
-              name: '',
-              description: trimmedDescription,
-              createdAt: null,
-              expiresAt: null,
-              lastUsedAt: null,
-            );
+      final personalAccessToken = _personalAccessTokenFromV025Json(
+        body,
+        tokenValue: token,
+      );
       return (personalAccessToken: personalAccessToken, token: token);
     }
 
-    Future<({PersonalAccessToken personalAccessToken, String token})>
-    createViaPersonalAccessTokens() async {
-      final expiresOptional = expiresInDays == 0;
-
-      try {
-        return await request(
-          includeParent: true,
-          useSnakeCaseExpires: false,
-          includeExpires: true,
-        );
-      } on DioException catch (e) {
-        final status = e.response?.statusCode ?? 0;
-        if (status != 400) rethrow;
-
-        final message = tryExtractErrorMessage(e);
-        final unknownExpires =
-            message.contains('expiresInDays') &&
-            message.toLowerCase().contains('unknown');
-
-        if (expiresOptional) {
-          try {
-            return await request(
-              includeParent: true,
-              useSnakeCaseExpires: false,
-              includeExpires: false,
-            );
-          } on DioException catch (_) {}
-        }
-
-        if (unknownExpires) {
-          try {
-            return await request(
-              includeParent: true,
-              useSnakeCaseExpires: true,
-              includeExpires: true,
-            );
-          } on DioException catch (_) {}
-        }
-
-        try {
-          return await request(
-            includeParent: false,
-            useSnakeCaseExpires: false,
-            includeExpires: true,
-          );
-        } on DioException catch (_) {}
-
-        if (unknownExpires) {
-          return await request(
-            includeParent: false,
-            useSnakeCaseExpires: true,
-            includeExpires: true,
-          );
-        }
-        rethrow;
-      }
+    final response = await _dio.post(
+      'api/v1/$parent/personalAccessTokens',
+      data: <String, Object?>{
+        'parent': parent,
+        'description': trimmedDescription,
+        'expiresInDays': expiresInDays,
+      },
+    );
+    final body = _expectJsonMap(response.data);
+    final token = _readString(body['token'] ?? body['accessToken']);
+    if (token.isEmpty || token == 'null') {
+      throw const FormatException('Token missing in response');
     }
-
-    try {
-      return await createViaPersonalAccessTokens();
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        return await _createUserAccessTokenCompat(
-          parent: parent,
-          description: trimmedDescription,
-          expiresInDays: expiresInDays,
-        );
-      }
-      rethrow;
-    }
+    final patJson =
+        body['personalAccessToken'] ?? body['personal_access_token'];
+    final personalAccessToken = patJson is Map
+        ? PersonalAccessToken.fromJson(patJson.cast<String, dynamic>())
+        : PersonalAccessToken(
+            name: '',
+            description: trimmedDescription,
+            createdAt: null,
+            expiresAt: null,
+            lastUsedAt: null,
+          );
+    return (personalAccessToken: personalAccessToken, token: token);
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})>
-  _createUserAccessTokenCompat({
-    required String parent,
+  _createPersonalAccessTokenLegacyV2({
+    String? userName,
     required String description,
     required int expiresInDays,
   }) async {
+    final trimmedDescription = description.trim();
+    if (trimmedDescription.isEmpty) {
+      throw ArgumentError('createPersonalAccessToken requires description');
+    }
+
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final name = 'users/$numericUserId';
     final expiresAt = expiresInDays > 0
         ? DateTime.now().toUtc().add(Duration(days: expiresInDays))
         : null;
 
-    Future<({PersonalAccessToken personalAccessToken, String token})> request({
-      required bool useSnakeCaseExpires,
-    }) async {
-      final data = <String, Object?>{
-        'description': description,
-        if (expiresAt != null)
-          (useSnakeCaseExpires ? 'expires_at' : 'expiresAt'): expiresAt
-              .toIso8601String(),
-      };
-      final response = await _dio.post(
-        'api/v1/$parent/accessTokens',
-        data: data,
-      );
-      final body = _expectJsonMap(response.data);
-      final tokenValue = _readString(
-        body['accessToken'] ?? body['access_token'] ?? body['token'],
-      );
-      if (tokenValue.isEmpty) {
-        throw const FormatException('Token missing in response');
-      }
-      final personalAccessToken = _personalAccessTokenFromAccessTokensJson(
-        body,
-        tokenValue: tokenValue,
-      );
-      return (personalAccessToken: personalAccessToken, token: tokenValue);
+    final response = await _dio.post(
+      'api/v2/$name/access_tokens',
+      data: <String, Object?>{
+        'description': trimmedDescription,
+        if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
+      },
+    );
+
+    final body = _expectJsonMap(response.data);
+    final payload = body['accessToken'] ?? body['access_token'];
+    if (payload is! Map) {
+      throw const FormatException('accessToken missing in response');
+    }
+    final json = payload.cast<String, dynamic>();
+    final token = _readString(json['accessToken'] ?? json['access_token']);
+    if (token.isEmpty) {
+      throw const FormatException('Token missing in response');
     }
 
-    if (expiresAt == null) {
-      return request(useSnakeCaseExpires: false);
-    }
-
-    try {
-      return await request(useSnakeCaseExpires: false);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 400) rethrow;
-    }
-
-    return request(useSnakeCaseExpires: true);
+    final pat = _personalAccessTokenFromLegacyJson(json, tokenValue: token);
+    return (personalAccessToken: pat, token: token);
   }
 
   Future<({PersonalAccessToken personalAccessToken, String token})>
@@ -1451,20 +1211,14 @@ class MemosApi {
   Future<List<PersonalAccessToken>> listPersonalAccessTokens({
     String? userName,
   }) async {
-    try {
-      return await _listPersonalAccessTokensModern(userName: userName);
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        return await _listPersonalAccessTokensLegacy(userName: userName);
-      }
-      if (_capabilities.forceLegacyMemoByPreference &&
-          _shouldFallbackLegacy(e)) {
-        throw UnsupportedError(
-          'Legacy API does not support personal access tokens',
-        );
-      }
-      rethrow;
+    await _ensureServerHints();
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      return _listPersonalAccessTokensModern(userName: userName);
     }
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return _listPersonalAccessTokensLegacyV2(userName: userName);
+    }
+    return _listPersonalAccessTokensLegacy(userName: userName);
   }
 
   Future<List<PersonalAccessToken>> _listPersonalAccessTokensModern({
@@ -1472,21 +1226,24 @@ class MemosApi {
   }) async {
     final numericUserId = await _resolveNumericUserId(userName: userName);
     final parent = 'users/$numericUserId';
-
-    try {
+    if (_usesV025AccessTokenRoutes()) {
       final response = await _dio.get(
-        'api/v1/$parent/personalAccessTokens',
+        'api/v1/$parent/accessTokens',
         queryParameters: const <String, Object?>{'pageSize': 1000},
       );
       final body = _expectJsonMap(response.data);
-      final list =
-          body['personalAccessTokens'] ?? body['personal_access_tokens'];
+      final list = body['accessTokens'] ?? body['access_tokens'];
       final tokens = <PersonalAccessToken>[];
       if (list is List) {
         for (final item in list) {
           if (item is Map) {
+            final map = item.cast<String, dynamic>();
+            final tokenValue = _readString(
+              map['accessToken'] ?? map['access_token'],
+            );
+            if (tokenValue.isEmpty) continue;
             tokens.add(
-              PersonalAccessToken.fromJson(item.cast<String, dynamic>()),
+              _personalAccessTokenFromV025Json(map, tokenValue: tokenValue),
             );
           }
         }
@@ -1497,35 +1254,24 @@ class MemosApi {
         return bTime.compareTo(aTime);
       });
       return tokens;
-    } on DioException catch (e) {
-      if (!_shouldFallback(e)) rethrow;
     }
 
-    return _listPersonalAccessTokensAccessTokens(parent: parent);
-  }
-
-  Future<List<PersonalAccessToken>> _listPersonalAccessTokensAccessTokens({
-    required String parent,
-  }) async {
     final response = await _dio.get(
-      'api/v1/$parent/accessTokens',
+      'api/v1/$parent/personalAccessTokens',
       queryParameters: const <String, Object?>{'pageSize': 1000},
     );
     final body = _expectJsonMap(response.data);
-    final list = body['accessTokens'] ?? body['access_tokens'];
+    final list = body['personalAccessTokens'] ?? body['personal_access_tokens'];
     final tokens = <PersonalAccessToken>[];
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
           tokens.add(
-            _personalAccessTokenFromAccessTokensJson(
-              item.cast<String, dynamic>(),
-            ),
+            PersonalAccessToken.fromJson(item.cast<String, dynamic>()),
           );
         }
       }
     }
-
     tokens.sort((a, b) {
       final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
       final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
@@ -1568,64 +1314,53 @@ class MemosApi {
     return tokens;
   }
 
+  Future<List<PersonalAccessToken>> _listPersonalAccessTokensLegacyV2({
+    String? userName,
+  }) async {
+    final numericUserId = await _resolveNumericUserId(userName: userName);
+    final name = 'users/$numericUserId';
+
+    final response = await _dio.get('api/v2/$name/access_tokens');
+    final body = _expectJsonMap(response.data);
+    final list = body['accessTokens'] ?? body['access_tokens'];
+
+    final tokens = <PersonalAccessToken>[];
+    if (list is List) {
+      for (final item in list) {
+        if (item is Map) {
+          final map = item.cast<String, dynamic>();
+          final tokenValue = _readString(
+            map['accessToken'] ?? map['access_token'],
+          );
+          if (tokenValue.isEmpty) continue;
+          tokens.add(
+            _personalAccessTokenFromLegacyJson(map, tokenValue: tokenValue),
+          );
+        }
+      }
+    }
+
+    tokens.sort((a, b) {
+      final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
+      return bTime.compareTo(aTime);
+    });
+    return tokens;
+  }
+
   Future<UserGeneralSetting> getUserGeneralSetting({String? userName}) async {
     await _ensureServerHints();
     final resolvedName = await _resolveUserName(userName: userName);
-    DioException? lastError;
-
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return _getUserGeneralSettingLegacyV2(userName: resolvedName);
+    }
     if (_usesLegacyUserSettingRoute()) {
-      try {
-        return await _getUserGeneralSettingLegacyV1(userName: resolvedName);
-      } on DioException catch (e) {
-        lastError = e;
-        if (!_shouldFallbackLegacy(e)) rethrow;
-      }
-
-      try {
-        return await _getUserGeneralSettingLegacyV2(userName: resolvedName);
-      } on DioException catch (e) {
-        lastError = e;
-        if (!_shouldFallbackLegacy(e)) rethrow;
-      }
-
-      throw lastError;
+      return _getUserGeneralSettingLegacyV1(userName: resolvedName);
     }
-
-    try {
-      return await _getUserGeneralSettingModern(
-        userName: resolvedName,
-        settingKey: 'GENERAL',
-      );
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallback(e)) rethrow;
-    }
-
-    try {
-      return await _getUserGeneralSettingModern(
-        userName: resolvedName,
-        settingKey: 'general',
-      );
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallback(e)) rethrow;
-    }
-
-    try {
-      return await _getUserGeneralSettingLegacyV1(userName: resolvedName);
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    }
-
-    try {
-      return await _getUserGeneralSettingLegacyV2(userName: resolvedName);
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    }
-
-    throw lastError;
+    return _getUserGeneralSettingModern(
+      userName: resolvedName,
+      settingKey: 'GENERAL',
+    );
   }
 
   Future<UserGeneralSetting> updateUserGeneralSetting({
@@ -1635,70 +1370,34 @@ class MemosApi {
   }) async {
     await _ensureServerHints();
     final resolvedName = await _resolveUserName(userName: userName);
-    final mask = _normalizeGeneralSettingMask(updateMask);
-    if (mask.isEmpty) {
+    final modernMask = _normalizeGeneralSettingMask(updateMask);
+    if (modernMask.isEmpty) {
+      throw ArgumentError('updateUserGeneralSetting requires updateMask');
+    }
+    final legacyMask = _normalizeLegacyGeneralSettingMask(updateMask);
+    if (legacyMask.isEmpty) {
       throw ArgumentError('updateUserGeneralSetting requires updateMask');
     }
 
-    if (_usesLegacyUserSettingRoute()) {
-      final legacyMask = _normalizeLegacyGeneralSettingMask(updateMask);
-      try {
-        return await _updateUserGeneralSettingLegacyV1(
-          userName: resolvedName,
-          setting: setting,
-          updateMask: legacyMask,
-        );
-      } on DioException catch (e) {
-        if (!_shouldFallbackLegacy(e)) rethrow;
-      }
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
       return _updateUserGeneralSettingLegacyV2(
         userName: resolvedName,
         setting: setting,
         updateMask: legacyMask,
       );
     }
-
-    try {
-      return await _updateUserGeneralSettingModern(
-        userName: resolvedName,
-        settingKey: 'GENERAL',
-        setting: setting,
-        updateMask: mask,
-      );
-    } on DioException catch (e) {
-      if (_shouldFallback(e) || e.response?.statusCode == 400) {
-        try {
-          return await _updateUserGeneralSettingModern(
-            userName: resolvedName,
-            settingKey: 'general',
-            setting: setting,
-            updateMask: mask,
-          );
-        } on DioException catch (inner) {
-          if (!_shouldFallback(inner) && inner.response?.statusCode != 400)
-            rethrow;
-        }
-      } else {
-        rethrow;
-      }
-    }
-
-    final legacyMask = _normalizeLegacyGeneralSettingMask(updateMask);
-
-    try {
-      return await _updateUserGeneralSettingLegacyV1(
+    if (_usesLegacyUserSettingRoute()) {
+      return _updateUserGeneralSettingLegacyV1(
         userName: resolvedName,
         setting: setting,
         updateMask: legacyMask,
       );
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
     }
-
-    return _updateUserGeneralSettingLegacyV2(
+    return _updateUserGeneralSettingModern(
       userName: resolvedName,
+      settingKey: 'GENERAL',
       setting: setting,
-      updateMask: legacyMask,
+      updateMask: modernMask,
     );
   }
 
@@ -1709,17 +1408,9 @@ class MemosApi {
     }
 
     final parent = await _resolveUserName(userName: userName);
-    try {
-      final shortcuts = await _listShortcutsModern(parent: parent);
-      _shortcutsSupported = true;
-      return shortcuts;
-    } on DioException catch (e) {
-      if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-        _shortcutsSupported = false;
-        return const <Shortcut>[];
-      }
-      rethrow;
-    }
+    final shortcuts = await _listShortcutsModern(parent: parent);
+    _shortcutsSupported = true;
+    return shortcuts;
   }
 
   Future<Shortcut> createShortcut({
@@ -1737,20 +1428,12 @@ class MemosApi {
     if (trimmedTitle.isEmpty) {
       throw ArgumentError('createShortcut requires title');
     }
-    try {
-      final response = await _dio.post(
-        'api/v1/$parent/shortcuts',
-        data: <String, Object?>{'title': trimmedTitle, 'filter': filter},
-      );
-      _shortcutsSupported = true;
-      return Shortcut.fromJson(_expectJsonMap(response.data));
-    } on DioException catch (e) {
-      if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-        _shortcutsSupported = false;
-        throw UnsupportedError('Shortcuts are not supported on this server');
-      }
-      rethrow;
-    }
+    final response = await _dio.post(
+      'api/v1/$parent/shortcuts',
+      data: <String, Object?>{'title': trimmedTitle, 'filter': filter},
+    );
+    _shortcutsSupported = true;
+    return Shortcut.fromJson(_expectJsonMap(response.data));
   }
 
   Future<Shortcut> updateShortcut({
@@ -1779,24 +1462,16 @@ class MemosApi {
       'title': trimmedTitle,
       'filter': filter,
     };
-    try {
-      final response = await _dio.patch(
-        'api/v1/$parent/shortcuts/$shortcutId',
-        queryParameters: const <String, Object?>{
-          'updateMask': 'title,filter',
-          'update_mask': 'title,filter',
-        },
-        data: shortcutPayload,
-      );
-      _shortcutsSupported = true;
-      return Shortcut.fromJson(_expectJsonMap(response.data));
-    } on DioException catch (e) {
-      if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-        _shortcutsSupported = false;
-        throw UnsupportedError('Shortcuts are not supported on this server');
-      }
-      rethrow;
-    }
+    final response = await _dio.patch(
+      'api/v1/$parent/shortcuts/$shortcutId',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'title,filter',
+        'update_mask': 'title,filter',
+      },
+      data: shortcutPayload,
+    );
+    _shortcutsSupported = true;
+    return Shortcut.fromJson(_expectJsonMap(response.data));
   }
 
   Future<void> deleteShortcut({
@@ -1813,44 +1488,20 @@ class MemosApi {
     if (shortcutId.isEmpty) {
       throw ArgumentError('deleteShortcut requires shortcut id');
     }
-    try {
-      await _dio.delete('api/v1/$parent/shortcuts/$shortcutId');
-      _shortcutsSupported = true;
-    } on DioException catch (e) {
-      if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-        _shortcutsSupported = false;
-        throw UnsupportedError('Shortcuts are not supported on this server');
-      }
-      rethrow;
-    }
+    await _dio.delete('api/v1/$parent/shortcuts/$shortcutId');
+    _shortcutsSupported = true;
   }
 
   Future<List<UserWebhook>> listUserWebhooks({String? userName}) async {
+    await _ensureServerHints();
     final resolvedName = await _resolveUserName(userName: userName);
-    DioException? lastError;
-
-    try {
-      return await _listUserWebhooksModern(userName: resolvedName);
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallback(e)) rethrow;
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      return _listUserWebhooksModern(userName: resolvedName);
     }
-
-    try {
-      return await _listUserWebhooksLegacyV1(userName: resolvedName);
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallbackLegacy(e)) rethrow;
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return _listUserWebhooksLegacyV2(userName: resolvedName);
     }
-
-    try {
-      return await _listUserWebhooksLegacyV2(userName: resolvedName);
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    }
-
-    throw lastError;
+    return _listUserWebhooksLegacyV1(userName: resolvedName);
   }
 
   Future<UserWebhook> createUserWebhook({
@@ -1858,47 +1509,31 @@ class MemosApi {
     required String displayName,
     required String url,
   }) async {
+    await _ensureServerHints();
     final resolvedName = await _resolveUserName(userName: userName);
-    DioException? lastError;
     final trimmedUrl = url.trim();
     if (trimmedUrl.isEmpty) {
       throw ArgumentError('createUserWebhook requires url');
     }
-
-    try {
-      return await _createUserWebhookModern(
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      return _createUserWebhookModern(
         userName: resolvedName,
         displayName: displayName,
         url: trimmedUrl,
       );
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallback(e)) rethrow;
     }
-
-    try {
-      return await _createUserWebhookLegacyV1(
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return _createUserWebhookLegacyV2(
         userName: resolvedName,
         displayName: displayName,
         url: trimmedUrl,
       );
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallbackLegacy(e)) rethrow;
     }
-
-    try {
-      return await _createUserWebhookLegacyV2(
-        userName: resolvedName,
-        displayName: displayName,
-        url: trimmedUrl,
-      );
-    } on DioException catch (e) {
-      lastError = e;
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    }
-
-    throw lastError;
+    return _createUserWebhookLegacyV1(
+      userName: resolvedName,
+      displayName: displayName,
+      url: trimmedUrl,
+    );
   }
 
   Future<UserWebhook> updateUserWebhook({
@@ -1906,90 +1541,49 @@ class MemosApi {
     required String displayName,
     required String url,
   }) async {
+    await _ensureServerHints();
     final trimmedUrl = url.trim();
     if (trimmedUrl.isEmpty) {
       throw ArgumentError('updateUserWebhook requires url');
     }
-
-    if (webhook.isLegacy) {
-      try {
-        return await _updateUserWebhookLegacyV1(
-          webhook: webhook,
-          displayName: displayName,
-          url: trimmedUrl,
-        );
-      } on DioException catch (e) {
-        if (_shouldFallbackLegacy(e)) {
-          return _updateUserWebhookLegacyV2(
-            webhook: webhook,
-            displayName: displayName,
-            url: trimmedUrl,
-          );
-        }
-        rethrow;
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      if (webhook.isLegacy) {
+        throw ArgumentError('updateUserWebhook requires webhook name');
       }
-    }
-
-    try {
-      return await _updateUserWebhookModern(
+      return _updateUserWebhookModern(
         webhook: webhook,
         displayName: displayName,
         url: trimmedUrl,
       );
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        try {
-          return await _updateUserWebhookLegacyV1(
-            webhook: webhook,
-            displayName: displayName,
-            url: trimmedUrl,
-          );
-        } on DioException catch (inner) {
-          if (_shouldFallbackLegacy(inner)) {
-            return _updateUserWebhookLegacyV2(
-              webhook: webhook,
-              displayName: displayName,
-              url: trimmedUrl,
-            );
-          }
-          rethrow;
-        }
-      }
-      rethrow;
     }
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return _updateUserWebhookLegacyV2(
+        webhook: webhook,
+        displayName: displayName,
+        url: trimmedUrl,
+      );
+    }
+    return _updateUserWebhookLegacyV1(
+      webhook: webhook,
+      displayName: displayName,
+      url: trimmedUrl,
+    );
   }
 
   Future<void> deleteUserWebhook({required UserWebhook webhook}) async {
-    if (webhook.isLegacy) {
-      try {
-        await _deleteUserWebhookLegacyV1(webhook: webhook);
-      } on DioException catch (e) {
-        if (_shouldFallbackLegacy(e)) {
-          await _deleteUserWebhookLegacyV2(webhook: webhook);
-          return;
-        }
-        rethrow;
+    await _ensureServerHints();
+    if (_serverFlavor == _ServerApiFlavor.v0_25Plus) {
+      if (webhook.isLegacy) {
+        throw ArgumentError('deleteUserWebhook requires name');
       }
+      await _deleteUserWebhookModern(webhook: webhook);
       return;
     }
-
-    try {
-      await _deleteUserWebhookModern(webhook: webhook);
-    } on DioException catch (e) {
-      if (_shouldFallback(e)) {
-        try {
-          await _deleteUserWebhookLegacyV1(webhook: webhook);
-        } on DioException catch (inner) {
-          if (_shouldFallbackLegacy(inner)) {
-            await _deleteUserWebhookLegacyV2(webhook: webhook);
-            return;
-          }
-          rethrow;
-        }
-        return;
-      }
-      rethrow;
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      await _deleteUserWebhookLegacyV2(webhook: webhook);
+      return;
     }
+    await _deleteUserWebhookLegacyV1(webhook: webhook);
   }
 
   Future<UserGeneralSetting> _getUserGeneralSettingModern({
@@ -2432,96 +2026,30 @@ class MemosApi {
     String? filter,
   }) async {
     await _ensureServerHints();
-    Future<(List<AppNotification> notifications, String nextPageToken)>
-    callModern() {
-      return _listNotificationsModern(
-        pageSize: pageSize,
-        pageToken: pageToken,
-        userName: userName,
-        filter: filter,
-      );
+    final mode =
+        _notificationMode ??
+        _capabilities.defaultNotificationMode ??
+        _NotificationApiMode.modern;
+    _notificationMode = mode;
+    switch (mode) {
+      case _NotificationApiMode.modern:
+        return _listNotificationsModern(
+          pageSize: pageSize,
+          pageToken: pageToken,
+          userName: userName,
+          filter: filter,
+        );
+      case _NotificationApiMode.legacyV1:
+        return _listNotificationsLegacyV1(
+          pageSize: pageSize,
+          pageToken: pageToken,
+        );
+      case _NotificationApiMode.legacyV2:
+        return _listNotificationsLegacyV2(
+          pageSize: pageSize,
+          pageToken: pageToken,
+        );
     }
-
-    Future<(List<AppNotification> notifications, String nextPageToken)>
-    callLegacyV1() {
-      return _listNotificationsLegacyV1(
-        pageSize: pageSize,
-        pageToken: pageToken,
-      );
-    }
-
-    Future<(List<AppNotification> notifications, String nextPageToken)>
-    callLegacyV2() {
-      return _listNotificationsLegacyV2(
-        pageSize: pageSize,
-        pageToken: pageToken,
-      );
-    }
-
-    if (_useLegacyMemos) {
-      try {
-        final result = await callLegacyV2();
-        _notificationMode = _NotificationApiMode.legacyV2;
-        return result;
-      } on DioException catch (e) {
-        if (!_shouldFallbackLegacy(e)) rethrow;
-      } on FormatException {
-        // Try legacy v1 before giving up.
-      }
-
-      try {
-        final result = await callLegacyV1();
-        _notificationMode = _NotificationApiMode.legacyV1;
-        return result;
-      } on DioException catch (e) {
-        if (!_shouldFallbackLegacy(e)) rethrow;
-      } on FormatException {
-        // Try modern as a last resort.
-      }
-    }
-
-    final cached = _notificationMode;
-    if (cached != null) {
-      try {
-        switch (cached) {
-          case _NotificationApiMode.modern:
-            return await callModern();
-          case _NotificationApiMode.legacyV1:
-            return await callLegacyV1();
-          case _NotificationApiMode.legacyV2:
-            return await callLegacyV2();
-        }
-      } on DioException catch (e) {
-        if (!_shouldFallback(e) && !_shouldFallbackLegacy(e)) rethrow;
-        _notificationMode = null;
-      } on FormatException {
-        _notificationMode = null;
-      }
-    }
-
-    try {
-      final result = await callModern();
-      _notificationMode = _NotificationApiMode.modern;
-      return result;
-    } on DioException catch (e) {
-      if (!_shouldFallback(e)) rethrow;
-    } on FormatException {
-      // Fall back to legacy endpoints when server returns HTML.
-    }
-
-    try {
-      final result = await callLegacyV1();
-      _notificationMode = _NotificationApiMode.legacyV1;
-      return result;
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
-    } on FormatException {
-      // Continue to legacy v2.
-    }
-
-    final result = await callLegacyV2();
-    _notificationMode = _NotificationApiMode.legacyV2;
-    return result;
   }
 
   Future<(List<AppNotification> notifications, String nextPageToken)>
@@ -2665,15 +2193,7 @@ class MemosApi {
       throw ArgumentError('deleteNotification requires name');
     }
     if (source == NotificationSource.legacy) {
-      try {
-        await _dio.delete('api/v1/$trimmedName');
-      } on DioException catch (e) {
-        if (_shouldFallbackLegacy(e)) {
-          await _dio.delete('api/v2/$trimmedName');
-          return;
-        }
-        rethrow;
-      }
+      await _dio.delete('${_legacyInboxBasePath()}/$trimmedName');
       return;
     }
     await _dio.delete('api/v1/$trimmedName');
@@ -2697,29 +2217,21 @@ class MemosApi {
     required String name,
     required String status,
   }) async {
-    try {
-      await _dio.patch(
-        'api/v1/$name',
-        queryParameters: const <String, Object?>{
-          'updateMask': 'status',
-          'update_mask': 'status',
-        },
-        data: <String, Object?>{'name': name, 'status': status},
-      );
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        await _dio.patch(
-          'api/v2/$name',
-          queryParameters: const <String, Object?>{
-            'updateMask': 'status',
-            'update_mask': 'status',
-          },
-          data: <String, Object?>{'name': name, 'status': status},
-        );
-        return;
-      }
-      rethrow;
+    await _dio.patch(
+      '${_legacyInboxBasePath()}/$name',
+      queryParameters: const <String, Object?>{
+        'updateMask': 'status',
+        'update_mask': 'status',
+      },
+      data: <String, Object?>{'name': name, 'status': status},
+    );
+  }
+
+  String _legacyInboxBasePath() {
+    if (_serverFlavor == _ServerApiFlavor.v0_21) {
+      return 'api/v2';
     }
+    return 'api/v1';
   }
 
   Future<String> _resolveNotificationParent(String? userName) async {
@@ -2740,23 +2252,14 @@ class MemosApi {
 
   Future<({String commentMemoUid, String relatedMemoUid})>
   getMemoCommentActivityRefs({required int activityId}) async {
+    await _ensureServerHints();
     if (activityId <= 0) {
       return (commentMemoUid: '', relatedMemoUid: '');
     }
 
-    Map<String, dynamic> activity;
-    try {
-      activity = await _getActivityModern(activityId);
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e) || _shouldFallback(e)) {
-        activity = await _getActivityLegacyV2(activityId);
-      } else {
-        rethrow;
-      }
-    } on FormatException {
-      activity = await _getActivityLegacyV2(activityId);
-    }
-
+    final activity = _serverFlavor == _ServerApiFlavor.v0_21
+        ? await _getActivityLegacyV2(activityId)
+        : await _getActivityModern(activityId);
     return _extractMemoCommentRefs(activity);
   }
 
@@ -2824,151 +2327,14 @@ class MemosApi {
     bool preferModern = false,
   }) async {
     await _ensureServerHints();
-    final requiresCreatorScopedList = requiresCreatorScopedListMemos;
-    String? effectiveFilter = filter;
-    String? effectiveOldFilter = oldFilter;
-    if (_disableCreatorScopedFilters && !requiresCreatorScopedList) {
-      effectiveFilter = _removeCreatorScopedFilterExpression(effectiveFilter);
-      effectiveOldFilter = _removeCreatorScopedFilterExpression(
-        effectiveOldFilter,
-      );
-    }
-
-    final attemptedFilter = (effectiveFilter ?? '').trim();
-    final attemptedOldFilter = (effectiveOldFilter ?? '').trim();
-    final forcedLegacyCreatorFilter = _normalizeMemosFilterForLegacyCreator(
-      attemptedFilter,
-    );
-    final creatorFilterRemoved = _removeCreatorScopedFilterExpression(
-      attemptedFilter,
-    );
-    final creatorOldFilterRemoved = _removeCreatorScopedFilterExpression(
-      attemptedOldFilter,
-    );
-    Future<(List<Memo> memos, String nextPageToken)> callModern({
-      Object? filterOverride = _unset,
-      Object? oldFilterOverride = _unset,
-    }) {
-      final requestFilter = identical(filterOverride, _unset)
-          ? effectiveFilter
-          : filterOverride as String?;
-      final requestOldFilter = identical(oldFilterOverride, _unset)
-          ? effectiveOldFilter
-          : oldFilterOverride as String?;
-      return _listMemosModern(
-        pageSize: pageSize,
-        pageToken: pageToken,
-        state: state,
-        filter: requestFilter,
-        parent: parent,
-        orderBy: orderBy,
-        oldFilter: requestOldFilter,
-      );
-    }
-
-    Future<(List<Memo> memos, String nextPageToken)>
-    callModernWithFilterRetry() async {
-      try {
-        return await callModern();
-      } on DioException catch (e) {
-        DioException error = e;
-        if (_shouldRetryMemosWithLegacyCreatorFilter(
-          error: e,
-          attemptedFilter: attemptedFilter,
-          forcedLegacyCreatorFilter: forcedLegacyCreatorFilter,
-        )) {
-          try {
-            final result = await callModern(
-              filterOverride: forcedLegacyCreatorFilter,
-            );
-            _forceLegacyCreatorFilterSyntax = true;
-            if (_serverFlavor == _ServerApiFlavor.unknown) {
-              _applyServerHints(_ServerApiFlavor.v0_23);
-            }
-            return result;
-          } on DioException catch (retryError) {
-            error = retryError;
-          }
-        }
-
-        if (!requiresCreatorScopedList &&
-            !_forceLegacyCreatorFilterSyntax &&
-            _shouldRetryMemosWithoutCreatorFilter(
-              error: error,
-              attemptedFilter: attemptedFilter,
-              attemptedOldFilter: attemptedOldFilter,
-              creatorFilterRemoved: creatorFilterRemoved,
-              creatorOldFilterRemoved: creatorOldFilterRemoved,
-            )) {
-          try {
-            final result = await callModern(
-              filterOverride: creatorFilterRemoved,
-              oldFilterOverride: creatorOldFilterRemoved,
-            );
-            _disableCreatorScopedFilters = true;
-            _rememberCreatorFilterDisabledForServer();
-            _logManager?.warn(
-              'Server rejected creator filter; switched to local creator filtering',
-              context: <String, Object?>{
-                'versionRaw': _serverVersionRaw,
-                'flavor': _serverFlavor.name,
-                'serverKey': _creatorFilterServerKey(),
-                'attemptedFilter': attemptedFilter,
-                'retryFilter': creatorFilterRemoved ?? '',
-                'retryOldFilter': creatorOldFilterRemoved ?? '',
-              },
-            );
-            return result;
-          } on DioException catch (retryError) {
-            error = retryError;
-          }
-        }
-
-        throw error;
-      }
-    }
-
-    if (preferModern) {
-      try {
-        return await callModernWithFilterRetry();
-      } on DioException catch (e) {
-        if (_allowMemoFallbackFromError(
-          e,
-          operation: 'list_memos_prefer_modern',
-          endpoint: 'api/v1/memo',
-        )) {
-          _markMemoLegacy();
-          return await _listMemosLegacy(
-            pageSize: pageSize,
-            pageToken: pageToken,
-            state: state,
-            filter: filter,
-          );
-        }
-        rethrow;
-      } on FormatException {
-        if (!_allowMemoFallbackFromFormat(
-          operation: 'list_memos_prefer_modern',
-          endpoint: 'api/v1/memo',
-        )) {
-          rethrow;
-        }
-        _markMemoLegacy();
-        return await _listMemosLegacy(
-          pageSize: pageSize,
-          pageToken: pageToken,
-          state: state,
-          filter: filter,
-        );
-      }
-    }
-
     if (_useLegacyMemos) {
       if (!_ensureLegacyMemoEndpointAllowed(
         'api/v1/memo',
         operation: 'list_memos_force_legacy',
       )) {
-        return await callModernWithFilterRetry();
+        throw StateError(
+          'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
+        );
       }
       return _listMemosLegacy(
         pageSize: pageSize,
@@ -2977,153 +2343,15 @@ class MemosApi {
         filter: filter,
       );
     }
-    try {
-      return await callModernWithFilterRetry();
-    } on DioException catch (e) {
-      if (_allowMemoFallbackFromError(
-        e,
-        operation: 'list_memos',
-        endpoint: 'api/v1/memo',
-      )) {
-        _markMemoLegacy();
-        return await _listMemosLegacy(
-          pageSize: pageSize,
-          pageToken: pageToken,
-          state: state,
-          filter: filter,
-        );
-      }
-      rethrow;
-    } on FormatException {
-      if (!_allowMemoFallbackFromFormat(
-        operation: 'list_memos',
-        endpoint: 'api/v1/memo',
-      )) {
-        rethrow;
-      }
-      _markMemoLegacy();
-      return await _listMemosLegacy(
-        pageSize: pageSize,
-        pageToken: pageToken,
-        state: state,
-        filter: filter,
-      );
-    }
-  }
-
-  String _normalizeMemosFilterForLegacyCreator(String filter) {
-    final normalized = filter.trim();
-    if (normalized.isEmpty) return normalized;
-    return normalized.replaceAllMapped(
-      RegExp(r'''creator_id\s*==\s*(\d+)'''),
-      (match) => "creator == 'users/${match.group(1)}'",
+    return _listMemosModern(
+      pageSize: pageSize,
+      pageToken: pageToken,
+      state: state,
+      filter: filter,
+      parent: parent,
+      orderBy: orderBy,
+      oldFilter: oldFilter,
     );
-  }
-
-  String? _removeCreatorScopedFilterExpression(String? filter) {
-    final normalized = (filter ?? '').trim();
-    if (normalized.isEmpty) return null;
-    if (!_containsCreatorScopedFilter(normalized)) return normalized;
-
-    final clauses = normalized.split(RegExp(r'\s*&&\s*'));
-    final retained = <String>[];
-    for (final clause in clauses) {
-      final trimmed = clause.trim();
-      if (trimmed.isEmpty) continue;
-      if (_isCreatorScopedClause(trimmed)) {
-        continue;
-      }
-      retained.add(trimmed);
-    }
-
-    if (retained.isEmpty) return null;
-    final rebuilt = retained.join(' && ').trim();
-    return rebuilt.isEmpty ? null : rebuilt;
-  }
-
-  bool _containsCreatorScopedFilter(String filter) {
-    if (filter.isEmpty) return false;
-    return RegExp(r'\bcreator_id\s*==\s*\d+\b').hasMatch(filter) ||
-        RegExp(r'''creator\s*==\s*['"]?users/\d+['"]?''').hasMatch(filter);
-  }
-
-  bool _isCreatorScopedClause(String clause) {
-    var normalized = clause.trim();
-    while (normalized.startsWith('(') && normalized.endsWith(')')) {
-      normalized = normalized.substring(1, normalized.length - 1).trim();
-    }
-    if (normalized.isEmpty) return false;
-    return RegExp(r'^creator_id\s*==\s*\d+$').hasMatch(normalized) ||
-        RegExp(
-          r'''^creator\s*==\s*['"]?users/\d+['"]?$''',
-        ).hasMatch(normalized);
-  }
-
-  bool _shouldRetryMemosWithLegacyCreatorFilter({
-    required DioException error,
-    required String attemptedFilter,
-    required String forcedLegacyCreatorFilter,
-  }) {
-    if (attemptedFilter.isEmpty) return false;
-    if (forcedLegacyCreatorFilter.isEmpty ||
-        forcedLegacyCreatorFilter == attemptedFilter) {
-      return false;
-    }
-    return _isLegacyCreatorFilterError(error);
-  }
-
-  bool _isLegacyCreatorFilterError(DioException error) {
-    final status = error.response?.statusCode ?? 0;
-    if (status != 400 && status != 500) return false;
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) return false;
-    if (!message.contains('invalid filter') &&
-        !message.contains('failed to build find memos with filter') &&
-        !message.contains('failed to compile filter')) {
-      return false;
-    }
-    return message.contains("undeclared reference to 'creator_id'") ||
-        message.contains('undeclared reference to "creator_id"');
-  }
-
-  bool _shouldRetryMemosWithoutCreatorFilter({
-    required DioException error,
-    required String attemptedFilter,
-    required String attemptedOldFilter,
-    required String? creatorFilterRemoved,
-    required String? creatorOldFilterRemoved,
-  }) {
-    final hasCreatorFilter =
-        _containsCreatorScopedFilter(attemptedFilter) ||
-        _containsCreatorScopedFilter(attemptedOldFilter);
-    if (!hasCreatorFilter) return false;
-
-    final filterChanged =
-        (creatorFilterRemoved ?? '').trim() != attemptedFilter;
-    final oldFilterChanged =
-        (creatorOldFilterRemoved ?? '').trim() != attemptedOldFilter;
-    if (!filterChanged && !oldFilterChanged) return false;
-
-    return _isCreatorScopedFilterUndeclaredError(error);
-  }
-
-  bool _isCreatorScopedFilterUndeclaredError(DioException error) {
-    final status = error.response?.statusCode ?? 0;
-    if (status != 400 && status != 500) return false;
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) return false;
-    if (!message.contains('invalid filter') &&
-        !message.contains('failed to build find memos with filter') &&
-        !message.contains('failed to compile filter')) {
-      return false;
-    }
-    final creatorIdUndeclared =
-        message.contains("undeclared reference to 'creator_id'") ||
-        message.contains('undeclared reference to "creator_id"');
-    final creatorUndeclared =
-        message.contains("undeclared reference to 'creator'") ||
-        message.contains('undeclared reference to "creator"');
-    return creatorIdUndeclared || creatorUndeclared;
   }
 
   Future<({List<Memo> memos, String nextPageToken, bool usedLegacyAll})>
@@ -3135,66 +2363,30 @@ class MemosApi {
     String? orderBy,
   }) async {
     await _ensureServerHints();
+    if (_useLegacyMemos) {
+      final (legacyMemos, legacyToken) = await _listMemosAllLegacy(
+        pageSize: pageSize,
+        pageToken: pageToken,
+      );
+      return (
+        memos: legacyMemos,
+        nextPageToken: legacyToken,
+        usedLegacyAll: true,
+      );
+    }
+
     final effectiveFilter = _normalizeExploreFilterForServer(
       filter: filter,
       state: state,
     );
-    final forcedLegacyFilter = _normalizeExploreFilterForServer(
-      filter: filter,
-      state: state,
-      forceLegacyDialect: true,
-    );
-    try {
-      final (memos, nextToken) = await _listMemosModern(
-        pageSize: pageSize,
-        pageToken: pageToken,
-        state: state,
-        filter: effectiveFilter,
-        orderBy: orderBy,
-      );
-      return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
-    } on DioException catch (e) {
-      DioException error = e;
-      if (_shouldRetryExploreWithLegacyFilter(
-        error: e,
-        attemptedFilter: effectiveFilter,
-        forcedLegacyFilter: forcedLegacyFilter,
-      )) {
-        try {
-          final (memos, nextToken) = await _listMemosModern(
-            pageSize: pageSize,
-            pageToken: pageToken,
-            state: state,
-            filter: forcedLegacyFilter,
-            orderBy: orderBy,
-          );
-          if (_serverFlavor == _ServerApiFlavor.unknown) {
-            _applyServerHints(_ServerApiFlavor.v0_23);
-          }
-          return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
-        } on DioException catch (retryError) {
-          error = retryError;
-        }
-      }
-
-      if (!_shouldFallback(error) && !_shouldFallbackLegacy(error)) {
-        throw error;
-      }
-      if (!_allowMemoFallbackFromError(
-        error,
-        operation: 'list_explore_memos',
-        endpoint: 'api/v1/memo/all',
-      )) {
-        throw error;
-      }
-      _markMemoLegacy();
-    }
-
-    final (memos, nextToken) = await _listMemosAllLegacy(
+    final (memos, nextToken) = await _listMemosModern(
       pageSize: pageSize,
       pageToken: pageToken,
+      state: state,
+      filter: effectiveFilter,
+      orderBy: orderBy,
     );
-    return (memos: memos, nextPageToken: nextToken, usedLegacyAll: true);
+    return (memos: memos, nextPageToken: nextToken, usedLegacyAll: false);
   }
 
   String _normalizeExploreFilterForServer({
@@ -3235,49 +2427,6 @@ class MemosApi {
     }
 
     return conditions.join(' && ');
-  }
-
-  bool _shouldRetryExploreWithLegacyFilter({
-    required DioException error,
-    required String attemptedFilter,
-    required String forcedLegacyFilter,
-  }) {
-    if (attemptedFilter.isEmpty) return false;
-    if (forcedLegacyFilter.isEmpty || forcedLegacyFilter == attemptedFilter) {
-      return false;
-    }
-    return _isExploreLegacyFilterError(error);
-  }
-
-  bool _isExploreLegacyFilterError(DioException error) {
-    if ((error.response?.statusCode ?? 0) != 400) return false;
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) return false;
-    if (!message.contains('invalid filter') &&
-        !message.contains('failed to build find memos with filter')) {
-      return false;
-    }
-    return message.contains("undeclared reference to 'visibility'") ||
-        message.contains('undeclared reference to "visibility"') ||
-        message.contains("undeclared reference to 'content'") ||
-        message.contains('undeclared reference to "content"') ||
-        message.contains('visibility in') ||
-        message.contains('content.contains');
-  }
-
-  static String _extractDioErrorMessage(DioException error) {
-    final data = error.response?.data;
-    if (data is Map) {
-      final message = _readString(
-        data['message'] ?? data['error'] ?? data['detail'],
-      );
-      if (message.isNotEmpty) {
-        return message;
-      }
-    } else if (data is String && data.trim().isNotEmpty) {
-      return data.trim();
-    }
-    return (error.message ?? '').trim();
   }
 
   static String _extractExploreModernContentQuery(String filter) {
@@ -3408,32 +2557,13 @@ class MemosApi {
         'api/v1/memo',
         operation: 'get_memo_force_legacy',
       )) {
-        return _getMemoModern(memoUid);
+        throw StateError(
+          'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
+        );
       }
       return _getMemoLegacy(memoUid);
     }
-    try {
-      return await _getMemoModern(memoUid);
-    } on DioException catch (e) {
-      if (_allowMemoFallbackFromError(
-        e,
-        operation: 'get_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        _markMemoLegacy();
-        return await _getMemoLegacy(memoUid);
-      }
-      rethrow;
-    } on FormatException {
-      if (!_allowMemoFallbackFromFormat(
-        operation: 'get_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        rethrow;
-      }
-      _markMemoLegacy();
-      return _getMemoLegacy(memoUid);
-    }
+    return _getMemoModern(memoUid);
   }
 
   Future<Memo> _getMemoModern(String memoUid) async {
@@ -3451,55 +2581,20 @@ class MemosApi {
       'api/v1/memo',
       operation: 'get_memo_legacy',
     )) {
-      return _getMemoModern(memoUid);
+      throw StateError(
+        'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
+      );
     }
-    try {
-      return await _getMemoLegacyV1(memoUid);
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return await _getMemoLegacyV2(memoUid);
-      }
-      rethrow;
-    }
+    return _getMemoLegacyV1(memoUid);
   }
 
   Future<Memo> getMemoCompat({required String memoUid}) async {
-    await _ensureServerHints();
-    try {
-      return await _getMemoModern(memoUid);
-    } on DioException catch (e) {
-      if (_allowMemoFallbackFromError(
-        e,
-        operation: 'get_memo_compat',
-        endpoint: 'api/v1/memo',
-      )) {
-        return await _getMemoLegacy(memoUid);
-      }
-      rethrow;
-    } on FormatException {
-      if (!_allowMemoFallbackFromFormat(
-        operation: 'get_memo_compat',
-        endpoint: 'api/v1/memo',
-      )) {
-        rethrow;
-      }
-      return await _getMemoLegacy(memoUid);
-    }
+    return getMemo(memoUid: memoUid);
   }
 
   Future<Memo> _getMemoLegacyV1(String memoUid) async {
     final response = await _dio.get('api/v1/memo/$memoUid');
     return _memoFromLegacy(_expectJsonMap(response.data));
-  }
-
-  Future<Memo> _getMemoLegacyV2(String memoUid) async {
-    final response = await _dio.get('api/v2/memos/$memoUid');
-    final body = _expectJsonMap(response.data);
-    final memoJson = body['memo'];
-    if (memoJson is Map) {
-      return _memoFromJson(memoJson.cast<String, dynamic>());
-    }
-    return _memoFromJson(body);
   }
 
   Future<Memo> createMemo({
@@ -3515,12 +2610,8 @@ class MemosApi {
         'api/v1/memo',
         operation: 'create_memo_force_legacy',
       )) {
-        return _createMemoModern(
-          memoId: memoId,
-          content: content,
-          visibility: visibility,
-          pinned: pinned,
-          location: location,
+        throw StateError(
+          'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
         );
       }
       return _createMemoLegacy(
@@ -3530,44 +2621,13 @@ class MemosApi {
         pinned: pinned,
       );
     }
-    try {
-      return await _createMemoModern(
-        memoId: memoId,
-        content: content,
-        visibility: visibility,
-        pinned: pinned,
-        location: location,
-      );
-    } on DioException catch (e) {
-      if (_allowMemoFallbackFromError(
-        e,
-        operation: 'create_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        _markMemoLegacy();
-        return await _createMemoLegacy(
-          memoId: memoId,
-          content: content,
-          visibility: visibility,
-          pinned: pinned,
-        );
-      }
-      rethrow;
-    } on FormatException {
-      if (!_allowMemoFallbackFromFormat(
-        operation: 'create_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        rethrow;
-      }
-      _markMemoLegacy();
-      return _createMemoLegacy(
-        memoId: memoId,
-        content: content,
-        visibility: visibility,
-        pinned: pinned,
-      );
-    }
+    return _createMemoModern(
+      memoId: memoId,
+      content: content,
+      visibility: visibility,
+      pinned: pinned,
+      location: location,
+    );
   }
 
   Future<Memo> _createMemoModern({
@@ -3600,23 +2660,15 @@ class MemosApi {
     Object? location = _unset,
   }) async {
     await _ensureServerHints();
-    final canUseLegacyTransportFallback = _canFallbackUpdateMemoToLegacy(
-      location: location,
-      displayTime: displayTime,
-    );
+    final canUseLegacyUpdateEndpoint = _legacyMemoUpdateEndpointAllowed();
     if (_useLegacyMemos) {
-      if (!_ensureLegacyMemoEndpointAllowed(
-        'api/v1/memo',
-        operation: 'update_memo_force_legacy',
-      )) {
-        return _updateMemoModern(
-          memoUid: memoUid,
-          content: content,
-          visibility: visibility,
-          pinned: pinned,
-          state: state,
-          displayTime: displayTime,
-          location: location,
+      if (!canUseLegacyUpdateEndpoint ||
+          !_ensureLegacyMemoEndpointAllowed(
+            'api/v1/memo',
+            operation: 'update_memo_force_legacy',
+          )) {
+        throw StateError(
+          'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
         );
       }
       return _updateMemoLegacy(
@@ -3628,121 +2680,15 @@ class MemosApi {
         displayTime: displayTime,
       );
     }
-    if (_forceLegacyMemoUpdateEndpoint &&
-        canUseLegacyTransportFallback &&
-        _legacyMemoEndpointsAllowed()) {
-      return _updateMemoLegacy(
-        memoUid: memoUid,
-        content: content,
-        visibility: visibility,
-        pinned: pinned,
-        state: state,
-        displayTime: displayTime,
-      );
-    }
-    try {
-      return await _updateMemoModern(
-        memoUid: memoUid,
-        content: content,
-        visibility: visibility,
-        pinned: pinned,
-        state: state,
-        displayTime: displayTime,
-        location: location,
-      );
-    } on DioException catch (e) {
-      DioException error = e;
-      if (_shouldRetryUpdateMemoWithRowStatus(error: e, state: state)) {
-        try {
-          final updated = await _updateMemoModern(
-            memoUid: memoUid,
-            content: content,
-            visibility: visibility,
-            pinned: pinned,
-            state: state,
-            displayTime: displayTime,
-            location: location,
-            forceRowStatusStateField: true,
-          );
-          _forceRowStatusMemoStateField = true;
-          return updated;
-        } on DioException catch (retryError) {
-          error = retryError;
-        }
-      }
-      if (_shouldRetryUpdateMemoWithState(error: error, state: state)) {
-        try {
-          final updated = await _updateMemoModern(
-            memoUid: memoUid,
-            content: content,
-            visibility: visibility,
-            pinned: pinned,
-            state: state,
-            displayTime: displayTime,
-            location: location,
-            forceStateField: true,
-          );
-          _forceRowStatusMemoStateField = false;
-          return updated;
-        } on DioException catch (retryError) {
-          error = retryError;
-        }
-      }
-      if (_allowMemoFallbackFromError(
-        error,
-        operation: 'update_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        _markMemoLegacy();
-        return await _updateMemoLegacy(
-          memoUid: memoUid,
-          content: content,
-          visibility: visibility,
-          pinned: pinned,
-          state: state,
-          displayTime: displayTime,
-        );
-      }
-      if (_shouldFallbackUpdateMemoFromTransportError(error) &&
-          canUseLegacyTransportFallback) {
-        final allowed = _legacyMemoEndpointsAllowed();
-        _logMemoFallbackDecision(
-          operation: 'update_memo_transport',
-          allowed: allowed,
-          reason: 'transport_${error.type.name}',
-          error: error,
-          endpoint: 'api/v1/memo',
-        );
-        if (allowed) {
-          _forceLegacyMemoUpdateEndpoint = true;
-          return await _updateMemoLegacy(
-            memoUid: memoUid,
-            content: content,
-            visibility: visibility,
-            pinned: pinned,
-            state: state,
-            displayTime: displayTime,
-          );
-        }
-      }
-      throw error;
-    } on FormatException {
-      if (!_allowMemoFallbackFromFormat(
-        operation: 'update_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        rethrow;
-      }
-      _markMemoLegacy();
-      return _updateMemoLegacy(
-        memoUid: memoUid,
-        content: content,
-        visibility: visibility,
-        pinned: pinned,
-        state: state,
-        displayTime: displayTime,
-      );
-    }
+    return _updateMemoModern(
+      memoUid: memoUid,
+      content: content,
+      visibility: visibility,
+      pinned: pinned,
+      state: state,
+      displayTime: displayTime,
+      location: location,
+    );
   }
 
   Future<Memo> _updateMemoModern({
@@ -3753,8 +2699,6 @@ class MemosApi {
     String? state,
     DateTime? displayTime,
     required Object? location,
-    bool forceRowStatusStateField = false,
-    bool forceStateField = false,
   }) async {
     final updateMask = <String>[];
     final data = <String, Object?>{'name': 'memos/$memoUid'};
@@ -3772,10 +2716,7 @@ class MemosApi {
     }
     if (state != null) {
       final normalizedState = _normalizeLegacyRowStatus(state) ?? state;
-      if (_usesRowStatusStateField(
-        forceRowStatusStateField: forceRowStatusStateField,
-        forceStateField: forceStateField,
-      )) {
+      if (_usesRowStatusStateField()) {
         updateMask.add('row_status');
         data['rowStatus'] = _rowStatusStateForUpdate(normalizedState);
       } else {
@@ -3808,14 +2749,8 @@ class MemosApi {
     return _memoFromJson(_expectJsonMap(response.data));
   }
 
-  bool _usesRowStatusStateField({
-    bool forceRowStatusStateField = false,
-    bool forceStateField = false,
-  }) {
-    if (forceStateField) return false;
-    return forceRowStatusStateField ||
-        _forceRowStatusMemoStateField ||
-        _routeAdapter.usesRowStatusMemoStateField;
+  bool _usesRowStatusStateField() {
+    return _routeAdapter.usesRowStatusMemoStateField;
   }
 
   String _rowStatusStateForUpdate(String state) {
@@ -3831,73 +2766,6 @@ class MemosApi {
       return 'display_ts';
     }
     return 'display_time';
-  }
-
-  static bool _canFallbackUpdateMemoToLegacy({
-    required Object? location,
-    required DateTime? displayTime,
-  }) {
-    if (!identical(location, _unset)) return false;
-    if (displayTime != null) return false;
-    return true;
-  }
-
-  static bool _shouldFallbackUpdateMemoFromTransportError(DioException error) {
-    if (error.response != null) return false;
-    switch (error.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-      case DioExceptionType.connectionError:
-        return true;
-      case DioExceptionType.badCertificate:
-      case DioExceptionType.badResponse:
-      case DioExceptionType.cancel:
-        return false;
-      case DioExceptionType.unknown:
-        break;
-    }
-
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) return false;
-    return message.contains(
-          'connection closed before full header was received',
-        ) ||
-        message.contains('connection reset by peer') ||
-        message.contains('connection aborted') ||
-        message.contains('broken pipe') ||
-        message.contains('socketexception') ||
-        message.contains('httpexception');
-  }
-
-  bool _shouldRetryUpdateMemoWithRowStatus({
-    required DioException error,
-    required String? state,
-  }) {
-    if (state == null || state.trim().isEmpty) return false;
-    if (_usesRowStatusStateField()) return false;
-    final status = error.response?.statusCode ?? 0;
-    if (status != 400) return false;
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) return false;
-    return message.contains('could not find field "state"') ||
-        message.contains("could not find field 'state'") ||
-        (message.contains('field "state"') && message.contains('memo'));
-  }
-
-  bool _shouldRetryUpdateMemoWithState({
-    required DioException error,
-    required String? state,
-  }) {
-    if (state == null || state.trim().isEmpty) return false;
-    if (!_usesRowStatusStateField()) return false;
-    final status = error.response?.statusCode ?? 0;
-    if (status != 400) return false;
-    final message = _extractDioErrorMessage(error).toLowerCase();
-    if (message.isEmpty) return false;
-    return message.contains('could not find field "row_status"') ||
-        message.contains("could not find field 'row_status'") ||
-        (message.contains('field "row_status"') && message.contains('memo'));
   }
 
   String? _mergeLegacyRowStatusFilter({
@@ -3930,27 +2798,14 @@ class MemosApi {
         'api/v1/memo',
         operation: 'delete_memo_force_legacy',
       )) {
-        await _deleteMemoModern(memoUid: normalized, force: force);
-        return;
+        throw StateError(
+          'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
+        );
       }
       await _deleteMemoLegacy(memoUid: normalized, force: force);
       return;
     }
-    try {
-      await _deleteMemoModern(memoUid: normalized, force: force);
-      return;
-    } on DioException catch (e) {
-      if (_allowMemoFallbackFromError(
-        e,
-        operation: 'delete_memo',
-        endpoint: 'api/v1/memo',
-      )) {
-        _markMemoLegacy();
-        await _deleteMemoLegacy(memoUid: normalized, force: force);
-        return;
-      }
-      rethrow;
-    }
+    await _deleteMemoModern(memoUid: normalized, force: force);
   }
 
   Future<void> _deleteMemoModern({
@@ -3971,17 +2826,9 @@ class MemosApi {
       'api/v1/memo',
       operation: 'delete_memo_legacy',
     )) {
-      await _deleteMemoModern(memoUid: memoUid, force: force);
-      return;
-    }
-    try {
-      await _dio.delete(
-        'api/v1/memos/$memoUid',
-        queryParameters: <String, Object?>{if (force) 'force': true},
+      throw StateError(
+        'Legacy memo endpoint is disabled for ${_serverFlavor.name}',
       );
-      return;
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
     }
 
     await _dio.delete('api/v1/memo/$memoUid');
@@ -4025,28 +2872,8 @@ class MemosApi {
         onSendProgress: onSendProgress,
       );
     }
-    Future<Attachment> attempt() {
-      if (_attachmentMode == _AttachmentApiMode.resources) {
-        return _createAttachmentCompat(
-          attachmentId: attachmentId,
-          filename: filename,
-          mimeType: mimeType,
-          bytes: bytes,
-          memoUid: memoUid,
-          onSendProgress: onSendProgress,
-        );
-      }
-      if (_attachmentMode == _AttachmentApiMode.attachments) {
-        return _createAttachmentModern(
-          attachmentId: attachmentId,
-          filename: filename,
-          mimeType: mimeType,
-          bytes: bytes,
-          memoUid: memoUid,
-          onSendProgress: onSendProgress,
-        );
-      }
-      return _createAttachmentModern(
+    if (_attachmentMode == _AttachmentApiMode.resources) {
+      return _createAttachmentCompat(
         attachmentId: attachmentId,
         filename: filename,
         mimeType: mimeType,
@@ -4055,22 +2882,14 @@ class MemosApi {
         onSendProgress: onSendProgress,
       );
     }
-
-    try {
-      return await attempt();
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return await _createAttachmentLegacy(
-          attachmentId: attachmentId,
-          filename: filename,
-          mimeType: mimeType,
-          bytes: bytes,
-          memoUid: memoUid,
-          onSendProgress: onSendProgress,
-        );
-      }
-      rethrow;
-    }
+    return _createAttachmentModern(
+      attachmentId: attachmentId,
+      filename: filename,
+      mimeType: mimeType,
+      bytes: bytes,
+      memoUid: memoUid,
+      onSendProgress: onSendProgress,
+    );
   }
 
   Future<Attachment> _createAttachmentModern({
@@ -4087,33 +2906,14 @@ class MemosApi {
       'content': base64Encode(bytes),
       if (memoUid != null) 'memo': 'memos/$memoUid',
     };
-
-    // Newer builds use /attachments.
-    try {
-      final response = await _dio.post(
-        'api/v1/attachments',
-        queryParameters: <String, Object?>{'attachmentId': attachmentId},
-        data: data,
-        options: _attachmentOptions(),
-        onSendProgress: onSendProgress,
-      );
-      _attachmentMode = _AttachmentApiMode.attachments;
-      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
-      return _normalizeAttachmentForServer(attachment);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 404) rethrow;
-    }
-
-    // Older builds use /resources.
     final response = await _dio.post(
-      'api/v1/resources',
-      queryParameters: <String, Object?>{'resourceId': attachmentId},
+      'api/v1/attachments',
+      queryParameters: <String, Object?>{'attachmentId': attachmentId},
       data: data,
       options: _attachmentOptions(),
       onSendProgress: onSendProgress,
     );
-    _attachmentMode = _AttachmentApiMode.resources;
+    _attachmentMode = _AttachmentApiMode.attachments;
     final attachment = Attachment.fromJson(_expectJsonMap(response.data));
     return _normalizeAttachmentForServer(attachment);
   }
@@ -4132,33 +2932,14 @@ class MemosApi {
       'content': base64Encode(bytes),
       if (memoUid != null) 'memo': 'memos/$memoUid',
     };
-
-    // 0.24 uses /resources.
-    try {
-      final response = await _dio.post(
-        'api/v1/resources',
-        queryParameters: <String, Object?>{'resourceId': attachmentId},
-        data: data,
-        options: _attachmentOptions(),
-        onSendProgress: onSendProgress,
-      );
-      _attachmentMode = _AttachmentApiMode.resources;
-      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
-      return _normalizeAttachmentForServer(attachment);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 404) rethrow;
-    }
-
-    // 0.25+ uses /attachments.
     final response = await _dio.post(
-      'api/v1/attachments',
-      queryParameters: <String, Object?>{'attachmentId': attachmentId},
+      'api/v1/resources',
+      queryParameters: <String, Object?>{'resourceId': attachmentId},
       data: data,
       options: _attachmentOptions(),
       onSendProgress: onSendProgress,
     );
-    _attachmentMode = _AttachmentApiMode.attachments;
+    _attachmentMode = _AttachmentApiMode.resources;
     final attachment = Attachment.fromJson(_expectJsonMap(response.data));
     return _normalizeAttachmentForServer(attachment);
   }
@@ -4168,60 +2949,22 @@ class MemosApi {
     if (_useLegacyMemos || _attachmentMode == _AttachmentApiMode.legacy) {
       return _getAttachmentLegacy(attachmentUid);
     }
-    Future<Attachment> attempt() {
-      if (_attachmentMode == _AttachmentApiMode.resources) {
-        return _getAttachmentCompat(attachmentUid);
-      }
-      if (_attachmentMode == _AttachmentApiMode.attachments) {
-        return _getAttachmentModern(attachmentUid);
-      }
-      return _getAttachmentModern(attachmentUid);
+    if (_attachmentMode == _AttachmentApiMode.resources) {
+      return _getAttachmentCompat(attachmentUid);
     }
-
-    try {
-      return await attempt();
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return await _getAttachmentLegacy(attachmentUid);
-      }
-      rethrow;
-    }
+    return _getAttachmentModern(attachmentUid);
   }
 
   Future<Attachment> _getAttachmentModern(String attachmentUid) async {
-    // Newer builds use /attachments/{id}.
-    try {
-      final response = await _dio.get('api/v1/attachments/$attachmentUid');
-      _attachmentMode = _AttachmentApiMode.attachments;
-      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
-      return _normalizeAttachmentForServer(attachment);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 404) rethrow;
-    }
-
-    // Older builds use /resources/{id}.
-    final response = await _dio.get('api/v1/resources/$attachmentUid');
-    _attachmentMode = _AttachmentApiMode.resources;
+    final response = await _dio.get('api/v1/attachments/$attachmentUid');
+    _attachmentMode = _AttachmentApiMode.attachments;
     final attachment = Attachment.fromJson(_expectJsonMap(response.data));
     return _normalizeAttachmentForServer(attachment);
   }
 
   Future<Attachment> _getAttachmentCompat(String attachmentUid) async {
-    // 0.24 uses /resources/{id}.
-    try {
-      final response = await _dio.get('api/v1/resources/$attachmentUid');
-      _attachmentMode = _AttachmentApiMode.resources;
-      final attachment = Attachment.fromJson(_expectJsonMap(response.data));
-      return _normalizeAttachmentForServer(attachment);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 404) rethrow;
-    }
-
-    // 0.25+ uses /attachments/{id}.
-    final response = await _dio.get('api/v1/attachments/$attachmentUid');
-    _attachmentMode = _AttachmentApiMode.attachments;
+    final response = await _dio.get('api/v1/resources/$attachmentUid');
+    _attachmentMode = _AttachmentApiMode.resources;
     final attachment = Attachment.fromJson(_expectJsonMap(response.data));
     return _normalizeAttachmentForServer(attachment);
   }
@@ -4233,57 +2976,21 @@ class MemosApi {
       await _deleteAttachmentLegacy(attachmentUid);
       return;
     }
-    Future<void> attempt() {
-      if (_attachmentMode == _AttachmentApiMode.resources) {
-        return _deleteAttachmentCompat(attachmentUid);
-      }
-      if (_attachmentMode == _AttachmentApiMode.attachments) {
-        return _deleteAttachmentModern(attachmentUid);
-      }
-      return _deleteAttachmentModern(attachmentUid);
+    if (_attachmentMode == _AttachmentApiMode.resources) {
+      await _deleteAttachmentCompat(attachmentUid);
+      return;
     }
-
-    try {
-      await attempt();
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        await _deleteAttachmentLegacy(attachmentUid);
-        return;
-      }
-      rethrow;
-    }
+    await _deleteAttachmentModern(attachmentUid);
   }
 
   Future<void> _deleteAttachmentModern(String attachmentUid) async {
-    // Newer builds use /attachments/{id}.
-    try {
-      await _dio.delete('api/v1/attachments/$attachmentUid');
-      _attachmentMode = _AttachmentApiMode.attachments;
-      return;
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 404) rethrow;
-    }
-
-    // Older builds use /resources/{id}.
-    await _dio.delete('api/v1/resources/$attachmentUid');
-    _attachmentMode = _AttachmentApiMode.resources;
+    await _dio.delete('api/v1/attachments/$attachmentUid');
+    _attachmentMode = _AttachmentApiMode.attachments;
   }
 
   Future<void> _deleteAttachmentCompat(String attachmentUid) async {
-    // 0.24 uses /resources/{id}.
-    try {
-      await _dio.delete('api/v1/resources/$attachmentUid');
-      _attachmentMode = _AttachmentApiMode.resources;
-      return;
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (status != 404) rethrow;
-    }
-
-    // 0.25+ uses /attachments/{id}.
-    await _dio.delete('api/v1/attachments/$attachmentUid');
-    _attachmentMode = _AttachmentApiMode.attachments;
+    await _dio.delete('api/v1/resources/$attachmentUid');
+    _attachmentMode = _AttachmentApiMode.resources;
   }
 
   Future<void> _deleteAttachmentLegacy(String attachmentUid) async {
@@ -4303,46 +3010,12 @@ class MemosApi {
       return const <Attachment>[];
     }
     if (_attachmentMode == _AttachmentApiMode.resources) {
-      try {
-        return await _listMemoResources(memoUid);
-      } on DioException catch (e) {
-        if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-          return await _listMemoAttachmentsModern(memoUid);
-        }
-        rethrow;
-      }
+      return _listMemoResources(memoUid);
     }
     if (_attachmentMode == _AttachmentApiMode.attachments) {
-      try {
-        return await _listMemoAttachmentsModern(memoUid);
-      } on DioException catch (e) {
-        if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-          return await _listMemoResources(memoUid);
-        }
-        rethrow;
-      }
+      return _listMemoAttachmentsModern(memoUid);
     }
-    if (!_useLegacyMemos) {
-      try {
-        return await _listMemoAttachmentsModern(memoUid);
-      } on DioException catch (e) {
-        if (_shouldFallback(e)) {
-          return await _listMemoResources(memoUid);
-        }
-        rethrow;
-      }
-    }
-    try {
-      if (_attachmentMode == _AttachmentApiMode.attachments) {
-        return await _listMemoAttachmentsModern(memoUid);
-      }
-      return await _listMemoResources(memoUid);
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return await _listMemoAttachmentsModern(memoUid);
-      }
-      rethrow;
-    }
+    return _listMemoAttachmentsModern(memoUid);
   }
 
   Future<List<Attachment>> _listMemoAttachmentsModern(String memoUid) async {
@@ -4393,60 +3066,14 @@ class MemosApi {
       return;
     }
     if (_attachmentMode == _AttachmentApiMode.resources) {
-      try {
-        await _setMemoResources(memoUid, attachmentNames);
-        return;
-      } on DioException catch (e) {
-        if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-          await _setMemoAttachmentsModern(memoUid, attachmentNames);
-          return;
-        }
-        rethrow;
-      }
-    }
-    if (_attachmentMode == _AttachmentApiMode.attachments) {
-      try {
-        await _setMemoAttachmentsModern(memoUid, attachmentNames);
-        return;
-      } on DioException catch (e) {
-        if (_shouldFallback(e) || _shouldFallbackLegacy(e)) {
-          await _setMemoResources(memoUid, attachmentNames);
-          return;
-        }
-        rethrow;
-      }
-    }
-    if (!_useLegacyMemos) {
-      try {
-        await _setMemoAttachmentsModern(memoUid, attachmentNames);
-        return;
-      } on DioException catch (e) {
-        if (_shouldFallback(e)) {
-          await _setMemoResources(memoUid, attachmentNames);
-          return;
-        }
-        rethrow;
-      }
-    }
-    try {
-      if (_attachmentMode == _AttachmentApiMode.attachments) {
-        await _setMemoAttachmentsModern(memoUid, attachmentNames);
-        return;
-      }
       await _setMemoResources(memoUid, attachmentNames);
       return;
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
     }
-
-    try {
+    if (_attachmentMode == _AttachmentApiMode.attachments) {
       await _setMemoAttachmentsModern(memoUid, attachmentNames);
       return;
-    } on DioException catch (e) {
-      if (!_shouldFallbackLegacy(e)) rethrow;
     }
-
-    await _setMemoAttachmentsLegacy(memoUid, attachmentNames);
+    await _setMemoAttachmentsModern(memoUid, attachmentNames);
   }
 
   Future<void> _setMemoAttachmentsModern(
@@ -4490,14 +3117,7 @@ class MemosApi {
     if (_useLegacyMemos) {
       return;
     }
-    try {
-      await _setMemoRelationsModern(memoUid, relations);
-    } on DioException catch (e) {
-      if (_useLegacyMemos && _shouldFallbackLegacy(e)) {
-        return;
-      }
-      rethrow;
-    }
+    await _setMemoRelationsModern(memoUid, relations);
   }
 
   Future<void> _setMemoRelationsModern(
@@ -4563,21 +3183,12 @@ class MemosApi {
     if (_useLegacyMemos) {
       return _listMemoCommentsLegacyV2(memoUid: memoUid);
     }
-    try {
-      return await _listMemoCommentsModern(
-        memoUid: memoUid,
-        pageSize: pageSize,
-        pageToken: pageToken,
-        orderBy: orderBy,
-      );
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return _listMemoCommentsLegacyV2(memoUid: memoUid);
-      }
-      rethrow;
-    } on FormatException {
-      return _listMemoCommentsLegacyV2(memoUid: memoUid);
-    }
+    return _listMemoCommentsModern(
+      memoUid: memoUid,
+      pageSize: pageSize,
+      pageToken: pageToken,
+      orderBy: orderBy,
+    );
   }
 
   Future<({List<Memo> memos, String nextPageToken, int totalSize})>
@@ -4654,20 +3265,11 @@ class MemosApi {
     if (_useLegacyMemos) {
       return _listMemoReactionsLegacyV2(memoUid: memoUid);
     }
-    try {
-      return await _listMemoReactionsModern(
-        memoUid: memoUid,
-        pageSize: pageSize,
-        pageToken: pageToken,
-      );
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return _listMemoReactionsLegacyV2(memoUid: memoUid);
-      }
-      rethrow;
-    } on FormatException {
-      return _listMemoReactionsLegacyV2(memoUid: memoUid);
-    }
+    return _listMemoReactionsModern(
+      memoUid: memoUid,
+      pageSize: pageSize,
+      pageToken: pageToken,
+    );
   }
 
   Future<({List<Reaction> reactions, String nextPageToken, int totalSize})>
@@ -4748,25 +3350,10 @@ class MemosApi {
         reactionType: reactionType,
       );
     }
-    try {
-      return await _upsertMemoReactionModern(
-        memoUid: memoUid,
-        reactionType: reactionType,
-      );
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return _upsertMemoReactionLegacyV2(
-          memoUid: memoUid,
-          reactionType: reactionType,
-        );
-      }
-      rethrow;
-    } on FormatException {
-      return _upsertMemoReactionLegacyV2(
-        memoUid: memoUid,
-        reactionType: reactionType,
-      );
-    }
+    return _upsertMemoReactionModern(
+      memoUid: memoUid,
+      reactionType: reactionType,
+    );
   }
 
   Future<Reaction> _upsertMemoReactionModern({
@@ -4814,28 +3401,21 @@ class MemosApi {
     final legacyId = reaction.legacyId ?? parsedId;
     final normalizedName = _normalizeReactionName(rawName, contentId, parsedId);
 
-    if (!_useLegacyMemos &&
-        normalizedName != null &&
-        normalizedName.isNotEmpty) {
-      try {
-        await _deleteMemoReactionModern(name: normalizedName);
-        return;
-      } on DioException catch (e) {
-        if (_shouldFallbackLegacy(e) && legacyId != null && legacyId > 0) {
-          await _deleteMemoReactionLegacy(reactionId: legacyId);
-          return;
-        }
-        rethrow;
+    if (_useLegacyMemos) {
+      if (legacyId == null || legacyId <= 0) {
+        throw ArgumentError('deleteMemoReaction requires legacy id');
       }
-    }
-
-    if (legacyId != null && legacyId > 0) {
-      await _deleteMemoReactionLegacy(reactionId: legacyId);
+      await _deleteMemoReactionLegacyV2(reactionId: legacyId);
       return;
     }
 
     if (normalizedName != null && normalizedName.isNotEmpty) {
       await _deleteMemoReactionModern(name: normalizedName);
+      return;
+    }
+
+    if (legacyId != null && legacyId > 0) {
+      await _deleteMemoReactionLegacyV1(reactionId: legacyId);
       return;
     }
 
@@ -4883,18 +3463,6 @@ class MemosApi {
     await _dio.delete(path);
   }
 
-  Future<void> _deleteMemoReactionLegacy({required int reactionId}) async {
-    try {
-      await _deleteMemoReactionLegacyV1(reactionId: reactionId);
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        await _deleteMemoReactionLegacyV2(reactionId: reactionId);
-        return;
-      }
-      rethrow;
-    }
-  }
-
   Future<void> _deleteMemoReactionLegacyV1({required int reactionId}) async {
     if (reactionId <= 0) {
       throw ArgumentError('deleteMemoReaction requires legacy id');
@@ -4921,28 +3489,11 @@ class MemosApi {
         visibility: visibility,
       );
     }
-    try {
-      return await _createMemoCommentModern(
-        memoUid: memoUid,
-        content: content,
-        visibility: visibility,
-      );
-    } on DioException catch (e) {
-      if (_shouldFallbackLegacy(e)) {
-        return _createMemoCommentLegacyV2(
-          memoUid: memoUid,
-          content: content,
-          visibility: visibility,
-        );
-      }
-      rethrow;
-    } on FormatException {
-      return _createMemoCommentLegacyV2(
-        memoUid: memoUid,
-        content: content,
-        visibility: visibility,
-      );
-    }
+    return _createMemoCommentModern(
+      memoUid: memoUid,
+      content: content,
+      visibility: visibility,
+    );
   }
 
   Future<Memo> _createMemoCommentModern({
@@ -5110,6 +3661,11 @@ class MemosApi {
     String? state,
     DateTime? displayTime,
   }) async {
+    if (!_supportsLegacyMemoUpdateEndpoint()) {
+      throw StateError(
+        'Legacy memo update endpoint is blocked for server flavor ${_serverFlavor.name}',
+      );
+    }
     if (!_ensureLegacyMemoEndpointAllowed(
       'api/v1/memo',
       operation: 'update_memo_legacy',
@@ -5671,25 +4227,6 @@ class MemosApi {
     return '';
   }
 
-  static PersonalAccessToken _personalAccessTokenFromAccessTokensJson(
-    Map<String, dynamic> json, {
-    String? tokenValue,
-  }) {
-    final name = _readString(json['name']);
-    final description = _readString(json['description']);
-    final issuedAt = _readString(json['issuedAt'] ?? json['issued_at']);
-    final expiresAt = _readString(json['expiresAt'] ?? json['expires_at']);
-    final token =
-        tokenValue ?? _readString(json['accessToken'] ?? json['access_token']);
-    final resolvedName = name.isNotEmpty ? name : token;
-    return PersonalAccessToken.fromJson({
-      'name': resolvedName,
-      'description': description,
-      if (issuedAt.isNotEmpty) 'createdAt': issuedAt,
-      if (expiresAt.isNotEmpty) 'expiresAt': expiresAt,
-    });
-  }
-
   static PersonalAccessToken _personalAccessTokenFromLegacyJson(
     Map<String, dynamic> json, {
     required String tokenValue,
@@ -5699,6 +4236,22 @@ class MemosApi {
     final description = _readString(json['description']);
     return PersonalAccessToken.fromJson({
       'name': tokenValue,
+      'description': description,
+      if (issuedAt.isNotEmpty) 'createdAt': issuedAt,
+      if (expiresAt.isNotEmpty) 'expiresAt': expiresAt,
+    });
+  }
+
+  static PersonalAccessToken _personalAccessTokenFromV025Json(
+    Map<String, dynamic> json, {
+    required String tokenValue,
+  }) {
+    final issuedAt = _readString(json['issuedAt'] ?? json['issued_at']);
+    final expiresAt = _readString(json['expiresAt'] ?? json['expires_at']);
+    final description = _readString(json['description']);
+    final name = _readString(json['name']);
+    return PersonalAccessToken.fromJson({
+      'name': name.isNotEmpty ? name : tokenValue,
       'description': description,
       if (issuedAt.isNotEmpty) 'createdAt': issuedAt,
       if (expiresAt.isNotEmpty) 'expiresAt': expiresAt,
