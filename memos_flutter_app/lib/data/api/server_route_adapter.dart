@@ -36,8 +36,6 @@ class MemosRouteAdapter {
 }
 
 class MemosRouteAdapters {
-  static const MemosVersionNumber _v026 = MemosVersionNumber(0, 26, 0);
-
   static MemosRouteAdapter fallback() {
     return resolve(
       profile: MemosServerApiProfiles.fallbackProfile,
@@ -127,41 +125,37 @@ class MemosRouteAdapters {
     required MemosServerApiProfile profile,
     required MemosVersionNumber? parsedVersion,
   }) {
-    final is026OrAbove = _isAtLeast(parsedVersion, _v026);
+    final isV025Series =
+        parsedVersion != null &&
+        parsedVersion.major == 0 &&
+        parsedVersion.minor == 25;
+    final currentUserRoutes = isV025Series
+        ? const <MemosCurrentUserRoute>[
+            MemosCurrentUserRoute.authSessionCurrent,
+            MemosCurrentUserRoute.authMe,
+            MemosCurrentUserRoute.authStatusV2,
+            MemosCurrentUserRoute.userMeV1,
+            MemosCurrentUserRoute.usersMeV1,
+            MemosCurrentUserRoute.userMeLegacy,
+            MemosCurrentUserRoute.authStatusPost,
+            MemosCurrentUserRoute.authStatusGet,
+          ]
+        : const <MemosCurrentUserRoute>[
+            MemosCurrentUserRoute.authMe,
+            MemosCurrentUserRoute.authStatusV2,
+            MemosCurrentUserRoute.authSessionCurrent,
+            MemosCurrentUserRoute.userMeV1,
+            MemosCurrentUserRoute.usersMeV1,
+            MemosCurrentUserRoute.userMeLegacy,
+            MemosCurrentUserRoute.authStatusPost,
+            MemosCurrentUserRoute.authStatusGet,
+          ];
     return MemosRouteAdapter(
       profile: profile,
-      currentUserRoutes: is026OrAbove
-          ? const <MemosCurrentUserRoute>[
-              MemosCurrentUserRoute.authMe,
-              MemosCurrentUserRoute.authStatusV2,
-              MemosCurrentUserRoute.authSessionCurrent,
-              MemosCurrentUserRoute.userMeV1,
-              MemosCurrentUserRoute.usersMeV1,
-              MemosCurrentUserRoute.userMeLegacy,
-              MemosCurrentUserRoute.authStatusPost,
-              MemosCurrentUserRoute.authStatusGet,
-            ]
-          : const <MemosCurrentUserRoute>[
-              MemosCurrentUserRoute.authSessionCurrent,
-              MemosCurrentUserRoute.authStatusV2,
-              MemosCurrentUserRoute.authMe,
-              MemosCurrentUserRoute.userMeV1,
-              MemosCurrentUserRoute.usersMeV1,
-              MemosCurrentUserRoute.userMeLegacy,
-              MemosCurrentUserRoute.authStatusPost,
-              MemosCurrentUserRoute.authStatusGet,
-            ],
+      currentUserRoutes: currentUserRoutes,
       requiresMemoFullView: false,
       usesLegacyRowStatusFilterInListMemos: false,
       sendsStateInListMemos: true,
     );
-  }
-
-  static bool _isAtLeast(
-    MemosVersionNumber? version,
-    MemosVersionNumber target,
-  ) {
-    if (version == null) return false;
-    return version >= target;
   }
 }

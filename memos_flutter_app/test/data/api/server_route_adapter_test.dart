@@ -32,11 +32,11 @@ void main() {
       expect(adapter.supportsMemoParentQuery, isTrue);
     });
 
-    test('0.25 prefers auth sessions before auth me', () {
-      final profile = MemosServerApiProfiles.byVersionString('0.25.3');
+    test('0.25 uses auth session current as current-user route', () {
+      final profile = MemosServerApiProfiles.byVersionString('0.25.0');
       final adapter = MemosRouteAdapters.resolve(
         profile: profile,
-        parsedVersion: MemosServerApiProfiles.tryParseVersion('0.25.3'),
+        parsedVersion: MemosServerApiProfiles.tryParseVersion('0.25.0'),
       );
 
       expect(adapter.profile.flavor, MemosServerFlavor.v0_25Plus);
