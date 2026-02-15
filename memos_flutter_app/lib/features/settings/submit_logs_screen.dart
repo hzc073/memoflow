@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/logging_provider.dart';
@@ -38,7 +37,11 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
 
   Future<String> _buildReport() async {
     final generator = ref.read(logReportGeneratorProvider);
-    return generator.buildReport();
+    return generator.buildReport(
+      includeErrors: _includeErrors,
+      includeOutbox: _includeOutbox,
+      userNote: _noteController.text,
+    );
   }
 
   Future<void> _copyReport() async {

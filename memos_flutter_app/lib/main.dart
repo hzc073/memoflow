@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:cryptography/cryptography.dart';
 import 'package:cryptography_flutter/cryptography_flutter.dart';
 import 'package:flutter/material.dart';
@@ -17,5 +20,22 @@ void main() {
     );
     FlutterError.presentError(details);
   };
-  runApp(const ProviderScope(child: App()));
+  ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
+    LogManager.instance.error(
+      'Platform dispatcher error',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return false;
+  };
+  runZonedGuarded(
+    () => runApp(const ProviderScope(child: App())),
+    (error, stackTrace) {
+      LogManager.instance.error(
+        'Uncaught zone error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    },
+  );
 }

@@ -13,6 +13,7 @@ import '../models/account.dart';
 import 'breadcrumb_store.dart';
 import 'logger_service.dart';
 import 'network_log_buffer.dart';
+import 'network_log_store.dart';
 import 'sync_status_tracker.dart';
 
 class LogReportGenerator {
@@ -21,12 +22,14 @@ class LogReportGenerator {
     required LoggerService loggerService,
     required BreadcrumbStore breadcrumbStore,
     required NetworkLogBuffer networkLogBuffer,
+    required NetworkLogStore networkLogStore,
     required SyncStatusTracker syncStatusTracker,
     Account? currentAccount,
   })  : _db = db,
         _loggerService = loggerService,
         _breadcrumbStore = breadcrumbStore,
         _networkLogBuffer = networkLogBuffer,
+        _networkLogStore = networkLogStore,
         _syncStatusTracker = syncStatusTracker,
         _currentAccount = currentAccount;
 
@@ -34,6 +37,7 @@ class LogReportGenerator {
   final LoggerService _loggerService;
   final BreadcrumbStore _breadcrumbStore;
   final NetworkLogBuffer _networkLogBuffer;
+  final NetworkLogStore _networkLogStore;
   final SyncStatusTracker _syncStatusTracker;
   final Account? _currentAccount;
 
@@ -43,6 +47,10 @@ class LogReportGenerator {
     int errorLimit = 12,
     int outboxLimit = 10,
     int memoErrorLimit = 8,
+    int networkStoreLimit = 80,
+    bool includeErrors = true,
+    bool includeOutbox = true,
+    String? userNote,
   }) async {
     final now = DateTime.now();
     final reportTime = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(now);
@@ -50,15 +58,22 @@ class LogReportGenerator {
     final deviceLabel = await _loadDeviceLabel();
     final networkLabel = await _loadNetworkLabel();
     final serverLine = _formatServerLine(_currentAccount);
+    final note = (userNote ?? '').trim();
 
     final sqlite = await _db.db;
     final totalMemos = await _count(sqlite, 'SELECT COUNT(*) FROM memos;');
     final pendingQueue = await _count(sqlite, 'SELECT COUNT(*) FROM outbox WHERE state IN (0,2);');
     final failedQueue = await _count(sqlite, 'SELECT COUNT(*) FROM outbox WHERE state = 2;');
     final outboxTypeCounts = await _loadOutboxTypeCounts(sqlite);
-    final pendingOutboxItems = await _loadOutboxItems(sqlite, state: 0, limit: outboxLimit);
-    final failedOutboxItems = await _loadOutboxItems(sqlite, state: 2, limit: outboxLimit);
-    final memoSyncErrors = await _loadMemoSyncErrors(sqlite, limit: memoErrorLimit);
+    final pendingOutboxItems = includeOutbox
+        ? await _loadOutboxItems(sqlite, state: 0, limit: outboxLimit)
+        : const <Map<String, dynamic>>[];
+    final failedOutboxItems = includeOutbox
+        ? await _loadOutboxItems(sqlite, state: 2, limit: outboxLimit)
+        : const <Map<String, dynamic>>[];
+    final memoSyncErrors = includeErrors
+        ? await _loadMemoSyncErrors(sqlite, limit: memoErrorLimit)
+        : const <Map<String, dynamic>>[];
 
     final lifecycle = LoggerService.formatLifecycle(_loggerService.lifecycleState);
     final syncLine = _formatSyncLine(_syncStatusTracker.snapshot);
@@ -69,7 +84,14 @@ class LogReportGenerator {
     final breadcrumbs = _breadcrumbStore.list(limit: breadcrumbLimit);
     final allNetworkLogs = _networkLogBuffer.listAll();
     final networkLogs = _tail(allNetworkLogs, networkLimit);
-    final networkErrors = _tail(_filterNetworkErrors(allNetworkLogs), errorLimit);
+    final networkErrors = includeErrors
+        ? _tail(_filterNetworkErrors(allNetworkLogs), errorLimit)
+        : const <NetworkRequestLog>[];
+    final networkStoreLogs = await _networkLogStore.list(limit: networkStoreLimit);
+    final networkStoreErrors = includeErrors
+        ? _tailStoreEntries(_filterStoreNetworkErrors(networkStoreLogs), errorLimit)
+        : const <NetworkLogEntry>[];
+    final networkStoreRecent = _tailStoreEntries(networkStoreLogs, networkStoreLimit);
 
     final buffer = StringBuffer()
       ..writeln('[REPORT HEAD]')
@@ -77,47 +99,52 @@ class LogReportGenerator {
       ..writeln('App: $appLabel')
       ..writeln('Device: $deviceLabel')
       ..writeln('Network: $networkLabel')
+      ..writeln('User Note: ${note.isEmpty ? '-' : note}')
       ..writeln(serverLine)
       ..writeln('')
       ..writeln('[APP STATE SNAPSHOT]')
       ..writeln('Lifecycle: $lifecycle')
       ..writeln(syncLine)
-      ..writeln(syncErrorLine)
+      ..writeln(includeErrors ? syncErrorLine : 'Sync Error: (hidden by user)')
       ..writeln(pendingLine)
-      ..writeln(outboxLine)
+      ..writeln(includeOutbox ? outboxLine : 'Outbox: (hidden by user)')
       ..writeln('Local DB: $totalMemos memos')
-      ..writeln('')
-      ..writeln('[OUTBOX PENDING] (Last ${pendingOutboxItems.length})');
+      ..writeln('');
 
-    if (pendingOutboxItems.isEmpty) {
-      buffer.writeln('1. (none)');
-    } else {
-      for (var i = 0; i < pendingOutboxItems.length; i++) {
-        buffer.writeln('${i + 1}. ${_formatOutboxItem(pendingOutboxItems[i])}');
+    if (includeOutbox) {
+      buffer.writeln('[OUTBOX PENDING] (Last ${pendingOutboxItems.length})');
+      if (pendingOutboxItems.isEmpty) {
+        buffer.writeln('1. (none)');
+      } else {
+        for (var i = 0; i < pendingOutboxItems.length; i++) {
+          buffer.writeln('${i + 1}. ${_formatOutboxItem(pendingOutboxItems[i])}');
+        }
+      }
+
+      buffer
+        ..writeln('')
+        ..writeln('[OUTBOX FAILED] (Last ${failedOutboxItems.length})');
+
+      if (failedOutboxItems.isEmpty) {
+        buffer.writeln('1. (none)');
+      } else {
+        for (var i = 0; i < failedOutboxItems.length; i++) {
+          buffer.writeln('${i + 1}. ${_formatOutboxItem(failedOutboxItems[i])}');
+        }
       }
     }
 
-    buffer
-      ..writeln('')
-      ..writeln('[OUTBOX FAILED] (Last ${failedOutboxItems.length})');
+    if (includeErrors) {
+      buffer
+        ..writeln('')
+        ..writeln('[MEMO SYNC ERRORS] (Last ${memoSyncErrors.length})');
 
-    if (failedOutboxItems.isEmpty) {
-      buffer.writeln('1. (none)');
-    } else {
-      for (var i = 0; i < failedOutboxItems.length; i++) {
-        buffer.writeln('${i + 1}. ${_formatOutboxItem(failedOutboxItems[i])}');
-      }
-    }
-
-    buffer
-      ..writeln('')
-      ..writeln('[MEMO SYNC ERRORS] (Last ${memoSyncErrors.length})');
-
-    if (memoSyncErrors.isEmpty) {
-      buffer.writeln('1. (none)');
-    } else {
-      for (var i = 0; i < memoSyncErrors.length; i++) {
-        buffer.writeln('${i + 1}. ${_formatMemoSyncError(memoSyncErrors[i])}');
+      if (memoSyncErrors.isEmpty) {
+        buffer.writeln('1. (none)');
+      } else {
+        for (var i = 0; i < memoSyncErrors.length; i++) {
+          buffer.writeln('${i + 1}. ${_formatMemoSyncError(memoSyncErrors[i])}');
+        }
       }
     }
 
@@ -134,16 +161,30 @@ class LogReportGenerator {
       }
     }
 
-    buffer
-      ..writeln('')
-      ..writeln('[NETWORK ERRORS] (Last ${networkErrors.length})');
-
-    if (networkErrors.isEmpty) {
+    if (includeErrors) {
       buffer
-        ..writeln('------------------------------------------------')
-        ..writeln('1. [--] (no errors)');
-    } else {
-      _appendNetworkEntries(buffer, networkErrors);
+        ..writeln('')
+        ..writeln('[NETWORK ERRORS] (Last ${networkErrors.length})');
+
+      if (networkErrors.isEmpty) {
+        buffer
+          ..writeln('------------------------------------------------')
+          ..writeln('1. [--] (no errors)');
+      } else {
+        _appendNetworkEntries(buffer, networkErrors);
+      }
+
+      buffer
+        ..writeln('')
+        ..writeln('[NETWORK STORE ERRORS] (Last ${networkStoreErrors.length})');
+
+      if (networkStoreErrors.isEmpty) {
+        buffer
+          ..writeln('------------------------------------------------')
+          ..writeln('1. [--] (no errors)');
+      } else {
+        _appendStoreNetworkEntries(buffer, networkStoreErrors);
+      }
     }
 
     buffer
@@ -158,6 +199,19 @@ class LogReportGenerator {
     }
 
     _appendNetworkEntries(buffer, networkLogs);
+
+    buffer
+      ..writeln('')
+      ..writeln('[NETWORK STORE LOGS] (Last ${networkStoreRecent.length})');
+
+    if (networkStoreRecent.isEmpty) {
+      buffer
+        ..writeln('------------------------------------------------')
+        ..writeln('1. [--] (no requests)');
+      return buffer.toString();
+    }
+
+    _appendStoreNetworkEntries(buffer, networkStoreRecent);
 
     return buffer.toString();
   }
@@ -502,6 +556,7 @@ GROUP BY type, state;
     final hasAttachments = _readBool(payload['has_attachments']);
     final relations = payload['relations'] is List ? (payload['relations'] as List).length : null;
     final contentLength = payload['content'] is String ? (payload['content'] as String).length : null;
+    final location = _summarizeLocationPayload(payload);
     final parts = <String>[];
     if (uid.isNotEmpty) parts.add('uid=$uid');
     if (visibility.isNotEmpty) parts.add('vis=$visibility');
@@ -509,13 +564,23 @@ GROUP BY type, state;
     if (hasAttachments != null) parts.add('attachments=$hasAttachments');
     if (contentLength != null) parts.add('content_len=$contentLength');
     if (relations != null) parts.add('relations=$relations');
+    if (location != null) parts.add('location=$location');
     return parts.join(', ');
   }
 
   String _summarizeUpdateMemoPayload(Map<String, dynamic> payload) {
     final uid = _readString(payload['uid']);
     final fields = <String>[];
-    for (final key in const ['content', 'visibility', 'pinned', 'state', 'display_time', 'displayTime', 'relations']) {
+    for (final key in const [
+      'content',
+      'visibility',
+      'pinned',
+      'state',
+      'display_time',
+      'displayTime',
+      'relations',
+      'location',
+    ]) {
       if (payload.containsKey(key)) {
         fields.add(key);
       }
@@ -525,7 +590,24 @@ GROUP BY type, state;
     if (fields.isNotEmpty) parts.add('fields=${fields.join('/')}');
     final contentLength = payload['content'] is String ? (payload['content'] as String).length : null;
     if (contentLength != null) parts.add('content_len=$contentLength');
+    final location = _summarizeLocationPayload(payload);
+    if (location != null) parts.add('location=$location');
     return parts.join(', ');
+  }
+
+  String? _summarizeLocationPayload(Map<String, dynamic> payload) {
+    if (!payload.containsKey('location')) return null;
+    final raw = payload['location'];
+    if (raw == null) return 'null';
+    if (raw is! Map) return 'invalid';
+    final json = raw.cast<String, dynamic>();
+    final fp = LogSanitizer.locationFingerprint(
+      latitude: json['latitude'],
+      longitude: json['longitude'],
+      locationName: _readString(json['placeholder']),
+    );
+    if (fp.isEmpty) return 'present';
+    return 'present;loc_fp=$fp';
   }
 
   String _summarizeDeleteMemoPayload(Map<String, dynamic> payload) {
@@ -595,10 +677,59 @@ GROUP BY type, state;
     return out;
   }
 
+  List<NetworkLogEntry> _filterStoreNetworkErrors(List<NetworkLogEntry> entries) {
+    final out = <NetworkLogEntry>[];
+    for (final entry in entries) {
+      final status = entry.status;
+      final hasError = entry.error != null && entry.error!.trim().isNotEmpty;
+      if (entry.type == 'error' || status == null || status >= 400 || hasError) {
+        out.add(entry);
+      }
+    }
+    return out;
+  }
+
   List<NetworkRequestLog> _tail(List<NetworkRequestLog> entries, int limit) {
     if (limit <= 0 || entries.isEmpty) return const [];
     final start = entries.length > limit ? entries.length - limit : 0;
     return List<NetworkRequestLog>.unmodifiable(entries.sublist(start));
+  }
+
+  List<NetworkLogEntry> _tailStoreEntries(List<NetworkLogEntry> entries, int limit) {
+    if (limit <= 0 || entries.isEmpty) return const [];
+    final start = entries.length > limit ? entries.length - limit : 0;
+    return List<NetworkLogEntry>.unmodifiable(entries.sublist(start));
+  }
+
+  void _appendStoreNetworkEntries(StringBuffer buffer, List<NetworkLogEntry> entries) {
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final statusLabel = entry.status?.toString() ?? '-';
+      final durationLabel = entry.durationMs == null ? '?ms' : '${entry.durationMs}ms';
+      buffer.writeln('------------------------------------------------');
+      buffer.writeln(
+        '${i + 1}. [${entry.type.toUpperCase()}] ${entry.method} ${entry.url} '
+        '(status=$statusLabel, $durationLabel)',
+      );
+      final requestId = entry.requestId?.trim() ?? '';
+      if (requestId.isNotEmpty) {
+        buffer.writeln('   RequestId: $requestId');
+      }
+      final headers = entry.headers;
+      if (headers != null && headers.isNotEmpty) {
+        buffer.writeln(
+          '   Headers: ${LogSanitizer.stringify(LogSanitizer.sanitizeJson(headers), maxLength: 800)}',
+        );
+      }
+      final body = entry.body;
+      if (body != null && body.trim().isNotEmpty) {
+        buffer.writeln('   Body: $body');
+      }
+      final error = entry.error;
+      if (error != null && error.trim().isNotEmpty) {
+        buffer.writeln('   Error: $error');
+      }
+    }
   }
 
   String _formatBreadcrumbTime(DateTime time) {

@@ -10,6 +10,7 @@ import '../data/logs/network_log_buffer.dart';
 import '../data/logs/sync_queue_progress_tracker.dart';
 import '../data/logs/sync_status_tracker.dart';
 import 'database_provider.dart';
+import 'network_log_provider.dart';
 import 'session_provider.dart';
 
 final breadcrumbStoreProvider = Provider<BreadcrumbStore>((ref) {
@@ -54,6 +55,7 @@ final logReportGeneratorProvider = Provider<LogReportGenerator>((ref) {
     loggerService: ref.watch(loggerServiceProvider),
     breadcrumbStore: ref.watch(breadcrumbStoreProvider),
     networkLogBuffer: ref.watch(networkLogBufferProvider),
+    networkLogStore: ref.watch(networkLogStoreProvider),
     syncStatusTracker: ref.watch(syncStatusTrackerProvider),
     currentAccount: account,
   );

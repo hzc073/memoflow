@@ -145,6 +145,15 @@ class LogSanitizer {
     if (_isSensitiveKey(lower)) {
       return maskToken(value.toString());
     }
+    if (_isCoordinatePairKey(lower) && value is! Map && value is! List) {
+      return '<location_redacted>';
+    }
+    if (_isCoordinateKey(lower)) {
+      return '<coord_redacted>';
+    }
+    if (_isLocationNameKey(lower)) {
+      return '<location_name_redacted>';
+    }
     if (_isContentKey(lower)) {
       return _redactContent(value);
     }
@@ -204,6 +213,29 @@ class LogSanitizer {
     return key == 'content' || key == 'snippet';
   }
 
+  static bool _isCoordinateKey(String key) {
+    return key == 'latitude' ||
+        key == 'longitude' ||
+        key == 'lat' ||
+        key == 'lng' ||
+        key == 'lon';
+  }
+
+  static bool _isCoordinatePairKey(String key) {
+    return key == 'location' ||
+        key == 'position' ||
+        key == 'coordinate' ||
+        key == 'coordinates' ||
+        key == 'loc';
+  }
+
+  static bool _isLocationNameKey(String key) {
+    return key == 'placeholder' ||
+        key == 'location_name' ||
+        key == 'locationname' ||
+        key == 'poiname';
+  }
+
   static bool _isUserKey(String key) {
     return key.contains('user') ||
         key.contains('username') ||
@@ -226,17 +258,50 @@ class LogSanitizer {
     final pairs = <String>[];
     for (final entry in params.entries) {
       final key = entry.key;
+      final lower = key.toLowerCase();
       final values = entry.value;
       if (values.isEmpty) {
         pairs.add(Uri.encodeQueryComponent(key));
         continue;
       }
       for (final value in values) {
-        final sanitized = _isSensitiveKey(key.toLowerCase()) ? maskToken(value) : value;
+        String sanitized = value;
+        if (_isSensitiveKey(lower)) {
+          sanitized = maskToken(value);
+        } else if (_isCoordinatePairKey(lower)) {
+          sanitized = '<location_redacted>';
+        } else if (_isCoordinateKey(lower)) {
+          sanitized = '<coord_redacted>';
+        } else if (_isLocationNameKey(lower)) {
+          sanitized = '<location_name_redacted>';
+        }
         pairs.add('${Uri.encodeQueryComponent(key)}=${Uri.encodeQueryComponent(sanitized)}');
       }
     }
     return pairs.join('&');
+  }
+
+  static String locationFingerprint({
+    Object? latitude,
+    Object? longitude,
+    String? locationName,
+  }) {
+    final lat = latitude?.toString().trim() ?? '';
+    final lng = longitude?.toString().trim() ?? '';
+    final name = (locationName ?? '').trim();
+    final seed = '$lat|$lng|$name';
+    if (seed.replaceAll('|', '').isEmpty) return '';
+    return _hashText(seed);
+  }
+
+  static String _hashText(String raw) {
+    final bytes = utf8.encode(raw);
+    var hash = 0x811C9DC5;
+    for (final b in bytes) {
+      hash ^= b;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 
   static String _maskValue(String raw, {required int keepStart, required int keepEnd}) {

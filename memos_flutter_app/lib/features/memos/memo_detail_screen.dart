@@ -588,7 +588,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           MemoLocationLine(
             location: memo.location!,
             textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            onTap: () => openAmapLocation(context, memo.location!),
+            onTap: () => openAmapLocation(
+              context,
+              memo.location!,
+              memoUid: memo.uid,
+            ),
             fontSize: 12,
           ),
         ],

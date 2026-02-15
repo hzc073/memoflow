@@ -3867,8 +3867,11 @@ class _MemoCardState extends State<_MemoCard> {
                             textColor: textMain.withValues(
                               alpha: isDark ? 0.4 : 0.5,
                             ),
-                            onTap: () =>
-                                openAmapLocation(context, memo.location!),
+                            onTap: () => openAmapLocation(
+                              context,
+                              memo.location!,
+                              memoUid: memo.uid,
+                            ),
                           ),
                         ],
                       ],
