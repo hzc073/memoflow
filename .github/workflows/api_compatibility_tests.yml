@@ -1,0 +1,37 @@
+name: API Compatibility Tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/api_compatibility_tests.yml"
+      - "memos_flutter_app/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/api_compatibility_tests.yml"
+      - "memos_flutter_app/**"
+
+jobs:
+  api-compatibility:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: memos_flutter_app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.38.5"
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run API compatibility tests
+        run: flutter test test/data/api --reporter expanded
