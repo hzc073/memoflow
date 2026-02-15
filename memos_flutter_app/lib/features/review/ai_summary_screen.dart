@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 
 import 'dart:async';
 import 'dart:io';
@@ -69,20 +69,20 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   void _navigate(BuildContext context, AppDrawerDestination dest) {
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
-          title: 'MemoFlow',
-          state: 'NORMAL',
-          showDrawer: true,
-          enableCompose: true,
-        ),
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
       AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.t.strings.legacy.msg_archive,
-          state: 'ARCHIVED',
-          showDrawer: true,
-        ),
+        title: context.t.strings.legacy.msg_archive,
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
@@ -91,6 +91,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     };
     closeDrawerThenPushReplacement(context, route);
   }
+
   void _backToAllMemos(BuildContext context) {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
@@ -149,11 +150,10 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (!mounted || created == null) return;
     final settings = ref.read(aiSettingsProvider);
     final next = [...settings.quickPrompts];
-    final key =
-        '${created.title}|${created.content}|${created.iconKey}'.toLowerCase();
+    final key = '${created.title}|${created.content}|${created.iconKey}'
+        .toLowerCase();
     final exists = next.any(
-      (p) =>
-          '${p.title}|${p.content}|${p.iconKey}'.toLowerCase() == key,
+      (p) => '${p.title}|${p.content}|${p.iconKey}'.toLowerCase() == key,
     );
     if (!exists) {
       next.add(created);
@@ -190,11 +190,14 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
   Future<DateTimeRange?> _pickCustomRange() {
     final now = DateTime.now();
-    final initial = _customRange ??
+    final initial =
+        _customRange ??
         DateTimeRange(
-          start: DateTime(now.year, now.month, now.day).subtract(
-            const Duration(days: 6),
-          ),
+          start: DateTime(
+            now.year,
+            now.month,
+            now.day,
+          ).subtract(const Duration(days: 6)),
           end: DateTime(now.year, now.month, now.day),
         );
     return showDateRangePicker(
@@ -271,7 +274,13 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       if (!mounted || requestId != _requestId) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_ai_summary_failed(formatSummaryError_e: _formatSummaryError(e)))),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_ai_summary_failed(
+              formatSummaryError_e: _formatSummaryError(e),
+            ),
+          ),
+        ),
       );
     }
   }
@@ -280,7 +289,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (error is DioException) {
       switch (error.type) {
         case DioExceptionType.connectionTimeout:
-          return context.t.strings.legacy.msg_connection_timeout_check_network_api_url;
+          return context
+              .t
+              .strings
+              .legacy
+              .msg_connection_timeout_check_network_api_url;
         case DioExceptionType.sendTimeout:
           return context.t.strings.legacy.msg_request_send_timeout_try;
         case DioExceptionType.receiveTimeout:
@@ -288,7 +301,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         case DioExceptionType.badResponse:
           final code = error.response?.statusCode;
           if (code == 401 || code == 403) {
-            return context.t.strings.legacy.msg_invalid_api_key_insufficient_permissions;
+            return context
+                .t
+                .strings
+                .legacy
+                .msg_invalid_api_key_insufficient_permissions;
           }
           if (code == 404) {
             return context.t.strings.legacy.msg_api_url_incorrect;
@@ -297,7 +314,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             return context.t.strings.legacy.msg_too_many_requests_try_later;
           }
           if (code != null) {
-            return context.t.strings.legacy.msg_server_returned_error(code: code);
+            return context.t.strings.legacy.msg_server_returned_error(
+              code: code,
+            );
           }
           return context.t.strings.legacy.msg_server_response_error;
         case DioExceptionType.connectionError:
@@ -356,10 +375,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   Future<void> _shareReport() async {
     final summary = _summary;
     if (summary == null) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_no_summary_share,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_no_summary_share);
       return;
     }
     final text = _buildSummaryText(summary: summary, forMemo: false);
@@ -373,7 +389,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_share_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_share_failed(e: e)),
+        ),
       );
     }
   }
@@ -381,31 +399,31 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   Future<void> _sharePoster() async {
     final summary = _summary;
     if (summary == null) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_no_summary_share,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_no_summary_share);
       return;
     }
     final boundary = _reportBoundaryKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_poster_not_ready_yet,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_poster_not_ready_yet);
       return;
     }
 
     try {
       await Future.delayed(const Duration(milliseconds: 30));
       if (!mounted) return;
-      final pixelRatio = MediaQuery.of(context).devicePixelRatio.clamp(2.0, 3.0);
+      final pixelRatio = MediaQuery.of(
+        context,
+      ).devicePixelRatio.clamp(2.0, 3.0);
       final image = await boundary.toImage(pixelRatio: pixelRatio);
       final byteData = await image.toByteData(format: ImageByteFormat.png);
       if (byteData == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_poster_generation_failed)),
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_poster_generation_failed,
+            ),
+          ),
         );
         return;
       }
@@ -427,7 +445,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_share_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_share_failed(e: e)),
+        ),
       );
     }
   }
@@ -435,10 +455,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   Future<void> _saveAsMemo() async {
     final summary = _summary;
     if (summary == null) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_no_summary_save,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_no_summary_save);
       return;
     }
 
@@ -463,23 +480,25 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         relationCount: 0,
         syncState: 1,
       );
-      await db.enqueueOutbox(type: 'create_memo', payload: {
-        'uid': uid,
-        'content': content,
-        'visibility': 'PRIVATE',
-        'pinned': false,
-        'has_attachments': false,
-      });
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': uid,
+          'content': content,
+          'visibility': 'PRIVATE',
+          'pinned': false,
+          'has_attachments': false,
+        },
+      );
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_saved_memo,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_saved_memo);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
+        ),
       );
     }
   }
@@ -560,10 +579,19 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
   Future<_MemoSource> _buildMemoSource() async {
     final range = _effectiveRange();
-    final start = DateTime(range.start.year, range.start.month, range.start.day);
-    final endExclusive = DateTime(range.end.year, range.end.month, range.end.day)
-        .add(const Duration(days: 1));
-    final allowPrivate = ref.read(appPreferencesProvider).aiSummaryAllowPrivateMemos;
+    final start = DateTime(
+      range.start.year,
+      range.start.month,
+      range.start.day,
+    );
+    final endExclusive = DateTime(
+      range.end.year,
+      range.end.month,
+      range.end.day,
+    ).add(const Duration(days: 1));
+    final allowPrivate = ref
+        .read(appPreferencesProvider)
+        .aiSummaryAllowPrivateMemos;
     final db = ref.read(databaseProvider);
     final rows = await db.listMemosForExport(
       startTimeSec: start.toUtc().millisecondsSinceEpoch ~/ 1000,
@@ -613,7 +641,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color textMain,
   }) {
     return AppBar(
-      title: Text(isReport ? context.t.strings.legacy.msg_ai_summary_report : context.t.strings.legacy.msg_ai_summary),
+      title: Text(
+        isReport
+            ? context.t.strings.legacy.msg_ai_summary_report
+            : context.t.strings.legacy.msg_ai_summary,
+      ),
       centerTitle: true,
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -647,6 +679,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -666,8 +699,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         : MemoFlowPalette.audioSurfaceLight;
     final inputBg = chipBg;
     final isReport = _view == _AiSummaryView.report;
-    final quickPrompts =
-        ref.watch(aiSettingsProvider.select((s) => s.quickPrompts));
+    final quickPrompts = ref.watch(
+      aiSettingsProvider.select((s) => s.quickPrompts),
+    );
     final allowPrivate = ref.watch(
       appPreferencesProvider.select((p) => p.aiSummaryAllowPrivateMemos),
     );
@@ -736,6 +770,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       ),
     );
   }
+
   Widget _buildInputBody({
     required Color card,
     required Color border,
@@ -784,8 +819,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     child: _AiRangeButton(
                       label: _AiRange.last7Days.labelFor(context.appLanguage),
                       selected: _range == _AiRange.last7Days,
-                      onTap: () =>
-                          setState(() => _range = _AiRange.last7Days),
+                      onTap: () => setState(() => _range = _AiRange.last7Days),
                       primary: MemoFlowPalette.primary,
                       background: chipBg,
                       borderColor: border,
@@ -797,8 +831,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     child: _AiRangeButton(
                       label: _AiRange.last30Days.labelFor(context.appLanguage),
                       selected: _range == _AiRange.last30Days,
-                      onTap: () =>
-                          setState(() => _range = _AiRange.last30Days),
+                      onTap: () => setState(() => _range = _AiRange.last30Days),
                       primary: MemoFlowPalette.primary,
                       background: chipBg,
                       borderColor: border,
@@ -833,26 +866,25 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                 controller: _promptController,
                 minLines: 4,
                 maxLines: 4,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: textMain,
-                ),
+                style: TextStyle(fontSize: 15, height: 1.5, color: textMain),
                 decoration: InputDecoration(
-                  hintText: context.t.strings.legacy.msg_enter_what_want_summarize,
-                  hintStyle: TextStyle(
-                    color: textMuted.withValues(alpha: 0.7),
-                  ),
+                  hintText:
+                      context.t.strings.legacy.msg_enter_what_want_summarize,
+                  hintStyle: TextStyle(color: textMuted.withValues(alpha: 0.7)),
                   filled: true,
                   fillColor: inputBg,
                   contentPadding: const EdgeInsets.all(16),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: border.withValues(alpha: 0.0)),
+                    borderSide: BorderSide(
+                      color: border.withValues(alpha: 0.0),
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: border.withValues(alpha: 0.0)),
+                    borderSide: BorderSide(
+                      color: border.withValues(alpha: 0.0),
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
@@ -960,8 +992,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
               ),
             _QuickPromptAddChip(
               borderColor: border,
-              textColor:
-                  _isQuickPromptEditing ? MemoFlowPalette.primary : textMuted,
+              textColor: _isQuickPromptEditing
+                  ? MemoFlowPalette.primary
+                  : textMuted,
               label: _isQuickPromptEditing
                   ? context.t.strings.legacy.msg_done
                   : context.t.strings.legacy.msg_add_2,
@@ -975,6 +1008,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       ],
     );
   }
+
   Widget _buildReportBody({
     required Color bg,
     required Color card,
@@ -1000,8 +1034,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final rawKeywords = summary.keywords.isNotEmpty
         ? summary.keywords
         : [context.t.strings.legacy.msg_no_keywords_2];
-    final keywords =
-        rawKeywords.map(_normalizeKeyword).toList(growable: false);
+    final keywords = rawKeywords.map(_normalizeKeyword).toList(growable: false);
     final insightMarkdown = _buildInsightMarkdown(summary);
     final shouldCollapse = insightMarkdown.length > 260;
     final showCollapsed = shouldCollapse && !_insightExpanded;
@@ -1010,8 +1043,22 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       height: 1.7,
       color: textMain.withValues(alpha: isDark ? 0.85 : 0.82),
     );
-    final headerTextColor =
-        isDark ? MemoFlowPalette.textLight : textMain;
+    Widget insightContent = MemoMarkdown(
+      data: insightMarkdown,
+      textStyle: insightStyle,
+      blockSpacing: 10,
+      shrinkWrap: true,
+    );
+    if (showCollapsed) {
+      insightContent = SizedBox(
+        height: 260,
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          child: insightContent,
+        ),
+      );
+    }
+    final headerTextColor = isDark ? MemoFlowPalette.textLight : textMain;
     final headerTextMuted = headerTextColor.withValues(alpha: 0.6);
 
     return RepaintBoundary(
@@ -1048,10 +1095,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                               gradient: LinearGradient(
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
-                                colors: [
-                                  Color(0xFFFFF4E8),
-                                  Color(0xFFFFE7D6),
-                                ],
+                                colors: [Color(0xFFFFF4E8), Color(0xFFFFE7D6)],
                               ),
                             ),
                           ),
@@ -1168,19 +1212,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                         AnimatedSize(
                           duration: const Duration(milliseconds: 240),
                           curve: Curves.easeOut,
-                          child: ClipRect(
-                            child: ConstrainedBox(
-                              constraints: showCollapsed
-                                  ? const BoxConstraints(maxHeight: 260)
-                                  : const BoxConstraints(),
-                              child: MemoMarkdown(
-                                data: insightMarkdown,
-                                textStyle: insightStyle,
-                                blockSpacing: 10,
-                                shrinkWrap: true,
-                              ),
-                            ),
-                          ),
+                          child: ClipRect(child: insightContent),
                         ),
                         if (showCollapsed)
                           Positioned(
@@ -1213,7 +1245,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                                     context.t.strings.legacy.msg_expand_2,
                                   ),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: textMain.withValues(alpha: 0.65),
+                                    foregroundColor: textMain.withValues(
+                                      alpha: 0.65,
+                                    ),
                                     textStyle: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
@@ -1248,6 +1282,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       ),
     );
   }
+
   Widget _buildBottomBar({
     required bool isReport,
     required Color bg,
@@ -1267,11 +1302,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [
-                bg,
-                bg.withValues(alpha: 0.9),
-                Colors.transparent,
-              ],
+              colors: [bg, bg.withValues(alpha: 0.9), Colors.transparent],
             ),
           ),
           child: Column(
@@ -1368,8 +1399,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                             valueColor: AlwaysStoppedAnimation<Color>(
                               MemoFlowPalette.primary,
                             ),
-                            backgroundColor:
-                                MemoFlowPalette.primary.withValues(alpha: 0.1),
+                            backgroundColor: MemoFlowPalette.primary.withValues(
+                              alpha: 0.1,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -1419,18 +1451,23 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 }
 
-enum _AiRange {
-  last7Days,
-  last30Days,
-  custom;
-}
+enum _AiRange { last7Days, last30Days, custom }
 
 extension _AiRangeLabel on _AiRange {
   String labelFor(AppLanguage language) => switch (this) {
-        _AiRange.last7Days => trByLanguageKey(language: language, key: 'legacy.msg_last_7_days'),
-        _AiRange.last30Days => trByLanguageKey(language: language, key: 'legacy.msg_last_30_days'),
-        _AiRange.custom => trByLanguageKey(language: language, key: 'legacy.msg_custom'),
-      };
+    _AiRange.last7Days => trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_last_7_days',
+    ),
+    _AiRange.last30Days => trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_last_30_days',
+    ),
+    _AiRange.custom => trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_custom',
+    ),
+  };
 }
 
 class _MemoSource {
@@ -1446,10 +1483,7 @@ class _MemoSource {
 
   static const maxChars = 12000;
 
-  const _MemoSource.empty()
-      : text = '',
-        total = 0,
-        included = 0;
+  const _MemoSource.empty() : text = '', total = 0, included = 0;
 }
 
 class _AiRangeButton extends StatelessWidget {
@@ -1597,11 +1631,7 @@ class _QuickPromptChip extends StatelessWidget {
                         ],
                       ),
                       child: const Center(
-                        child: Icon(
-                          Icons.close,
-                          size: 12,
-                          color: Colors.white,
-                        ),
+                        child: Icon(Icons.close, size: 12, color: Colors.white),
                       ),
                     ),
                   ),
