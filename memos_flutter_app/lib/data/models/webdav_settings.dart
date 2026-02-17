@@ -15,6 +15,8 @@ class WebDavSettings {
     required this.backupSchedule,
     required this.backupRetentionCount,
     required this.rememberBackupPassword,
+    required this.backupMirrorTreeUri,
+    required this.backupMirrorRootPath,
   });
 
   final bool enabled;
@@ -28,6 +30,8 @@ class WebDavSettings {
   final WebDavBackupSchedule backupSchedule;
   final int backupRetentionCount;
   final bool rememberBackupPassword;
+  final String backupMirrorTreeUri;
+  final String backupMirrorRootPath;
 
   static const defaults = WebDavSettings(
     enabled: false,
@@ -41,6 +45,8 @@ class WebDavSettings {
     backupSchedule: WebDavBackupSchedule.daily,
     backupRetentionCount: 5,
     rememberBackupPassword: false,
+    backupMirrorTreeUri: '',
+    backupMirrorRootPath: '',
   );
 
   WebDavSettings copyWith({
@@ -55,6 +61,8 @@ class WebDavSettings {
     WebDavBackupSchedule? backupSchedule,
     int? backupRetentionCount,
     bool? rememberBackupPassword,
+    String? backupMirrorTreeUri,
+    String? backupMirrorRootPath,
   }) {
     return WebDavSettings(
       enabled: enabled ?? this.enabled,
@@ -69,6 +77,8 @@ class WebDavSettings {
       backupRetentionCount: backupRetentionCount ?? this.backupRetentionCount,
       rememberBackupPassword:
           rememberBackupPassword ?? this.rememberBackupPassword,
+      backupMirrorTreeUri: backupMirrorTreeUri ?? this.backupMirrorTreeUri,
+      backupMirrorRootPath: backupMirrorRootPath ?? this.backupMirrorRootPath,
     );
   }
 
@@ -84,6 +94,8 @@ class WebDavSettings {
     'backupSchedule': backupSchedule.name,
     'backupRetentionCount': backupRetentionCount,
     'rememberBackupPassword': rememberBackupPassword,
+    'backupMirrorTreeUri': backupMirrorTreeUri,
+    'backupMirrorRootPath': backupMirrorRootPath,
   };
 
   factory WebDavSettings.fromJson(Map<String, dynamic> json) {
@@ -153,6 +165,14 @@ class WebDavSettings {
       rememberBackupPassword: readBool(
         'rememberBackupPassword',
         WebDavSettings.defaults.rememberBackupPassword,
+      ),
+      backupMirrorTreeUri: readString(
+        'backupMirrorTreeUri',
+        WebDavSettings.defaults.backupMirrorTreeUri,
+      ),
+      backupMirrorRootPath: readString(
+        'backupMirrorRootPath',
+        WebDavSettings.defaults.backupMirrorRootPath,
       ),
     );
   }

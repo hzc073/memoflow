@@ -6,16 +6,19 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/app_localization.dart';
 import '../core/hash.dart';
+import '../core/url.dart';
 import '../core/webdav_url.dart';
 import '../data/local_library/local_attachment_store.dart';
 import '../data/local_library/local_library_fs.dart';
 import '../data/local_library/local_library_markdown.dart';
 import '../data/local_library/local_library_naming.dart';
+import '../data/models/attachment.dart';
 import '../data/models/local_library.dart';
 import '../data/models/local_memo.dart';
 import '../data/models/webdav_backup.dart';
@@ -66,6 +69,39 @@ final webDavBackupControllerProvider =
         passwordRepository: ref.watch(webDavBackupPasswordRepositoryProvider),
       );
     });
+
+enum WebDavBackupExportIssueKind { memo, attachment }
+
+enum WebDavBackupExportAction { retry, skip, abort }
+
+class WebDavBackupExportIssue {
+  const WebDavBackupExportIssue({
+    required this.kind,
+    required this.memoUid,
+    this.attachmentFilename,
+    required this.error,
+  });
+
+  final WebDavBackupExportIssueKind kind;
+  final String memoUid;
+  final String? attachmentFilename;
+  final Object error;
+}
+
+class WebDavBackupExportResolution {
+  const WebDavBackupExportResolution({
+    required this.action,
+    this.applyToRemainingFailures = false,
+  });
+
+  final WebDavBackupExportAction action;
+  final bool applyToRemainingFailures;
+}
+
+typedef WebDavBackupExportIssueHandler =
+    Future<WebDavBackupExportResolution> Function(
+      WebDavBackupExportIssue issue,
+    );
 
 class WebDavBackupStatus {
   const WebDavBackupStatus({
@@ -159,11 +195,17 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     await backupNow(password: storedPassword, manual: false);
   }
 
-  Future<void> backupNow({String? password, bool manual = true}) async {
+  Future<void> backupNow({
+    String? password,
+    bool manual = true,
+    WebDavBackupExportIssueHandler? onExportIssue,
+  }) async {
     if (state.running || state.restoring) return;
     final settings = _ref.read(webDavSettingsProvider);
     final accountKey = _accountKey;
-    final localLibrary = _ref.read(currentLocalLibraryProvider);
+    final activeLocalLibrary = _ref.read(currentLocalLibraryProvider);
+    final backupLibrary = _resolveBackupLibrary(settings, activeLocalLibrary);
+    final usesMirrorLibrary = activeLocalLibrary == null;
     if (!settings.backupEnabled) {
       if (manual) {
         state = state.copyWith(
@@ -178,10 +220,8 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
       );
       return;
     }
-    if (localLibrary == null) {
-      state = state.copyWith(
-        lastError: _localizedKey('legacy.webdav.backup_local_only'),
-      );
+    if (backupLibrary == null) {
+      state = state.copyWith(lastError: _backupMirrorLocationMissingMessage());
       return;
     }
 
@@ -196,10 +236,21 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     state = state.copyWith(running: true, lastError: null);
     try {
       await _ref.read(syncControllerProvider.notifier).syncNow();
-      final exportedMemos = await _exportLocalLibraryForBackup(localLibrary);
+      final currentAccount = _ref
+          .read(appSessionProvider)
+          .valueOrNull
+          ?.currentAccount;
+      final token = (currentAccount?.personalAccessToken ?? '').trim();
+      final exportedMemos = await _exportLocalLibraryForBackup(
+        backupLibrary,
+        pruneToCurrentData: usesMirrorLibrary,
+        attachmentBaseUrl: currentAccount?.baseUrl,
+        attachmentAuthHeader: token.isEmpty ? null : 'Bearer $token',
+        issueHandler: manual ? onExportIssue : null,
+      );
       if (exportedMemos > 0) {
         final memoFiles = await LocalLibraryFileSystem(
-          localLibrary,
+          backupLibrary,
         ).listMemos();
         if (memoFiles.isEmpty) {
           state = state.copyWith(
@@ -235,7 +286,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
         final now = DateTime.now();
         final snapshotId = _buildSnapshotId(now);
         final build = await _buildSnapshot(
-          localLibrary: localLibrary,
+          localLibrary: backupLibrary,
           index: index,
           masterKey: masterKey,
           client: client,
@@ -298,9 +349,31 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
       } finally {
         await client.close();
       }
+    } on _BackupExportAborted catch (e) {
+      state = state.copyWith(running: false, lastError: e.message);
     } catch (e) {
       state = state.copyWith(running: false, lastError: e.toString());
     }
+  }
+
+  LocalLibrary? _resolveBackupLibrary(
+    WebDavSettings settings,
+    LocalLibrary? activeLocalLibrary,
+  ) {
+    if (activeLocalLibrary != null) return activeLocalLibrary;
+    final treeUri = settings.backupMirrorTreeUri.trim();
+    final rootPath = settings.backupMirrorRootPath.trim();
+    if (treeUri.isEmpty && rootPath.isEmpty) return null;
+    return LocalLibrary(
+      key: 'webdav_backup_mirror',
+      name: 'WebDAV Backup Mirror',
+      treeUri: treeUri.isEmpty ? null : treeUri,
+      rootPath: treeUri.isNotEmpty ? null : rootPath,
+    );
+  }
+
+  String _backupMirrorLocationMissingMessage() {
+    return '${_localizedKey('legacy.msg_export')} ${_localizedKey('legacy.msg_path')}: ${_localizedKey('legacy.msg_not_set')}';
   }
 
   Future<List<WebDavBackupSnapshotInfo>> listSnapshots({
@@ -465,54 +538,355 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     }
   }
 
-  Future<int> _exportLocalLibraryForBackup(LocalLibrary localLibrary) async {
+  Future<int> _exportLocalLibraryForBackup(
+    LocalLibrary localLibrary, {
+    bool pruneToCurrentData = false,
+    Uri? attachmentBaseUrl,
+    String? attachmentAuthHeader,
+    WebDavBackupExportIssueHandler? issueHandler,
+  }) async {
     final db = _ref.read(databaseProvider);
     final fileSystem = LocalLibraryFileSystem(localLibrary);
     final attachmentStore = LocalAttachmentStore();
     await fileSystem.ensureStructure();
 
     final rows = await db.listMemosForExport(includeArchived: true);
+    final stickyResolutions =
+        <WebDavBackupExportIssueKind, WebDavBackupExportResolution>{};
+    final targetMemoUids = <String>{};
+    final expectedAttachmentsByMemo = <String, Set<String>>{};
+    final skipAttachmentPruneUids = <String>{};
     var memoCount = 0;
-    for (final row in rows) {
-      final memo = LocalMemo.fromDb(row);
-      final uid = memo.uid.trim();
-      if (uid.isEmpty) continue;
-      final markdown = buildLocalLibraryMarkdown(memo);
-      await fileSystem.writeMemo(uid: uid, content: markdown);
-      memoCount += 1;
+    final httpClient = Dio();
+    try {
+      for (final row in rows) {
+        final memo = LocalMemo.fromDb(row);
+        final uid = memo.uid.trim();
+        if (uid.isEmpty) continue;
+        targetMemoUids.add(uid);
+        final markdown = buildLocalLibraryMarkdown(memo);
 
-      if (memo.attachments.isEmpty) continue;
-      for (final attachment in memo.attachments) {
-        final archiveName = attachmentArchiveName(attachment);
-        final privatePath = await attachmentStore.resolveAttachmentPath(
-          uid,
-          archiveName,
-        );
-        String? srcPath;
-        if (File(privatePath).existsSync()) {
-          srcPath = privatePath;
-        } else {
-          final link = attachment.externalLink.trim();
-          if (link.startsWith('file://')) {
-            try {
-              srcPath = Uri.parse(link).toFilePath();
-            } catch (_) {}
+        var memoWritten = false;
+        while (!memoWritten) {
+          try {
+            await fileSystem.writeMemo(uid: uid, content: markdown);
+            memoWritten = true;
+            memoCount += 1;
+          } catch (error) {
+            final resolution = await _resolveExportIssue(
+              issue: WebDavBackupExportIssue(
+                kind: WebDavBackupExportIssueKind.memo,
+                memoUid: uid,
+                error: error,
+              ),
+              issueHandler: issueHandler,
+              stickyResolutions: stickyResolutions,
+            );
+            if (resolution.action == WebDavBackupExportAction.retry) {
+              continue;
+            }
+            if (resolution.action == WebDavBackupExportAction.skip) {
+              skipAttachmentPruneUids.add(uid);
+              break;
+            }
           }
         }
-        if (srcPath == null || srcPath.trim().isEmpty) continue;
-        final file = File(srcPath);
-        if (!file.existsSync()) continue;
-        await fileSystem.writeAttachmentFromFile(
-          memoUid: uid,
-          filename: archiveName,
-          srcPath: file.path,
-          mimeType: attachment.type.isNotEmpty
-              ? attachment.type
-              : _guessMimeType(archiveName),
+        if (!memoWritten) {
+          continue;
+        }
+
+        final expectedAttachmentNames = <String>{};
+        final usedAttachmentNames = <String>{};
+        var attachmentFailed = false;
+        for (final attachment in memo.attachments) {
+          final localLookupName = attachmentArchiveName(attachment);
+          final archiveName = _dedupeAttachmentFilename(
+            localLookupName,
+            usedAttachmentNames,
+          );
+          usedAttachmentNames.add(archiveName);
+          var exported = false;
+          while (!exported) {
+            try {
+              await _exportAttachmentForBackup(
+                fileSystem: fileSystem,
+                attachmentStore: attachmentStore,
+                memoUid: uid,
+                attachment: attachment,
+                archiveName: archiveName,
+                localLookupName: localLookupName,
+                baseUrl: attachmentBaseUrl,
+                authHeader: attachmentAuthHeader,
+                httpClient: httpClient,
+              );
+              expectedAttachmentNames.add(archiveName);
+              exported = true;
+            } catch (error) {
+              final resolution = await _resolveExportIssue(
+                issue: WebDavBackupExportIssue(
+                  kind: WebDavBackupExportIssueKind.attachment,
+                  memoUid: uid,
+                  attachmentFilename: archiveName,
+                  error: error,
+                ),
+                issueHandler: issueHandler,
+                stickyResolutions: stickyResolutions,
+              );
+              if (resolution.action == WebDavBackupExportAction.retry) {
+                continue;
+              }
+              if (resolution.action == WebDavBackupExportAction.skip) {
+                attachmentFailed = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (attachmentFailed) {
+          skipAttachmentPruneUids.add(uid);
+        } else {
+          expectedAttachmentsByMemo[uid] = expectedAttachmentNames;
+        }
+      }
+
+      if (pruneToCurrentData) {
+        await _pruneMirrorLibraryFiles(
+          fileSystem: fileSystem,
+          targetMemoUids: targetMemoUids,
+          expectedAttachmentsByMemo: expectedAttachmentsByMemo,
+          skipAttachmentPruneUids: skipAttachmentPruneUids,
         );
       }
+    } finally {
+      httpClient.close();
     }
+
     return memoCount;
+  }
+
+  Future<WebDavBackupExportResolution> _resolveExportIssue({
+    required WebDavBackupExportIssue issue,
+    required WebDavBackupExportIssueHandler? issueHandler,
+    required Map<WebDavBackupExportIssueKind, WebDavBackupExportResolution>
+    stickyResolutions,
+  }) async {
+    final sticky = stickyResolutions[issue.kind];
+    if (sticky != null) {
+      if (sticky.action == WebDavBackupExportAction.abort) {
+        throw _BackupExportAborted(_localizedKey('legacy.msg_cancel_2'));
+      }
+      return sticky;
+    }
+
+    if (issueHandler == null) {
+      throw StateError(_formatExportIssueMessage(issue));
+    }
+
+    final resolution = await issueHandler(issue);
+    if (resolution.action == WebDavBackupExportAction.abort) {
+      throw _BackupExportAborted(_localizedKey('legacy.msg_cancel_2'));
+    }
+    if (resolution.applyToRemainingFailures &&
+        resolution.action != WebDavBackupExportAction.retry) {
+      stickyResolutions[issue.kind] = resolution;
+    }
+    return resolution;
+  }
+
+  String _formatExportIssueMessage(WebDavBackupExportIssue issue) {
+    final kindLabel = switch (issue.kind) {
+      WebDavBackupExportIssueKind.memo => _localizedKey('legacy.msg_memo'),
+      WebDavBackupExportIssueKind.attachment => _localizedKey(
+        'legacy.msg_attachments',
+      ),
+    };
+    final target = issue.kind == WebDavBackupExportIssueKind.memo
+        ? issue.memoUid
+        : '${issue.memoUid}/${issue.attachmentFilename ?? ''}';
+    final rawError = issue.error.toString().trim();
+    final errorText = rawError.isEmpty ? 'unknown error' : rawError;
+    return '$kindLabel[$target] ${_localizedKey('legacy.msg_failed')}: $errorText';
+  }
+
+  String _dedupeAttachmentFilename(String filename, Set<String> used) {
+    if (!used.contains(filename)) return filename;
+    final dot = filename.lastIndexOf('.');
+    final hasExt = dot > 0;
+    final base = hasExt ? filename.substring(0, dot) : filename;
+    final ext = hasExt ? filename.substring(dot) : '';
+    var index = 1;
+    while (true) {
+      final candidate = '$base ($index)$ext';
+      if (!used.contains(candidate)) return candidate;
+      index += 1;
+    }
+  }
+
+  Future<void> _exportAttachmentForBackup({
+    required LocalLibraryFileSystem fileSystem,
+    required LocalAttachmentStore attachmentStore,
+    required String memoUid,
+    required Attachment attachment,
+    required String archiveName,
+    required String localLookupName,
+    required Uri? baseUrl,
+    required String? authHeader,
+    required Dio httpClient,
+  }) async {
+    final sourcePath = await _resolveAttachmentSourcePath(
+      attachmentStore: attachmentStore,
+      memoUid: memoUid,
+      attachment: attachment,
+      lookupName: localLookupName,
+    );
+    final mimeType = attachment.type.isNotEmpty
+        ? attachment.type
+        : _guessMimeType(archiveName);
+    if (sourcePath != null) {
+      await fileSystem.writeAttachmentFromFile(
+        memoUid: memoUid,
+        filename: archiveName,
+        srcPath: sourcePath,
+        mimeType: mimeType,
+      );
+      return;
+    }
+
+    final url = _resolveAttachmentUrl(baseUrl, attachment);
+    if (url == null || url.isEmpty) {
+      throw StateError('Attachment source missing');
+    }
+    final response = await httpClient.get<List<int>>(
+      url,
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: authHeader == null ? null : {'Authorization': authHeader},
+      ),
+    );
+    final bytes = response.data;
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('Attachment download failed');
+    }
+    await fileSystem.writeFileFromChunks(
+      'attachments/$memoUid/$archiveName',
+      Stream<Uint8List>.value(Uint8List.fromList(bytes)),
+      mimeType: mimeType,
+    );
+  }
+
+  Future<String?> _resolveAttachmentSourcePath({
+    required LocalAttachmentStore attachmentStore,
+    required String memoUid,
+    required Attachment attachment,
+    required String lookupName,
+  }) async {
+    final privatePath = await attachmentStore.resolveAttachmentPath(
+      memoUid,
+      lookupName,
+    );
+    final privateFile = File(privatePath);
+    if (privateFile.existsSync()) return privateFile.path;
+
+    final link = attachment.externalLink.trim();
+    if (!link.startsWith('file://')) return null;
+    try {
+      final path = Uri.parse(link).toFilePath();
+      if (path.trim().isEmpty) return null;
+      final file = File(path);
+      if (!file.existsSync()) return null;
+      return file.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment) {
+    final link = attachment.externalLink.trim();
+    if (link.isNotEmpty &&
+        !link.startsWith('file://') &&
+        !link.startsWith('content://')) {
+      final resolved = resolveMaybeRelativeUrl(baseUrl, link);
+      return resolved.trim().isEmpty ? null : resolved;
+    }
+    if (baseUrl == null) return null;
+    final filename = attachment.filename.trim();
+    if (filename.isEmpty) return null;
+    return joinBaseUrl(baseUrl, 'file/${attachment.name}/$filename');
+  }
+
+  Future<void> _pruneMirrorLibraryFiles({
+    required LocalLibraryFileSystem fileSystem,
+    required Set<String> targetMemoUids,
+    required Map<String, Set<String>> expectedAttachmentsByMemo,
+    required Set<String> skipAttachmentPruneUids,
+  }) async {
+    final files = await fileSystem.listAllFiles();
+    final deletedAttachmentDirs = <String>{};
+
+    for (final entry in files) {
+      final segments = entry.relativePath
+          .replaceAll('\\', '/')
+          .split('/')
+          .where((s) => s.trim().isNotEmpty)
+          .toList(growable: false);
+      if (segments.isEmpty) continue;
+
+      if (segments[0] == 'memos' && segments.length == 2) {
+        final memoUid = _parseMemoUidFromFileName(segments[1]);
+        if (memoUid == null || memoUid.isEmpty) continue;
+        if (targetMemoUids.contains(memoUid)) continue;
+        await fileSystem.deleteRelativeFile(entry.relativePath);
+        if (deletedAttachmentDirs.add(memoUid)) {
+          await fileSystem.deleteAttachmentsDir(memoUid);
+        }
+        continue;
+      }
+
+      if (segments[0] == 'attachments' && segments.length >= 3) {
+        final memoUid = segments[1].trim();
+        if (memoUid.isEmpty) continue;
+        if (!targetMemoUids.contains(memoUid)) {
+          if (deletedAttachmentDirs.add(memoUid)) {
+            await fileSystem.deleteAttachmentsDir(memoUid);
+          }
+          continue;
+        }
+        if (skipAttachmentPruneUids.contains(memoUid)) {
+          continue;
+        }
+        final expected = expectedAttachmentsByMemo[memoUid] ?? const <String>{};
+        final filename = segments.sublist(2).join('/');
+        if (!expected.contains(filename)) {
+          await fileSystem.deleteRelativeFile(entry.relativePath);
+        }
+      }
+    }
+
+    for (final memoUid in targetMemoUids) {
+      if (skipAttachmentPruneUids.contains(memoUid)) continue;
+      final expected = expectedAttachmentsByMemo[memoUid] ?? const <String>{};
+      if (expected.isEmpty) {
+        await fileSystem.deleteAttachmentsDir(memoUid);
+      }
+    }
+  }
+
+  String? _parseMemoUidFromFileName(String fileName) {
+    final trimmed = fileName.trim();
+    if (trimmed.isEmpty) return null;
+    final lower = trimmed.toLowerCase();
+    if (lower.endsWith('.md.txt')) {
+      final uid = trimmed
+          .substring(0, trimmed.length - '.md.txt'.length)
+          .trim();
+      return uid.isEmpty ? null : uid;
+    }
+    if (lower.endsWith('.md')) {
+      final uid = trimmed.substring(0, trimmed.length - '.md'.length).trim();
+      return uid.isEmpty ? null : uid;
+    }
+    return null;
   }
 
   int _countMemosInSnapshot(WebDavBackupSnapshot snapshot) {
@@ -1123,9 +1497,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
   Uri _parseBaseUrl(String raw) {
     final baseUrl = Uri.tryParse(raw.trim());
     if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
-      throw StateError(
-        _localizedKey('legacy.webdav.server_url_invalid'),
-      );
+      throw StateError(_localizedKey('legacy.webdav.server_url_invalid'));
     }
     return baseUrl;
   }
@@ -1205,4 +1577,10 @@ class _SnapshotBuildResult {
 
   final WebDavBackupSnapshot snapshot;
   final Map<String, int> newObjectSizes;
+}
+
+class _BackupExportAborted implements Exception {
+  const _BackupExportAborted(this.message);
+
+  final String message;
 }

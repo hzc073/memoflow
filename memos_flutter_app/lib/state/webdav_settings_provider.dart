@@ -81,4 +81,15 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
 
   void setRememberBackupPassword(bool value) =>
       _setAndPersist(state.copyWith(rememberBackupPassword: value));
+
+  void setBackupMirrorLocation({String? treeUri, String? rootPath}) {
+    final normalizedTreeUri = (treeUri ?? '').trim();
+    final normalizedRootPath = (rootPath ?? '').trim();
+    _setAndPersist(
+      state.copyWith(
+        backupMirrorTreeUri: normalizedTreeUri,
+        backupMirrorRootPath: normalizedRootPath,
+      ),
+    );
+  }
 }

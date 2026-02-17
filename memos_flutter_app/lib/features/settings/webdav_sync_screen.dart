@@ -1,12 +1,16 @@
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:saf_util/saf_util.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../data/models/local_library.dart';
 import '../../core/webdav_url.dart';
 import '../../data/models/webdav_backup.dart';
 import '../../data/models/webdav_settings.dart';
@@ -37,6 +41,8 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   var _backupEnabled = false;
   var _backupSchedule = WebDavBackupSchedule.daily;
   var _rememberBackupPassword = false;
+  var _backupMirrorTreeUri = '';
+  var _backupMirrorRootPath = '';
   var _dirty = false;
 
   @override
@@ -76,6 +82,8 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     _backupSchedule = settings.backupSchedule;
     _backupRetentionController.text = settings.backupRetentionCount.toString();
     _rememberBackupPassword = settings.rememberBackupPassword;
+    _backupMirrorTreeUri = settings.backupMirrorTreeUri;
+    _backupMirrorRootPath = settings.backupMirrorRootPath;
     setState(() {});
   }
 
@@ -217,6 +225,52 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     }
   }
 
+  LocalLibrary? _resolveBackupMirrorLibrary() {
+    final treeUri = _backupMirrorTreeUri.trim();
+    final rootPath = _backupMirrorRootPath.trim();
+    if (treeUri.isEmpty && rootPath.isEmpty) return null;
+    return LocalLibrary(
+      key: 'webdav_backup_mirror',
+      name: 'WebDAV Backup Mirror',
+      treeUri: treeUri.isEmpty ? null : treeUri,
+      rootPath: treeUri.isNotEmpty ? null : rootPath,
+    );
+  }
+
+  Future<void> _pickBackupMirrorLocation() async {
+    try {
+      String? treeUri;
+      String? rootPath;
+      if (Platform.isAndroid) {
+        final doc = await SafUtil().pickDirectory(
+          writePermission: true,
+          persistablePermission: true,
+        );
+        if (doc == null) return;
+        treeUri = doc.uri;
+      } else {
+        final path = await FilePicker.platform.getDirectoryPath();
+        if (path == null || path.trim().isEmpty) return;
+        rootPath = path.trim();
+      }
+      if (!mounted) return;
+      setState(() {
+        _backupMirrorTreeUri = (treeUri ?? '').trim();
+        _backupMirrorRootPath = (rootPath ?? '').trim();
+      });
+      ref
+          .read(webDavSettingsProvider.notifier)
+          .setBackupMirrorLocation(treeUri: treeUri, rootPath: rootPath);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_action_failed(e: e)),
+        ),
+      );
+    }
+  }
+
   Future<void> _openConnectionSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -253,11 +307,30 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<void> _openBackupSettings() async {
+    final localLibrary = ref.read(currentLocalLibraryProvider);
+    final mirrorLibrary = _resolveBackupMirrorLibrary();
+    final usesServerMode = localLibrary == null;
+    final backupAvailable = localLibrary != null || mirrorLibrary != null;
+    final backupUnavailableHint = usesServerMode
+        ? '${context.t.strings.legacy.msg_export} ${context.t.strings.legacy.msg_path}: ${context.t.strings.legacy.msg_not_set}'
+        : context.t.strings.legacy.msg_local_library_only;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => _WebDavBackupSettingsScreen(
           backupEnabled: _backupEnabled,
-          backupAvailable: ref.read(currentLocalLibraryProvider) != null,
+          backupAvailable: backupAvailable,
+          backupUnavailableHint: backupUnavailableHint,
+          usesServerMode: usesServerMode,
+          backupMirrorPathLabel:
+              mirrorLibrary?.locationLabel ??
+              context.t.strings.legacy.msg_not_set,
+          onPickBackupMirrorPath: _pickBackupMirrorLocation,
+          restoreAvailable: localLibrary != null,
+          restoreUnavailableHint: context
+              .t
+              .strings
+              .legacy
+              .msg_restore_only_available_local_libraries,
           backupSchedule: _backupSchedule,
           rememberBackupPassword: _rememberBackupPassword,
           backupRetentionController: _backupRetentionController,
@@ -290,7 +363,8 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                       ? TextInputAction.next
                       : TextInputAction.done,
                   decoration: InputDecoration(
-                    hintText: context.t.strings.legacy.msg_enter_backup_password,
+                    hintText:
+                        context.t.strings.legacy.msg_enter_backup_password,
                   ),
                   onChanged: (value) => password = value,
                   onFieldSubmitted: (_) {
@@ -346,9 +420,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_passwords_not_match,
-          ),
+          content: Text(context.t.strings.legacy.msg_passwords_not_match),
         ),
       );
       return null;
@@ -389,7 +461,91 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     if (!mounted || password == null) return;
     await ref
         .read(webDavBackupControllerProvider.notifier)
-        .backupNow(password: password, manual: true);
+        .backupNow(
+          password: password,
+          manual: true,
+          onExportIssue: _promptBackupExportIssue,
+        );
+  }
+
+  Future<WebDavBackupExportResolution> _promptBackupExportIssue(
+    WebDavBackupExportIssue issue,
+  ) async {
+    var applyToRemaining = false;
+    final kindLabel = issue.kind == WebDavBackupExportIssueKind.memo
+        ? context.t.strings.legacy.msg_memo
+        : context.t.strings.legacy.msg_attachments;
+    final targetLabel = issue.kind == WebDavBackupExportIssueKind.memo
+        ? issue.memoUid
+        : '${issue.memoUid}/${issue.attachmentFilename ?? ''}';
+    final errorText = _formatBackupError(issue.error);
+    final choice =
+        await showDialog<
+          ({WebDavBackupExportAction action, bool applyToRemaining})
+        >(
+          context: context,
+          builder: (dialogContext) {
+            return StatefulBuilder(
+              builder: (context, setState) {
+                return AlertDialog(
+                  title: Text(context.t.strings.legacy.msg_backup_failed),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$kindLabel: $targetLabel'),
+                      const SizedBox(height: 8),
+                      Text(errorText),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        value: applyToRemaining,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Apply to subsequent similar failures',
+                        ),
+                        onChanged: (value) {
+                          setState(() => applyToRemaining = value ?? false);
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => dialogContext.safePop((
+                        action: WebDavBackupExportAction.abort,
+                        applyToRemaining: applyToRemaining,
+                      )),
+                      child: Text(context.t.strings.legacy.msg_cancel_2),
+                    ),
+                    OutlinedButton(
+                      onPressed: () => dialogContext.safePop((
+                        action: WebDavBackupExportAction.skip,
+                        applyToRemaining: applyToRemaining,
+                      )),
+                      child: Text(context.t.strings.legacy.msg_continue),
+                    ),
+                    FilledButton(
+                      onPressed: () => dialogContext.safePop((
+                        action: WebDavBackupExportAction.retry,
+                        applyToRemaining: false,
+                      )),
+                      child: Text(context.t.strings.legacy.msg_retry),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+    final action = choice?.action ?? WebDavBackupExportAction.abort;
+    final apply =
+        (choice?.applyToRemaining ?? false) &&
+        action != WebDavBackupExportAction.retry;
+    return WebDavBackupExportResolution(
+      action: action,
+      applyToRemainingFailures: apply,
+    );
   }
 
   Future<void> _restoreBackup() async {
@@ -424,9 +580,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     if (!mounted) return;
     if (snapshots.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_no_backups_found),
-        ),
+        SnackBar(content: Text(context.t.strings.legacy.msg_no_backups_found)),
       );
       return;
     }
@@ -502,7 +656,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_restore_backup),
             content: Text(
-              context.t.strings.legacy.msg_restoring_overwrite_local_library_files_rebuild,
+              context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_restoring_overwrite_local_library_files_rebuild,
             ),
             actions: [
               TextButton(
@@ -544,10 +702,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
-    showTopToast(
-      context,
-      context.t.strings.legacy.msg_restore_completed,
-    );
+    showTopToast(context, context.t.strings.legacy.msg_restore_completed);
   }
 
   String _formatBackupError(Object error) {
@@ -602,7 +757,12 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   Widget build(BuildContext context) {
     final syncStatus = ref.watch(webDavSyncControllerProvider);
     final localLibrary = ref.watch(currentLocalLibraryProvider);
-    final backupAvailable = localLibrary != null;
+    final mirrorLibrary = _resolveBackupMirrorLibrary();
+    final usesServerMode = localLibrary == null;
+    final backupAvailable = localLibrary != null || mirrorLibrary != null;
+    final backupUnavailableHint = usesServerMode
+        ? '${context.t.strings.legacy.msg_export} ${context.t.strings.legacy.msg_path}: ${context.t.strings.legacy.msg_not_set}'
+        : context.t.strings.legacy.msg_local_library_only;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
@@ -620,7 +780,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     final retentionText = _backupRetentionController.text.trim();
     final retentionValue = retentionText.isEmpty ? '5' : retentionText;
     final backupSubtitle = !backupAvailable
-        ? context.t.strings.legacy.msg_local_library_only
+        ? backupUnavailableHint
         : _backupEnabled
         ? '${_backupScheduleLabel(_backupSchedule)} \u00b7 $retentionValue'
         : context.t.strings.legacy.msg_disabled;
@@ -675,7 +835,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                 textMain: textMain,
                 textMuted: textMuted,
                 label: context.t.strings.legacy.msg_enable_webdav_sync,
-                description: context.t.strings.legacy.msg_keep_data_consistent_across_devices,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_keep_data_consistent_across_devices,
                 value: _enabled,
                 onChanged: _setEnabled,
               ),
@@ -698,7 +862,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               if (isHttp || _ignoreTlsErrors) ...[
                 const SizedBox(height: 12),
                 _WarningCard(
-                  text: context.t.strings.legacy.msg_use_https_avoid_ignoring_tls_errors,
+                  text: context
+                      .t
+                      .strings
+                      .legacy
+                      .msg_use_https_avoid_ignoring_tls_errors,
                   isDark: isDark,
                 ),
               ],
@@ -1410,6 +1578,12 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
   const _WebDavBackupSettingsScreen({
     required this.backupEnabled,
     required this.backupAvailable,
+    required this.backupUnavailableHint,
+    required this.usesServerMode,
+    required this.backupMirrorPathLabel,
+    required this.onPickBackupMirrorPath,
+    required this.restoreAvailable,
+    required this.restoreUnavailableHint,
     required this.backupSchedule,
     required this.rememberBackupPassword,
     required this.backupRetentionController,
@@ -1423,6 +1597,12 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
 
   final bool backupEnabled;
   final bool backupAvailable;
+  final String backupUnavailableHint;
+  final bool usesServerMode;
+  final String backupMirrorPathLabel;
+  final Future<void> Function() onPickBackupMirrorPath;
+  final bool restoreAvailable;
+  final String restoreUnavailableHint;
   final WebDavBackupSchedule backupSchedule;
   final bool rememberBackupPassword;
   final TextEditingController backupRetentionController;
@@ -1545,7 +1725,8 @@ class _WebDavBackupSettingsScreenState
     final divider = isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.06);
-    final disabled = !widget.backupAvailable;
+    final backupDisabled = !widget.backupAvailable;
+    final restoreDisabled = !widget.restoreAvailable;
     final busy = backupStatus.running || backupStatus.restoring;
 
     return Scaffold(
@@ -1566,8 +1747,100 @@ class _WebDavBackupSettingsScreenState
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
+          if (widget.usesServerMode) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF4A2F00).withValues(alpha: 0.45)
+                    : const Color(0xFFFFF3D9),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark
+                      ? const Color(0xFFFFC36A).withValues(alpha: 0.6)
+                      : const Color(0xFFE8A23D),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: isDark
+                        ? const Color(0xFFFFC36A)
+                        : const Color(0xFF9A5A00),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      context.tr(
+                        zh: '服务器模式下，WebDAV 备份会先在本地目录生成 Markdown（.md）文档和附件镜像，然后再上传。',
+                        en: 'In server mode, WebDAV backup first generates local Markdown (.md) files and attachment mirrors, then uploads them.',
+                      ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: isDark
+                            ? const Color(0xFFFFE0B2)
+                            : const Color(0xFF6A3D00),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${context.t.strings.legacy.msg_export} ${context.t.strings.legacy.msg_path}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _Group(
+              card: card,
+              divider: divider,
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: Text(
+                    context.t.strings.legacy.msg_path,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: textMain,
+                    ),
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      widget.backupMirrorPathLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: textMuted,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                  trailing: TextButton(
+                    onPressed: widget.onPickBackupMirrorPath,
+                    child: Text(context.t.strings.legacy.msg_select),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
           Text(
-            context.t.strings.legacy.msg_local_library_backup,
+            widget.usesServerMode
+                ? context.t.strings.legacy.msg_backup_settings
+                : context.t.strings.legacy.msg_local_library_backup,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1583,20 +1856,20 @@ class _WebDavBackupSettingsScreenState
                 label: context.t.strings.legacy.msg_enable_local_library_backup,
                 value: _backupEnabled,
                 textMain: textMain,
-                onChanged: disabled ? null : _handleBackupToggle,
+                onChanged: backupDisabled ? null : _handleBackupToggle,
               ),
               _ToggleRow(
                 label: context.t.strings.legacy.msg_remember_password,
                 value: _rememberPassword,
                 textMain: textMain,
-                onChanged: disabled ? null : _handleRememberPassword,
+                onChanged: backupDisabled ? null : _handleRememberPassword,
               ),
             ],
           ),
-          if (disabled) ...[
+          if (backupDisabled) ...[
             const SizedBox(height: 6),
             Text(
-              context.t.strings.legacy.msg_local_library_only,
+              widget.backupUnavailableHint,
               style: TextStyle(fontSize: 12, color: textMuted),
             ),
           ],
@@ -1634,7 +1907,11 @@ class _WebDavBackupSettingsScreenState
           ),
           const SizedBox(height: 10),
           Text(
-            context.t.strings.legacy.msg_keeping_more_versions_uses_more_storage,
+            context
+                .t
+                .strings
+                .legacy
+                .msg_keeping_more_versions_uses_more_storage,
             style: TextStyle(fontSize: 12, height: 1.4, color: textMuted),
           ),
           if (backupStatus.lastError != null &&
@@ -1656,7 +1933,9 @@ class _WebDavBackupSettingsScreenState
               height: 46,
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: disabled || busy ? null : () => widget.onBackupNow(),
+                onPressed: backupDisabled || busy
+                    ? null
+                    : () => widget.onBackupNow(),
                 icon: busy && backupStatus.running
                     ? const SizedBox.square(
                         dimension: 16,
@@ -1681,7 +1960,9 @@ class _WebDavBackupSettingsScreenState
               height: 46,
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: disabled || busy ? null : () => widget.onRestore(),
+                onPressed: restoreDisabled || busy
+                    ? null
+                    : () => widget.onRestore(),
                 icon: backupStatus.restoring
                     ? const SizedBox.square(
                         dimension: 16,
@@ -1699,6 +1980,13 @@ class _WebDavBackupSettingsScreenState
                 ),
               ),
             ),
+            if (restoreDisabled) ...[
+              const SizedBox(height: 8),
+              Text(
+                widget.restoreUnavailableHint,
+                style: TextStyle(fontSize: 12, color: textMuted),
+              ),
+            ],
           ],
         ),
       ),

@@ -10,26 +10,28 @@ import 'app.dart';
 import 'data/logs/log_manager.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  Cryptography.instance = FlutterCryptography();
-  FlutterError.onError = (details) {
-    LogManager.instance.error(
-      'Flutter error',
-      error: details.exception,
-      stackTrace: details.stack,
-    );
-    FlutterError.presentError(details);
-  };
-  ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
-    LogManager.instance.error(
-      'Platform dispatcher error',
-      error: error,
-      stackTrace: stackTrace,
-    );
-    return false;
-  };
   runZonedGuarded(
-    () => runApp(const ProviderScope(child: App())),
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+      Cryptography.instance = FlutterCryptography();
+      FlutterError.onError = (details) {
+        LogManager.instance.error(
+          'Flutter error',
+          error: details.exception,
+          stackTrace: details.stack,
+        );
+        FlutterError.presentError(details);
+      };
+      ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
+        LogManager.instance.error(
+          'Platform dispatcher error',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return false;
+      };
+      runApp(const ProviderScope(child: App()));
+    },
     (error, stackTrace) {
       LogManager.instance.error(
         'Uncaught zone error',

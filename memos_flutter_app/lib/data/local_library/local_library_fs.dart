@@ -84,6 +84,16 @@ class LocalLibraryFileSystem {
     await _deleteFile(['memos', '$uid.md']);
   }
 
+  Future<void> deleteRelativeFile(String relativePath) async {
+    final segments = relativePath
+        .replaceAll('\\', '/')
+        .split('/')
+        .where((s) => s.trim().isNotEmpty)
+        .toList(growable: false);
+    if (segments.isEmpty) return;
+    await _deleteFile(segments);
+  }
+
   Future<List<LocalLibraryFileEntry>> listAttachments(String memoUid) async {
     return _listFilesInDir(['attachments', memoUid]);
   }
