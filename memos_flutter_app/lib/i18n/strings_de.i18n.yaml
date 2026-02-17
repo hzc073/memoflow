@@ -7,6 +7,10 @@ common:
   auto: "Automatisch"
   manual: "Manuell"
   copiedToClipboard: "In die Zwischenablage kopiert"
+  serverVersion: "Serverversion"
+  selectValidServerVersion: "Bitte eine gültige Serverversion auswählen"
+  serverVersionValue: "Serverversion: $version"
+  selectServerVersionRange021To026: "Bitte wählen Sie manuell eine Serverversion zwischen 0.21 und 0.26"
 languages:
   system: "System folgen"
   zhHans: "Chinesisch (Vereinfacht)"

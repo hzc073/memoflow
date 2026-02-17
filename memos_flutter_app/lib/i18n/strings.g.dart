@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 4990 (998 per locale)
+/// Strings: 5010 (1002 per locale)
 ///
-/// Built on 2026-02-12 at 04:23 UTC
+/// Built on 2026-02-17 at 03:27 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -185,6 +185,10 @@ class _StringsStringsCommonEn {
 	String get auto => 'Auto';
 	String get manual => 'Manual';
 	String get copiedToClipboard => 'Copied to clipboard';
+	String get serverVersion => 'Server Version';
+	String get selectValidServerVersion => 'Please select a valid server version';
+	String serverVersionValue({required Object version}) => 'Server version: ${version}';
+	String get selectServerVersionRange021To026 => 'Please manually select a server version between 0.21 and 0.26';
 }
 
 // Path: strings.languages
@@ -1491,6 +1495,10 @@ class _StringsStringsCommonDe extends _StringsStringsCommonEn {
 	@override String get auto => 'Automatisch';
 	@override String get manual => 'Manuell';
 	@override String get copiedToClipboard => 'In die Zwischenablage kopiert';
+	@override String get serverVersion => 'Serverversion';
+	@override String get selectValidServerVersion => 'Bitte eine gültige Serverversion auswählen';
+	@override String serverVersionValue({required Object version}) => 'Serverversion: ${version}';
+	@override String get selectServerVersionRange021To026 => 'Bitte wählen Sie manuell eine Serverversion zwischen 0.21 und 0.26';
 }
 
 // Path: strings.languages
@@ -2797,6 +2805,10 @@ class _StringsStringsCommonJa extends _StringsStringsCommonEn {
 	@override String get auto => '自動';
 	@override String get manual => '手動';
 	@override String get copiedToClipboard => 'クリップボードにコピーしました';
+	@override String get serverVersion => 'サーバーバージョン';
+	@override String get selectValidServerVersion => '有効なサーバーバージョンを選択してください';
+	@override String serverVersionValue({required Object version}) => 'サーバーバージョン: ${version}';
+	@override String get selectServerVersionRange021To026 => '0.21〜0.26 のサーバーバージョンを手動で選択してください';
 }
 
 // Path: strings.languages
@@ -4103,6 +4115,10 @@ class _StringsStringsCommonZhHans extends _StringsStringsCommonEn {
 	@override String get auto => '自动';
 	@override String get manual => '手动';
 	@override String get copiedToClipboard => '已复制到剪贴板';
+	@override String get serverVersion => '服务端版本';
+	@override String get selectValidServerVersion => '请选择有效服务端版本';
+	@override String serverVersionValue({required Object version}) => '服务端版本: ${version}';
+	@override String get selectServerVersionRange021To026 => '请先手动选择 0.21~0.26 服务端版本';
 }
 
 // Path: strings.languages
@@ -5409,6 +5425,10 @@ class _StringsStringsCommonZhHantTw extends _StringsStringsCommonEn {
 	@override String get auto => '自動';
 	@override String get manual => '手動';
 	@override String get copiedToClipboard => '已複製到剪貼簿';
+	@override String get serverVersion => '伺服器版本';
+	@override String get selectValidServerVersion => '請選擇有效的伺服器版本';
+	@override String serverVersionValue({required Object version}) => '伺服器版本: ${version}';
+	@override String get selectServerVersionRange021To026 => '請先手動選擇 0.21~0.26 伺服器版本';
 }
 
 // Path: strings.languages
@@ -6669,6 +6689,10 @@ extension on Translations {
 			case 'strings.common.auto': return 'Auto';
 			case 'strings.common.manual': return 'Manual';
 			case 'strings.common.copiedToClipboard': return 'Copied to clipboard';
+			case 'strings.common.serverVersion': return 'Server Version';
+			case 'strings.common.selectValidServerVersion': return 'Please select a valid server version';
+			case 'strings.common.serverVersionValue': return ({required Object version}) => 'Server version: ${version}';
+			case 'strings.common.selectServerVersionRange021To026': return 'Please manually select a server version between 0.21 and 0.26';
 			case 'strings.languages.system': return 'Follow System';
 			case 'strings.languages.zhHans': return 'Chinese (Simplified)';
 			case 'strings.languages.zhHantTw': return 'Chinese (Traditional, China Taiwan)';
@@ -7675,6 +7699,10 @@ extension on _StringsDe {
 			case 'strings.common.auto': return 'Automatisch';
 			case 'strings.common.manual': return 'Manuell';
 			case 'strings.common.copiedToClipboard': return 'In die Zwischenablage kopiert';
+			case 'strings.common.serverVersion': return 'Serverversion';
+			case 'strings.common.selectValidServerVersion': return 'Bitte eine gültige Serverversion auswählen';
+			case 'strings.common.serverVersionValue': return ({required Object version}) => 'Serverversion: ${version}';
+			case 'strings.common.selectServerVersionRange021To026': return 'Bitte wählen Sie manuell eine Serverversion zwischen 0.21 und 0.26';
 			case 'strings.languages.system': return 'System folgen';
 			case 'strings.languages.zhHans': return 'Chinesisch (Vereinfacht)';
 			case 'strings.languages.zhHantTw': return 'Chinesisch (Traditionell, China Taiwan)';
@@ -8681,6 +8709,10 @@ extension on _StringsJa {
 			case 'strings.common.auto': return '自動';
 			case 'strings.common.manual': return '手動';
 			case 'strings.common.copiedToClipboard': return 'クリップボードにコピーしました';
+			case 'strings.common.serverVersion': return 'サーバーバージョン';
+			case 'strings.common.selectValidServerVersion': return '有効なサーバーバージョンを選択してください';
+			case 'strings.common.serverVersionValue': return ({required Object version}) => 'サーバーバージョン: ${version}';
+			case 'strings.common.selectServerVersionRange021To026': return '0.21〜0.26 のサーバーバージョンを手動で選択してください';
 			case 'strings.languages.system': return 'システムに従う';
 			case 'strings.languages.zhHans': return '中国語（簡体字）';
 			case 'strings.languages.zhHantTw': return '中国語（繁体字・中国台湾）';
@@ -9687,6 +9719,10 @@ extension on _StringsZhHans {
 			case 'strings.common.auto': return '自动';
 			case 'strings.common.manual': return '手动';
 			case 'strings.common.copiedToClipboard': return '已复制到剪贴板';
+			case 'strings.common.serverVersion': return '服务端版本';
+			case 'strings.common.selectValidServerVersion': return '请选择有效服务端版本';
+			case 'strings.common.serverVersionValue': return ({required Object version}) => '服务端版本: ${version}';
+			case 'strings.common.selectServerVersionRange021To026': return '请先手动选择 0.21~0.26 服务端版本';
 			case 'strings.languages.system': return '跟随系统';
 			case 'strings.languages.zhHans': return '简体中文';
 			case 'strings.languages.zhHantTw': return '繁体中文（中国台湾）';
@@ -10693,6 +10729,10 @@ extension on _StringsZhHantTw {
 			case 'strings.common.auto': return '自動';
 			case 'strings.common.manual': return '手動';
 			case 'strings.common.copiedToClipboard': return '已複製到剪貼簿';
+			case 'strings.common.serverVersion': return '伺服器版本';
+			case 'strings.common.selectValidServerVersion': return '請選擇有效的伺服器版本';
+			case 'strings.common.serverVersionValue': return ({required Object version}) => '伺服器版本: ${version}';
+			case 'strings.common.selectServerVersionRange021To026': return '請先手動選擇 0.21~0.26 伺服器版本';
 			case 'strings.languages.system': return '跟隨系統';
 			case 'strings.languages.zhHans': return '簡體中文';
 			case 'strings.languages.zhHantTw': return '繁體中文（中國台灣）';

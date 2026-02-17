@@ -7,6 +7,10 @@ common:
   auto: "自動"
   manual: "手動"
   copiedToClipboard: "已複製到剪貼簿"
+  serverVersion: "伺服器版本"
+  selectValidServerVersion: "請選擇有效的伺服器版本"
+  serverVersionValue: "伺服器版本: $version"
+  selectServerVersionRange021To026: "請先手動選擇 0.21~0.26 伺服器版本"
 languages:
   system: "跟隨系統"
   zhHans: "簡體中文"

@@ -108,7 +108,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
       builder: (context) {
         var pending = selectedVersion.versionString;
         return AlertDialog(
-          title: Text(context.t.strings.legacy.msg_version),
+          title: Text(context.t.strings.common.serverVersion),
           content: StatefulBuilder(
             builder: (context, setLocalState) {
               return DropdownButtonFormField<String>(
@@ -168,7 +168,9 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
       if (!mounted) return;
       showTopToast(
         context,
-        '${context.t.strings.legacy.msg_version}: ${parsed.versionString}',
+        context.t.strings.common.serverVersionValue(
+          version: parsed.versionString,
+        ),
       );
     } catch (_) {
       if (!mounted) return;
@@ -188,7 +190,10 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     );
     final parsed = parseMemoApiVersion(effectiveVersion);
     if (parsed == null) {
-      showTopToast(context, '请先手动选择 0.21~0.26 版本');
+      showTopToast(
+        context,
+        context.t.strings.common.selectServerVersionRange021To026,
+      );
       return;
     }
     final report = await _probeSingleVersion(
@@ -264,7 +269,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
                     children: [
                       _CompatibilityCard(
                         card: card,
-                        label: context.t.strings.legacy.msg_version,
+                        label: context.t.strings.common.serverVersion,
                         detectedVersion: detectedVersion,
                         effectiveVersion: effectiveVersion,
                         manualVersion: manualVersion,
@@ -429,7 +434,7 @@ class _CompatibilityCard extends StatelessWidget {
             _CompatInfoLine(
               textMain: textMain,
               textMuted: textMuted,
-              label: context.t.strings.legacy.msg_version,
+              label: context.t.strings.common.serverVersion,
               value: effectiveLabel,
             ),
             const SizedBox(height: 4),

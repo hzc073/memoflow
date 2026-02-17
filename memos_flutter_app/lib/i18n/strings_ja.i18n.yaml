@@ -7,6 +7,10 @@ common:
   auto: "自動"
   manual: "手動"
   copiedToClipboard: "クリップボードにコピーしました"
+  serverVersion: "サーバーバージョン"
+  selectValidServerVersion: "有効なサーバーバージョンを選択してください"
+  serverVersionValue: "サーバーバージョン: $version"
+  selectServerVersionRange021To026: "0.21〜0.26 のサーバーバージョンを手動で選択してください"
 languages:
   system: "システムに従う"
   zhHans: "中国語（簡体字）"

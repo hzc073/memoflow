@@ -42,6 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   var _loginMode = _LoginMode.password;
   var _selectedServerVersion = '0.26.0';
   var _probing = false;
+  var _versionMenuExpanded = false;
   var _shownInitialError = false;
 
   @override
@@ -286,7 +287,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     required String? previousCurrentKey,
     required Set<String> previousAccountKeys,
   }) async {
-    final currentAccount = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    final currentAccount = ref
+        .read(appSessionProvider)
+        .valueOrNull
+        ?.currentAccount;
     if (currentAccount == null) {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -367,9 +371,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
     final selectedVersion = _selectedProbeVersion();
     if (selectedVersion == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请选择有效 API 版本')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.common.selectValidServerVersion),
+        ),
+      );
       return;
     }
 
@@ -427,9 +433,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         <String>{};
     final selectedVersion = _selectedProbeVersion();
     if (selectedVersion == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请选择有效 API 版本')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.common.selectValidServerVersion),
+        ),
+      );
       return;
     }
 
@@ -588,6 +596,105 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           label: context.t.strings.login.mode.token,
         ),
       ],
+    );
+  }
+
+  Widget _buildServerVersionSelector({
+    required bool enabled,
+    required bool isDark,
+    required Color card,
+    required Color textMain,
+    required Color textMuted,
+  }) {
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final displayColor = enabled ? textMain : textMuted;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return PopupMenuButton<String>(
+          enabled: enabled,
+          tooltip: '',
+          padding: EdgeInsets.zero,
+          initialValue: _selectedServerVersion,
+          position: PopupMenuPosition.under,
+          offset: const Offset(0, 2),
+          menuPadding: EdgeInsets.zero,
+          elevation: isDark ? 10 : 14,
+          color: card,
+          constraints: BoxConstraints(
+            minWidth: constraints.maxWidth,
+            maxWidth: constraints.maxWidth,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          popUpAnimationStyle: const AnimationStyle(
+            duration: Duration(milliseconds: 200),
+            reverseDuration: Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          ),
+          onOpened: () {
+            if (!mounted) return;
+            setState(() => _versionMenuExpanded = true);
+          },
+          onCanceled: () {
+            if (!mounted) return;
+            setState(() => _versionMenuExpanded = false);
+          },
+          onSelected: (value) {
+            final normalized = value.trim();
+            if (normalized.isEmpty) return;
+            setState(() {
+              _versionMenuExpanded = false;
+              _selectedServerVersion = normalized;
+            });
+          },
+          itemBuilder: (context) {
+            return _serverVersionOptions
+                .map(
+                  (version) => PopupMenuItem<String>(
+                    value: version,
+                    child: Text('v$version'),
+                  ),
+                )
+                .toList(growable: false);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'v$_selectedServerVersion',
+                    style: TextStyle(
+                      color: displayColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _versionMenuExpanded ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -773,7 +880,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       },
                     ),
                   ],
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 24),
                   Container(
                     decoration: BoxDecoration(
                       color: card,
@@ -796,38 +903,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'API 版本',
+                          context.t.strings.common.serverVersion,
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: textMain,
                           ),
                         ),
                         const SizedBox(height: 4),
-                        DropdownButtonFormField<String>(
-                          initialValue: _selectedServerVersion,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isDense: true,
-                          ),
-                          items: _serverVersionOptions
-                              .map(
-                                (version) => DropdownMenuItem<String>(
-                                  value: version,
-                                  child: Text('v$version'),
-                                ),
-                              )
-                              .toList(growable: false),
-                          onChanged: isBusy
-                              ? null
-                              : (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    _selectedServerVersion = value.trim();
-                                  });
-                                },
+                        _buildServerVersionSelector(
+                          enabled: !isBusy,
+                          isDark: isDark,
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
                         ),
                         Text(
                           '登录前将仅检测所选版本的核心 API。',
