@@ -195,6 +195,99 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     await backupNow(password: storedPassword, manual: false);
   }
 
+  Future<String?> setupBackupPassword(String password) async {
+    final resolvedPassword = password.trim();
+    if (resolvedPassword.isEmpty) {
+      throw StateError(_localizedKey('legacy.webdav.backup_password_missing'));
+    }
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _accountKey;
+    if (accountKey == null || accountKey.trim().isEmpty) {
+      throw StateError(_localizedKey('legacy.webdav.backup_account_missing'));
+    }
+
+    final baseUrl = _parseBaseUrl(settings.serverUrl);
+    final accountId = fnv1a64Hex(accountKey);
+    final rootPath = normalizeWebDavRootPath(settings.rootPath);
+    final client = _buildClient(settings, baseUrl);
+    try {
+      await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
+      final existing = await _loadConfig(client, baseUrl, rootPath, accountId);
+      if (existing == null) {
+        final created = await _createConfigWithRecovery(resolvedPassword);
+        await _saveConfig(client, baseUrl, rootPath, accountId, created.config);
+        return created.recoveryCode;
+      }
+
+      final masterKey = await _resolveMasterKey(resolvedPassword, existing);
+      if (existing.recovery != null) return null;
+      final recovery = await _buildRecoveryBundle(masterKey);
+      final updated = WebDavBackupConfig(
+        schemaVersion: existing.schemaVersion,
+        createdAt: existing.createdAt,
+        kdf: existing.kdf,
+        wrappedKey: existing.wrappedKey,
+        recovery: recovery.recovery,
+      );
+      await _saveConfig(client, baseUrl, rootPath, accountId, updated);
+      return recovery.recoveryCode;
+    } finally {
+      await client.close();
+    }
+  }
+
+  Future<String> recoverBackupPassword({
+    required String recoveryCode,
+    required String newPassword,
+  }) async {
+    final resolvedPassword = newPassword.trim();
+    final normalizedRecoveryCode = _normalizeRecoveryCode(recoveryCode);
+    if (resolvedPassword.isEmpty) {
+      throw StateError(_localizedKey('legacy.webdav.backup_password_missing'));
+    }
+    if (normalizedRecoveryCode.isEmpty) {
+      throw StateError('RECOVERY_CODE_INVALID');
+    }
+
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _accountKey;
+    if (accountKey == null || accountKey.trim().isEmpty) {
+      throw StateError(_localizedKey('legacy.webdav.backup_account_missing'));
+    }
+    final baseUrl = _parseBaseUrl(settings.serverUrl);
+    final accountId = fnv1a64Hex(accountKey);
+    final rootPath = normalizeWebDavRootPath(settings.rootPath);
+    final client = _buildClient(settings, baseUrl);
+    try {
+      await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
+      final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+      if (config == null) {
+        throw StateError(_localizedKey('legacy.msg_no_backups_found'));
+      }
+      final masterKey = await _resolveMasterKeyWithRecoveryCode(
+        normalizedRecoveryCode,
+        config,
+      );
+      final masterKeyBytes = await masterKey.extractBytes();
+      final passwordBundle = await _buildWrappedKeyBundle(
+        secret: resolvedPassword,
+        masterKey: masterKeyBytes,
+      );
+      final recoveryBundle = await _buildRecoveryBundle(masterKey);
+      final updated = WebDavBackupConfig(
+        schemaVersion: config.schemaVersion,
+        createdAt: config.createdAt,
+        kdf: passwordBundle.kdf,
+        wrappedKey: passwordBundle.wrappedKey,
+        recovery: recoveryBundle.recovery,
+      );
+      await _saveConfig(client, baseUrl, rootPath, accountId, updated);
+      return recoveryBundle.recoveryCode;
+    } finally {
+      await client.close();
+    }
+  }
+
   Future<void> backupNow({
     String? password,
     bool manual = true,
@@ -388,13 +481,8 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     final client = _buildClient(settings, baseUrl);
     try {
       await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
-      final config = await _loadOrCreateConfig(
-        client,
-        baseUrl,
-        rootPath,
-        accountId,
-        password,
-      );
+      final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+      if (config == null) return const [];
       final masterKey = await _resolveMasterKey(password, config);
       final index = await _loadIndex(
         client,
@@ -469,13 +557,10 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
       final client = _buildClient(settings, baseUrl);
       try {
         await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
-        final config = await _loadOrCreateConfig(
-          client,
-          baseUrl,
-          rootPath,
-          accountId,
-          password,
-        );
+        final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+        if (config == null) {
+          throw StateError(_localizedKey('legacy.msg_no_backups_found'));
+        }
         final masterKey = await _resolveMasterKey(password, config);
         final snapshotData = await _loadSnapshot(
           client: client,
@@ -1195,13 +1280,22 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     String accountId,
     String password,
   ) async {
+    final existing = await _loadConfig(client, baseUrl, rootPath, accountId);
+    if (existing != null) return existing;
+    final config = await _createConfig(password);
+    await _saveConfig(client, baseUrl, rootPath, accountId, config);
+    return config;
+  }
+
+  Future<WebDavBackupConfig?> _loadConfig(
+    WebDavClient client,
+    Uri baseUrl,
+    String rootPath,
+    String accountId,
+  ) async {
     final uri = _configUri(baseUrl, rootPath, accountId);
     final res = await client.get(uri);
-    if (res.statusCode == 404) {
-      final config = await _createConfig(password);
-      await _putJson(client, uri, config.toJson());
-      return config;
-    }
+    if (res.statusCode == 404) return null;
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw StateError('WebDAV config fetch failed (HTTP ${res.statusCode})');
     }
@@ -1212,32 +1306,137 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
     throw StateError(_localizedKey('legacy.webdav.config_corrupted'));
   }
 
-  Future<WebDavBackupConfig> _createConfig(String password) async {
-    final salt = _randomBytes(16);
-    final kdf = WebDavBackupKdf(
-      salt: base64Encode(salt),
-      iterations: WebDavBackupKdf.defaults.iterations,
-      hash: WebDavBackupKdf.defaults.hash,
-      length: WebDavBackupKdf.defaults.length,
+  Future<void> _saveConfig(
+    WebDavClient client,
+    Uri baseUrl,
+    String rootPath,
+    String accountId,
+    WebDavBackupConfig config,
+  ) {
+    return _putJson(
+      client,
+      _configUri(baseUrl, rootPath, accountId),
+      config.toJson(),
     );
-    final kek = await _deriveKeyFromPassword(password, kdf);
+  }
+
+  Future<WebDavBackupConfig> _createConfig(String password) async {
     final masterKey = _randomBytes(32);
+    final passwordBundle = await _buildWrappedKeyBundle(
+      secret: password,
+      masterKey: masterKey,
+    );
+    return WebDavBackupConfig(
+      schemaVersion: 1,
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+      kdf: passwordBundle.kdf,
+      wrappedKey: passwordBundle.wrappedKey,
+    );
+  }
+
+  Future<_CreatedConfigWithRecovery> _createConfigWithRecovery(
+    String password,
+  ) async {
+    final masterKey = _randomBytes(32);
+    final passwordBundle = await _buildWrappedKeyBundle(
+      secret: password,
+      masterKey: masterKey,
+    );
+    final recoveryCode = _generateRecoveryCode();
+    final recoveryBundle = await _buildWrappedKeyBundle(
+      secret: _normalizeRecoveryCode(recoveryCode),
+      masterKey: masterKey,
+    );
+    final config = WebDavBackupConfig(
+      schemaVersion: 1,
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+      kdf: passwordBundle.kdf,
+      wrappedKey: passwordBundle.wrappedKey,
+      recovery: WebDavBackupRecovery(
+        kdf: recoveryBundle.kdf,
+        wrappedKey: recoveryBundle.wrappedKey,
+      ),
+    );
+    return _CreatedConfigWithRecovery(
+      config: config,
+      recoveryCode: recoveryCode,
+    );
+  }
+
+  Future<_RecoveryBundle> _buildRecoveryBundle(SecretKey masterKey) async {
+    final masterBytes = await masterKey.extractBytes();
+    final recoveryCode = _generateRecoveryCode();
+    final recoveryBundle = await _buildWrappedKeyBundle(
+      secret: _normalizeRecoveryCode(recoveryCode),
+      masterKey: masterBytes,
+    );
+    return _RecoveryBundle(
+      recoveryCode: recoveryCode,
+      recovery: WebDavBackupRecovery(
+        kdf: recoveryBundle.kdf,
+        wrappedKey: recoveryBundle.wrappedKey,
+      ),
+    );
+  }
+
+  Future<_WrappedKeyBundle> _buildWrappedKeyBundle({
+    required String secret,
+    required List<int> masterKey,
+  }) async {
+    final normalizedSecret = secret.trim();
+    if (normalizedSecret.isEmpty) {
+      throw StateError(_localizedKey('legacy.webdav.backup_password_missing'));
+    }
+    final kdf = _buildKdf();
+    final kek = await _deriveKeyFromPassword(normalizedSecret, kdf);
     final box = await _cipher.encrypt(
       masterKey,
       secretKey: kek,
       nonce: _randomBytes(_nonceLength),
     );
-    final wrapped = WebDavBackupWrappedKey(
-      nonce: base64Encode(box.nonce),
-      cipherText: base64Encode(box.cipherText),
-      mac: base64Encode(box.mac.bytes),
-    );
-    return WebDavBackupConfig(
-      schemaVersion: 1,
-      createdAt: DateTime.now().toUtc().toIso8601String(),
+    return _WrappedKeyBundle(
       kdf: kdf,
-      wrappedKey: wrapped,
+      wrappedKey: WebDavBackupWrappedKey(
+        nonce: base64Encode(box.nonce),
+        cipherText: base64Encode(box.cipherText),
+        mac: base64Encode(box.mac.bytes),
+      ),
     );
+  }
+
+  WebDavBackupKdf _buildKdf() {
+    final salt = _randomBytes(16);
+    return WebDavBackupKdf(
+      salt: base64Encode(salt),
+      iterations: WebDavBackupKdf.defaults.iterations,
+      hash: WebDavBackupKdf.defaults.hash,
+      length: WebDavBackupKdf.defaults.length,
+    );
+  }
+
+  String _generateRecoveryCode() {
+    final bytes = _randomBytes(20);
+    final compact = bytes
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join()
+        .toUpperCase();
+    return _formatRecoveryCode(compact);
+  }
+
+  String _normalizeRecoveryCode(String raw) {
+    return raw.replaceAll(RegExp(r'[^0-9A-Za-z]'), '').toUpperCase();
+  }
+
+  String _formatRecoveryCode(String compact) {
+    if (compact.isEmpty) return compact;
+    final groups = <String>[];
+    for (var i = 0; i < compact.length; i += 4) {
+      final end = i + 4;
+      groups.add(
+        compact.substring(i, end > compact.length ? compact.length : end),
+      );
+    }
+    return groups.join('-');
   }
 
   Future<SecretKey> _resolveMasterKey(
@@ -1260,6 +1459,37 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
       return SecretKey(clear);
     } catch (_) {
       throw StateError(_localizedKey('legacy.webdav.password_invalid'));
+    }
+  }
+
+  Future<SecretKey> _resolveMasterKeyWithRecoveryCode(
+    String recoveryCode,
+    WebDavBackupConfig config,
+  ) async {
+    final recovery = config.recovery;
+    if (recovery == null) {
+      throw StateError('RECOVERY_CODE_NOT_CONFIGURED');
+    }
+    final normalizedCode = _normalizeRecoveryCode(recoveryCode);
+    if (normalizedCode.isEmpty) {
+      throw StateError('RECOVERY_CODE_INVALID');
+    }
+    final kdf = recovery.kdf;
+    if (kdf.salt.isEmpty) {
+      throw StateError(_localizedKey('legacy.webdav.config_invalid'));
+    }
+    final kek = await _deriveKeyFromPassword(normalizedCode, kdf);
+    final wrapped = recovery.wrappedKey;
+    try {
+      final box = SecretBox(
+        base64Decode(wrapped.cipherText),
+        nonce: base64Decode(wrapped.nonce),
+        mac: Mac(base64Decode(wrapped.mac)),
+      );
+      final clear = await _cipher.decrypt(box, secretKey: kek);
+      return SecretKey(clear);
+    } catch (_) {
+      throw StateError('RECOVERY_CODE_INVALID');
     }
   }
 
@@ -1577,6 +1807,30 @@ class _SnapshotBuildResult {
 
   final WebDavBackupSnapshot snapshot;
   final Map<String, int> newObjectSizes;
+}
+
+class _WrappedKeyBundle {
+  const _WrappedKeyBundle({required this.kdf, required this.wrappedKey});
+
+  final WebDavBackupKdf kdf;
+  final WebDavBackupWrappedKey wrappedKey;
+}
+
+class _RecoveryBundle {
+  const _RecoveryBundle({required this.recoveryCode, required this.recovery});
+
+  final String recoveryCode;
+  final WebDavBackupRecovery recovery;
+}
+
+class _CreatedConfigWithRecovery {
+  const _CreatedConfigWithRecovery({
+    required this.config,
+    required this.recoveryCode,
+  });
+
+  final WebDavBackupConfig config;
+  final String recoveryCode;
 }
 
 class _BackupExportAborted implements Exception {

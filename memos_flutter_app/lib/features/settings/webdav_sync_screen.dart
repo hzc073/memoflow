@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:saf_util/saf_util.dart';
@@ -190,6 +191,27 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     if (value) {
       final password = await _promptBackupPassword(confirm: true);
       if (!mounted || password == null) return false;
+      try {
+        final recoveryCode = await ref
+            .read(webDavBackupControllerProvider.notifier)
+            .setupBackupPassword(password);
+        if (!mounted) return false;
+        if (recoveryCode != null && recoveryCode.trim().isNotEmpty) {
+          await _showRecoveryCodeDialog(
+            recoveryCode,
+            reset: false,
+            message:
+                context.t.strings.legacy.webdav.recovery_code_setup_message,
+          );
+        }
+      } catch (e) {
+        if (!mounted) return false;
+        final message = _formatBackupError(e);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+        return false;
+      }
       if (_rememberBackupPassword) {
         await ref.read(webDavBackupPasswordRepositoryProvider).write(password);
       }
@@ -339,6 +361,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
           onBackupScheduleChanged: _setBackupSchedule,
           onBackupRetentionChanged: _setBackupRetention,
           onBackupNow: _backupNow,
+          onRecoverPassword: _recoverBackupPassword,
           onRestore: _restoreBackup,
         ),
       ),
@@ -453,6 +476,180 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
       return false;
+    }
+  }
+
+  Future<({String recoveryCode, String password})?>
+  _promptRecoveryReset() async {
+    var recoveryCode = '';
+    var password = '';
+    var confirmPassword = '';
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(context.t.strings.legacy.webdav.recover_password_title),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  autofocus: true,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    hintText:
+                        context.t.strings.legacy.webdav.recovery_code_enter,
+                  ),
+                  onChanged: (value) => recoveryCode = value,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  obscureText: true,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    hintText: context
+                        .t
+                        .strings
+                        .legacy
+                        .webdav
+                        .recovery_code_enter_new_password,
+                  ),
+                  onChanged: (value) => password = value,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    hintText: context.t.strings.legacy.msg_confirm_password_2,
+                  ),
+                  onChanged: (value) => confirmPassword = value,
+                  onFieldSubmitted: (_) {
+                    FocusScope.of(dialogContext).unfocus();
+                    dialogContext.safePop(true);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => dialogContext.safePop(false),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
+              ),
+              FilledButton(
+                onPressed: () => dialogContext.safePop(true),
+                child: Text(context.t.strings.legacy.msg_confirm),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return null;
+    recoveryCode = recoveryCode.trim();
+    password = password.trim();
+    confirmPassword = confirmPassword.trim();
+    if (recoveryCode.isEmpty || password.isEmpty) return null;
+    if (password != confirmPassword) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_passwords_not_match),
+        ),
+      );
+      return null;
+    }
+    return (recoveryCode: recoveryCode, password: password);
+  }
+
+  Future<void> _showRecoveryCodeDialog(
+    String code, {
+    required bool reset,
+    required String message,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.t.strings.legacy.webdav.recovery_code_title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 12),
+            SelectableText(
+              code,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: code));
+              if (!dialogContext.mounted) return;
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    context.t.strings.legacy.webdav.recovery_code_copied,
+                  ),
+                ),
+              );
+            },
+            child: Text(context.t.strings.legacy.msg_copy),
+          ),
+          FilledButton(
+            onPressed: () => dialogContext.safePop(),
+            child: Text(
+              reset
+                  ? context.t.strings.legacy.msg_saved_2
+                  : context.t.strings.legacy.msg_ok,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _recoverBackupPassword() async {
+    final payload = await _promptRecoveryReset();
+    if (!mounted || payload == null) return;
+    final newPassword = payload.password;
+    final recoveryCode = payload.recoveryCode;
+    try {
+      final newRecoveryCode = await ref
+          .read(webDavBackupControllerProvider.notifier)
+          .recoverBackupPassword(
+            recoveryCode: recoveryCode,
+            newPassword: newPassword,
+          );
+      if (_rememberBackupPassword) {
+        await ref
+            .read(webDavBackupPasswordRepositoryProvider)
+            .write(newPassword);
+      } else {
+        await ref.read(webDavBackupPasswordRepositoryProvider).clear();
+      }
+      if (!mounted) return;
+      await _showRecoveryCodeDialog(
+        newRecoveryCode,
+        reset: true,
+        message: context.t.strings.legacy.webdav.recovery_code_reset_message,
+      );
+      if (!mounted) return;
+      showTopToast(
+        context,
+        context.t.strings.legacy.webdav.recovery_reset_success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final message = _formatBackupError(e);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -710,12 +907,28 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     if (raw.isEmpty) {
       return context.t.strings.legacy.msg_backup_failed;
     }
+    final mappedRaw = _mapBackupErrorCode(raw);
+    if (mappedRaw != null) return mappedRaw;
     const prefix = 'Bad state:';
     if (raw.startsWith(prefix)) {
       final trimmed = raw.substring(prefix.length).trim();
-      if (trimmed.isNotEmpty) return trimmed;
+      if (trimmed.isNotEmpty) {
+        final mapped = _mapBackupErrorCode(trimmed);
+        if (mapped != null) return mapped;
+        return trimmed;
+      }
     }
     return raw;
+  }
+
+  String? _mapBackupErrorCode(String code) {
+    return switch (code) {
+      'RECOVERY_CODE_INVALID' =>
+        context.t.strings.legacy.webdav.recovery_code_invalid,
+      'RECOVERY_CODE_NOT_CONFIGURED' =>
+        context.t.strings.legacy.webdav.recovery_not_configured,
+      _ => null,
+    };
   }
 
   void _normalizeServerUrl() {
@@ -1592,6 +1805,7 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
     required this.onBackupScheduleChanged,
     required this.onBackupRetentionChanged,
     required this.onBackupNow,
+    required this.onRecoverPassword,
     required this.onRestore,
   });
 
@@ -1611,6 +1825,7 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
   final ValueChanged<WebDavBackupSchedule> onBackupScheduleChanged;
   final ValueChanged<String> onBackupRetentionChanged;
   final Future<void> Function() onBackupNow;
+  final Future<void> Function() onRecoverPassword;
   final Future<void> Function() onRestore;
 
   @override
@@ -1863,6 +2078,35 @@ class _WebDavBackupSettingsScreenState
                 value: _rememberPassword,
                 textMain: textMain,
                 onChanged: backupDisabled ? null : _handleRememberPassword,
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                title: Text(
+                  context.t.strings.legacy.webdav.recover_password_title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    context.t.strings.legacy.webdav.recover_password_hint,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: textMuted,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+                trailing: TextButton(
+                  onPressed: backupDisabled || busy
+                      ? null
+                      : () => widget.onRecoverPassword(),
+                  child: Text(
+                    context.t.strings.legacy.webdav.recover_password_button,
+                  ),
+                ),
               ),
             ],
           ),

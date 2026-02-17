@@ -4,18 +4,21 @@ class WebDavBackupConfig {
     required this.createdAt,
     required this.kdf,
     required this.wrappedKey,
+    this.recovery,
   });
 
   final int schemaVersion;
   final String createdAt;
   final WebDavBackupKdf kdf;
   final WebDavBackupWrappedKey wrappedKey;
+  final WebDavBackupRecovery? recovery;
 
   Map<String, dynamic> toJson() => {
     'schemaVersion': schemaVersion,
     'createdAt': createdAt,
     'kdf': kdf.toJson(),
     'wrappedKey': wrappedKey.toJson(),
+    if (recovery != null) 'recovery': recovery!.toJson(),
   };
 
   factory WebDavBackupConfig.fromJson(Map<String, dynamic> json) {
@@ -34,9 +37,38 @@ class WebDavBackupConfig {
 
     final kdfRaw = json['kdf'];
     final wrappedRaw = json['wrappedKey'];
+    final recoveryRaw = json['recovery'];
     return WebDavBackupConfig(
       schemaVersion: readInt('schemaVersion', 1),
       createdAt: readString('createdAt', ''),
+      kdf: kdfRaw is Map
+          ? WebDavBackupKdf.fromJson(kdfRaw.cast<String, dynamic>())
+          : WebDavBackupKdf.defaults,
+      wrappedKey: wrappedRaw is Map
+          ? WebDavBackupWrappedKey.fromJson(wrappedRaw.cast<String, dynamic>())
+          : const WebDavBackupWrappedKey(nonce: '', cipherText: '', mac: ''),
+      recovery: recoveryRaw is Map
+          ? WebDavBackupRecovery.fromJson(recoveryRaw.cast<String, dynamic>())
+          : null,
+    );
+  }
+}
+
+class WebDavBackupRecovery {
+  const WebDavBackupRecovery({required this.kdf, required this.wrappedKey});
+
+  final WebDavBackupKdf kdf;
+  final WebDavBackupWrappedKey wrappedKey;
+
+  Map<String, dynamic> toJson() => {
+    'kdf': kdf.toJson(),
+    'wrappedKey': wrappedKey.toJson(),
+  };
+
+  factory WebDavBackupRecovery.fromJson(Map<String, dynamic> json) {
+    final kdfRaw = json['kdf'];
+    final wrappedRaw = json['wrappedKey'];
+    return WebDavBackupRecovery(
       kdf: kdfRaw is Map
           ? WebDavBackupKdf.fromJson(kdfRaw.cast<String, dynamic>())
           : WebDavBackupKdf.defaults,
