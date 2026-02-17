@@ -17,6 +17,7 @@ import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/database_provider.dart';
+import '../../state/memo_timeline_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -388,7 +389,10 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     if (updated == memo.content) return;
 
     final db = ref.read(databaseProvider);
+    final timelineService = ref.read(memoTimelineServiceProvider);
     final tags = extractTags(updated);
+
+    await timelineService.captureMemoVersion(memo);
 
     await db.upsertMemo(
       uid: memo.uid,

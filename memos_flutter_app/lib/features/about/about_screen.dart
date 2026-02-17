@@ -5,6 +5,7 @@ import '../../core/memoflow_palette.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/recycle_bin_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
@@ -35,19 +36,24 @@ class AboutScreen extends StatelessWidget {
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
     final route = switch (dest) {
-      AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.memos => const MemosListScreen(
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
       AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.t.strings.legacy.msg_archive,
-          state: 'ARCHIVED',
-          showDrawer: true,
-        ),
+        title: context.t.strings.legacy.msg_archive,
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
@@ -75,7 +81,9 @@ class AboutScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {

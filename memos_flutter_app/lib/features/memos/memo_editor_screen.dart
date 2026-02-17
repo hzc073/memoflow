@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -26,6 +27,8 @@ import '../../data/models/location_settings.dart';
 import '../../state/database_provider.dart';
 import '../../state/location_settings_provider.dart';
 import '../../state/logging_provider.dart';
+import '../../state/memo_editor_draft_provider.dart';
+import '../../state/memo_timeline_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/network_log_provider.dart';
 import '../../state/session_provider.dart';
@@ -84,7 +87,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   final _visibilityMenuKey = GlobalKey();
   final _linkedMemos = <_LinkedMemo>[];
   final _existingAttachments = <Attachment>[];
-  late final Set<String> _initialAttachmentNames;
+  late final Set<String> _initialAttachmentKeys;
   final _pendingAttachments = <_PendingAttachment>[];
   final _attachmentsToDelete = <Attachment>[];
   final _undoStack = <TextEditingValue>[];
@@ -93,11 +96,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   final _pickedImages = <XFile>[];
   List<TagStat> _tagStatsCache = const [];
   TextEditingValue _lastValue = const TextEditingValue();
+  Timer? _draftTimer;
   var _isApplyingHistory = false;
   bool _isMoreToolbarOpen = false;
   bool _relationsLoaded = false;
   bool _relationsLoading = false;
   bool _relationsDirty = false;
+  bool _skipDraftPersistOnDispose = false;
   Future<void>? _relationsLoadFuture;
   static const _maxHistory = 100;
   late String _visibility;
@@ -116,11 +121,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     _lastValue = _contentController.value;
     _contentController.addListener(_handleContentChanged);
     _contentController.addListener(_trackHistory);
+    _contentController.addListener(_scheduleDraftSave);
     _loadTagStats();
     _existingAttachments.addAll(existing?.attachments ?? const []);
-    _initialAttachmentNames = _existingAttachments
-        .map((attachment) => attachment.name.trim())
-        .where((name) => name.isNotEmpty)
+    _initialAttachmentKeys = _existingAttachments
+        .map(_attachmentKey)
+        .where((key) => key.isNotEmpty)
         .toSet();
     _visibility = existing?.visibility ?? 'PRIVATE';
     _pinned = existing?.pinned ?? false;
@@ -128,13 +134,19 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     _initialLocation = existing?.location;
     if (existing != null) {
       _loadExistingRelations();
+      unawaited(_restoreEditorDraftIfNeeded());
     }
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     _contentController.removeListener(_handleContentChanged);
     _contentController.removeListener(_trackHistory);
+    _contentController.removeListener(_scheduleDraftSave);
+    if (!_skipDraftPersistOnDispose) {
+      unawaited(_persistEditorDraftNow());
+    }
     _smartEnterController.dispose();
     _contentController.dispose();
     super.dispose();
@@ -143,6 +155,300 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   void _handleContentChanged() {
     if (!mounted) return;
     setState(() {});
+  }
+
+  String? get _draftMemoUid {
+    final uid = widget.existing?.uid.trim() ?? '';
+    if (uid.isEmpty) return null;
+    return uid;
+  }
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_persistEditorDraftNow());
+    });
+  }
+
+  String _attachmentKey(Attachment attachment) {
+    final name = attachment.name.trim();
+    if (name.isNotEmpty) return 'name:$name';
+    final uid = attachment.uid.trim();
+    if (uid.isNotEmpty) return 'uid:$uid';
+    return [
+      'file',
+      attachment.filename.trim(),
+      attachment.type.trim(),
+      attachment.size.toString(),
+      attachment.externalLink.trim(),
+    ].join('|');
+  }
+
+  Set<String> _attachmentKeySet(Iterable<Attachment> attachments) {
+    return attachments
+        .map(_attachmentKey)
+        .where((key) => key.isNotEmpty)
+        .toSet();
+  }
+
+  bool _sameStringSet(Set<String> left, Set<String> right) {
+    if (left.length != right.length) return false;
+    for (final value in left) {
+      if (!right.contains(value)) return false;
+    }
+    return true;
+  }
+
+  bool _isEditorBaseState(LocalMemo existing) {
+    if (_contentController.text != existing.content) return false;
+    if (_visibility != existing.visibility) return false;
+    if (!_sameLocation(_location, existing.location)) return false;
+    if (_pendingAttachments.isNotEmpty) return false;
+    final currentKeys = _attachmentKeySet(_existingAttachments);
+    final baseKeys = _attachmentKeySet(existing.attachments);
+    if (!_sameStringSet(currentKeys, baseKeys)) return false;
+    return true;
+  }
+
+  bool _hasUnsavedEditorState(LocalMemo existing) {
+    if (_contentController.text != existing.content) return true;
+    if (_visibility != existing.visibility) return true;
+    if (!_sameLocation(_location, existing.location)) return true;
+    final currentKeys = _attachmentKeySet(_existingAttachments);
+    final baseKeys = _attachmentKeySet(existing.attachments);
+    if (!_sameStringSet(currentKeys, baseKeys)) return true;
+    if (_pendingAttachments.isNotEmpty) return true;
+    return false;
+  }
+
+  int _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  Map<String, dynamic>? _decodeEditorDraftPayload(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map) {
+        return decoded.cast<String, dynamic>();
+      }
+    } catch (_) {
+      // Legacy format: plain text content only.
+      return <String, dynamic>{'schema': 0, 'content': raw};
+    }
+    return null;
+  }
+
+  List<Attachment> _decodeDraftExistingAttachments(
+    dynamic raw, {
+    required List<Attachment> fallback,
+  }) {
+    if (raw is! List) return fallback;
+    final restored = <Attachment>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      try {
+        restored.add(Attachment.fromJson(item.cast<String, dynamic>()));
+      } catch (_) {}
+    }
+    return restored;
+  }
+
+  List<_PendingAttachment> _decodeDraftPendingAttachments(dynamic raw) {
+    if (raw is! List) return const [];
+    final restored = <_PendingAttachment>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final map = item.cast<String, dynamic>();
+      final path =
+          (map['file_path'] as String?)?.trim() ??
+          (map['filePath'] as String?)?.trim() ??
+          '';
+      if (path.isEmpty) continue;
+      final file = File(path);
+      if (!file.existsSync()) continue;
+      final uid = (map['uid'] as String?)?.trim();
+      final filename = (map['filename'] as String?)?.trim();
+      final mimeType = (map['mime_type'] as String?)?.trim();
+      restored.add(
+        _PendingAttachment(
+          uid: (uid == null || uid.isEmpty) ? generateUid() : uid,
+          filePath: path,
+          filename: (filename == null || filename.isEmpty)
+              ? path.split(Platform.pathSeparator).last
+              : filename,
+          mimeType: (mimeType == null || mimeType.isEmpty)
+              ? _guessMimeType(path.split(Platform.pathSeparator).last)
+              : mimeType,
+          size: _readInt(map['size']),
+        ),
+      );
+    }
+    return restored;
+  }
+
+  Map<String, dynamic> _pendingAttachmentToJson(_PendingAttachment attachment) {
+    return <String, dynamic>{
+      'uid': attachment.uid,
+      'file_path': attachment.filePath,
+      'filename': attachment.filename,
+      'mime_type': attachment.mimeType,
+      'size': attachment.size,
+    };
+  }
+
+  Future<void> _restoreEditorDraftIfNeeded() async {
+    final existing = widget.existing;
+    final memoUid = _draftMemoUid;
+    if (existing == null || memoUid == null) return;
+
+    try {
+      final repo = ref.read(memoEditorDraftRepositoryProvider);
+      final raw = await repo.read(memoUid: memoUid);
+      if (!mounted) return;
+
+      final payload = _decodeEditorDraftPayload(raw);
+      if (payload == null) return;
+      // If user has started editing in this session, don't overwrite edits.
+      if (!_isEditorBaseState(existing)) return;
+
+      final restoredContent = (payload['content'] as String?) ?? '';
+      final restoredVisibility =
+          (payload['visibility'] as String?)?.trim().isNotEmpty == true
+          ? (payload['visibility'] as String).trim()
+          : existing.visibility;
+      MemoLocation? restoredLocation = existing.location;
+      if (payload.containsKey('location')) {
+        final restoredLocationRaw = payload['location'];
+        if (restoredLocationRaw is Map) {
+          try {
+            restoredLocation = MemoLocation.fromJson(
+              restoredLocationRaw.cast<String, dynamic>(),
+            );
+          } catch (_) {
+            restoredLocation = existing.location;
+          }
+        } else {
+          restoredLocation = null;
+        }
+      } else {
+        restoredLocation = existing.location;
+      }
+      final restoredExistingAttachments = _decodeDraftExistingAttachments(
+        payload['existing_attachments'],
+        fallback: existing.attachments,
+      );
+      final restoredPendingAttachments = _decodeDraftPendingAttachments(
+        payload['pending_attachments'],
+      );
+
+      final hasDiff =
+          restoredContent != existing.content ||
+          restoredVisibility != existing.visibility ||
+          !_sameLocation(restoredLocation, existing.location) ||
+          !_sameStringSet(
+            _attachmentKeySet(restoredExistingAttachments),
+            _attachmentKeySet(existing.attachments),
+          ) ||
+          restoredPendingAttachments.isNotEmpty;
+
+      if (!hasDiff) {
+        await repo.clear(memoUid: memoUid);
+        return;
+      }
+
+      final shouldRestore =
+          await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(dialogContext.t.strings.legacy.msg_restore_backup),
+              actions: [
+                TextButton(
+                  onPressed: () => dialogContext.safePop(false),
+                  child: Text(dialogContext.t.strings.legacy.msg_cancel_2),
+                ),
+                FilledButton(
+                  onPressed: () => dialogContext.safePop(true),
+                  child: Text(dialogContext.t.strings.legacy.msg_restore),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!mounted || !shouldRestore) {
+        return;
+      }
+
+      final restoredExistingKeys = _attachmentKeySet(
+        restoredExistingAttachments,
+      );
+      final deleted = existing.attachments
+          .where(
+            (attachment) =>
+                !restoredExistingKeys.contains(_attachmentKey(attachment)),
+          )
+          .toList(growable: false);
+
+      _contentController.value = _contentController.value.copyWith(
+        text: restoredContent,
+        selection: TextSelection.collapsed(offset: restoredContent.length),
+        composing: TextRange.empty,
+      );
+      setState(() {
+        _visibility = restoredVisibility;
+        _location = restoredLocation;
+        _existingAttachments
+          ..clear()
+          ..addAll(restoredExistingAttachments);
+        _pendingAttachments
+          ..clear()
+          ..addAll(restoredPendingAttachments);
+        _attachmentsToDelete
+          ..clear()
+          ..addAll(deleted);
+        _pickedImages.clear();
+        _undoStack.clear();
+        _redoStack.clear();
+        _lastValue = _contentController.value;
+      });
+      showTopToast(context, context.t.strings.legacy.msg_restored);
+    } catch (_) {}
+  }
+
+  Future<void> _persistEditorDraftNow() async {
+    final existing = widget.existing;
+    final memoUid = _draftMemoUid;
+    if (existing == null || memoUid == null) return;
+
+    final repo = ref.read(memoEditorDraftRepositoryProvider);
+    if (!_hasUnsavedEditorState(existing)) {
+      await repo.clear(memoUid: memoUid);
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'schema': 1,
+      'content': _contentController.text,
+      'visibility': _visibility,
+      'location': _location?.toJson(),
+      'existing_attachments': _existingAttachments
+          .map((attachment) => attachment.toJson())
+          .toList(growable: false),
+      'pending_attachments': _pendingAttachments
+          .map(_pendingAttachmentToJson)
+          .toList(growable: false),
+    };
+    await repo.write(memoUid: memoUid, text: jsonEncode(payload));
+  }
+
+  Future<void> _clearEditorDraft() async {
+    final memoUid = _draftMemoUid;
+    if (memoUid == null) return;
+    await ref.read(memoEditorDraftRepositoryProvider).clear(memoUid: memoUid);
   }
 
   Future<void> _loadTagStats() async {
@@ -278,6 +584,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       existingAttachments: existingAttachments,
       hasPendingAttachments: hasPendingAttachments,
     );
+    final hasPrimaryChanges =
+        existing != null &&
+        (content != existing.content ||
+            _visibility != existing.visibility ||
+            _pinned != existing.pinned ||
+            locationChanged ||
+            shouldSyncAttachments);
     final hasAttachments =
         existingAttachments.isNotEmpty || pendingAttachments.isNotEmpty;
     if (content.trim().isEmpty && !hasAttachments) {
@@ -321,6 +634,24 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       final tags = extractTags(content);
 
       final db = ref.read(databaseProvider);
+      final timelineService = ref.read(memoTimelineServiceProvider);
+      if (existing != null && hasPrimaryChanges) {
+        await timelineService.captureMemoVersion(existing);
+      }
+      if (existing != null && _attachmentsToDelete.isNotEmpty) {
+        for (final attachment in _attachmentsToDelete) {
+          final index = existing.attachments.indexWhere(
+            (candidate) =>
+                candidate.name == attachment.name ||
+                candidate.uid == attachment.uid,
+          );
+          await timelineService.moveAttachmentToRecycleBin(
+            memo: existing,
+            attachment: attachment,
+            index: index < 0 ? 0 : index,
+          );
+        }
+      }
       await db.upsertMemo(
         uid: uid,
         content: content,
@@ -378,15 +709,17 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           },
         );
       }
-      for (final attachment in _attachmentsToDelete) {
-        final name = attachment.name.isNotEmpty
-            ? attachment.name
-            : attachment.uid;
-        if (name.isEmpty) continue;
-        await db.enqueueOutbox(
-          type: 'delete_attachment',
-          payload: {'attachment_name': name, 'memo_uid': uid},
-        );
+      if (hasPendingAttachments) {
+        for (final attachment in _attachmentsToDelete) {
+          final name = attachment.name.isNotEmpty
+              ? attachment.name
+              : attachment.uid;
+          if (name.isEmpty) continue;
+          await db.enqueueOutbox(
+            type: 'delete_attachment',
+            payload: {'attachment_name': name, 'memo_uid': uid},
+          );
+        }
       }
 
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
@@ -395,6 +728,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       _pickedImages.clear();
       _attachmentsToDelete.clear();
       _clearLinkedMemos();
+      _skipDraftPersistOnDispose = true;
+      try {
+        await _clearEditorDraft();
+      } catch (_) {}
 
       if (!mounted) return;
       context.safePop();
@@ -652,6 +989,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
       if (!mounted) return;
       setState(() => _location = next);
+      _scheduleDraftSave();
       showTopToast(
         context,
         context.t.strings.legacy.msg_location_updated(
@@ -944,6 +1282,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       setState(() {
         _pendingAttachments.addAll(added);
       });
+      _scheduleDraftSave();
       final suffix = added.length == 1 ? '' : 's';
       final skipped = [
         if (missingPathCount > 0) '$missingPathCount unavailable',
@@ -1001,6 +1340,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         );
         _pickedImages.add(photo);
       });
+      _scheduleDraftSave();
       showTopToast(context, 'Added photo attachment.');
     } catch (e) {
       if (!mounted) return;
@@ -1016,13 +1356,28 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       _pendingAttachments.removeAt(index);
       _pickedImages.removeWhere((x) => x.path == removed.filePath);
     });
+    _scheduleDraftSave();
+  }
+
+  void _queueDeletedAttachment(Attachment attachment) {
+    final key = _attachmentKey(attachment);
+    if (key.isEmpty) return;
+    final exists = _attachmentsToDelete.any(
+      (item) => _attachmentKey(item) == key,
+    );
+    if (exists) return;
+    _attachmentsToDelete.add(attachment);
   }
 
   void _removeExistingAttachment(Attachment attachment) {
     if (_saving) return;
+    final key = _attachmentKey(attachment);
+    if (key.isEmpty) return;
     setState(() {
-      _existingAttachments.removeWhere((a) => a.name == attachment.name);
+      _existingAttachments.removeWhere((item) => _attachmentKey(item) == key);
+      _queueDeletedAttachment(attachment);
     });
+    _scheduleDraftSave();
   }
 
   bool _shouldSyncAttachments({
@@ -1031,18 +1386,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   }) {
     if (hasPendingAttachments) return true;
     final currentNames = existingAttachments
-        .map((attachment) => attachment.name.trim())
-        .where((name) => name.isNotEmpty)
+        .map(_attachmentKey)
+        .where((key) => key.isNotEmpty)
         .toSet();
-    return !_sameAttachmentNameSet(currentNames, _initialAttachmentNames);
-  }
-
-  bool _sameAttachmentNameSet(Set<String> left, Set<String> right) {
-    if (left.length != right.length) return false;
-    for (final value in left) {
-      if (!right.contains(value)) return false;
-    }
-    return true;
+    return !_sameStringSet(currentNames, _initialAttachmentKeys);
   }
 
   bool _isImageMimeType(String mimeType) {
@@ -1176,6 +1523,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           size: result.size,
         );
       });
+      _scheduleDraftSave();
       return;
     }
 
@@ -1189,9 +1537,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final newUid = generateUid();
     setState(() {
       _existingAttachments.removeAt(index);
-      if (!_attachmentsToDelete.any((a) => a.name == removed.name)) {
-        _attachmentsToDelete.add(removed);
-      }
+      _queueDeletedAttachment(removed);
       _pendingAttachments.add(
         _PendingAttachment(
           uid: newUid,
@@ -1202,6 +1548,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         ),
       );
     });
+    _scheduleDraftSave();
   }
 
   Widget _buildAttachmentPreview(
@@ -1536,6 +1883,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
   Set<String> get _linkedMemoNames => _linkedMemos.map((m) => m.name).toSet();
 
+  void _clearLocation() {
+    if (_saving) return;
+    if (_location == null) return;
+    setState(() => _location = null);
+    _scheduleDraftSave();
+  }
+
   void _addLinkedMemo(Memo memo) {
     final name = memo.name.trim();
     if (name.isEmpty) return;
@@ -1655,6 +2009,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     );
     if (!mounted || selection == null) return;
     setState(() => _visibility = selection);
+    _scheduleDraftSave();
   }
 
   (String label, IconData icon, Color color) _resolveVisibilityStyle(
@@ -1879,9 +2234,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                               ),
                               backgroundColor: chipBg,
                               deleteIconColor: chipDelete,
-                              onDeleted: _saving
-                                  ? null
-                                  : () => setState(() => _location = null),
+                              onDeleted: _saving ? null : _clearLocation,
                             ),
                           ),
                         ),

@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 5010 (1002 per locale)
+/// Strings: 5015 (1003 per locale)
 ///
-/// Built on 2026-02-17 at 03:27 UTC
+/// Built on 2026-02-17 at 11:32 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -330,6 +330,7 @@ class _StringsStringsLegacyEn {
 	String msg_local_sync_failed({required Object type, required Object memoError}) => 'Local sync failed (${type}): ${memoError}';
 	String get msg_webdav_sync => 'WebDAV Sync';
 	String get msg_clear => 'Clear';
+	String get msg_clear_recycle_bin_confirm => 'Clear recycle bin? All items will be permanently deleted.';
 	String get msg_save_failed => 'Save failed';
 	String get msg_endpoint_not_found_version_mismatch => 'Endpoint not found (version mismatch?)';
 	String get msg_enable_webdav_sync => 'Enable WebDAV sync';
@@ -1640,6 +1641,7 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String msg_local_sync_failed({required Object type, required Object memoError}) => 'Lokale Synchronisierung fehlgeschlagen (${type}): ${memoError}';
 	@override String get msg_webdav_sync => 'WebDAV-Synchronisierung';
 	@override String get msg_clear => 'Löschen';
+	@override String get msg_clear_recycle_bin_confirm => 'Papierkorb leeren? Alle Einträge werden dauerhaft gelöscht.';
 	@override String get msg_save_failed => 'Speichern fehlgeschlagen';
 	@override String get msg_endpoint_not_found_version_mismatch => 'Endpunkt nicht gefunden (Versionskonflikt?)';
 	@override String get msg_enable_webdav_sync => 'WebDAV-Synchronisierung aktivieren';
@@ -2950,6 +2952,7 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String msg_local_sync_failed({required Object type, required Object memoError}) => 'ローカル同期に失敗しました（${type}）: ${memoError}';
 	@override String get msg_webdav_sync => 'WebDAV 同期';
 	@override String get msg_clear => 'クリア';
+	@override String get msg_clear_recycle_bin_confirm => 'ごみ箱を空にしますか？中の項目はすべて完全に削除されます。';
 	@override String get msg_save_failed => '保存に失敗しました';
 	@override String get msg_endpoint_not_found_version_mismatch => 'エンドポイントが見つかりません（バージョン不一致？）';
 	@override String get msg_enable_webdav_sync => 'WebDAV 同期を有効にする';
@@ -4260,6 +4263,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String msg_local_sync_failed({required Object type, required Object memoError}) => '本地同步失败（${type}）：${memoError}';
 	@override String get msg_webdav_sync => 'WebDAV 同步';
 	@override String get msg_clear => '清空';
+	@override String get msg_clear_recycle_bin_confirm => '确认清空回收站？回收站内所有内容将被永久删除。';
 	@override String get msg_save_failed => '保存失败';
 	@override String get msg_endpoint_not_found_version_mismatch => '接口不存在（可能是 Memos 版本不兼容）';
 	@override String get msg_enable_webdav_sync => '启用 WebDAV 同步';
@@ -5570,6 +5574,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String msg_local_sync_failed({required Object type, required Object memoError}) => '本地同步失败（${type}）：${memoError}';
 	@override String get msg_webdav_sync => 'WebDAV 同步';
 	@override String get msg_clear => '清空';
+	@override String get msg_clear_recycle_bin_confirm => '確認清空回收站？回收站內所有內容將被永久刪除。';
 	@override String get msg_save_failed => '保存失败';
 	@override String get msg_endpoint_not_found_version_mismatch => '接口不存在（可能是 Memos 版本不兼容）';
 	@override String get msg_enable_webdav_sync => '启用 WebDAV 同步';
@@ -6830,6 +6835,7 @@ extension on Translations {
 			case 'strings.legacy.msg_local_sync_failed': return ({required Object type, required Object memoError}) => 'Local sync failed (${type}): ${memoError}';
 			case 'strings.legacy.msg_webdav_sync': return 'WebDAV Sync';
 			case 'strings.legacy.msg_clear': return 'Clear';
+			case 'strings.legacy.msg_clear_recycle_bin_confirm': return 'Clear recycle bin? All items will be permanently deleted.';
 			case 'strings.legacy.msg_save_failed': return 'Save failed';
 			case 'strings.legacy.msg_endpoint_not_found_version_mismatch': return 'Endpoint not found (version mismatch?)';
 			case 'strings.legacy.msg_enable_webdav_sync': return 'Enable WebDAV sync';
@@ -7840,6 +7846,7 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_local_sync_failed': return ({required Object type, required Object memoError}) => 'Lokale Synchronisierung fehlgeschlagen (${type}): ${memoError}';
 			case 'strings.legacy.msg_webdav_sync': return 'WebDAV-Synchronisierung';
 			case 'strings.legacy.msg_clear': return 'Löschen';
+			case 'strings.legacy.msg_clear_recycle_bin_confirm': return 'Papierkorb leeren? Alle Einträge werden dauerhaft gelöscht.';
 			case 'strings.legacy.msg_save_failed': return 'Speichern fehlgeschlagen';
 			case 'strings.legacy.msg_endpoint_not_found_version_mismatch': return 'Endpunkt nicht gefunden (Versionskonflikt?)';
 			case 'strings.legacy.msg_enable_webdav_sync': return 'WebDAV-Synchronisierung aktivieren';
@@ -8850,6 +8857,7 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_local_sync_failed': return ({required Object type, required Object memoError}) => 'ローカル同期に失敗しました（${type}）: ${memoError}';
 			case 'strings.legacy.msg_webdav_sync': return 'WebDAV 同期';
 			case 'strings.legacy.msg_clear': return 'クリア';
+			case 'strings.legacy.msg_clear_recycle_bin_confirm': return 'ごみ箱を空にしますか？中の項目はすべて完全に削除されます。';
 			case 'strings.legacy.msg_save_failed': return '保存に失敗しました';
 			case 'strings.legacy.msg_endpoint_not_found_version_mismatch': return 'エンドポイントが見つかりません（バージョン不一致？）';
 			case 'strings.legacy.msg_enable_webdav_sync': return 'WebDAV 同期を有効にする';
@@ -9860,6 +9868,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_local_sync_failed': return ({required Object type, required Object memoError}) => '本地同步失败（${type}）：${memoError}';
 			case 'strings.legacy.msg_webdav_sync': return 'WebDAV 同步';
 			case 'strings.legacy.msg_clear': return '清空';
+			case 'strings.legacy.msg_clear_recycle_bin_confirm': return '确认清空回收站？回收站内所有内容将被永久删除。';
 			case 'strings.legacy.msg_save_failed': return '保存失败';
 			case 'strings.legacy.msg_endpoint_not_found_version_mismatch': return '接口不存在（可能是 Memos 版本不兼容）';
 			case 'strings.legacy.msg_enable_webdav_sync': return '启用 WebDAV 同步';
@@ -10870,6 +10879,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_local_sync_failed': return ({required Object type, required Object memoError}) => '本地同步失败（${type}）：${memoError}';
 			case 'strings.legacy.msg_webdav_sync': return 'WebDAV 同步';
 			case 'strings.legacy.msg_clear': return '清空';
+			case 'strings.legacy.msg_clear_recycle_bin_confirm': return '確認清空回收站？回收站內所有內容將被永久刪除。';
 			case 'strings.legacy.msg_save_failed': return '保存失败';
 			case 'strings.legacy.msg_endpoint_not_found_version_mismatch': return '接口不存在（可能是 Memos 版本不兼容）';
 			case 'strings.legacy.msg_enable_webdav_sync': return '启用 WebDAV 同步';

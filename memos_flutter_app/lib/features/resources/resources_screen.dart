@@ -23,6 +23,7 @@ import '../home/app_drawer.dart';
 import '../memos/attachment_video_screen.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/recycle_bin_screen.dart';
 import '../memos/memo_video_grid.dart';
 import '../notifications/notifications_screen.dart';
 import '../review/ai_summary_screen.dart';
@@ -308,6 +309,7 @@ class ResourcesScreen extends ConsumerWidget {
       ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),

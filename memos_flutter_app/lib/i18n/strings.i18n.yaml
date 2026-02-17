@@ -162,6 +162,7 @@ legacy:
   msg_local_sync_failed: "Local sync failed ($type): $memoError"
   msg_webdav_sync: "WebDAV Sync"
   msg_clear: "Clear"
+  msg_clear_recycle_bin_confirm: "Clear recycle bin? All items will be permanently deleted."
   msg_save_failed: "Save failed"
   msg_endpoint_not_found_version_mismatch: "Endpoint not found (version mismatch?)"
   msg_enable_webdav_sync: "Enable WebDAV sync"

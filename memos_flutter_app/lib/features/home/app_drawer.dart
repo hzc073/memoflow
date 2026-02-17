@@ -26,6 +26,7 @@ enum AppDrawerDestination {
   archived,
   tags,
   resources,
+  recycleBin,
   stats,
   settings,
   about,
@@ -36,7 +37,9 @@ final _pendingOutboxCountProvider = StreamProvider<int>((ref) async* {
 
   Future<int> load() async {
     final sqlite = await db.db;
-    final rows = await sqlite.rawQuery('SELECT COUNT(*) FROM outbox WHERE state IN (0, 2);');
+    final rows = await sqlite.rawQuery(
+      'SELECT COUNT(*) FROM outbox WHERE state IN (0, 2);',
+    );
     if (rows.isEmpty) return 0;
     final raw = rows.first.values.first;
     if (raw is int) return raw;
@@ -75,10 +78,10 @@ class AppDrawer extends ConsumerWidget {
     final title = localLibrary?.name.isNotEmpty == true
         ? localLibrary!.name
         : (account?.user.displayName.isNotEmpty ?? false)
-            ? account!.user.displayName
-            : (account?.user.name.isNotEmpty ?? false)
-                ? account!.user.name
-                : 'MemoFlow';
+        ? account!.user.displayName
+        : (account?.user.name.isNotEmpty ?? false)
+        ? account!.user.name
+        : 'MemoFlow';
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);
@@ -94,10 +97,16 @@ class AppDrawer extends ConsumerWidget {
       ),
     );
 
-    final bg = isDark ? const Color(0xFF181818) : MemoFlowPalette.backgroundLight;
-    final textMain = isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight;
+    final bg = isDark
+        ? const Color(0xFF181818)
+        : MemoFlowPalette.backgroundLight;
+    final textMain = isDark
+        ? const Color(0xFFD1D1D1)
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.4 : 0.5);
-    final hover = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04);
+    final hover = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.black.withValues(alpha: 0.04);
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
     const versionLabel = 'V1.0.14';
 
@@ -127,7 +136,8 @@ class AppDrawer extends ConsumerWidget {
                       ),
                       IconButton(
                         tooltip: context.t.strings.legacy.msg_sync_queue,
-                        onPressed: () => onSelect(AppDrawerDestination.syncQueue),
+                        onPressed: () =>
+                            onSelect(AppDrawerDestination.syncQueue),
                         icon: Consumer(
                           builder: (context, ref, child) {
                             final pendingOutboxAsync = ref.watch(
@@ -167,7 +177,11 @@ class AppDrawer extends ConsumerWidget {
                           if (handler == null) {
                             showTopToast(
                               context,
-                              context.t.strings.legacy.msg_notifications_coming_soon,
+                              context
+                                  .t
+                                  .strings
+                                  .legacy
+                                  .msg_notifications_coming_soon,
                             );
                             return;
                           }
@@ -206,7 +220,8 @@ class AppDrawer extends ConsumerWidget {
                       ),
                       IconButton(
                         tooltip: context.t.strings.legacy.msg_settings,
-                        onPressed: () => onSelect(AppDrawerDestination.settings),
+                        onPressed: () =>
+                            onSelect(AppDrawerDestination.settings),
                         icon: Icon(Icons.settings, color: textMuted),
                       ),
                     ],
@@ -287,15 +302,15 @@ class AppDrawer extends ConsumerWidget {
                     error: (_, _) => const SizedBox(height: 84),
                   ),
                   const SizedBox(height: 16),
-                    _NavButton(
-                      selected: selected == AppDrawerDestination.memos,
-                      label: context.t.strings.legacy.msg_all_memos,
-                      icon: Icons.grid_view,
-                      onTap: () => onSelect(AppDrawerDestination.memos),
-                      textMain: textMain,
-                      hover: hover,
-                    ),
-                    if (drawerPrefs.showDrawerExplore)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.memos,
+                    label: context.t.strings.legacy.msg_all_memos,
+                    icon: Icons.grid_view,
+                    onTap: () => onSelect(AppDrawerDestination.memos),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                  if (drawerPrefs.showDrawerExplore)
                     _NavButton(
                       selected: selected == AppDrawerDestination.explore,
                       label: context.t.strings.legacy.msg_explore,
@@ -304,7 +319,7 @@ class AppDrawer extends ConsumerWidget {
                       textMain: textMain,
                       hover: hover,
                     ),
-                    if (drawerPrefs.showDrawerDailyReview)
+                  if (drawerPrefs.showDrawerDailyReview)
                     _NavButton(
                       selected: selected == AppDrawerDestination.dailyReview,
                       label: context.t.strings.legacy.msg_random_review,
@@ -366,7 +381,10 @@ class AppDrawer extends ConsumerWidget {
                       if (tags.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text(context.t.strings.legacy.msg_no_tags_yet, style: TextStyle(color: textMuted)),
+                          child: Text(
+                            context.t.strings.legacy.msg_no_tags_yet,
+                            style: TextStyle(color: textMuted),
+                          ),
                         );
                       }
                       final preview = tags.take(4).toList(growable: false);
@@ -390,7 +408,10 @@ class AppDrawer extends ConsumerWidget {
                     },
                     loading: () => Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text(context.t.strings.legacy.msg_loading_2, style: TextStyle(color: textMuted)),
+                      child: Text(
+                        context.t.strings.legacy.msg_loading_2,
+                        style: TextStyle(color: textMuted),
+                      ),
                     ),
                     error: (e, _) => Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -401,16 +422,16 @@ class AppDrawer extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Divider(color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.08)),
+                  Divider(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
                   const SizedBox(height: 2),
                   _BottomNavRow(
                     label: context.t.strings.legacy.msg_recycle_bin,
                     icon: Icons.delete,
-                    onTap: () => showTopToast(
-                      context,
-                      context.t.strings.legacy.msg_recycle_bin_coming_soon,
-                      duration: const Duration(milliseconds: 1400),
-                    ),
+                    onTap: () => onSelect(AppDrawerDestination.recycleBin),
                     textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
                     hover: hover,
                   ),
@@ -443,7 +464,9 @@ class AppDrawer extends ConsumerWidget {
                 width: 128,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -475,7 +498,14 @@ class _DrawerStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: textMain)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: textMain,
+            ),
+          ),
           const SizedBox(height: 2),
           Text(
             label,
@@ -530,7 +560,10 @@ class _NavButton extends StatelessWidget {
               children: [
                 Icon(icon, color: fg, size: 22),
                 const SizedBox(width: 12),
-                Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+                Text(
+                  label,
+                  style: TextStyle(fontWeight: FontWeight.w700, color: fg),
+                ),
               ],
             ),
           ),
@@ -572,7 +605,13 @@ class _BottomNavRow extends StatelessWidget {
               children: [
                 Icon(icon, color: textColor, size: 22),
                 const SizedBox(width: 12),
-                Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textColor)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                  ),
+                ),
               ],
             ),
           ),
@@ -583,10 +622,7 @@ class _BottomNavRow extends StatelessWidget {
 }
 
 class _DrawerHeatmap extends StatelessWidget {
-  const _DrawerHeatmap({
-    required this.dailyCounts,
-    required this.isDark,
-  });
+  const _DrawerHeatmap({required this.dailyCounts, required this.isDark});
 
   final Map<DateTime, int> dailyCounts;
   final bool isDark;
@@ -598,15 +634,29 @@ class _DrawerHeatmap extends StatelessWidget {
     const daysPerWeek = 7;
 
     final todayLocal = DateTime.now();
-    final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
-    final currentWeekStart = endLocal.subtract(Duration(days: endLocal.weekday - 1));
-    final alignedStart = currentWeekStart.subtract(Duration(days: (weeks - 1) * daysPerWeek));
+    final endLocal = DateTime(
+      todayLocal.year,
+      todayLocal.month,
+      todayLocal.day,
+    );
+    final currentWeekStart = endLocal.subtract(
+      Duration(days: endLocal.weekday - 1),
+    );
+    final alignedStart = currentWeekStart.subtract(
+      Duration(days: (weeks - 1) * daysPerWeek),
+    );
     final locale = Localizations.localeOf(context).toString();
 
-    final maxCount = dailyCounts.values.fold<int>(0, (max, v) => v > max ? v : max);
+    final maxCount = dailyCounts.values.fold<int>(
+      0,
+      (max, v) => v > max ? v : max,
+    );
 
     Color colorFor(int c) {
-      if (c <= 0) return isDark ? const Color(0xFF262626) : Colors.black.withValues(alpha: 0.05);
+      if (c <= 0)
+        return isDark
+            ? const Color(0xFF262626)
+            : Colors.black.withValues(alpha: 0.05);
       final t = maxCount <= 0 ? 0.0 : (c / maxCount).clamp(0.0, 1.0);
       final accent = MemoFlowPalette.primary;
 
@@ -630,9 +680,15 @@ class _DrawerHeatmap extends StatelessWidget {
       return DateFormat.MMM(locale).format(d.toLocal());
     }
 
-    final mid = alignedStart.add(const Duration(days: (weeks * daysPerWeek) ~/ 2));
-    final late = alignedStart.add(const Duration(days: (weeks * daysPerWeek) - 1));
-    final labelColor = (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight).withValues(alpha: 0.35);
+    final mid = alignedStart.add(
+      const Duration(days: (weeks * daysPerWeek) ~/ 2),
+    );
+    final late = alignedStart.add(
+      const Duration(days: (weeks * daysPerWeek) - 1),
+    );
+    final labelColor =
+        (isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight)
+            .withValues(alpha: 0.35);
 
     String weekdayLabel(DateTime d) {
       return DateFormat.E(locale).format(d);
@@ -647,11 +703,7 @@ class _DrawerHeatmap extends StatelessWidget {
       return trByLanguageKey(
         language: context.appLanguage,
         key: key,
-        params: {
-          'date': dateLabel,
-          'weekday': weekLabel,
-          'count': count,
-        },
+        params: {'date': dateLabel, 'weekday': weekLabel, 'count': count},
       );
     }
 
@@ -712,10 +764,7 @@ class _DrawerHeatmap extends StatelessWidget {
                       color: color,
                       borderRadius: BorderRadius.circular(2),
                       border: isToday
-                          ? Border.all(
-                              color: MemoFlowPalette.primary,
-                              width: 1,
-                            )
+                          ? Border.all(color: MemoFlowPalette.primary, width: 1)
                           : null,
                     ),
                   ),
@@ -728,9 +777,30 @@ class _DrawerHeatmap extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(monthLabel(alignedStart), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: labelColor)),
-            Text(monthLabel(mid), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: labelColor)),
-            Text(monthLabel(late), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: labelColor)),
+            Text(
+              monthLabel(alignedStart),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: labelColor,
+              ),
+            ),
+            Text(
+              monthLabel(mid),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: labelColor,
+              ),
+            ),
+            Text(
+              monthLabel(late),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: labelColor,
+              ),
+            ),
           ],
         ),
       ],

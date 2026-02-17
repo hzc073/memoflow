@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 10;
+  static const _dbVersion = 11;
 
   Database? _db;
   final _changes = StreamController<void>.broadcast();
@@ -116,6 +116,38 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
 );
 ''');
 
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memo_uid TEXT NOT NULL,
+  snapshot_time INTEGER NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_time INTEGER NOT NULL
+);
+''');
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_memo_versions_memo_time ON memo_versions(memo_uid, snapshot_time DESC);',
+          );
+
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS recycle_bin_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_type TEXT NOT NULL,
+  memo_uid TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  deleted_time INTEGER NOT NULL,
+  expire_time INTEGER NOT NULL
+);
+''');
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_recycle_bin_items_deleted_time ON recycle_bin_items(deleted_time DESC);',
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_recycle_bin_items_expire_time ON recycle_bin_items(expire_time ASC);',
+          );
+
           await _ensureStatsCache(db, rebuild: true);
           await _ensureFts(db, rebuild: true);
         },
@@ -181,6 +213,38 @@ CREATE TABLE IF NOT EXISTS memo_relations_cache (
   updated_time INTEGER NOT NULL
 );
 ''');
+          }
+          if (oldVersion < 11) {
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memo_uid TEXT NOT NULL,
+  snapshot_time INTEGER NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_time INTEGER NOT NULL
+);
+''');
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_memo_versions_memo_time ON memo_versions(memo_uid, snapshot_time DESC);',
+            );
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS recycle_bin_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_type TEXT NOT NULL,
+  memo_uid TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  deleted_time INTEGER NOT NULL,
+  expire_time INTEGER NOT NULL
+);
+''');
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_recycle_bin_items_deleted_time ON recycle_bin_items(deleted_time DESC);',
+            );
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_recycle_bin_items_expire_time ON recycle_bin_items(expire_time ASC);',
+            );
           }
         },
         onOpen: (db) async {
@@ -769,6 +833,180 @@ WHERE id = 1;
     _notifyChanged();
   }
 
+  Future<int> insertMemoVersion({
+    required String memoUid,
+    required int snapshotTime,
+    required String summary,
+    required String payloadJson,
+  }) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) {
+      throw const FormatException('memo_uid is required');
+    }
+    final db = await this.db;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final id = await db.insert('memo_versions', {
+      'memo_uid': normalizedUid,
+      'snapshot_time': snapshotTime,
+      'summary': summary,
+      'payload_json': payloadJson,
+      'created_time': now,
+    });
+    _notifyChanged();
+    return id;
+  }
+
+  Future<List<Map<String, dynamic>>> listMemoVersionsByUid(
+    String memoUid, {
+    int? limit,
+  }) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) return const [];
+    final db = await this.db;
+    return db.query(
+      'memo_versions',
+      where: 'memo_uid = ?',
+      whereArgs: [normalizedUid],
+      orderBy: 'snapshot_time DESC, id DESC',
+      limit: (limit != null && limit > 0) ? limit : null,
+    );
+  }
+
+  Future<List<int>> listMemoVersionIdsExceedLimit(
+    String memoUid, {
+    required int keep,
+  }) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) return const [];
+    if (keep < 0) return const [];
+    final db = await this.db;
+    final rows = await db.query(
+      'memo_versions',
+      columns: const ['id'],
+      where: 'memo_uid = ?',
+      whereArgs: [normalizedUid],
+      orderBy: 'snapshot_time DESC, id DESC',
+      offset: keep,
+    );
+    final ids = <int>[];
+    for (final row in rows) {
+      final id = row['id'];
+      if (id is int) {
+        ids.add(id);
+      } else if (id is num) {
+        ids.add(id.toInt());
+      } else if (id is String) {
+        final parsed = int.tryParse(id.trim());
+        if (parsed != null) ids.add(parsed);
+      }
+    }
+    return ids;
+  }
+
+  Future<Map<String, dynamic>?> getMemoVersionById(int id) async {
+    final db = await this.db;
+    final rows = await db.query(
+      'memo_versions',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> deleteMemoVersionById(int id) async {
+    final db = await this.db;
+    await db.delete('memo_versions', where: 'id = ?', whereArgs: [id]);
+    _notifyChanged();
+  }
+
+  Future<void> deleteMemoVersionsByMemoUid(String memoUid) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) return;
+    final db = await this.db;
+    await db.delete(
+      'memo_versions',
+      where: 'memo_uid = ?',
+      whereArgs: [normalizedUid],
+    );
+    _notifyChanged();
+  }
+
+  Future<int> insertRecycleBinItem({
+    required String itemType,
+    required String memoUid,
+    required String summary,
+    required String payloadJson,
+    required int deletedTime,
+    required int expireTime,
+  }) async {
+    final db = await this.db;
+    final id = await db.insert('recycle_bin_items', {
+      'item_type': itemType,
+      'memo_uid': memoUid.trim(),
+      'summary': summary,
+      'payload_json': payloadJson,
+      'deleted_time': deletedTime,
+      'expire_time': expireTime,
+    });
+    _notifyChanged();
+    return id;
+  }
+
+  Future<List<Map<String, dynamic>>> listRecycleBinItems() async {
+    final db = await this.db;
+    return db.query('recycle_bin_items', orderBy: 'deleted_time DESC, id DESC');
+  }
+
+  Future<Map<String, dynamic>?> getRecycleBinItemById(int id) async {
+    final db = await this.db;
+    final rows = await db.query(
+      'recycle_bin_items',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<List<int>> listExpiredRecycleBinItemIds({required int nowMs}) async {
+    final db = await this.db;
+    final rows = await db.query(
+      'recycle_bin_items',
+      columns: const ['id'],
+      where: 'expire_time <= ?',
+      whereArgs: [nowMs],
+      orderBy: 'expire_time ASC, id ASC',
+    );
+    final ids = <int>[];
+    for (final row in rows) {
+      final id = row['id'];
+      if (id is int) {
+        ids.add(id);
+      } else if (id is num) {
+        ids.add(id.toInt());
+      } else if (id is String) {
+        final parsed = int.tryParse(id.trim());
+        if (parsed != null) ids.add(parsed);
+      }
+    }
+    return ids;
+  }
+
+  Future<void> deleteRecycleBinItemById(int id) async {
+    final db = await this.db;
+    await db.delete('recycle_bin_items', where: 'id = ?', whereArgs: [id]);
+    _notifyChanged();
+  }
+
+  Future<void> clearRecycleBinItems() async {
+    final db = await this.db;
+    await db.delete('recycle_bin_items');
+    _notifyChanged();
+  }
+
   Future<void> renameMemoUid({
     required String oldUid,
     required String newUid,
@@ -795,6 +1033,18 @@ WHERE id = 1;
       );
       await txn.update(
         'memo_relations_cache',
+        {'memo_uid': newUid},
+        where: 'memo_uid = ?',
+        whereArgs: [oldUid],
+      );
+      await txn.update(
+        'memo_versions',
+        {'memo_uid': newUid},
+        where: 'memo_uid = ?',
+        whereArgs: [oldUid],
+      );
+      await txn.update(
+        'recycle_bin_items',
         {'memo_uid': newUid},
         where: 'memo_uid = ?',
         whereArgs: [oldUid],
@@ -1059,6 +1309,11 @@ WHERE id = 1;
       await txn.delete('memos', where: 'uid = ?', whereArgs: [uid]);
       await txn.delete(
         'memo_relations_cache',
+        where: 'memo_uid = ?',
+        whereArgs: [uid],
+      );
+      await txn.delete(
+        'memo_versions',
         where: 'memo_uid = ?',
         whereArgs: [uid],
       );

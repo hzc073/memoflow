@@ -162,6 +162,7 @@ legacy:
   msg_local_sync_failed: "ローカル同期に失敗しました（$type）: $memoError"
   msg_webdav_sync: "WebDAV 同期"
   msg_clear: "クリア"
+  msg_clear_recycle_bin_confirm: "ごみ箱を空にしますか？中の項目はすべて完全に削除されます。"
   msg_save_failed: "保存に失敗しました"
   msg_endpoint_not_found_version_mismatch: "エンドポイントが見つかりません（バージョン不一致？）"
   msg_enable_webdav_sync: "WebDAV 同期を有効にする"

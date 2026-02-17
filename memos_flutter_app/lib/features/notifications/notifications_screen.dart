@@ -22,6 +22,7 @@ import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/recycle_bin_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
@@ -31,10 +32,7 @@ import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
 import '../../i18n/strings.g.dart';
 
-enum _NotificationAction {
-  markRead,
-  delete,
-}
+enum _NotificationAction { markRead, delete }
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -56,19 +54,24 @@ class NotificationsScreen extends ConsumerWidget {
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
     final route = switch (dest) {
-      AppDrawerDestination.memos =>
-        const MemosListScreen(title: 'MemoFlow', state: 'NORMAL', showDrawer: true, enableCompose: true),
+      AppDrawerDestination.memos => const MemosListScreen(
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
       AppDrawerDestination.syncQueue => const SyncQueueScreen(),
       AppDrawerDestination.explore => const ExploreScreen(),
       AppDrawerDestination.dailyReview => const DailyReviewScreen(),
       AppDrawerDestination.aiSummary => const AiSummaryScreen(),
       AppDrawerDestination.archived => MemosListScreen(
-          title: context.t.strings.legacy.msg_archive,
-          state: 'ARCHIVED',
-          showDrawer: true,
-        ),
+        title: context.t.strings.legacy.msg_archive,
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
@@ -97,7 +100,9 @@ class NotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsAsync = ref.watch(notificationsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
@@ -125,7 +130,9 @@ class NotificationsScreen extends ConsumerWidget {
         body: notificationsAsync.when(
           data: (items) {
             if (items.isEmpty) {
-              return Center(child: Text(context.t.strings.legacy.msg_no_notifications));
+              return Center(
+                child: Text(context.t.strings.legacy.msg_no_notifications),
+              );
             }
             return RefreshIndicator(
               onRefresh: () async {
@@ -144,7 +151,8 @@ class NotificationsScreen extends ConsumerWidget {
                       textMain: textMain,
                       textMuted: textMuted,
                       onTap: () => _handleNotificationTap(context, ref, item),
-                      onAction: (action) => _handleAction(context, ref, item, action),
+                      onAction: (action) =>
+                          _handleAction(context, ref, item, action),
                     );
                   }
 
@@ -157,21 +165,34 @@ class NotificationsScreen extends ConsumerWidget {
                       isUnread: item.isUnread,
                       isDark: isDark,
                     ),
-                    title: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                    title: Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: textMain,
+                      ),
+                    ),
                     subtitle: Text(meta, style: TextStyle(color: textMuted)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _StatusPill(status: item.status, isUnread: item.isUnread, isDark: isDark),
+                        _StatusPill(
+                          status: item.status,
+                          isUnread: item.isUnread,
+                          isDark: isDark,
+                        ),
                         const SizedBox(width: 6),
                         PopupMenuButton<_NotificationAction>(
                           tooltip: context.t.strings.legacy.msg_actions,
-                          onSelected: (action) => _handleAction(context, ref, item, action),
+                          onSelected: (action) =>
+                              _handleAction(context, ref, item, action),
                           itemBuilder: (context) => [
                             if (item.isUnread)
                               PopupMenuItem(
                                 value: _NotificationAction.markRead,
-                                child: Text(context.t.strings.legacy.msg_mark_read),
+                                child: Text(
+                                  context.t.strings.legacy.msg_mark_read,
+                                ),
                               ),
                             PopupMenuItem(
                               value: _NotificationAction.delete,
@@ -188,16 +209,26 @@ class NotificationsScreen extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
+          error: (e, _) => Center(
+            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+          ),
         ),
       ),
     );
   }
 
-  String _metaText(BuildContext context, AppNotification item, DateFormat dateFmt) {
+  String _metaText(
+    BuildContext context,
+    AppNotification item,
+    DateFormat dateFmt,
+  ) {
     final parts = <String>[];
     if (item.sender.trim().isNotEmpty) {
-      parts.add(context.t.strings.legacy.msg_text(shortUserName_item_sender: _shortUserName(item.sender)));
+      parts.add(
+        context.t.strings.legacy.msg_text(
+          shortUserName_item_sender: _shortUserName(item.sender),
+        ),
+      );
     }
     parts.add(dateFmt.format(item.createTime.toLocal()));
     return parts.join(' · ');
@@ -328,7 +359,11 @@ class NotificationsScreen extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_notification(e: e))),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_failed_open_notification(e: e),
+          ),
+        ),
       );
     }
   }
@@ -350,10 +385,7 @@ class NotificationsScreen extends ConsumerWidget {
           );
           break;
         case _NotificationAction.delete:
-          await api.deleteNotification(
-            name: item.name,
-            source: item.source,
-          );
+          await api.deleteNotification(name: item.name, source: item.source);
           break;
       }
       ref.invalidate(notificationsProvider);
@@ -365,7 +397,9 @@ class NotificationsScreen extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_action_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_action_failed(e: e)),
+        ),
       );
     }
   }
@@ -398,7 +432,10 @@ class NotificationsScreen extends ConsumerWidget {
       updateTime: memo.updateTime.toLocal(),
       tags: memo.tags,
       attachments: memo.attachments,
-      relationCount: countReferenceRelations(memoUid: memo.uid, relations: memo.relations),
+      relationCount: countReferenceRelations(
+        memoUid: memo.uid,
+        relations: memo.relations,
+      ),
       location: memo.location,
       syncState: SyncState.synced,
       lastError: null,
@@ -426,10 +463,12 @@ class _NotificationMemoCommentTile extends ConsumerStatefulWidget {
   final void Function(_NotificationAction action) onAction;
 
   @override
-  ConsumerState<_NotificationMemoCommentTile> createState() => _NotificationMemoCommentTileState();
+  ConsumerState<_NotificationMemoCommentTile> createState() =>
+      _NotificationMemoCommentTileState();
 }
 
-class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoCommentTile> {
+class _NotificationMemoCommentTileState
+    extends ConsumerState<_NotificationMemoCommentTile> {
   User? _sender;
   Memo? _commentMemo;
   Memo? _relatedMemo;
@@ -460,7 +499,9 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     final activityId = item.activityId ?? 0;
     if (activityId > 0) {
       try {
-        final refs = await api.getMemoCommentActivityRefs(activityId: activityId);
+        final refs = await api.getMemoCommentActivityRefs(
+          activityId: activityId,
+        );
         if (refs.commentMemoUid.isNotEmpty) {
           try {
             commentMemo = await api.getMemoCompat(memoUid: refs.commentMemoUid);
@@ -503,12 +544,16 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     final time = (_commentMemo?.createTime ?? item.createTime).toLocal();
 
     final previewMemo = _relatedMemo ?? _commentMemo;
-    final previewAttachment = _firstImageAttachment(previewMemo?.attachments ?? const []);
+    final previewAttachment = _firstImageAttachment(
+      previewMemo?.attachments ?? const [],
+    );
     final previewText = _commentSnippet(previewMemo?.content ?? '');
 
     final bgColor = isUnread
         ? MemoFlowPalette.primary.withValues(alpha: 0.06)
-        : (widget.isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight);
+        : (widget.isDark
+              ? MemoFlowPalette.cardDark
+              : MemoFlowPalette.cardLight);
 
     return InkWell(
       onTap: widget.onTap,
@@ -547,7 +592,9 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                         : displayContent,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: widget.textMain.withValues(alpha: 0.85)),
+                    style: TextStyle(
+                      color: widget.textMain.withValues(alpha: 0.85),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -562,7 +609,9 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                         style: TextStyle(fontSize: 11, color: widget.textMuted),
                       ),
                     ),
-                  if (_error != null && _commentMemo == null && _relatedMemo == null)
+                  if (_error != null &&
+                      _commentMemo == null &&
+                      _relatedMemo == null)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
@@ -615,17 +664,27 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     required bool isDark,
   }) {
     const size = 56.0;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08);
-    final bgColor = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.08);
+    final bgColor = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
 
     if (previewAttachment != null) {
-      final url = _resolveAttachmentUrl(baseUrl, previewAttachment, thumbnail: true);
+      final url = _resolveAttachmentUrl(
+        baseUrl,
+        previewAttachment,
+        thumbnail: true,
+      );
       if (url.isNotEmpty) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: CachedNetworkImage(
             imageUrl: url,
-            httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
+            httpHeaders: authHeader == null
+                ? null
+                : {'Authorization': authHeader},
             width: size,
             height: size,
             fit: BoxFit.cover,
@@ -640,7 +699,8 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             ),
-            errorWidget: (_, __, ___) => _textPreviewFallback(previewText, size, bgColor, borderColor),
+            errorWidget: (_, __, ___) =>
+                _textPreviewFallback(previewText, size, bgColor, borderColor),
           ),
         );
       }
@@ -649,7 +709,12 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     return _textPreviewFallback(previewText, size, bgColor, borderColor);
   }
 
-  Widget _textPreviewFallback(String text, double size, Color bgColor, Color borderColor) {
+  Widget _textPreviewFallback(
+    String text,
+    double size,
+    Color bgColor,
+    Color borderColor,
+  ) {
     final snippet = text.isEmpty ? '...' : text;
     return Container(
       width: size,
@@ -664,7 +729,10 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
         snippet,
         maxLines: 3,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 10, color: widget.textMain.withValues(alpha: 0.8)),
+        style: TextStyle(
+          fontSize: 10,
+          color: widget.textMain.withValues(alpha: 0.8),
+        ),
       ),
     );
   }
@@ -683,15 +751,24 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     return null;
   }
 
-  String _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment, {required bool thumbnail}) {
+  String _resolveAttachmentUrl(
+    Uri? baseUrl,
+    Attachment attachment, {
+    required bool thumbnail,
+  }) {
     final external = attachment.externalLink.trim();
     if (external.isNotEmpty) {
       final isRelative = !isAbsoluteUrl(external);
       final resolved = resolveMaybeRelativeUrl(baseUrl, external);
-      return (thumbnail && isRelative) ? appendThumbnailParam(resolved) : resolved;
+      return (thumbnail && isRelative)
+          ? appendThumbnailParam(resolved)
+          : resolved;
     }
     if (baseUrl == null) return '';
-    final url = joinBaseUrl(baseUrl, 'file/${attachment.name}/${attachment.filename}');
+    final url = joinBaseUrl(
+      baseUrl,
+      'file/${attachment.name}/${attachment.filename}',
+    );
     return thumbnail ? appendThumbnailParam(url) : url;
   }
 
@@ -707,12 +784,18 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: widget.isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
+        color: widget.isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.06),
       ),
       alignment: Alignment.center,
       child: Text(
         _creatorInitial(creator, fallback, context),
-        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: textMuted),
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          color: textMuted,
+        ),
       ),
     );
 
@@ -744,7 +827,11 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     );
   }
 
-  String _creatorDisplayName(User? creator, String fallback, BuildContext context) {
+  String _creatorDisplayName(
+    User? creator,
+    String fallback,
+    BuildContext context,
+  ) {
     final display = creator?.displayName.trim() ?? '';
     if (display.isNotEmpty) return display;
     final username = creator?.username.trim() ?? '';
@@ -766,14 +853,19 @@ class _NotificationMemoCommentTileState extends ConsumerState<_NotificationMemoC
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('data:')) return trimmed;
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
+      return trimmed;
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);
   }
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status, required this.isUnread, required this.isDark});
+  const _StatusPill({
+    required this.status,
+    required this.isUnread,
+    required this.isDark,
+  });
 
   final String status;
   final bool isUnread;
@@ -781,10 +873,14 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = isUnread ? MemoFlowPalette.primary : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.45);
+    final base = isUnread
+        ? MemoFlowPalette.primary
+        : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.45);
     final label = isUnread
         ? context.t.strings.legacy.msg_unread
-        : (status.isEmpty ? context.t.strings.legacy.msg_read : context.t.strings.legacy.msg_read);
+        : (status.isEmpty
+              ? context.t.strings.legacy.msg_read
+              : context.t.strings.legacy.msg_read);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -794,7 +890,11 @@ class _StatusPill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: base),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: base,
+        ),
       ),
     );
   }
@@ -819,7 +919,9 @@ class _NotificationBadge extends StatelessWidget {
       'VERSION_UPDATE' => Icons.system_update_alt,
       _ => Icons.notifications,
     };
-    final color = isUnread ? MemoFlowPalette.primary : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.5);
+    final color = isUnread
+        ? MemoFlowPalette.primary
+        : (isDark ? Colors.white : Colors.black).withValues(alpha: 0.5);
     return Container(
       width: 36,
       height: 36,

@@ -28,6 +28,7 @@ import '../../state/debug_screenshot_mode_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
 import '../../state/logging_provider.dart';
+import '../../state/memo_timeline_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_providers.dart';
@@ -52,9 +53,11 @@ import '../tags/tags_screen.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
+import 'memo_versions_screen.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
+import 'recycle_bin_screen.dart';
 import 'memo_video_grid.dart';
 import 'note_input_sheet.dart';
 import 'widgets/audio_row.dart';
@@ -1189,6 +1192,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
@@ -1591,7 +1595,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (content == memo.content) return;
     final updateTime = preserveUpdateTime ? memo.updateTime : DateTime.now();
     final db = ref.read(databaseProvider);
+    final timelineService = ref.read(memoTimelineServiceProvider);
     final tags = extractTags(content);
+
+    await timelineService.captureMemoVersion(memo);
 
     await db.upsertMemo(
       uid: memo.uid,
@@ -1673,15 +1680,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         false;
     if (!confirmed) return;
 
-    _removeMemoWithAnimation(memo);
     final db = ref.read(databaseProvider);
-    await db.deleteMemoByUid(memo.uid);
-    await db.enqueueOutbox(
-      type: 'delete_memo',
-      payload: {'uid': memo.uid, 'force': false},
-    );
-    await ref.read(reminderSchedulerProvider).rescheduleAll();
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    final timelineService = ref.read(memoTimelineServiceProvider);
+    try {
+      await timelineService.moveMemoToRecycleBin(memo);
+      _removeMemoWithAnimation(memo);
+      await db.deleteMemoByUid(memo.uid);
+      await db.enqueueOutbox(
+        type: 'delete_memo',
+        payload: {'uid': memo.uid, 'force': false},
+      );
+      await ref.read(reminderSchedulerProvider).rescheduleAll();
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_delete_failed(e: e)),
+        ),
+      );
+    }
   }
 
   Future<void> _restoreMemo(LocalMemo memo) async {
@@ -1738,6 +1756,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           ),
         );
         ref.invalidate(memoRelationsProvider(memo.uid));
+        return;
+      case _MemoCardAction.history:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => MemoVersionsScreen(memoUid: memo.uid),
+          ),
+        );
         return;
       case _MemoCardAction.reminder:
         await Navigator.of(context).push(
@@ -3388,7 +3413,15 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-enum _MemoCardAction { togglePinned, edit, reminder, archive, restore, delete }
+enum _MemoCardAction {
+  togglePinned,
+  edit,
+  history,
+  reminder,
+  archive,
+  restore,
+  delete,
+}
 
 class _MemoCard extends StatefulWidget {
   const _MemoCard({
@@ -3948,6 +3981,17 @@ class _MemoCardState extends State<_MemoCard> {
                                   itemBuilder: (context) => isArchived
                                       ? [
                                           PopupMenuItem(
+                                            value: _MemoCardAction.history,
+                                            child: Text(
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .settings
+                                                  .preferences
+                                                  .history,
+                                            ),
+                                          ),
+                                          PopupMenuItem(
                                             value: _MemoCardAction.restore,
                                             child: Text(
                                               context
@@ -3993,6 +4037,17 @@ class _MemoCardState extends State<_MemoCard> {
                                             value: _MemoCardAction.edit,
                                             child: Text(
                                               context.t.strings.legacy.msg_edit,
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: _MemoCardAction.history,
+                                            child: Text(
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .settings
+                                                  .preferences
+                                                  .history,
                                             ),
                                           ),
                                           PopupMenuItem(

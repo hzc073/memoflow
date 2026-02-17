@@ -23,6 +23,7 @@ import '../../data/models/memo.dart';
 import '../../data/models/reaction.dart';
 import '../../data/models/user.dart';
 import '../../state/database_provider.dart';
+import '../../state/memo_timeline_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
@@ -33,6 +34,7 @@ import 'memo_image_grid.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
+import 'memo_versions_screen.dart';
 import 'memos_list_screen.dart';
 import 'memo_video_grid.dart';
 import '../../i18n/strings.g.dart';
@@ -140,6 +142,17 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     await _reload();
   }
 
+  Future<void> _openVersionHistory() async {
+    final memo = _memo;
+    if (memo == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoVersionsScreen(memoUid: memo.uid),
+      ),
+    );
+    await _reload();
+  }
+
   Future<void> _delete() async {
     if (widget.readOnly) return;
     final memo = _memo;
@@ -173,13 +186,25 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     if (!confirmed) return;
 
     final db = ref.read(databaseProvider);
-    await db.deleteMemoByUid(memo.uid);
-    await db.enqueueOutbox(
-      type: 'delete_memo',
-      payload: {'uid': memo.uid, 'force': false},
-    );
-    await ref.read(reminderSchedulerProvider).rescheduleAll();
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    final timelineService = ref.read(memoTimelineServiceProvider);
+    try {
+      await timelineService.moveMemoToRecycleBin(memo);
+      await db.deleteMemoByUid(memo.uid);
+      await db.enqueueOutbox(
+        type: 'delete_memo',
+        payload: {'uid': memo.uid, 'force': false},
+      );
+      await ref.read(reminderSchedulerProvider).rescheduleAll();
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_delete_failed(e: e)),
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
     context.safePop();
@@ -245,8 +270,10 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final updateTime = memo.updateTime;
     final tags = extractTags(updated);
     final db = ref.read(databaseProvider);
+    final timelineService = ref.read(memoTimelineServiceProvider);
 
     try {
+      await timelineService.captureMemoVersion(memo);
       await db.upsertMemo(
         uid: memo.uid,
         content: updated,
@@ -378,78 +405,94 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     updatedAttachments[index] = newAttachment;
 
     final db = ref.read(databaseProvider);
-    final now = DateTime.now();
-    await db.upsertMemo(
-      uid: memo.uid,
-      content: memo.content,
-      visibility: memo.visibility,
-      pinned: memo.pinned,
-      state: memo.state,
-      createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-      updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-      tags: memo.tags,
-      attachments: updatedAttachments
-          .map((a) => a.toJson())
-          .toList(growable: false),
-      location: memo.location,
-      relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
-    );
-
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': memo.content,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-        'sync_attachments': true,
-        'has_pending_attachments': true,
-      },
-    );
-    await db.enqueueOutbox(
-      type: 'upload_attachment',
-      payload: {
-        'uid': newUid,
-        'memo_uid': memo.uid,
-        'file_path': result.filePath,
-        'filename': result.filename,
-        'mime_type': result.mimeType,
-        'file_size': result.size,
-      },
-    );
-    final oldName = oldAttachment.name.isNotEmpty
-        ? oldAttachment.name
-        : oldAttachment.uid;
-    if (oldName.isNotEmpty) {
-      await db.enqueueOutbox(
-        type: 'delete_attachment',
-        payload: {'attachment_name': oldName, 'memo_uid': memo.uid},
+    final timelineService = ref.read(memoTimelineServiceProvider);
+    try {
+      final now = DateTime.now();
+      await timelineService.captureMemoVersion(memo);
+      await timelineService.moveAttachmentToRecycleBin(
+        memo: memo,
+        attachment: oldAttachment,
+        index: index,
       );
-    }
-
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
-
-    if (!mounted) return;
-    setState(() {
-      _memo = LocalMemo(
+      await db.upsertMemo(
         uid: memo.uid,
         content: memo.content,
-        contentFingerprint: memo.contentFingerprint,
         visibility: memo.visibility,
         pinned: memo.pinned,
         state: memo.state,
-        createTime: memo.createTime,
-        updateTime: now,
+        createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
         tags: memo.tags,
-        attachments: updatedAttachments,
-        relationCount: memo.relationCount,
+        attachments: updatedAttachments
+            .map((a) => a.toJson())
+            .toList(growable: false),
         location: memo.location,
-        syncState: SyncState.pending,
+        relationCount: memo.relationCount,
+        syncState: 1,
         lastError: null,
       );
-    });
+
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': memo.content,
+          'visibility': memo.visibility,
+          'pinned': memo.pinned,
+          'sync_attachments': true,
+          'has_pending_attachments': true,
+        },
+      );
+      await db.enqueueOutbox(
+        type: 'upload_attachment',
+        payload: {
+          'uid': newUid,
+          'memo_uid': memo.uid,
+          'file_path': result.filePath,
+          'filename': result.filename,
+          'mime_type': result.mimeType,
+          'file_size': result.size,
+        },
+      );
+      final oldName = oldAttachment.name.isNotEmpty
+          ? oldAttachment.name
+          : oldAttachment.uid;
+      if (oldName.isNotEmpty) {
+        await db.enqueueOutbox(
+          type: 'delete_attachment',
+          payload: {'attachment_name': oldName, 'memo_uid': memo.uid},
+        );
+      }
+
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+
+      if (!mounted) return;
+      setState(() {
+        _memo = LocalMemo(
+          uid: memo.uid,
+          content: memo.content,
+          contentFingerprint: memo.contentFingerprint,
+          visibility: memo.visibility,
+          pinned: memo.pinned,
+          state: memo.state,
+          createTime: memo.createTime,
+          updateTime: now,
+          tags: memo.tags,
+          attachments: updatedAttachments,
+          relationCount: memo.relationCount,
+          location: memo.location,
+          syncState: SyncState.pending,
+          lastError: null,
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
+        ),
+      );
+    }
   }
 
   Future<void> _togglePlayAudio(
@@ -588,11 +631,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           MemoLocationLine(
             location: memo.location!,
             textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            onTap: () => openAmapLocation(
-              context,
-              memo.location!,
-              memoUid: memo.uid,
-            ),
+            onTap: () =>
+                openAmapLocation(context, memo.location!, memoUid: memo.uid),
             fontSize: 12,
           ),
         ],
@@ -705,6 +745,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                     },
                     icon: const Icon(Icons.edit),
                   ),
+                IconButton(
+                  tooltip: context.t.strings.settings.preferences.history,
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_openVersionHistory());
+                  },
+                  icon: const Icon(Icons.history),
+                ),
                 if (!isArchived)
                   IconButton(
                     tooltip: memo.pinned

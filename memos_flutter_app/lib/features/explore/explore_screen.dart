@@ -30,6 +30,7 @@ import '../memos/memo_media_grid.dart';
 import '../memos/memo_video_grid.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/recycle_bin_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
@@ -287,6 +288,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),

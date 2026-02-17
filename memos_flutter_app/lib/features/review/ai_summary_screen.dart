@@ -24,6 +24,7 @@ import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/recycle_bin_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../resources/resources_screen.dart';
 import '../settings/settings_screen.dart';
@@ -85,6 +86,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       ),
       AppDrawerDestination.tags => const TagsScreen(),
       AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
       AppDrawerDestination.stats => const StatsScreen(),
       AppDrawerDestination.settings => const SettingsScreen(),
       AppDrawerDestination.about => const AboutScreen(),
