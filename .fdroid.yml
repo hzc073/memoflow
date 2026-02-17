@@ -1,0 +1,51 @@
+Categories:
+  - Internet
+  - Note
+License: GPL-3.0-only
+AuthorName: hzc073
+WebSite: https://github.com/hzc073/memoflow
+SourceCode: https://github.com/hzc073/memoflow
+IssueTracker: https://github.com/hzc073/memoflow/issues
+Changelog: https://github.com/hzc073/memoflow/releases
+
+AutoName: MemoFlow
+Summary: Memos mobile client with offline-first sync
+Description: |-
+  MemoFlow is a third-party Flutter mobile client for the Memos backend.
+  It supports offline-first sync, memo editing, attachments, and multi-account PAT login.
+
+RepoType: git
+Repo: https://github.com/hzc073/memoflow.git
+
+Builds:
+  - versionName: 1.0.14
+    versionCode: 14
+    commit: v1.0.14
+    subdir: memos_flutter_app
+    output: build/app/outputs/flutter-apk/app-release.apk
+    srclibs:
+      - flutter@3.38.5
+    rm:
+      - ios
+      - linux
+      - macos
+      - web
+      - windows
+    prebuild:
+      - rm -f android/key.properties
+      - rm -f android/app/keystore/release.jks
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter pub get
+    scandelete:
+      - .pub-cache
+      - android/app/keystore/release.jks
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release --no-tree-shake-icons
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9]+(\.[0-9]+)*$
+UpdateCheckData: memos_flutter_app/pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
+CurrentVersion: 1.0.14
+CurrentVersionCode: 14
