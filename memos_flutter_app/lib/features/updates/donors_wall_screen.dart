@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../state/update_config_provider.dart';
@@ -29,9 +28,13 @@ class _DonorsWallScreenState extends ConsumerState<DonorsWallScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
 
     return Scaffold(
@@ -58,11 +61,7 @@ class _DonorsWallScreenState extends ConsumerState<DonorsWallScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -75,31 +74,81 @@ class _DonorsWallScreenState extends ConsumerState<DonorsWallScreen> {
               }
               final config = snapshot.data;
               final donors = config?.donors ?? const <UpdateDonor>[];
-              if (donors.isEmpty) {
-                return _EmptyDonorsState(textMuted: textMuted);
-              }
-              return GridView.builder(
+              return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 140,
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 0.86,
-                ),
-                itemCount: donors.length,
-                itemBuilder: (context, index) {
-                  return _DonorTile(
-                    donor: donors[index],
+                children: [
+                  _DonorsIntroCard(
                     card: card,
                     textMain: textMain,
-                    textMuted: textMuted,
                     isDark: isDark,
-                  );
-                },
+                  ),
+                  const SizedBox(height: 14),
+                  if (donors.isEmpty)
+                    _EmptyDonorsState(textMuted: textMuted)
+                  else
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 140,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.86,
+                          ),
+                      itemCount: donors.length,
+                      itemBuilder: (context, index) {
+                        return _DonorTile(
+                          donor: donors[index],
+                          card: card,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          isDark: isDark,
+                        );
+                      },
+                    ),
+                ],
               );
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DonorsIntroCard extends StatelessWidget {
+  const _DonorsIntroCard({
+    required this.card,
+    required this.textMain,
+    required this.isDark,
+  });
+
+  final Color card;
+  final Color textMain;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      decoration: BoxDecoration(
+        color: card,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  color: Colors.black.withValues(alpha: 0.06),
+                ),
+              ],
+      ),
+      child: Text(
+        context.t.strings.legacy.msg_donors_intro_thanks,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 13, height: 1.5, color: textMain),
       ),
     );
   }
@@ -116,11 +165,7 @@ class _EmptyDonorsState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset(
-            _defaultAvatarAsset,
-            width: 72,
-            height: 72,
-          ),
+          Image.asset(_defaultAvatarAsset, width: 72, height: 72),
           const SizedBox(height: 12),
           Text(
             context.t.strings.legacy.msg_no_contributors_yet,
@@ -170,11 +215,17 @@ class _DonorTile extends StatelessWidget {
           _DonorAvatar(url: donor.avatar, size: 54, mutedColor: textMuted),
           const SizedBox(height: 10),
           Text(
-            donor.name.isEmpty ? context.t.strings.legacy.msg_anonymous : donor.name,
+            donor.name.isEmpty
+                ? context.t.strings.legacy.msg_anonymous
+                : donor.name,
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textMain),
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: textMain,
+            ),
           ),
         ],
       ),
@@ -206,10 +257,7 @@ class _DonorAvatar extends StatelessWidget {
         child: SizedBox(
           width: size * 0.4,
           height: size * 0.4,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: mutedColor,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2, color: mutedColor),
         ),
       ),
     );
