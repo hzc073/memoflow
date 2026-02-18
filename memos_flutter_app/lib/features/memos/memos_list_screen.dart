@@ -384,6 +384,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   var _searching = false;
   var _openedDrawerOnStart = false;
   String? _selectedShortcutId;
+  QuickSearchKind? _selectedQuickSearchKind;
   String? _activeTagFilter;
   var _sortOption = _MemoSortOption.createDesc;
   List<LocalMemo> _animatedMemos = [];
@@ -1070,7 +1071,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   void _closeSearch() {
     _searchController.clear();
     FocusScope.of(context).unfocus();
-    setState(() => _searching = false);
+    setState(() {
+      _searching = false;
+      _selectedQuickSearchKind = null;
+    });
   }
 
   void _submitSearch(String query) {
@@ -1087,6 +1091,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     );
     setState(() {});
     _submitSearch(trimmed);
+  }
+
+  void _toggleQuickSearchKind(QuickSearchKind kind) {
+    setState(() {
+      if (_selectedQuickSearchKind == kind) {
+        _selectedQuickSearchKind = null;
+      } else {
+        _selectedQuickSearchKind = kind;
+      }
+    });
   }
 
   Shortcut? _findShortcutById(List<Shortcut> shortcuts) {
@@ -1395,13 +1409,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     required List<LocalMemo>? memosValue,
     required bool useRemoteSearch,
     required bool useShortcutFilter,
+    required bool useQuickSearch,
     required String searchQuery,
     required String? resolvedTag,
     required DateTime? filterDay,
   }) {
     if (_autoScanTriggered || _autoScanInFlight) return;
     if (memosLoading) return;
-    if (useRemoteSearch || useShortcutFilter) return;
+    if (useRemoteSearch || useShortcutFilter || useQuickSearch) return;
     if (widget.state != 'NORMAL') return;
     if (searchQuery.trim().isNotEmpty) return;
     if (resolvedTag != null && resolvedTag.trim().isNotEmpty) return;
@@ -1478,7 +1493,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
             );
       ref.invalidate(shortcutsProvider);
       if (!mounted) return;
-      setState(() => _selectedShortcutId = created.shortcutId);
+      setState(() {
+        _selectedShortcutId = created.shortcutId;
+        _selectedQuickSearchKind = null;
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1535,7 +1553,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     if (!mounted || action == null) return;
     switch (action.type) {
       case _TitleMenuActionType.selectShortcut:
-        setState(() => _selectedShortcutId = action.shortcutId);
+        setState(() {
+          _selectedShortcutId = action.shortcutId;
+          _selectedQuickSearchKind = null;
+        });
         break;
       case _TitleMenuActionType.clearShortcut:
         setState(() => _selectedShortcutId = null);
@@ -2050,11 +2071,27 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final selectedShortcut = _findShortcutById(shortcuts);
     final shortcutFilter = selectedShortcut?.filter ?? '';
     final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
+    final selectedQuickSearchKind = _selectedQuickSearchKind;
     final resolvedTag = _activeTagFilter;
-    final useRemoteSearch = !useShortcutFilter && searchQuery.trim().isNotEmpty;
+    final useQuickSearch =
+        !useShortcutFilter && selectedQuickSearchKind != null;
+    final useRemoteSearch =
+        !useShortcutFilter && !useQuickSearch && searchQuery.trim().isNotEmpty;
+    final quickSearchQuery = selectedQuickSearchKind == null
+        ? null
+        : (
+            kind: selectedQuickSearchKind,
+            searchQuery: searchQuery,
+            state: widget.state,
+            tag: resolvedTag,
+            startTimeSec: startTimeSec,
+            endTimeSecExclusive: endTimeSecExclusive,
+            pageSize: _pageSize,
+          );
     final queryKey =
         '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
         '${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|${useShortcutFilter ? 1 : 0}|'
+        '${selectedQuickSearchKind?.name ?? ''}|${useQuickSearch ? 1 : 0}|'
         '${useRemoteSearch ? 1 : 0}';
     if (_paginationKey != queryKey) {
       _paginationKey = queryKey;
@@ -2074,6 +2111,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     );
     final memosAsync = useShortcutFilter
         ? ref.watch(shortcutMemosProvider(shortcutQuery))
+        : useQuickSearch
+        ? ref.watch(quickSearchMemosProvider(quickSearchQuery!))
         : useRemoteSearch
         ? ref.watch(
             remoteSearchMemosProvider((
@@ -2103,7 +2142,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
     final recommendedTags = [...tagStats]
       ..sort((a, b) => b.count.compareTo(a.count));
-    final showSearchLanding = _searching && searchQuery.trim().isEmpty;
+    final showSearchLanding =
+        _searching && searchQuery.trim().isEmpty && !useQuickSearch;
     final memosValue = memosAsync.valueOrNull;
     final memosLoading = memosAsync.isLoading;
     final memosError = memosAsync.whenOrNull(error: (e, _) => e);
@@ -2136,6 +2176,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       memosValue: memosValue,
       useRemoteSearch: useRemoteSearch,
       useShortcutFilter: useShortcutFilter,
+      useQuickSearch: useQuickSearch,
       searchQuery: searchQuery,
       resolvedTag: resolvedTag,
       filterDay: filterDay,
@@ -2147,7 +2188,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
           : memosValue;
       final listSignature =
           '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
-          '${useShortcutFilter ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|'
+          '${useShortcutFilter ? 1 : 0}|${selectedQuickSearchKind?.name ?? ''}|'
+          '${useQuickSearch ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|'
           '${enableHomeSort ? _sortOption.name : 'default'}';
       _syncAnimatedMemos(sortedMemos, listSignature);
     }
@@ -2223,6 +2265,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 await ref.read(syncControllerProvider.notifier).syncNow();
                 if (useShortcutFilter) {
                   ref.invalidate(shortcutMemosProvider(shortcutQuery));
+                } else if (useQuickSearch && quickSearchQuery != null) {
+                  ref.invalidate(quickSearchMemosProvider(quickSearchQuery));
                 }
               },
               child: CustomScrollView(
@@ -2384,7 +2428,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                                 : null),
                     ],
                     bottom: _searching
-                        ? null
+                        ? (useShortcutFilter
+                              ? null
+                              : PreferredSize(
+                                  preferredSize: const Size.fromHeight(46),
+                                  child: Align(
+                                    alignment: Alignment.bottomLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        0,
+                                        16,
+                                        8,
+                                      ),
+                                      child: _SearchQuickFilterBar(
+                                        selectedKind: _selectedQuickSearchKind,
+                                        onSelectKind: _toggleQuickSearchKind,
+                                      ),
+                                    ),
+                                  ),
+                                ))
                         : (widget.showPillActions
                               ? PreferredSize(
                                   preferredSize: const Size.fromHeight(46),
@@ -3195,6 +3258,123 @@ class _SearchLandingState extends State<_SearchLanding> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SearchQuickFilterBar extends StatelessWidget {
+  const _SearchQuickFilterBar({
+    required this.selectedKind,
+    required this.onSelectKind,
+  });
+
+  final QuickSearchKind? selectedKind;
+  final ValueChanged<QuickSearchKind> onSelectKind;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.58 : 0.64);
+    final accent = MemoFlowPalette.primary;
+    final chipBg = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final selectedBg = accent.withValues(alpha: isDark ? 0.22 : 0.14);
+    final selectedBorder = accent.withValues(alpha: isDark ? 0.58 : 0.48);
+    final items = <({QuickSearchKind kind, IconData icon, String label})>[
+      (
+        kind: QuickSearchKind.attachments,
+        icon: Icons.attachment_outlined,
+        label: context.t.strings.legacy.msg_attachments,
+      ),
+      (
+        kind: QuickSearchKind.tags,
+        icon: Icons.sell_outlined,
+        label: context.t.strings.legacy.msg_tags,
+      ),
+      (
+        kind: QuickSearchKind.voice,
+        icon: Icons.keyboard_voice_outlined,
+        label: context.t.strings.legacy.msg_voice_memos,
+      ),
+      (
+        kind: QuickSearchKind.onThisDay,
+        icon: Icons.history_edu_outlined,
+        label: trByLanguage(
+          language: context.appLanguage,
+          zh: '那年今日',
+          en: 'On This Day',
+        ),
+      ),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            _buildQuickChip(
+              item: items[i],
+              selected: selectedKind == items[i].kind,
+              textMuted: textMuted,
+              accent: accent,
+              chipBg: chipBg,
+              border: border,
+              selectedBg: selectedBg,
+              selectedBorder: selectedBorder,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickChip({
+    required ({QuickSearchKind kind, IconData icon, String label}) item,
+    required bool selected,
+    required Color textMuted,
+    required Color accent,
+    required Color chipBg,
+    required Color border,
+    required Color selectedBg,
+    required Color selectedBorder,
+  }) {
+    final bg = selected ? selectedBg : chipBg;
+    final chipBorder = selected ? selectedBorder : border;
+    final textColor = selected ? accent : textMuted;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () => onSelectKind(item.kind),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: chipBorder),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(item.icon, size: 16, color: textColor),
+            const SizedBox(width: 6),
+            Text(
+              item.label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

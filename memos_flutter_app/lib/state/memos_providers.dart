@@ -54,6 +54,18 @@ typedef ShortcutMemosQuery = ({
   int pageSize,
 });
 
+enum QuickSearchKind { attachments, tags, voice, onThisDay }
+
+typedef QuickSearchMemosQuery = ({
+  QuickSearchKind kind,
+  String searchQuery,
+  String state,
+  String? tag,
+  int? startTimeSec,
+  int? endTimeSecExclusive,
+  int pageSize,
+});
+
 final memosApiProvider = Provider<MemosApi>((ref) {
   final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
   if (account == null) {
@@ -523,6 +535,34 @@ final shortcutMemosProvider =
       }
     });
 
+final quickSearchMemosProvider =
+    StreamProvider.family<List<LocalMemo>, QuickSearchMemosQuery>((
+      ref,
+      query,
+    ) async* {
+      final db = ref.watch(databaseProvider);
+      final search = query.searchQuery.trim();
+      final normalizedTag = _normalizeTagInput(query.tag);
+      final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+      const int? localCandidateLimit = null;
+
+      await for (final rows in db.watchMemos(
+        searchQuery: search.isEmpty ? null : search,
+        state: query.state,
+        tag: normalizedTag.isEmpty ? null : normalizedTag,
+        startTimeSec: query.startTimeSec,
+        endTimeSecExclusive: query.endTimeSecExclusive,
+        limit: localCandidateLimit,
+      )) {
+        final predicate = _buildQuickSearchPredicate(
+          kind: query.kind,
+          nowLocal: DateTime.now(),
+        );
+        final filtered = _filterShortcutMemosFromRows(rows, predicate);
+        yield _applyShortcutPageLimit(filtered, pageSize);
+      }
+    });
+
 String? _buildShortcutFilter({
   required int? creatorId,
   required String searchQuery,
@@ -801,6 +841,57 @@ _MemoPredicate? _buildShortcutPredicate(String filter) {
   } catch (_) {
     return null;
   }
+}
+
+_MemoPredicate _buildQuickSearchPredicate({
+  required QuickSearchKind kind,
+  required DateTime nowLocal,
+}) {
+  return switch (kind) {
+    QuickSearchKind.attachments => (memo) => memo.attachments.isNotEmpty,
+    QuickSearchKind.tags => (memo) => memo.tags.isNotEmpty,
+    QuickSearchKind.voice => _memoHasVoiceAttachment,
+    QuickSearchKind.onThisDay => (memo) => _isMemoOnThisDay(memo, nowLocal),
+  };
+}
+
+bool _memoHasVoiceAttachment(LocalMemo memo) {
+  for (final attachment in memo.attachments) {
+    if (_isAudioAttachment(attachment)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool _isAudioAttachment(Attachment attachment) {
+  final type = attachment.type.trim().toLowerCase();
+  if (type.startsWith('audio/')) return true;
+  if (type == 'audio') return true;
+
+  final filename = attachment.filename.trim().toLowerCase();
+  if (filename.isEmpty) return false;
+  const audioExtensions = <String>[
+    '.aac',
+    '.amr',
+    '.flac',
+    '.m4a',
+    '.mp3',
+    '.ogg',
+    '.opus',
+    '.wav',
+    '.wma',
+  ];
+  for (final ext in audioExtensions) {
+    if (filename.endsWith(ext)) return true;
+  }
+  return false;
+}
+
+bool _isMemoOnThisDay(LocalMemo memo, DateTime nowLocal) {
+  final created = memo.createTime;
+  if (created.year >= nowLocal.year) return false;
+  return created.month == nowLocal.month && created.day == nowLocal.day;
 }
 
 enum _FilterTokenType {
