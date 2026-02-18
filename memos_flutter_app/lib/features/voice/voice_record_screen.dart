@@ -38,9 +38,11 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
   ConsumerState<VoiceRecordScreen> createState() => _VoiceRecordScreenState();
 }
 
-class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with TickerProviderStateMixin {
+class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
+    with TickerProviderStateMixin {
   static const _maxDuration = Duration(minutes: 60);
   static const double _silenceGate = 0.08;
+  static const double _voiceActivityGate = 0.18;
   static const int _maxVisualizerBars = 21;
 
   final _recorder = AudioRecorder();
@@ -60,7 +62,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
   bool _paused = false;
   double _ampLevel = 0.0;
   double _ampPeak = 0.0;
-  final List<double> _visualizerSamples = List<double>.filled(_maxVisualizerBars, 0.0);
+  bool _voiceActive = false;
+  final List<double> _visualizerSamples = List<double>.filled(
+    _maxVisualizerBars,
+    0.0,
+  );
   int _visualizerCursor = 0;
   bool _awaitingConfirm = false;
   bool _processing = false;
@@ -72,9 +78,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _blinkOpacity = Tween<double>(begin: 1.0, end: 0.3).animate(
-      CurvedAnimation(parent: _blink, curve: Curves.easeInOut),
-    );
+    _blinkOpacity = Tween<double>(
+      begin: 1.0,
+      end: 0.3,
+    ).animate(CurvedAnimation(parent: _blink, curve: Curves.easeInOut));
   }
 
   @override
@@ -106,6 +113,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       _processing = false;
       _ampLevel = 0.0;
       _ampPeak = 0.0;
+      _voiceActive = false;
     });
   }
 
@@ -137,7 +145,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     if (!mic.isGranted) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_microphone_permission_required)),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_microphone_permission_required,
+          ),
+        ),
       );
       return;
     }
@@ -174,7 +186,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_start_recording(e: e))),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_failed_start_recording(e: e),
+          ),
+        ),
       );
       return;
     }
@@ -184,6 +200,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       _recording = true;
       _ampLevel = 0.0;
       _ampPeak = 0.0;
+      _voiceActive = false;
     });
 
     _stopwatch
@@ -203,7 +220,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
         setState(() => _elapsed = elapsed);
       }
     });
-
   }
 
   Future<void> _togglePause() async {
@@ -223,12 +239,15 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
           _elapsed = _stopwatch.elapsed;
           _ampLevel = 0.0;
           _ampPeak = 0.0;
+          _voiceActive = false;
         });
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_operation_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_operation_failed(e: e)),
+        ),
       );
     }
   }
@@ -248,7 +267,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_stop_recording(e: e))),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_failed_stop_recording(e: e),
+          ),
+        ),
       );
       _resetToIdle();
       return;
@@ -266,6 +289,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       _elapsed = elapsed;
       _ampLevel = 0.0;
       _ampPeak = 0.0;
+      _voiceActive = false;
       _awaitingConfirm = true;
       _processing = false;
     });
@@ -280,7 +304,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     if (filePath == null || fileName == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_recording_info_missing)),
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_recording_info_missing),
+          ),
         );
       }
       _resetToIdle();
@@ -291,7 +317,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     if (!file.existsSync()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_recording_file_not_found)),
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_recording_file_not_found,
+            ),
+          ),
         );
       }
       _resetToIdle();
@@ -305,7 +335,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
       final language = ref.read(appPreferencesProvider).language;
       final createdAt = DateFormat('yyyy-MM-dd HH:mm').format(now);
 
-      final content = trByLanguageKey(language: language, key: 'legacy.msg_voice_memo');
+      final content = trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_voice_memo',
+      );
 
       if (!mounted) return;
       setState(() {
@@ -374,25 +407,28 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
 
   void _startMeter() {
     _amplitudeSub?.cancel();
-    _amplitudeSub = _recorder.onAmplitudeChanged(const Duration(milliseconds: 120)).listen(
-      (amp) {
-        if (!_recording || _paused) return;
-        final level = _normalizeDbfs(amp.current);
-        final gated = level < _silenceGate ? 0.0 : level;
-        final smoothed = _ampLevel * 0.7 + gated * 0.3;
-        final peak = math.max(_ampPeak * 0.92, smoothed);
-        final nextLevel = smoothed < _silenceGate ? 0.0 : smoothed;
-        final nextPeak = peak < _silenceGate ? 0.0 : peak;
-        if (mounted) {
-          _pushVisualizerSample(nextLevel);
-          setState(() {
-            _ampLevel = nextLevel;
-            _ampPeak = nextPeak;
-          });
-        }
-      },
-      onError: (_) {},
-    );
+    _amplitudeSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 120))
+        .listen((amp) {
+          if (!_recording || _paused) return;
+          final level = _normalizeDbfs(amp.current);
+          final gated = level < _voiceActivityGate ? 0.0 : level;
+          final smoothed = _ampLevel * 0.7 + gated * 0.3;
+          final peak = math.max(_ampPeak * 0.92, smoothed);
+          final nextLevel = smoothed < _silenceGate ? 0.0 : smoothed;
+          final nextPeak = peak < _silenceGate ? 0.0 : peak;
+          final hasVoice = nextLevel > 0.0;
+          final visualLevel = hasVoice ? nextLevel : 0.0;
+          final visualPeak = hasVoice ? nextPeak : 0.0;
+          if (mounted) {
+            _pushVisualizerSample(visualLevel);
+            setState(() {
+              _ampLevel = visualLevel;
+              _ampPeak = visualPeak;
+              _voiceActive = hasVoice;
+            });
+          }
+        }, onError: (_) {});
   }
 
   void _stopMeter() {
@@ -400,6 +436,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     _amplitudeSub = null;
     _ampLevel = 0.0;
     _ampPeak = 0.0;
+    _voiceActive = false;
     _resetVisualizer();
   }
 
@@ -407,20 +444,28 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final overlay = Colors.black.withValues(alpha: isDark ? 0.6 : 0.3);
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : MemoFlowPalette.cardLight;
-    final textMain = isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight;
+    final cardColor = isDark
+        ? const Color(0xFF1E1E1E)
+        : MemoFlowPalette.cardLight;
+    final textMain = isDark
+        ? const Color(0xFFD1D1D1)
+        : MemoFlowPalette.textLight;
     final textMuted = isDark ? const Color(0xFF8E8E8E) : Colors.grey.shade400;
     final recActive = _recording && !_paused;
 
     final elapsedText = _formatDisplayDuration(_elapsed);
     final limitText = '${_formatDisplayDuration(_maxDuration)} Limit';
-    final dateText = DateFormat('yyyy-MM-dd').format(_startedAt ?? DateTime.now());
+    final dateText = DateFormat(
+      'yyyy-MM-dd',
+    ).format(_startedAt ?? DateTime.now());
     final size = MediaQuery.sizeOf(context);
     final cardWidth = math.min(size.width * 0.88, 342.0).toDouble();
     final cardHeight = math.min(size.height * 0.78, 600.0).toDouble();
 
     return Scaffold(
-      backgroundColor: isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight,
+      backgroundColor: isDark
+          ? MemoFlowPalette.backgroundDark
+          : MemoFlowPalette.backgroundLight,
       body: Stack(
         children: [
           Positioned.fill(child: ColoredBox(color: overlay)),
@@ -434,13 +479,17 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                     color: cardColor,
                     borderRadius: BorderRadius.circular(40),
                     border: Border.all(
-                      color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.05),
                     ),
                     boxShadow: [
                       BoxShadow(
                         blurRadius: 30,
                         offset: const Offset(0, 18),
-                        color: Colors.black.withValues(alpha: isDark ? 0.6 : 0.2),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.6 : 0.2,
+                        ),
                       ),
                     ],
                   ),
@@ -471,14 +520,20 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                                 const SizedBox(height: 4),
                                 Text(
                                   dateText,
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textMuted),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: textMuted,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -488,6 +543,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                                       isDark: isDark,
                                       level: recActive ? _ampLevel : 0.0,
                                       peak: recActive ? _ampPeak : 0.0,
+                                      showVoiceBars: recActive && _voiceActive,
                                     ),
                                   ),
                                   const SizedBox(height: 24),
@@ -505,23 +561,35 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                                     fontSize: 56,
                                     fontWeight: FontWeight.w600,
                                     height: 1.0,
-                                    color: isDark ? const Color(0xFFF5F5F5) : textMain,
-                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                    color: isDark
+                                        ? const Color(0xFFF5F5F5)
+                                        : textMain,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   limitText,
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textMuted),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: textMuted,
+                                  ),
                                 ),
                                 const SizedBox(height: 24),
                                 if (_awaitingConfirm)
                                   _buildConfirmRow(isDark: isDark)
                                 else
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _buildPauseButton(isDark: isDark, iconColor: textMain),
+                                      _buildPauseButton(
+                                        isDark: isDark,
+                                        iconColor: textMain,
+                                      ),
                                       _buildPrimaryButton(isDark: isDark),
                                     ],
                                   ),
@@ -539,7 +607,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                             width: 48,
                             height: 4,
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.grey.shade200,
                               borderRadius: BorderRadius.circular(999),
                             ),
                           ),
@@ -560,7 +630,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     final dot = Container(
       width: 8,
       height: 8,
-      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+      decoration: const BoxDecoration(
+        color: Colors.red,
+        shape: BoxShape.circle,
+      ),
     );
     if (!active) {
       return Opacity(opacity: 0.4, child: dot);
@@ -571,7 +644,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
   Widget _buildPauseButton({required bool isDark, required Color iconColor}) {
     final enabled = _recording;
     final bg = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF3F4F6);
-    final border = isDark ? Border.all(color: Colors.white.withValues(alpha: 0.06)) : null;
+    final border = isDark
+        ? Border.all(color: Colors.white.withValues(alpha: 0.06))
+        : null;
     final icon = _paused ? Icons.play_arrow_rounded : Icons.pause_rounded;
 
     return AnimatedOpacity(
@@ -668,7 +743,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: MemoFlowPalette.primary.withValues(alpha: 0.1), width: 6),
+                  border: Border.all(
+                    color: MemoFlowPalette.primary.withValues(alpha: 0.1),
+                    width: 6,
+                  ),
                 ),
               ),
               Container(
@@ -676,7 +754,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                 height: 80,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: MemoFlowPalette.primary.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: MemoFlowPalette.primary.withValues(alpha: 0.2),
+                  ),
                 ),
               ),
               Container(
@@ -688,7 +768,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                   boxShadow: [
                     BoxShadow(
                       blurRadius: isDark ? 20 : 16,
-                      color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.3 : 0.2),
+                      color: MemoFlowPalette.primary.withValues(
+                        alpha: isDark ? 0.3 : 0.2,
+                      ),
                     ),
                   ],
                 ),
@@ -702,7 +784,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
                             borderRadius: BorderRadius.circular(4),
                           ),
                         )
-                      : const Icon(Icons.mic_rounded, color: Colors.white, size: 28),
+                      : const Icon(
+                          Icons.mic_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                 ),
               ),
             ],
@@ -712,50 +798,112 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
     );
   }
 
-  Widget _buildWaveform({required bool isDark, required double level, required double peak}) {
+  Widget _buildWaveform({
+    required bool isDark,
+    required double level,
+    required double peak,
+    required bool showVoiceBars,
+  }) {
     final leftBars = isDark
         ? const [32.0, 48.0, 80.0, 56.0, 112.0]
         : const [24.0, 48.0, 80.0, 32.0, 56.0, 128.0, 40.0, 64.0];
-    final centerBars = isDark ? const [144.0, 192.0, 128.0, 96.0] : const [96.0, 160.0, 112.0, 192.0, 80.0];
-    final rightBars = isDark ? const [16.0, 16.0, 16.0, 16.0, 16.0] : const [16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0];
+    final centerBars = isDark
+        ? const [144.0, 192.0, 128.0, 96.0]
+        : const [96.0, 160.0, 112.0, 192.0, 80.0];
+    final rightBars = isDark
+        ? const [16.0, 16.0, 16.0, 16.0, 16.0]
+        : const [16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0];
 
     final leftColor = isDark
         ? const Color(0xFF8E8E8E).withValues(alpha: 0.4)
         : MemoFlowPalette.textLight.withValues(alpha: 0.3);
-    final centerColor = isDark ? const Color(0xFFD1D1D1) : MemoFlowPalette.textLight;
+    final centerColor = isDark
+        ? const Color(0xFFD1D1D1)
+        : MemoFlowPalette.textLight;
     final rightColor = isDark
         ? const Color(0xFF8E8E8E).withValues(alpha: 0.2)
         : MemoFlowPalette.textLight.withValues(alpha: 0.1);
+    final idleDashColor = isDark
+        ? const Color(0xFF8E8E8E).withValues(alpha: 0.65)
+        : MemoFlowPalette.textLight.withValues(alpha: 0.28);
 
-    double scaleFor(double base, double sampleLevel, double minScale, double maxScale) {
-      final scale = minScale + (maxScale - minScale) * sampleLevel.clamp(0.0, 1.0);
-      return math.max(4.0, base * scale);
-    }
-
-    final bars = <Widget>[];
-    final totalBars = leftBars.length + centerBars.length + rightBars.length;
-    var sampleIndex = 0;
-    double nextSample() {
-      final value = _visualizerSampleAt(sampleIndex, totalBars);
-      sampleIndex += 1;
-      return value;
-    }
-
-    void addBars(List<double> heights, Color color, double minScale, double maxScale) {
-      for (final h in heights) {
-        final sample = nextSample();
-        final scaled = scaleFor(h, sample, minScale, maxScale);
-        bars.add(_buildWaveBar(height: scaled, color: color));
-        bars.add(const SizedBox(width: 4));
+    Widget buildVoiceBars() {
+      double scaleFor(
+        double base,
+        double sampleLevel,
+        double minScale,
+        double maxScale,
+      ) {
+        final scale =
+            minScale + (maxScale - minScale) * sampleLevel.clamp(0.0, 1.0);
+        return math.max(4.0, base * scale);
       }
+
+      final bars = <Widget>[];
+      final totalBars = leftBars.length + centerBars.length + rightBars.length;
+      var sampleIndex = 0;
+      double nextSample() {
+        final value = _visualizerSampleAt(sampleIndex, totalBars);
+        sampleIndex += 1;
+        return value;
+      }
+
+      void addBars(
+        List<double> heights,
+        Color color,
+        double minScale,
+        double maxScale,
+      ) {
+        for (final h in heights) {
+          final sample = nextSample();
+          final scaled = scaleFor(h, sample, minScale, maxScale);
+          bars.add(_buildWaveBar(height: scaled, color: color));
+          bars.add(const SizedBox(width: 4));
+        }
+      }
+
+      addBars(leftBars, leftColor, 0.25, 0.95);
+      addBars(centerBars, centerColor, 0.35, 1.15);
+      addBars(rightBars, rightColor, 0.2, 0.7);
+
+      if (bars.isNotEmpty) {
+        bars.removeLast();
+      }
+      return Row(mainAxisSize: MainAxisSize.min, children: bars);
     }
 
-    addBars(leftBars, leftColor, 0.25, 0.95);
-    addBars(centerBars, centerColor, 0.35, 1.15);
-    addBars(rightBars, rightColor, 0.2, 0.7);
-
-    if (bars.isNotEmpty) {
-      bars.removeLast();
+    Widget buildIdleDashes() {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          const dashWidth = 2.0;
+          const dashHeight = 12.0;
+          const dashGap = 4.0;
+          final maxWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : 260.0;
+          final dashCount = math.max(
+            16,
+            (maxWidth / (dashWidth + dashGap)).floor(),
+          );
+          final dashes = <Widget>[];
+          for (var i = 0; i < dashCount; i++) {
+            dashes.add(
+              Container(
+                width: dashWidth,
+                height: dashHeight,
+                decoration: BoxDecoration(
+                  color: idleDashColor,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            );
+            if (i != dashCount - 1) {
+              dashes.add(const SizedBox(width: dashGap));
+            }
+          }
+          return Row(mainAxisSize: MainAxisSize.min, children: dashes);
+        },
+      );
     }
 
     final lineColor = const Color(0xFF22C55E);
@@ -800,10 +948,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen> with Tick
 
     return Stack(
       alignment: Alignment.center,
-      children: [
-        Row(mainAxisSize: MainAxisSize.min, children: bars),
-        line,
-      ],
+      children: [showVoiceBars ? buildVoiceBars() : buildIdleDashes(), line],
     );
   }
 

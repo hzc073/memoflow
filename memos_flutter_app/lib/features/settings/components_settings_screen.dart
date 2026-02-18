@@ -9,6 +9,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../state/image_bed_settings_provider.dart';
 import '../../state/location_settings_provider.dart';
+import '../../state/memoflow_bridge_settings_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
@@ -16,6 +17,7 @@ import '../../state/webdav_settings_provider.dart';
 import '../reminders/reminder_settings_screen.dart';
 import 'image_bed_settings_screen.dart';
 import 'location_settings_screen.dart';
+import 'memoflow_bridge_screen.dart';
 import 'webdav_sync_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -28,11 +30,16 @@ class ComponentsSettingsScreen extends ConsumerWidget {
     final reminderSettings = ref.watch(reminderSettingsProvider);
     final imageBedSettings = ref.watch(imageBedSettingsProvider);
     final locationSettings = ref.watch(locationSettingsProvider);
+    final bridgeSettings = ref.watch(memoFlowBridgeSettingsProvider);
     final webDavSettings = ref.watch(webDavSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
 
     return Scaffold(
@@ -59,11 +66,7 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -74,7 +77,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
               _ToggleCard(
                 card: card,
                 label: context.t.strings.legacy.msg_memo_reminders_2,
-                description: context.t.strings.legacy.msg_enable_reminders_memos,
+                description:
+                    context.t.strings.legacy.msg_enable_reminders_memos,
                 value: reminderSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
@@ -87,57 +91,102 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                   await ref.read(reminderSchedulerProvider).rescheduleAll();
                 },
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const ReminderSettingsScreen()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ReminderSettingsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
                 label: context.t.strings.legacy.msg_third_party_share,
-                description: context.t.strings.legacy.msg_allow_sharing_links_images_other_apps,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_allow_sharing_links_images_other_apps,
                 value: prefs.thirdPartyShareEnabled,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: (v) =>
-                    ref.read(appPreferencesProvider.notifier).setThirdPartyShareEnabled(v),
+                onChanged: (v) => ref
+                    .read(appPreferencesProvider.notifier)
+                    .setThirdPartyShareEnabled(v),
               ),
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
                 label: context.t.strings.legacy.msg_image_bed_2,
-                description: context.t.strings.legacy.msg_upload_images_image_bed_append_links,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_upload_images_image_bed_append_links,
                 value: imageBedSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: (v) => ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
+                onChanged: (v) =>
+                    ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const ImageBedSettingsScreen()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ImageBedSettingsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
                 label: context.t.strings.legacy.msg_location_2,
-                description: context.t.strings.legacy.msg_attach_location_info_memos_show_subtle,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_attach_location_info_memos_show_subtle,
                 value: locationSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: (v) => ref.read(locationSettingsProvider.notifier).setEnabled(v),
+                onChanged: (v) =>
+                    ref.read(locationSettingsProvider.notifier).setEnabled(v),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LocationSettingsScreen(),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               _ToggleCard(
                 card: card,
                 label: context.t.strings.legacy.msg_webdav_sync,
-                description: context.t.strings.legacy.msg_sync_settings_webdav_across_devices,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_sync_settings_webdav_across_devices,
                 value: webDavSettings.enabled,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: (v) => ref.read(webDavSettingsProvider.notifier).setEnabled(v),
+                onChanged: (v) =>
+                    ref.read(webDavSettingsProvider.notifier).setEnabled(v),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const WebDavSyncScreen()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => const WebDavSyncScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ToggleCard(
+                card: card,
+                label: context.t.strings.legacy.msg_bridge_component_title,
+                description: context.t.strings.legacy.msg_bridge_component_desc,
+                value: bridgeSettings.enabled,
+                textMain: textMain,
+                textMuted: textMuted,
+                onChanged: (v) => ref
+                    .read(memoFlowBridgeSettingsProvider.notifier)
+                    .setEnabled(v),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const MemoFlowBridgeScreen(),
+                  ),
                 ),
               ),
             ],
@@ -149,15 +198,23 @@ class ComponentsSettingsScreen extends ConsumerWidget {
 }
 
 Future<bool> _requestReminderPermissions(BuildContext context) async {
-  final confirmed = await showDialog<bool>(
+  final confirmed =
+      await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text(context.t.strings.legacy.msg_enable_reminder_permissions),
           content: Text(
-            context.t.strings.legacy.msg_notification_exact_alarm_permissions_required_send,
+            context
+                .t
+                .strings
+                .legacy
+                .msg_notification_exact_alarm_permissions_required_send,
           ),
           actions: [
-            TextButton(onPressed: () => context.safePop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
+            TextButton(
+              onPressed: () => context.safePop(false),
+              child: Text(context.t.strings.legacy.msg_cancel_2),
+            ),
             FilledButton(
               onPressed: () => context.safePop(true),
               child: Text(context.t.strings.legacy.msg_grant),
@@ -181,7 +238,11 @@ Future<bool> _requestReminderPermissions(BuildContext context) async {
   if (!context.mounted) return granted;
   if (!granted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.t.strings.legacy.msg_permissions_denied_reminders_disabled)),
+      SnackBar(
+        content: Text(
+          context.t.strings.legacy.msg_permissions_denied_reminders_disabled,
+        ),
+      ),
     );
   }
   return granted;
@@ -243,7 +304,13 @@ class _ToggleCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: textMain,
+                      ),
+                    ),
                   ),
                   Switch(value: value, onChanged: onChanged),
                 ],
@@ -253,7 +320,11 @@ class _ToggleCard extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 4, right: 44),
                   child: Text(
                     description,
-                    style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: textMuted,
+                      height: 1.3,
+                    ),
                   ),
                 ),
             ],

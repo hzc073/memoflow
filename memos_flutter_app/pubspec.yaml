@@ -82,6 +82,8 @@ dependencies:
   saf_stream: ^0.12.3
   cryptography: ^2.9.0
   cryptography_flutter: ^2.3.4
+  mobile_scanner: ^6.0.2
+  multicast_dns: ^0.3.3
 
 dev_dependencies:
   flutter_test:

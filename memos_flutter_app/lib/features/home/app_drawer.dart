@@ -14,6 +14,7 @@ import '../../state/notifications_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/stats_providers.dart';
+import '../settings/memoflow_bridge_screen.dart';
 import '../tags/tag_tree.dart';
 import '../../i18n/strings.g.dart';
 
@@ -134,95 +135,132 @@ class AppDrawer extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      IconButton(
-                        tooltip: context.t.strings.legacy.msg_sync_queue,
-                        onPressed: () =>
-                            onSelect(AppDrawerDestination.syncQueue),
-                        icon: Consumer(
-                          builder: (context, ref, child) {
-                            final pendingOutboxAsync = ref.watch(
-                              _pendingOutboxCountProvider,
-                            );
-                            final pendingOutboxCount =
-                                pendingOutboxAsync.valueOrNull ?? 0;
-                            final showSyncBadge = pendingOutboxCount > 0;
-                            return Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                child!,
-                                if (showSyncBadge)
-                                  Positioned(
-                                    right: -2,
-                                    top: -2,
-                                    child: Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                        color: MemoFlowPalette.primary,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: bg, width: 1),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _TopActionIconButton(
+                            tooltip: context.t.strings.legacy.msg_scan,
+                            onPressed: () async {
+                              await startMemoFlowQuickQrPair(
+                                context: context,
+                                ref: ref,
+                              );
+                            },
+                            icon: Icon(
+                              Icons.qr_code_scanner,
+                              color: textMuted,
+                              size: 21,
+                            ),
+                          ),
+                          _TopActionIconButton(
+                            tooltip: context.t.strings.legacy.msg_sync_queue,
+                            onPressed: () =>
+                                onSelect(AppDrawerDestination.syncQueue),
+                            icon: Consumer(
+                              builder: (context, ref, child) {
+                                final pendingOutboxAsync = ref.watch(
+                                  _pendingOutboxCountProvider,
+                                );
+                                final pendingOutboxCount =
+                                    pendingOutboxAsync.valueOrNull ?? 0;
+                                final showSyncBadge = pendingOutboxCount > 0;
+                                return Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    child!,
+                                    if (showSyncBadge)
+                                      Positioned(
+                                        right: -2,
+                                        top: -2,
+                                        child: Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: MemoFlowPalette.primary,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: bg,
+                                              width: 1,
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
-                          child: Icon(Icons.sync, color: textMuted),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: context.t.strings.legacy.msg_notifications,
-                        onPressed: () {
-                          final handler = onOpenNotifications;
-                          if (handler == null) {
-                            showTopToast(
-                              context,
-                              context
-                                  .t
-                                  .strings
-                                  .legacy
-                                  .msg_notifications_coming_soon,
-                            );
-                            return;
-                          }
-                          handler();
-                        },
-                        icon: Consumer(
-                          builder: (context, ref, child) {
-                            final unreadNotifications = ref.watch(
-                              unreadNotificationCountProvider,
-                            );
-                            final showNotificationBadge =
-                                unreadNotifications > 0;
-                            return Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                child!,
-                                if (showNotificationBadge)
-                                  Positioned(
-                                    right: -2,
-                                    top: -2,
-                                    child: Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFE05555),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: bg, width: 1),
+                                  ],
+                                );
+                              },
+                              child: Icon(
+                                Icons.sync,
+                                color: textMuted,
+                                size: 21,
+                              ),
+                            ),
+                          ),
+                          _TopActionIconButton(
+                            tooltip: context.t.strings.legacy.msg_notifications,
+                            onPressed: () {
+                              final handler = onOpenNotifications;
+                              if (handler == null) {
+                                showTopToast(
+                                  context,
+                                  context
+                                      .t
+                                      .strings
+                                      .legacy
+                                      .msg_notifications_coming_soon,
+                                );
+                                return;
+                              }
+                              handler();
+                            },
+                            icon: Consumer(
+                              builder: (context, ref, child) {
+                                final unreadNotifications = ref.watch(
+                                  unreadNotificationCountProvider,
+                                );
+                                final showNotificationBadge =
+                                    unreadNotifications > 0;
+                                return Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    child!,
+                                    if (showNotificationBadge)
+                                      Positioned(
+                                        right: -2,
+                                        top: -2,
+                                        child: Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE05555),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: bg,
+                                              width: 1,
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
-                          child: Icon(Icons.notifications, color: textMuted),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: context.t.strings.legacy.msg_settings,
-                        onPressed: () =>
-                            onSelect(AppDrawerDestination.settings),
-                        icon: Icon(Icons.settings, color: textMuted),
+                                  ],
+                                );
+                              },
+                              child: Icon(
+                                Icons.notifications,
+                                color: textMuted,
+                                size: 21,
+                              ),
+                            ),
+                          ),
+                          _TopActionIconButton(
+                            tooltip: context.t.strings.legacy.msg_settings,
+                            onPressed: () =>
+                                onSelect(AppDrawerDestination.settings),
+                            icon: Icon(
+                              Icons.settings,
+                              color: textMuted,
+                              size: 21,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -522,6 +560,30 @@ class _DrawerStat extends StatelessWidget {
   }
 }
 
+class _TopActionIconButton extends StatelessWidget {
+  const _TopActionIconButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Widget icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: icon,
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+    );
+  }
+}
+
 class _NavButton extends StatelessWidget {
   const _NavButton({
     required this.selected,
@@ -653,10 +715,11 @@ class _DrawerHeatmap extends StatelessWidget {
     );
 
     Color colorFor(int c) {
-      if (c <= 0)
+      if (c <= 0) {
         return isDark
             ? const Color(0xFF262626)
             : Colors.black.withValues(alpha: 0.05);
+      }
       final t = maxCount <= 0 ? 0.0 : (c / maxCount).clamp(0.0, 1.0);
       final accent = MemoFlowPalette.primary;
 

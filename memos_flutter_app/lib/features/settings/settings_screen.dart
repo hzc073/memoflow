@@ -58,8 +58,9 @@ class SettingsScreen extends ConsumerWidget {
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('data:')) return trimmed;
     final lower = trimmed.toLowerCase();
-    if (lower.startsWith('http://') || lower.startsWith('https://'))
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
       return trimmed;
+    }
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);
   }
@@ -411,7 +412,9 @@ class SettingsScreen extends ConsumerWidget {
                         final version = snapshot.data?.version.trim() ?? '';
                         final label = version.isEmpty
                             ? context.t.strings.legacy.msg_version
-                            : context.t.strings.legacy.msg_version_v(version: version);
+                            : context.t.strings.legacy.msg_version_v(
+                                version: version,
+                              );
                         return Text(label, style: versionStyle);
                       },
                     ),
