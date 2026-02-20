@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'desktop_settings_window.dart';
 import 'platform_layout.dart';
 
 const Duration kDrawerCloseNavigationDelay = Duration(milliseconds: 220);
@@ -20,6 +21,10 @@ void closeDrawerThenPushReplacement(
 
   void navigate() {
     if (!context.mounted) return;
+    if (route is DesktopSettingsWindowRouteIntent &&
+        openDesktopSettingsWindowIfSupported(feedbackContext: context)) {
+      return;
+    }
     final shouldSkipAnimation =
         noAnimation ||
         shouldUseDesktopSidePaneLayout(MediaQuery.sizeOf(context).width);

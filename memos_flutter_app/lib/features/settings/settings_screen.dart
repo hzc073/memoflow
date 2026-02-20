@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop_settings_window.dart';
 import '../../core/desktop_shortcuts.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
@@ -31,13 +33,28 @@ import 'user_guide_screen.dart';
 import 'widgets_screen.dart';
 import '../../i18n/strings.g.dart';
 
-class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+class SettingsScreen extends ConsumerWidget
+    implements DesktopSettingsWindowRouteIntent {
+  const SettingsScreen({
+    super.key,
+    this.onRequestClose,
+    this.showAppBar = true,
+    this.enableDragToMove = false,
+  });
+
+  final VoidCallback? onRequestClose;
+  final bool showAppBar;
+  final bool enableDragToMove;
 
   static final Future<PackageInfo> _packageInfoFuture =
       PackageInfo.fromPlatform();
 
   void _close(BuildContext context) {
+    final closeCallback = onRequestClose;
+    if (closeCallback != null) {
+      closeCallback();
+      return;
+    }
     if (Navigator.of(context).canPop()) {
       context.safePop();
       return;
@@ -122,19 +139,28 @@ class SettingsScreen extends ConsumerWidget {
       },
       child: Scaffold(
         backgroundColor: bg,
-        appBar: AppBar(
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_close,
-            icon: const Icon(Icons.close),
-            onPressed: () => _close(context),
-          ),
-          title: Text(context.t.strings.legacy.msg_settings),
-          centerTitle: false,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-        ),
+        appBar: showAppBar
+            ? AppBar(
+                leading: IconButton(
+                  tooltip: context.t.strings.legacy.msg_close,
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _close(context),
+                ),
+                title: enableDragToMove
+                    ? DragToMoveArea(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(context.t.strings.legacy.msg_settings),
+                        ),
+                      )
+                    : Text(context.t.strings.legacy.msg_settings),
+                centerTitle: false,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+              )
+            : null,
         body: Stack(
           children: [
             if (isDark)
@@ -150,7 +176,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
             ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+              padding: EdgeInsets.fromLTRB(16, showAppBar ? 8 : 16, 16, 88),
               children: [
                 _ProfileCard(
                   card: card,

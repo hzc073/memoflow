@@ -17,6 +17,7 @@ import 'core/desktop_tray_controller.dart';
 import 'data/logs/log_manager.dart';
 import 'core/desktop_quick_input_channel.dart';
 import 'features/memos/desktop_quick_input_window.dart';
+import 'features/settings/desktop_settings_window_app.dart';
 
 void _initializeDesktopDatabaseFactory() {
   if (kIsWeb) return;
@@ -38,8 +39,6 @@ void main(List<String> args) {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
-      VideoPlayerMediaKit.ensureInitialized(windows: true, linux: false);
-      JustAudioMediaKit.ensureInitialized(windows: true, linux: false);
       if (!kIsWeb && args.isNotEmpty && args.first == 'multi_window') {
         final windowId = args.length > 1 ? int.tryParse(args[1]) ?? 0 : 0;
         final rawArgs = args.length > 2 ? args[2] : '';
@@ -54,7 +53,6 @@ void main(List<String> args) {
           return const <String, dynamic>{};
         }();
         final type = launchArgs[desktopWindowTypeKey];
-        // This app currently uses desktop_multi_window only for quick input.
         // Treat unknown/empty payloads as quick input to avoid accidental
         // fallback to the full main app in sub-window engines.
         if (type == null || type == desktopWindowTypeQuickInput) {
@@ -67,7 +65,17 @@ void main(List<String> args) {
           );
           return;
         }
+        if (type == desktopWindowTypeSettings) {
+          _initializeDesktopDatabaseFactory();
+          Cryptography.instance = FlutterCryptography();
+          runApp(
+            ProviderScope(child: DesktopSettingsWindowApp(windowId: windowId)),
+          );
+          return;
+        }
       }
+      VideoPlayerMediaKit.ensureInitialized(windows: true, linux: false);
+      JustAudioMediaKit.ensureInitialized(windows: true, linux: false);
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
         await windowManager.ensureInitialized();
         const options = WindowOptions(

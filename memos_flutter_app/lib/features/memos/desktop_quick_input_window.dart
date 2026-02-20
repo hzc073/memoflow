@@ -189,9 +189,29 @@ class _DesktopQuickInputWindowScreenState
     });
   }
 
+  void _resetComposerStateForReuse() {
+    _controller.clear();
+    _pendingAttachments.clear();
+    _linkedMemos.clear();
+    _location = null;
+    _visibility = 'PRIVATE';
+    _moreToolbarOpen = false;
+    _submitting = false;
+    _locating = false;
+  }
+
   Future<void> _closeWindow() async {
+    if (mounted) {
+      setState(_resetComposerStateForReuse);
+    } else {
+      _resetComposerStateForReuse();
+    }
     final controller = WindowController.fromWindowId(widget.windowId);
-    await controller.close();
+    try {
+      await controller.hide();
+    } catch (_) {
+      await controller.close();
+    }
   }
 
   void _showSnack(String message) {
@@ -1146,7 +1166,7 @@ class _DesktopQuickInputWindowScreenState
                         ),
                       IconButton(
                         tooltip: 'Close',
-                        onPressed: _closeWindow,
+                        onPressed: _submitting ? null : _closeWindow,
                         icon: Icon(Icons.close, color: textMuted),
                       ),
                     ],

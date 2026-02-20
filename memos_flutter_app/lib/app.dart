@@ -15,6 +15,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/app_localization.dart';
 import 'core/desktop_quick_input_channel.dart';
+import 'core/desktop_settings_window.dart';
 import 'core/desktop_shortcuts.dart';
 import 'core/desktop_tray_controller.dart';
 import 'core/app_theme.dart';
@@ -67,6 +68,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   WindowController? _desktopQuickInputWindow;
   int? _desktopQuickInputWindowId;
   bool _desktopQuickInputWindowOpening = false;
+  Future<void>? _desktopQuickInputWindowPrepareTask;
+  bool _desktopSubWindowsPrewarmScheduled = false;
   HomeWidgetType? _pendingWidgetAction;
   SharePayload? _pendingSharePayload;
   bool _shareHandlingScheduled = false;
@@ -499,6 +502,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       unawaited(
         _registerDesktopQuickInputHotKey(ref.read(appPreferencesProvider)),
       );
+      _scheduleDesktopSubWindowPrewarm();
     }
     _scheduleStatsWidgetUpdate();
   }
@@ -514,6 +518,34 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final overlay = _navigatorKey.currentState?.overlay?.context;
     if (overlay != null && overlay.mounted) return overlay;
     return null;
+  }
+
+  void _scheduleDesktopSubWindowPrewarm() {
+    if (!isDesktopShortcutEnabled() || _desktopSubWindowsPrewarmScheduled) {
+      return;
+    }
+    _desktopSubWindowsPrewarmScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_prewarmDesktopSubWindows());
+    });
+  }
+
+  Future<void> _prewarmDesktopSubWindows() async {
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    if (!mounted || !isDesktopShortcutEnabled()) return;
+    _bindDesktopMultiWindowHandler();
+    try {
+      await _ensureDesktopQuickInputWindowReady();
+    } catch (error, stackTrace) {
+      ref
+          .read(logManagerProvider)
+          .warn(
+            'Desktop sub-window prewarm failed',
+            error: error,
+            stackTrace: stackTrace,
+          );
+    }
+    prewarmDesktopSettingsWindowIfSupported();
   }
 
   Future<void> _registerDesktopQuickInputHotKey(AppPreferences prefs) async {
@@ -723,31 +755,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
     _desktopQuickInputWindowOpening = true;
     try {
-      await _refreshDesktopQuickInputWindowReference();
-      final existing = _desktopQuickInputWindow;
-      if (existing != null) {
-        try {
-          await existing.show();
-          await _focusDesktopQuickInputWindow(existing.windowId);
-          return;
-        } catch (_) {
-          _desktopQuickInputWindow = null;
-          _desktopQuickInputWindowId = null;
-        }
+      var window = await _ensureDesktopQuickInputWindowReady();
+      try {
+        await window.show();
+        await _focusDesktopQuickInputWindow(window.windowId);
+      } catch (_) {
+        // The cached controller can be stale after user closed sub-window.
+        _desktopQuickInputWindow = null;
+        _desktopQuickInputWindowId = null;
+        window = await _ensureDesktopQuickInputWindowReady();
+        await window.show();
+        await _focusDesktopQuickInputWindow(window.windowId);
       }
-
-      final window = await DesktopMultiWindow.createWindow(
-        jsonEncode(<String, dynamic>{
-          desktopWindowTypeKey: desktopWindowTypeQuickInput,
-        }),
-      );
-      _desktopQuickInputWindow = window;
-      _desktopQuickInputWindowId = window.windowId;
-      await window.setTitle('MemoFlow');
-      await window.setFrame(const Offset(0, 0) & Size(420, 760));
-      await window.center();
-      await window.show();
-      await _focusDesktopQuickInputWindow(window.windowId);
     } catch (error, stackTrace) {
       ref
           .read(logManagerProvider)
@@ -763,6 +782,45 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       }
     } finally {
       _desktopQuickInputWindowOpening = false;
+    }
+  }
+
+  Future<WindowController> _ensureDesktopQuickInputWindowReady() async {
+    await _refreshDesktopQuickInputWindowReference();
+    final existing = _desktopQuickInputWindow;
+    if (existing != null) return existing;
+
+    final pending = _desktopQuickInputWindowPrepareTask;
+    if (pending != null) {
+      await pending;
+      await _refreshDesktopQuickInputWindowReference();
+      final prepared = _desktopQuickInputWindow;
+      if (prepared != null) return prepared;
+    }
+
+    final completer = Completer<void>();
+    _desktopQuickInputWindowPrepareTask = completer.future;
+    try {
+      await _refreshDesktopQuickInputWindowReference();
+      final refreshed = _desktopQuickInputWindow;
+      if (refreshed != null) return refreshed;
+
+      final window = await DesktopMultiWindow.createWindow(
+        jsonEncode(<String, dynamic>{
+          desktopWindowTypeKey: desktopWindowTypeQuickInput,
+        }),
+      );
+      _desktopQuickInputWindow = window;
+      _desktopQuickInputWindowId = window.windowId;
+      await window.setTitle('MemoFlow');
+      await window.setFrame(const Offset(0, 0) & Size(420, 760));
+      await window.center();
+      return window;
+    } finally {
+      completer.complete();
+      if (identical(_desktopQuickInputWindowPrepareTask, completer.future)) {
+        _desktopQuickInputWindowPrepareTask = null;
+      }
     }
   }
 

@@ -15,6 +15,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
+import '../../core/desktop_settings_window.dart';
 import '../../core/desktop_shortcuts.dart';
 import '../../core/desktop_tray_controller.dart';
 import '../../core/drawer_navigation.dart';
@@ -1226,6 +1227,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       return true;
     }
     if (matches(DesktopShortcutAction.openSettings)) {
+      if (openDesktopSettingsWindowIfSupported(feedbackContext: context)) {
+        return true;
+      }
       Navigator.of(
         context,
       ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
