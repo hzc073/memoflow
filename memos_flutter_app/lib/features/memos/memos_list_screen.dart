@@ -1613,6 +1613,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     if (rawLink.isNotEmpty) {
@@ -1634,7 +1635,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       final isAbsolute = isAbsoluteUrl(resolved);
       final canAttachAuth = rebaseAbsoluteFileUrlForV024
           ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
-          : !isAbsolute;
+          : (!isAbsolute ||
+                (attachAuthForSameOriginAbsolute &&
+                    isSameOriginWithBase(baseUrl, resolved)));
       final headers = (canAttachAuth && authHeader != null)
           ? {'Authorization': authHeader}
           : null;
@@ -4264,6 +4267,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final imageEntries = collectMemoImageEntries(
@@ -4272,12 +4276,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     final videoEntries = collectMemoVideoEntries(
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     final mediaEntries = buildMemoMediaEntries(
       images: imageEntries,

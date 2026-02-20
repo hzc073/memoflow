@@ -766,9 +766,20 @@ class MemoTimelineService {
       if (uri == null) return null;
       return uri.toFilePath();
     }
-    if (trimmed.startsWith('/')) return trimmed;
+    if (trimmed.startsWith('/')) {
+      if (_looksLikeServerRelativePath(trimmed)) {
+        return null;
+      }
+      return trimmed;
+    }
     if (trimmed.contains(':\\') || trimmed.contains(':/')) return trimmed;
     return null;
+  }
+
+  bool _looksLikeServerRelativePath(String rawPath) {
+    final normalized = rawPath.trim().toLowerCase();
+    if (normalized.startsWith('/o/r/')) return true;
+    return false;
   }
 
   String _readLocalFilePathFromAttachment(Attachment attachment) {

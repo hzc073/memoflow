@@ -7,10 +7,13 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
+import '../../data/api/memo_api_facade.dart';
 import '../../data/api/memo_api_probe.dart';
 import '../../data/api/memo_api_version.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/login_draft_provider.dart';
+import '../../state/memos_providers.dart';
+import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 
 enum _LoginMode { token, password }
@@ -266,6 +269,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         baseUrl: baseUrl,
         personalAccessToken: personalAccessToken,
         version: version,
+        deferCleanup: true,
       );
     } catch (error) {
       if (mounted) {
@@ -279,6 +283,59 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         setState(() => _probing = false);
       }
     }
+  }
+
+  bool _supportsForceDeleteMemo(MemoApiVersion version) {
+    return switch (version) {
+      MemoApiVersion.v025 || MemoApiVersion.v026 => true,
+      MemoApiVersion.v021 ||
+      MemoApiVersion.v022 ||
+      MemoApiVersion.v023 ||
+      MemoApiVersion.v024 => false,
+    };
+  }
+
+  Future<void> _cleanupProbeArtifactsAfterSync({
+    required MemoApiVersion version,
+    required MemoApiVersionProbeReport report,
+    required Uri baseUrl,
+    required String personalAccessToken,
+  }) async {
+    final deferred = report.deferredCleanup;
+    if (!deferred.hasPending) return;
+
+    try {
+      await ref.read(syncControllerProvider.notifier).syncNow();
+    } catch (_) {
+      return;
+    }
+
+    final api = MemoApiFacade.authenticated(
+      baseUrl: baseUrl,
+      personalAccessToken: personalAccessToken,
+      version: version,
+    );
+
+    final attachmentName = deferred.attachmentName?.trim() ?? '';
+    if (attachmentName.isNotEmpty) {
+      try {
+        await api.deleteAttachment(attachmentName: attachmentName);
+      } catch (_) {}
+    }
+
+    final memoUid = deferred.memoUid?.trim() ?? '';
+    if (memoUid.isNotEmpty) {
+      try {
+        await api.deleteMemo(
+          memoUid: memoUid,
+          force: _supportsForceDeleteMemo(version),
+        );
+      } catch (_) {}
+    }
+
+    try {
+      await ref.read(syncControllerProvider.notifier).syncNow();
+    } catch (_) {}
   }
 
   Future<bool> _runSelectedVersionProbeGate({
@@ -340,6 +397,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     await sessionController.setCurrentAccountServerVersionOverride(
       version.versionString,
     );
+    await _cleanupProbeArtifactsAfterSync(
+      version: version,
+      report: report,
+      baseUrl: currentAccount.baseUrl,
+      personalAccessToken: currentAccount.personalAccessToken,
+    );
     if (!mounted) return false;
     await _showProbeSuccessDialog(version);
     return true;
@@ -362,8 +425,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       navigator.pop();
       return;
     }
-    if (!mounted) return;
-    await SystemNavigator.pop();
+    ref.read(appPreferencesProvider.notifier).setHasSelectedLanguage(false);
   }
 
   Future<void> _connectWithToken() async {
@@ -419,6 +481,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       );
       return;
+    }
+
+    final currentAccount = ref
+        .read(appSessionProvider)
+        .valueOrNull
+        ?.currentAccount;
+    if (currentAccount != null) {
+      await _cleanupProbeArtifactsAfterSync(
+        version: selectedVersion,
+        report: probeReport,
+        baseUrl: currentAccount.baseUrl,
+        personalAccessToken: currentAccount.personalAccessToken,
+      );
     }
 
     if (!mounted) return;

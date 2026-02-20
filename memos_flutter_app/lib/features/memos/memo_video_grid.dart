@@ -19,6 +19,7 @@ class MemoVideoEntry {
     required this.size,
     this.localFile,
     this.videoUrl,
+    this.thumbnailUrl,
     this.headers,
   });
 
@@ -28,6 +29,7 @@ class MemoVideoEntry {
   final int size;
   final File? localFile;
   final String? videoUrl;
+  final String? thumbnailUrl;
   final Map<String, String>? headers;
 }
 
@@ -41,6 +43,7 @@ List<MemoVideoEntry> collectMemoVideoEntries({
   required Uri? baseUrl,
   required String? authHeader,
   bool rebaseAbsoluteFileUrlForV024 = false,
+  bool attachAuthForSameOriginAbsolute = false,
 }) {
   final entries = <MemoVideoEntry>[];
   final seen = <String>{};
@@ -53,6 +56,7 @@ List<MemoVideoEntry> collectMemoVideoEntries({
       baseUrl,
       authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     if (entry == null) continue;
     final key = (entry.localFile?.path ?? entry.videoUrl ?? entry.id).trim();
@@ -68,6 +72,7 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
   Uri? baseUrl,
   String? authHeader, {
   bool rebaseAbsoluteFileUrlForV024 = false,
+  bool attachAuthForSameOriginAbsolute = false,
 }) {
   final external = attachment.externalLink.trim();
   final localFile = _resolveLocalFile(external);
@@ -86,6 +91,7 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
       size: attachment.size,
       localFile: localFile,
       videoUrl: null,
+      thumbnailUrl: null,
       headers: null,
     );
   }
@@ -103,6 +109,7 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     return MemoVideoEntry(
       id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
@@ -110,6 +117,7 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
       mimeType: mimeType,
       size: attachment.size,
       videoUrl: resolved,
+      thumbnailUrl: appendThumbnailParam(resolved),
       headers: headers,
     );
   }
@@ -124,6 +132,7 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
     baseUrl: baseUrl,
     authHeader: authHeader,
     rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+    attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
   );
   return MemoVideoEntry(
     id: name,
@@ -131,6 +140,7 @@ MemoVideoEntry? memoVideoEntryFromAttachment(
     mimeType: mimeType,
     size: attachment.size,
     videoUrl: videoUrl,
+    thumbnailUrl: appendThumbnailParam(videoUrl),
     headers: headers,
   );
 }
@@ -160,6 +170,7 @@ Map<String, String>? _authHeadersForUrl(
   required Uri? baseUrl,
   required String? authHeader,
   required bool rebaseAbsoluteFileUrlForV024,
+  required bool attachAuthForSameOriginAbsolute,
 }) {
   final trimmed = authHeader?.trim() ?? '';
   if (trimmed.isEmpty) return null;
@@ -168,7 +179,7 @@ Map<String, String>? _authHeadersForUrl(
   }
   if (baseUrl == null) return null;
   bool sameOrigin;
-  if (rebaseAbsoluteFileUrlForV024) {
+  if (rebaseAbsoluteFileUrlForV024 || attachAuthForSameOriginAbsolute) {
     sameOrigin = isSameOriginWithBase(baseUrl, url);
   } else {
     final uri = Uri.tryParse(url);
@@ -245,6 +256,7 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
     return a.id == b.id &&
         a.size == b.size &&
         a.videoUrl == b.videoUrl &&
+        a.thumbnailUrl == b.thumbnailUrl &&
         a.localFile?.path == b.localFile?.path;
   }
 
@@ -383,6 +395,9 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
     final borderRadius = widget.borderRadius;
     final fit = widget.fit;
     final showPlayIcon = widget.showPlayIcon;
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    final thumbnailUrl = entry.thumbnailUrl?.trim() ?? '';
     Widget placeholder({IconData icon = Icons.videocam_outlined}) {
       return Container(
         width: width,
@@ -436,6 +451,23 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
           return placeholder(icon: Icons.broken_image_outlined);
         },
       );
+    } else if (isDesktop && thumbnailUrl.isNotEmpty) {
+      image = Image.network(
+        thumbnailUrl,
+        width: width,
+        height: height,
+        fit: fit,
+        headers: entry.headers ?? const <String, String>{},
+        errorBuilder: (context, error, stackTrace) {
+          LogManager.instance.warn(
+            'Video thumbnail network decode failed',
+            error: error,
+            stackTrace: stackTrace,
+            context: {'id': entry.id, 'url': thumbnailUrl},
+          );
+          return placeholder(icon: Icons.broken_image_outlined);
+        },
+      );
     } else {
       image = placeholder(
         icon: _loading ? Icons.hourglass_empty : Icons.videocam_outlined,
@@ -448,7 +480,8 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         child: image,
       );
     }
-    final hasPreview = hasBytes || hasFile;
+    final hasPreview =
+        hasBytes || hasFile || (isDesktop && thumbnailUrl.isNotEmpty);
     if (!hasPreview) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
@@ -515,6 +548,7 @@ class MemoVideoGrid extends StatelessWidget {
             title: entry.title,
             localFile: entry.localFile,
             videoUrl: entry.videoUrl,
+            thumbnailUrl: entry.thumbnailUrl,
             headers: entry.headers,
             cacheId: entry.id,
             cacheSize: entry.size,

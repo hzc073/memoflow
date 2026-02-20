@@ -427,6 +427,7 @@ class _AttachmentGalleryScreenState extends State<AttachmentGalleryScreen> {
           title: entry.title,
           localFile: entry.localFile,
           videoUrl: entry.videoUrl,
+          thumbnailUrl: entry.thumbnailUrl,
           headers: entry.headers,
           cacheId: entry.id,
           cacheSize: entry.size,

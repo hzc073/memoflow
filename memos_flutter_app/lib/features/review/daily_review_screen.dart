@@ -251,6 +251,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     if (rawLink.isNotEmpty) {
@@ -272,7 +273,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       final isAbsolute = isAbsoluteUrl(resolved);
       final canAttachAuth = rebaseAbsoluteFileUrlForV024
           ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
-          : !isAbsolute;
+          : (!isAbsolute ||
+                (attachAuthForSameOriginAbsolute &&
+                    isSameOriginWithBase(baseUrl, resolved)));
       final headers = (canAttachAuth && authHeader != null)
           ? {'Authorization': authHeader}
           : null;
@@ -852,6 +855,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
 
@@ -1000,6 +1004,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                           authHeader: authHeader,
                           rebaseAbsoluteFileUrlForV024:
                               rebaseAbsoluteFileUrlForV024,
+                          attachAuthForSameOriginAbsolute:
+                              attachAuthForSameOriginAbsolute,
                           audioPlaying: isAudioActive && _audioPlayer.playing,
                           audioLoading: isAudioActive && _audioLoading,
                           audioPositionListenable: isAudioActive
@@ -1070,6 +1076,7 @@ class _RandomWalkCard extends StatelessWidget {
     required this.baseUrl,
     required this.authHeader,
     required this.rebaseAbsoluteFileUrlForV024,
+    required this.attachAuthForSameOriginAbsolute,
     required this.audioPlaying,
     required this.audioLoading,
     this.audioPositionListenable,
@@ -1086,6 +1093,7 @@ class _RandomWalkCard extends StatelessWidget {
   final Uri? baseUrl;
   final String? authHeader;
   final bool rebaseAbsoluteFileUrlForV024;
+  final bool attachAuthForSameOriginAbsolute;
   final bool audioPlaying;
   final bool audioLoading;
   final ValueListenable<Duration>? audioPositionListenable;
@@ -1115,6 +1123,7 @@ class _RandomWalkCard extends StatelessWidget {
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     final audioAttachments = memo.attachments
         .where((a) => a.type.startsWith('audio'))

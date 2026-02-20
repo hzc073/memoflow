@@ -81,6 +81,17 @@ bool isServerVersion024(String? versionRaw) {
   return major == 0 && minor == 24;
 }
 
+bool isServerVersion021(String? versionRaw) {
+  final trimmed = (versionRaw ?? '').trim();
+  if (trimmed.isEmpty) return false;
+  final match = RegExp(r'(\d+)\.(\d+)(?:\.(\d+))?').firstMatch(trimmed);
+  if (match == null) return false;
+  final major = int.tryParse(match.group(1) ?? '');
+  final minor = int.tryParse(match.group(2) ?? '');
+  if (major == null || minor == null) return false;
+  return major == 0 && minor == 21;
+}
+
 int _effectivePort(Uri uri) {
   if (uri.hasPort) return uri.port;
   final scheme = uri.scheme.toLowerCase();

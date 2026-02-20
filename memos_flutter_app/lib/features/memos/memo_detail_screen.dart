@@ -535,6 +535,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final prefs = ref.watch(appPreferencesProvider);
@@ -562,12 +563,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     final videoEntries = collectMemoVideoEntries(
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     final mediaEntries = buildMemoMediaEntries(
       images: imageEntries,

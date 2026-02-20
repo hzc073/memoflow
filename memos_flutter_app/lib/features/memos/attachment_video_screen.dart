@@ -12,6 +12,7 @@ class AttachmentVideoScreen extends StatefulWidget {
     required this.title,
     this.localFile,
     this.videoUrl,
+    this.thumbnailUrl,
     this.headers,
     this.cacheId,
     this.cacheSize,
@@ -20,6 +21,7 @@ class AttachmentVideoScreen extends StatefulWidget {
   final String title;
   final File? localFile;
   final String? videoUrl;
+  final String? thumbnailUrl;
   final Map<String, String>? headers;
   final String? cacheId;
   final int? cacheSize;
@@ -213,6 +215,17 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
         file,
         fit: BoxFit.cover,
         gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(color: Colors.black);
+        },
+      );
+    }
+    final thumbnailUrl = widget.thumbnailUrl?.trim() ?? '';
+    if (thumbnailUrl.isNotEmpty) {
+      return Image.network(
+        thumbnailUrl,
+        fit: BoxFit.cover,
+        headers: widget.headers ?? const <String, String>{},
         errorBuilder: (context, error, stackTrace) {
           return Container(color: Colors.black);
         },

@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../data/api/memo_api_facade.dart';
 import '../../data/api/memo_api_probe.dart';
 import '../../data/api/memo_api_version.dart';
 import '../../data/models/account.dart';
+import '../../state/memos_providers.dart';
 import '../../state/session_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
@@ -75,6 +77,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
         baseUrl: currentAccount.baseUrl,
         personalAccessToken: currentAccount.personalAccessToken,
         version: version,
+        deferCleanup: true,
       );
     } catch (_) {
       return null;
@@ -83,6 +86,58 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
         setState(() => _probingVersion = false);
       }
     }
+  }
+
+  bool _supportsForceDeleteMemo(MemoApiVersion version) {
+    return switch (version) {
+      MemoApiVersion.v025 || MemoApiVersion.v026 => true,
+      MemoApiVersion.v021 ||
+      MemoApiVersion.v022 ||
+      MemoApiVersion.v023 ||
+      MemoApiVersion.v024 => false,
+    };
+  }
+
+  Future<void> _cleanupProbeArtifactsAfterSync({
+    required Account account,
+    required MemoApiVersion version,
+    required MemoApiVersionProbeReport report,
+  }) async {
+    final deferred = report.deferredCleanup;
+    if (!deferred.hasPending) return;
+
+    try {
+      await ref.read(syncControllerProvider.notifier).syncNow();
+    } catch (_) {
+      return;
+    }
+
+    final api = MemoApiFacade.authenticated(
+      baseUrl: account.baseUrl,
+      personalAccessToken: account.personalAccessToken,
+      version: version,
+    );
+
+    final attachmentName = deferred.attachmentName?.trim() ?? '';
+    if (attachmentName.isNotEmpty) {
+      try {
+        await api.deleteAttachment(attachmentName: attachmentName);
+      } catch (_) {}
+    }
+
+    final memoUid = deferred.memoUid?.trim() ?? '';
+    if (memoUid.isNotEmpty) {
+      try {
+        await api.deleteMemo(
+          memoUid: memoUid,
+          force: _supportsForceDeleteMemo(version),
+        );
+      } catch (_) {}
+    }
+
+    try {
+      await ref.read(syncControllerProvider.notifier).syncNow();
+    } catch (_) {}
   }
 
   Future<void> _selectServerVersion(Account? currentAccount) async {
@@ -159,6 +214,11 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
       await _showProbeFailureReport(probeReport);
       return;
     }
+    await _cleanupProbeArtifactsAfterSync(
+      account: currentAccount,
+      version: parsed,
+      report: probeReport,
+    );
 
     setState(() => _savingVersion = true);
     try {
@@ -205,6 +265,12 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
       await _showProbeFailureReport(report);
       return;
     }
+    await _cleanupProbeArtifactsAfterSync(
+      account: currentAccount,
+      version: parsed,
+      report: report,
+    );
+    if (!mounted) return;
     showTopToast(context, 'v${parsed.versionString} 探测通过');
   }
 

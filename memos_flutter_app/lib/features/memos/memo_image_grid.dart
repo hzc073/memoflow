@@ -52,6 +52,7 @@ List<MemoImageEntry> collectMemoImageEntries({
   required Uri? baseUrl,
   required String? authHeader,
   bool rebaseAbsoluteFileUrlForV024 = false,
+  bool attachAuthForSameOriginAbsolute = false,
 }) {
   final entries = <MemoImageEntry>[];
   final seen = <String>{};
@@ -80,6 +81,7 @@ List<MemoImageEntry> collectMemoImageEntries({
       baseUrl,
       authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
     if (entry == null) continue;
     final key =
@@ -97,6 +99,7 @@ MemoImageEntry? _entryFromAttachment(
   Uri? baseUrl,
   String? authHeader, {
   bool rebaseAbsoluteFileUrlForV024 = false,
+  bool attachAuthForSameOriginAbsolute = false,
 }) {
   final external = attachment.externalLink.trim();
   final localFile = _resolveLocalFile(external);
@@ -132,7 +135,9 @@ MemoImageEntry? _entryFromAttachment(
     final previewUrl = isAbsolute ? resolved : appendThumbnailParam(resolved);
     final canAttachAuth = rebaseAbsoluteFileUrlForV024
         ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
-        : !isAbsolute;
+        : (!isAbsolute ||
+              (attachAuthForSameOriginAbsolute &&
+                  isSameOriginWithBase(baseUrl, resolved)));
     final headers =
         (canAttachAuth && authHeader != null && authHeader.trim().isNotEmpty)
         ? {'Authorization': authHeader.trim()}

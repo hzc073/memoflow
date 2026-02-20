@@ -195,6 +195,7 @@ class ResourcesScreen extends ConsumerWidget {
     required Uri? baseUrl,
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
+    required bool attachAuthForSameOriginAbsolute,
   }) {
     final isImage = attachment.type.startsWith('image/');
     final isAudio = attachment.type.startsWith('audio');
@@ -226,6 +227,7 @@ class ResourcesScreen extends ConsumerWidget {
         baseUrl,
         authHeader,
         rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+        attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
       );
       if (entry == null ||
           (entry.localFile == null && (entry.videoUrl ?? '').isEmpty)) {
@@ -238,6 +240,7 @@ class ResourcesScreen extends ConsumerWidget {
             title: entry.title,
             localFile: entry.localFile,
             videoUrl: entry.videoUrl,
+            thumbnailUrl: entry.thumbnailUrl,
             headers: entry.headers,
             cacheId: entry.id,
             cacheSize: entry.size,
@@ -346,6 +349,7 @@ class ResourcesScreen extends ConsumerWidget {
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final authHeader = (account?.personalAccessToken ?? '').isEmpty
         ? null
         : 'Bearer ${account!.personalAccessToken}';
@@ -422,6 +426,8 @@ class ResourcesScreen extends ConsumerWidget {
                               authHeader,
                               rebaseAbsoluteFileUrlForV024:
                                   rebaseAbsoluteFileUrlForV024,
+                              attachAuthForSameOriginAbsolute:
+                                  attachAuthForSameOriginAbsolute,
                             )
                           : null;
                       final leading = isImage && localFile != null
@@ -497,6 +503,8 @@ class ResourcesScreen extends ConsumerWidget {
                                       authHeader: authHeader,
                                       rebaseAbsoluteFileUrlForV024:
                                           rebaseAbsoluteFileUrlForV024,
+                                      attachAuthForSameOriginAbsolute:
+                                          attachAuthForSameOriginAbsolute,
                                     )
                                   : null,
                               visualDensity: VisualDensity.compact,

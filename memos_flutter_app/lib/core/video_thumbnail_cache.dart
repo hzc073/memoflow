@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -22,6 +24,9 @@ const double _darkPenalty = 0.6;
 const double _preferBrightThreshold = 50.0;
 const Duration _pendingPollInterval = Duration(milliseconds: 250);
 const Duration _pendingMaxWait = Duration(seconds: 35);
+const Duration _mediaKitOpenTimeout = Duration(seconds: 12);
+const Duration _mediaKitCaptureTimeout = Duration(seconds: 4);
+const Duration _mediaKitFrameSettleDelay = Duration(milliseconds: 180);
 
 class _FrameStats {
   const _FrameStats({
@@ -46,7 +51,7 @@ class VideoThumbnailCache {
   static const _folderName = 'video_thumbnails';
   static const _maxWidth = 512;
   static const _quality = 75;
-  static const _cacheVersion = 9;
+  static const _cacheVersion = 10;
   static const List<int> _captureTimesMs = [
     0,
     500,
@@ -59,6 +64,9 @@ class VideoThumbnailCache {
     15000,
   ];
   static const _downloadTimeout = Duration(seconds: 90);
+  static bool get _useMediaKitDesktopPipeline =>
+      !kIsWeb &&
+      (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
   static final Map<String, Future<File?>> _pending = {};
   static final Map<String, Uint8List> _memoryCache = {};
@@ -395,6 +403,15 @@ class VideoThumbnailCache {
           'bytes': localFile.lengthSync(),
         },
       );
+      if (_useMediaKitDesktopPipeline) {
+        final mediaKitData = await _tryMediaKitThumbnailData(
+          source: localFile.path,
+          headers: null,
+        );
+        if (mediaKitData != null && mediaKitData.isNotEmpty) {
+          return mediaKitData;
+        }
+      }
       return _tryThumbnailData(source: localFile.path, headers: null);
     }
 
@@ -402,6 +419,16 @@ class VideoThumbnailCache {
     if (url.isEmpty) {
       LogManager.instance.warn('Video thumbnail source missing');
       return null;
+    }
+
+    if (_useMediaKitDesktopPipeline) {
+      final mediaKitData = await _tryMediaKitThumbnailData(
+        source: url,
+        headers: headers,
+      );
+      if (mediaKitData != null && mediaKitData.isNotEmpty) {
+        return mediaKitData;
+      }
     }
 
     final tempFile = await _downloadToTemp(url, headers: headers ?? const {});
@@ -434,6 +461,176 @@ class VideoThumbnailCache {
       context: {'videoUrl': url},
     );
     return _tryThumbnailData(source: url, headers: headers);
+  }
+
+  static Future<Uint8List?> _tryMediaKitThumbnailData({
+    required String source,
+    required Map<String, String>? headers,
+  }) async {
+    Player? player;
+    VideoController? videoController;
+    Uint8List? bestData;
+    Uint8List? bestBlankData;
+    Uint8List? brightestData;
+    int? bestTimeMs;
+    int? bestBlankTimeMs;
+    int? brightestTimeMs;
+    _FrameStats? bestStats;
+    _FrameStats? bestBlankStats;
+    _FrameStats? brightestStats;
+    double bestScore = -1;
+    double bestBlankScore = -1;
+    double brightestMean = -1;
+
+    try {
+      final safeHeaders =
+          headers == null || headers.isEmpty ? null : Map<String, String>.from(headers);
+      player = Player(
+        configuration: const PlayerConfiguration(
+          muted: true,
+          title: 'MemoFlow Thumbnail',
+        ),
+      );
+      videoController = VideoController(
+        player,
+        configuration: const VideoControllerConfiguration(
+          width: 320,
+          height: 180,
+          enableHardwareAcceleration: true,
+        ),
+      );
+
+      await player
+          .open(
+            Media(source, httpHeaders: safeHeaders),
+            play: true,
+          )
+          .timeout(_mediaKitOpenTimeout);
+      try {
+        await videoController
+            .waitUntilFirstFrameRendered
+            .timeout(_mediaKitOpenTimeout);
+      } catch (_) {}
+      await Future<void>.delayed(_mediaKitFrameSettleDelay);
+      await player.pause();
+
+      final durationMs = player.state.duration.inMilliseconds;
+      final maxCaptureMs = durationMs > 0
+          ? math.max(0, durationMs - 120)
+          : _captureTimesMs.last;
+
+      for (final requestedTimeMs in _captureTimesMs) {
+        final captureMs = math.min(math.max(requestedTimeMs, 0), maxCaptureMs);
+        try {
+          await player.seek(Duration(milliseconds: captureMs));
+          await player.play();
+          await Future<void>.delayed(_mediaKitFrameSettleDelay);
+          await player.pause();
+          final data = await player
+              .screenshot(format: 'image/jpeg')
+              .timeout(_mediaKitCaptureTimeout);
+          if (data == null || data.isEmpty) continue;
+
+          final stats = await _analyzeFrame(data);
+          if (stats == null) continue;
+
+          var adjustedScore = stats.score + (stats.mean * _brightnessWeight);
+          if (stats.mean < _darkMeanThreshold) {
+            adjustedScore *= _darkPenalty;
+          }
+          if (stats.mean > brightestMean) {
+            brightestMean = stats.mean;
+            brightestData = data;
+            brightestTimeMs = captureMs;
+            brightestStats = stats;
+          }
+          if (stats.isBlank) {
+            if (adjustedScore > bestBlankScore) {
+              bestBlankScore = adjustedScore;
+              bestBlankData = data;
+              bestBlankTimeMs = captureMs;
+              bestBlankStats = stats;
+            }
+            continue;
+          }
+          if (adjustedScore > bestScore) {
+            bestScore = adjustedScore;
+            bestData = data;
+            bestTimeMs = captureMs;
+            bestStats = stats;
+          }
+        } catch (_) {
+          // Ignore per-frame capture failure and keep trying other timestamps.
+        }
+      }
+
+      if (bestData != null) {
+        if (bestStats != null &&
+            brightestData != null &&
+            brightestStats != null &&
+            bestStats.mean < _preferBrightThreshold) {
+          LogManager.instance.debug(
+            'Video thumbnail media_kit fallback to brightest frame',
+            context: {
+              'bestTimeMs': bestTimeMs ?? -1,
+              'bestMean': bestStats.mean.toStringAsFixed(2),
+              'brightTimeMs': brightestTimeMs ?? -1,
+              'brightMean': brightestStats.mean.toStringAsFixed(2),
+            },
+          );
+          return brightestData;
+        }
+        LogManager.instance.debug(
+          'Video thumbnail media_kit selected best frame',
+          context: {
+            'timeMs': bestTimeMs ?? -1,
+            'bytes': bestData.length,
+            'spread': bestStats?.spread ?? -1,
+            'stdDev': bestStats?.stdDev.toStringAsFixed(2) ?? 'n/a',
+            'mean': bestStats?.mean.toStringAsFixed(2) ?? 'n/a',
+            'score': bestStats?.score.toStringAsFixed(2) ?? 'n/a',
+          },
+        );
+        return bestData;
+      }
+
+      if (bestBlankData != null) {
+        LogManager.instance.debug(
+          'Video thumbnail media_kit fallback to blank frame',
+          context: {
+            'timeMs': bestBlankTimeMs ?? -1,
+            'bytes': bestBlankData.length,
+            'spread': bestBlankStats?.spread ?? -1,
+            'stdDev': bestBlankStats?.stdDev.toStringAsFixed(2) ?? 'n/a',
+            'mean': bestBlankStats?.mean.toStringAsFixed(2) ?? 'n/a',
+          },
+        );
+        return bestBlankData;
+      }
+
+      final fallback = await player
+          .screenshot(format: 'image/jpeg')
+          .timeout(_mediaKitCaptureTimeout);
+      if (fallback != null && fallback.isNotEmpty) {
+        LogManager.instance.debug(
+          'Video thumbnail media_kit screenshot fallback',
+          context: {'bytes': fallback.length},
+        );
+      }
+      return fallback;
+    } catch (e, stackTrace) {
+      LogManager.instance.warn(
+        'Video thumbnail media_kit failed',
+        error: e,
+        stackTrace: stackTrace,
+        context: {'source': source},
+      );
+      return null;
+    } finally {
+      try {
+        await player?.dispose();
+      } catch (_) {}
+    }
   }
 
   static Future<Uint8List?> _tryThumbnailData({

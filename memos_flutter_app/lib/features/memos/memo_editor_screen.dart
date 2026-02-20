@@ -1673,6 +1673,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     Uri? baseUrl,
     String? authHeader,
     bool rebaseAbsoluteFileUrlForV024,
+    bool attachAuthForSameOriginAbsolute,
   ) {
     if (_pendingAttachments.isEmpty && _existingAttachments.isEmpty) {
       return const SizedBox.shrink();
@@ -1689,6 +1690,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           baseUrl: baseUrl,
           authHeader: authHeader,
           rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
         ),
       );
     }
@@ -1844,6 +1846,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     required Uri? baseUrl,
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
+    required bool attachAuthForSameOriginAbsolute,
   }) {
     final borderColor = isDark
         ? MemoFlowPalette.borderDark
@@ -1872,6 +1875,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             baseUrl,
             authHeader,
             rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+            attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
           )
         : null;
 
@@ -2201,6 +2205,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.isEmpty ? null : 'Bearer $token';
     final tagStats = _tagStatsCache;
@@ -2258,6 +2263,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                 baseUrl,
                                 authHeader,
                                 rebaseAbsoluteFileUrlForV024,
+                                attachAuthForSameOriginAbsolute,
                               ),
                               Expanded(
                                 child: TextField(

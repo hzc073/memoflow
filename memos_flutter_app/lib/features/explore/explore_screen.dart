@@ -1232,6 +1232,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             account: account,
           );
     final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
+    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final authHeader = (account?.personalAccessToken ?? '').isEmpty
         ? null
         : 'Bearer ${account!.personalAccessToken}';
@@ -1348,6 +1349,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 baseUrl: baseUrl,
                 authHeader: authHeader,
                 rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+                attachAuthForSameOriginAbsolute:
+                    attachAuthForSameOriginAbsolute,
                 initial: initial,
                 commentCount: commentCount,
                 likeCreators: likeCreators,
@@ -1585,6 +1588,7 @@ class _ExploreMemoCard extends StatefulWidget {
     required this.baseUrl,
     required this.authHeader,
     required this.rebaseAbsoluteFileUrlForV024,
+    required this.attachAuthForSameOriginAbsolute,
     required this.initial,
     required this.commentCount,
     required this.likeCreators,
@@ -1615,6 +1619,7 @@ class _ExploreMemoCard extends StatefulWidget {
   final Uri? baseUrl;
   final String? authHeader;
   final bool rebaseAbsoluteFileUrlForV024;
+  final bool attachAuthForSameOriginAbsolute;
   final String initial;
   final int commentCount;
   final List<String> likeCreators;
@@ -2533,12 +2538,14 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
       baseUrl: widget.baseUrl,
       authHeader: widget.authHeader,
       rebaseAbsoluteFileUrlForV024: widget.rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: widget.attachAuthForSameOriginAbsolute,
     );
     final videoEntries = collectMemoVideoEntries(
       attachments: memo.attachments,
       baseUrl: widget.baseUrl,
       authHeader: widget.authHeader,
       rebaseAbsoluteFileUrlForV024: widget.rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: widget.attachAuthForSameOriginAbsolute,
     );
     final mediaEntries = buildMemoMediaEntries(
       images: imageEntries,

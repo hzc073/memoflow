@@ -7,7 +7,9 @@ import 'package:cryptography_flutter/cryptography_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:video_player_media_kit/video_player_media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
@@ -36,6 +38,8 @@ void main(List<String> args) {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      VideoPlayerMediaKit.ensureInitialized(windows: true, linux: false);
+      JustAudioMediaKit.ensureInitialized(windows: true, linux: false);
       if (!kIsWeb && args.isNotEmpty && args.first == 'multi_window') {
         final windowId = args.length > 1 ? int.tryParse(args[1]) ?? 0 : 0;
         final rawArgs = args.length > 2 ? args[2] : '';

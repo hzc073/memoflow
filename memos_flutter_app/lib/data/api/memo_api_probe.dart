@@ -29,11 +29,24 @@ class MemoApiVersionProbeReport {
     required this.version,
     required this.passed,
     required this.failures,
+    this.deferredCleanup = const MemoApiProbeDeferredCleanup(),
   });
 
   final MemoApiVersion version;
   final bool passed;
   final List<MemoApiProbeFailure> failures;
+  final MemoApiProbeDeferredCleanup deferredCleanup;
+}
+
+class MemoApiProbeDeferredCleanup {
+  const MemoApiProbeDeferredCleanup({this.memoUid, this.attachmentName});
+
+  final String? memoUid;
+  final String? attachmentName;
+
+  bool get hasPending =>
+      (memoUid ?? '').trim().isNotEmpty ||
+      (attachmentName ?? '').trim().isNotEmpty;
 }
 
 class MemoApiProbeSummary {
@@ -86,6 +99,7 @@ class MemoApiProbeService {
     required Uri baseUrl,
     required String personalAccessToken,
     required MemoApiVersion version,
+    bool deferCleanup = false,
   }) async {
     final api = MemoApiFacade.authenticated(
       baseUrl: baseUrl,
@@ -96,6 +110,7 @@ class MemoApiProbeService {
     final failures = <MemoApiProbeFailure>[];
     String? createdMemoUid;
     String? createdAttachmentName;
+    var deferredCleanup = const MemoApiProbeDeferredCleanup();
     final forceDeleteMemo = _supportsForceDeleteMemo(version);
     final seed = DateTime.now().toUtc().microsecondsSinceEpoch;
     final memoId = 'memoflow-probe-$seed';
@@ -296,31 +311,41 @@ class MemoApiProbeService {
         },
       );
 
-      await _runStep(
-        failures: failures,
-        version: version,
-        step: 'delete_memo',
-        endpointHint: _endpointHint(version: version, step: 'delete_memo'),
-        action: () async {
-          await api.deleteMemo(memoUid: memoUid, force: forceDeleteMemo);
-          createdMemoUid = null;
-        },
-      );
+      if (!deferCleanup) {
+        await _runStep(
+          failures: failures,
+          version: version,
+          step: 'delete_memo',
+          endpointHint: _endpointHint(version: version, step: 'delete_memo'),
+          action: () async {
+            await api.deleteMemo(memoUid: memoUid, force: forceDeleteMemo);
+            createdMemoUid = null;
+          },
+        );
+      }
     } on _ProbeStop {
       // Stop at first failed required step.
     } finally {
-      if (createdAttachmentName != null && createdAttachmentName!.isNotEmpty) {
-        try {
-          await api.deleteAttachment(attachmentName: createdAttachmentName!);
-        } catch (_) {}
-      }
-      if (createdMemoUid != null && createdMemoUid!.isNotEmpty) {
-        try {
-          await api.deleteMemo(
-            memoUid: createdMemoUid!,
-            force: forceDeleteMemo,
-          );
-        } catch (_) {}
+      if (deferCleanup) {
+        deferredCleanup = MemoApiProbeDeferredCleanup(
+          memoUid: _normalizeDeferredValue(createdMemoUid),
+          attachmentName: _normalizeDeferredValue(createdAttachmentName),
+        );
+      } else {
+        if (createdAttachmentName != null &&
+            createdAttachmentName!.isNotEmpty) {
+          try {
+            await api.deleteAttachment(attachmentName: createdAttachmentName!);
+          } catch (_) {}
+        }
+        if (createdMemoUid != null && createdMemoUid!.isNotEmpty) {
+          try {
+            await api.deleteMemo(
+              memoUid: createdMemoUid!,
+              force: forceDeleteMemo,
+            );
+          } catch (_) {}
+        }
       }
     }
 
@@ -328,6 +353,7 @@ class MemoApiProbeService {
       version: version,
       passed: failures.isEmpty,
       failures: failures,
+      deferredCleanup: deferredCleanup,
     );
   }
 
@@ -467,6 +493,11 @@ class MemoApiProbeService {
       MemoApiVersion.v023 ||
       MemoApiVersion.v024 => false,
     };
+  }
+
+  String? _normalizeDeferredValue(String? raw) {
+    final value = (raw ?? '').trim();
+    return value.isEmpty ? null : value;
   }
 
   String _attachmentUidFromName(String name) {
