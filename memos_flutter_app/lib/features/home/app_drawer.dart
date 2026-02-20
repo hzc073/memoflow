@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -62,12 +63,14 @@ class AppDrawer extends ConsumerWidget {
     required this.onSelect,
     this.onSelectTag,
     this.onOpenNotifications,
+    this.embedded = false,
   });
 
   final AppDrawerDestination selected;
   final ValueChanged<AppDrawerDestination> onSelect;
   final ValueChanged<String>? onSelectTag;
   final VoidCallback? onOpenNotifications;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -108,36 +111,36 @@ class AppDrawer extends ConsumerWidget {
     final hover = isDark
         ? Colors.white.withValues(alpha: 0.05)
         : Colors.black.withValues(alpha: 0.04);
+    final showScanAction =
+        kIsWeb || defaultTargetPlatform != TargetPlatform.windows;
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
     const versionLabel = 'V1.0.14';
 
-    return Drawer(
-      width: width,
-      backgroundColor: bg,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-                children: [
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.2,
-                            color: textMain,
-                          ),
+    final content = SafeArea(
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              children: [
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: textMain,
                         ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (showScanAction)
                           _TopActionIconButton(
                             tooltip: context.t.strings.legacy.msg_scan,
                             onPressed: () async {
@@ -152,156 +155,123 @@ class AppDrawer extends ConsumerWidget {
                               size: 21,
                             ),
                           ),
-                          _TopActionIconButton(
-                            tooltip: context.t.strings.legacy.msg_sync_queue,
-                            onPressed: () =>
-                                onSelect(AppDrawerDestination.syncQueue),
-                            icon: Consumer(
-                              builder: (context, ref, child) {
-                                final pendingOutboxAsync = ref.watch(
-                                  _pendingOutboxCountProvider,
-                                );
-                                final pendingOutboxCount =
-                                    pendingOutboxAsync.valueOrNull ?? 0;
-                                final showSyncBadge = pendingOutboxCount > 0;
-                                return Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    child!,
-                                    if (showSyncBadge)
-                                      Positioned(
-                                        right: -2,
-                                        top: -2,
-                                        child: Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: MemoFlowPalette.primary,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: bg,
-                                              width: 1,
-                                            ),
+                        _TopActionIconButton(
+                          tooltip: context.t.strings.legacy.msg_sync_queue,
+                          onPressed: () =>
+                              onSelect(AppDrawerDestination.syncQueue),
+                          icon: Consumer(
+                            builder: (context, ref, child) {
+                              final pendingOutboxAsync = ref.watch(
+                                _pendingOutboxCountProvider,
+                              );
+                              final pendingOutboxCount =
+                                  pendingOutboxAsync.valueOrNull ?? 0;
+                              final showSyncBadge = pendingOutboxCount > 0;
+                              return Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  child!,
+                                  if (showSyncBadge)
+                                    Positioned(
+                                      right: -2,
+                                      top: -2,
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: MemoFlowPalette.primary,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: bg,
+                                            width: 1,
                                           ),
                                         ),
                                       ),
-                                  ],
-                                );
-                              },
-                              child: Icon(
-                                Icons.sync,
-                                color: textMuted,
-                                size: 21,
-                              ),
-                            ),
-                          ),
-                          _TopActionIconButton(
-                            tooltip: context.t.strings.legacy.msg_notifications,
-                            onPressed: () {
-                              final handler = onOpenNotifications;
-                              if (handler == null) {
-                                showTopToast(
-                                  context,
-                                  context
-                                      .t
-                                      .strings
-                                      .legacy
-                                      .msg_notifications_coming_soon,
-                                );
-                                return;
-                              }
-                              handler();
+                                    ),
+                                ],
+                              );
                             },
-                            icon: Consumer(
-                              builder: (context, ref, child) {
-                                final unreadNotifications = ref.watch(
-                                  unreadNotificationCountProvider,
-                                );
-                                final showNotificationBadge =
-                                    unreadNotifications > 0;
-                                return Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    child!,
-                                    if (showNotificationBadge)
-                                      Positioned(
-                                        right: -2,
-                                        top: -2,
-                                        child: Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFE05555),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: bg,
-                                              width: 1,
-                                            ),
+                            child: Icon(Icons.sync, color: textMuted, size: 21),
+                          ),
+                        ),
+                        _TopActionIconButton(
+                          tooltip: context.t.strings.legacy.msg_notifications,
+                          onPressed: () {
+                            final handler = onOpenNotifications;
+                            if (handler == null) {
+                              showTopToast(
+                                context,
+                                context
+                                    .t
+                                    .strings
+                                    .legacy
+                                    .msg_notifications_coming_soon,
+                              );
+                              return;
+                            }
+                            handler();
+                          },
+                          icon: Consumer(
+                            builder: (context, ref, child) {
+                              final unreadNotifications = ref.watch(
+                                unreadNotificationCountProvider,
+                              );
+                              final showNotificationBadge =
+                                  unreadNotifications > 0;
+                              return Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  child!,
+                                  if (showNotificationBadge)
+                                    Positioned(
+                                      right: -2,
+                                      top: -2,
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFE05555),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: bg,
+                                            width: 1,
                                           ),
                                         ),
                                       ),
-                                  ],
-                                );
-                              },
-                              child: Icon(
-                                Icons.notifications,
-                                color: textMuted,
-                                size: 21,
-                              ),
-                            ),
-                          ),
-                          _TopActionIconButton(
-                            tooltip: context.t.strings.legacy.msg_settings,
-                            onPressed: () =>
-                                onSelect(AppDrawerDestination.settings),
-                            icon: Icon(
-                              Icons.settings,
+                                    ),
+                                ],
+                              );
+                            },
+                            child: Icon(
+                              Icons.notifications,
                               color: textMuted,
                               size: 21,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  statsAsync.when(
-                    data: (stats) {
-                      final tagCount = tagsAsync.valueOrNull?.length ?? 0;
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: _DrawerStat(
-                              value: '${stats.totalMemos}',
-                              label: context.t.strings.legacy.msg_memos,
-                              textMain: textMain,
-                              textMuted: textMuted,
-                            ),
+                        ),
+                        _TopActionIconButton(
+                          tooltip: context.t.strings.legacy.msg_settings,
+                          onPressed: () =>
+                              onSelect(AppDrawerDestination.settings),
+                          icon: Icon(
+                            Icons.settings,
+                            color: textMuted,
+                            size: 21,
                           ),
-                          Expanded(
-                            child: _DrawerStat(
-                              value: '$tagCount',
-                              label: context.t.strings.legacy.msg_tags,
-                              textMain: textMain,
-                              textMuted: textMuted,
-                            ),
-                          ),
-                          Expanded(
-                            child: _DrawerStat(
-                              value: '${stats.daysSinceFirstMemo}',
-                              label: context.t.strings.legacy.msg_days_2,
-                              textMain: textMain,
-                              textMuted: textMuted,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                    loading: () => Row(
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                statsAsync.when(
+                  data: (stats) {
+                    final tagCount = tagsAsync.valueOrNull?.length ?? 0;
+                    return Row(
                       children: [
                         Expanded(
                           child: _DrawerStat(
-                            value: '?',
+                            value: '${stats.totalMemos}',
                             label: context.t.strings.legacy.msg_memos,
                             textMain: textMain,
                             textMuted: textMuted,
@@ -309,7 +279,7 @@ class AppDrawer extends ConsumerWidget {
                         ),
                         Expanded(
                           child: _DrawerStat(
-                            value: '?',
+                            value: '$tagCount',
                             label: context.t.strings.legacy.msg_tags,
                             textMain: textMain,
                             textMuted: textMuted,
@@ -317,202 +287,236 @@ class AppDrawer extends ConsumerWidget {
                         ),
                         Expanded(
                           child: _DrawerStat(
-                            value: '?',
+                            value: '${stats.daysSinceFirstMemo}',
                             label: context.t.strings.legacy.msg_days_2,
                             textMain: textMain,
                             textMuted: textMuted,
                           ),
                         ),
                       ],
-                    ),
-                    error: (e, _) => Text(
-                      context.t.strings.legacy.msg_failed_load_stats(e: e),
-                      style: TextStyle(color: textMuted),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  statsAsync.when(
-                    data: (stats) => _DrawerHeatmap(
-                      dailyCounts: stats.dailyCounts,
-                      isDark: isDark,
-                    ),
-                    loading: () => const SizedBox(height: 84),
-                    error: (_, _) => const SizedBox(height: 84),
-                  ),
-                  const SizedBox(height: 16),
-                  _NavButton(
-                    selected: selected == AppDrawerDestination.memos,
-                    label: context.t.strings.legacy.msg_all_memos,
-                    icon: Icons.grid_view,
-                    onTap: () => onSelect(AppDrawerDestination.memos),
-                    textMain: textMain,
-                    hover: hover,
-                  ),
-                  if (drawerPrefs.showDrawerExplore)
-                    _NavButton(
-                      selected: selected == AppDrawerDestination.explore,
-                      label: context.t.strings.legacy.msg_explore,
-                      icon: Icons.public,
-                      onTap: () => onSelect(AppDrawerDestination.explore),
-                      textMain: textMain,
-                      hover: hover,
-                    ),
-                  if (drawerPrefs.showDrawerDailyReview)
-                    _NavButton(
-                      selected: selected == AppDrawerDestination.dailyReview,
-                      label: context.t.strings.legacy.msg_random_review,
-                      icon: Icons.explore,
-                      onTap: () => onSelect(AppDrawerDestination.dailyReview),
-                      textMain: textMain,
-                      hover: hover,
-                    ),
-                  if (drawerPrefs.showDrawerAiSummary)
-                    _NavButton(
-                      selected: selected == AppDrawerDestination.aiSummary,
-                      label: context.t.strings.legacy.msg_ai_summary,
-                      icon: Icons.track_changes,
-                      onTap: () => onSelect(AppDrawerDestination.aiSummary),
-                      textMain: textMain,
-                      hover: hover,
-                    ),
-                  if (drawerPrefs.showDrawerResources)
-                    _NavButton(
-                      selected: selected == AppDrawerDestination.resources,
-                      label: context.t.strings.legacy.msg_attachments,
-                      icon: Icons.attach_file,
-                      onTap: () => onSelect(AppDrawerDestination.resources),
-                      textMain: textMain,
-                      hover: hover,
-                    ),
-                  if (drawerPrefs.showDrawerArchive)
-                    _NavButton(
-                      selected: selected == AppDrawerDestination.archived,
-                      label: context.t.strings.legacy.msg_archive,
-                      icon: Icons.archive,
-                      onTap: () => onSelect(AppDrawerDestination.archived),
-                      textMain: textMain,
-                      hover: hover,
-                    ),
-                  const SizedBox(height: 4),
-                  Row(
+                    );
+                  },
+                  loading: () => Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          context.t.strings.legacy.msg_all_tags,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2,
-                            color: textMuted,
-                          ),
+                        child: _DrawerStat(
+                          value: '?',
+                          label: context.t.strings.legacy.msg_memos,
+                          textMain: textMain,
+                          textMuted: textMuted,
                         ),
                       ),
-                      IconButton(
-                        tooltip: context.t.strings.legacy.msg_filter,
-                        onPressed: () => onSelect(AppDrawerDestination.tags),
-                        icon: Icon(Icons.tune, color: textMuted, size: 20),
+                      Expanded(
+                        child: _DrawerStat(
+                          value: '?',
+                          label: context.t.strings.legacy.msg_tags,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                        ),
+                      ),
+                      Expanded(
+                        child: _DrawerStat(
+                          value: '?',
+                          label: context.t.strings.legacy.msg_days_2,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                        ),
                       ),
                     ],
                   ),
-                  tagsAsync.when(
-                    data: (tags) {
-                      if (tags.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            context.t.strings.legacy.msg_no_tags_yet,
-                            style: TextStyle(color: textMuted),
-                          ),
-                        );
-                      }
-                      final preview = tags.take(4).toList(growable: false);
-                      final nodes = buildTagTree(preview);
-                      return TagTreeList(
-                        nodes: nodes,
-                        onSelect: (tag) {
-                          final cb = onSelectTag;
-                          if (cb != null) {
-                            cb(tag);
-                          } else {
-                            onSelect(AppDrawerDestination.tags);
-                          }
-                        },
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        showCount: false,
-                        initiallyExpanded: true,
-                        compact: true,
+                  error: (e, _) => Text(
+                    context.t.strings.legacy.msg_failed_load_stats(e: e),
+                    style: TextStyle(color: textMuted),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                statsAsync.when(
+                  data: (stats) => _DrawerHeatmap(
+                    dailyCounts: stats.dailyCounts,
+                    isDark: isDark,
+                  ),
+                  loading: () => const SizedBox(height: 84),
+                  error: (_, _) => const SizedBox(height: 84),
+                ),
+                const SizedBox(height: 16),
+                _NavButton(
+                  selected: selected == AppDrawerDestination.memos,
+                  label: context.t.strings.legacy.msg_all_memos,
+                  icon: Icons.grid_view,
+                  onTap: () => onSelect(AppDrawerDestination.memos),
+                  textMain: textMain,
+                  hover: hover,
+                ),
+                if (drawerPrefs.showDrawerExplore)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.explore,
+                    label: context.t.strings.legacy.msg_explore,
+                    icon: Icons.public,
+                    onTap: () => onSelect(AppDrawerDestination.explore),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                if (drawerPrefs.showDrawerDailyReview)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.dailyReview,
+                    label: context.t.strings.legacy.msg_random_review,
+                    icon: Icons.explore,
+                    onTap: () => onSelect(AppDrawerDestination.dailyReview),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                if (drawerPrefs.showDrawerAiSummary)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.aiSummary,
+                    label: context.t.strings.legacy.msg_ai_summary,
+                    icon: Icons.track_changes,
+                    onTap: () => onSelect(AppDrawerDestination.aiSummary),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                if (drawerPrefs.showDrawerResources)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.resources,
+                    label: context.t.strings.legacy.msg_attachments,
+                    icon: Icons.attach_file,
+                    onTap: () => onSelect(AppDrawerDestination.resources),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                if (drawerPrefs.showDrawerArchive)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.archived,
+                    label: context.t.strings.legacy.msg_archive,
+                    icon: Icons.archive,
+                    onTap: () => onSelect(AppDrawerDestination.archived),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        context.t.strings.legacy.msg_all_tags,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2,
+                          color: textMuted,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_filter,
+                      onPressed: () => onSelect(AppDrawerDestination.tags),
+                      icon: Icon(Icons.tune, color: textMuted, size: 20),
+                    ),
+                  ],
+                ),
+                tagsAsync.when(
+                  data: (tags) {
+                    if (tags.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          context.t.strings.legacy.msg_no_tags_yet,
+                          style: TextStyle(color: textMuted),
+                        ),
                       );
-                    },
-                    loading: () => Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        context.t.strings.legacy.msg_loading_2,
-                        style: TextStyle(color: textMuted),
-                      ),
+                    }
+                    final preview = tags.take(4).toList(growable: false);
+                    final nodes = buildTagTree(preview);
+                    return TagTreeList(
+                      nodes: nodes,
+                      onSelect: (tag) {
+                        final cb = onSelectTag;
+                        if (cb != null) {
+                          cb(tag);
+                        } else {
+                          onSelect(AppDrawerDestination.tags);
+                        }
+                      },
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      showCount: false,
+                      initiallyExpanded: true,
+                      compact: true,
+                    );
+                  },
+                  loading: () => Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      context.t.strings.legacy.msg_loading_2,
+                      style: TextStyle(color: textMuted),
                     ),
-                    error: (e, _) => Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        context.t.strings.legacy.msg_failed_load_tags(e: e),
-                        style: TextStyle(color: textMuted),
-                      ),
+                  ),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      context.t.strings.legacy.msg_failed_load_tags(e: e),
+                      style: TextStyle(color: textMuted),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Divider(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : Colors.black.withValues(alpha: 0.08),
-                  ),
-                  const SizedBox(height: 2),
-                  _BottomNavRow(
-                    label: context.t.strings.legacy.msg_recycle_bin,
-                    icon: Icons.delete,
-                    onTap: () => onSelect(AppDrawerDestination.recycleBin),
-                    textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
-                    hover: hover,
-                  ),
-                  _BottomNavRow(
-                    label: context.t.strings.legacy.msg_about,
-                    icon: Icons.info,
-                    onTap: () => onSelect(AppDrawerDestination.about),
-                    textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
-                    hover: hover,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
-              child: Text(
-                '$versionLabel | $versionDate',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: textMuted.withValues(alpha: 0.9),
-                  letterSpacing: 0.2,
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14, top: 2),
-              child: Container(
-                width: 128,
-                height: 6,
-                decoration: BoxDecoration(
+                const SizedBox(height: 4),
+                Divider(
                   color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
+                      ? Colors.white.withValues(alpha: 0.06)
                       : Colors.black.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
                 ),
+                const SizedBox(height: 2),
+                _BottomNavRow(
+                  label: context.t.strings.legacy.msg_recycle_bin,
+                  icon: Icons.delete,
+                  onTap: () => onSelect(AppDrawerDestination.recycleBin),
+                  textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
+                  hover: hover,
+                ),
+                _BottomNavRow(
+                  label: context.t.strings.legacy.msg_about,
+                  icon: Icons.info,
+                  onTap: () => onSelect(AppDrawerDestination.about),
+                  textColor: textMain.withValues(alpha: isDark ? 0.6 : 0.7),
+                  hover: hover,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
+            child: Text(
+              '$versionLabel | $versionDate',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: textMuted.withValues(alpha: 0.9),
+                letterSpacing: 0.2,
               ),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14, top: 2),
+            child: Container(
+              width: 128,
+              height: 6,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ],
       ),
     );
+
+    if (embedded) {
+      return Material(color: bg, child: content);
+    }
+
+    return Drawer(width: width, backgroundColor: bg, child: content);
   }
 }
 

@@ -2,34 +2,51 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
+import '../../core/desktop_shortcuts.dart';
+import '../../core/desktop_tray_controller.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
+import '../../core/uid.dart';
 import '../../core/url.dart';
 import '../../data/api/server_api_profile.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/location_settings.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/memo.dart';
+import '../../data/models/memo_location.dart';
 import '../../data/models/shortcut.dart';
+import '../../data/location/amap_geocoder.dart';
+import '../../data/location/device_location_service.dart';
+import '../../state/app_lock_provider.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/database_provider.dart';
 import '../../state/debug_screenshot_mode_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
+import '../../state/location_settings_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memo_timeline_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/network_log_provider.dart';
+import '../../state/note_draft_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_providers.dart';
 import '../../state/reminder_scheduler.dart';
@@ -45,11 +62,17 @@ import '../reminders/reminder_utils.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
+import '../settings/desktop_shortcuts_overview_screen.dart';
+import '../settings/location_settings_screen.dart';
+import '../settings/password_lock_screen.dart';
 import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
 import '../sync/sync_queue_screen.dart';
 import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
+import '../voice/voice_record_screen.dart';
+import 'attachment_gallery_screen.dart';
+import 'desktop_quick_input_dialog.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
@@ -57,9 +80,12 @@ import 'memo_versions_screen.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
+import 'compose_toolbar_shared.dart';
+import 'link_memo_sheet.dart';
 import 'recycle_bin_screen.dart';
 import 'memo_video_grid.dart';
 import 'note_input_sheet.dart';
+import 'windows_camera_capture_screen.dart';
 import 'widgets/audio_row.dart';
 import '../../i18n/strings.g.dart';
 
@@ -370,11 +396,18 @@ class MemosListScreen extends ConsumerStatefulWidget {
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
 }
 
-class _MemosListScreenState extends ConsumerState<MemosListScreen> {
+class _MemosListScreenState extends ConsumerState<MemosListScreen>
+    with WindowListener {
   static const int _initialPageSize = 200;
   static const int _pageStep = 200;
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  final _inlineComposeController = TextEditingController();
+  final _inlineComposeFocusNode = FocusNode();
+  final _inlineTagMenuKey = GlobalKey();
+  final _inlineTodoMenuKey = GlobalKey();
+  final _inlineVisibilityMenuKey = GlobalKey();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _titleKey = GlobalKey();
   final _scrollController = ScrollController();
@@ -419,6 +452,27 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   int _currentResultCount = 0;
   bool _currentLoading = false;
   bool _currentShowSearchLanding = false;
+  bool _desktopWindowMaximized = false;
+  bool _windowsHeaderSearchExpanded = false;
+  bool _desktopQuickInputSubmitting = false;
+  bool _inlineComposeBusy = false;
+  bool _inlineComposeDraftApplied = false;
+  String _inlineVisibility = 'PRIVATE';
+  bool _inlineVisibilityTouched = false;
+  final _inlineImagePicker = ImagePicker();
+  MemoLocation? _inlineLocation;
+  bool _inlineLocating = false;
+  bool _inlineMoreToolbarOpen = false;
+  final List<TextEditingValue> _inlineUndoStack = <TextEditingValue>[];
+  final List<TextEditingValue> _inlineRedoStack = <TextEditingValue>[];
+  TextEditingValue _inlineLastValue = const TextEditingValue();
+  bool _inlineApplyingHistory = false;
+  static const int _inlineMaxHistory = 100;
+  Timer? _inlineComposeDraftTimer;
+  ProviderSubscription<AsyncValue<String>>? _inlineDraftSubscription;
+  final List<_InlinePendingAttachment> _inlinePendingAttachments =
+      <_InlinePendingAttachment>[];
+  final List<_InlineLinkedMemo> _inlineLinkedMemos = <_InlineLinkedMemo>[];
 
   ({int startSec, int endSecExclusive}) _dayRangeSeconds(DateTime day) {
     final localDay = DateTime(day.year, day.month, day.day);
@@ -441,6 +495,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       if (message == null || message.trim().isEmpty) return;
       showTopToast(context, message);
     });
+    _inlineComposeController.addListener(_scheduleInlineComposeDraftSave);
+    _inlineComposeController.addListener(_trackInlineComposeHistory);
+    _inlineLastValue = _inlineComposeController.value;
+    _applyInlineComposeDraft(ref.read(noteDraftProvider));
+    _inlineDraftSubscription = ref.listenManual<AsyncValue<String>>(
+      noteDraftProvider,
+      (prev, next) => _applyInlineComposeDraft(next),
+    );
     _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
       if (!mounted) return;
       if (state.playing) {
@@ -514,6 +576,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       );
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _openDrawerIfNeeded());
+    if (Platform.isWindows) {
+      windowManager.addListener(this);
+      unawaited(_syncDesktopWindowState());
+    }
+    if (isDesktopShortcutEnabled()) {
+      HardwareKeyboard.instance.addHandler(_handleDesktopShortcuts);
+    }
   }
 
   @override
@@ -526,6 +595,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   @override
   void dispose() {
+    if (Platform.isWindows) {
+      windowManager.removeListener(this);
+    }
+    if (isDesktopShortcutEnabled()) {
+      HardwareKeyboard.instance.removeHandler(_handleDesktopShortcuts);
+    }
+    _inlineComposeDraftTimer?.cancel();
+    _inlineDraftSubscription?.close();
+    _inlineComposeController.removeListener(_scheduleInlineComposeDraftSave);
+    _inlineComposeController.removeListener(_trackInlineComposeHistory);
+    _inlineComposeController.dispose();
+    _inlineComposeFocusNode.dispose();
+    _searchFocusNode.dispose();
     _scrollController.dispose();
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
@@ -732,6 +814,654 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildHeaderTitleWidget(
+    BuildContext context, {
+    required VoidCallback maybeHaptic,
+  }) {
+    if (widget.enableTitleMenu) {
+      return InkWell(
+        key: _titleKey,
+        onTap: () {
+          maybeHaptic();
+          _openTitleMenu();
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                widget.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.expand_more,
+              size: 18,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+          ],
+        ),
+      );
+    }
+    return Text(
+      widget.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontWeight: FontWeight.w700),
+    );
+  }
+
+  Widget _buildTopSearchField(
+    BuildContext context, {
+    required bool isDark,
+    required bool autofocus,
+    String? hintText,
+  }) {
+    final hasQuery = _searchController.text.trim().isNotEmpty;
+    return Container(
+      key: const ValueKey('search'),
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isDark
+              ? MemoFlowPalette.borderDark.withValues(alpha: 0.7)
+              : MemoFlowPalette.borderLight,
+        ),
+      ),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        autofocus: autofocus,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: hintText ?? context.t.strings.legacy.msg_search,
+          border: InputBorder.none,
+          isDense: true,
+          prefixIcon: const Icon(Icons.search, size: 18),
+          suffixIcon: hasQuery
+              ? IconButton(
+                  tooltip: context.t.strings.legacy.msg_clear,
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {});
+                  },
+                  icon: const Icon(Icons.close, size: 16),
+                )
+              : null,
+        ),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: _submitSearch,
+      ),
+    );
+  }
+
+  bool _shouldUseInlineComposeForCurrentWindow() {
+    if (!widget.enableCompose || _searching) {
+      return false;
+    }
+    final width = MediaQuery.sizeOf(context).width;
+    return shouldUseInlineComposeLayout(width);
+  }
+
+  bool _isDesktopShortcutRouteActive() {
+    if (!mounted || !isDesktopShortcutEnabled()) return false;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    return !ref.read(appLockProvider).locked;
+  }
+
+  void _showShortcutPlaceholder(String label) {
+    showTopToast(
+      context,
+      '\u300c$label\u300d\u529f\u80fd\u6682\u672a\u5b9e\u73b0\uff08\u5360\u4f4d\uff09\u3002',
+    );
+  }
+
+  void _focusSearchFromShortcut() {
+    if (Platform.isWindows && !_searching) {
+      _openWindowsHeaderSearch();
+      return;
+    }
+    _openSearch();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _searchFocusNode.requestFocus();
+    });
+  }
+
+  Future<void> _openQuickInputFromShortcut() async {
+    if (!widget.enableCompose) return;
+    if (_windowsHeaderSearchExpanded) {
+      _closeWindowsHeaderSearch();
+    }
+    if (_searching) {
+      _closeSearch();
+    }
+    if (_shouldUseInlineComposeForCurrentWindow()) {
+      _scrollToTop();
+      _inlineComposeFocusNode.requestFocus();
+      return;
+    }
+    await _openNoteInput();
+  }
+
+  Future<void> _openQuickRecordFromShortcut() async {
+    if (!isDesktopShortcutEnabled()) {
+      _showShortcutPlaceholder('快速输入');
+      return;
+    }
+    final content = await DesktopQuickInputDialog.show(
+      context,
+      onImagePressed: () => _showShortcutPlaceholder('插入图片'),
+    );
+    if (!mounted || content == null) return;
+    await _submitDesktopQuickInput(content);
+  }
+
+  Future<void> _submitDesktopQuickInput(String rawContent) async {
+    final content = rawContent.trimRight();
+    if (content.trim().isEmpty || _desktopQuickInputSubmitting) return;
+
+    setState(() => _desktopQuickInputSubmitting = true);
+    try {
+      final now = DateTime.now();
+      final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
+      final uid = generateUid();
+      final visibility = _resolveInlineComposeVisibility();
+      final db = ref.read(databaseProvider);
+      final tags = extractTags(content);
+
+      await db.upsertMemo(
+        uid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: nowSec,
+        updateTimeSec: nowSec,
+        tags: tags,
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+      );
+
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': uid,
+          'content': content,
+          'visibility': visibility,
+          'pinned': false,
+          'has_attachments': false,
+        },
+      );
+
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      if (!mounted) return;
+      showTopToast(context, '已保存到 MemoFlow');
+    } catch (error, stackTrace) {
+      ref
+          .read(logManagerProvider)
+          .error(
+            'Desktop quick input submit failed',
+            error: error,
+            stackTrace: stackTrace,
+          );
+      if (!mounted) return;
+      showTopToast(context, '快速输入保存失败：$error');
+    } finally {
+      if (mounted) {
+        setState(() => _desktopQuickInputSubmitting = false);
+      }
+    }
+  }
+
+  void _toggleDesktopDrawerFromShortcut() {
+    if (!widget.showDrawer) return;
+
+    final width = MediaQuery.sizeOf(context).width;
+    final supportsDesktopPane = shouldUseDesktopSidePaneLayout(width);
+    if (supportsDesktopPane) {
+      // Desktop side pane remains pinned open.
+      return;
+    }
+
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold == null) return;
+    if (scaffold.isDrawerOpen) {
+      Navigator.of(context).maybePop();
+    } else {
+      scaffold.openDrawer();
+    }
+  }
+
+  Future<void> _toggleMemoFlowVisibilityFromShortcut() async {
+    if (!isDesktopShortcutEnabled()) {
+      _showShortcutPlaceholder('\u663e\u793a/\u9690\u85cf MemoFlow');
+      return;
+    }
+    try {
+      if (DesktopTrayController.instance.supported) {
+        final visible = await windowManager.isVisible();
+        if (visible) {
+          await DesktopTrayController.instance.hideToTray();
+        } else {
+          await DesktopTrayController.instance.showFromTray();
+        }
+        return;
+      }
+      final visible = await windowManager.isVisible();
+      if (visible) {
+        if (Platform.isWindows || Platform.isLinux) {
+          await windowManager.setSkipTaskbar(true);
+        }
+        await windowManager.hide();
+        return;
+      }
+      if (Platform.isWindows || Platform.isLinux) {
+        await windowManager.setSkipTaskbar(false);
+      }
+      await windowManager.show();
+      await windowManager.focus();
+    } catch (error) {
+      if (!mounted) return;
+      showTopToast(context, '显示/隐藏 MemoFlow 失败：$error');
+    }
+  }
+
+  void _openPasswordLockFromShortcut() {
+    final lockState = ref.read(appLockProvider);
+    if (lockState.enabled && lockState.hasPassword) {
+      ref.read(appLockProvider.notifier).lock();
+      showTopToast(context, '\u5df2\u542f\u7528\u5e94\u7528\u9501\u3002');
+      return;
+    }
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const PasswordLockScreen()));
+  }
+
+  void _openShortcutOverviewPage() {
+    final bindings = normalizeDesktopShortcutBindings(
+      ref.read(appPreferencesProvider).desktopShortcutBindings,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DesktopShortcutsOverviewScreen(bindings: bindings),
+      ),
+    );
+  }
+
+  void _toggleInlineHighlight() {
+    final value = _inlineComposeController.value;
+    final selection = value.selection;
+    const prefix = '==';
+    const suffix = '==';
+    if (!selection.isValid || selection.isCollapsed) {
+      _insertInlineComposeText('$prefix$suffix', caretOffset: prefix.length);
+      return;
+    }
+    final selected = value.text.substring(selection.start, selection.end);
+    final wrapped = '$prefix$selected$suffix';
+    _inlineComposeController.value = value.copyWith(
+      text: value.text.replaceRange(selection.start, selection.end, wrapped),
+      selection: TextSelection(
+        baseOffset: selection.start,
+        extentOffset: selection.start + wrapped.length,
+      ),
+      composing: TextRange.empty,
+    );
+  }
+
+  bool _handleDesktopShortcuts(KeyEvent event) {
+    if (!_isDesktopShortcutRouteActive()) return false;
+    if (event is! KeyDownEvent) return false;
+
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final bindings = normalizeDesktopShortcutBindings(
+      ref.read(appPreferencesProvider).desktopShortcutBindings,
+    );
+    bool matches(DesktopShortcutAction action) {
+      return matchesDesktopShortcut(
+        event: event,
+        pressedKeys: pressed,
+        binding: bindings[action]!,
+      );
+    }
+
+    final primaryPressed = isPrimaryShortcutModifierPressed(pressed);
+    final shiftPressed = isShiftModifierPressed(pressed);
+    final altPressed = isAltModifierPressed(pressed);
+    final key = event.logicalKey;
+    final inlineEditorActive = _inlineComposeFocusNode.hasFocus;
+
+    if (matches(DesktopShortcutAction.shortcutOverview) ||
+        key == LogicalKeyboardKey.f1) {
+      _openShortcutOverviewPage();
+      return true;
+    }
+
+    if (matches(DesktopShortcutAction.search)) {
+      _focusSearchFromShortcut();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.quickInput)) {
+      unawaited(_openQuickInputFromShortcut());
+      return true;
+    }
+    if (matches(DesktopShortcutAction.quickRecord)) {
+      // Desktop global hotkey is handled in App-level hotkey_manager to avoid
+      // duplicate dialogs when the app is foregrounded.
+      if (!DesktopTrayController.instance.supported) {
+        unawaited(_openQuickRecordFromShortcut());
+      }
+      return true;
+    }
+
+    if (inlineEditorActive) {
+      if (matches(DesktopShortcutAction.publishMemo) ||
+          (!primaryPressed &&
+              shiftPressed &&
+              !altPressed &&
+              key == LogicalKeyboardKey.enter)) {
+        unawaited(_submitInlineCompose());
+        return true;
+      }
+      if (matches(DesktopShortcutAction.bold)) {
+        _toggleInlineBold();
+        return true;
+      }
+      if (matches(DesktopShortcutAction.underline)) {
+        _toggleInlineUnderline();
+        return true;
+      }
+      if (matches(DesktopShortcutAction.highlight)) {
+        _toggleInlineHighlight();
+        return true;
+      }
+      if (matches(DesktopShortcutAction.unorderedList)) {
+        _insertInlineComposeText('- ');
+        return true;
+      }
+      if (matches(DesktopShortcutAction.orderedList)) {
+        _insertInlineComposeText('1. ');
+        return true;
+      }
+      if (matches(DesktopShortcutAction.undo)) {
+        _undoInlineCompose();
+        return true;
+      }
+      if (matches(DesktopShortcutAction.redo)) {
+        _redoInlineCompose();
+        return true;
+      }
+    }
+
+    if (matches(DesktopShortcutAction.enableAppLock)) {
+      _openPasswordLockFromShortcut();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.toggleSidebar)) {
+      _toggleDesktopDrawerFromShortcut();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.refresh)) {
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      return true;
+    }
+    if (matches(DesktopShortcutAction.backHome)) {
+      _backToAllMemos();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.openSettings)) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+      return true;
+    }
+    if (matches(DesktopShortcutAction.toggleFlomo)) {
+      unawaited(_toggleMemoFlowVisibilityFromShortcut());
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _syncDesktopWindowState() async {
+    if (!Platform.isWindows) return;
+    final maximized = await windowManager.isMaximized();
+    if (!mounted) return;
+    setState(() => _desktopWindowMaximized = maximized);
+  }
+
+  Future<void> _minimizeDesktopWindow() async {
+    if (!Platform.isWindows) return;
+    await windowManager.minimize();
+  }
+
+  Future<void> _toggleDesktopWindowMaximize() async {
+    if (!Platform.isWindows) return;
+    if (await windowManager.isMaximized()) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
+    await _syncDesktopWindowState();
+  }
+
+  Future<void> _closeDesktopWindow() async {
+    if (!Platform.isWindows) return;
+    await windowManager.close();
+  }
+
+  Widget _buildPillActionsRow(
+    BuildContext context, {
+    required VoidCallback maybeHaptic,
+  }) {
+    return _PillRow(
+      onWeeklyInsights: () {
+        maybeHaptic();
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
+      },
+      onAiSummary: () {
+        maybeHaptic();
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const AiSummaryScreen()),
+        );
+      },
+      onDailyReview: () {
+        maybeHaptic();
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()),
+        );
+      },
+    );
+  }
+
+  Widget _buildWindowsDesktopTitleBar(
+    BuildContext context, {
+    required bool isDark,
+    required bool enableHomeSort,
+    required bool showPillActions,
+    required VoidCallback maybeHaptic,
+    required bool screenshotModeEnabled,
+    required String debugApiVersionText,
+  }) {
+    final barBg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: barBg,
+        border: Border(bottom: BorderSide(color: divider)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 260,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.asset(
+                      'assets/splash/splash_logo.png',
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.auto_stories_rounded,
+                        size: 22,
+                        color: textColor.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(color: textColor, fontSize: 14),
+                    child: _buildHeaderTitleWidget(
+                      context,
+                      maybeHaptic: maybeHaptic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DragToMoveArea(child: const SizedBox.expand()),
+                Align(
+                  alignment: Alignment.center,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: _windowsHeaderSearchExpanded
+                          ? _buildTopSearchField(
+                              context,
+                              isDark: isDark,
+                              autofocus: false,
+                              hintText: 'Quick search...',
+                            )
+                          : (showPillActions
+                                ? _buildPillActionsRow(
+                                    context,
+                                    maybeHaptic: maybeHaptic,
+                                  )
+                                : const SizedBox.shrink()),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (enableHomeSort) ...[
+            _buildSortMenuButton(context, isDark: isDark),
+            const SizedBox(width: 2),
+          ],
+          if (widget.enableSearch)
+            IconButton(
+              tooltip: _windowsHeaderSearchExpanded
+                  ? context.t.strings.legacy.msg_cancel_2
+                  : context.t.strings.legacy.msg_search,
+              onPressed: _toggleWindowsHeaderSearch,
+              icon: Icon(
+                _windowsHeaderSearchExpanded ? Icons.close : Icons.search,
+              ),
+            ),
+          if (kDebugMode && !screenshotModeEnabled) ...[
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: MemoFlowPalette.primary.withValues(
+                    alpha: isDark ? 0.24 : 0.12,
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: MemoFlowPalette.primary.withValues(
+                      alpha: isDark ? 0.45 : 0.25,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  debugApiVersionText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: MemoFlowPalette.primary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          _DesktopWindowIconButton(
+            tooltip: 'Minimize',
+            onPressed: () => unawaited(_minimizeDesktopWindow()),
+            icon: Icons.minimize_rounded,
+          ),
+          _DesktopWindowIconButton(
+            tooltip: _desktopWindowMaximized ? 'Restore' : 'Maximize',
+            onPressed: () => unawaited(_toggleDesktopWindowMaximize()),
+            icon: _desktopWindowMaximized
+                ? Icons.filter_none_rounded
+                : Icons.crop_square_rounded,
+          ),
+          _DesktopWindowIconButton(
+            tooltip: 'Close',
+            onPressed: () => unawaited(_closeDesktopWindow()),
+            icon: Icons.close_rounded,
+            destructive: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void onWindowMaximize() {
+    if (!mounted) return;
+    setState(() => _desktopWindowMaximized = true);
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    if (!mounted) return;
+    setState(() => _desktopWindowMaximized = false);
   }
 
   void _resetAudioLogState() {
@@ -1066,13 +1796,55 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
 
   void _openSearch() {
     setState(() => _searching = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _searchFocusNode.requestFocus();
+    });
+  }
+
+  void _openWindowsHeaderSearch() {
+    if (!Platform.isWindows || !widget.enableSearch) return;
+    if (_windowsHeaderSearchExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _searchFocusNode.requestFocus();
+      });
+      return;
+    }
+    setState(() => _windowsHeaderSearchExpanded = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _searchFocusNode.requestFocus();
+    });
+  }
+
+  void _closeWindowsHeaderSearch({bool clearQuery = true}) {
+    if (!Platform.isWindows || !_windowsHeaderSearchExpanded) return;
+    _searchFocusNode.unfocus();
+    if (clearQuery) {
+      _searchController.clear();
+    }
+    setState(() {
+      _windowsHeaderSearchExpanded = false;
+      _selectedQuickSearchKind = null;
+    });
+  }
+
+  void _toggleWindowsHeaderSearch() {
+    if (_windowsHeaderSearchExpanded) {
+      _closeWindowsHeaderSearch();
+      return;
+    }
+    _openWindowsHeaderSearch();
   }
 
   void _closeSearch() {
+    _searchFocusNode.unfocus();
     _searchController.clear();
     FocusScope.of(context).unfocus();
     setState(() {
       _searching = false;
+      _windowsHeaderSearchExpanded = false;
       _selectedQuickSearchKind = null;
     });
   }
@@ -1145,6 +1917,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   }
 
   Future<bool> _handleWillPop() async {
+    if (_windowsHeaderSearchExpanded) {
+      _closeWindowsHeaderSearch();
+      return false;
+    }
     if (_searching) {
       _closeSearch();
       return false;
@@ -1258,6 +2034,1531 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
   Future<void> _openNoteInput() async {
     if (!widget.enableCompose) return;
     await NoteInputSheet.show(context);
+  }
+
+  void _applyInlineComposeDraft(AsyncValue<String> value) {
+    if (_inlineComposeDraftApplied) return;
+    final draft = value.valueOrNull;
+    if (draft == null) return;
+    if (_inlineComposeController.text.trim().isEmpty &&
+        draft.trim().isNotEmpty) {
+      _inlineComposeController.text = draft;
+      _inlineComposeController.selection = TextSelection.collapsed(
+        offset: draft.length,
+      );
+    }
+    _inlineComposeDraftApplied = true;
+  }
+
+  void _scheduleInlineComposeDraftSave() {
+    _inlineComposeDraftTimer?.cancel();
+    final text = _inlineComposeController.text;
+    _inlineComposeDraftTimer = Timer(const Duration(milliseconds: 300), () {
+      ref.read(noteDraftProvider.notifier).setDraft(text);
+    });
+  }
+
+  String _resolveInlineComposeVisibility() {
+    final settings = ref.read(userGeneralSettingProvider).valueOrNull;
+    final value = (settings?.memoVisibility ?? '').trim().toUpperCase();
+    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
+      return value;
+    }
+    return 'PRIVATE';
+  }
+
+  String _normalizedInlineVisibility(String raw) {
+    final value = raw.trim().toUpperCase();
+    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
+      return value;
+    }
+    return 'PRIVATE';
+  }
+
+  String _currentInlineVisibility() {
+    if (_inlineVisibilityTouched) {
+      return _normalizedInlineVisibility(_inlineVisibility);
+    }
+    return _resolveInlineComposeVisibility();
+  }
+
+  (String label, IconData icon, Color color) _resolveInlineVisibilityStyle(
+    BuildContext context,
+    String raw,
+  ) {
+    switch (raw.trim().toUpperCase()) {
+      case 'PUBLIC':
+        return (
+          context.t.strings.legacy.msg_public,
+          Icons.public,
+          const Color(0xFF3B8C52),
+        );
+      case 'PROTECTED':
+        return (
+          context.t.strings.legacy.msg_protected,
+          Icons.verified_user,
+          const Color(0xFFB26A2B),
+        );
+      default:
+        return (
+          context.t.strings.legacy.msg_private_2,
+          Icons.lock,
+          const Color(0xFF7C7C7C),
+        );
+    }
+  }
+
+  void _insertInlineComposeText(String text, {int? caretOffset}) {
+    final value = _inlineComposeController.value;
+    final selection = value.selection;
+    final start = selection.start < 0 ? value.text.length : selection.start;
+    final end = selection.end < 0 ? value.text.length : selection.end;
+    final newText = value.text.replaceRange(start, end, text);
+    final caret = start + (caretOffset ?? text.length);
+    _inlineComposeController.value = value.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(offset: caret),
+      composing: TextRange.empty,
+    );
+  }
+
+  void _trackInlineComposeHistory() {
+    if (_inlineApplyingHistory) return;
+    final value = _inlineComposeController.value;
+    if (value.text == _inlineLastValue.text &&
+        value.selection == _inlineLastValue.selection) {
+      return;
+    }
+    _inlineUndoStack.add(_inlineLastValue);
+    if (_inlineUndoStack.length > _inlineMaxHistory) {
+      _inlineUndoStack.removeAt(0);
+    }
+    _inlineRedoStack.clear();
+    _inlineLastValue = value;
+  }
+
+  void _undoInlineCompose() {
+    if (_inlineUndoStack.isEmpty || _inlineComposeBusy) return;
+    _inlineApplyingHistory = true;
+    final current = _inlineComposeController.value;
+    final previous = _inlineUndoStack.removeLast();
+    _inlineRedoStack.add(current);
+    _inlineComposeController.value = previous;
+    _inlineLastValue = previous;
+    _inlineApplyingHistory = false;
+    if (mounted) setState(() {});
+  }
+
+  void _redoInlineCompose() {
+    if (_inlineRedoStack.isEmpty || _inlineComposeBusy) return;
+    _inlineApplyingHistory = true;
+    final current = _inlineComposeController.value;
+    final next = _inlineRedoStack.removeLast();
+    _inlineUndoStack.add(current);
+    _inlineComposeController.value = next;
+    _inlineLastValue = next;
+    _inlineApplyingHistory = false;
+    if (mounted) setState(() {});
+  }
+
+  void _toggleInlineBold() {
+    final value = _inlineComposeController.value;
+    final selection = value.selection;
+    if (!selection.isValid) {
+      _insertInlineComposeText('****');
+      _inlineComposeController.selection = const TextSelection.collapsed(
+        offset: 2,
+      );
+      return;
+    }
+    if (selection.isCollapsed) {
+      _insertInlineComposeText('****');
+      _inlineComposeController.selection = TextSelection.collapsed(
+        offset: selection.start + 2,
+      );
+      return;
+    }
+    final selected = value.text.substring(selection.start, selection.end);
+    final wrapped = '**$selected**';
+    _inlineComposeController.value = value.copyWith(
+      text: value.text.replaceRange(selection.start, selection.end, wrapped),
+      selection: TextSelection(
+        baseOffset: selection.start,
+        extentOffset: selection.start + wrapped.length,
+      ),
+      composing: TextRange.empty,
+    );
+  }
+
+  void _toggleInlineUnderline() {
+    final value = _inlineComposeController.value;
+    final selection = value.selection;
+    const prefix = '<u>';
+    const suffix = '</u>';
+    if (!selection.isValid || selection.isCollapsed) {
+      _insertInlineComposeText('$prefix$suffix', caretOffset: prefix.length);
+      return;
+    }
+    final selected = value.text.substring(selection.start, selection.end);
+    final wrapped = '$prefix$selected$suffix';
+    _inlineComposeController.value = value.copyWith(
+      text: value.text.replaceRange(selection.start, selection.end, wrapped),
+      selection: TextSelection(
+        baseOffset: selection.start,
+        extentOffset: selection.start + wrapped.length,
+      ),
+      composing: TextRange.empty,
+    );
+  }
+
+  Future<void> _openInlineLocationSettings() async {
+    if (_inlineComposeBusy) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
+    );
+  }
+
+  Future<LocationSettings> _resolveInlineLocationSettings() async {
+    final current = ref.read(locationSettingsProvider);
+    if (current.enabled) return current;
+    final stored = await ref.read(locationSettingsRepositoryProvider).read();
+    if (!mounted) return stored;
+    await ref
+        .read(locationSettingsProvider.notifier)
+        .setAll(stored, triggerSync: false);
+    return stored;
+  }
+
+  String _inlineLocationErrorText(Object error) {
+    if (error is LocationException) {
+      return switch (error.code) {
+        'service_disabled' =>
+          context.t.strings.legacy.msg_location_services_disabled,
+        'permission_denied' =>
+          context.t.strings.legacy.msg_location_permission_denied,
+        'permission_denied_forever' =>
+          context.t.strings.legacy.msg_location_permission_denied_permanently,
+        'timeout' => context.t.strings.legacy.msg_location_timed_try,
+        _ => context.t.strings.legacy.msg_failed_get_location,
+      };
+    }
+    if (error is TimeoutException) {
+      return context.t.strings.legacy.msg_location_timed_try;
+    }
+    return context.t.strings.legacy.msg_failed_get_location;
+  }
+
+  bool _isInlineWindowsLocationSettingsActionable(Object error) {
+    if (!Platform.isWindows || error is! LocationException) return false;
+    return error.code == 'permission_denied' ||
+        error.code == 'permission_denied_forever' ||
+        error.code == 'service_disabled';
+  }
+
+  void _showInlineLocationError(Object error) {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = _inlineLocationErrorText(error);
+    if (!_isInlineWindowsLocationSettingsActionable(error)) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('$message. Enable location access in Windows settings.'),
+        action: SnackBarAction(
+          label: context.t.strings.legacy.msg_settings,
+          onPressed: () {
+            unawaited(DeviceLocationService().openSystemLocationSettings());
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openWindowsCameraSettings() async {
+    if (!Platform.isWindows) return;
+    try {
+      await Process.start('cmd', <String>[
+        '/c',
+        'start',
+        '',
+        'ms-settings:privacy-webcam',
+      ]);
+    } catch (_) {}
+  }
+
+  bool _isWindowsCameraPermissionError(Object error) {
+    if (!Platform.isWindows) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('permission') ||
+        message.contains('access denied') ||
+        message.contains('cameraaccessdenied') ||
+        message.contains('privacy');
+  }
+
+  bool _isWindowsNoCameraError(Object error) {
+    if (!Platform.isWindows) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('no camera') ||
+        message.contains('no available camera') ||
+        message.contains('no device') ||
+        message.contains('camera_not_found') ||
+        message.contains('camera not found') ||
+        message.contains('capture device') ||
+        message.contains('cameradelegate') ||
+        message.contains('no capture devices') ||
+        message.contains('unavailable');
+  }
+
+  Future<void> _requestInlineLocation() async {
+    if (_inlineComposeBusy || _inlineLocating) return;
+    if (Platform.isWindows) {
+      setState(() => _inlineLocating = true);
+      try {
+        final position = await DeviceLocationService().getCurrentPosition();
+        final next = MemoLocation(
+          placeholder: '',
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+        if (!mounted) return;
+        setState(() => _inlineLocation = next);
+        showTopToast(
+          context,
+          context.t.strings.legacy.msg_location_updated(
+            next_displayText_fractionDigits_6: next.displayText(
+              fractionDigits: 6,
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+        );
+      } catch (error) {
+        if (!mounted) return;
+        _showInlineLocationError(error);
+      } finally {
+        if (mounted) {
+          setState(() => _inlineLocating = false);
+        }
+      }
+      return;
+    }
+
+    final settings = await _resolveInlineLocationSettings();
+    if (!settings.enabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context
+                .t
+                .strings
+                .legacy
+                .msg_location_disabled_enable_settings_first,
+          ),
+          action: SnackBarAction(
+            label: context.t.strings.legacy.msg_settings,
+            onPressed: _openInlineLocationSettings,
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _inlineLocating = true);
+    try {
+      final position = await DeviceLocationService().getCurrentPosition();
+      String placeholder = '';
+      if (settings.amapWebKey.trim().isNotEmpty) {
+        final geocoder = AmapGeocoder(
+          logStore: ref.read(networkLogStoreProvider),
+          logBuffer: ref.read(networkLogBufferProvider),
+          logManager: ref.read(logManagerProvider),
+        );
+        placeholder =
+            await geocoder.reverseGeocode(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              apiKey: settings.amapWebKey,
+              securityKey: settings.amapSecurityKey,
+              precision: settings.precision,
+            ) ??
+            '';
+      }
+      final next = MemoLocation(
+        placeholder: placeholder,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      if (!mounted) return;
+      setState(() => _inlineLocation = next);
+      showTopToast(
+        context,
+        context.t.strings.legacy.msg_location_updated(
+          next_displayText_fractionDigits_6: next.displayText(
+            fractionDigits: 6,
+          ),
+        ),
+        duration: const Duration(seconds: 2),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showInlineLocationError(error);
+    } finally {
+      if (mounted) {
+        setState(() => _inlineLocating = false);
+      }
+    }
+  }
+
+  Future<void> _captureInlinePhoto() async {
+    if (_inlineComposeBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final photo = Platform.isWindows
+          ? await WindowsCameraCaptureScreen.capture(context)
+          : await _inlineImagePicker.pickImage(source: ImageSource.camera);
+      if (!mounted || photo == null) return;
+      final path = photo.path.trim();
+      if (path.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Camera file missing.')),
+        );
+        return;
+      }
+      final file = File(path);
+      if (!file.existsSync()) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Camera file missing.')),
+        );
+        return;
+      }
+      final size = await file.length();
+      if (!mounted) return;
+      final filename = path.split(Platform.pathSeparator).last;
+      final mimeType = _guessInlineAttachmentMimeType(filename);
+      setState(() {
+        _inlinePendingAttachments.add(
+          _InlinePendingAttachment(
+            uid: generateUid(),
+            filePath: path,
+            filename: filename,
+            mimeType: mimeType,
+            size: size,
+          ),
+        );
+      });
+      showTopToast(context, 'Added photo attachment.');
+    } catch (error) {
+      if (!mounted) return;
+      if (_isWindowsNoCameraError(error)) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No camera detected.')),
+        );
+        return;
+      }
+      if (_isWindowsCameraPermissionError(error)) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Camera permission denied. Enable camera access in Windows settings.',
+            ),
+            action: SnackBarAction(
+              label: context.t.strings.legacy.msg_settings,
+              onPressed: () {
+                unawaited(_openWindowsCameraSettings());
+              },
+            ),
+          ),
+        );
+        return;
+      }
+      messenger.showSnackBar(SnackBar(content: Text('Camera failed: $error')));
+    }
+  }
+
+  void _toggleInlineMoreToolbar() {
+    if (_inlineComposeBusy) return;
+    setState(() => _inlineMoreToolbarOpen = !_inlineMoreToolbarOpen);
+  }
+
+  void _closeInlineMoreToolbar() {
+    if (!_inlineMoreToolbarOpen) return;
+    setState(() => _inlineMoreToolbarOpen = false);
+  }
+
+  Widget _buildInlineMoreToolbar({required bool isDark}) {
+    return MemoComposeMoreToolbar(
+      isDark: isDark,
+      busy: _inlineComposeBusy,
+      onBoldPressed: () {
+        _closeInlineMoreToolbar();
+        _toggleInlineBold();
+      },
+      onListPressed: () {
+        _closeInlineMoreToolbar();
+        _insertInlineComposeText('- ');
+      },
+      onUnderlinePressed: () {
+        _closeInlineMoreToolbar();
+        _toggleInlineUnderline();
+      },
+      onCameraPressed: () {
+        _closeInlineMoreToolbar();
+        unawaited(_captureInlinePhoto());
+      },
+      onLocationPressed: () {
+        _closeInlineMoreToolbar();
+        unawaited(_requestInlineLocation());
+      },
+      onUndoPressed: () {
+        _closeInlineMoreToolbar();
+        _undoInlineCompose();
+      },
+      onRedoPressed: () {
+        _closeInlineMoreToolbar();
+        _redoInlineCompose();
+      },
+      undoEnabled: _inlineUndoStack.isNotEmpty,
+      redoEnabled: _inlineRedoStack.isNotEmpty,
+      locationBusy: _inlineLocating,
+    );
+  }
+
+  Set<String> get _inlineLinkedMemoNames =>
+      _inlineLinkedMemos.map((m) => m.name).toSet();
+
+  void _addInlineLinkedMemo(Memo memo) {
+    final name = memo.name.trim();
+    if (name.isEmpty) return;
+    if (_inlineLinkedMemos.any((m) => m.name == name)) return;
+    final raw = memo.content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final label = raw.isNotEmpty
+        ? _truncateInlineLabel(raw)
+        : _truncateInlineLabel(
+            name.startsWith('memos/') ? name.substring('memos/'.length) : name,
+          );
+    setState(
+      () => _inlineLinkedMemos.add(_InlineLinkedMemo(name: name, label: label)),
+    );
+  }
+
+  void _removeInlineLinkedMemo(String name) {
+    setState(() => _inlineLinkedMemos.removeWhere((m) => m.name == name));
+  }
+
+  String _truncateInlineLabel(String text, {int maxLength = 24}) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength - 3)}...';
+  }
+
+  Future<void> _openInlineLinkMemoSheet() async {
+    if (_inlineComposeBusy) return;
+    final selection = await LinkMemoSheet.show(
+      context,
+      existingNames: _inlineLinkedMemoNames,
+    );
+    if (!mounted || selection == null) return;
+    _addInlineLinkedMemo(selection);
+  }
+
+  Future<void> _openInlineTagMenuFromKey(
+    GlobalKey key,
+    List<TagStat> tags,
+  ) async {
+    if (_inlineComposeBusy) return;
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    await _openInlineTagMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      tags,
+    );
+  }
+
+  Future<void> _openInlineTagMenu(
+    RelativeRect position,
+    List<TagStat> tags,
+  ) async {
+    if (_inlineComposeBusy) return;
+    final items = tags.isEmpty
+        ? [
+            const PopupMenuItem<String>(
+              enabled: false,
+              child: Text('No tags yet'),
+            ),
+          ]
+        : tags
+              .map(
+                (stat) => PopupMenuItem<String>(
+                  value: stat.tag,
+                  child: Text('#${stat.tag}'),
+                ),
+              )
+              .toList(growable: false);
+
+    final selection = await showMenu<String>(
+      context: context,
+      position: position,
+      items: items,
+    );
+    if (!mounted || selection == null) return;
+    final normalized = selection.startsWith('#')
+        ? selection.substring(1)
+        : selection;
+    if (normalized.isEmpty) return;
+    _insertInlineComposeText('$normalized ');
+  }
+
+  Future<void> _openInlineTodoShortcutMenuFromKey(GlobalKey key) async {
+    if (_inlineComposeBusy) return;
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    await _openInlineTodoShortcutMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    );
+  }
+
+  Future<void> _openInlineTodoShortcutMenu(RelativeRect position) async {
+    if (_inlineComposeBusy) return;
+    final action = await showMenu<MemoComposeTodoShortcutAction>(
+      context: context,
+      position: position,
+      items: const [
+        PopupMenuItem(
+          value: MemoComposeTodoShortcutAction.checkbox,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_box_outlined, size: 18),
+              SizedBox(width: 8),
+              Text('Checkbox'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: MemoComposeTodoShortcutAction.codeBlock,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.code, size: 18),
+              SizedBox(width: 8),
+              Text('Code block'),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case MemoComposeTodoShortcutAction.checkbox:
+        _insertInlineComposeText('- [ ] ');
+        break;
+      case MemoComposeTodoShortcutAction.codeBlock:
+        _insertInlineComposeText('```\n\n```', caretOffset: 4);
+        break;
+    }
+  }
+
+  Future<void> _openInlineVisibilityMenuFromKey(GlobalKey key) async {
+    if (_inlineComposeBusy) return;
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    await _openInlineVisibilityMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    );
+  }
+
+  Future<void> _openInlineVisibilityMenu(RelativeRect position) async {
+    if (_inlineComposeBusy) return;
+    final selection = await showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        PopupMenuItem(
+          value: 'PRIVATE',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock, size: 18),
+              const SizedBox(width: 8),
+              Text(context.t.strings.legacy.msg_private_2),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'PROTECTED',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.verified_user, size: 18),
+              const SizedBox(width: 8),
+              Text(context.t.strings.legacy.msg_protected),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'PUBLIC',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.public, size: 18),
+              const SizedBox(width: 8),
+              Text(context.t.strings.legacy.msg_public),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (!mounted || selection == null) return;
+    setState(() {
+      _inlineVisibility = selection;
+      _inlineVisibilityTouched = true;
+    });
+  }
+
+  String _guessInlineAttachmentMimeType(String filename) {
+    final lower = filename.toLowerCase();
+    final dot = lower.lastIndexOf('.');
+    final ext = dot == -1 ? '' : lower.substring(dot + 1);
+    return switch (ext) {
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'gif' => 'image/gif',
+      'webp' => 'image/webp',
+      'bmp' => 'image/bmp',
+      'heic' => 'image/heic',
+      'heif' => 'image/heif',
+      'mp3' => 'audio/mpeg',
+      'm4a' => 'audio/mp4',
+      'aac' => 'audio/aac',
+      'wav' => 'audio/wav',
+      'flac' => 'audio/flac',
+      'ogg' => 'audio/ogg',
+      'opus' => 'audio/opus',
+      'mp4' => 'video/mp4',
+      'mov' => 'video/quicktime',
+      'mkv' => 'video/x-matroska',
+      'webm' => 'video/webm',
+      'avi' => 'video/x-msvideo',
+      'pdf' => 'application/pdf',
+      'zip' => 'application/zip',
+      'rar' => 'application/vnd.rar',
+      '7z' => 'application/x-7z-compressed',
+      'txt' => 'text/plain',
+      'md' => 'text/markdown',
+      'json' => 'application/json',
+      'csv' => 'text/csv',
+      'log' => 'text/plain',
+      _ => 'application/octet-stream',
+    };
+  }
+
+  bool _isInlineImageMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase().startsWith('image/');
+  }
+
+  bool _isInlineVideoMimeType(String mimeType) {
+    return mimeType.trim().toLowerCase().startsWith('video/');
+  }
+
+  Future<void> _pickInlineAttachments() async {
+    if (_inlineComposeBusy) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+        withReadStream: true,
+      );
+      if (!mounted) return;
+      final files = result?.files ?? const <PlatformFile>[];
+      if (files.isEmpty) return;
+
+      final added = <_InlinePendingAttachment>[];
+      var missingPathCount = 0;
+      Directory? tempDir;
+      for (final file in files) {
+        String path = (file.path ?? '').trim();
+        if (path.isEmpty) {
+          final stream = file.readStream;
+          final bytes = file.bytes;
+          if (stream == null && bytes == null) {
+            missingPathCount++;
+            continue;
+          }
+          tempDir ??= await getTemporaryDirectory();
+          final name = file.name.trim().isNotEmpty
+              ? file.name.trim()
+              : 'attachment_${generateUid()}';
+          final tempFile = File(
+            '${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name',
+          );
+          if (bytes != null) {
+            await tempFile.writeAsBytes(bytes, flush: true);
+          } else if (stream != null) {
+            final sink = tempFile.openWrite();
+            await sink.addStream(stream);
+            await sink.close();
+          }
+          path = tempFile.path;
+        }
+
+        if (path.trim().isEmpty) {
+          missingPathCount++;
+          continue;
+        }
+
+        final handle = File(path);
+        if (!handle.existsSync()) {
+          missingPathCount++;
+          continue;
+        }
+        final size = handle.lengthSync();
+        final filename = file.name.trim().isNotEmpty
+            ? file.name.trim()
+            : path.split(Platform.pathSeparator).last;
+        final mimeType = _guessInlineAttachmentMimeType(filename);
+        added.add(
+          _InlinePendingAttachment(
+            uid: generateUid(),
+            filePath: path,
+            filename: filename,
+            mimeType: mimeType,
+            size: size,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      if (added.isEmpty) {
+        final msg = missingPathCount > 0
+            ? 'Files unavailable from picker.'
+            : 'No files selected.';
+        showTopToast(context, msg);
+        return;
+      }
+
+      setState(() {
+        _inlinePendingAttachments.addAll(added);
+      });
+      final suffix = added.length == 1 ? '' : 's';
+      final skipped = [
+        if (missingPathCount > 0) '$missingPathCount unavailable',
+      ];
+      final summary = skipped.isEmpty
+          ? 'Added ${added.length} file$suffix.'
+          : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
+      showTopToast(context, summary);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File selection failed: $error')));
+    }
+  }
+
+  void _removeInlinePendingAttachment(String uid) {
+    setState(() => _inlinePendingAttachments.removeWhere((a) => a.uid == uid));
+  }
+
+  File? _resolveInlinePendingAttachmentFile(
+    _InlinePendingAttachment attachment,
+  ) {
+    final path = attachment.filePath.trim();
+    if (path.isEmpty) return null;
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    return file;
+  }
+
+  String _inlinePendingSourceId(String uid) => 'inline-pending:$uid';
+
+  List<
+    ({
+      AttachmentImageSource source,
+      _InlinePendingAttachment attachment,
+      File file,
+    })
+  >
+  _inlinePendingImageSources() {
+    final items =
+        <
+          ({
+            AttachmentImageSource source,
+            _InlinePendingAttachment attachment,
+            File file,
+          })
+        >[];
+    for (final attachment in _inlinePendingAttachments) {
+      if (!_isInlineImageMimeType(attachment.mimeType)) continue;
+      final file = _resolveInlinePendingAttachmentFile(attachment);
+      if (file == null) continue;
+      items.add((
+        source: AttachmentImageSource(
+          id: _inlinePendingSourceId(attachment.uid),
+          title: attachment.filename,
+          mimeType: attachment.mimeType,
+          localFile: file,
+        ),
+        attachment: attachment,
+        file: file,
+      ));
+    }
+    return items;
+  }
+
+  Future<void> _openInlineAttachmentViewer(
+    _InlinePendingAttachment attachment,
+  ) async {
+    final items = _inlinePendingImageSources();
+    if (items.isEmpty) return;
+    final index = items.indexWhere(
+      (item) => item.attachment.uid == attachment.uid,
+    );
+    if (index < 0) return;
+    final sources = items.map((item) => item.source).toList(growable: false);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AttachmentGalleryScreen(
+          images: sources,
+          initialIndex: index,
+          onReplace: _replaceInlinePendingAttachment,
+          enableDownload: true,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _replaceInlinePendingAttachment(EditedImageResult result) async {
+    final id = result.sourceId;
+    if (!id.startsWith('inline-pending:')) return;
+    final uid = id.substring('inline-pending:'.length);
+    final index = _inlinePendingAttachments.indexWhere((a) => a.uid == uid);
+    if (index < 0) return;
+    setState(() {
+      _inlinePendingAttachments[index] = _InlinePendingAttachment(
+        uid: uid,
+        filePath: result.filePath,
+        filename: result.filename,
+        mimeType: result.mimeType,
+        size: result.size,
+      );
+    });
+  }
+
+  Widget _buildInlineAttachmentPreview(bool isDark) {
+    if (_inlinePendingAttachments.isEmpty) return const SizedBox.shrink();
+    const tileSize = 62.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(
+        height: tileSize,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            children: [
+              for (var i = 0; i < _inlinePendingAttachments.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                _buildInlineAttachmentTile(
+                  _inlinePendingAttachments[i],
+                  isDark: isDark,
+                  size: tileSize,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInlineAttachmentTile(
+    _InlinePendingAttachment attachment, {
+    required bool isDark,
+    required double size,
+  }) {
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final surfaceColor = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final iconColor =
+        (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
+            .withValues(alpha: 0.6);
+    final removeBg = isDark
+        ? Colors.black.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.5);
+    final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
+    final isImage = _isInlineImageMimeType(attachment.mimeType);
+    final isVideo = _isInlineVideoMimeType(attachment.mimeType);
+    final file = _resolveInlinePendingAttachmentFile(attachment);
+
+    Widget content;
+    if (isImage && file != null) {
+      content = Image.file(
+        file,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _inlineAttachmentFallback(
+            iconColor: iconColor,
+            surfaceColor: surfaceColor,
+            isImage: true,
+          );
+        },
+      );
+    } else if (isVideo && file != null) {
+      final entry = MemoVideoEntry(
+        id: attachment.uid,
+        title: attachment.filename.isNotEmpty ? attachment.filename : 'video',
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        localFile: file,
+        videoUrl: null,
+        headers: null,
+      );
+      content = AttachmentVideoThumbnail(
+        entry: entry,
+        width: size,
+        height: size,
+        borderRadius: 14,
+        fit: BoxFit.cover,
+        showPlayIcon: false,
+      );
+    } else {
+      content = _inlineAttachmentFallback(
+        iconColor: iconColor,
+        surfaceColor: surfaceColor,
+        isImage: isImage,
+        isVideo: isVideo,
+      );
+    }
+
+    final tile = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: content),
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: (isImage && file != null)
+              ? () => _openInlineAttachmentViewer(attachment)
+              : null,
+          child: tile,
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: _inlineComposeBusy
+                ? null
+                : () => _removeInlinePendingAttachment(attachment.uid),
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: removeBg,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.close, size: 12, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _inlineAttachmentFallback({
+    required Color iconColor,
+    required Color surfaceColor,
+    required bool isImage,
+    bool isVideo = false,
+  }) {
+    return Container(
+      color: surfaceColor,
+      alignment: Alignment.center,
+      child: Icon(
+        isImage
+            ? Icons.image_outlined
+            : (isVideo
+                  ? Icons.videocam_outlined
+                  : Icons.insert_drive_file_outlined),
+        size: 22,
+        color: iconColor,
+      ),
+    );
+  }
+
+  void _addInlineVoiceAttachment(VoiceRecordResult result) {
+    final messenger = ScaffoldMessenger.of(context);
+    final path = result.filePath.trim();
+    if (path.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_recording_path_missing),
+        ),
+      );
+      return;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_recording_file_not_found_2,
+          ),
+        ),
+      );
+      return;
+    }
+
+    final size = result.size > 0 ? result.size : file.lengthSync();
+    final filename = result.fileName.trim().isNotEmpty
+        ? result.fileName.trim()
+        : path.split(Platform.pathSeparator).last;
+    final mimeType = _guessInlineAttachmentMimeType(filename);
+    setState(() {
+      _inlinePendingAttachments.add(
+        _InlinePendingAttachment(
+          uid: generateUid(),
+          filePath: path,
+          filename: filename,
+          mimeType: mimeType,
+          size: size,
+        ),
+      );
+    });
+    showTopToast(context, context.t.strings.legacy.msg_added_voice_attachment);
+  }
+
+  Future<void> _submitInlineCompose() async {
+    if (_inlineComposeBusy || !widget.enableCompose) return;
+    final content = _inlineComposeController.text.trimRight();
+    final relations = _inlineLinkedMemos
+        .map((m) => m.toRelationJson())
+        .toList(growable: false);
+    final pendingAttachments = List<_InlinePendingAttachment>.from(
+      _inlinePendingAttachments,
+    );
+    final hasAttachments = pendingAttachments.isNotEmpty;
+    if (content.trim().isEmpty && !hasAttachments) {
+      if (relations.isNotEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter content before creating a link.'),
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final result = await Navigator.of(context).push<VoiceRecordResult>(
+        MaterialPageRoute(builder: (_) => const VoiceRecordScreen()),
+      );
+      if (!mounted || result == null) return;
+      _addInlineVoiceAttachment(result);
+      return;
+    }
+
+    setState(() => _inlineComposeBusy = true);
+    try {
+      final now = DateTime.now();
+      final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
+      final uid = generateUid();
+      final tags = extractTags(content);
+      final visibility = _currentInlineVisibility();
+      final db = ref.read(databaseProvider);
+      final attachments = pendingAttachments
+          .map((attachment) {
+            final rawPath = attachment.filePath.trim();
+            final externalLink = rawPath.isEmpty
+                ? ''
+                : rawPath.startsWith('content://')
+                ? rawPath
+                : Uri.file(rawPath).toString();
+            return Attachment(
+              name: 'attachments/${attachment.uid}',
+              filename: attachment.filename,
+              type: attachment.mimeType,
+              size: attachment.size,
+              externalLink: externalLink,
+            ).toJson();
+          })
+          .toList(growable: false);
+
+      await db.upsertMemo(
+        uid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: nowSec,
+        updateTimeSec: nowSec,
+        tags: tags,
+        attachments: attachments,
+        location: _inlineLocation,
+        relationCount: 0,
+        syncState: 1,
+      );
+
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': uid,
+          'content': content,
+          'visibility': visibility,
+          'pinned': false,
+          'has_attachments': hasAttachments,
+          if (_inlineLocation != null) 'location': _inlineLocation!.toJson(),
+          if (relations.isNotEmpty) 'relations': relations,
+        },
+      );
+
+      for (final attachment in pendingAttachments) {
+        await db.enqueueOutbox(
+          type: 'upload_attachment',
+          payload: {
+            'uid': attachment.uid,
+            'memo_uid': uid,
+            'file_path': attachment.filePath,
+            'filename': attachment.filename,
+            'mime_type': attachment.mimeType,
+            'file_size': attachment.size,
+          },
+        );
+      }
+
+      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      _inlineComposeDraftTimer?.cancel();
+      _inlineComposeController.clear();
+      await ref.read(noteDraftProvider.notifier).clear();
+      if (mounted) {
+        setState(() {
+          _inlinePendingAttachments.clear();
+          _inlineLinkedMemos.clear();
+          _inlineLocation = null;
+          _inlineLocating = false;
+          _inlineMoreToolbarOpen = false;
+          _inlineUndoStack.clear();
+          _inlineRedoStack.clear();
+          _inlineLastValue = _inlineComposeController.value;
+        });
+        _inlineComposeFocusNode.requestFocus();
+      }
+    } catch (error, stackTrace) {
+      ref
+          .read(logManagerProvider)
+          .error(
+            'Inline compose submit failed',
+            error: error,
+            stackTrace: stackTrace,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_create_failed_2(e: error)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _inlineComposeBusy = false);
+      }
+    }
+  }
+
+  Widget _buildInlineComposeCard({
+    required bool isDark,
+    required List<TagStat> tagStats,
+  }) {
+    final cardColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final hintColor = textColor.withValues(alpha: isDark ? 0.42 : 0.55);
+    final chipBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : MemoFlowPalette.audioSurfaceLight;
+    final chipText = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final (visibilityLabel, visibilityIcon, visibilityColor) =
+        _resolveInlineVisibilityStyle(context, _currentInlineVisibility());
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor.withValues(alpha: 0.75)),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                  color: Colors.black.withValues(alpha: 0.05),
+                ),
+              ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildInlineAttachmentPreview(isDark),
+          if (_inlineLinkedMemos.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: _inlineLinkedMemos
+                    .map(
+                      (memo) => InputChip(
+                        avatar: Icon(
+                          Icons.alternate_email_rounded,
+                          size: 16,
+                          color: chipText.withValues(alpha: 0.75),
+                        ),
+                        label: Text(
+                          memo.label,
+                          style: TextStyle(fontSize: 12, color: chipText),
+                        ),
+                        backgroundColor: chipBg,
+                        deleteIconColor: chipText.withValues(alpha: 0.55),
+                        onDeleted: _inlineComposeBusy
+                            ? null
+                            : () => _removeInlineLinkedMemo(memo.name),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+            ),
+          if (_inlineLocating)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    context.t.strings.legacy.msg_locating,
+                    style: TextStyle(fontSize: 12, color: chipText),
+                  ),
+                ],
+              ),
+            ),
+          if (_inlineLocation != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InputChip(
+                  avatar: Icon(
+                    Icons.place_outlined,
+                    size: 16,
+                    color: chipText.withValues(alpha: 0.75),
+                  ),
+                  label: Text(
+                    _inlineLocation!.displayText(fractionDigits: 6),
+                    style: TextStyle(fontSize: 12, color: chipText),
+                  ),
+                  backgroundColor: chipBg,
+                  deleteIconColor: chipText.withValues(alpha: 0.55),
+                  onDeleted: _inlineComposeBusy
+                      ? null
+                      : () => setState(() => _inlineLocation = null),
+                ),
+              ),
+            ),
+          TextField(
+            controller: _inlineComposeController,
+            focusNode: _inlineComposeFocusNode,
+            enabled: !_inlineComposeBusy,
+            minLines: 1,
+            maxLines: 5,
+            keyboardType: TextInputType.multiline,
+            style: TextStyle(fontSize: 15, height: 1.35, color: textColor),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              hintText: context.t.strings.legacy.msg_write_thoughts,
+              hintStyle: TextStyle(color: hintColor),
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return SizeTransition(
+                sizeFactor: animation,
+                axisAlignment: -1,
+                child: FadeTransition(opacity: animation, child: child),
+              );
+            },
+            child: _inlineMoreToolbarOpen
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 2),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildInlineMoreToolbar(isDark: isDark),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: MemoComposePrimaryToolbar(
+                  isDark: isDark,
+                  busy: _inlineComposeBusy,
+                  moreOpen: _inlineMoreToolbarOpen,
+                  visibilityMessage: context.t.strings.legacy.msg_visibility_2(
+                    visibilityLabel: visibilityLabel,
+                  ),
+                  visibilityIcon: visibilityIcon,
+                  visibilityColor: visibilityColor,
+                  tagButtonKey: _inlineTagMenuKey,
+                  todoButtonKey: _inlineTodoMenuKey,
+                  visibilityButtonKey: _inlineVisibilityMenuKey,
+                  onTagPressed: () {
+                    _closeInlineMoreToolbar();
+                    _insertInlineComposeText('#');
+                    unawaited(
+                      _openInlineTagMenuFromKey(_inlineTagMenuKey, tagStats),
+                    );
+                  },
+                  onAttachmentPressed: () {
+                    _closeInlineMoreToolbar();
+                    unawaited(_pickInlineAttachments());
+                  },
+                  onTodoPressed: () {
+                    _closeInlineMoreToolbar();
+                    unawaited(
+                      _openInlineTodoShortcutMenuFromKey(_inlineTodoMenuKey),
+                    );
+                  },
+                  onLinkPressed: () {
+                    _closeInlineMoreToolbar();
+                    unawaited(_openInlineLinkMemoSheet());
+                  },
+                  onToggleMorePressed: _toggleInlineMoreToolbar,
+                  onVisibilityPressed: () {
+                    _closeInlineMoreToolbar();
+                    unawaited(
+                      _openInlineVisibilityMenuFromKey(
+                        _inlineVisibilityMenuKey,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _inlineComposeController,
+                builder: (context, value, _) {
+                  final showSend =
+                      value.text.trim().isNotEmpty ||
+                      _inlinePendingAttachments.isNotEmpty;
+                  return Material(
+                    color: MemoFlowPalette.primary,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: _inlineComposeBusy ? null : _submitInlineCompose,
+                      child: SizedBox(
+                        width: 38,
+                        height: 30,
+                        child: Center(
+                          child: _inlineComposeBusy
+                              ? SizedBox.square(
+                                  dimension: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 160),
+                                  transitionBuilder: (child, animation) {
+                                    return ScaleTransition(
+                                      scale: animation,
+                                      child: child,
+                                    );
+                                  },
+                                  child: Icon(
+                                    showSend
+                                        ? Icons.send_rounded
+                                        : Icons.graphic_eq,
+                                    key: ValueKey<bool>(showSend),
+                                    size: showSend ? 18 : 20,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openAccountSwitcher() async {
@@ -1906,19 +4207,31 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     required bool removing,
   }) {
     final curved = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+    Widget memoCard = _buildMemoCard(
+      context,
+      memo,
+      prefs: prefs,
+      outboxStatus: outboxStatus,
+      removing: removing,
+    );
+    if (Platform.isWindows) {
+      memoCard = Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: kMemoFlowDesktopMemoCardMaxWidth,
+          ),
+          child: memoCard,
+        ),
+      );
+    }
     return SizeTransition(
       sizeFactor: curved,
       axis: Axis.vertical,
       axisAlignment: 0.0,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: _buildMemoCard(
-          context,
-          memo,
-          prefs: prefs,
-          outboxStatus: outboxStatus,
-          removing: removing,
-        ),
+        child: memoCard,
       ),
     );
   }
@@ -2201,8 +4514,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
                 ? MemoFlowPalette.backgroundDark
                 : MemoFlowPalette.backgroundLight)
             .withValues(alpha: 0.9);
-    final listTopPadding = widget.showPillActions ? 0.0 : 16.0;
-    final listVisualOffset = widget.showPillActions ? 6.0 : 0.0;
+    final showHeaderPillActions =
+        widget.showPillActions && widget.state == 'NORMAL';
+    final listTopPadding = showHeaderPillActions ? 0.0 : 16.0;
+    final listVisualOffset = showHeaderPillActions ? 6.0 : 0.0;
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
     final screenshotModeEnabled = kDebugMode
@@ -2220,9 +4535,28 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.padding.bottom;
     final screenWidth = mediaQuery.size.width;
-    final backToTopBaseOffset = widget.enableCompose && !_searching
-        ? 104.0
-        : 24.0;
+    final supportsDesktopSidePane =
+        widget.showDrawer && shouldUseDesktopSidePaneLayout(screenWidth);
+    final useDesktopSidePane = supportsDesktopSidePane;
+    final useInlineCompose =
+        widget.enableCompose &&
+        !_searching &&
+        shouldUseInlineComposeLayout(screenWidth);
+    final useWindowsDesktopHeader = Platform.isWindows;
+    final drawerPanel = widget.showDrawer
+        ? AppDrawer(
+            selected: widget.state == 'ARCHIVED'
+                ? AppDrawerDestination.archived
+                : AppDrawerDestination.memos,
+            onSelect: _navigateDrawer,
+            onSelectTag: _openTagFromDrawer,
+            onOpenNotifications: _openNotifications,
+            embedded: useDesktopSidePane,
+          )
+        : null;
+    final showComposeFab =
+        widget.enableCompose && !_searching && !useInlineCompose;
+    final backToTopBaseOffset = showComposeFab ? 104.0 : 24.0;
     void maybeHaptic() {
       if (!hapticsEnabled) return;
       HapticFeedback.selectionClick();
@@ -2244,394 +4578,468 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen> {
       },
       child: Scaffold(
         key: _scaffoldKey,
-        drawer: widget.showDrawer
-            ? AppDrawer(
-                selected: widget.state == 'ARCHIVED'
-                    ? AppDrawerDestination.archived
-                    : AppDrawerDestination.memos,
-                onSelect: _navigateDrawer,
-                onSelectTag: _openTagFromDrawer,
-                onOpenNotifications: _openNotifications,
-              )
-            : null,
-        drawerEnableOpenDragGesture: widget.showDrawer && !_searching,
-        drawerEdgeDragWidth: widget.showDrawer && !_searching
+        drawer: useDesktopSidePane ? null : drawerPanel,
+        drawerEnableOpenDragGesture:
+            !useDesktopSidePane && widget.showDrawer && !_searching,
+        drawerEdgeDragWidth:
+            !useDesktopSidePane && widget.showDrawer && !_searching
             ? screenWidth
             : null,
-        body: Stack(
-          children: [
-            RefreshIndicator(
-              onRefresh: () async {
-                await ref.read(syncControllerProvider.notifier).syncNow();
-                if (useShortcutFilter) {
-                  ref.invalidate(shortcutMemosProvider(shortcutQuery));
-                } else if (useQuickSearch && quickSearchQuery != null) {
-                  ref.invalidate(quickSearchMemosProvider(quickSearchQuery));
-                }
-              },
-              child: CustomScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverAppBar(
-                    pinned: true,
-                    backgroundColor: headerBg,
-                    elevation: 0,
-                    scrolledUnderElevation: 0,
-                    surfaceTintColor: Colors.transparent,
-                    automaticallyImplyLeading: !_searching,
-                    leading: _searching
-                        ? IconButton(
-                            icon: const Icon(Icons.arrow_back_ios_new),
-                            onPressed: _closeSearch,
-                          )
-                        : null,
-                    title: _searching
-                        ? Container(
-                            key: const ValueKey('search'),
-                            height: 36,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? MemoFlowPalette.cardDark
-                                  : MemoFlowPalette.cardLight,
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: isDark
-                                    ? MemoFlowPalette.borderDark.withValues(
-                                        alpha: 0.7,
-                                      )
-                                    : MemoFlowPalette.borderLight,
-                              ),
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              autofocus: true,
-                              textInputAction: TextInputAction.search,
-                              decoration: InputDecoration(
-                                hintText: context.t.strings.legacy.msg_search,
-                                border: InputBorder.none,
-                                isDense: true,
-                                prefixIcon: const Icon(Icons.search, size: 18),
-                              ),
-                              onChanged: (_) => setState(() {}),
-                              onSubmitted: _submitSearch,
-                            ),
-                          )
-                        : (widget.enableTitleMenu
-                              ? InkWell(
-                                  key: _titleKey,
-                                  onTap: () {
-                                    maybeHaptic();
-                                    _openTitleMenu();
-                                  },
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
+        body: (() {
+          final memoListBody = Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async {
+                  await ref.read(syncControllerProvider.notifier).syncNow();
+                  if (useShortcutFilter) {
+                    ref.invalidate(shortcutMemosProvider(shortcutQuery));
+                  } else if (useQuickSearch && quickSearchQuery != null) {
+                    ref.invalidate(quickSearchMemosProvider(quickSearchQuery));
+                  }
+                },
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverAppBar(
+                      pinned: true,
+                      backgroundColor: headerBg,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      surfaceTintColor: Colors.transparent,
+                      toolbarHeight: useWindowsDesktopHeader && !_searching
+                          ? 0
+                          : kToolbarHeight,
+                      titleSpacing: useWindowsDesktopHeader && !_searching
+                          ? 0
+                          : NavigationToolbar.kMiddleSpacing,
+                      automaticallyImplyLeading:
+                          !useWindowsDesktopHeader && !_searching,
+                      leading: useWindowsDesktopHeader
+                          ? null
+                          : (_searching
+                                ? IconButton(
+                                    icon: const Icon(Icons.arrow_back_ios_new),
+                                    onPressed: _closeSearch,
+                                  )
+                                : null),
+                      title: useWindowsDesktopHeader && !_searching
+                          ? null
+                          : (_searching
+                                ? _buildTopSearchField(
+                                    context,
+                                    isDark: isDark,
+                                    autofocus: true,
+                                  )
+                                : _buildHeaderTitleWidget(
+                                    context,
+                                    maybeHaptic: maybeHaptic,
+                                  )),
+                      actions: useWindowsDesktopHeader && !_searching
+                          ? null
+                          : [
+                              if (kDebugMode && !screenshotModeEnabled)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 150,
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: MemoFlowPalette.primary
+                                              .withValues(
+                                                alpha: isDark ? 0.24 : 0.12,
+                                              ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: MemoFlowPalette.primary
+                                                .withValues(
+                                                  alpha: isDark ? 0.45 : 0.25,
+                                                ),
+                                          ),
+                                        ),
                                         child: Text(
-                                          widget.title,
+                                          debugApiVersionText,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
+                                            fontSize: 11,
                                             fontWeight: FontWeight.w700,
+                                            color: MemoFlowPalette.primary,
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        Icons.expand_more,
-                                        size: 18,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                            .withValues(alpha: 0.4),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : Text(
-                                  widget.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                )),
-                    actions: [
-                      if (kDebugMode && !screenshotModeEnabled)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 150),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: MemoFlowPalette.primary.withValues(
-                                    alpha: isDark ? 0.24 : 0.12,
-                                  ),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: MemoFlowPalette.primary.withValues(
-                                      alpha: isDark ? 0.45 : 0.25,
                                     ),
                                   ),
                                 ),
-                                child: Text(
-                                  debugApiVersionText,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: MemoFlowPalette.primary,
-                                  ),
-                                ),
-                              ),
+                              ...?_searching
+                                  ? (widget.enableSearch
+                                        ? [
+                                            TextButton(
+                                              onPressed: _closeSearch,
+                                              child: Text(
+                                                context
+                                                    .t
+                                                    .strings
+                                                    .legacy
+                                                    .msg_cancel_2,
+                                                style: TextStyle(
+                                                  color:
+                                                      MemoFlowPalette.primary,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ]
+                                        : null)
+                                  : (widget.enableSearch
+                                        ? [
+                                            if (enableHomeSort)
+                                              _buildSortMenuButton(
+                                                context,
+                                                isDark: isDark,
+                                              ),
+                                            if (!useWindowsDesktopHeader)
+                                              IconButton(
+                                                tooltip: context
+                                                    .t
+                                                    .strings
+                                                    .legacy
+                                                    .msg_search,
+                                                onPressed: _openSearch,
+                                                icon: const Icon(Icons.search),
+                                              ),
+                                          ]
+                                        : null),
+                            ],
+                      bottom: useWindowsDesktopHeader && !_searching
+                          ? null
+                          : _searching
+                          ? (useShortcutFilter
+                                ? null
+                                : PreferredSize(
+                                    preferredSize: const Size.fromHeight(46),
+                                    child: Align(
+                                      alignment: Alignment.bottomLeft,
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          8,
+                                        ),
+                                        child: _SearchQuickFilterBar(
+                                          selectedKind:
+                                              _selectedQuickSearchKind,
+                                          onSelectKind: _toggleQuickSearchKind,
+                                        ),
+                                      ),
+                                    ),
+                                  ))
+                          : (showHeaderPillActions
+                                ? PreferredSize(
+                                    preferredSize: const Size.fromHeight(46),
+                                    child: Align(
+                                      alignment: Alignment.bottomLeft,
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          0,
+                                          16,
+                                          0,
+                                        ),
+                                        child: _buildPillActionsRow(
+                                          context,
+                                          maybeHaptic: maybeHaptic,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : (widget.showFilterTagChip &&
+                                          (resolvedTag?.trim().isNotEmpty ??
+                                              false)
+                                      ? PreferredSize(
+                                          preferredSize: const Size.fromHeight(
+                                            48,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              16,
+                                              0,
+                                              16,
+                                              10,
+                                            ),
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: _FilterTagChip(
+                                                label:
+                                                    '#${resolvedTag!.trim()}',
+                                                onClear: widget.showTagFilters
+                                                    ? () =>
+                                                          _selectTagFilter(null)
+                                                    : (widget.showDrawer
+                                                          ? _backToAllMemos
+                                                          : () => context
+                                                                .safePop()),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : null)),
+                    ),
+                    if (useInlineCompose)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                          child: _buildInlineComposeCard(
+                            isDark: isDark,
+                            tagStats: tagStats,
+                          ),
+                        ),
+                      ),
+                    if (widget.showTagFilters &&
+                        !_searching &&
+                        recommendedTags.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: _TagFilterBar(
+                          tags: recommendedTags
+                              .take(12)
+                              .map((e) => e.tag)
+                              .toList(growable: false),
+                          selectedTag: resolvedTag,
+                          onSelectTag: _selectTagFilter,
+                        ),
+                      ),
+                    if (memosLoading && memosValue != null)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: LinearProgressIndicator(minHeight: 2),
+                        ),
+                      ),
+                    if (memosError != null)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Text(
+                            context.t.strings.legacy.msg_failed_load_3(
+                              memosError: memosError,
                             ),
                           ),
                         ),
-                      ...?_searching
-                          ? (widget.enableSearch
-                                ? [
-                                    TextButton(
-                                      onPressed: _closeSearch,
-                                      child: Text(
-                                        context.t.strings.legacy.msg_cancel_2,
-                                        style: TextStyle(
-                                          color: MemoFlowPalette.primary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ]
-                                : null)
-                          : (widget.enableSearch
-                                ? [
-                                    if (enableHomeSort)
-                                      _buildSortMenuButton(
-                                        context,
-                                        isDark: isDark,
-                                      ),
-                                    IconButton(
-                                      tooltip:
-                                          context.t.strings.legacy.msg_search,
-                                      onPressed: _openSearch,
-                                      icon: const Icon(Icons.search),
-                                    ),
-                                  ]
-                                : null),
-                    ],
-                    bottom: _searching
-                        ? (useShortcutFilter
-                              ? null
-                              : PreferredSize(
-                                  preferredSize: const Size.fromHeight(46),
-                                  child: Align(
-                                    alignment: Alignment.bottomLeft,
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        16,
-                                        0,
-                                        16,
-                                        8,
-                                      ),
-                                      child: _SearchQuickFilterBar(
-                                        selectedKind: _selectedQuickSearchKind,
-                                        onSelectKind: _toggleQuickSearchKind,
-                                      ),
-                                    ),
-                                  ),
-                                ))
-                        : (widget.showPillActions
-                              ? PreferredSize(
-                                  preferredSize: const Size.fromHeight(46),
-                                  child: Align(
-                                    alignment: Alignment.bottomLeft,
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        16,
-                                        0,
-                                        16,
-                                        0,
-                                      ),
-                                      child: _PillRow(
-                                        onWeeklyInsights: () {
-                                          maybeHaptic();
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) =>
-                                                  const StatsScreen(),
-                                            ),
-                                          );
-                                        },
-                                        onAiSummary: () {
-                                          maybeHaptic();
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) =>
-                                                  const AiSummaryScreen(),
-                                            ),
-                                          );
-                                        },
-                                        onDailyReview: () {
-                                          maybeHaptic();
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (_) =>
-                                                  const DailyReviewScreen(),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : (widget.showFilterTagChip &&
-                                        (resolvedTag?.trim().isNotEmpty ??
-                                            false)
-                                    ? PreferredSize(
-                                        preferredSize: const Size.fromHeight(
-                                          48,
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            16,
-                                            0,
-                                            16,
-                                            10,
-                                          ),
-                                          child: Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: _FilterTagChip(
-                                              label: '#${resolvedTag!.trim()}',
-                                              onClear: widget.showTagFilters
-                                                  ? () => _selectTagFilter(null)
-                                                  : (widget.showDrawer
-                                                        ? _backToAllMemos
-                                                        : () => context
-                                                              .safePop()),
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    : null)),
+                      )
+                    else if (showSearchLanding)
+                      SliverToBoxAdapter(
+                        child: _SearchLanding(
+                          history: searchHistory,
+                          onClearHistory: () =>
+                              ref.read(searchHistoryProvider.notifier).clear(),
+                          onRemoveHistory: (value) => ref
+                              .read(searchHistoryProvider.notifier)
+                              .remove(value),
+                          onSelectHistory: _applySearchQuery,
+                          tags: recommendedTags
+                              .map((e) => e.tag)
+                              .toList(growable: false),
+                          onSelectTag: _applySearchQuery,
+                        ),
+                      )
+                    else if (memosValue == null && memosLoading)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (visibleMemos.isEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 140),
+                          child: Center(
+                            child: Text(
+                              _searching
+                                  ? context
+                                        .t
+                                        .strings
+                                        .legacy
+                                        .msg_no_results_found
+                                  : context.t.strings.legacy.msg_no_content_yet,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          listTopPadding + listVisualOffset,
+                          16,
+                          140,
+                        ),
+                        sliver: SliverAnimatedList(
+                          key: _listKey,
+                          initialItemCount: visibleMemos.length,
+                          itemBuilder: (context, index, animation) {
+                            final memo = visibleMemos[index];
+                            return _buildAnimatedMemoItem(
+                              context: context,
+                              memo: memo,
+                              animation: animation,
+                              prefs: prefs,
+                              outboxStatus: outboxStatus,
+                              removing: false,
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 16,
+                bottom: backToTopBaseOffset + bottomInset,
+                child: _BackToTopButton(
+                  visible: _showBackToTop,
+                  hapticsEnabled: hapticsEnabled,
+                  onPressed: _scrollToTop,
+                ),
+              ),
+            ],
+          );
+          final bodyContent = () {
+            if (!useDesktopSidePane || drawerPanel == null) {
+              return memoListBody;
+            }
+            final dividerColor = isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.08);
+            final desktopContent = Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: kMemoFlowDesktopContentMaxWidth,
                   ),
-                  if (widget.showTagFilters &&
-                      !_searching &&
-                      recommendedTags.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: _TagFilterBar(
-                        tags: recommendedTags
-                            .take(12)
-                            .map((e) => e.tag)
-                            .toList(growable: false),
-                        selectedTag: resolvedTag,
-                        onSelectTag: _selectTagFilter,
-                      ),
-                    ),
-                  if (memosLoading && memosValue != null)
-                    const SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: LinearProgressIndicator(minHeight: 2),
-                      ),
-                    ),
-                  if (memosError != null)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: Text(
-                          context.t.strings.legacy.msg_failed_load_3(
-                            memosError: memosError,
-                          ),
-                        ),
-                      ),
-                    )
-                  else if (showSearchLanding)
-                    SliverToBoxAdapter(
-                      child: _SearchLanding(
-                        history: searchHistory,
-                        onClearHistory: () =>
-                            ref.read(searchHistoryProvider.notifier).clear(),
-                        onRemoveHistory: (value) => ref
-                            .read(searchHistoryProvider.notifier)
-                            .remove(value),
-                        onSelectHistory: _applySearchQuery,
-                        tags: recommendedTags
-                            .map((e) => e.tag)
-                            .toList(growable: false),
-                        onSelectTag: _applySearchQuery,
-                      ),
-                    )
-                  else if (memosValue == null && memosLoading)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (visibleMemos.isEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 140),
-                        child: Center(
-                          child: Text(
-                            _searching
-                                ? context.t.strings.legacy.msg_no_results_found
-                                : context.t.strings.legacy.msg_no_content_yet,
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        listTopPadding + listVisualOffset,
-                        16,
-                        140,
-                      ),
-                      sliver: SliverAnimatedList(
-                        key: _listKey,
-                        initialItemCount: visibleMemos.length,
-                        itemBuilder: (context, index, animation) {
-                          final memo = visibleMemos[index];
-                          return _buildAnimatedMemoItem(
-                            context: context,
-                            memo: memo,
-                            animation: animation,
-                            prefs: prefs,
-                            outboxStatus: outboxStatus,
-                            removing: false,
-                          );
-                        },
-                      ),
-                    ),
-                ],
+                  child: memoListBody,
+                ),
               ),
-            ),
-            Positioned(
-              right: 16,
-              bottom: backToTopBaseOffset + bottomInset,
-              child: _BackToTopButton(
-                visible: _showBackToTop,
-                hapticsEnabled: hapticsEnabled,
-                onPressed: _scrollToTop,
-              ),
-            ),
-          ],
-        ),
+            );
+            return Row(
+              children: [
+                SizedBox(
+                  width: kMemoFlowDesktopDrawerWidth,
+                  child: drawerPanel,
+                ),
+                VerticalDivider(width: 1, thickness: 1, color: dividerColor),
+                Expanded(child: desktopContent),
+              ],
+            );
+          }();
+          if (useWindowsDesktopHeader && !_searching) {
+            return Column(
+              children: [
+                _buildWindowsDesktopTitleBar(
+                  context,
+                  isDark: isDark,
+                  enableHomeSort: enableHomeSort,
+                  showPillActions: showHeaderPillActions,
+                  maybeHaptic: maybeHaptic,
+                  screenshotModeEnabled: screenshotModeEnabled,
+                  debugApiVersionText: debugApiVersionText,
+                ),
+                Expanded(child: bodyContent),
+              ],
+            );
+          }
+          return bodyContent;
+        })(),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-        floatingActionButton: widget.enableCompose && !_searching
+        floatingActionButton: showComposeFab
             ? _MemoFlowFab(
                 onPressed: _openNoteInput,
                 hapticsEnabled: hapticsEnabled,
               )
             : null,
+      ),
+    );
+  }
+}
+
+class _InlinePendingAttachment {
+  const _InlinePendingAttachment({
+    required this.uid,
+    required this.filePath,
+    required this.filename,
+    required this.mimeType,
+    required this.size,
+  });
+
+  final String uid;
+  final String filePath;
+  final String filename;
+  final String mimeType;
+  final int size;
+}
+
+class _InlineLinkedMemo {
+  const _InlineLinkedMemo({required this.name, required this.label});
+
+  final String name;
+  final String label;
+
+  Map<String, dynamic> toRelationJson() {
+    return {
+      'relatedMemo': {'name': name},
+      'type': 'REFERENCE',
+    };
+  }
+}
+
+class _DesktopWindowIconButton extends StatelessWidget {
+  const _DesktopWindowIconButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+    this.destructive = false,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = destructive
+        ? (isDark ? const Color(0xFFFFB4B4) : const Color(0xFFC62828))
+        : (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight);
+    final hoverColor = destructive
+        ? const Color(0x33E53935)
+        : (isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.06));
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          hoverColor: hoverColor,
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 36,
+            height: 30,
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+        ),
       ),
     );
   }
@@ -3309,7 +5717,7 @@ class _SearchQuickFilterBar extends StatelessWidget {
         icon: Icons.history_edu_outlined,
         label: trByLanguage(
           language: context.appLanguage,
-          zh: '那年今日',
+          zh: '閭ｅ勾浠婃棩',
           en: 'On This Day',
         ),
       ),
@@ -3838,6 +6246,7 @@ class _MemoCardState extends State<_MemoCard> {
         columns: 3,
         maxCount: 9,
         maxHeight: maxHeight,
+        preserveSquareTilesWhenHeightLimited: Platform.isWindows,
         radius: 0,
         spacing: 4,
         borderColor: previewBorder,
@@ -4299,7 +6708,7 @@ class _MemoCardState extends State<_MemoCard> {
   }
 
   static Duration? _parseVoiceDurationValue(String content) {
-    final linePattern = RegExp(r'^[-*+•·]?\s*', unicode: true);
+    final linePattern = RegExp(r'^[-*+•]?\s*', unicode: true);
     final valuePattern = RegExp(
       r'^(时长|Duration)\s*[:：]\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$',
       caseSensitive: false,
@@ -4868,7 +7277,7 @@ class _TaskProgressBarState extends State<_TaskProgressBar>
       begin: targetValue,
       end: targetValue,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _controller.value = 1.0; // 直接跳到目标值，不播放动画
+    _controller.value = 1.0;
   }
 
   @override
@@ -4879,7 +7288,7 @@ class _TaskProgressBarState extends State<_TaskProgressBar>
       final currentValue = _animation.value;
       final difference = (targetValue - currentValue).abs();
 
-      // 根据进度差距调整动画时长：差距越大，动画时间越长
+      // 鏍规嵁杩涘害宸窛璋冩暣鍔ㄧ敾鏃堕暱锛氬樊璺濊秺澶э紝鍔ㄧ敾鏃堕棿瓒婇暱
       final animationDuration = Duration(
         milliseconds: (400 + difference * 500).round(),
       );

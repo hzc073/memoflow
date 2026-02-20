@@ -4,11 +4,13 @@ import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop_shortcuts.dart';
 import '../../core/markdown_editing.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
@@ -27,10 +29,13 @@ import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/network_log_provider.dart';
 import '../../state/note_draft_provider.dart';
+import '../../state/preferences_provider.dart';
 import '../../state/user_settings_provider.dart';
 import 'attachment_gallery_screen.dart';
+import 'compose_toolbar_shared.dart';
 import 'memo_video_grid.dart';
 import 'link_memo_sheet.dart';
+import 'windows_camera_capture_screen.dart';
 import '../voice/voice_record_screen.dart';
 import '../settings/location_settings_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -63,7 +68,9 @@ class NoteInputSheet extends ConsumerStatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.05),
+      barrierColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.black.withValues(alpha: 0.4)
+          : Colors.black.withValues(alpha: 0.05),
       builder: (context) => NoteInputSheet(
         initialText: initialText,
         initialSelection: initialSelection,
@@ -80,6 +87,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
 
 class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   late final TextEditingController _controller;
+  late final FocusNode _editorFocusNode;
   late final SmartEnterController _smartEnterController;
   var _busy = false;
   Timer? _draftTimer;
@@ -112,9 +120,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     super.initState();
     _noteDraftController = ref.read(noteDraftProvider.notifier);
     _controller = TextEditingController(text: widget.initialText ?? '');
+    _editorFocusNode = FocusNode();
     final selection = widget.initialSelection;
     if (selection != null) {
-      _controller.selection = _normalizeSelection(selection, _controller.text.length);
+      _controller.selection = _normalizeSelection(
+        selection,
+        _controller.text.length,
+      );
     }
     if (widget.ignoreDraft ||
         _controller.text.trim().isNotEmpty ||
@@ -129,16 +141,28 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _applyDefaultVisibility(ref.read(userGeneralSettingProvider));
     _loadTagStats();
     unawaited(_seedInitialAttachments());
-    _draftSubscription = ref.listenManual<AsyncValue<String>>(noteDraftProvider, (prev, next) {
-      _applyDraft(next);
-    });
-    _settingsSubscription = ref.listenManual<AsyncValue<UserGeneralSetting>>(userGeneralSettingProvider, (prev, next) {
-      _applyDefaultVisibility(next);
-    });
+    _draftSubscription = ref.listenManual<AsyncValue<String>>(
+      noteDraftProvider,
+      (prev, next) {
+        _applyDraft(next);
+      },
+    );
+    _settingsSubscription = ref.listenManual<AsyncValue<UserGeneralSetting>>(
+      userGeneralSettingProvider,
+      (prev, next) {
+        _applyDefaultVisibility(next);
+      },
+    );
+    if (isDesktopShortcutEnabled()) {
+      HardwareKeyboard.instance.addHandler(_handleDesktopEditorShortcuts);
+    }
   }
 
   @override
   void dispose() {
+    if (isDesktopShortcutEnabled()) {
+      HardwareKeyboard.instance.removeHandler(_handleDesktopEditorShortcuts);
+    }
     _draftTimer?.cancel();
     _draftSubscription?.close();
     _settingsSubscription?.close();
@@ -153,6 +177,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       ),
     );
     _controller.dispose();
+    _editorFocusNode.dispose();
     super.dispose();
   }
 
@@ -242,7 +267,8 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   void _trackHistory() {
     if (_isApplyingHistory) return;
     final value = _controller.value;
-    if (value.text == _lastValue.text && value.selection == _lastValue.selection) {
+    if (value.text == _lastValue.text &&
+        value.selection == _lastValue.selection) {
       return;
     }
     _undoStack.add(_lastValue);
@@ -287,7 +313,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       box.localToGlobal(Offset.zero, ancestor: overlay),
       box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
     );
-    await _openVisibilityMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size));
+    await _openVisibilityMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    );
   }
 
   Future<void> _openVisibilityMenu(RelativeRect position) async {
@@ -346,7 +374,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     return 'PRIVATE';
   }
 
-  (String label, IconData icon, Color color) _resolveVisibilityStyle(BuildContext context, String raw) {
+  (String label, IconData icon, Color color) _resolveVisibilityStyle(
+    BuildContext context,
+    String raw,
+  ) {
     switch (raw.trim().toUpperCase()) {
       case 'PUBLIC':
         return (
@@ -408,7 +439,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final wrapped = '**$selected**';
     _controller.value = value.copyWith(
       text: value.text.replaceRange(sel.start, sel.end, wrapped),
-      selection: TextSelection(baseOffset: sel.start, extentOffset: sel.start + wrapped.length),
+      selection: TextSelection(
+        baseOffset: sel.start,
+        extentOffset: sel.start + wrapped.length,
+      ),
       composing: TextRange.empty,
     );
   }
@@ -426,9 +460,96 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final wrapped = '$prefix$selected$suffix';
     _controller.value = value.copyWith(
       text: value.text.replaceRange(sel.start, sel.end, wrapped),
-      selection: TextSelection(baseOffset: sel.start, extentOffset: sel.start + wrapped.length),
+      selection: TextSelection(
+        baseOffset: sel.start,
+        extentOffset: sel.start + wrapped.length,
+      ),
       composing: TextRange.empty,
     );
+  }
+
+  void _toggleHighlight() {
+    final value = _controller.value;
+    final sel = value.selection;
+    const prefix = '==';
+    const suffix = '==';
+    if (!sel.isValid || sel.isCollapsed) {
+      _insertText('$prefix$suffix', caretOffset: prefix.length);
+      return;
+    }
+    final selected = value.text.substring(sel.start, sel.end);
+    final wrapped = '$prefix$selected$suffix';
+    _controller.value = value.copyWith(
+      text: value.text.replaceRange(sel.start, sel.end, wrapped),
+      selection: TextSelection(
+        baseOffset: sel.start,
+        extentOffset: sel.start + wrapped.length,
+      ),
+      composing: TextRange.empty,
+    );
+  }
+
+  bool _handleDesktopEditorShortcuts(KeyEvent event) {
+    if (!mounted || !isDesktopShortcutEnabled()) return false;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    if (!_editorFocusNode.hasFocus || _busy || event is! KeyDownEvent) {
+      return false;
+    }
+
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final bindings = normalizeDesktopShortcutBindings(
+      ref.read(appPreferencesProvider).desktopShortcutBindings,
+    );
+    bool matches(DesktopShortcutAction action) {
+      return matchesDesktopShortcut(
+        event: event,
+        pressedKeys: pressed,
+        binding: bindings[action]!,
+      );
+    }
+
+    final primaryPressed = isPrimaryShortcutModifierPressed(pressed);
+    final shiftPressed = isShiftModifierPressed(pressed);
+    final altPressed = isAltModifierPressed(pressed);
+    final key = event.logicalKey;
+    if (matches(DesktopShortcutAction.publishMemo) ||
+        (!primaryPressed &&
+            shiftPressed &&
+            !altPressed &&
+            key == LogicalKeyboardKey.enter)) {
+      unawaited(_submitOrVoice());
+      return true;
+    }
+    if (matches(DesktopShortcutAction.bold)) {
+      _toggleBold();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.underline)) {
+      _toggleUnderline();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.highlight)) {
+      _toggleHighlight();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.unorderedList)) {
+      _insertText('- ');
+      return true;
+    }
+    if (matches(DesktopShortcutAction.orderedList)) {
+      _insertText('1. ');
+      return true;
+    }
+    if (matches(DesktopShortcutAction.undo)) {
+      _undo();
+      return true;
+    }
+    if (matches(DesktopShortcutAction.redo)) {
+      _redo();
+      return true;
+    }
+    return false;
   }
 
   Future<void> _openTagMenuFromKey(GlobalKey key, List<TagStat> tags) async {
@@ -443,7 +564,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       box.localToGlobal(Offset.zero, ancestor: overlay),
       box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
     );
-    await _openTagMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size), tags);
+    await _openTagMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      tags,
+    );
   }
 
   Future<void> _openTagMenu(RelativeRect position, List<TagStat> tags) async {
@@ -456,13 +580,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             ),
           ]
         : tags
-            .map(
-              (stat) => PopupMenuItem<String>(
-                value: stat.tag,
-                child: Text('#${stat.tag}'),
-              ),
-            )
-            .toList(growable: false);
+              .map(
+                (stat) => PopupMenuItem<String>(
+                  value: stat.tag,
+                  child: Text('#${stat.tag}'),
+                ),
+              )
+              .toList(growable: false);
 
     final selection = await showMenu<String>(
       context: context,
@@ -470,19 +594,21 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       items: items,
     );
     if (!mounted || selection == null) return;
-    final normalized = selection.startsWith('#') ? selection.substring(1) : selection;
+    final normalized = selection.startsWith('#')
+        ? selection.substring(1)
+        : selection;
     if (normalized.isEmpty) return;
     _insertText('$normalized ');
   }
 
   Future<void> _openTodoShortcutMenu(RelativeRect position) async {
     if (_busy) return;
-    final action = await showMenu<_TodoShortcutAction>(
+    final action = await showMenu<MemoComposeTodoShortcutAction>(
       context: context,
       position: position,
       items: const [
         PopupMenuItem(
-          value: _TodoShortcutAction.checkbox,
+          value: MemoComposeTodoShortcutAction.checkbox,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -493,7 +619,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           ),
         ),
         PopupMenuItem(
-          value: _TodoShortcutAction.codeBlock,
+          value: MemoComposeTodoShortcutAction.codeBlock,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -508,10 +634,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     if (!mounted || action == null) return;
 
     switch (action) {
-      case _TodoShortcutAction.checkbox:
+      case MemoComposeTodoShortcutAction.checkbox:
         _insertText('- [ ] ');
         break;
-      case _TodoShortcutAction.codeBlock:
+      case MemoComposeTodoShortcutAction.codeBlock:
         _insertText('```\n\n```', caretOffset: 4);
         break;
     }
@@ -529,7 +655,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       box.localToGlobal(Offset.zero, ancestor: overlay),
       box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
     );
-    await _openTodoShortcutMenu(RelativeRect.fromRect(rect, Offset.zero & overlay.size));
+    await _openTodoShortcutMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    );
   }
 
   void _toggleMoreToolbar() {
@@ -554,19 +682,118 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     if (current.enabled) return current;
     final stored = await ref.read(locationSettingsRepositoryProvider).read();
     if (!mounted) return stored;
-    await ref.read(locationSettingsProvider.notifier).setAll(stored, triggerSync: false);
+    await ref
+        .read(locationSettingsProvider.notifier)
+        .setAll(stored, triggerSync: false);
     return stored;
+  }
+
+  bool _isWindowsLocationSettingsActionable(Object error) {
+    if (!Platform.isWindows || error is! LocationException) return false;
+    return error.code == 'permission_denied' ||
+        error.code == 'permission_denied_forever' ||
+        error.code == 'service_disabled';
+  }
+
+  void _showLocationError(Object error) {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = _locationErrorText(error);
+    if (!_isWindowsLocationSettingsActionable(error)) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('$message. Enable location access in Windows settings.'),
+        action: SnackBarAction(
+          label: context.t.strings.legacy.msg_settings,
+          onPressed: () {
+            unawaited(DeviceLocationService().openSystemLocationSettings());
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openWindowsCameraSettings() async {
+    if (!Platform.isWindows) return;
+    try {
+      await Process.start('cmd', <String>[
+        '/c',
+        'start',
+        '',
+        'ms-settings:privacy-webcam',
+      ]);
+    } catch (_) {}
+  }
+
+  bool _isWindowsCameraPermissionError(Object error) {
+    if (!Platform.isWindows) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('permission') ||
+        message.contains('access denied') ||
+        message.contains('cameraaccessdenied') ||
+        message.contains('privacy');
+  }
+
+  bool _isWindowsNoCameraError(Object error) {
+    if (!Platform.isWindows) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('no camera') ||
+        message.contains('no available camera') ||
+        message.contains('no device') ||
+        message.contains('camera_not_found') ||
+        message.contains('camera not found') ||
+        message.contains('capture device') ||
+        message.contains('cameradelegate') ||
+        message.contains('no capture devices') ||
+        message.contains('unavailable');
   }
 
   Future<void> _requestLocation() async {
     if (_busy || _locating) return;
+    if (Platform.isWindows) {
+      setState(() => _locating = true);
+      try {
+        final position = await DeviceLocationService().getCurrentPosition();
+        final next = MemoLocation(
+          placeholder: '',
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+        if (!mounted) return;
+        setState(() => _location = next);
+        showTopToast(
+          context,
+          context.t.strings.legacy.msg_location_updated(
+            next_displayText_fractionDigits_6: next.displayText(
+              fractionDigits: 6,
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        _showLocationError(e);
+      } finally {
+        if (mounted) {
+          setState(() => _locating = false);
+        }
+      }
+      return;
+    }
+
     final settings = await _resolveLocationSettings();
     if (!settings.enabled) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.t.strings.legacy.msg_location_disabled_enable_settings_first,
+            context
+                .t
+                .strings
+                .legacy
+                .msg_location_disabled_enable_settings_first,
           ),
           action: SnackBarAction(
             label: context.t.strings.legacy.msg_settings,
@@ -587,7 +814,8 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           logBuffer: ref.read(networkLogBufferProvider),
           logManager: ref.read(logManagerProvider),
         );
-        placeholder = await geocoder.reverseGeocode(
+        placeholder =
+            await geocoder.reverseGeocode(
               latitude: position.latitude,
               longitude: position.longitude,
               apiKey: settings.amapWebKey,
@@ -605,14 +833,16 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       setState(() => _location = next);
       showTopToast(
         context,
-        context.t.strings.legacy.msg_location_updated(next_displayText_fractionDigits_6: next.displayText(fractionDigits: 6)),
+        context.t.strings.legacy.msg_location_updated(
+          next_displayText_fractionDigits_6: next.displayText(
+            fractionDigits: 6,
+          ),
+        ),
         duration: const Duration(seconds: 2),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_locationErrorText(e))),
-      );
+      _showLocationError(e);
     } finally {
       if (mounted) {
         setState(() => _locating = false);
@@ -623,9 +853,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   String _locationErrorText(Object error) {
     if (error is LocationException) {
       return switch (error.code) {
-        'service_disabled' => context.t.strings.legacy.msg_location_services_disabled,
-        'permission_denied' => context.t.strings.legacy.msg_location_permission_denied,
-        'permission_denied_forever' => context.t.strings.legacy.msg_location_permission_denied_permanently,
+        'service_disabled' =>
+          context.t.strings.legacy.msg_location_services_disabled,
+        'permission_denied' =>
+          context.t.strings.legacy.msg_location_permission_denied,
+        'permission_denied_forever' =>
+          context.t.strings.legacy.msg_location_permission_denied_permanently,
         'timeout' => context.t.strings.legacy.msg_location_timed_try,
         _ => context.t.strings.legacy.msg_failed_get_location,
       };
@@ -636,97 +869,41 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     return context.t.strings.legacy.msg_failed_get_location;
   }
 
-  Widget _buildMoreToolbar(BuildContext context, bool isDark) {
-    final iconColor = isDark ? Colors.white70 : Colors.black54;
-    final disabledColor = iconColor.withValues(alpha: 0.45);
-    const gap = 6.0;
-    const horizontalPadding = 10.0;
-    const verticalPadding = 6.0;
-    const iconButtonSize = 32.0;
-    final canEdit = !_busy;
-
-    Widget actionButton({
-      required IconData icon,
-      required VoidCallback onPressed,
-      bool enabled = true,
-    }) {
-      return IconButton(
-        icon: Icon(icon, size: 20, color: enabled ? iconColor : disabledColor),
-        onPressed: enabled
-            ? () {
-                _closeMoreToolbar();
-                onPressed();
-              }
-            : null,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: iconButtonSize, height: iconButtonSize),
-        splashRadius: 18,
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2B2B2B) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.15),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            actionButton(
-              icon: Icons.format_bold,
-              enabled: canEdit,
-              onPressed: _toggleBold,
-            ),
-            const SizedBox(width: gap),
-            actionButton(
-              icon: Icons.format_list_bulleted,
-              enabled: canEdit,
-              onPressed: () => _insertText('- '),
-            ),
-            const SizedBox(width: gap),
-            actionButton(
-              icon: Icons.format_underlined,
-              enabled: canEdit,
-              onPressed: _toggleUnderline,
-            ),
-            const SizedBox(width: gap),
-            actionButton(
-              icon: Icons.photo_camera_outlined,
-              enabled: canEdit,
-              onPressed: _capturePhoto,
-            ),
-            const SizedBox(width: gap),
-            actionButton(
-              icon: _locating ? Icons.my_location : Icons.place_outlined,
-              enabled: canEdit && !_locating,
-              onPressed: _requestLocation,
-            ),
-            const SizedBox(width: gap),
-            actionButton(
-              icon: Icons.undo,
-              enabled: canEdit && _undoStack.isNotEmpty,
-              onPressed: _undo,
-            ),
-            const SizedBox(width: gap),
-            actionButton(
-              icon: Icons.redo,
-              enabled: canEdit && _redoStack.isNotEmpty,
-              onPressed: _redo,
-            ),
-          ],
-        ),
-      ),
+  Widget _buildMoreToolbar({required bool isDark}) {
+    return MemoComposeMoreToolbar(
+      isDark: isDark,
+      busy: _busy,
+      onBoldPressed: () {
+        _closeMoreToolbar();
+        _toggleBold();
+      },
+      onListPressed: () {
+        _closeMoreToolbar();
+        _insertText('- ');
+      },
+      onUnderlinePressed: () {
+        _closeMoreToolbar();
+        _toggleUnderline();
+      },
+      onCameraPressed: () {
+        _closeMoreToolbar();
+        unawaited(_capturePhoto());
+      },
+      onLocationPressed: () {
+        _closeMoreToolbar();
+        unawaited(_requestLocation());
+      },
+      onUndoPressed: () {
+        _closeMoreToolbar();
+        _undo();
+      },
+      onRedoPressed: () {
+        _closeMoreToolbar();
+        _redo();
+      },
+      undoEnabled: _undoStack.isNotEmpty,
+      redoEnabled: _redoStack.isNotEmpty,
+      locationBusy: _locating,
     );
   }
 
@@ -802,8 +979,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             continue;
           }
           tempDir ??= await getTemporaryDirectory();
-          final name = file.name.trim().isNotEmpty ? file.name.trim() : 'attachment_${generateUid()}';
-          final tempFile = File('${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name');
+          final name = file.name.trim().isNotEmpty
+              ? file.name.trim()
+              : 'attachment_${generateUid()}';
+          final tempFile = File(
+            '${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name',
+          );
           if (bytes != null) {
             await tempFile.writeAsBytes(bytes, flush: true);
           } else if (stream != null) {
@@ -825,7 +1006,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           continue;
         }
         final size = handle.lengthSync();
-        final filename = file.name.trim().isNotEmpty ? file.name.trim() : path.split(Platform.pathSeparator).last;
+        final filename = file.name.trim().isNotEmpty
+            ? file.name.trim()
+            : path.split(Platform.pathSeparator).last;
         final mimeType = _guessMimeType(filename);
         added.add(
           _PendingAttachment(
@@ -840,7 +1023,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
       if (!mounted) return;
       if (added.isEmpty) {
-        final msg = missingPathCount > 0 ? 'Files unavailable from picker.' : 'No files selected.';
+        final msg = missingPathCount > 0
+            ? 'Files unavailable from picker.'
+            : 'No files selected.';
         showTopToast(context, msg);
         return;
       }
@@ -849,14 +1034,18 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         _pendingAttachments.addAll(added);
       });
       final suffix = added.length == 1 ? '' : 's';
-      final skipped = [if (missingPathCount > 0) '$missingPathCount unavailable'];
+      final skipped = [
+        if (missingPathCount > 0) '$missingPathCount unavailable',
+      ];
       final summary = skipped.isEmpty
           ? 'Added ${added.length} file$suffix.'
           : 'Added ${added.length} file$suffix. Skipped ${skipped.join(', ')}.';
       showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File selection failed: $e')));
     }
   }
 
@@ -865,7 +1054,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final path = result.filePath.trim();
     if (path.isEmpty) {
       messenger.showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_recording_path_missing)),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_recording_path_missing),
+        ),
       );
       return;
     }
@@ -873,14 +1064,20 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final file = File(path);
     if (!file.existsSync()) {
       messenger.showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_recording_file_not_found_2)),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_recording_file_not_found_2,
+          ),
+        ),
       );
       return;
     }
 
     final size = result.size > 0 ? result.size : file.lengthSync();
 
-    final filename = result.fileName.trim().isNotEmpty ? result.fileName.trim() : path.split(Platform.pathSeparator).last;
+    final filename = result.fileName.trim().isNotEmpty
+        ? result.fileName.trim()
+        : path.split(Platform.pathSeparator).last;
     final mimeType = _guessMimeType(filename);
     if (!mounted) return;
     setState(() {
@@ -894,28 +1091,31 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         ),
       );
     });
-    showTopToast(
-      context,
-      context.t.strings.legacy.msg_added_voice_attachment,
-    );
+    showTopToast(context, context.t.strings.legacy.msg_added_voice_attachment);
   }
 
   Future<void> _capturePhoto() async {
     if (_busy) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final photo = await _imagePicker.pickImage(source: ImageSource.camera);
+      final photo = Platform.isWindows
+          ? await WindowsCameraCaptureScreen.capture(context)
+          : await _imagePicker.pickImage(source: ImageSource.camera);
       if (!mounted || photo == null) return;
 
       final path = photo.path;
       if (path.trim().isEmpty) {
-        messenger.showSnackBar(const SnackBar(content: Text('Camera file missing.')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Camera file missing.')),
+        );
         return;
       }
 
       final file = File(path);
       if (!file.existsSync()) {
-        messenger.showSnackBar(const SnackBar(content: Text('Camera file missing.')));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Camera file missing.')),
+        );
         return;
       }
 
@@ -940,6 +1140,28 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       showTopToast(context, 'Added photo attachment.');
     } catch (e) {
       if (!mounted) return;
+      if (_isWindowsNoCameraError(e)) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No camera detected.')),
+        );
+        return;
+      }
+      if (_isWindowsCameraPermissionError(e)) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Camera permission denied. Enable camera access in Windows settings.',
+            ),
+            action: SnackBarAction(
+              label: context.t.strings.legacy.msg_settings,
+              onPressed: () {
+                unawaited(_openWindowsCameraSettings());
+              },
+            ),
+          ),
+        );
+        return;
+      }
       messenger.showSnackBar(SnackBar(content: Text('Camera failed: $e')));
     }
   }
@@ -972,8 +1194,18 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
   String _pendingSourceId(String uid) => 'pending:$uid';
 
-  List<({AttachmentImageSource source, _PendingAttachment attachment, File file})> _pendingImageSources() {
-    final items = <({AttachmentImageSource source, _PendingAttachment attachment, File file})>[];
+  List<
+    ({AttachmentImageSource source, _PendingAttachment attachment, File file})
+  >
+  _pendingImageSources() {
+    final items =
+        <
+          ({
+            AttachmentImageSource source,
+            _PendingAttachment attachment,
+            File file,
+          })
+        >[];
     for (final attachment in _pendingAttachments) {
       if (!_isImageMimeType(attachment.mimeType)) continue;
       final file = _resolvePendingAttachmentFile(attachment);
@@ -995,7 +1227,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _openAttachmentViewer(_PendingAttachment attachment) async {
     final items = _pendingImageSources();
     if (items.isEmpty) return;
-    final index = items.indexWhere((item) => item.attachment.uid == attachment.uid);
+    final index = items.indexWhere(
+      (item) => item.attachment.uid == attachment.uid,
+    );
     if (index < 0) return;
     final sources = items.map((item) => item.source).toList(growable: false);
     await Navigator.of(context).push(
@@ -1041,7 +1275,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             children: [
               for (var i = 0; i < _pendingAttachments.length; i++) ...[
                 if (i > 0) const SizedBox(width: 10),
-                _buildAttachmentTile(_pendingAttachments[i], isDark: isDark, size: tileSize),
+                _buildAttachmentTile(
+                  _pendingAttachments[i],
+                  isDark: isDark,
+                  size: tileSize,
+                ),
               ],
             ],
           ),
@@ -1050,11 +1288,23 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     );
   }
 
-  Widget _buildAttachmentTile(_PendingAttachment attachment, {required bool isDark, required double size}) {
-    final borderColor = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
-    final surfaceColor = isDark ? MemoFlowPalette.audioSurfaceDark : MemoFlowPalette.audioSurfaceLight;
-    final iconColor = (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight).withValues(alpha: 0.6);
-    final removeBg = isDark ? Colors.black.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.5);
+  Widget _buildAttachmentTile(
+    _PendingAttachment attachment, {
+    required bool isDark,
+    required double size,
+  }) {
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final surfaceColor = isDark
+        ? MemoFlowPalette.audioSurfaceDark
+        : MemoFlowPalette.audioSurfaceLight;
+    final iconColor =
+        (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
+            .withValues(alpha: 0.6);
+    final removeBg = isDark
+        ? Colors.black.withValues(alpha: 0.55)
+        : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
     final isImage = _isImageMimeType(attachment.mimeType);
     final isVideo = _isVideoMimeType(attachment.mimeType);
@@ -1068,7 +1318,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         height: size,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          return _attachmentFallback(iconColor: iconColor, surfaceColor: surfaceColor, isImage: true);
+          return _attachmentFallback(
+            iconColor: iconColor,
+            surfaceColor: surfaceColor,
+            isImage: true,
+          );
         },
       );
     } else if (isVideo && file != null) {
@@ -1113,24 +1367,25 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: content,
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: content),
     );
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
         GestureDetector(
-          onTap: (isImage && file != null) ? () => _openAttachmentViewer(attachment) : null,
+          onTap: (isImage && file != null)
+              ? () => _openAttachmentViewer(attachment)
+              : null,
           child: tile,
         ),
         Positioned(
           top: 4,
           right: 4,
           child: GestureDetector(
-            onTap: _busy ? null : () => _removePendingAttachment(attachment.uid),
+            onTap: _busy
+                ? null
+                : () => _removePendingAttachment(attachment.uid),
             child: Container(
               width: 18,
               height: 18,
@@ -1159,7 +1414,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       child: Icon(
         isImage
             ? Icons.image_outlined
-            : (isVideo ? Icons.videocam_outlined : Icons.insert_drive_file_outlined),
+            : (isVideo
+                  ? Icons.videocam_outlined
+                  : Icons.insert_drive_file_outlined),
         size: 22,
         color: iconColor,
       ),
@@ -1192,7 +1449,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     }
     final name = memo.name.trim();
     if (name.isNotEmpty) {
-      return _truncateLabel(name.startsWith('memos/') ? name.substring('memos/'.length) : name);
+      return _truncateLabel(
+        name.startsWith('memos/') ? name.substring('memos/'.length) : name,
+      );
     }
     return _truncateLabel(memo.uid);
   }
@@ -1205,14 +1464,20 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _submitOrVoice() async {
     if (_busy) return;
     final content = _controller.text.trimRight();
-    final relations = _linkedMemos.map((m) => m.toRelationJson()).toList(growable: false);
-    final pendingAttachments = List<_PendingAttachment>.from(_pendingAttachments);
+    final relations = _linkedMemos
+        .map((m) => m.toRelationJson())
+        .toList(growable: false);
+    final pendingAttachments = List<_PendingAttachment>.from(
+      _pendingAttachments,
+    );
     final hasAttachments = pendingAttachments.isNotEmpty;
     if (content.trim().isEmpty && !hasAttachments) {
       if (relations.isNotEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter content before creating a link.')),
+          const SnackBar(
+            content: Text('Please enter content before creating a link.'),
+          ),
         );
         return;
       }
@@ -1234,23 +1499,21 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final visibility = _normalizedVisibility();
 
       final attachments = pendingAttachments
-          .map(
-            (p) {
-              final rawPath = p.filePath.trim();
-              final externalLink = rawPath.isEmpty
-                  ? ''
-                  : rawPath.startsWith('content://')
-                      ? rawPath
-                      : Uri.file(rawPath).toString();
-              return Attachment(
-                name: 'attachments/${p.uid}',
-                filename: p.filename,
-                type: p.mimeType,
-                size: p.size,
-                externalLink: externalLink,
-              ).toJson();
-            },
-          )
+          .map((p) {
+            final rawPath = p.filePath.trim();
+            final externalLink = rawPath.isEmpty
+                ? ''
+                : rawPath.startsWith('content://')
+                ? rawPath
+                : Uri.file(rawPath).toString();
+            return Attachment(
+              name: 'attachments/${p.uid}',
+              filename: p.filename,
+              type: p.mimeType,
+              size: p.size,
+              externalLink: externalLink,
+            ).toJson();
+          })
           .toList(growable: false);
 
       await db.upsertMemo(
@@ -1268,25 +1531,31 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         syncState: 1,
       );
 
-      await db.enqueueOutbox(type: 'create_memo', payload: {
-        'uid': uid,
-        'content': content,
-        'visibility': visibility,
-        'pinned': false,
-        'has_attachments': hasAttachments,
-        if (_location != null) 'location': _location!.toJson(),
-        if (relations.isNotEmpty) 'relations': relations,
-      });
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': uid,
+          'content': content,
+          'visibility': visibility,
+          'pinned': false,
+          'has_attachments': hasAttachments,
+          if (_location != null) 'location': _location!.toJson(),
+          if (relations.isNotEmpty) 'relations': relations,
+        },
+      );
 
       for (final attachment in pendingAttachments) {
-        await db.enqueueOutbox(type: 'upload_attachment', payload: {
-          'uid': attachment.uid,
-          'memo_uid': uid,
-          'file_path': attachment.filePath,
-          'filename': attachment.filename,
-          'mime_type': attachment.mimeType,
-          'file_size': attachment.size,
-        });
+        await db.enqueueOutbox(
+          type: 'upload_attachment',
+          payload: {
+            'uid': attachment.uid,
+            'memo_uid': uid,
+            'file_path': attachment.filePath,
+            'filename': attachment.filename,
+            'mime_type': attachment.mimeType,
+            'file_size': attachment.size,
+          },
+        );
       }
 
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
@@ -1301,7 +1570,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       context.safePop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Create failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Create failed: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1310,21 +1581,32 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sheetColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textColor = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-    final dividerColor = isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08);
-    final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : MemoFlowPalette.audioSurfaceLight;
-    final chipText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-    final chipDelete = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.grey.shade500;
-    final moreBg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
-    final moreBorder = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08);
-    final (visibilityLabel, visibilityIcon, visibilityColor) = _resolveVisibilityStyle(context, _visibility);
+    final sheetColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final chipBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : MemoFlowPalette.audioSurfaceLight;
+    final chipText = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final chipDelete = isDark
+        ? Colors.white.withValues(alpha: 0.6)
+        : Colors.grey.shade500;
+    final (visibilityLabel, visibilityIcon, visibilityColor) =
+        _resolveVisibilityStyle(context, _visibility);
 
     final tagStats = _tagStatsCache;
 
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: isDark ? 4 : 2, sigmaY: isDark ? 4 : 2),
+        filter: ImageFilter.blur(
+          sigmaX: isDark ? 4 : 2,
+          sigmaY: isDark ? 4 : 2,
+        ),
         child: Stack(
           children: [
             Positioned.fill(
@@ -1341,15 +1623,27 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                 child: SafeArea(
                   top: false,
                   child: Padding(
-                    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.viewInsetsOf(context).bottom,
+                    ),
                     child: Container(
                       decoration: BoxDecoration(
                         color: sheetColor,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                        border: isDark ? Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.06))) : null,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(28),
+                        ),
+                        border: isDark
+                            ? Border(
+                                top: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.06),
+                                ),
+                              )
+                            : null,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.5 : 0.12,
+                            ),
                             blurRadius: 40,
                             offset: const Offset(0, -10),
                           ),
@@ -1358,209 +1652,59 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                    const SizedBox(height: 10),
-                    Container(
-                      width: 40,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 160, maxHeight: 340),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildAttachmentPreview(isDark),
-                            Flexible(
-                              fit: FlexFit.loose,
-                              child: TextField(
-                                controller: _controller,
-                                autofocus: widget.autoFocus,
-                                maxLines: null,
-                                keyboardType: TextInputType.multiline,
-                                style: TextStyle(fontSize: 17, height: 1.35, color: textColor),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                hintText: context.t.strings.legacy.msg_write_thoughts,
-                                  hintStyle: TextStyle(color: isDark ? const Color(0xFF666666) : Colors.grey.shade500),
-                                ),
-                              ),
+                          const SizedBox(height: 10),
+                          Container(
+                            width: 40,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.black.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(3),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_linkedMemos.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: _linkedMemos
-                              .map(
-                                (memo) => InputChip(
-                                  label: Text(
-                                    memo.label,
-                                    style: TextStyle(fontSize: 12, color: chipText),
-                                  ),
-                                  backgroundColor: chipBg,
-                                  deleteIconColor: chipDelete,
-                                  onDeleted: _busy ? null : () => _removeLinkedMemo(memo.name),
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                      ),
-                    if (_locating)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              context.t.strings.legacy.msg_locating,
-                              style: TextStyle(fontSize: 12, color: chipText),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (_location != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: InputChip(
-                            avatar: Icon(Icons.place_outlined, size: 16, color: chipText),
-                            label: Text(
-                              _location!.displayText(fractionDigits: 6),
-                              style: TextStyle(fontSize: 12, color: chipText),
-                            ),
-                            backgroundColor: chipBg,
-                            deleteIconColor: chipDelete,
-                            onDeleted: _busy ? null : () => setState(() => _location = null),
                           ),
-                        ),
-                      ),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        return SizeTransition(
-                          sizeFactor: animation,
-                          axisAlignment: -1,
-                          child: FadeTransition(opacity: animation, child: child),
-                        );
-                      },
-                      child: _isMoreToolbarOpen
-                          ? Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: _buildMoreToolbar(context, isDark),
+                          const SizedBox(height: 10),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 8,
+                            ),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minHeight: 160,
+                                maxHeight: 340,
                               ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              child: Row(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  IconButton(
-                                    key: _tagMenuKey,
-                                    tooltip: 'Tag',
-                                    onPressed: _busy
-                                        ? null
-                                        : () async {
-                                            _closeMoreToolbar();
-                                            _insertText('#');
-                                            await _openTagMenuFromKey(_tagMenuKey, tagStats);
-                                          },
-                                    icon: Icon(Icons.tag, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Attachment',
-                                    onPressed: _busy
-                                        ? null
-                                        : () async {
-                                            _closeMoreToolbar();
-                                            await _pickAttachments();
-                                          },
-                                    icon: Icon(Icons.attach_file, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                                  ),
-                                  IconButton(
-                                    key: _todoMenuKey,
-                                    tooltip: 'Todo',
-                                    onPressed: _busy
-                                        ? null
-                                        : () async {
-                                            _closeMoreToolbar();
-                                            await _openTodoShortcutMenuFromKey(_todoMenuKey);
-                                          },
-                                    icon: Icon(Icons.playlist_add_check, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Link',
-                                    onPressed: _busy
-                                        ? null
-                                        : () async {
-                                            _closeMoreToolbar();
-                                            await _openLinkMemoSheet();
-                                          },
-                                    icon: Icon(Icons.alternate_email_rounded, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                                  ),
-                                  Container(width: 1, height: 20, color: dividerColor),
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 160),
-                                    decoration: BoxDecoration(
-                                      color: _isMoreToolbarOpen ? moreBg : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: _isMoreToolbarOpen ? Border.all(color: moreBorder, width: 1) : null,
-                                    ),
-                                    child: IconButton(
-                                      tooltip: 'More',
-                                      onPressed: _busy ? null : _toggleMoreToolbar,
-                                      icon: Icon(Icons.more_horiz, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
-                                    ),
-                                  ),
-                                  Tooltip(
-                                    message: context.t.strings.legacy.msg_visibility_2(visibilityLabel: visibilityLabel),
-                                    child: InkResponse(
-                                      key: _visibilityMenuKey,
-                                      onTap: _busy
-                                          ? null
-                                          : () {
-                                              _closeMoreToolbar();
-                                              _openVisibilityMenuFromKey(_visibilityMenuKey);
-                                            },
-                                      radius: 18,
-                                      child: Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: visibilityColor.withValues(alpha: 0.85), width: 1.6),
+                                  _buildAttachmentPreview(isDark),
+                                  Flexible(
+                                    fit: FlexFit.loose,
+                                    child: TextField(
+                                      controller: _controller,
+                                      focusNode: _editorFocusNode,
+                                      autofocus: widget.autoFocus,
+                                      maxLines: null,
+                                      keyboardType: TextInputType.multiline,
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        height: 1.35,
+                                        color: textColor,
+                                      ),
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        border: InputBorder.none,
+                                        hintText: context
+                                            .t
+                                            .strings
+                                            .legacy
+                                            .msg_write_thoughts,
+                                        hintStyle: TextStyle(
+                                          color: isDark
+                                              ? const Color(0xFF666666)
+                                              : Colors.grey.shade500,
                                         ),
-                                        child: Icon(visibilityIcon, size: 14, color: visibilityColor),
                                       ),
                                     ),
                                   ),
@@ -1568,70 +1712,257 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: _busy ? null : _submitOrVoice,
-                            child: AnimatedScale(
-                              duration: const Duration(milliseconds: 120),
-                              scale: _busy ? 0.98 : 1.0,
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: MemoFlowPalette.primary,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.3 : 0.4),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: _busy
-                                      ? const SizedBox.square(
-                                          dimension: 22,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                        )
-                                      : ValueListenableBuilder<TextEditingValue>(
-                                          valueListenable: _controller,
-                                          builder: (context, value, _) {
-                                            final hasText = value.text.trim().isNotEmpty;
-                                            final hasAttachments = _pendingAttachments.isNotEmpty;
-                                            final showSend = hasText || hasAttachments;
-                                            return AnimatedSwitcher(
-                                              duration: const Duration(milliseconds: 160),
-                                              transitionBuilder: (child, animation) {
-                                                return ScaleTransition(scale: animation, child: child);
-                                              },
-                                              child: Icon(
-                                                showSend ? Icons.send_rounded : Icons.graphic_eq,
-                                                key: ValueKey<bool>(showSend),
-                                                color: Colors.white,
-                                                size: showSend ? 24 : 28,
-                                              ),
-                                            );
-                                          },
+                          if (_linkedMemos.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: _linkedMemos
+                                    .map(
+                                      (memo) => InputChip(
+                                        label: Text(
+                                          memo.label,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: chipText,
+                                          ),
                                         ),
+                                        backgroundColor: chipBg,
+                                        deleteIconColor: chipDelete,
+                                        onDeleted: _busy
+                                            ? null
+                                            : () =>
+                                                  _removeLinkedMemo(memo.name),
+                                      ),
+                                    )
+                                    .toList(growable: false),
+                              ),
+                            ),
+                          if (_locating)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    context.t.strings.legacy.msg_locating,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: chipText,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_location != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: InputChip(
+                                  avatar: Icon(
+                                    Icons.place_outlined,
+                                    size: 16,
+                                    color: chipText,
+                                  ),
+                                  label: Text(
+                                    _location!.displayText(fractionDigits: 6),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: chipText,
+                                    ),
+                                  ),
+                                  backgroundColor: chipBg,
+                                  deleteIconColor: chipDelete,
+                                  onDeleted: _busy
+                                      ? null
+                                      : () => setState(() => _location = null),
                                 ),
                               ),
                             ),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) {
+                              return SizeTransition(
+                                sizeFactor: animation,
+                                axisAlignment: -1,
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _isMoreToolbarOpen
+                                ? Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      4,
+                                      20,
+                                      6,
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: _buildMoreToolbar(isDark: isDark),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
                           ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Container(
-                        width: 130,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: MemoComposePrimaryToolbar(
+                                    isDark: isDark,
+                                    busy: _busy,
+                                    moreOpen: _isMoreToolbarOpen,
+                                    visibilityMessage: context.t.strings.legacy
+                                        .msg_visibility_2(
+                                          visibilityLabel: visibilityLabel,
+                                        ),
+                                    visibilityIcon: visibilityIcon,
+                                    visibilityColor: visibilityColor,
+                                    tagButtonKey: _tagMenuKey,
+                                    todoButtonKey: _todoMenuKey,
+                                    visibilityButtonKey: _visibilityMenuKey,
+                                    onTagPressed: () {
+                                      _closeMoreToolbar();
+                                      _insertText('#');
+                                      unawaited(
+                                        _openTagMenuFromKey(
+                                          _tagMenuKey,
+                                          tagStats,
+                                        ),
+                                      );
+                                    },
+                                    onAttachmentPressed: () {
+                                      _closeMoreToolbar();
+                                      unawaited(_pickAttachments());
+                                    },
+                                    onTodoPressed: () {
+                                      _closeMoreToolbar();
+                                      unawaited(
+                                        _openTodoShortcutMenuFromKey(
+                                          _todoMenuKey,
+                                        ),
+                                      );
+                                    },
+                                    onLinkPressed: () {
+                                      _closeMoreToolbar();
+                                      unawaited(_openLinkMemoSheet());
+                                    },
+                                    onToggleMorePressed: _toggleMoreToolbar,
+                                    onVisibilityPressed: () {
+                                      _closeMoreToolbar();
+                                      unawaited(
+                                        _openVisibilityMenuFromKey(
+                                          _visibilityMenuKey,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: _busy ? null : _submitOrVoice,
+                                  child: AnimatedScale(
+                                    duration: const Duration(milliseconds: 120),
+                                    scale: _busy ? 0.98 : 1.0,
+                                    child: Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: MemoFlowPalette.primary,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: MemoFlowPalette.primary
+                                                .withValues(
+                                                  alpha: isDark ? 0.3 : 0.4,
+                                                ),
+                                            blurRadius: 16,
+                                            offset: const Offset(0, 8),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: _busy
+                                            ? const SizedBox.square(
+                                                dimension: 22,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Colors.white,
+                                                    ),
+                                              )
+                                            : ValueListenableBuilder<
+                                                TextEditingValue
+                                              >(
+                                                valueListenable: _controller,
+                                                builder: (context, value, _) {
+                                                  final hasText = value.text
+                                                      .trim()
+                                                      .isNotEmpty;
+                                                  final hasAttachments =
+                                                      _pendingAttachments
+                                                          .isNotEmpty;
+                                                  final showSend =
+                                                      hasText || hasAttachments;
+                                                  return AnimatedSwitcher(
+                                                    duration: const Duration(
+                                                      milliseconds: 160,
+                                                    ),
+                                                    transitionBuilder:
+                                                        (child, animation) {
+                                                          return ScaleTransition(
+                                                            scale: animation,
+                                                            child: child,
+                                                          );
+                                                        },
+                                                    child: Icon(
+                                                      showSend
+                                                          ? Icons.send_rounded
+                                                          : Icons.graphic_eq,
+                                                      key: ValueKey<bool>(
+                                                        showSend,
+                                                      ),
+                                                      color: Colors.white,
+                                                      size: showSend ? 24 : 28,
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Container(
+                              width: 130,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1644,11 +1975,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       ),
     );
   }
-}
-
-enum _TodoShortcutAction {
-  checkbox,
-  codeBlock,
 }
 
 class _PendingAttachment {
@@ -1680,6 +2006,3 @@ class _LinkedMemo {
     };
   }
 }
-
-
-

@@ -1773,13 +1773,9 @@ CREATE TABLE IF NOT EXISTS tag_stats_cache (
     await db.execute('DROP TRIGGER IF EXISTS memos_au;');
     await _dropLegacyFtsTriggers(db);
 
-    // Create contentless FTS for maximum compatibility across SQLite builds.
-    await db.execute('''
-CREATE VIRTUAL TABLE IF NOT EXISTS memos_fts USING fts4(
-  content,
-  tags
-);
-''');
+    // Prefer FTS5; fallback to FTS4; if both are unavailable, use a plain table
+    // so writes keep working and search can gracefully fallback to LIKE.
+    await _ensureFtsTable(db);
 
     if (rebuild) {
       await _backfillFts(db);
@@ -1798,6 +1794,36 @@ SELECT
         }
       } catch (_) {}
     }
+  }
+
+  static Future<void> _ensureFtsTable(Database db) async {
+    Future<bool> tryCreateVirtual(String module) async {
+      try {
+        await db.execute('''
+CREATE VIRTUAL TABLE IF NOT EXISTS memos_fts USING $module(
+  content,
+  tags
+);
+''');
+        return true;
+      } on DatabaseException catch (e) {
+        final msg = e.toString().toLowerCase();
+        if (msg.contains('no such module') || msg.contains(module)) {
+          return false;
+        }
+        rethrow;
+      }
+    }
+
+    if (await tryCreateVirtual('fts5')) return;
+    if (await tryCreateVirtual('fts4')) return;
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS memos_fts (
+  content TEXT NOT NULL DEFAULT '',
+  tags TEXT NOT NULL DEFAULT ''
+);
+''');
   }
 
   static Future<void> _backfillFts(Database db) async {

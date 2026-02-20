@@ -35,6 +35,7 @@ import '../../state/session_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'link_memo_sheet.dart';
 import 'memo_video_grid.dart';
+import 'windows_camera_capture_screen.dart';
 import '../settings/location_settings_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -939,8 +940,102 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     return stored;
   }
 
+  bool _isWindowsLocationSettingsActionable(Object error) {
+    if (!Platform.isWindows || error is! LocationException) return false;
+    return error.code == 'permission_denied' ||
+        error.code == 'permission_denied_forever' ||
+        error.code == 'service_disabled';
+  }
+
+  void _showLocationError(Object error) {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = _locationErrorText(error);
+    if (!_isWindowsLocationSettingsActionable(error)) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('$message. Enable location access in Windows settings.'),
+        action: SnackBarAction(
+          label: context.t.strings.legacy.msg_settings,
+          onPressed: () {
+            unawaited(DeviceLocationService().openSystemLocationSettings());
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openWindowsCameraSettings() async {
+    if (!Platform.isWindows) return;
+    try {
+      await Process.start('cmd', <String>[
+        '/c',
+        'start',
+        '',
+        'ms-settings:privacy-webcam',
+      ]);
+    } catch (_) {}
+  }
+
+  bool _isWindowsCameraPermissionError(Object error) {
+    if (!Platform.isWindows) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('permission') ||
+        message.contains('access denied') ||
+        message.contains('cameraaccessdenied') ||
+        message.contains('privacy');
+  }
+
+  bool _isWindowsNoCameraError(Object error) {
+    if (!Platform.isWindows) return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('no camera') ||
+        message.contains('no available camera') ||
+        message.contains('no device') ||
+        message.contains('camera_not_found') ||
+        message.contains('camera not found') ||
+        message.contains('capture device') ||
+        message.contains('cameradelegate') ||
+        message.contains('no capture devices') ||
+        message.contains('unavailable');
+  }
+
   Future<void> _requestLocation() async {
     if (_saving || _locating) return;
+    if (Platform.isWindows) {
+      setState(() => _locating = true);
+      try {
+        final position = await DeviceLocationService().getCurrentPosition();
+        final next = MemoLocation(
+          placeholder: '',
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+        if (!mounted) return;
+        setState(() => _location = next);
+        _scheduleDraftSave();
+        showTopToast(
+          context,
+          context.t.strings.legacy.msg_location_updated(
+            next_displayText_fractionDigits_6: next.displayText(
+              fractionDigits: 6,
+            ),
+          ),
+          duration: const Duration(seconds: 2),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        _showLocationError(e);
+      } finally {
+        if (mounted) {
+          setState(() => _locating = false);
+        }
+      }
+      return;
+    }
+
     final settings = await _resolveLocationSettings();
     if (!settings.enabled) {
       if (!mounted) return;
@@ -1001,9 +1096,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_locationErrorText(e))));
+      _showLocationError(e);
     } finally {
       if (mounted) {
         setState(() => _locating = false);
@@ -1303,7 +1396,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (_saving) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final photo = await _imagePicker.pickImage(source: ImageSource.camera);
+      final photo = Platform.isWindows
+          ? await WindowsCameraCaptureScreen.capture(context)
+          : await _imagePicker.pickImage(source: ImageSource.camera);
       if (!mounted || photo == null) return;
 
       final path = photo.path;
@@ -1344,6 +1439,28 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       showTopToast(context, 'Added photo attachment.');
     } catch (e) {
       if (!mounted) return;
+      if (_isWindowsNoCameraError(e)) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No camera detected.')),
+        );
+        return;
+      }
+      if (_isWindowsCameraPermissionError(e)) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Camera permission denied. Enable camera access in Windows settings.',
+            ),
+            action: SnackBarAction(
+              label: context.t.strings.legacy.msg_settings,
+              onPressed: () {
+                unawaited(_openWindowsCameraSettings());
+              },
+            ),
+          ),
+        );
+        return;
+      }
       messenger.showSnackBar(SnackBar(content: Text('Camera failed: $e')));
     }
   }

@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/drawer_navigation.dart';
+import '../../core/platform_layout.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
@@ -351,6 +352,17 @@ class ResourcesScreen extends ConsumerWidget {
 
     final entriesAsync = ref.watch(resourcesProvider);
     final dateFmt = DateFormat('yyyy-MM-dd');
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.resources,
+      onSelect: (d) => _navigate(context, d),
+      onSelectTag: (t) => _openTag(context, t),
+      onOpenNotifications: () => _openNotifications(context),
+      embedded: useDesktopSidePane,
+    );
 
     return PopScope(
       canPop: false,
@@ -359,169 +371,200 @@ class ResourcesScreen extends ConsumerWidget {
         _backToAllMemos(context);
       },
       child: Scaffold(
-        drawer: AppDrawer(
-          selected: AppDrawerDestination.resources,
-          onSelect: (d) => _navigate(context, d),
-          onSelectTag: (t) => _openTag(context, t),
-          onOpenNotifications: () => _openNotifications(context),
-        ),
-        appBar: AppBar(title: Text(context.t.strings.legacy.msg_attachments)),
-        body: entriesAsync.when(
-          data: (entries) => entries.isEmpty
-              ? Center(child: Text(context.t.strings.legacy.msg_no_attachments))
-              : ListView.separated(
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    final a = entry.attachment;
-                    final isImage = a.type.startsWith('image/');
-                    final isAudio = a.type.startsWith('audio');
-                    final isVideo = a.type.startsWith('video');
-
-                    final displayName = a.filename.trim().isNotEmpty
-                        ? a.filename
-                        : (a.uid.isNotEmpty ? a.uid : a.name);
-                    final localFile = _localAttachmentFile(a);
-                    final thumbnailUrl = _resolveRemoteUrl(
-                      baseUrl,
-                      a,
-                      thumbnail: true,
-                    );
-                    final remoteUrl = _resolveRemoteUrl(
-                      baseUrl,
-                      a,
-                      thumbnail: false,
-                    );
-                    final videoEntry = isVideo
-                        ? memoVideoEntryFromAttachment(
-                            a,
-                            baseUrl,
-                            authHeader,
-                            rebaseAbsoluteFileUrlForV024:
-                                rebaseAbsoluteFileUrlForV024,
-                          )
-                        : null;
-                    final leading = isImage && localFile != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              localFile,
-                              width: 44,
-                              height: 44,
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                        : isImage && thumbnailUrl != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: thumbnailUrl,
-                              httpHeaders: authHeader == null
-                                  ? null
-                                  : {'Authorization': authHeader},
-                              width: 44,
-                              height: 44,
-                              fit: BoxFit.cover,
-                              errorWidget: (context, url, error) =>
-                                  const SizedBox(
-                                    width: 44,
-                                    height: 44,
-                                    child: Icon(Icons.image),
-                                  ),
-                            ),
-                          )
-                        : isVideo && videoEntry != null
-                        ? SizedBox(
-                            width: 44,
-                            height: 44,
-                            child: AttachmentVideoThumbnail(
-                              entry: videoEntry,
-                              borderRadius: 8,
-                              showPlayIcon: true,
-                            ),
-                          )
-                        : Icon(isAudio ? Icons.mic : Icons.attach_file);
-
-                    final hasVideoSource =
-                        videoEntry != null &&
-                        (videoEntry.localFile != null ||
-                            (videoEntry.videoUrl ?? '').isNotEmpty);
-                    final canPreview =
-                        (isImage || isAudio || isVideo) &&
-                        (localFile != null ||
-                            remoteUrl != null ||
-                            hasVideoSource);
-                    final canDownload = localFile != null || remoteUrl != null;
-
-                    return ListTile(
-                      leading: leading,
-                      title: Text(displayName),
-                      subtitle: Text(
-                        '${a.type} · ${dateFmt.format(entry.memoUpdateTime)}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: context.t.strings.legacy.msg_preview,
-                            icon: const Icon(Icons.visibility_outlined),
-                            onPressed: canPreview
-                                ? () => _openPreview(
-                                    context,
-                                    a,
-                                    baseUrl: baseUrl,
-                                    authHeader: authHeader,
-                                    rebaseAbsoluteFileUrlForV024:
-                                        rebaseAbsoluteFileUrlForV024,
-                                  )
-                                : null,
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(
-                              minWidth: 36,
-                              minHeight: 36,
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: context.t.strings.legacy.msg_download,
-                            icon: const Icon(Icons.download),
-                            onPressed: canDownload
-                                ? () => _downloadAttachment(
-                                    context,
-                                    a,
-                                    baseUrl,
-                                    authHeader,
-                                  )
-                                : null,
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints(
-                              minWidth: 36,
-                              minHeight: 36,
-                            ),
-                          ),
-                        ],
-                      ),
-                      onTap: () async {
-                        final row = await ref
-                            .read(databaseProvider)
-                            .getMemoByUid(entry.memoUid);
-                        if (row == null) return;
-                        final memo = LocalMemo.fromDb(row);
-                        if (!context.mounted) return;
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => MemoDetailScreen(initialMemo: memo),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemCount: entries.length,
-                ),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+        drawer: useDesktopSidePane ? null : drawerPanel,
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          automaticallyImplyLeading: !useDesktopSidePane,
+          toolbarHeight: 46,
+          title: Text(
+            context.t.strings.legacy.msg_attachments,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
           ),
         ),
+        body: (() {
+          final pageBody = entriesAsync.when(
+            data: (entries) => entries.isEmpty
+                ? Center(
+                    child: Text(context.t.strings.legacy.msg_no_attachments),
+                  )
+                : ListView.separated(
+                    itemBuilder: (context, index) {
+                      final entry = entries[index];
+                      final a = entry.attachment;
+                      final isImage = a.type.startsWith('image/');
+                      final isAudio = a.type.startsWith('audio');
+                      final isVideo = a.type.startsWith('video');
+
+                      final displayName = a.filename.trim().isNotEmpty
+                          ? a.filename
+                          : (a.uid.isNotEmpty ? a.uid : a.name);
+                      final localFile = _localAttachmentFile(a);
+                      final thumbnailUrl = _resolveRemoteUrl(
+                        baseUrl,
+                        a,
+                        thumbnail: true,
+                      );
+                      final remoteUrl = _resolveRemoteUrl(
+                        baseUrl,
+                        a,
+                        thumbnail: false,
+                      );
+                      final videoEntry = isVideo
+                          ? memoVideoEntryFromAttachment(
+                              a,
+                              baseUrl,
+                              authHeader,
+                              rebaseAbsoluteFileUrlForV024:
+                                  rebaseAbsoluteFileUrlForV024,
+                            )
+                          : null;
+                      final leading = isImage && localFile != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(
+                                localFile,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : isImage && thumbnailUrl != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: CachedNetworkImage(
+                                imageUrl: thumbnailUrl,
+                                httpHeaders: authHeader == null
+                                    ? null
+                                    : {'Authorization': authHeader},
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                                errorWidget: (context, url, error) =>
+                                    const SizedBox(
+                                      width: 44,
+                                      height: 44,
+                                      child: Icon(Icons.image),
+                                    ),
+                              ),
+                            )
+                          : isVideo && videoEntry != null
+                          ? SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: AttachmentVideoThumbnail(
+                                entry: videoEntry,
+                                borderRadius: 8,
+                                showPlayIcon: true,
+                              ),
+                            )
+                          : Icon(isAudio ? Icons.mic : Icons.attach_file);
+
+                      final hasVideoSource =
+                          videoEntry != null &&
+                          (videoEntry.localFile != null ||
+                              (videoEntry.videoUrl ?? '').isNotEmpty);
+                      final canPreview =
+                          (isImage || isAudio || isVideo) &&
+                          (localFile != null ||
+                              remoteUrl != null ||
+                              hasVideoSource);
+                      final canDownload =
+                          localFile != null || remoteUrl != null;
+
+                      return ListTile(
+                        leading: leading,
+                        title: Text(displayName),
+                        subtitle: Text(
+                          '${a.type} · ${dateFmt.format(entry.memoUpdateTime)}',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: context.t.strings.legacy.msg_preview,
+                              icon: const Icon(Icons.visibility_outlined),
+                              onPressed: canPreview
+                                  ? () => _openPreview(
+                                      context,
+                                      a,
+                                      baseUrl: baseUrl,
+                                      authHeader: authHeader,
+                                      rebaseAbsoluteFileUrlForV024:
+                                          rebaseAbsoluteFileUrlForV024,
+                                    )
+                                  : null,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: context.t.strings.legacy.msg_download,
+                              icon: const Icon(Icons.download),
+                              onPressed: canDownload
+                                  ? () => _downloadAttachment(
+                                      context,
+                                      a,
+                                      baseUrl,
+                                      authHeader,
+                                    )
+                                  : null,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
+                              ),
+                            ),
+                          ],
+                        ),
+                        onTap: () async {
+                          final row = await ref
+                              .read(databaseProvider)
+                              .getMemoByUid(entry.memoUid);
+                          if (row == null) return;
+                          final memo = LocalMemo.fromDb(row);
+                          if (!context.mounted) return;
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  MemoDetailScreen(initialMemo: memo),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemCount: entries.length,
+                  ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(
+              child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+            ),
+          );
+          if (!useDesktopSidePane) {
+            return pageBody;
+          }
+          return Row(
+            children: [
+              SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+              Expanded(child: pageBody),
+            ],
+          );
+        })(),
       ),
     );
   }

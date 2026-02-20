@@ -7,11 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../state/preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 
@@ -139,10 +139,30 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     return _visualizerSamples[idx];
   }
 
+  Future<void> _closeScreen() async {
+    if (_processing) return;
+    if (_recording) {
+      try {
+        await _recorder.cancel();
+      } catch (_) {}
+    }
+    final path = _filePath;
+    if (path != null && path.trim().isNotEmpty) {
+      try {
+        final file = File(path);
+        if (file.existsSync()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    context.safePop();
+  }
+
   Future<void> _start() async {
     if (_recording) return;
-    final mic = await Permission.microphone.request();
-    if (!mic.isGranted) {
+    final micGranted = await _recorder.hasPermission();
+    if (!micGranted) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -152,6 +172,19 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         ),
       );
       return;
+    }
+
+    if (isDesktopTargetPlatform()) {
+      try {
+        final devices = await _recorder.listInputDevices();
+        if (devices.isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No recording input device found.')),
+          );
+          return;
+        }
+      } catch (_) {}
     }
 
     final dir = await getApplicationDocumentsDirectory();
@@ -192,6 +225,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
           ),
         ),
       );
+      _resetToIdle();
       return;
     }
 
@@ -330,10 +364,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
 
     try {
       final size = file.lengthSync();
-      final now = DateTime.now();
-      final durationText = _formatDuration(_elapsed);
       final language = ref.read(appPreferencesProvider).language;
-      final createdAt = DateFormat('yyyy-MM-dd HH:mm').format(now);
 
       final content = trByLanguageKey(
         language: language,
@@ -376,14 +407,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       } catch (_) {}
     }
     _resetToIdle();
-  }
-
-  String _formatDuration(Duration d) {
-    final totalSeconds = d.inSeconds;
-    final h = totalSeconds ~/ 3600;
-    final m = (totalSeconds % 3600) ~/ 60;
-    final s = totalSeconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
   String _formatDisplayDuration(Duration d) {
@@ -462,166 +485,188 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     final cardWidth = math.min(size.width * 0.88, 342.0).toDouble();
     final cardHeight = math.min(size.height * 0.78, 600.0).toDouble();
 
-    return Scaffold(
-      backgroundColor: isDark
-          ? MemoFlowPalette.backgroundDark
-          : MemoFlowPalette.backgroundLight,
-      body: Stack(
-        children: [
-          Positioned.fill(child: ColoredBox(color: overlay)),
-          SafeArea(
-            child: Center(
-              child: SizedBox(
-                width: cardWidth,
-                height: cardHeight,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(40),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.06)
-                          : Colors.black.withValues(alpha: 0.05),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 30,
-                        offset: const Offset(0, 18),
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.6 : 0.2,
-                        ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _closeScreen();
+      },
+      child: Scaffold(
+        backgroundColor: isDark
+            ? MemoFlowPalette.backgroundDark
+            : MemoFlowPalette.backgroundLight,
+        body: Stack(
+          children: [
+            Positioned.fill(child: ColoredBox(color: overlay)),
+            SafeArea(
+              child: Center(
+                child: SizedBox(
+                  width: cardWidth,
+                  height: cardHeight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(40),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.06)
+                            : Colors.black.withValues(alpha: 0.05),
                       ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      'REC',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 2.2,
-                                        color: textMain,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    _buildRecDot(active: recActive),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  dateText,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: textMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: 30,
+                          offset: const Offset(0, 18),
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.6 : 0.2,
                           ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
                               child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  SizedBox(
-                                    height: 192,
-                                    child: _buildWaveform(
-                                      isDark: isDark,
-                                      level: recActive ? _ampLevel : 0.0,
-                                      peak: recActive ? _ampPeak : 0.0,
-                                      showVoiceBars: recActive && _voiceActive,
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'REC',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 2.2,
+                                          color: textMain,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _buildRecDot(active: recActive),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    dateText,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: textMuted,
                                     ),
                                   ),
-                                  const SizedBox(height: 24),
                                 ],
                               ),
                             ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                            child: Column(
-                              children: [
-                                Text(
-                                  elapsedText,
-                                  style: TextStyle(
-                                    fontSize: 56,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.0,
-                                    color: isDark
-                                        ? const Color(0xFFF5F5F5)
-                                        : textMain,
-                                    fontFeatures: const [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  limitText,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: textMuted,
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                if (_awaitingConfirm)
-                                  _buildConfirmRow(isDark: isDark)
-                                else
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      _buildPauseButton(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      height: 192,
+                                      child: _buildWaveform(
                                         isDark: isDark,
-                                        iconColor: textMain,
+                                        level: recActive ? _ampLevel : 0.0,
+                                        peak: recActive ? _ampPeak : 0.0,
+                                        showVoiceBars:
+                                            recActive && _voiceActive,
                                       ),
-                                      _buildPrimaryButton(isDark: isDark),
-                                    ],
-                                  ),
-                              ],
+                                    ),
+                                    const SizedBox(height: 24),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      Positioned(
-                        bottom: 8,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Container(
-                            width: 48,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.1)
-                                  : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(999),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    elapsedText,
+                                    style: TextStyle(
+                                      fontSize: 56,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.0,
+                                      color: isDark
+                                          ? const Color(0xFFF5F5F5)
+                                          : textMain,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    limitText,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  if (_awaitingConfirm)
+                                    _buildConfirmRow(isDark: isDark)
+                                  else
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        _buildPauseButton(
+                                          isDark: isDark,
+                                          iconColor: textMain,
+                                        ),
+                                        _buildPrimaryButton(isDark: isDark),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        Positioned(
+                          top: 14,
+                          right: 14,
+                          child: IconButton(
+                            tooltip: 'Close',
+                            onPressed: _processing
+                                ? null
+                                : () => unawaited(_closeScreen()),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: textMain.withValues(alpha: 0.75),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        Positioned(
+                          bottom: 8,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Container(
+                              width: 48,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.1)
+                                    : Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

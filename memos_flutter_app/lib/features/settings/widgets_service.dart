@@ -2,28 +2,27 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-enum HomeWidgetType {
-  dailyReview,
-  quickInput,
-  stats,
-}
+enum HomeWidgetType { dailyReview, quickInput, stats }
 
 class HomeWidgetService {
   static const MethodChannel _channel = MethodChannel('memoflow/widgets');
 
   static Future<bool> requestPinWidget(HomeWidgetType type) async {
     try {
-      final result = await _channel.invokeMethod<bool>(
-        'requestPinWidget',
-        {'type': type.name},
-      );
+      final result = await _channel.invokeMethod<bool>('requestPinWidget', {
+        'type': type.name,
+      });
       return result ?? false;
+    } on MissingPluginException {
+      return false;
     } on PlatformException {
       return false;
     }
   }
 
-  static void setLaunchHandler(FutureOr<void> Function(HomeWidgetType type) handler) {
+  static void setLaunchHandler(
+    FutureOr<void> Function(HomeWidgetType type) handler,
+  ) {
     _channel.setMethodCallHandler((call) async {
       if (call.method != 'openWidget') return;
       final args = call.arguments;
@@ -43,6 +42,8 @@ class HomeWidgetService {
     try {
       final raw = await _channel.invokeMethod<String>('getPendingWidgetAction');
       return _parseType(raw);
+    } on MissingPluginException {
+      return null;
     } on PlatformException {
       return null;
     }
@@ -64,6 +65,8 @@ class HomeWidgetService {
         'rangeLabel': rangeLabel,
       });
       return result ?? false;
+    } on MissingPluginException {
+      return false;
     } on PlatformException {
       return false;
     }

@@ -43,6 +43,7 @@ class MemoMediaGrid extends StatelessWidget {
     this.columns = 3,
     this.maxCount,
     this.maxHeight,
+    this.preserveSquareTilesWhenHeightLimited = false,
     this.radius = 10,
     this.spacing = 8,
     required this.borderColor,
@@ -56,6 +57,7 @@ class MemoMediaGrid extends StatelessWidget {
   final int columns;
   final int? maxCount;
   final double? maxHeight;
+  final bool preserveSquareTilesWhenHeightLimited;
   final double radius;
   final double spacing;
   final Color borderColor;
@@ -284,8 +286,10 @@ class MemoMediaGrid extends StatelessWidget {
             ? rawWidth
             : MediaQuery.of(context).size.width;
         final totalSpacing = spacing * (columns - 1);
-        final tileWidth = (maxWidth - totalSpacing) / columns;
-        var tileHeight = tileWidth;
+        final availableWidth = math.max(0.0, maxWidth - totalSpacing);
+        final unconstrainedTileWidth = availableWidth / columns;
+        var tileWidth = unconstrainedTileWidth;
+        var tileHeight = unconstrainedTileWidth;
 
         if (maxHeight != null && visibleCount > 0) {
           final rows = (visibleCount / columns).ceil();
@@ -293,7 +297,12 @@ class MemoMediaGrid extends StatelessWidget {
           if (available > 0) {
             final target = available / rows;
             if (target.isFinite && target > 0 && target < tileHeight) {
-              tileHeight = target;
+              if (preserveSquareTilesWhenHeightLimited) {
+                tileWidth = target;
+                tileHeight = target;
+              } else {
+                tileHeight = target;
+              }
             }
           }
         }
@@ -301,7 +310,7 @@ class MemoMediaGrid extends StatelessWidget {
         final aspectRatio = tileWidth > 0 && tileHeight > 0
             ? tileWidth / tileHeight
             : 1.0;
-        return GridView.builder(
+        Widget grid = GridView.builder(
           shrinkWrap: true,
           primary: false,
           padding: EdgeInsets.zero,
@@ -315,6 +324,18 @@ class MemoMediaGrid extends StatelessWidget {
           itemCount: visible.length,
           itemBuilder: (context, index) => buildTile(visible[index], index),
         );
+
+        if (preserveSquareTilesWhenHeightLimited &&
+            tileWidth > 0 &&
+            tileWidth < unconstrainedTileWidth) {
+          final gridWidth = tileWidth * columns + totalSpacing;
+          grid = Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(width: gridWidth, child: grid),
+          );
+        }
+
+        return grid;
       },
     );
   }

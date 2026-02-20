@@ -2324,6 +2324,7 @@ class MemosApi {
     String? parent,
     String? orderBy,
     String? oldFilter,
+    Duration? receiveTimeout,
     bool preferModern = false,
   }) async {
     await _ensureServerHints();
@@ -2351,6 +2352,7 @@ class MemosApi {
       parent: parent,
       orderBy: orderBy,
       oldFilter: oldFilter,
+      receiveTimeout: receiveTimeout,
     );
   }
 
@@ -2458,6 +2460,7 @@ class MemosApi {
     String? parent,
     String? orderBy,
     String? oldFilter,
+    Duration? receiveTimeout,
   }) async {
     final normalizedPageToken = (pageToken ?? '').trim();
     final normalizedParent = (parent ?? '').trim();
@@ -2465,11 +2468,12 @@ class MemosApi {
     final effectiveFilter = _routeAdapter.usesLegacyRowStatusFilterInListMemos
         ? _mergeLegacyRowStatusFilter(filter: filter, state: state)
         : filter;
+    final timeout =
+        receiveTimeout ??
+        (pageSize >= 500 ? _largeListReceiveTimeout : null);
     final response = await _dio.get(
       'api/v1/memos',
-      options: pageSize >= 500
-          ? Options(receiveTimeout: _largeListReceiveTimeout)
-          : null,
+      options: timeout == null ? null : Options(receiveTimeout: timeout),
       queryParameters: <String, Object?>{
         'pageSize': pageSize,
         'page_size': pageSize,

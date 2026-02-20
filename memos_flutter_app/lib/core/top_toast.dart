@@ -16,7 +16,7 @@ void showTopToast(
 }) {
   final trimmed = message.trim();
   if (trimmed.isEmpty) return;
-  final overlay = Overlay.of(context, rootOverlay: true);
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
   if (overlay == null) return;
 
   _topToastTimer?.cancel();
@@ -26,7 +26,9 @@ void showTopToast(
 
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final toastBg = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-  final toastText = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+  final toastText = isDark
+      ? MemoFlowPalette.textDark
+      : MemoFlowPalette.textLight;
 
   late OverlayEntry entry;
   entry = OverlayEntry(

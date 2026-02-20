@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/drawer_navigation.dart';
+import '../../core/platform_layout.dart';
 import '../../state/memos_providers.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
@@ -82,6 +83,48 @@ class TagsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tagsAsync = ref.watch(tagStatsProvider);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.tags,
+      onSelect: (d) => _navigate(context, d),
+      onSelectTag: (t) => _openTag(context, t),
+      onOpenNotifications: () => _openNotifications(context),
+      embedded: useDesktopSidePane,
+    );
+    final pageBody = tagsAsync.when(
+      data: (tags) => tags.isEmpty
+          ? Center(child: Text(context.t.strings.legacy.msg_no_tags_yet))
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+              children: [
+                TagTreeList(
+                  nodes: buildTagTree(tags),
+                  onSelect: (tag) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => MemosListScreen(
+                          title: context.t.strings.legacy.msg_tags,
+                          state: 'NORMAL',
+                          tag: tag,
+                          showDrawer: true,
+                        ),
+                      ),
+                    );
+                  },
+                  textMain: Theme.of(context).colorScheme.onSurface,
+                  textMuted: Theme.of(context).colorScheme.onSurfaceVariant,
+                  showCount: true,
+                  initiallyExpanded: true,
+                ),
+              ],
+            ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+      ),
+    );
 
     return PopScope(
       canPop: false,
@@ -90,45 +133,23 @@ class TagsScreen extends ConsumerWidget {
         _backToAllMemos(context);
       },
       child: Scaffold(
-        drawer: AppDrawer(
-          selected: AppDrawerDestination.tags,
-          onSelect: (d) => _navigate(context, d),
-          onSelectTag: (t) => _openTag(context, t),
-          onOpenNotifications: () => _openNotifications(context),
-        ),
+        drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(title: Text(context.t.strings.legacy.msg_tags)),
-        body: tagsAsync.when(
-          data: (tags) => tags.isEmpty
-              ? Center(child: Text(context.t.strings.legacy.msg_no_tags_yet))
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                  children: [
-                    TagTreeList(
-                      nodes: buildTagTree(tags),
-                      onSelect: (tag) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => MemosListScreen(
-                              title: context.t.strings.legacy.msg_tags,
-                              state: 'NORMAL',
-                              tag: tag,
-                              showDrawer: true,
-                            ),
-                          ),
-                        );
-                      },
-                      textMain: Theme.of(context).colorScheme.onSurface,
-                      textMuted: Theme.of(context).colorScheme.onSurfaceVariant,
-                      showCount: true,
-                      initiallyExpanded: true,
-                    ),
-                  ],
-                ),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
-          ),
-        ),
+        body: useDesktopSidePane
+            ? Row(
+                children: [
+                  SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  Expanded(child: pageBody),
+                ],
+              )
+            : pageBody,
       ),
     );
   }

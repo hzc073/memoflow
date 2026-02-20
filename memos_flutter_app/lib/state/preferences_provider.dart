@@ -7,8 +7,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/app_localization.dart';
+import '../core/desktop_shortcuts.dart';
 import '../core/hash.dart';
 import '../core/theme_colors.dart';
+import '../data/logs/log_manager.dart';
 import 'session_provider.dart';
 import 'webdav_sync_trigger_provider.dart';
 
@@ -83,7 +85,7 @@ enum LaunchAction {
 
 class AppPreferences {
   static const Object _unset = Object();
-  static const defaults = AppPreferences(
+  static final defaults = AppPreferences(
     language: AppLanguage.system,
     hasSelectedLanguage: false,
     fontSize: AppFontSize.standard,
@@ -111,6 +113,7 @@ class AppPreferences {
     aiSummaryAllowPrivateMemos: false,
     supporterCrownEnabled: false,
     thirdPartyShareEnabled: true,
+    desktopShortcutBindings: desktopShortcutDefaultBindings,
     lastSeenAppVersion: '',
     lastSeenAnnouncementVersion: '',
     lastSeenAnnouncementId: 0,
@@ -152,6 +155,7 @@ class AppPreferences {
     required this.aiSummaryAllowPrivateMemos,
     required this.supporterCrownEnabled,
     required this.thirdPartyShareEnabled,
+    required this.desktopShortcutBindings,
     required this.lastSeenAppVersion,
     required this.lastSeenAnnouncementVersion,
     required this.lastSeenAnnouncementId,
@@ -185,6 +189,8 @@ class AppPreferences {
   final bool aiSummaryAllowPrivateMemos;
   final bool supporterCrownEnabled;
   final bool thirdPartyShareEnabled;
+  final Map<DesktopShortcutAction, DesktopShortcutBinding>
+  desktopShortcutBindings;
   final String lastSeenAppVersion;
   final String lastSeenAnnouncementVersion;
   final int lastSeenAnnouncementId;
@@ -238,6 +244,9 @@ class AppPreferences {
     'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
     'supporterCrownEnabled': supporterCrownEnabled,
     'thirdPartyShareEnabled': thirdPartyShareEnabled,
+    'desktopShortcutBindings': desktopShortcutBindingsToStorage(
+      desktopShortcutBindings,
+    ),
     'lastSeenAppVersion': lastSeenAppVersion,
     'lastSeenAnnouncementVersion': lastSeenAnnouncementVersion,
     'lastSeenAnnouncementId': lastSeenAnnouncementId,
@@ -426,11 +435,19 @@ class AppPreferences {
       return 0;
     }
 
+    Map<DesktopShortcutAction, DesktopShortcutBinding>
+    parseDesktopShortcutBindings() {
+      return desktopShortcutBindingsFromStorage(
+        json['desktopShortcutBindings'],
+      );
+    }
+
     final parsedFamily = parseFontFamily();
     final parsedFile = parseFontFile();
     final parsedCustomTheme = parseCustomTheme();
     final parsedAccountThemeColors = parseAccountThemeColors();
     final parsedAccountCustomThemes = parseAccountCustomThemes();
+    final parsedDesktopShortcutBindings = parseDesktopShortcutBindings();
 
     return AppPreferences(
       language: parseLanguage(),
@@ -505,6 +522,7 @@ class AppPreferences {
         'thirdPartyShareEnabled',
         AppPreferences.defaults.thirdPartyShareEnabled,
       ),
+      desktopShortcutBindings: parsedDesktopShortcutBindings,
       lastSeenAppVersion: parseLastSeenAppVersion(),
       lastSeenAnnouncementVersion: parseLastSeenAnnouncementVersion(),
       lastSeenAnnouncementId: parseLastSeenAnnouncementId(),
@@ -540,6 +558,7 @@ class AppPreferences {
     bool? aiSummaryAllowPrivateMemos,
     bool? supporterCrownEnabled,
     bool? thirdPartyShareEnabled,
+    Map<DesktopShortcutAction, DesktopShortcutBinding>? desktopShortcutBindings,
     String? lastSeenAppVersion,
     String? lastSeenAnnouncementVersion,
     int? lastSeenAnnouncementId,
@@ -583,6 +602,8 @@ class AppPreferences {
           supporterCrownEnabled ?? this.supporterCrownEnabled,
       thirdPartyShareEnabled:
           thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
+      desktopShortcutBindings:
+          desktopShortcutBindings ?? this.desktopShortcutBindings,
       lastSeenAppVersion: lastSeenAppVersion ?? this.lastSeenAppVersion,
       lastSeenAnnouncementVersion:
           lastSeenAnnouncementVersion ?? this.lastSeenAnnouncementVersion,
@@ -631,16 +652,42 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   Future<void> _writeChain = Future<void>.value();
 
   Future<void> _loadFromStorage() async {
-    final stored = await _repo.read();
-    if (!mounted) return;
-    state = stored;
-    _onLoaded?.call();
+    try {
+      final stored = await _repo.read();
+      if (!mounted) return;
+      state = stored;
+    } catch (error, stackTrace) {
+      LogManager.instance.error(
+        'Failed to load app preferences. Falling back to defaults.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      state = AppPreferences.defaults.copyWith(
+        language: AppLanguage.system,
+        hasSelectedLanguage: false,
+      );
+    } finally {
+      if (mounted) {
+        _onLoaded?.call();
+      }
+    }
   }
 
   void _setAndPersist(AppPreferences next, {bool triggerSync = true}) {
     state = next;
     // Serialize writes to avoid out-of-order persistence overwriting newer prefs.
-    _writeChain = _writeChain.then((_) => _repo.write(next));
+    _writeChain = _writeChain.then((_) async {
+      try {
+        await _repo.write(next);
+      } catch (error, stackTrace) {
+        LogManager.instance.warn(
+          'Failed to persist app preferences.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    });
     if (triggerSync) {
       _ref.read(webDavSyncTriggerProvider.notifier).bump();
     }
@@ -751,6 +798,23 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(supporterCrownEnabled: v));
   void setThirdPartyShareEnabled(bool v) =>
       _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
+  void setDesktopShortcutBinding({
+    required DesktopShortcutAction action,
+    required DesktopShortcutBinding binding,
+  }) {
+    final next = Map<DesktopShortcutAction, DesktopShortcutBinding>.from(
+      state.desktopShortcutBindings,
+    );
+    next[action] = binding;
+    _setAndPersist(state.copyWith(desktopShortcutBindings: next));
+  }
+
+  void resetDesktopShortcutBindings() {
+    _setAndPersist(
+      state.copyWith(desktopShortcutBindings: desktopShortcutDefaultBindings),
+    );
+  }
+
   void setLastSeenAppVersion(String v) =>
       _setAndPersist(state.copyWith(lastSeenAppVersion: v), triggerSync: false);
   void setLastSeenAnnouncement({
@@ -790,6 +854,46 @@ class AppPreferencesRepository {
     final key = _accountKey;
     if (key == null || key.trim().isEmpty) return null;
     return '$_kStatePrefix$key';
+  }
+
+  Future<String?> _safeStorageRead(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'Secure storage read failed in preferences repository.',
+        error: error,
+        stackTrace: stackTrace,
+        context: {'key': key},
+      );
+      return null;
+    }
+  }
+
+  Future<void> _safeStorageWrite(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'Secure storage write failed in preferences repository.',
+        error: error,
+        stackTrace: stackTrace,
+        context: {'key': key},
+      );
+    }
+  }
+
+  Future<void> _safeStorageDelete(String key) async {
+    try {
+      await _storage.delete(key: key);
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'Secure storage delete failed in preferences repository.',
+        error: error,
+        stackTrace: stackTrace,
+        context: {'key': key},
+      );
+    }
   }
 
   Future<File?> _fallbackFileForKey(String key) async {
@@ -840,10 +944,7 @@ class AppPreferencesRepository {
     if (storageKey == null) {
       final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
       if (device != null) {
-        await _storage.write(
-          key: _kDeviceKey,
-          value: jsonEncode(device.toJson()),
-        );
+        await _safeStorageWrite(_kDeviceKey, jsonEncode(device.toJson()));
         await _writeFallback(_kDeviceKey, device);
       }
       return device ?? _defaultsForFirstRun();
@@ -851,11 +952,11 @@ class AppPreferencesRepository {
 
     final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
     if (device != null) {
-      await _storage.write(key: _kDeviceKey, value: jsonEncode(device.toJson()));
+      await _safeStorageWrite(_kDeviceKey, jsonEncode(device.toJson()));
       await _writeFallback(_kDeviceKey, device);
     }
 
-    final raw = await _storage.read(key: storageKey);
+    final raw = await _safeStorageRead(storageKey);
     if (raw == null || raw.trim().isEmpty) {
       final legacy = await _readLegacy();
       if (legacy != null) {
@@ -912,11 +1013,11 @@ class AppPreferencesRepository {
   Future<void> write(AppPreferences prefs) async {
     final storageKey = _storageKey;
     if (storageKey == null) {
-      await _storage.write(key: _kDeviceKey, value: jsonEncode(prefs.toJson()));
+      await _safeStorageWrite(_kDeviceKey, jsonEncode(prefs.toJson()));
       await _writeFallback(_kDeviceKey, prefs);
       return;
     }
-    await _storage.write(key: storageKey, value: jsonEncode(prefs.toJson()));
+    await _safeStorageWrite(storageKey, jsonEncode(prefs.toJson()));
     await _writeFallback(storageKey, prefs);
     await _syncDeviceOnboarding(prefs);
   }
@@ -924,12 +1025,12 @@ class AppPreferencesRepository {
   Future<void> clear() async {
     final storageKey = _storageKey;
     if (storageKey == null) return;
-    await _storage.delete(key: storageKey);
+    await _safeStorageDelete(storageKey);
     await _deleteFallback(storageKey);
   }
 
   Future<AppPreferences?> _readDevice() async {
-    final raw = await _storage.read(key: _kDeviceKey);
+    final raw = await _safeStorageRead(_kDeviceKey);
     if (raw == null || raw.trim().isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -941,7 +1042,7 @@ class AppPreferencesRepository {
   }
 
   Future<AppPreferences?> _readLegacy() async {
-    final raw = await _storage.read(key: _kLegacyKey);
+    final raw = await _safeStorageRead(_kLegacyKey);
     if (raw == null || raw.trim().isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -971,17 +1072,15 @@ class AppPreferencesRepository {
   ) {
     if (device == null) return prefs;
     if (prefs.hasSelectedLanguage || !device.hasSelectedLanguage) return prefs;
-    return prefs.copyWith(
-      language: device.language,
-      hasSelectedLanguage: true,
-    );
+    return prefs.copyWith(language: device.language, hasSelectedLanguage: true);
   }
 
   Future<void> _syncDeviceOnboarding(AppPreferences prefs) async {
     final device = await _readDevice() ?? await _readFallback(_kDeviceKey);
     final nextHasSelected = prefs.hasSelectedLanguage;
-    final nextLanguage =
-        prefs.hasSelectedLanguage ? prefs.language : device?.language;
+    final nextLanguage = prefs.hasSelectedLanguage
+        ? prefs.language
+        : device?.language;
     if (device != null &&
         device.hasSelectedLanguage == nextHasSelected &&
         device.language == nextLanguage) {
@@ -993,7 +1092,7 @@ class AppPreferencesRepository {
       language: nextLanguage ?? prefs.language,
       hasSelectedLanguage: nextHasSelected,
     );
-    await _storage.write(key: _kDeviceKey, value: jsonEncode(next.toJson()));
+    await _safeStorageWrite(_kDeviceKey, jsonEncode(next.toJson()));
     await _writeFallback(_kDeviceKey, next);
   }
 }

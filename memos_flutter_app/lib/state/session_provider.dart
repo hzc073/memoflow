@@ -12,6 +12,7 @@ import '../data/logs/log_manager.dart';
 import '../data/models/account.dart';
 import '../data/models/instance_profile.dart';
 import '../data/settings/accounts_repository.dart';
+import '../data/settings/queued_secure_storage.dart';
 import '../core/url.dart';
 
 class AppSessionState {
@@ -31,7 +32,7 @@ class AppSessionState {
 }
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
-  return const FlutterSecureStorage();
+  return QueuedFlutterSecureStorage();
 });
 
 final accountsRepositoryProvider = Provider<AccountsRepository>((ref) {
@@ -118,10 +119,24 @@ class AppSessionNotifier extends AppSessionController {
   final AccountsRepository _accountsRepository;
 
   Future<void> _loadFromStorage() async {
-    final stored = await _accountsRepository.read();
-    state = AsyncValue.data(
-      AppSessionState(accounts: stored.accounts, currentKey: stored.currentKey),
-    );
+    try {
+      final stored = await _accountsRepository.read();
+      state = AsyncValue.data(
+        AppSessionState(
+          accounts: stored.accounts,
+          currentKey: stored.currentKey,
+        ),
+      );
+    } catch (error, stackTrace) {
+      LogManager.instance.error(
+        'Failed to load session from secure storage. Falling back to empty session.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      state = const AsyncValue.data(
+        AppSessionState(accounts: [], currentKey: null),
+      );
+    }
   }
 
   Future<AppSessionState> _upsertAccount({

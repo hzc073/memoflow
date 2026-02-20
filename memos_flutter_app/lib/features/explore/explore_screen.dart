@@ -12,6 +12,7 @@ import '../../core/attachment_toast.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/content_fingerprint.dart';
@@ -1479,6 +1480,44 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             creatorDisplayName_commentCreator_commentMemo_creator:
                 _creatorDisplayName(commentCreator, commentMemo.creator),
           );
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.explore,
+      onSelect: (d) => _navigate(context, d),
+      onSelectTag: (t) => _openTag(context, t),
+      onOpenNotifications: () => _openNotifications(context),
+      embedded: useDesktopSidePane,
+    );
+    final pageBody = Stack(
+      children: [
+        Column(
+          children: [
+            searchBar,
+            if (_legacySearchLimited)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  context
+                      .t
+                      .strings
+                      .legacy
+                      .msg_legacy_servers_not_support_search_filters,
+                  style: TextStyle(fontSize: 11, color: textMuted),
+                ),
+              ),
+            Expanded(child: listBody),
+          ],
+        ),
+        if (commentMemo != null)
+          _buildCommentComposer(
+            hint: commentHint,
+            isDark: isDark,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+      ],
+    );
 
     return PopScope(
       canPop: false,
@@ -1488,21 +1527,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       },
       child: Scaffold(
         backgroundColor: bg,
-        drawer: AppDrawer(
-          selected: AppDrawerDestination.explore,
-          onSelect: (d) => _navigate(context, d),
-          onSelectTag: (t) => _openTag(context, t),
-          onOpenNotifications: () => _openNotifications(context),
-        ),
+        drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
           backgroundColor: bg,
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
+          automaticallyImplyLeading: !useDesktopSidePane,
+          toolbarHeight: 46,
           iconTheme: IconThemeData(color: textMain),
           title: Text(
             context.t.strings.legacy.msg_explore,
-            style: TextStyle(fontWeight: FontWeight.w800, color: textMain),
+            style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
           ),
           actions: [
             IconButton(
@@ -1517,35 +1553,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             ),
           ],
         ),
-        body: Stack(
-          children: [
-            Column(
-              children: [
-                searchBar,
-                if (_legacySearchLimited)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Text(
-                      context
-                          .t
-                          .strings
-                          .legacy
-                          .msg_legacy_servers_not_support_search_filters,
-                      style: TextStyle(fontSize: 11, color: textMuted),
-                    ),
+        body: useDesktopSidePane
+            ? Row(
+                children: [
+                  SizedBox(
+                    width: kMemoFlowDesktopDrawerWidth,
+                    child: drawerPanel,
                   ),
-                Expanded(child: listBody),
-              ],
-            ),
-            if (commentMemo != null)
-              _buildCommentComposer(
-                hint: commentHint,
-                isDark: isDark,
-                textMain: textMain,
-                textMuted: textMuted,
-              ),
-          ],
-        ),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  Expanded(child: pageBody),
+                ],
+              )
+            : pageBody,
       ),
     );
   }

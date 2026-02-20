@@ -17,10 +17,28 @@ import '../../state/memoflow_bridge_settings_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 
+bool _supportsBridgeQrScannerOnCurrentPlatform() {
+  return Platform.isAndroid || Platform.isIOS;
+}
+
+void _showBridgeQrUnsupportedSnack(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        'QR scan is not supported on this platform. Please pair manually with Host, Port, and Pair Code.',
+      ),
+    ),
+  );
+}
+
 Future<void> startMemoFlowQuickQrPair({
   required BuildContext context,
   required WidgetRef ref,
 }) async {
+  if (!_supportsBridgeQrScannerOnCurrentPlatform()) {
+    _showBridgeQrUnsupportedSnack(context);
+    return;
+  }
   final tr = context.t.strings.legacy;
   final raw = await Navigator.of(context, rootNavigator: true).push<String>(
     MaterialPageRoute<String>(builder: (_) => const MemoFlowPairQrScanScreen()),
@@ -252,6 +270,10 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
 
   Future<void> _scanQrAndPair() async {
     FocusScope.of(context).unfocus();
+    if (!_supportsBridgeQrScannerOnCurrentPlatform()) {
+      _showBridgeQrUnsupportedSnack(context);
+      return;
+    }
     final raw = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
         builder: (_) => const MemoFlowPairQrScanScreen(),
@@ -778,25 +800,35 @@ class MemoFlowPairQrScanScreen extends StatefulWidget {
 }
 
 class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
-  final MobileScannerController _controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-    facing: CameraFacing.back,
-  );
+  MobileScannerController? _controller;
   bool _handled = false;
+  bool get _supportsScanner => _supportsBridgeQrScannerOnCurrentPlatform();
+
+  @override
+  void initState() {
+    super.initState();
+    if (_supportsScanner) {
+      _controller = MobileScannerController(
+        detectionSpeed: DetectionSpeed.noDuplicates,
+        facing: CameraFacing.back,
+      );
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_handled) return;
+    final controller = _controller;
+    if (_handled || controller == null) return;
     for (final barcode in capture.barcodes) {
       final raw = barcode.rawValue?.trim() ?? '';
       if (raw.isEmpty) continue;
       _handled = true;
-      await _controller.stop();
+      await controller.stop();
       if (!mounted) return;
       Navigator.of(context).pop(raw);
       return;
@@ -806,11 +838,38 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
   @override
   Widget build(BuildContext context) {
     final tr = context.t.strings.legacy;
+    if (!_supportsScanner) {
+      return Scaffold(
+        appBar: AppBar(title: Text(tr.msg_bridge_scan_title)),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.qr_code_scanner, size: 40),
+                const SizedBox(height: 12),
+                const Text(
+                  'QR scan is not supported on this platform.\nUse manual pairing instead.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: const Text('Back'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text(tr.msg_bridge_scan_title)),
       body: Stack(
         children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
+          MobileScanner(controller: _controller!, onDetect: _onDetect),
           Positioned(
             left: 24,
             right: 24,

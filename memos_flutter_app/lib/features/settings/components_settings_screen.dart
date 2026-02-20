@@ -198,6 +198,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
 }
 
 Future<bool> _requestReminderPermissions(BuildContext context) async {
+  if (!Platform.isAndroid) return true;
+
   final confirmed =
       await showDialog<bool>(
         context: context,

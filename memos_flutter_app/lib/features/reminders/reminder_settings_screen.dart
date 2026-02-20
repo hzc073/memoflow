@@ -20,10 +20,12 @@ class ReminderSettingsScreen extends ConsumerStatefulWidget {
   const ReminderSettingsScreen({super.key});
 
   @override
-  ConsumerState<ReminderSettingsScreen> createState() => _ReminderSettingsScreenState();
+  ConsumerState<ReminderSettingsScreen> createState() =>
+      _ReminderSettingsScreenState();
 }
 
-class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen> {
+class _ReminderSettingsScreenState
+    extends ConsumerState<ReminderSettingsScreen> {
   var _saving = false;
   var _testing = false;
   int? _androidSdkInt;
@@ -53,9 +55,9 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (_testing) return;
     setState(() => _testing = true);
     try {
-      final result = await ref.read(reminderSchedulerProvider).scheduleTestReminder(
-            delay: const Duration(minutes: 1),
-          );
+      final result = await ref
+          .read(reminderSchedulerProvider)
+          .scheduleTestReminder(delay: const Duration(minutes: 1));
       if (!mounted) return;
       final scheduledAt = result.scheduledAt;
       final timeLabel = scheduledAt == null
@@ -65,15 +67,23 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
           ? context.t.strings.legacy.msg_may_delayed
           : '';
       final pendingLabel = result.ok
-          ? context.t.strings.legacy.msg_pending(result_pendingCount: result.pendingCount)
+          ? context.t.strings.legacy.msg_pending(
+              result_pendingCount: result.pendingCount,
+            )
           : '';
       final message = result.ok
-          ? context.t.strings.legacy.msg_test_scheduled(timeLabel: timeLabel, suffix: suffix, pendingLabel: pendingLabel)
+          ? context.t.strings.legacy.msg_test_scheduled(
+              timeLabel: timeLabel,
+              suffix: suffix,
+              pendingLabel: pendingLabel,
+            )
           : context.t.strings.legacy.msg_permissions_denied;
       if (result.ok) {
         showTopToast(context, message);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (e) {
       if (!mounted) return;
@@ -87,46 +97,64 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     }
   }
 
-  
-  Future<void> _openSystemSetting(SystemSettingsTarget target, {String? channelId}) async {
+  Future<void> _openSystemSetting(
+    SystemSettingsTarget target, {
+    String? channelId,
+  }) async {
     final ok = await SystemSettingsLauncher.open(target, channelId: channelId);
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_system_settings)),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_failed_open_system_settings,
+          ),
+        ),
       );
     }
   }
 
   Future<void> _requestBatteryWhitelist() async {
-    final ignoring = await SystemSettingsLauncher.isIgnoringBatteryOptimizations();
+    final ignoring =
+        await SystemSettingsLauncher.isIgnoringBatteryOptimizations();
     if (!mounted) return;
     if (ignoring) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_already_whitelisted,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_already_whitelisted);
       return;
     }
     final ok = await SystemSettingsLauncher.requestIgnoreBatteryOptimizations();
     if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_failed_request_whitelist)),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_failed_request_whitelist),
+        ),
       );
     }
   }
 
   Future<bool> _requestPermissions() async {
-    final confirmed = await showDialog<bool>(
+    if (!Platform.isAndroid) return true;
+
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.t.strings.legacy.msg_enable_reminder_permissions_2),
+            title: Text(
+              context.t.strings.legacy.msg_enable_reminder_permissions_2,
+            ),
             content: Text(
-              context.t.strings.legacy.msg_notification_exact_alarm_permissions_required_send,
+              context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_notification_exact_alarm_permissions_required_send,
             ),
             actions: [
-              TextButton(onPressed: () => context.safePop(false), child: Text(context.t.strings.legacy.msg_cancel_2)),
+              TextButton(
+                onPressed: () => context.safePop(false),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
+              ),
               FilledButton(
                 onPressed: () => context.safePop(true),
                 child: Text(context.t.strings.legacy.msg_grant),
@@ -147,12 +175,19 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (Platform.isAndroid && sdkInt >= 31) {
       exactAlarmGranted = await SystemSettingsLauncher.canScheduleExactAlarms();
       if (!exactAlarmGranted && mounted) {
-        final go = await showDialog<bool>(
+        final go =
+            await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                title: Text(context.t.strings.legacy.msg_exact_alarm_permission_required),
+                title: Text(
+                  context.t.strings.legacy.msg_exact_alarm_permission_required,
+                ),
                 content: Text(
-                  context.t.strings.legacy.msg_exact_alarm_permission_off_reminders_may,
+                  context
+                      .t
+                      .strings
+                      .legacy
+                      .msg_exact_alarm_permission_off_reminders_may,
                 ),
                 actions: [
                   TextButton(
@@ -169,7 +204,8 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
             false;
         if (go) {
           await SystemSettingsLauncher.requestExactAlarmsPermission();
-          exactAlarmGranted = await SystemSettingsLauncher.canScheduleExactAlarms();
+          exactAlarmGranted =
+              await SystemSettingsLauncher.canScheduleExactAlarms();
         }
       }
     }
@@ -178,12 +214,15 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     if (!mounted) return granted;
     if (!granted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_permissions_denied_reminders_disabled)),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_permissions_denied_reminders_disabled,
+          ),
+        ),
       );
     }
     return granted;
   }
-
 
   Future<int> _getAndroidSdkInt() async {
     if (!Platform.isAndroid) return 0;
@@ -217,10 +256,19 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     final notifier = ref.read(reminderSettingsProvider.notifier);
     if (info.isSilent) {
       notifier.setSound(mode: ReminderSoundMode.silent, uri: null, title: null);
-    } else if (info.isDefault || (info.uri == null || info.uri!.trim().isEmpty)) {
-      notifier.setSound(mode: ReminderSoundMode.system, uri: null, title: info.title);
+    } else if (info.isDefault ||
+        (info.uri == null || info.uri!.trim().isEmpty)) {
+      notifier.setSound(
+        mode: ReminderSoundMode.system,
+        uri: null,
+        title: info.title,
+      );
     } else {
-      notifier.setSound(mode: ReminderSoundMode.custom, uri: info.uri, title: info.title);
+      notifier.setSound(
+        mode: ReminderSoundMode.custom,
+        uri: info.uri,
+        title: info.title,
+      );
     }
     await ref.read(reminderSchedulerProvider).rescheduleAll();
   }
@@ -230,10 +278,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
     required ReminderSettings settings,
   }) async {
     final initial = isStart ? settings.dndStartTime : settings.dndEndTime;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: initial,
-    );
+    final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null) return;
     final minutes = minutesFromTimeOfDay(picked);
     final notifier = ref.read(reminderSettingsProvider.notifier);
@@ -260,11 +305,17 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
   Widget build(BuildContext context) {
     final settings = ref.watch(reminderSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Scaffold(
       backgroundColor: bg,
@@ -290,11 +341,7 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -307,70 +354,90 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                 textMain: textMain,
                 textMuted: textMuted,
                 label: context.t.strings.legacy.msg_enable_reminders,
-                description: context.t.strings.legacy.msg_enable_scheduled_reminder_notifications,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_enable_scheduled_reminder_notifications,
                 value: settings.enabled,
                 onChanged: _toggleEnabled,
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.t.strings.legacy.msg_permissions_system_settings, textMuted: textMuted),
-              const SizedBox(height: 8),
-              _Group(
-                card: card,
-                divider: divider,
-                children: [
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_notification_settings,
-                    actionLabel: context.t.strings.legacy.msg_open,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onPressed: () => _openSystemSetting(SystemSettingsTarget.notifications),
-                  ),
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_reminder_channel,
-                    actionLabel: context.t.strings.legacy.msg_open,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onPressed: () {
-                      final channelId =
-                          ref.read(reminderSchedulerProvider).channelIdFor(settings);
-                      _openSystemSetting(
-                        SystemSettingsTarget.notificationChannel,
-                        channelId: channelId,
-                      );
-                    },
-                  ),
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_exact_alarms,
-                    actionLabel: context.t.strings.legacy.msg_open,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onPressed: () => _openSystemSetting(SystemSettingsTarget.exactAlarm),
-                  ),
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_battery_optimization,
-                    actionLabel: context.t.strings.legacy.msg_open,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onPressed: () => _openSystemSetting(SystemSettingsTarget.batteryOptimization),
-                  ),
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_battery_whitelist,
-                    actionLabel: context.t.strings.legacy.msg_request,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onPressed: _requestBatteryWhitelist,
-                  ),
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_app_settings,
-                    actionLabel: context.t.strings.legacy.msg_open,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onPressed: () => _openSystemSetting(SystemSettingsTarget.app),
-                  ),
-                ],
+              if (Platform.isAndroid) ...[
+                _SectionLabel(
+                  label:
+                      context.t.strings.legacy.msg_permissions_system_settings,
+                  textMuted: textMuted,
+                ),
+                const SizedBox(height: 8),
+                _Group(
+                  card: card,
+                  divider: divider,
+                  children: [
+                    _ActionRow(
+                      label: context.t.strings.legacy.msg_notification_settings,
+                      actionLabel: context.t.strings.legacy.msg_open,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onPressed: () => _openSystemSetting(
+                        SystemSettingsTarget.notifications,
+                      ),
+                    ),
+                    _ActionRow(
+                      label: context.t.strings.legacy.msg_reminder_channel,
+                      actionLabel: context.t.strings.legacy.msg_open,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onPressed: () {
+                        final channelId = ref
+                            .read(reminderSchedulerProvider)
+                            .channelIdFor(settings);
+                        _openSystemSetting(
+                          SystemSettingsTarget.notificationChannel,
+                          channelId: channelId,
+                        );
+                      },
+                    ),
+                    _ActionRow(
+                      label: context.t.strings.legacy.msg_exact_alarms,
+                      actionLabel: context.t.strings.legacy.msg_open,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onPressed: () =>
+                          _openSystemSetting(SystemSettingsTarget.exactAlarm),
+                    ),
+                    _ActionRow(
+                      label: context.t.strings.legacy.msg_battery_optimization,
+                      actionLabel: context.t.strings.legacy.msg_open,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onPressed: () => _openSystemSetting(
+                        SystemSettingsTarget.batteryOptimization,
+                      ),
+                    ),
+                    _ActionRow(
+                      label: context.t.strings.legacy.msg_battery_whitelist,
+                      actionLabel: context.t.strings.legacy.msg_request,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onPressed: _requestBatteryWhitelist,
+                    ),
+                    _ActionRow(
+                      label: context.t.strings.legacy.msg_app_settings,
+                      actionLabel: context.t.strings.legacy.msg_open,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onPressed: () =>
+                          _openSystemSetting(SystemSettingsTarget.app),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+              _SectionLabel(
+                label: context.t.strings.legacy.msg_notification_content,
+                textMuted: textMuted,
               ),
-              const SizedBox(height: 16),
-              _SectionLabel(label: context.t.strings.legacy.msg_notification_content, textMuted: textMuted),
               const SizedBox(height: 8),
               _Group(
                 card: card,
@@ -401,7 +468,10 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.t.strings.legacy.msg_sound_feedback, textMuted: textMuted),
+              _SectionLabel(
+                label: context.t.strings.legacy.msg_sound_feedback,
+                textMuted: textMuted,
+              ),
               const SizedBox(height: 8),
               _Group(
                 card: card,
@@ -420,14 +490,19 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                     textMain: textMain,
                     textMuted: textMuted,
                     onChanged: (value) async {
-                      ref.read(reminderSettingsProvider.notifier).setVibrationEnabled(value);
+                      ref
+                          .read(reminderSettingsProvider.notifier)
+                          .setVibrationEnabled(value);
                       await ref.read(reminderSchedulerProvider).rescheduleAll();
                     },
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _SectionLabel(label: context.t.strings.legacy.msg_quiet_hours, textMuted: textMuted),
+              _SectionLabel(
+                label: context.t.strings.legacy.msg_quiet_hours,
+                textMuted: textMuted,
+              ),
               const SizedBox(height: 8),
               _Group(
                 card: card,
@@ -439,7 +514,9 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                     textMain: textMain,
                     textMuted: textMuted,
                     onChanged: (value) async {
-                      ref.read(reminderSettingsProvider.notifier).setDndEnabled(value);
+                      ref
+                          .read(reminderSettingsProvider.notifier)
+                          .setDndEnabled(value);
                       await ref.read(reminderSchedulerProvider).rescheduleAll();
                     },
                   ),
@@ -448,20 +525,26 @@ class _ReminderSettingsScreenState extends ConsumerState<ReminderSettingsScreen>
                     value: _formatTime(settings.dndStartTime),
                     textMain: textMain,
                     textMuted: textMuted,
-                    onTap: () => _pickDndTime(isStart: true, settings: settings),
+                    onTap: () =>
+                        _pickDndTime(isStart: true, settings: settings),
                   ),
                   _SelectRow(
                     label: context.t.strings.legacy.msg_end_time,
                     value: _formatTime(settings.dndEndTime),
                     textMain: textMain,
                     textMuted: textMuted,
-                    onTap: () => _pickDndTime(isStart: false, settings: settings),
+                    onTap: () =>
+                        _pickDndTime(isStart: false, settings: settings),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
               Text(
-                context.t.strings.legacy.msg_during_quiet_hours_reminders_silenced,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_during_quiet_hours_reminders_silenced,
                 style: TextStyle(fontSize: 12, color: textMuted),
               ),
             ],
@@ -521,7 +604,13 @@ class _ToggleCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
               ),
               Switch(value: value, onChanged: onChanged),
             ],
@@ -548,7 +637,14 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted));
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        color: textMuted,
+      ),
+    );
   }
 }
 
@@ -620,7 +716,10 @@ class _SelectRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
                 ),
               ),
               Expanded(
@@ -629,7 +728,10 @@ class _SelectRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -661,7 +763,9 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final actionColor = enabled ? MemoFlowPalette.primary : textMuted.withValues(alpha: 0.7);
+    final actionColor = enabled
+        ? MemoFlowPalette.primary
+        : textMuted.withValues(alpha: 0.7);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -680,7 +784,9 @@ class _ActionRow extends StatelessWidget {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               foregroundColor: actionColor,
               side: BorderSide(color: actionColor.withValues(alpha: 0.7)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
             ),
             child: Text(
               actionLabel,

@@ -41,9 +41,15 @@ dependencies:
   device_info_plus: ^10.1.2
   file_picker: ^8.1.2
   image_picker: ^1.1.2
+  camera: ^0.11.2+1
+  camera_windows: ^0.2.6+4
   package_info_plus: ^8.1.0
   flutter_riverpod: ^2.6.1
   flutter_secure_storage: ^9.2.4
+  window_manager: ^0.5.1
+  tray_manager: ^0.5.1
+  hotkey_manager: ^0.2.3
+  desktop_multi_window: ^0.2.1
   crypto: ^3.0.3
   cached_network_image: ^3.4.1
   flutter_markdown: ^0.7.7+1
@@ -68,6 +74,7 @@ dependencies:
   record: ^6.1.1
   share_plus: ^12.0.1
   sqflite: ^2.4.2
+  sqflite_common_ffi: ^2.3.6
   archive: ^4.0.4
   flutter_animate: ^4.5.2
   url_launcher: ^6.3.0
@@ -84,6 +91,7 @@ dependencies:
   cryptography_flutter: ^2.3.4
   mobile_scanner: ^6.0.2
   multicast_dns: ^0.3.3
+  local_notifier: ^0.1.6
 
 dev_dependencies:
   flutter_test:

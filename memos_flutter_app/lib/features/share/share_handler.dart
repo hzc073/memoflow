@@ -2,17 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-enum SharePayloadType {
-  text,
-  images,
-}
+enum SharePayloadType { text, images }
 
 class SharePayload {
-  const SharePayload({
-    required this.type,
-    this.text,
-    this.paths = const [],
-  });
+  const SharePayload({required this.type, this.text, this.paths = const []});
 
   final SharePayloadType type;
   final String? text;
@@ -52,7 +45,9 @@ class SharePayload {
 class ShareHandlerService {
   static const MethodChannel _channel = MethodChannel('memoflow/share');
 
-  static void setShareHandler(FutureOr<void> Function(SharePayload payload) handler) {
+  static void setShareHandler(
+    FutureOr<void> Function(SharePayload payload) handler,
+  ) {
     _channel.setMethodCallHandler((call) async {
       if (call.method != 'openShare') return;
       final payload = SharePayload.fromArgs(call.arguments);
@@ -65,6 +60,8 @@ class ShareHandlerService {
     try {
       final args = await _channel.invokeMethod<Object>('getPendingShare');
       return SharePayload.fromArgs(args);
+    } on MissingPluginException {
+      return null;
     } on PlatformException {
       return null;
     }

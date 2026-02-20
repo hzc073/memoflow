@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -645,6 +646,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             columns: 3,
             maxCount: 9,
             maxHeight: MediaQuery.of(context).size.height * 0.4,
+            preserveSquareTilesWhenHeightLimited: Platform.isWindows,
             borderColor: borderColor.withValues(alpha: 0.65),
             backgroundColor: imageBg,
             textColor: textMain,

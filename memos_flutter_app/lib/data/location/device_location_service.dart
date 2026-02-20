@@ -33,4 +33,8 @@ class DeviceLocationService {
       onTimeout: () => throw LocationException('timeout'),
     );
   }
+
+  Future<bool> openSystemLocationSettings() {
+    return Geolocator.openLocationSettings();
+  }
 }

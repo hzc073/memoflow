@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
@@ -84,6 +85,16 @@ class AboutScreen extends StatelessWidget {
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.about,
+      onSelect: (d) => _navigate(context, d),
+      onSelectTag: (t) => _openTag(context, t),
+      onOpenNotifications: () => _openNotifications(context),
+      embedded: useDesktopSidePane,
+    );
+    final pageBody = const AboutUsContent();
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -92,12 +103,7 @@ class AboutScreen extends StatelessWidget {
       },
       child: Scaffold(
         backgroundColor: bg,
-        drawer: AppDrawer(
-          selected: AppDrawerDestination.about,
-          onSelect: (d) => _navigate(context, d),
-          onSelectTag: (t) => _openTag(context, t),
-          onOpenNotifications: () => _openNotifications(context),
-        ),
+        drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -111,7 +117,21 @@ class AboutScreen extends StatelessWidget {
           title: Text(context.t.strings.legacy.msg_about),
           centerTitle: false,
         ),
-        body: const AboutUsContent(),
+        body: useDesktopSidePane
+            ? Row(
+                children: [
+                  SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  Expanded(child: pageBody),
+                ],
+              )
+            : pageBody,
       ),
     );
   }

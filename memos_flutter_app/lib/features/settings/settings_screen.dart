@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop_shortcuts.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../state/local_library_provider.dart';
@@ -25,6 +26,7 @@ import 'import_export_screen.dart';
 import 'laboratory_screen.dart';
 import 'password_lock_screen.dart';
 import 'preferences_settings_screen.dart';
+import 'desktop_shortcuts_settings_screen.dart';
 import 'user_guide_screen.dart';
 import 'widgets_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -279,6 +281,22 @@ class SettingsScreen extends ConsumerWidget {
                         );
                       },
                     ),
+                    if (isDesktopShortcutEnabled())
+                      _SettingRow(
+                        icon: Icons.keyboard_command_key,
+                        label: '快捷键',
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        onTap: () {
+                          haptic();
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  const DesktopShortcutsSettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     _SettingRow(
                       icon: Icons.smart_toy_outlined,
                       label: context.t.strings.legacy.msg_ai_settings,

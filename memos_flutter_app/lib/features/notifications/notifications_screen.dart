@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
@@ -105,6 +106,96 @@ class NotificationsScreen extends ConsumerWidget {
         : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.memos,
+      onSelect: (d) => _navigate(context, d),
+      onSelectTag: (t) => _openTag(context, t),
+      onOpenNotifications: () => _openNotifications(context),
+      embedded: useDesktopSidePane,
+    );
+    final pageBody = notificationsAsync.when(
+      data: (items) {
+        if (items.isEmpty) {
+          return Center(
+            child: Text(context.t.strings.legacy.msg_no_notifications),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            final _ = await ref.refresh(notificationsProvider.future);
+          },
+          child: ListView.separated(
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              if (item.type.toUpperCase() == 'MEMO_COMMENT') {
+                return _NotificationMemoCommentTile(
+                  item: item,
+                  dateFmt: dateFmt,
+                  isDark: isDark,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () => _handleNotificationTap(context, ref, item),
+                  onAction: (action) =>
+                      _handleAction(context, ref, item, action),
+                );
+              }
+
+              final title = _typeLabel(context, item);
+              final meta = _metaText(context, item, dateFmt);
+
+              return ListTile(
+                leading: _NotificationBadge(
+                  type: item.type,
+                  isUnread: item.isUnread,
+                  isDark: isDark,
+                ),
+                title: Text(
+                  title,
+                  style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+                ),
+                subtitle: Text(meta, style: TextStyle(color: textMuted)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _StatusPill(
+                      status: item.status,
+                      isUnread: item.isUnread,
+                      isDark: isDark,
+                    ),
+                    const SizedBox(width: 6),
+                    PopupMenuButton<_NotificationAction>(
+                      tooltip: context.t.strings.legacy.msg_actions,
+                      onSelected: (action) =>
+                          _handleAction(context, ref, item, action),
+                      itemBuilder: (context) => [
+                        if (item.isUnread)
+                          PopupMenuItem(
+                            value: _NotificationAction.markRead,
+                            child: Text(context.t.strings.legacy.msg_mark_read),
+                          ),
+                        PopupMenuItem(
+                          value: _NotificationAction.delete,
+                          child: Text(context.t.strings.legacy.msg_delete),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                onTap: () => _handleNotificationTap(context, ref, item),
+              );
+            },
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+      ),
+    );
 
     return PopScope(
       canPop: false,
@@ -113,12 +204,7 @@ class NotificationsScreen extends ConsumerWidget {
         _backToAllMemos(context);
       },
       child: Scaffold(
-        drawer: AppDrawer(
-          selected: AppDrawerDestination.memos,
-          onSelect: (d) => _navigate(context, d),
-          onSelectTag: (t) => _openTag(context, t),
-          onOpenNotifications: () => _openNotifications(context),
-        ),
+        drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
           title: Text(context.t.strings.legacy.msg_notifications),
           leading: IconButton(
@@ -127,92 +213,21 @@ class NotificationsScreen extends ConsumerWidget {
             onPressed: () => _backToAllMemos(context),
           ),
         ),
-        body: notificationsAsync.when(
-          data: (items) {
-            if (items.isEmpty) {
-              return Center(
-                child: Text(context.t.strings.legacy.msg_no_notifications),
-              );
-            }
-            return RefreshIndicator(
-              onRefresh: () async {
-                final _ = await ref.refresh(notificationsProvider.future);
-              },
-              child: ListView.separated(
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  if (item.type.toUpperCase() == 'MEMO_COMMENT') {
-                    return _NotificationMemoCommentTile(
-                      item: item,
-                      dateFmt: dateFmt,
-                      isDark: isDark,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () => _handleNotificationTap(context, ref, item),
-                      onAction: (action) =>
-                          _handleAction(context, ref, item, action),
-                    );
-                  }
-
-                  final title = _typeLabel(context, item);
-                  final meta = _metaText(context, item, dateFmt);
-
-                  return ListTile(
-                    leading: _NotificationBadge(
-                      type: item.type,
-                      isUnread: item.isUnread,
-                      isDark: isDark,
-                    ),
-                    title: Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
-                      ),
-                    ),
-                    subtitle: Text(meta, style: TextStyle(color: textMuted)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _StatusPill(
-                          status: item.status,
-                          isUnread: item.isUnread,
-                          isDark: isDark,
-                        ),
-                        const SizedBox(width: 6),
-                        PopupMenuButton<_NotificationAction>(
-                          tooltip: context.t.strings.legacy.msg_actions,
-                          onSelected: (action) =>
-                              _handleAction(context, ref, item, action),
-                          itemBuilder: (context) => [
-                            if (item.isUnread)
-                              PopupMenuItem(
-                                value: _NotificationAction.markRead,
-                                child: Text(
-                                  context.t.strings.legacy.msg_mark_read,
-                                ),
-                              ),
-                            PopupMenuItem(
-                              value: _NotificationAction.delete,
-                              child: Text(context.t.strings.legacy.msg_delete),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    onTap: () => _handleNotificationTap(context, ref, item),
-                  );
-                },
-              ),
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
-          ),
-        ),
+        body: useDesktopSidePane
+            ? Row(
+                children: [
+                  SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  Expanded(child: pageBody),
+                ],
+              )
+            : pageBody,
       ),
     );
   }

@@ -1902,6 +1902,11 @@ class RemoteSyncController extends SyncControllerBase {
     var pageToken = '';
     // 0.23 creator-scoped filters are much slower on some deployments.
     var syncPageSize = api.requiresCreatorScopedListMemos ? 600 : 1000;
+    // For 0.23, cold list queries can exceed the default large-list timeout.
+    // Keep this override scoped to the creator-filter route profile only.
+    final syncListReceiveTimeout = api.requiresCreatorScopedListMemos
+        ? const Duration(seconds: 180)
+        : null;
     final creatorFilter = _creatorFilter;
     final memoParent = _memoParentName;
     final legacyCompat = api.useLegacyApi;
@@ -1930,6 +1935,7 @@ class RemoteSyncController extends SyncControllerBase {
           state: state,
           filter: usedServerFilter ? creatorFilter : null,
           parent: useParent ? memoParent : null,
+          receiveTimeout: syncListReceiveTimeout,
         );
         if (_isDisposed) return;
 
@@ -2128,6 +2134,10 @@ class RemoteSyncController extends SyncControllerBase {
             if (memoUid != null && memoUid.isNotEmpty) {
               await db.updateMemoSyncState(memoUid, syncState: 0);
             }
+            await db.deleteOutbox(id);
+            break;
+          case 'submit_log_report':
+            await _handleSubmitLogReport(payload);
             await db.deleteOutbox(id);
             break;
           default:
@@ -2752,6 +2762,169 @@ class RemoteSyncController extends SyncControllerBase {
       if (status == 404) return;
       rethrow;
     }
+  }
+
+  Future<void> _handleSubmitLogReport(Map<String, dynamic> payload) async {
+    final report = _readPayloadString(payload['report']);
+    if (report.isEmpty) {
+      throw const FormatException('submit_log_report missing report');
+    }
+
+    final createdAt =
+        _parsePayloadTime(payload['created_time']) ?? DateTime.now().toUtc();
+    final submissionId = _resolveLogSubmissionId(
+      raw: payload['submission_id'],
+      createdAt: createdAt,
+    );
+    final apiVersion = api.effectiveServerVersion.trim();
+    final title = _readPayloadString(payload['title']);
+    final memoTitle = title.isEmpty
+        ? 'MemoFlow Log Report (${apiVersion.isEmpty ? 'unknown' : apiVersion})'
+        : title;
+
+    final memoId = _buildLogReportMemoId(submissionId);
+    final memo = await _createLogReportMemoWith409Recovery(
+      memoId: memoId,
+      content: _buildLogReportMemoContent(
+        title: memoTitle,
+        apiVersion: apiVersion,
+        createdAt: createdAt,
+        report: report,
+      ),
+    );
+    final memoUid = memo.uid.trim();
+    if (memoUid.isEmpty) {
+      throw StateError('submit_log_report createMemo returned empty uid');
+    }
+
+    final attachmentName = await _createLogReportAttachment(
+      submissionId: submissionId,
+      createdAt: createdAt,
+      report: report,
+    );
+    await _bindLogReportAttachment(
+      memoUid: memoUid,
+      attachmentName: attachmentName,
+    );
+  }
+
+  Future<Memo> _createLogReportMemoWith409Recovery({
+    required String memoId,
+    required String content,
+  }) async {
+    try {
+      return await api.createMemo(
+        memoId: memoId,
+        content: content,
+        visibility: 'PRIVATE',
+        pinned: false,
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status != 409) rethrow;
+      return api.getMemo(memoUid: memoId);
+    }
+  }
+
+  Future<String> _createLogReportAttachment({
+    required String submissionId,
+    required DateTime createdAt,
+    required String report,
+  }) async {
+    final attachment = await _createAttachmentWith409Recovery(
+      attachmentId: _buildLogReportAttachmentId(submissionId),
+      filename: _buildLogReportFileName(createdAt),
+      mimeType: 'text/plain',
+      bytes: utf8.encode(report),
+      memoUid: null,
+    );
+    final name = attachment.name.trim();
+    if (name.isEmpty) {
+      throw StateError(
+        'submit_log_report createAttachment returned empty name',
+      );
+    }
+    return name;
+  }
+
+  Future<void> _bindLogReportAttachment({
+    required String memoUid,
+    required String attachmentName,
+  }) async {
+    try {
+      await api.setMemoAttachments(
+        memoUid: memoUid,
+        attachmentNames: <String>[attachmentName],
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      if (status == 404 || status == 405) {
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  String _buildLogReportMemoContent({
+    required String title,
+    required String apiVersion,
+    required DateTime createdAt,
+    required String report,
+  }) {
+    final normalizedReport = report.replaceAll('\r\n', '\n').trim();
+    const previewLimit = 1200;
+    final preview = normalizedReport.length <= previewLimit
+        ? normalizedReport
+        : '${normalizedReport.substring(0, previewLimit)}\n...[truncated, see attachment]';
+    final versionLabel = apiVersion.trim().isEmpty ? 'unknown' : apiVersion;
+
+    return <String>[
+      '# $title',
+      '',
+      '- Client time (UTC): ${createdAt.toUtc().toIso8601String()}',
+      '- API version: $versionLabel',
+      '- User: $currentUserName',
+      '- Report length: ${normalizedReport.length}',
+      '',
+      'Preview:',
+      '',
+      preview,
+    ].join('\n');
+  }
+
+  String _resolveLogSubmissionId({
+    required Object? raw,
+    required DateTime createdAt,
+  }) {
+    final direct = _readPayloadString(raw);
+    if (direct.isNotEmpty) {
+      final normalized = direct.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+      if (normalized.isNotEmpty) return normalized;
+    }
+    return createdAt.toUtc().microsecondsSinceEpoch.toString();
+  }
+
+  String _buildLogReportMemoId(String submissionId) {
+    return 'memoflow-log-$submissionId';
+  }
+
+  String _buildLogReportAttachmentId(String submissionId) {
+    return 'memoflow-log-file-$submissionId';
+  }
+
+  String _buildLogReportFileName(DateTime createdAt) {
+    final compact = createdAt
+        .toUtc()
+        .toIso8601String()
+        .replaceAll(':', '')
+        .replaceAll('.', '_');
+    return 'MemoFlow_log_$compact.txt';
+  }
+
+  String _readPayloadString(Object? raw) {
+    if (raw is String) return raw.trim();
+    if (raw == null) return '';
+    return raw.toString().trim();
   }
 
   Future<int> _countPendingAttachmentUploads(String memoUid) async {

@@ -14,6 +14,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/app_localization.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../core/top_toast.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -641,23 +642,32 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color bg,
     required Color border,
     required Color textMain,
+    required bool useDesktopSidePane,
   }) {
+    final titleText = useDesktopSidePane
+        ? context.t.strings.legacy.msg_ai_summary
+        : (isReport
+              ? context.t.strings.legacy.msg_ai_summary_report
+              : context.t.strings.legacy.msg_ai_summary);
     return AppBar(
       title: Text(
-        isReport
-            ? context.t.strings.legacy.msg_ai_summary_report
-            : context.t.strings.legacy.msg_ai_summary,
+        titleText,
+        style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
       ),
-      centerTitle: true,
-      backgroundColor: Colors.transparent,
+      centerTitle: !useDesktopSidePane,
+      backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new),
-        color: textMain,
-        onPressed: () => _backToAllMemos(context),
-      ),
+      automaticallyImplyLeading: !useDesktopSidePane,
+      toolbarHeight: 46,
+      leading: useDesktopSidePane
+          ? null
+          : IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new),
+              color: textMain,
+              onPressed: () => _backToAllMemos(context),
+            ),
       actions: isReport
           ? [
               IconButton(
@@ -666,13 +676,15 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                 onPressed: _shareReport,
               ),
             ]
-          : null,
-      flexibleSpace: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(color: bg.withValues(alpha: 0.9)),
-        ),
-      ),
+          : (useDesktopSidePane ? [const SizedBox(width: 48)] : null),
+      flexibleSpace: useDesktopSidePane
+          ? null
+          : ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Container(color: bg.withValues(alpha: 0.9)),
+              ),
+            ),
       bottom: isReport
           ? null
           : PreferredSize(
@@ -707,6 +719,55 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final allowPrivate = ref.watch(
       appPreferencesProvider.select((p) => p.aiSummaryAllowPrivateMemos),
     );
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.aiSummary,
+      onSelect: (d) => _navigate(context, d),
+      onSelectTag: (t) => _openTag(context, t),
+      onOpenNotifications: () => _openNotifications(context),
+      embedded: useDesktopSidePane,
+    );
+    final pageBody = Stack(
+      children: [
+        if (isReport)
+          _buildReportBody(
+            bg: bg,
+            card: card,
+            border: border,
+            textMain: textMain,
+            textMuted: textMuted,
+            summary: _summary ?? AiSummaryResult.empty,
+          )
+        else
+          _buildInputBody(
+            card: card,
+            border: border,
+            textMain: textMain,
+            textMuted: textMuted,
+            chipBg: chipBg,
+            inputBg: inputBg,
+            quickPrompts: quickPrompts,
+            allowPrivate: allowPrivate,
+            onAllowPrivateChanged: (v) => ref
+                .read(appPreferencesProvider.notifier)
+                .setAiSummaryAllowPrivateMemos(v),
+          ),
+        _buildBottomBar(
+          isReport: isReport,
+          bg: bg,
+          border: border,
+          textMain: textMain,
+          card: card,
+        ),
+        if (_isLoading)
+          _buildLoadingOverlay(
+            bg: bg,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+      ],
+    );
 
     return PopScope(
       canPop: false,
@@ -716,59 +777,33 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       },
       child: Scaffold(
         backgroundColor: bg,
-        drawer: AppDrawer(
-          selected: AppDrawerDestination.aiSummary,
-          onSelect: (d) => _navigate(context, d),
-          onSelectTag: (t) => _openTag(context, t),
-          onOpenNotifications: () => _openNotifications(context),
-        ),
+        drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: _buildAppBar(
           context: context,
           isReport: isReport,
           bg: bg,
           border: border,
           textMain: textMain,
+          useDesktopSidePane: useDesktopSidePane,
         ),
-        body: Stack(
-          children: [
-            if (isReport)
-              _buildReportBody(
-                bg: bg,
-                card: card,
-                border: border,
-                textMain: textMain,
-                textMuted: textMuted,
-                summary: _summary ?? AiSummaryResult.empty,
+        body: useDesktopSidePane
+            ? Row(
+                children: [
+                  SizedBox(
+                    width: kMemoFlowDesktopDrawerWidth,
+                    child: drawerPanel,
+                  ),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                  Expanded(child: pageBody),
+                ],
               )
-            else
-              _buildInputBody(
-                card: card,
-                border: border,
-                textMain: textMain,
-                textMuted: textMuted,
-                chipBg: chipBg,
-                inputBg: inputBg,
-                quickPrompts: quickPrompts,
-                allowPrivate: allowPrivate,
-                onAllowPrivateChanged: (v) => ref
-                    .read(appPreferencesProvider.notifier)
-                    .setAiSummaryAllowPrivateMemos(v),
-              ),
-            _buildBottomBar(
-              isReport: isReport,
-              bg: bg,
-              border: border,
-              textMain: textMain,
-              card: card,
-            ),
-            if (_isLoading)
-              _buildLoadingOverlay(
-                bg: bg,
-                textMain: textMain,
-                textMuted: textMuted,
-              ),
-          ],
-        ),
+            : pageBody,
       ),
     );
   }

@@ -1,24 +1,33 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:crypto/crypto.dart';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:image_editor_plus/image_editor_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/app_localization.dart';
+import 'core/desktop_quick_input_channel.dart';
+import 'core/desktop_shortcuts.dart';
+import 'core/desktop_tray_controller.dart';
 import 'core/app_theme.dart';
 import 'core/memoflow_palette.dart';
 import 'core/system_fonts.dart';
+import 'core/tags.dart';
 import 'core/top_toast.dart';
+import 'core/uid.dart';
 import 'i18n/strings.g.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/app_lock_gate.dart';
+import 'features/memos/link_memo_sheet.dart';
 import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
 import 'features/onboarding/language_selection_screen.dart';
@@ -28,6 +37,8 @@ import 'features/settings/widgets_service.dart';
 import 'features/updates/notice_dialog.dart';
 import 'features/updates/update_announcement_dialog.dart';
 import 'data/models/account.dart';
+import 'data/models/attachment.dart';
+import 'data/models/memo_location.dart';
 import 'data/updates/update_config.dart';
 import 'state/database_provider.dart';
 import 'state/debug_screenshot_mode_provider.dart';
@@ -39,6 +50,7 @@ import 'state/reminder_scheduler.dart';
 import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
 import 'state/update_config_provider.dart';
+import 'state/user_settings_provider.dart';
 import 'state/webdav_backup_provider.dart';
 import 'state/webdav_sync_provider.dart';
 
@@ -51,6 +63,10 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  HotKey? _desktopQuickInputHotKey;
+  WindowController? _desktopQuickInputWindow;
+  int? _desktopQuickInputWindowId;
+  bool _desktopQuickInputWindowOpening = false;
   HomeWidgetType? _pendingWidgetAction;
   SharePayload? _pendingSharePayload;
   bool _shareHandlingScheduled = false;
@@ -385,6 +401,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _bindDesktopMultiWindowHandler();
     ref.read(logManagerProvider);
     ref.read(webDavSyncControllerProvider);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
@@ -432,11 +449,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _prefsSubscription = ref.listenManual<AppPreferences>(
       appPreferencesProvider,
       (prev, next) {
-        if (prev?.fontFamily == next.fontFamily &&
-            prev?.fontFile == next.fontFile) {
-          return;
+        if (prev?.fontFamily != next.fontFamily ||
+            prev?.fontFile != next.fontFile) {
+          unawaited(_ensureFontLoaded(next));
         }
-        unawaited(_ensureFontLoaded(next));
+        if (isDesktopShortcutEnabled() &&
+            prev?.desktopShortcutBindings != next.desktopShortcutBindings) {
+          unawaited(_registerDesktopQuickInputHotKey(next));
+        }
       },
     );
     _prefsLoadedSubscription = ref.listenManual<bool>(
@@ -475,7 +495,442 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _applyDebugScreenshotMode(ref.read(debugScreenshotModeProvider)),
       );
     }
+    if (isDesktopShortcutEnabled()) {
+      unawaited(
+        _registerDesktopQuickInputHotKey(ref.read(appPreferencesProvider)),
+      );
+    }
     _scheduleStatsWidgetUpdate();
+  }
+
+  void _bindDesktopMultiWindowHandler() {
+    if (kIsWeb) return;
+    DesktopMultiWindow.setMethodHandler(_handleDesktopMultiWindowMethodCall);
+  }
+
+  BuildContext? _resolveDesktopUiContext() {
+    final direct = _navigatorKey.currentContext;
+    if (direct != null && direct.mounted) return direct;
+    final overlay = _navigatorKey.currentState?.overlay?.context;
+    if (overlay != null && overlay.mounted) return overlay;
+    return null;
+  }
+
+  Future<void> _registerDesktopQuickInputHotKey(AppPreferences prefs) async {
+    if (!isDesktopShortcutEnabled()) return;
+    final bindings = normalizeDesktopShortcutBindings(
+      prefs.desktopShortcutBindings,
+    );
+    final binding = bindings[DesktopShortcutAction.quickRecord];
+    if (binding == null) return;
+
+    final nextHotKey = HotKey(
+      key: binding.logicalKey,
+      modifiers: <HotKeyModifier>[
+        if (binding.primary)
+          defaultTargetPlatform == TargetPlatform.macOS
+              ? HotKeyModifier.meta
+              : HotKeyModifier.control,
+        if (binding.shift) HotKeyModifier.shift,
+        if (binding.alt) HotKeyModifier.alt,
+      ],
+      scope: HotKeyScope.system,
+    );
+
+    final previous = _desktopQuickInputHotKey;
+    if (previous != null) {
+      try {
+        await hotKeyManager.unregister(previous);
+      } catch (_) {}
+    }
+
+    try {
+      await hotKeyManager.register(
+        nextHotKey,
+        keyDownHandler: (_) {
+          unawaited(_handleDesktopQuickInputHotKey());
+        },
+      );
+      _desktopQuickInputHotKey = nextHotKey;
+    } catch (error, stackTrace) {
+      ref
+          .read(logManagerProvider)
+          .error(
+            'Register desktop quick input hotkey failed',
+            error: error,
+            stackTrace: stackTrace,
+          );
+    }
+  }
+
+  Future<void> _unregisterDesktopQuickInputHotKey() async {
+    final hotKey = _desktopQuickInputHotKey;
+    if (hotKey == null) return;
+    try {
+      await hotKeyManager.unregister(hotKey);
+    } catch (_) {}
+    _desktopQuickInputHotKey = null;
+  }
+
+  Future<dynamic> _handleDesktopMultiWindowMethodCall(
+    MethodCall call,
+    int fromWindowId,
+  ) async {
+    if (!mounted) return null;
+    switch (call.method) {
+      case desktopQuickInputSubmitMethod:
+        final args = call.arguments;
+        final map = args is Map ? args.cast<Object?, Object?>() : null;
+        final contentRaw = map == null ? null : map['content'];
+        final content = (contentRaw as String? ?? '').trimRight();
+        final attachmentPayloads = _parseDesktopQuickInputMapList(
+          map == null ? null : map['attachments'],
+        );
+        final relations = _parseDesktopQuickInputMapList(
+          map == null ? null : map['relations'],
+        );
+        final location = _parseDesktopQuickInputLocation(
+          map == null ? null : map['location'],
+        );
+        if (content.trim().isEmpty && attachmentPayloads.isEmpty) return false;
+        try {
+          await _submitDesktopQuickInput(
+            content,
+            attachmentPayloads: attachmentPayloads,
+            location: location,
+            relations: relations,
+          );
+          if (!mounted) return true;
+          final context = _resolveDesktopUiContext();
+          if (context?.mounted == true) {
+            showTopToast(context!, '已保存到 MemoFlow');
+          }
+          return true;
+        } catch (error, stackTrace) {
+          ref
+              .read(logManagerProvider)
+              .error(
+                'Desktop quick input submit from sub-window failed',
+                error: error,
+                stackTrace: stackTrace,
+              );
+          if (!mounted) return false;
+          final context = _resolveDesktopUiContext();
+          if (context?.mounted == true) {
+            showTopToast(context!, '快速输入失败：$error');
+          }
+          return false;
+        }
+      case desktopQuickInputPlaceholderMethod:
+        final args = call.arguments;
+        final map = args is Map ? args.cast<Object?, Object?>() : null;
+        final labelRaw = map == null ? null : map['label'];
+        final label = (labelRaw as String? ?? '功能').trim();
+        final context = _resolveDesktopUiContext();
+        if (context != null) {
+          showTopToast(context, '「$label」功能暂未实现（占位）。');
+        }
+        return true;
+      case desktopQuickInputPickLinkMemoMethod:
+        if (_resolveDesktopUiContext() == null) {
+          await DesktopTrayController.instance.showFromTray();
+          await Future<void>.delayed(const Duration(milliseconds: 160));
+        }
+        final context = _resolveDesktopUiContext();
+        if (context == null) {
+          return {'error_message': 'main_window_not_ready'};
+        }
+        if (!context.mounted) {
+          return {'error_message': 'main_window_not_ready'};
+        }
+        final args = call.arguments;
+        final map = args is Map ? args.cast<Object?, Object?>() : null;
+        final rawNames = map == null ? null : map['existingNames'];
+        final existingNames = <String>{};
+        if (rawNames is List) {
+          for (final item in rawNames) {
+            final value = (item as String? ?? '').trim();
+            if (value.isNotEmpty) existingNames.add(value);
+          }
+        }
+        final selection = await LinkMemoSheet.show(
+          context,
+          existingNames: existingNames,
+        );
+        if (!mounted || selection == null) return null;
+        final name = selection.name.trim();
+        if (name.isEmpty) return null;
+        final raw = selection.content.replaceAll(RegExp(r'\s+'), ' ').trim();
+        final fallback = name.startsWith('memos/')
+            ? name.substring('memos/'.length)
+            : name;
+        final label = _truncateDesktopQuickInputLabel(
+          raw.isNotEmpty ? raw : fallback,
+        );
+        return {'name': name, 'label': label};
+      case desktopQuickInputListTagsMethod:
+        final args = call.arguments;
+        final map = args is Map ? args.cast<Object?, Object?>() : null;
+        final rawExisting = map == null ? null : map['existingTags'];
+        final existing = <String>{};
+        if (rawExisting is List) {
+          for (final item in rawExisting) {
+            final text = (item as String? ?? '').trim().toLowerCase();
+            if (text.isEmpty) continue;
+            final normalized = text.startsWith('#') ? text.substring(1) : text;
+            if (normalized.isNotEmpty) {
+              existing.add(normalized);
+            }
+          }
+        }
+        try {
+          final stats = await ref.read(tagStatsProvider.future);
+          final tags = <String>[];
+          for (final stat in stats) {
+            final tag = stat.tag.trim();
+            if (tag.isEmpty) continue;
+            if (existing.contains(tag.toLowerCase())) continue;
+            tags.add(tag);
+          }
+          return tags;
+        } catch (_) {
+          return const <String>[];
+        }
+      case desktopQuickInputPingMethod:
+        return true;
+      case desktopQuickInputClosedMethod:
+        if (_desktopQuickInputWindowId == fromWindowId) {
+          _desktopQuickInputWindow = null;
+          _desktopQuickInputWindowId = null;
+        }
+        return true;
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _handleDesktopQuickInputHotKey() async {
+    if (!mounted || !isDesktopShortcutEnabled()) return;
+    if (_desktopQuickInputWindowOpening) return;
+    _bindDesktopMultiWindowHandler();
+
+    final session = ref.read(appSessionProvider).valueOrNull;
+    final localLibrary = ref.read(currentLocalLibraryProvider);
+    if (session?.currentAccount == null && localLibrary == null) {
+      await DesktopTrayController.instance.showFromTray();
+      return;
+    }
+
+    _desktopQuickInputWindowOpening = true;
+    try {
+      await _refreshDesktopQuickInputWindowReference();
+      final existing = _desktopQuickInputWindow;
+      if (existing != null) {
+        try {
+          await existing.show();
+          await _focusDesktopQuickInputWindow(existing.windowId);
+          return;
+        } catch (_) {
+          _desktopQuickInputWindow = null;
+          _desktopQuickInputWindowId = null;
+        }
+      }
+
+      final window = await DesktopMultiWindow.createWindow(
+        jsonEncode(<String, dynamic>{
+          desktopWindowTypeKey: desktopWindowTypeQuickInput,
+        }),
+      );
+      _desktopQuickInputWindow = window;
+      _desktopQuickInputWindowId = window.windowId;
+      await window.setTitle('MemoFlow');
+      await window.setFrame(const Offset(0, 0) & Size(420, 760));
+      await window.center();
+      await window.show();
+      await _focusDesktopQuickInputWindow(window.windowId);
+    } catch (error, stackTrace) {
+      ref
+          .read(logManagerProvider)
+          .error(
+            'Desktop quick input hotkey action failed',
+            error: error,
+            stackTrace: stackTrace,
+          );
+      if (!mounted) return;
+      final context = _resolveDesktopUiContext();
+      if (context?.mounted == true) {
+        showTopToast(context!, '快速输入失败：$error');
+      }
+    } finally {
+      _desktopQuickInputWindowOpening = false;
+    }
+  }
+
+  Future<void> _refreshDesktopQuickInputWindowReference() async {
+    final trackedId = _desktopQuickInputWindowId;
+    if (trackedId == null) {
+      _desktopQuickInputWindow = null;
+      return;
+    }
+    try {
+      final ids = await DesktopMultiWindow.getAllSubWindowIds();
+      if (!ids.contains(trackedId)) {
+        _desktopQuickInputWindow = null;
+        _desktopQuickInputWindowId = null;
+        return;
+      }
+      _desktopQuickInputWindow ??= WindowController.fromWindowId(trackedId);
+    } catch (_) {
+      _desktopQuickInputWindow = null;
+      _desktopQuickInputWindowId = null;
+    }
+  }
+
+  Future<void> _focusDesktopQuickInputWindow(int windowId) async {
+    try {
+      await DesktopMultiWindow.invokeMethod(
+        windowId,
+        desktopQuickInputFocusMethod,
+        null,
+      );
+    } catch (_) {}
+  }
+
+  String _resolveDesktopQuickInputVisibility() {
+    final settings = ref.read(userGeneralSettingProvider).valueOrNull;
+    final value = (settings?.memoVisibility ?? '').trim().toUpperCase();
+    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
+      return value;
+    }
+    return 'PRIVATE';
+  }
+
+  List<Map<String, dynamic>> _parseDesktopQuickInputMapList(dynamic raw) {
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    final list = <Map<String, dynamic>>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final map = <String, dynamic>{};
+      item.forEach((key, value) {
+        final normalizedKey = key?.toString().trim() ?? '';
+        if (normalizedKey.isEmpty) return;
+        map[normalizedKey] = value;
+      });
+      if (map.isNotEmpty) {
+        list.add(map);
+      }
+    }
+    return list;
+  }
+
+  MemoLocation? _parseDesktopQuickInputLocation(dynamic raw) {
+    if (raw is! Map) return null;
+    final map = <String, dynamic>{};
+    raw.forEach((key, value) {
+      final normalizedKey = key?.toString().trim() ?? '';
+      if (normalizedKey.isEmpty) return;
+      map[normalizedKey] = value;
+    });
+    return MemoLocation.fromJson(map);
+  }
+
+  String _truncateDesktopQuickInputLabel(String text, {int maxLength = 24}) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength - 3)}...';
+  }
+
+  int _readDesktopQuickInputInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
+  Future<void> _submitDesktopQuickInput(
+    String rawContent, {
+    List<Map<String, dynamic>> attachmentPayloads =
+        const <Map<String, dynamic>>[],
+    MemoLocation? location,
+    List<Map<String, dynamic>> relations = const <Map<String, dynamic>>[],
+  }) async {
+    final content = rawContent.trimRight();
+    if (content.trim().isEmpty && attachmentPayloads.isEmpty) return;
+
+    final now = DateTime.now();
+    final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
+    final uid = generateUid();
+    final visibility = _resolveDesktopQuickInputVisibility();
+    final db = ref.read(databaseProvider);
+    final tags = extractTags(content);
+    final attachments = <Map<String, dynamic>>[];
+    final uploadPayloads = <Map<String, dynamic>>[];
+    for (final payload in attachmentPayloads) {
+      final rawUid = (payload['uid'] as String? ?? '').trim();
+      final filePath = (payload['file_path'] as String? ?? '').trim();
+      final filename = (payload['filename'] as String? ?? '').trim();
+      final mimeType = (payload['mime_type'] as String? ?? '').trim();
+      final fileSize = _readDesktopQuickInputInt(payload['file_size']);
+      if (filePath.isEmpty || filename.isEmpty) continue;
+      final attachmentUid = rawUid.isEmpty ? generateUid() : rawUid;
+      final externalLink = filePath.startsWith('content://')
+          ? filePath
+          : Uri.file(filePath).toString();
+      attachments.add(
+        Attachment(
+          name: 'attachments/$attachmentUid',
+          filename: filename,
+          type: mimeType.isEmpty ? 'application/octet-stream' : mimeType,
+          size: fileSize,
+          externalLink: externalLink,
+        ).toJson(),
+      );
+      uploadPayloads.add({
+        'uid': attachmentUid,
+        'memo_uid': uid,
+        'file_path': filePath,
+        'filename': filename,
+        'mime_type': mimeType.isEmpty ? 'application/octet-stream' : mimeType,
+        'file_size': fileSize,
+      });
+    }
+    final normalizedRelations = relations
+        .where((relation) => relation.isNotEmpty)
+        .toList(growable: false);
+    final hasAttachments = attachments.isNotEmpty;
+
+    await db.upsertMemo(
+      uid: uid,
+      content: content,
+      visibility: visibility,
+      pinned: false,
+      state: 'NORMAL',
+      createTimeSec: nowSec,
+      updateTimeSec: nowSec,
+      tags: tags,
+      attachments: attachments,
+      location: location,
+      relationCount: 0,
+      syncState: 1,
+    );
+
+    await db.enqueueOutbox(
+      type: 'create_memo',
+      payload: {
+        'uid': uid,
+        'content': content,
+        'visibility': visibility,
+        'pinned': false,
+        'has_attachments': hasAttachments,
+        if (location != null) 'location': location.toJson(),
+        if (normalizedRelations.isNotEmpty) 'relations': normalizedRelations,
+      },
+    );
+
+    for (final payload in uploadPayloads) {
+      await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
+    }
+
+    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
   Future<void> _loadPendingWidgetAction() async {
@@ -884,6 +1339,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        _bindDesktopMultiWindowHandler();
         _triggerLifecycleSync(isResume: true);
         _rescheduleRemindersIfNeeded();
         break;
@@ -1082,6 +1538,15 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           buildAppTheme(Brightness.dark),
           prefs,
         ),
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          dragDevices: {
+            PointerDeviceKind.touch,
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.stylus,
+            PointerDeviceKind.invertedStylus,
+            PointerDeviceKind.trackpad,
+          },
+        ),
         themeMode: themeMode,
         locale: appLocale.flutterLocale,
         navigatorKey: _navigatorKey,
@@ -1130,6 +1595,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _prefsLoadedSubscription?.close();
     _reminderSettingsSubscription?.close();
     _debugScreenshotModeSubscription?.close();
+    if (!kIsWeb) {
+      DesktopMultiWindow.setMethodHandler(null);
+    }
+    if (isDesktopShortcutEnabled()) {
+      unawaited(_unregisterDesktopQuickInputHotKey());
+    }
     super.dispose();
   }
 }
