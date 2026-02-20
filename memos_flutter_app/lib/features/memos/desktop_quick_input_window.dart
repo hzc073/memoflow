@@ -94,6 +94,7 @@ class _DesktopQuickInputWindowScreenState
     }
     _controller.dispose();
     _focusNode.dispose();
+    unawaited(_notifyMainWindowVisibility(false));
     unawaited(_notifyMainWindowClosed());
     super.dispose();
   }
@@ -201,6 +202,7 @@ class _DesktopQuickInputWindowScreenState
   }
 
   Future<void> _closeWindow() async {
+    await _notifyMainWindowVisibility(false);
     if (mounted) {
       setState(_resetComposerStateForReuse);
     } else {
@@ -283,6 +285,16 @@ class _DesktopQuickInputWindowScreenState
       throw MissingPluginException('Main window channel is not ready.');
     }
     return DesktopMultiWindow.invokeMethod(0, method, arguments);
+  }
+
+  Future<void> _notifyMainWindowVisibility(bool visible) async {
+    try {
+      await DesktopMultiWindow.invokeMethod(
+        0,
+        desktopSubWindowVisibilityMethod,
+        <String, dynamic>{'visible': visible},
+      );
+    } catch (_) {}
   }
 
   Future<void> _notifyMainWindowClosed() async {

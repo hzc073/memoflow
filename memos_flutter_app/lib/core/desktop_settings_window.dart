@@ -10,10 +10,30 @@ import 'top_toast.dart';
 
 abstract interface class DesktopSettingsWindowRouteIntent {}
 
+typedef DesktopSettingsWindowVisibilityListener =
+    void Function({required int windowId, required bool visible});
+
 WindowController? _desktopSettingsWindow;
 int? _desktopSettingsWindowId;
 bool _desktopSettingsWindowOpening = false;
 Future<void>? _desktopSettingsWindowPrepareTask;
+DesktopSettingsWindowVisibilityListener?
+_desktopSettingsWindowVisibilityListener;
+
+void setDesktopSettingsWindowVisibilityListener(
+  DesktopSettingsWindowVisibilityListener? listener,
+) {
+  _desktopSettingsWindowVisibilityListener = listener;
+}
+
+void _notifyDesktopSettingsWindowVisibility({
+  required int windowId,
+  required bool visible,
+}) {
+  final listener = _desktopSettingsWindowVisibilityListener;
+  if (listener == null || windowId <= 0) return;
+  listener(windowId: windowId, visible: visible);
+}
 
 bool supportsDesktopSettingsWindow() {
   if (kIsWeb) return false;
@@ -43,12 +63,24 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
     var window = await _ensureDesktopSettingsWindowReady();
     try {
       await window.show();
+      _notifyDesktopSettingsWindowVisibility(
+        windowId: window.windowId,
+        visible: true,
+      );
       await _focusDesktopSettingsWindow(window.windowId);
     } catch (_) {
+      _notifyDesktopSettingsWindowVisibility(
+        windowId: window.windowId,
+        visible: false,
+      );
       _desktopSettingsWindow = null;
       _desktopSettingsWindowId = null;
       window = await _ensureDesktopSettingsWindowReady();
       await window.show();
+      _notifyDesktopSettingsWindowVisibility(
+        windowId: window.windowId,
+        visible: true,
+      );
       await _focusDesktopSettingsWindow(window.windowId);
     }
   } catch (error) {
@@ -115,12 +147,17 @@ Future<void> _refreshDesktopSettingsWindowReference() async {
   try {
     final ids = await DesktopMultiWindow.getAllSubWindowIds();
     if (!ids.contains(trackedId)) {
+      _notifyDesktopSettingsWindowVisibility(
+        windowId: trackedId,
+        visible: false,
+      );
       _desktopSettingsWindow = null;
       _desktopSettingsWindowId = null;
       return;
     }
     _desktopSettingsWindow ??= WindowController.fromWindowId(trackedId);
   } catch (_) {
+    _notifyDesktopSettingsWindowVisibility(windowId: trackedId, visible: false);
     _desktopSettingsWindow = null;
     _desktopSettingsWindowId = null;
   }

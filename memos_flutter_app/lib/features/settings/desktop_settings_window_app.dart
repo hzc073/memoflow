@@ -178,6 +178,7 @@ class _DesktopSettingsWindowScreenState
 
   @override
   void dispose() {
+    unawaited(_notifyMainWindowVisibility(false));
     DesktopMultiWindow.setMethodHandler(null);
     super.dispose();
   }
@@ -190,6 +191,16 @@ class _DesktopSettingsWindowScreenState
         await windowManager.setHasShadow(false);
         await windowManager.setBackgroundColor(const Color(0x00000000));
       }
+    } catch (_) {}
+  }
+
+  Future<void> _notifyMainWindowVisibility(bool visible) async {
+    try {
+      await DesktopMultiWindow.invokeMethod(
+        0,
+        desktopSubWindowVisibilityMethod,
+        <String, dynamic>{'visible': visible},
+      );
     } catch (_) {}
   }
 
@@ -219,6 +230,7 @@ class _DesktopSettingsWindowScreenState
   }
 
   Future<void> _closeWindow() async {
+    await _notifyMainWindowVisibility(false);
     if (mounted) {
       final navigator = Navigator.of(context, rootNavigator: true);
       if (navigator.canPop()) {

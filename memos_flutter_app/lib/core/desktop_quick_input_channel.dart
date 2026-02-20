@@ -13,3 +13,4 @@ const String desktopQuickInputPickLinkMemoMethod =
 const String desktopQuickInputListTagsMethod = 'desktop.quickInput.listTags';
 
 const String desktopSettingsFocusMethod = 'desktop.settings.focus';
+const String desktopSubWindowVisibilityMethod = 'desktop.subWindow.visibility';

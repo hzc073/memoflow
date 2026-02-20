@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:ui' show ImageFilter, PointerDeviceKind;
 
 import 'package:crypto/crypto.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -69,6 +69,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   int? _desktopQuickInputWindowId;
   bool _desktopQuickInputWindowOpening = false;
   Future<void>? _desktopQuickInputWindowPrepareTask;
+  final Set<int> _desktopVisibleSubWindowIds = <int>{};
   bool _desktopSubWindowsPrewarmScheduled = false;
   HomeWidgetType? _pendingWidgetAction;
   SharePayload? _pendingSharePayload;
@@ -405,6 +406,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bindDesktopMultiWindowHandler();
+    setDesktopSettingsWindowVisibilityListener(({
+      required int windowId,
+      required bool visible,
+    }) {
+      _setDesktopSubWindowVisibility(windowId: windowId, visible: visible);
+    });
     ref.read(logManagerProvider);
     ref.read(webDavSyncControllerProvider);
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
@@ -510,6 +517,39 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void _bindDesktopMultiWindowHandler() {
     if (kIsWeb) return;
     DesktopMultiWindow.setMethodHandler(_handleDesktopMultiWindowMethodCall);
+  }
+
+  bool get _shouldBlurDesktopMainWindow {
+    if (_desktopVisibleSubWindowIds.isEmpty || kIsWeb) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.windows ||
+      TargetPlatform.linux ||
+      TargetPlatform.macOS => true,
+      _ => false,
+    };
+  }
+
+  bool? _parseDesktopSubWindowVisibleFlag(Object? raw) {
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    if (raw is String) {
+      final normalized = raw.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') return true;
+      if (normalized == 'false' || normalized == '0') return false;
+    }
+    return null;
+  }
+
+  void _setDesktopSubWindowVisibility({
+    required int windowId,
+    required bool visible,
+  }) {
+    if (windowId <= 0) return;
+    final changed = visible
+        ? _desktopVisibleSubWindowIds.add(windowId)
+        : _desktopVisibleSubWindowIds.remove(windowId);
+    if (!changed || !mounted) return;
+    setState(() {});
   }
 
   BuildContext? _resolveDesktopUiContext() {
@@ -728,9 +768,21 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         } catch (_) {
           return const <String>[];
         }
+      case desktopSubWindowVisibilityMethod:
+        final args = call.arguments;
+        final map = args is Map ? args.cast<Object?, Object?>() : null;
+        final visible = _parseDesktopSubWindowVisibleFlag(
+          map == null ? null : map['visible'],
+        );
+        _setDesktopSubWindowVisibility(
+          windowId: fromWindowId,
+          visible: visible ?? true,
+        );
+        return true;
       case desktopQuickInputPingMethod:
         return true;
       case desktopQuickInputClosedMethod:
+        _setDesktopSubWindowVisibility(windowId: fromWindowId, visible: false);
         if (_desktopQuickInputWindowId == fromWindowId) {
           _desktopQuickInputWindow = null;
           _desktopQuickInputWindowId = null;
@@ -758,6 +810,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       var window = await _ensureDesktopQuickInputWindowReady();
       try {
         await window.show();
+        _setDesktopSubWindowVisibility(
+          windowId: window.windowId,
+          visible: true,
+        );
         await _focusDesktopQuickInputWindow(window.windowId);
       } catch (_) {
         // The cached controller can be stale after user closed sub-window.
@@ -765,6 +821,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _desktopQuickInputWindowId = null;
         window = await _ensureDesktopQuickInputWindowReady();
         await window.show();
+        _setDesktopSubWindowVisibility(
+          windowId: window.windowId,
+          visible: true,
+        );
         await _focusDesktopQuickInputWindow(window.windowId);
       }
     } catch (error, stackTrace) {
@@ -833,12 +893,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     try {
       final ids = await DesktopMultiWindow.getAllSubWindowIds();
       if (!ids.contains(trackedId)) {
+        _setDesktopSubWindowVisibility(windowId: trackedId, visible: false);
         _desktopQuickInputWindow = null;
         _desktopQuickInputWindowId = null;
         return;
       }
       _desktopQuickInputWindow ??= WindowController.fromWindowId(trackedId);
     } catch (_) {
+      _setDesktopSubWindowVisibility(windowId: trackedId, visible: false);
       _desktopQuickInputWindow = null;
       _desktopQuickInputWindowId = null;
     }
@@ -1572,6 +1634,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         ? ref.watch(debugScreenshotModeProvider)
         : false;
     final scale = _textScaleFor(prefs.fontSize);
+    final blurDesktopMainWindow = _shouldBlurDesktopMainWindow;
     _applyImageEditorI18n(prefs.language);
 
     if (_pendingWidgetAction != null) {
@@ -1632,9 +1695,30 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         },
         builder: (context, child) {
           final media = MediaQuery.of(context);
-          return MediaQuery(
+          final appContent = MediaQuery(
             data: media.copyWith(textScaler: TextScaler.linear(scale)),
             child: AppLockGate(child: child ?? const SizedBox.shrink()),
+          );
+          if (!blurDesktopMainWindow) return appContent;
+
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final overlayColor = Colors.black.withValues(
+            alpha: isDark ? 0.26 : 0.12,
+          );
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              appContent,
+              IgnorePointer(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: ColoredBox(color: overlayColor),
+                  ),
+                ),
+              ),
+            ],
           );
         },
         home: const MainHomePage(),
@@ -1645,6 +1729,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    setDesktopSettingsWindowVisibilityListener(null);
     if (kDebugMode) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
