@@ -5,8 +5,8 @@
       "latest_version": "1.0.14",
       "force_update": false,
       "update_source": "google_play",
-      "url": "",
-      "publish_at": "2026-02-21T00:00:00Z"
+      "url": "https://github.com/hzc073/memoflow/releases/download/v1.0.14/MemoFlow_v1.0.14-release.apk",
+      "publish_at": "2026-02-21T14:42:53.474Z"
     },
     "ios": {
       "latest_version": "1.0.14",
