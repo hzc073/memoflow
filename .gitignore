@@ -43,24 +43,10 @@ docs/api-version-matrix.md
 /artifacts
 /memoflow_obsidian_plugin
 
-# Flutter Windows default template files (exclude generated/default platform code)
-memos_flutter_app/windows/.gitignore
-memos_flutter_app/windows/CMakeLists.txt
-memos_flutter_app/windows/flutter/CMakeLists.txt
+# Windows desktop: keep source/config files, ignore generated outputs and assets
+memos_flutter_app/windows/flutter/ephemeral/
 memos_flutter_app/windows/flutter/generated_plugin_registrant.cc
 memos_flutter_app/windows/flutter/generated_plugin_registrant.h
 memos_flutter_app/windows/flutter/generated_plugins.cmake
-memos_flutter_app/windows/runner/CMakeLists.txt
-memos_flutter_app/windows/runner/Runner.rc
-memos_flutter_app/windows/runner/flutter_window.cpp
-memos_flutter_app/windows/runner/flutter_window.h
-memos_flutter_app/windows/runner/main.cpp
-memos_flutter_app/windows/runner/resource.h
-memos_flutter_app/windows/runner/runner.exe.manifest
-memos_flutter_app/windows/runner/utils.cpp
-memos_flutter_app/windows/runner/utils.h
-memos_flutter_app/windows/runner/win32_window.cpp
-memos_flutter_app/windows/runner/win32_window.h
-
-# Flutter default platform resource images
+memos_flutter_app/windows/.plugin_symlinks/
 memos_flutter_app/windows/runner/resources/
