@@ -67,6 +67,7 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
         windowId: window.windowId,
         visible: true,
       );
+      await _refreshDesktopSettingsWindowSession(window.windowId);
       await _focusDesktopSettingsWindow(window.windowId);
     } catch (_) {
       _notifyDesktopSettingsWindowVisibility(
@@ -81,6 +82,7 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
         windowId: window.windowId,
         visible: true,
       );
+      await _refreshDesktopSettingsWindowSession(window.windowId);
       await _focusDesktopSettingsWindow(window.windowId);
     }
   } catch (error) {
@@ -168,6 +170,27 @@ Future<void> _focusDesktopSettingsWindow(int windowId) async {
     await DesktopMultiWindow.invokeMethod(
       windowId,
       desktopSettingsFocusMethod,
+      null,
+    );
+  } catch (_) {}
+}
+
+Future<void> _refreshDesktopSettingsWindowSession(int windowId) async {
+  try {
+    await DesktopMultiWindow.invokeMethod(
+      windowId,
+      desktopSettingsRefreshSessionMethod,
+      null,
+    );
+  } catch (_) {}
+}
+
+Future<void> requestMainWindowReopenOnboardingIfSupported() async {
+  if (!supportsDesktopSettingsWindow()) return;
+  try {
+    await DesktopMultiWindow.invokeMethod(
+      0,
+      desktopSettingsReopenOnboardingMethod,
       null,
     );
   } catch (_) {}

@@ -87,6 +87,9 @@ class SettingsScreen extends ConsumerWidget
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
+    final enableAppBarDragToMove = enableDragToMove || enableWindowsDragToMove;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
@@ -141,19 +144,18 @@ class SettingsScreen extends ConsumerWidget
         backgroundColor: bg,
         appBar: showAppBar
             ? AppBar(
+                flexibleSpace: enableAppBarDragToMove
+                    ? const DragToMoveArea(child: SizedBox.expand())
+                    : null,
                 leading: IconButton(
                   tooltip: context.t.strings.legacy.msg_close,
                   icon: const Icon(Icons.close),
                   onPressed: () => _close(context),
                 ),
-                title: enableDragToMove
-                    ? DragToMoveArea(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(context.t.strings.legacy.msg_settings),
-                        ),
-                      )
-                    : Text(context.t.strings.legacy.msg_settings),
+                title: IgnorePointer(
+                  ignoring: enableAppBarDragToMove,
+                  child: Text(context.t.strings.legacy.msg_settings),
+                ),
                 centerTitle: false,
                 elevation: 0,
                 scrolledUnderElevation: 0,

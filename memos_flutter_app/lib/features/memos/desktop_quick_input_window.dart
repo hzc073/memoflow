@@ -5,17 +5,26 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../i18n/strings.g.dart';
 import '../../core/desktop_shortcuts.dart';
 import '../../core/desktop_quick_input_channel.dart';
+import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
+import '../../data/location/location_geocoder.dart';
 import '../../data/location/device_location_service.dart';
+import '../../data/models/location_settings.dart';
 import '../../data/models/memo_location.dart';
+import '../../data/models/memo_template_settings.dart';
+import '../../state/location_settings_provider.dart';
+import '../../state/logging_provider.dart';
+import '../../state/memo_template_settings_provider.dart';
+import '../../state/network_log_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'compose_toolbar_shared.dart';
 import 'link_memo_sheet.dart';
@@ -39,27 +48,29 @@ class DesktopQuickInputWindowApp extends StatelessWidget {
   }
 }
 
-class DesktopQuickInputWindowScreen extends StatefulWidget {
+class DesktopQuickInputWindowScreen extends ConsumerStatefulWidget {
   const DesktopQuickInputWindowScreen({super.key, required this.windowId});
 
   final int windowId;
 
   @override
-  State<DesktopQuickInputWindowScreen> createState() =>
+  ConsumerState<DesktopQuickInputWindowScreen> createState() =>
       _DesktopQuickInputWindowScreenState();
 }
 
 class _DesktopQuickInputWindowScreenState
-    extends State<DesktopQuickInputWindowScreen> {
+    extends ConsumerState<DesktopQuickInputWindowScreen> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
   final _tagMenuKey = GlobalKey();
+  final _templateMenuKey = GlobalKey();
   final _todoMenuKey = GlobalKey();
   final _visibilityMenuKey = GlobalKey();
 
   final List<_PendingAttachment> _pendingAttachments = <_PendingAttachment>[];
   final List<_LinkedMemo> _linkedMemos = <_LinkedMemo>[];
   final _imagePicker = ImagePicker();
+  final _templateRenderer = MemoTemplateRenderer();
 
   bool _submitting = false;
   bool _moreToolbarOpen = false;
@@ -318,6 +329,14 @@ class _DesktopQuickInputWindowScreenState
     );
   }
 
+  void _replaceText(String value) {
+    _controller.value = _controller.value.copyWith(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+      composing: TextRange.empty,
+    );
+  }
+
   void _toggleBold() {
     final value = _controller.value;
     final selection = value.selection;
@@ -429,6 +448,65 @@ class _DesktopQuickInputWindowScreenState
         : selection;
     if (normalized.isEmpty) return;
     _insertText('$normalized ');
+  }
+
+  Future<void> _openTemplateMenuFromKey(
+    GlobalKey key,
+    List<MemoTemplate> templates,
+  ) async {
+    if (_submitting) return;
+    final target = key.currentContext;
+    if (target == null) return;
+
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final items = templates.isEmpty
+        ? const <PopupMenuEntry<String>>[
+            PopupMenuItem<String>(enabled: false, child: Text('暂无模板')),
+          ]
+        : templates
+              .map(
+                (template) => PopupMenuItem<String>(
+                  value: template.id,
+                  child: Text(template.name),
+                ),
+              )
+              .toList(growable: false);
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+
+    final selectedId = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      items: items,
+    );
+    if (!mounted || selectedId == null) return;
+    MemoTemplate? selected;
+    for (final item in templates) {
+      if (item.id == selectedId) {
+        selected = item;
+        break;
+      }
+    }
+    if (selected == null) return;
+    await _applyTemplate(selected);
+  }
+
+  Future<void> _applyTemplate(MemoTemplate template) async {
+    final templateSettings = ref.read(memoTemplateSettingsProvider);
+    final locationSettings = ref.read(locationSettingsProvider);
+    final rendered = await _templateRenderer.render(
+      templateContent: template.content,
+      variableSettings: templateSettings.variables,
+      locationSettings: locationSettings,
+    );
+    if (!mounted) return;
+    _replaceText(rendered);
   }
 
   bool _handleDesktopEditorShortcuts(KeyEvent event) {
@@ -1001,6 +1079,17 @@ class _DesktopQuickInputWindowScreenState
     }
   }
 
+  Future<LocationSettings> _resolveLocationSettings() async {
+    final current = ref.read(locationSettingsProvider);
+    if (current.enabled) return current;
+    final stored = await ref.read(locationSettingsRepositoryProvider).read();
+    if (!mounted) return stored;
+    await ref
+        .read(locationSettingsProvider.notifier)
+        .setAll(stored, triggerSync: false);
+    return stored;
+  }
+
   String _locationErrorText(Object error) {
     if (error is LocationException) {
       return switch (error.code) {
@@ -1022,8 +1111,24 @@ class _DesktopQuickInputWindowScreenState
     setState(() => _locating = true);
     try {
       final position = await DeviceLocationService().getCurrentPosition();
+      final settings = await _resolveLocationSettings();
+      String placeholder = '';
+      if (settings.enabled) {
+        final geocoder = LocationGeocoder(
+          logStore: ref.read(networkLogStoreProvider),
+          logBuffer: ref.read(networkLogBufferProvider),
+          logManager: ref.read(logManagerProvider),
+        );
+        placeholder =
+            await geocoder.reverseGeocode(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              settings: settings,
+            ) ??
+            '';
+      }
       final next = MemoLocation(
-        placeholder: '',
+        placeholder: placeholder,
         latitude: position.latitude,
         longitude: position.longitude,
       );
@@ -1131,6 +1236,10 @@ class _DesktopQuickInputWindowScreenState
 
     final (visibilityLabel, visibilityIcon, visibilityColor) =
         _visibilityStyle();
+    final templateSettings = ref.watch(memoTemplateSettingsProvider);
+    final availableTemplates = templateSettings.enabled
+        ? templateSettings.templates
+        : const <MemoTemplate>[];
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1322,12 +1431,22 @@ class _DesktopQuickInputWindowScreenState
                           visibilityIcon: visibilityIcon,
                           visibilityColor: visibilityColor,
                           tagButtonKey: _tagMenuKey,
+                          templateButtonKey: _templateMenuKey,
                           todoButtonKey: _todoMenuKey,
                           visibilityButtonKey: _visibilityMenuKey,
                           onTagPressed: () {
                             _closeMoreToolbar();
                             _insertText('#');
                             unawaited(_openTagMenuFromKey(_tagMenuKey));
+                          },
+                          onTemplatePressed: () {
+                            _closeMoreToolbar();
+                            unawaited(
+                              _openTemplateMenuFromKey(
+                                _templateMenuKey,
+                                availableTemplates,
+                              ),
+                            );
                           },
                           onAttachmentPressed: () {
                             _closeMoreToolbar();

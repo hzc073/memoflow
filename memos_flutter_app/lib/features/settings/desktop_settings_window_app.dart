@@ -148,10 +148,39 @@ class DesktopSettingsWindowApp extends ConsumerWidget {
             data: media.copyWith(
               textScaler: TextScaler.linear(_textScaleFor(prefs.fontSize)),
             ),
-            child: child ?? const SizedBox.shrink(),
+            child: _DesktopSettingsWindowFrame(
+              child: child ?? const SizedBox.shrink(),
+            ),
           );
         },
         home: DesktopSettingsWindowScreen(windowId: windowId),
+      ),
+    );
+  }
+}
+
+class _DesktopSettingsWindowFrame extends StatelessWidget {
+  const _DesktopSettingsWindowFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF171717) : const Color(0xFFF4F4F4);
+    final border = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE6E6E6);
+
+    return SafeArea(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bg,
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: child,
+        ),
       ),
     );
   }
@@ -173,6 +202,7 @@ class _DesktopSettingsWindowScreenState
   void initState() {
     super.initState();
     DesktopMultiWindow.setMethodHandler(_handleMethodCall);
+    unawaited(_reloadSessionFromStorage());
     unawaited(_initializeWindowManager());
   }
 
@@ -209,7 +239,18 @@ class _DesktopSettingsWindowScreenState
       await _bringWindowToFront();
       return true;
     }
+    if (call.method == desktopSettingsRefreshSessionMethod) {
+      await _reloadSessionFromStorage();
+      return true;
+    }
     return null;
+  }
+
+  Future<void> _reloadSessionFromStorage() async {
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      await container.read(appSessionProvider.notifier).reloadFromStorage();
+    } catch (_) {}
   }
 
   Future<void> _bringWindowToFront() async {
@@ -247,28 +288,9 @@ class _DesktopSettingsWindowScreenState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF171717) : const Color(0xFFF4F4F4);
-    final border = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE6E6E6);
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border.all(color: border),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: SettingsScreen(
-              onRequestClose: () => unawaited(_closeWindow()),
-              enableDragToMove: true,
-            ),
-          ),
-        ),
-      ),
+    return SettingsScreen(
+      onRequestClose: () => unawaited(_closeWindow()),
+      enableDragToMove: true,
     );
   }
 }

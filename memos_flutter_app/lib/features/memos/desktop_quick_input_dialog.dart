@@ -1,6 +1,12 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class DesktopQuickInputDialog extends StatefulWidget {
+import '../../core/memo_template_renderer.dart';
+import '../../data/models/memo_template_settings.dart';
+import '../../state/location_settings_provider.dart';
+import '../../state/memo_template_settings_provider.dart';
+
+class DesktopQuickInputDialog extends ConsumerStatefulWidget {
   const DesktopQuickInputDialog({
     super.key,
     this.initialText,
@@ -31,13 +37,16 @@ class DesktopQuickInputDialog extends StatefulWidget {
   }
 
   @override
-  State<DesktopQuickInputDialog> createState() =>
+  ConsumerState<DesktopQuickInputDialog> createState() =>
       _DesktopQuickInputDialogState();
 }
 
-class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
+class _DesktopQuickInputDialogState
+    extends ConsumerState<DesktopQuickInputDialog> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  final _templateMenuKey = GlobalKey();
+  final _templateRenderer = MemoTemplateRenderer();
 
   @override
   void initState() {
@@ -69,6 +78,14 @@ class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
     );
   }
 
+  void _replaceText(String value) {
+    _controller.value = _controller.value.copyWith(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+      composing: TextRange.empty,
+    );
+  }
+
   void _toggleBold() {
     final value = _controller.value;
     final selection = value.selection;
@@ -96,8 +113,68 @@ class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
     Navigator.of(context).pop(content);
   }
 
+  Future<void> _openTemplateMenuFromKey(
+    GlobalKey key,
+    List<MemoTemplate> templates,
+  ) async {
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final items = templates.isEmpty
+        ? const <PopupMenuEntry<String>>[
+            PopupMenuItem<String>(enabled: false, child: Text('暂无模板')),
+          ]
+        : templates
+              .map(
+                (template) => PopupMenuItem<String>(
+                  value: template.id,
+                  child: Text(template.name),
+                ),
+              )
+              .toList(growable: false);
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    final selectedId = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      items: items,
+    );
+    if (!mounted || selectedId == null) return;
+    MemoTemplate? selected;
+    for (final item in templates) {
+      if (item.id == selectedId) {
+        selected = item;
+        break;
+      }
+    }
+    if (selected == null) return;
+    await _applyTemplate(selected);
+  }
+
+  Future<void> _applyTemplate(MemoTemplate template) async {
+    final templateSettings = ref.read(memoTemplateSettingsProvider);
+    final locationSettings = ref.read(locationSettingsProvider);
+    final rendered = await _templateRenderer.render(
+      templateContent: template.content,
+      variableSettings: templateSettings.variables,
+      locationSettings: locationSettings,
+    );
+    if (!mounted) return;
+    _replaceText(rendered);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final templateSettings = ref.watch(memoTemplateSettingsProvider);
+    final availableTemplates = templateSettings.enabled
+        ? templateSettings.templates
+        : const <MemoTemplate>[];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF171717) : const Color(0xFFF4F4F4);
     final border = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE6E6E6);
@@ -133,12 +210,12 @@ class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
                     ),
                     const Spacer(),
                     IconButton(
-                      tooltip: '置顶（预留）',
+                      tooltip: '缃《锛堥鐣欙級',
                       onPressed: null,
                       icon: Icon(Icons.push_pin_outlined, color: textMuted),
                     ),
                     IconButton(
-                      tooltip: '关闭',
+                      tooltip: '鍏抽棴',
                       onPressed: () => Navigator.of(context).maybePop(),
                       icon: Icon(Icons.close, color: textMuted),
                     ),
@@ -161,7 +238,7 @@ class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
                       height: 1.45,
                     ),
                     decoration: InputDecoration(
-                      hintText: '现在的想法是...',
+                      hintText: '鐜板湪鐨勬兂娉曟槸...',
                       hintStyle: TextStyle(color: textMuted),
                       border: InputBorder.none,
                     ),
@@ -175,32 +252,41 @@ class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
                 child: Row(
                   children: [
                     _ToolbarButton(
-                      tooltip: '标签',
+                      tooltip: '鏍囩',
                       onTap: () => _insertText('#'),
                       icon: Icons.tag_outlined,
                     ),
                     _ToolbarButton(
-                      tooltip: '图片',
+                      buttonKey: _templateMenuKey,
+                      tooltip: '模板',
+                      onTap: () => _openTemplateMenuFromKey(
+                        _templateMenuKey,
+                        availableTemplates,
+                      ),
+                      icon: Icons.description_outlined,
+                    ),
+                    _ToolbarButton(
+                      tooltip: '鍥剧墖',
                       onTap: widget.onImagePressed,
                       icon: Icons.image_outlined,
                     ),
                     _ToolbarButton(
-                      tooltip: '加粗',
+                      tooltip: '鍔犵矖',
                       onTap: _toggleBold,
                       icon: Icons.text_fields,
                     ),
                     _ToolbarButton(
-                      tooltip: '无序列表',
+                      tooltip: '鏃犲簭鍒楄〃',
                       onTap: () => _insertText('- '),
                       icon: Icons.format_list_bulleted,
                     ),
                     _ToolbarButton(
-                      tooltip: '有序列表',
+                      tooltip: '鏈夊簭鍒楄〃',
                       onTap: () => _insertText('1. '),
                       icon: Icons.format_list_numbered,
                     ),
                     _ToolbarButton(
-                      tooltip: '关联',
+                      tooltip: '鍏宠仈',
                       onTap: () => _insertText('@'),
                       icon: Icons.alternate_email_rounded,
                     ),
@@ -228,11 +314,13 @@ class _DesktopQuickInputDialogState extends State<DesktopQuickInputDialog> {
 
 class _ToolbarButton extends StatelessWidget {
   const _ToolbarButton({
+    this.buttonKey,
     required this.tooltip,
     required this.icon,
     required this.onTap,
   });
 
+  final Key? buttonKey;
   final String tooltip;
   final IconData icon;
   final VoidCallback? onTap;
@@ -242,6 +330,7 @@ class _ToolbarButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = isDark ? const Color(0xFFACACAC) : const Color(0xFF9C9C9C);
     return IconButton(
+      key: buttonKey,
       tooltip: tooltip,
       onPressed: onTap,
       icon: Icon(icon, color: color, size: 22),

@@ -111,6 +111,8 @@ jobs:
         with:
           artifacts: "memos_flutter_app/build/app/outputs/**/MemoFlow_v*-release.apk"
           token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          replacesArtifacts: true
           generateReleaseNotes: true
 
       - name: Trigger CF announcement update

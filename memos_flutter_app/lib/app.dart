@@ -552,6 +552,63 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  Future<bool> _focusDesktopSubWindowById(int windowId) async {
+    try {
+      await WindowController.fromWindowId(windowId).show();
+    } catch (_) {}
+
+    if (_desktopQuickInputWindowId == windowId) {
+      try {
+        await DesktopMultiWindow.invokeMethod(
+          windowId,
+          desktopQuickInputFocusMethod,
+          null,
+        );
+        return true;
+      } catch (_) {}
+      try {
+        await DesktopMultiWindow.invokeMethod(
+          windowId,
+          desktopSettingsFocusMethod,
+          null,
+        );
+        return true;
+      } catch (_) {}
+      return false;
+    }
+
+    try {
+      await DesktopMultiWindow.invokeMethod(
+        windowId,
+        desktopSettingsFocusMethod,
+        null,
+      );
+      return true;
+    } catch (_) {}
+    try {
+      await DesktopMultiWindow.invokeMethod(
+        windowId,
+        desktopQuickInputFocusMethod,
+        null,
+      );
+      return true;
+    } catch (_) {}
+    return false;
+  }
+
+  Future<void> _focusVisibleDesktopSubWindow() async {
+    if (!_shouldBlurDesktopMainWindow || _desktopVisibleSubWindowIds.isEmpty) {
+      return;
+    }
+    final candidateIds = _desktopVisibleSubWindowIds.toList(growable: false)
+      ..sort((a, b) => b.compareTo(a));
+    for (final id in candidateIds) {
+      final focused = await _focusDesktopSubWindowById(id);
+      if (focused) return;
+      _setDesktopSubWindowVisibility(windowId: id, visible: false);
+    }
+  }
+
   BuildContext? _resolveDesktopUiContext() {
     final direct = _navigatorKey.currentContext;
     if (direct != null && direct.mounted) return direct;
@@ -778,6 +835,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           windowId: fromWindowId,
           visible: visible ?? true,
         );
+        return true;
+      case desktopSettingsReopenOnboardingMethod:
+        ref.read(appPreferencesProvider.notifier).setHasSelectedLanguage(false);
+        final navigator = _navigatorKey.currentState;
+        if (navigator != null) {
+          navigator.pushNamedAndRemoveUntil('/', (route) => false);
+        }
         return true;
       case desktopQuickInputPingMethod:
         return true;
@@ -1710,13 +1774,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
             fit: StackFit.expand,
             children: [
               appContent,
-              IgnorePointer(
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: ColoredBox(color: overlayColor),
-                  ),
+              ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: ColoredBox(color: overlayColor),
                 ),
+              ),
+              Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) {
+                  unawaited(_focusVisibleDesktopSubWindow());
+                },
+                child: ClipRect(child: ColoredBox(color: Colors.transparent)),
               ),
             ],
           );
