@@ -6,9 +6,12 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
 import '../../state/database_provider.dart';
 import '../../state/logging_provider.dart';
+import '../../state/local_sync_controller.dart';
+import '../../state/memoflow_bridge_settings_provider.dart';
 import '../../state/memos_providers.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -33,6 +36,8 @@ final _syncQueueProvider = StreamProvider<List<_SyncQueueItem>>((ref) async* {
     yield await load();
   }
 });
+
+final _bridgeBulkPushRunningProvider = StateProvider<bool>((ref) => false);
 
 class _SyncQueueItem {
   const _SyncQueueItem({
@@ -295,6 +300,68 @@ class SyncQueueScreen extends ConsumerWidget {
     await ref.read(syncControllerProvider.notifier).syncNow();
   }
 
+  Future<void> _pushAllToBridge(BuildContext context, WidgetRef ref) async {
+    final tr = context.t.strings.legacy;
+    final syncController = ref.read(syncControllerProvider.notifier);
+    if (syncController is! LocalSyncController) {
+      showTopToast(context, tr.msg_bridge_local_mode_only);
+      return;
+    }
+
+    final settings = ref.read(memoFlowBridgeSettingsProvider);
+    if (!settings.enabled) {
+      showTopToast(context, '请先启用同步桥。');
+      return;
+    }
+    if (!settings.isPaired) {
+      showTopToast(context, tr.msg_bridge_need_pair_first);
+      return;
+    }
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('同步到 Obsidian'),
+            content: const Text(
+              '将当前本地库中的全部 memo（含附件）一次性同步到已配对的 Obsidian，是否继续？',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => context.safePop(false),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
+              ),
+              FilledButton(
+                onPressed: () => context.safePop(true),
+                child: Text(context.t.strings.legacy.msg_continue),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
+
+    if (ref.read(_bridgeBulkPushRunningProvider)) return;
+    ref.read(_bridgeBulkPushRunningProvider.notifier).state = true;
+    try {
+      final result = await syncController.pushAllMemosToBridge(
+        includeArchived: true,
+      );
+      if (!context.mounted) return;
+      showTopToast(
+        context,
+        '同步完成：成功 ${result.succeeded}/${result.total}，失败 ${result.failed}。',
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      showTopToast(context, '同步失败：$e');
+    } finally {
+      if (context.mounted) {
+        ref.read(_bridgeBulkPushRunningProvider.notifier).state = false;
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -316,6 +383,15 @@ class SyncQueueScreen extends ConsumerWidget {
     final queueProgress = ref.watch(syncQueueProgressTrackerProvider).snapshot;
     final syncing =
         ref.watch(syncControllerProvider).isLoading || queueProgress.syncing;
+    final bridgeBulkPushing = ref.watch(_bridgeBulkPushRunningProvider);
+    final currentSyncController = ref.watch(syncControllerProvider.notifier);
+    final bridgeSettings = ref.watch(memoFlowBridgeSettingsProvider);
+    final canPushToBridge =
+        !syncing &&
+        !bridgeBulkPushing &&
+        currentSyncController is LocalSyncController &&
+        bridgeSettings.enabled &&
+        bridgeSettings.isPaired;
     final syncSnapshot = ref.watch(syncStatusTrackerProvider).snapshot;
     int? firstPendingId;
     final itemIds = <int>{};
@@ -360,7 +436,9 @@ class SyncQueueScreen extends ConsumerWidget {
           actions: [
             IconButton(
               tooltip: context.t.strings.legacy.msg_sync,
-              onPressed: syncing ? null : () => _syncAll(ref),
+              onPressed: (syncing || bridgeBulkPushing)
+                  ? null
+                  : () => _syncAll(ref),
               icon: const Icon(Icons.sync),
             ),
           ],
@@ -409,7 +487,9 @@ class SyncQueueScreen extends ConsumerWidget {
                         activeOutboxId: activeOutboxId,
                         activeProgress: queueProgress.currentProgress,
                         onDelete: () => _confirmDelete(context, ref, item),
-                        onSync: syncing ? null : () => _syncAll(ref),
+                        onSync: (syncing || bridgeBulkPushing)
+                            ? null
+                            : () => _syncAll(ref),
                       ),
                     );
                   }),
@@ -426,26 +506,58 @@ class SyncQueueScreen extends ConsumerWidget {
         ),
         bottomNavigationBar: SafeArea(
           minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: FilledButton.icon(
-            onPressed: (items.isEmpty || syncing) ? null : () => _syncAll(ref),
-            icon: syncing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync),
-            label: Text(
-              syncing
-                  ? context.t.strings.legacy.msg_syncing
-                  : context.t.strings.legacy.msg_sync_all,
-            ),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: canPushToBridge
+                      ? () => _pushAllToBridge(context, ref)
+                      : null,
+                  icon: bridgeBulkPushing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text(
+                    bridgeBulkPushing ? '同步到 Obsidian 中...' : '同步到 Obsidian',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: (items.isEmpty || syncing || bridgeBulkPushing)
+                      ? null
+                      : () => _syncAll(ref),
+                  icon: syncing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync),
+                  label: Text(
+                    syncing
+                        ? context.t.strings.legacy.msg_syncing
+                        : context.t.strings.legacy.msg_sync_all,
+                  ),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

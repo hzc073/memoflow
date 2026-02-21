@@ -21,13 +21,10 @@ bool _supportsBridgeQrScannerOnCurrentPlatform() {
   return Platform.isAndroid || Platform.isIOS;
 }
 
-void _showBridgeQrUnsupportedSnack(BuildContext context) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text(
-        'QR scan is not supported on this platform. Please pair manually with Host, Port, and Pair Code.',
-      ),
-    ),
+void _showBridgeQrUnsupportedNotice(BuildContext context) {
+  showTopToast(
+    context,
+    'QR scan is not supported on this platform. Please pair manually with Host, Port, and Pair Code.',
   );
 }
 
@@ -36,7 +33,7 @@ Future<void> startMemoFlowQuickQrPair({
   required WidgetRef ref,
 }) async {
   if (!_supportsBridgeQrScannerOnCurrentPlatform()) {
-    _showBridgeQrUnsupportedSnack(context);
+    _showBridgeQrUnsupportedNotice(context);
     return;
   }
   final tr = context.t.strings.legacy;
@@ -48,9 +45,7 @@ Future<void> startMemoFlowQuickQrPair({
   final payload = _PairingPayload.tryParse(raw);
   if (payload == null) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(tr.msg_bridge_qr_invalid)));
+    showTopToast(context, tr.msg_bridge_qr_invalid);
     return;
   }
 
@@ -98,9 +93,7 @@ Future<void> startMemoFlowQuickQrPair({
     showTopToast(context, tr.msg_bridge_pair_success);
   } catch (e) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(tr.msg_bridge_pair_failed(e: e))));
+    showTopToast(context, tr.msg_bridge_pair_failed(e: e));
   }
 }
 
@@ -271,7 +264,7 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
   Future<void> _scanQrAndPair() async {
     FocusScope.of(context).unfocus();
     if (!_supportsBridgeQrScannerOnCurrentPlatform()) {
-      _showBridgeQrUnsupportedSnack(context);
+      _showBridgeQrUnsupportedNotice(context);
       return;
     }
     final raw = await Navigator.of(context).push<String>(
@@ -284,9 +277,7 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
     final payload = _PairingPayload.tryParse(raw);
     final tr = context.t.strings.legacy;
     if (payload == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(tr.msg_bridge_qr_invalid)));
+      showTopToast(context, tr.msg_bridge_qr_invalid);
       return;
     }
 
@@ -310,21 +301,15 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
     final pairCode = _pairCodeController.text.trim();
 
     if (host.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr.msg_bridge_input_host_required)),
-      );
+      showTopToast(context, tr.msg_bridge_input_host_required);
       return;
     }
     if (port == null || port <= 0 || port > 65535) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(tr.msg_bridge_input_port_invalid)));
+      showTopToast(context, tr.msg_bridge_input_port_invalid);
       return;
     }
     if (pairCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr.msg_bridge_input_pair_code_required)),
-      );
+      showTopToast(context, tr.msg_bridge_input_pair_code_required);
       return;
     }
 
@@ -401,9 +386,7 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
       setState(() {
         _statusMessage = tr.msg_bridge_pair_failed(e: e);
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(tr.msg_bridge_pair_failed(e: e))));
+      showTopToast(context, tr.msg_bridge_pair_failed(e: e));
     } finally {
       if (mounted) {
         setState(() => _pairing = false);
@@ -415,9 +398,7 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
     if (_checkingHealth) return;
     final tr = context.t.strings.legacy;
     if (!settings.isPaired) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(tr.msg_bridge_need_pair_first)));
+      showTopToast(context, tr.msg_bridge_need_pair_first);
       return;
     }
 
@@ -453,9 +434,7 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
       setState(() {
         _statusMessage = tr.msg_bridge_status_health_failed(e: e);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr.msg_bridge_status_health_failed(e: e))),
-      );
+      showTopToast(context, tr.msg_bridge_status_health_failed(e: e));
     } finally {
       if (mounted) {
         setState(() => _checkingHealth = false);

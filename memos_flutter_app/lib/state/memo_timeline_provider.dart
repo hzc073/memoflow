@@ -142,6 +142,8 @@ class MemoTimelineService {
     }
     final current = LocalMemo.fromDb(row);
     await captureMemoVersion(current);
+    // Overwrite semantics: discard pending sync ops for this memo first.
+    await db.deleteOutboxForMemo(current.uid);
 
     final payloadMemo = _payloadMemo(version.payload);
     final restoredContent = (payloadMemo['content'] as String?) ?? '';
@@ -188,7 +190,7 @@ class MemoTimelineService {
       },
     );
 
-    if (hasPendingAttachments && current.attachments.isNotEmpty) {
+    if (current.attachments.isNotEmpty) {
       await _enqueueDeleteAttachments(
         memoUid: current.uid,
         attachments: current.attachments,
@@ -766,6 +768,14 @@ class MemoTimelineService {
       if (uri == null) return null;
       return uri.toFilePath();
     }
+    final parsed = Uri.tryParse(trimmed);
+    if (parsed != null && parsed.hasScheme) {
+      final scheme = parsed.scheme.toLowerCase();
+      final looksLikeWindowsDrive = scheme.length == 1;
+      if (!looksLikeWindowsDrive && scheme != 'file') {
+        return null;
+      }
+    }
     if (trimmed.startsWith('/')) {
       if (_looksLikeServerRelativePath(trimmed)) {
         return null;
@@ -778,7 +788,16 @@ class MemoTimelineService {
 
   bool _looksLikeServerRelativePath(String rawPath) {
     final normalized = rawPath.trim().toLowerCase();
+    // v0.21 resource binary route: /o/r/{uid}
     if (normalized.startsWith('/o/r/')) return true;
+    // v0.22-v0.24 resource binary route: /file/resources/{id}[/{filename}]
+    if (RegExp(r'^/file/resources/\d+($|[/?#])').hasMatch(normalized)) {
+      return true;
+    }
+    // v0.25+ attachment binary route: /file/attachments/{uid}/{filename}
+    if (RegExp(r'^/file/attachments/[^/?#]+($|[/?#])').hasMatch(normalized)) {
+      return true;
+    }
     return false;
   }
 

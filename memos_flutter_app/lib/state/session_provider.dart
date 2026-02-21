@@ -73,6 +73,8 @@ abstract class AppSessionController
 
   Future<void> removeAccount(String accountKey);
 
+  Future<void> reloadFromStorage();
+
   Future<void> refreshCurrentUser({bool ignoreErrors = true});
 
   bool resolveUseLegacyApiForAccount({
@@ -137,6 +139,11 @@ class AppSessionNotifier extends AppSessionController {
         AppSessionState(accounts: [], currentKey: null),
       );
     }
+  }
+
+  @override
+  Future<void> reloadFromStorage() async {
+    await _loadFromStorage();
   }
 
   Future<AppSessionState> _upsertAccount({
@@ -322,14 +329,23 @@ class AppSessionNotifier extends AppSessionController {
         const AppSessionState(accounts: [], currentKey: null);
     final key = workspaceKey.trim();
     if (key.isEmpty) return;
+    final next = AppSessionState(accounts: current.accounts, currentKey: key);
 
-    state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
-    state = await AsyncValue.guard(() async {
+    // Optimistically switch workspace in memory first so local mode can start
+    // even if secure storage is temporarily unavailable.
+    state = AsyncValue.data(next);
+    try {
       await _accountsRepository.write(
         AccountsState(accounts: current.accounts, currentKey: key),
       );
-      return AppSessionState(accounts: current.accounts, currentKey: key);
-    });
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'Failed to persist workspace switch. Keeping in-memory session state.',
+        error: error,
+        stackTrace: stackTrace,
+        context: {'workspaceKey': key},
+      );
+    }
   }
 
   @override

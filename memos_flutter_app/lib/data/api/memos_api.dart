@@ -2641,6 +2641,7 @@ class MemosApi {
     required bool pinned,
     MemoLocation? location,
   }) async {
+    final supportsLocation = _supportsMemoLocationField();
     final response = await _dio.post(
       'api/v1/memos',
       queryParameters: <String, Object?>{'memoId': memoId},
@@ -2648,7 +2649,7 @@ class MemosApi {
         'content': content,
         'visibility': visibility,
         'pinned': pinned,
-        if (location != null) 'location': location.toJson(),
+        if (supportsLocation && location != null) 'location': location.toJson(),
       },
     );
     return _memoFromJson(_expectJsonMap(response.data));
@@ -2732,13 +2733,19 @@ class MemosApi {
       updateMask.add(_displayTimeUpdateMaskField());
       data['displayTime'] = displayTime.toUtc().toIso8601String();
     }
-    if (!identical(location, _unset)) {
+    final supportsLocation = _supportsMemoLocationField();
+    final locationRequested = !identical(location, _unset);
+    if (locationRequested && supportsLocation) {
       updateMask.add('location');
       data['location'] = location == null
           ? null
           : (location as MemoLocation).toJson();
     }
+    final droppedUnsupportedLocation = locationRequested && !supportsLocation;
     if (updateMask.isEmpty) {
+      if (droppedUnsupportedLocation) {
+        return getMemo(memoUid: memoUid);
+      }
       throw ArgumentError('updateMemo requires at least one field');
     }
 
@@ -2770,6 +2777,11 @@ class MemosApi {
       return 'display_ts';
     }
     return 'display_time';
+  }
+
+  bool _supportsMemoLocationField() {
+    return _serverFlavor != _ServerApiFlavor.v0_22 &&
+        _serverFlavor != _ServerApiFlavor.v0_21;
   }
 
   String? _mergeLegacyRowStatusFilter({

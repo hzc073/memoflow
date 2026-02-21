@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/location_settings.dart';
 import '../../state/location_settings_provider.dart';
@@ -11,12 +10,16 @@ class LocationSettingsScreen extends ConsumerStatefulWidget {
   const LocationSettingsScreen({super.key});
 
   @override
-  ConsumerState<LocationSettingsScreen> createState() => _LocationSettingsScreenState();
+  ConsumerState<LocationSettingsScreen> createState() =>
+      _LocationSettingsScreenState();
 }
 
-class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen> {
+class _LocationSettingsScreenState
+    extends ConsumerState<LocationSettingsScreen> {
   final _webKeyController = TextEditingController();
   final _securityKeyController = TextEditingController();
+  final _baiduWebKeyController = TextEditingController();
+  final _googleApiKeyController = TextEditingController();
   ProviderSubscription<LocationSettings>? _settingsSubscription;
   var _dirty = false;
 
@@ -25,10 +28,13 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
     super.initState();
     final settings = ref.read(locationSettingsProvider);
     _applySettings(settings);
-    _settingsSubscription = ref.listenManual<LocationSettings>(locationSettingsProvider, (prev, next) {
-      if (_dirty || !mounted) return;
-      _applySettings(next);
-    });
+    _settingsSubscription = ref.listenManual<LocationSettings>(
+      locationSettingsProvider,
+      (prev, next) {
+        if (_dirty || !mounted) return;
+        _applySettings(next);
+      },
+    );
   }
 
   @override
@@ -36,12 +42,16 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
     _settingsSubscription?.close();
     _webKeyController.dispose();
     _securityKeyController.dispose();
+    _baiduWebKeyController.dispose();
+    _googleApiKeyController.dispose();
     super.dispose();
   }
 
   void _applySettings(LocationSettings settings) {
     _webKeyController.text = settings.amapWebKey;
     _securityKeyController.text = settings.amapSecurityKey;
+    _baiduWebKeyController.text = settings.baiduWebKey;
+    _googleApiKeyController.text = settings.googleApiKey;
     setState(() {});
   }
 
@@ -54,11 +64,17 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
   Widget build(BuildContext context) {
     final settings = ref.watch(locationSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Scaffold(
       backgroundColor: bg,
@@ -84,11 +100,7 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -101,42 +113,102 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                 textMain: textMain,
                 textMuted: textMuted,
                 label: context.t.strings.legacy.msg_enable_memo_location,
-                description: context.t.strings.legacy.msg_show_location_metadata_memos_not_configured,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_show_location_metadata_memos_not_configured,
                 value: settings.enabled,
-                onChanged: (value) => ref.read(locationSettingsProvider.notifier).setEnabled(value),
+                onChanged: (value) => ref
+                    .read(locationSettingsProvider.notifier)
+                    .setEnabled(value),
               ),
               const SizedBox(height: 16),
               Text(
-                context.t.strings.legacy.msg_amap_web_api,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                context.t.strings.legacy.msg_provider,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textMuted,
+                ),
               ),
               const SizedBox(height: 10),
               _Group(
                 card: card,
                 divider: divider,
                 children: [
-                  _InputRow(
-                    label: context.t.strings.legacy.msg_web_api_key,
-                    hint: context.t.strings.legacy.msg_enter_amap_web_api_key,
-                    controller: _webKeyController,
+                  _ProviderRow(
+                    label: context.t.strings.legacy.msg_provider,
+                    value: settings.provider,
                     textMain: textMain,
                     textMuted: textMuted,
-                    onChanged: (v) {
+                    onChanged: (value) {
                       _markDirty();
-                      ref.read(locationSettingsProvider.notifier).setAmapWebKey(v);
+                      ref
+                          .read(locationSettingsProvider.notifier)
+                          .setProvider(value);
                     },
                   ),
-                  _InputRow(
-                    label: context.t.strings.legacy.msg_security_key_sig,
-                    hint: context.t.strings.legacy.msg_optional_used_sign_requests,
-                    controller: _securityKeyController,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onChanged: (v) {
-                      _markDirty();
-                      ref.read(locationSettingsProvider.notifier).setAmapSecurityKey(v);
-                    },
-                  ),
+                  if (settings.provider == LocationServiceProvider.amap) ...[
+                    _InputRow(
+                      label: context.t.strings.legacy.msg_web_api_key,
+                      hint: context.t.strings.legacy.msg_enter_amap_web_api_key,
+                      controller: _webKeyController,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onChanged: (v) {
+                        _markDirty();
+                        ref
+                            .read(locationSettingsProvider.notifier)
+                            .setAmapWebKey(v);
+                      },
+                    ),
+                    _InputRow(
+                      label: context.t.strings.legacy.msg_security_key_sig,
+                      hint: context
+                          .t
+                          .strings
+                          .legacy
+                          .msg_optional_used_sign_requests,
+                      controller: _securityKeyController,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onChanged: (v) {
+                        _markDirty();
+                        ref
+                            .read(locationSettingsProvider.notifier)
+                            .setAmapSecurityKey(v);
+                      },
+                    ),
+                  ],
+                  if (settings.provider == LocationServiceProvider.baidu)
+                    _InputRow(
+                      label: 'Baidu AK',
+                      hint: 'Enter your Baidu AK',
+                      controller: _baiduWebKeyController,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onChanged: (v) {
+                        _markDirty();
+                        ref
+                            .read(locationSettingsProvider.notifier)
+                            .setBaiduWebKey(v);
+                      },
+                    ),
+                  if (settings.provider == LocationServiceProvider.google)
+                    _InputRow(
+                      label: 'Google API Key',
+                      hint: 'Enter your Google Maps API Key',
+                      controller: _googleApiKeyController,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onChanged: (v) {
+                        _markDirty();
+                        ref
+                            .read(locationSettingsProvider.notifier)
+                            .setGoogleApiKey(v);
+                      },
+                    ),
                   _PrecisionRow(
                     label: context.t.strings.legacy.msg_location_precision,
                     value: settings.precision,
@@ -144,14 +216,20 @@ class _LocationSettingsScreenState extends ConsumerState<LocationSettingsScreen>
                     textMuted: textMuted,
                     onChanged: (value) {
                       _markDirty();
-                      ref.read(locationSettingsProvider.notifier).setPrecision(value);
+                      ref
+                          .read(locationSettingsProvider.notifier)
+                          .setPrecision(value);
                     },
                   ),
                 ],
               ),
               const SizedBox(height: 10),
               Text(
-                context.t.strings.legacy.msg_memoflow_uses_system_location_permission_get,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_memoflow_uses_system_location_permission_get,
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
             ],
@@ -244,7 +322,15 @@ class _ToggleCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain))),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
+              ),
               Switch(value: value, onChanged: onChanged),
             ],
           ),
@@ -256,6 +342,75 @@ class _ToggleCard extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProviderRow extends StatelessWidget {
+  const _ProviderRow({
+    required this.label,
+    required this.value,
+    required this.textMain,
+    required this.textMuted,
+    required this.onChanged,
+  });
+
+  final String label;
+  final LocationServiceProvider value;
+  final Color textMain;
+  final Color textMuted;
+  final ValueChanged<LocationServiceProvider> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = <(LocationServiceProvider, String)>[
+      (LocationServiceProvider.amap, context.t.strings.legacy.msg_amap_web_api),
+      (LocationServiceProvider.baidu, 'Baidu Map API'),
+      (LocationServiceProvider.google, 'Google Maps API'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textMuted,
+            ),
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<LocationServiceProvider>(
+              value: value,
+              isExpanded: true,
+              iconEnabledColor: textMuted,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+              items: options
+                  .map(
+                    (option) => DropdownMenuItem<LocationServiceProvider>(
+                      value: option.$1,
+                      child: Text(
+                        option.$2,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: textMain,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (next) {
+                if (next == null) return;
+                onChanged(next);
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -286,7 +441,14 @@ class _InputRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textMuted,
+            ),
+          ),
           const SizedBox(height: 6),
           TextField(
             controller: controller,
@@ -323,7 +485,9 @@ class _PrecisionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final chipBg = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final chipBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
     final options = <(LocationPrecision, String)>[
       (LocationPrecision.province, context.t.strings.legacy.msg_province),
       (LocationPrecision.city, context.t.strings.legacy.msg_city),
@@ -336,19 +500,20 @@ class _PrecisionRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textMuted,
+            ),
+          ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: options
-                .map(
-                  (option) => _buildChip(
-                    option.$1,
-                    option.$2,
-                    chipBg,
-                  ),
-                )
+                .map((option) => _buildChip(option.$1, option.$2, chipBg))
                 .toList(growable: false),
           ),
         ],

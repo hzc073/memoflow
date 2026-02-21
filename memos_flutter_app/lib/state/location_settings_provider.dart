@@ -51,12 +51,24 @@ class LocationSettingsController extends StateNotifier<LocationSettings> {
 
   void setEnabled(bool value) => _setAndPersist(state.copyWith(enabled: value));
 
+  void setProvider(LocationServiceProvider value) {
+    _setAndPersist(state.copyWith(provider: value));
+  }
+
   void setAmapWebKey(String value) {
     _setAndPersist(state.copyWith(amapWebKey: value.trim()));
   }
 
   void setAmapSecurityKey(String value) {
     _setAndPersist(state.copyWith(amapSecurityKey: value.trim()));
+  }
+
+  void setBaiduWebKey(String value) {
+    _setAndPersist(state.copyWith(baiduWebKey: value.trim()));
+  }
+
+  void setGoogleApiKey(String value) {
+    _setAndPersist(state.copyWith(googleApiKey: value.trim()));
   }
 
   void setPrecision(LocationPrecision value) {

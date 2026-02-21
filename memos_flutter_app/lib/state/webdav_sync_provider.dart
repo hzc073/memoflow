@@ -16,11 +16,13 @@ import '../data/settings/webdav_sync_state_repository.dart';
 import '../data/webdav/webdav_client.dart';
 import '../data/models/image_bed_settings.dart';
 import '../data/models/location_settings.dart';
+import '../data/models/memo_template_settings.dart';
 import '../data/settings/webdav_device_id_repository.dart';
 import 'ai_settings_provider.dart';
 import 'app_lock_provider.dart';
 import 'image_bed_settings_provider.dart';
 import 'location_settings_provider.dart';
+import 'memo_template_settings_provider.dart';
 import 'note_draft_provider.dart';
 import 'preferences_provider.dart';
 import 'reminder_settings_provider.dart';
@@ -36,22 +38,35 @@ const _webDavDraftFile = 'note_draft.json';
 const _webDavReminderFile = 'reminder_settings.json';
 const _webDavImageBedFile = 'image_bed.json';
 const _webDavLocationFile = 'location_settings.json';
+const _webDavTemplateFile = 'template_settings.json';
 
-final webDavSyncStateRepositoryProvider = Provider<WebDavSyncStateRepository>((ref) {
-  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
-  return WebDavSyncStateRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
-});
-
-final webDavSyncControllerProvider = StateNotifierProvider<WebDavSyncController, WebDavSyncStatus>((ref) {
-  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
-  return WebDavSyncController(
-    ref,
+final webDavSyncStateRepositoryProvider = Provider<WebDavSyncStateRepository>((
+  ref,
+) {
+  final accountKey = ref.watch(
+    appSessionProvider.select((state) => state.valueOrNull?.currentKey),
+  );
+  return WebDavSyncStateRepository(
+    ref.watch(secureStorageProvider),
     accountKey: accountKey,
-    syncStateRepository: ref.watch(webDavSyncStateRepositoryProvider),
   );
 });
 
-final webDavDeviceIdRepositoryProvider = Provider<WebDavDeviceIdRepository>((ref) {
+final webDavSyncControllerProvider =
+    StateNotifierProvider<WebDavSyncController, WebDavSyncStatus>((ref) {
+      final accountKey = ref.watch(
+        appSessionProvider.select((state) => state.valueOrNull?.currentKey),
+      );
+      return WebDavSyncController(
+        ref,
+        accountKey: accountKey,
+        syncStateRepository: ref.watch(webDavSyncStateRepositoryProvider),
+      );
+    });
+
+final webDavDeviceIdRepositoryProvider = Provider<WebDavDeviceIdRepository>((
+  ref,
+) {
   return WebDavDeviceIdRepository(ref.watch(secureStorageProvider));
 });
 
@@ -95,9 +110,9 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     this._ref, {
     required String? accountKey,
     required WebDavSyncStateRepository syncStateRepository,
-  })  : _accountKey = accountKey,
-        _syncStateRepository = syncStateRepository,
-        super(WebDavSyncStatus.initial) {
+  }) : _accountKey = accountKey,
+       _syncStateRepository = syncStateRepository,
+       super(WebDavSyncStatus.initial) {
     _ref.listen<int>(webDavSyncTriggerProvider, (prev, next) {
       if (prev == next) return;
       scheduleAutoSync();
@@ -128,7 +143,9 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     if (state.syncing) return;
     final settings = _ref.read(webDavSettingsProvider);
     final accountKey = _accountKey;
-    if (!_canSync(settings) || accountKey == null || accountKey.trim().isEmpty) {
+    if (!_canSync(settings) ||
+        accountKey == null ||
+        accountKey.trim().isEmpty) {
       final language = _ref.read(appPreferencesProvider).language;
       state = state.copyWith(
         lastError: trByLanguageKey(
@@ -139,11 +156,20 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
       return;
     }
 
-    state = state.copyWith(syncing: true, lastError: null, hasPendingConflict: false);
+    state = state.copyWith(
+      syncing: true,
+      lastError: null,
+      hasPendingConflict: false,
+    );
     try {
       final baseUrl = Uri.tryParse(settings.serverUrl.trim());
       if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
-        throw StateError(trByLanguageKey(language: _ref.read(appPreferencesProvider).language, key: 'legacy.msg_invalid_webdav_server_url'));
+        throw StateError(
+          trByLanguageKey(
+            language: _ref.read(appPreferencesProvider).language,
+            key: 'legacy.msg_invalid_webdav_server_url',
+          ),
+        );
       }
 
       final accountId = fnv1a64Hex(accountKey);
@@ -159,7 +185,12 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
         await _ensureCollections(client, baseUrl, rootPath, accountId);
         final lastSync = await _syncStateRepository.read();
         final localPayloads = await _buildLocalPayloads(lastSync);
-        final remoteMeta = await _fetchRemoteMeta(client, baseUrl, rootPath, accountId);
+        final remoteMeta = await _fetchRemoteMeta(
+          client,
+          baseUrl,
+          rootPath,
+          accountId,
+        );
 
         final diff = _diffFiles(localPayloads, remoteMeta, lastSync);
         if (context != null && !context.mounted) return;
@@ -168,7 +199,10 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
             state = state.copyWith(
               syncing: false,
               hasPendingConflict: true,
-              lastError: trByLanguageKey(language: _ref.read(appPreferencesProvider).language, key: 'legacy.msg_conflicts_detected_run_manual_sync'),
+              lastError: trByLanguageKey(
+                language: _ref.read(appPreferencesProvider).language,
+                key: 'legacy.msg_conflicts_detected_run_manual_sync',
+              ),
             );
             return;
           }
@@ -205,19 +239,30 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
           now,
           await _resolveDeviceId(),
         );
-        await _writeRemoteMeta(client, baseUrl, rootPath, accountId, mergedMeta);
-        await _syncStateRepository.write(
-          WebDavSyncState(
-            lastSyncAt: now,
-            files: mergedMeta.files,
-          ),
+        await _writeRemoteMeta(
+          client,
+          baseUrl,
+          rootPath,
+          accountId,
+          mergedMeta,
         );
-        state = state.copyWith(syncing: false, lastSuccessAt: DateTime.now(), lastError: null);
+        await _syncStateRepository.write(
+          WebDavSyncState(lastSyncAt: now, files: mergedMeta.files),
+        );
+        state = state.copyWith(
+          syncing: false,
+          lastSuccessAt: DateTime.now(),
+          lastError: null,
+        );
       } finally {
         await client.close();
       }
     } catch (e) {
-      state = state.copyWith(syncing: false, lastError: e.toString(), hasPendingConflict: false);
+      state = state.copyWith(
+        syncing: false,
+        lastError: e.toString(),
+        hasPendingConflict: false,
+      );
     }
   }
 
@@ -230,8 +275,14 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
   bool _canSync(WebDavSettings settings) {
     if (!settings.enabled) return false;
     if (settings.serverUrl.trim().isEmpty) return false;
-    if (settings.username.trim().isEmpty && settings.password.trim().isNotEmpty) return false;
-    if (settings.username.trim().isNotEmpty && settings.password.trim().isEmpty) return false;
+    if (settings.username.trim().isEmpty &&
+        settings.password.trim().isNotEmpty) {
+      return false;
+    }
+    if (settings.username.trim().isNotEmpty &&
+        settings.password.trim().isEmpty) {
+      return false;
+    }
     return true;
   }
 
@@ -241,17 +292,19 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     String rootPath,
     String accountId,
   ) async {
-    final segments = <String>[
-      ..._splitPath(rootPath),
-      'accounts',
-      accountId,
-    ];
+    final segments = <String>[..._splitPath(rootPath), 'accounts', accountId];
     var current = '';
     for (final segment in segments) {
       current = current.isEmpty ? segment : '$current/$segment';
-      final uri = joinWebDavUri(baseUrl: baseUrl, rootPath: '', relativePath: current);
+      final uri = joinWebDavUri(
+        baseUrl: baseUrl,
+        rootPath: '',
+        relativePath: current,
+      );
       final res = await client.mkcol(uri);
-      if (res.statusCode == 201 || res.statusCode == 405 || res.statusCode == 200) {
+      if (res.statusCode == 201 ||
+          res.statusCode == 405 ||
+          res.statusCode == 200) {
         continue;
       }
       if (res.statusCode == 409) {
@@ -263,7 +316,10 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
   List<String> _splitPath(String path) {
     final trimmed = path.trim();
     if (trimmed.isEmpty) return const [];
-    return trimmed.split('/').where((e) => e.trim().isNotEmpty).toList(growable: false);
+    return trimmed
+        .split('/')
+        .where((e) => e.trim().isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<String> _resolveDeviceId() async {
@@ -271,12 +327,15 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     return repo.readOrCreate();
   }
 
-  Future<Map<String, _WebDavFilePayload>> _buildLocalPayloads(WebDavSyncState lastSync) async {
+  Future<Map<String, _WebDavFilePayload>> _buildLocalPayloads(
+    WebDavSyncState lastSync,
+  ) async {
     final prefs = _ref.read(appPreferencesProvider);
     final ai = _ref.read(aiSettingsProvider);
     final reminder = _ref.read(reminderSettingsProvider);
     final imageBed = _ref.read(imageBedSettingsProvider);
     final locationSettings = _ref.read(locationSettingsProvider);
+    final templateSettings = _ref.read(memoTemplateSettingsProvider);
     final lockRepo = _ref.read(appLockRepositoryProvider);
     final lockSnapshot = await lockRepo.readSnapshot();
     final draftValue = _ref.read(noteDraftProvider).valueOrNull ?? '';
@@ -287,6 +346,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
       _webDavReminderFile: _payloadFromJson(reminder.toJson()),
       _webDavImageBedFile: _payloadFromJson(imageBed.toJson()),
       _webDavLocationFile: _payloadFromJson(locationSettings.toJson()),
+      _webDavTemplateFile: _payloadFromJson(templateSettings.toJson()),
       _webDavAppLockFile: _payloadFromJson(lockSnapshot.toJson()),
       _webDavDraftFile: _payloadFromJson({'text': draftValue}),
     };
@@ -370,8 +430,12 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
       final localHash = entry.value.hash;
       final remoteHash = remoteFiles[name]?.hash;
       final lastHash = lastFiles[name]?.hash;
-      final localChanged = lastHash == null ? localHash.isNotEmpty : localHash != lastHash;
-      final remoteChanged = lastHash == null ? remoteHash != null : remoteHash != lastHash;
+      final localChanged = lastHash == null
+          ? localHash.isNotEmpty
+          : localHash != lastHash;
+      final remoteChanged = lastHash == null
+          ? remoteHash != null
+          : remoteHash != lastHash;
       if (remoteHash == null && localChanged) {
         uploads.add(name);
         continue;
@@ -457,33 +521,53 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
           final remote = AppPreferences.fromJson(json);
           final current = _ref.read(appPreferencesProvider);
           final merged = _mergePreferences(current, remote);
-          await _ref.read(appPreferencesProvider.notifier).setAll(merged, triggerSync: false);
+          await _ref
+              .read(appPreferencesProvider.notifier)
+              .setAll(merged, triggerSync: false);
           break;
         case _webDavAiFile:
           final settings = AiSettings.fromJson(json);
-          await _ref.read(aiSettingsProvider.notifier).setAll(settings, triggerSync: false);
+          await _ref
+              .read(aiSettingsProvider.notifier)
+              .setAll(settings, triggerSync: false);
           break;
         case _webDavReminderFile:
           final current = _ref.read(reminderSettingsProvider);
           final fallback = current;
           final settings = ReminderSettings.fromJson(json, fallback: fallback);
-          await _ref.read(reminderSettingsProvider.notifier).setAll(settings, triggerSync: false);
+          await _ref
+              .read(reminderSettingsProvider.notifier)
+              .setAll(settings, triggerSync: false);
           break;
         case _webDavImageBedFile:
           final settings = ImageBedSettings.fromJson(json);
-          await _ref.read(imageBedSettingsProvider.notifier).setAll(settings, triggerSync: false);
+          await _ref
+              .read(imageBedSettingsProvider.notifier)
+              .setAll(settings, triggerSync: false);
           break;
         case _webDavLocationFile:
           final settings = LocationSettings.fromJson(json);
-          await _ref.read(locationSettingsProvider.notifier).setAll(settings, triggerSync: false);
+          await _ref
+              .read(locationSettingsProvider.notifier)
+              .setAll(settings, triggerSync: false);
+          break;
+        case _webDavTemplateFile:
+          final settings = MemoTemplateSettings.fromJson(json);
+          await _ref
+              .read(memoTemplateSettingsProvider.notifier)
+              .setAll(settings, triggerSync: false);
           break;
         case _webDavAppLockFile:
           final snapshot = AppLockSnapshot.fromJson(json);
-          await _ref.read(appLockProvider.notifier).setSnapshot(snapshot, triggerSync: false);
+          await _ref
+              .read(appLockProvider.notifier)
+              .setSnapshot(snapshot, triggerSync: false);
           break;
         case _webDavDraftFile:
           final text = (json['text'] as String?) ?? '';
-          await _ref.read(noteDraftProvider.notifier).setDraft(text, triggerSync: false);
+          await _ref
+              .read(noteDraftProvider.notifier)
+              .setDraft(text, triggerSync: false);
           break;
       }
     } finally {
@@ -491,7 +575,10 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     }
   }
 
-  AppPreferences _mergePreferences(AppPreferences current, AppPreferences remote) {
+  AppPreferences _mergePreferences(
+    AppPreferences current,
+    AppPreferences remote,
+  ) {
     final hasSelectedLanguage =
         current.hasSelectedLanguage || remote.hasSelectedLanguage;
     return current.copyWith(
@@ -526,7 +613,11 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
 
   Uri _fileUri(Uri baseUrl, String rootPath, String accountId, String name) {
     final relative = 'accounts/$accountId/$name';
-    return joinWebDavUri(baseUrl: baseUrl, rootPath: rootPath, relativePath: relative);
+    return joinWebDavUri(
+      baseUrl: baseUrl,
+      rootPath: rootPath,
+      relativePath: relative,
+    );
   }
 
   WebDavSyncMeta _buildMergedMeta(
@@ -565,10 +656,14 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     );
   }
 
-  Future<Map<String, bool>?> _resolveConflicts(BuildContext context, Set<String> conflicts) async {
+  Future<Map<String, bool>?> _resolveConflicts(
+    BuildContext context,
+    Set<String> conflicts,
+  ) async {
     return showDialog<Map<String, bool>>(
       context: context,
-      builder: (context) => _WebDavConflictDialog(conflicts: conflicts.toList(growable: false)),
+      builder: (context) =>
+          _WebDavConflictDialog(conflicts: conflicts.toList(growable: false)),
     );
   }
 }
@@ -648,7 +743,9 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
   Widget build(BuildContext context) {
     final language = context.appLanguage;
     return AlertDialog(
-      title: Text(trByLanguageKey(language: language, key: 'legacy.msg_sync_conflicts')),
+      title: Text(
+        trByLanguageKey(language: language, key: 'legacy.msg_sync_conflicts'),
+      ),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -656,7 +753,11 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                trByLanguageKey(language: language, key: 'legacy.msg_these_settings_changed_locally_remotely_choose'),
+                trByLanguageKey(
+                  language: language,
+                  key:
+                      'legacy.msg_these_settings_changed_locally_remotely_choose',
+                ),
                 style: const TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 12),
@@ -664,7 +765,12 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                 contentPadding: EdgeInsets.zero,
                 value: _applyToAll,
                 onChanged: _toggleApplyAll,
-                title: Text(trByLanguageKey(language: language, key: 'legacy.msg_apply_all')),
+                title: Text(
+                  trByLanguageKey(
+                    language: language,
+                    key: 'legacy.msg_apply_all',
+                  ),
+                ),
               ),
               if (_applyToAll)
                 RadioGroup<bool>(
@@ -684,14 +790,24 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                         child: RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: true,
-                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_local')),
+                          title: Text(
+                            trByLanguageKey(
+                              language: language,
+                              key: 'legacy.msg_use_local',
+                            ),
+                          ),
                         ),
                       ),
                       Expanded(
                         child: RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: false,
-                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_remote')),
+                          title: Text(
+                            trByLanguageKey(
+                              language: language,
+                              key: 'legacy.msg_use_remote',
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -708,16 +824,29 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
                     child: Column(
                       children: [
                         const Divider(height: 12),
-                        Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: true,
-                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_local')),
+                          title: Text(
+                            trByLanguageKey(
+                              language: language,
+                              key: 'legacy.msg_use_local',
+                            ),
+                          ),
                         ),
                         RadioListTile<bool>(
                           contentPadding: EdgeInsets.zero,
                           value: false,
-                          title: Text(trByLanguageKey(language: language, key: 'legacy.msg_use_remote')),
+                          title: Text(
+                            trByLanguageKey(
+                              language: language,
+                              key: 'legacy.msg_use_remote',
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -730,11 +859,15 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(trByLanguageKey(language: language, key: 'legacy.msg_cancel_2')),
+          child: Text(
+            trByLanguageKey(language: language, key: 'legacy.msg_cancel_2'),
+          ),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_choices),
-          child: Text(trByLanguageKey(language: language, key: 'legacy.msg_apply')),
+          child: Text(
+            trByLanguageKey(language: language, key: 'legacy.msg_apply'),
+          ),
         ),
       ],
     );

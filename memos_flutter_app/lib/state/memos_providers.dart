@@ -30,6 +30,7 @@ import '../state/image_bed_settings_provider.dart';
 import '../state/local_library_provider.dart';
 import '../state/local_sync_controller.dart';
 import '../state/logging_provider.dart';
+import '../state/memoflow_bridge_settings_provider.dart';
 import '../state/network_log_provider.dart';
 import '../state/preferences_provider.dart';
 import '../state/session_provider.dart';
@@ -1373,6 +1374,9 @@ final syncControllerProvider =
           db: ref.watch(databaseProvider),
           fileSystem: LocalLibraryFileSystem(localLibrary),
           attachmentStore: LocalAttachmentStore(),
+          bridgeSettingsRepository: ref.watch(
+            memoFlowBridgeSettingsRepositoryProvider,
+          ),
           syncStatusTracker: ref.read(syncStatusTrackerProvider),
           syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
           language: language,
@@ -1948,17 +1952,47 @@ class RemoteSyncController extends SyncControllerBase {
 
           final local = await db.getMemoByUid(memo.uid);
           final localSync = (local?['sync_state'] as int?) ?? 0;
-          final tags = _mergeTags(memo.tags, memo.content);
+          final localMemo = local == null ? null : LocalMemo.fromDb(local);
+          final preserveLocalDraft = localMemo != null && localSync != 0;
+          final tags = preserveLocalDraft
+              ? localMemo.tags
+              : _mergeTags(memo.tags, memo.content);
           final attachments = memo.attachments
               .map((a) => a.toJson())
               .toList(growable: false);
-          final mergedAttachments = localSync == 0
-              ? attachments
-              : _mergeAttachmentJson(local, attachments);
-          final relationCount = countReferenceRelations(
-            memoUid: memo.uid,
-            relations: memo.relations,
-          );
+          final mergedAttachments = preserveLocalDraft
+              ? localMemo.attachments
+                    .map((a) => a.toJson())
+                    .toList(growable: false)
+              : attachments;
+          final relationCount = preserveLocalDraft
+              ? localMemo.relationCount
+              : countReferenceRelations(
+                  memoUid: memo.uid,
+                  relations: memo.relations,
+                );
+          final localLastErrorRaw = local?['last_error'];
+          final localLastError = localLastErrorRaw is String
+              ? localLastErrorRaw
+              : null;
+          final content = preserveLocalDraft ? localMemo.content : memo.content;
+          final visibility = preserveLocalDraft
+              ? localMemo.visibility
+              : memo.visibility;
+          final pinned = preserveLocalDraft ? localMemo.pinned : memo.pinned;
+          final memoState = preserveLocalDraft ? localMemo.state : memo.state;
+          final createTimeSec = preserveLocalDraft
+              ? localMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000
+              : (memo.displayTime ?? memo.createTime)
+                        .toUtc()
+                        .millisecondsSinceEpoch ~/
+                    1000;
+          final updateTimeSec = preserveLocalDraft
+              ? localMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000
+              : memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000;
+          final location = preserveLocalDraft
+              ? localMemo.location
+              : memo.location;
 
           if (memo.uid.isNotEmpty) {
             remoteUids.add(memo.uid);
@@ -1966,22 +2000,18 @@ class RemoteSyncController extends SyncControllerBase {
 
           await db.upsertMemo(
             uid: memo.uid,
-            content: memo.content,
-            visibility: memo.visibility,
-            pinned: memo.pinned,
-            state: memo.state,
-            createTimeSec:
-                (memo.displayTime ?? memo.createTime)
-                    .toUtc()
-                    .millisecondsSinceEpoch ~/
-                1000,
-            updateTimeSec:
-                memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            content: content,
+            visibility: visibility,
+            pinned: pinned,
+            state: memoState,
+            createTimeSec: createTimeSec,
+            updateTimeSec: updateTimeSec,
             tags: tags,
             attachments: mergedAttachments,
-            location: memo.location,
+            location: location,
             relationCount: relationCount,
             syncState: localSync == 0 ? 0 : localSync,
+            lastError: preserveLocalDraft ? localLastError : null,
           );
         }
 
@@ -2108,7 +2138,9 @@ class RemoteSyncController extends SyncControllerBase {
           case 'update_memo':
             await _handleUpdateMemo(payload);
             final uid = payload['uid'] as String?;
-            if (uid != null && uid.isNotEmpty) {
+            final hasPendingAttachments =
+                payload['has_pending_attachments'] as bool? ?? false;
+            if (!hasPendingAttachments && uid != null && uid.isNotEmpty) {
               await db.updateMemoSyncState(uid, syncState: 0);
             }
             await db.deleteOutbox(id);
@@ -2132,7 +2164,12 @@ class RemoteSyncController extends SyncControllerBase {
             await _handleDeleteAttachment(payload);
             final memoUid = payload['memo_uid'] as String?;
             if (memoUid != null && memoUid.isNotEmpty) {
-              await db.updateMemoSyncState(memoUid, syncState: 0);
+              final pendingUploads = await _countPendingAttachmentUploads(
+                memoUid,
+              );
+              if (pendingUploads <= 0) {
+                await db.updateMemoSyncState(memoUid, syncState: 0);
+              }
             }
             await db.deleteOutbox(id);
             break;
@@ -3048,38 +3085,5 @@ class RemoteSyncController extends SyncControllerBase {
       memoUid,
       attachmentsJson: jsonEncode(out),
     );
-  }
-
-  static List<Map<String, dynamic>> _mergeAttachmentJson(
-    Map<String, dynamic>? localRow,
-    List<Map<String, dynamic>> remoteAttachments,
-  ) {
-    final map = <String, Map<String, dynamic>>{};
-    for (final a in remoteAttachments) {
-      final name = a['name'];
-      if (name is String && name.isNotEmpty) {
-        map[name] = a;
-      }
-    }
-
-    final localJson = localRow?['attachments_json'];
-    if (localJson is String && localJson.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(localJson);
-        if (decoded is List) {
-          for (final item in decoded) {
-            if (item is Map) {
-              final m = item.cast<String, dynamic>();
-              final name = m['name'];
-              if (name is String && name.isNotEmpty) {
-                map.putIfAbsent(name, () => m);
-              }
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    return map.values.toList(growable: false);
   }
 }
