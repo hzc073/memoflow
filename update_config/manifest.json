@@ -16,11 +16,11 @@
       "publish_at": "2026-02-21T00:00:00Z"
     },
     "windows": {
-      "latest_version": "1.0.14",
+      "latest_version": "1.0.15",
       "force_update": false,
       "update_source": "windows_installer",
-      "url": "",
-      "publish_at": "2026-02-21T00:00:00Z"
+      "url": "https://github.com/hzc073/memoflow/releases/download/v1.0.15/MemoFlow_v1.0.15_windows_x64_setup.exe",
+      "publish_at": "2026-02-21T15:08:34.217Z"
     }
   },
   "notice_enabled": false,
@@ -29,10 +29,12 @@
   "debug_announcement": null,
   "donors_file": "donors.json",
   "announcement_tag_index": {
-    "v1.0.14": "2026022101"
+    "v1.0.14": "2026022101",
+    "v1.0.15": "20260221150830665"
   },
   "announcement_ids": [
-    "2026022101"
+    "2026022101",
+    "20260221150830665"
   ],
-  "latest_announcement_id": "2026022101"
+  "latest_announcement_id": "20260221150830665"
 }
