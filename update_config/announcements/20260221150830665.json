@@ -1,0 +1,22 @@
+{
+  "id": "20260221150830665",
+  "release_tag": "v1.0.15",
+  "version": "1.0.15",
+  "date": "2026-02-21",
+  "title": "v1.0.15",
+  "show_when_up_to_date": false,
+  "contents": {
+    "en": [
+      "Update available."
+    ]
+  },
+  "new_donor_ids": [],
+  "items": [
+    {
+      "category": "improvement",
+      "contents": [
+        "Update available."
+      ]
+    }
+  ]
+}
