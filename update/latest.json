@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "version_info": {
+    "android": {
+      "latest_version": "1.0.14",
+      "force_update": false,
+      "update_source": "google_play",
+      "url": "",
+      "publish_at": "2026-02-21T00:00:00Z"
+    },
+    "ios": {
+      "latest_version": "1.0.14",
+      "force_update": false,
+      "update_source": "app_store",
+      "url": "",
+      "publish_at": "2026-02-21T00:00:00Z"
+    },
+    "windows": {
+      "latest_version": "1.0.14",
+      "force_update": false,
+      "update_source": "windows_installer",
+      "url": "",
+      "publish_at": "2026-02-21T00:00:00Z"
+    }
+  },
+  "notice_enabled": false,
+  "notice": null,
+  "debug_announcement_source": "release_notes",
+  "debug_announcement": null,
+  "announcement": {
+    "id": "2026022101",
+    "title": "Release Notes",
+    "show_when_up_to_date": false,
+    "contents": {
+      "en": [
+        "Added platform-scoped update configuration.",
+        "Improved release note reliability by splitting each announcement into a standalone file."
+      ]
+    },
+    "new_donor_ids": [
+      "sample_donor"
+    ]
+  },
+  "donors": [
+    {
+      "id": "sample_donor",
+      "name": "Sample Donor",
+      "avatar": ""
+    }
+  ],
+  "release_notes": [
+    {
+      "version": "1.0.14",
+      "date": "2026-02-21",
+      "items": [
+        {
+          "category": "feature",
+          "contents": [
+            "Platform-specific update routing for Android, iOS, and Windows."
+          ]
+        },
+        {
+          "category": "improvement",
+          "contents": [
+            "Announcement files are now isolated to reduce blast radius for formatting mistakes."
+          ]
+        }
+      ]
+    }
+  ]
+}
