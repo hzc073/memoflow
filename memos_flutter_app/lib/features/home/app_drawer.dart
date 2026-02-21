@@ -114,7 +114,7 @@ class AppDrawer extends ConsumerWidget {
     final showScanAction =
         kIsWeb || defaultTargetPlatform != TargetPlatform.windows;
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
-    const versionLabel = 'V1.0.14';
+    const versionLabel = 'V1.0.15';
 
     final content = SafeArea(
       child: Column(

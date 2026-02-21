@@ -73,7 +73,7 @@ class WidgetsScreen extends StatelessWidget {
           const SizedBox(height: 18),
           Center(
             child: Text(
-              'MemoFlow · v1.0.14',
+              'MemoFlow · v1.0.15',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
