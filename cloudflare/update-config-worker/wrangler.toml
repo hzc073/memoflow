@@ -1,0 +1,10 @@
+name = "memoflow-update-config-worker"
+main = "worker.js"
+compatibility_date = "2026-02-21"
+
+[vars]
+DEFAULT_APP_REPO = "hzc073/memoflow"
+DEFAULT_CONFIG_REPO = "hzc073/memoflow"
+DEFAULT_CONFIG_BRANCH = "main"
+DEFAULT_MANIFEST_PATH = "update_config/manifest.json"
+DEFAULT_ANNOUNCEMENTS_DIR = "update_config/announcements"
