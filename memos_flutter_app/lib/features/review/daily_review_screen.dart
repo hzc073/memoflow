@@ -8,10 +8,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
+import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../core/tags.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
@@ -21,11 +24,23 @@ import '../../state/memo_timeline_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
+import '../about/about_screen.dart';
+import '../explore/explore_screen.dart';
+import '../home/app_drawer.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
 import '../memos/memo_markdown.dart';
+import '../memos/memo_video_grid.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/recycle_bin_screen.dart';
+import '../notifications/notifications_screen.dart';
+import '../resources/resources_screen.dart';
+import '../settings/settings_screen.dart';
+import '../stats/stats_screen.dart';
+import '../sync/sync_queue_screen.dart';
+import '../tags/tags_screen.dart';
 import '../memos/widgets/audio_row.dart';
+import 'ai_summary_screen.dart';
 import '../../i18n/strings.g.dart';
 
 class DailyReviewScreen extends ConsumerStatefulWidget {
@@ -149,6 +164,50 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     );
   }
 
+  void _navigate(AppDrawerDestination dest) {
+    final route = switch (dest) {
+      AppDrawerDestination.memos => const MemosListScreen(
+        title: 'MemoFlow',
+        state: 'NORMAL',
+        showDrawer: true,
+        enableCompose: true,
+      ),
+      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
+      AppDrawerDestination.explore => const ExploreScreen(),
+      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
+      AppDrawerDestination.aiSummary => const AiSummaryScreen(),
+      AppDrawerDestination.archived => MemosListScreen(
+        title: context.t.strings.legacy.msg_archive,
+        state: 'ARCHIVED',
+        showDrawer: true,
+      ),
+      AppDrawerDestination.tags => const TagsScreen(),
+      AppDrawerDestination.resources => const ResourcesScreen(),
+      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
+      AppDrawerDestination.stats => const StatsScreen(),
+      AppDrawerDestination.settings => const SettingsScreen(),
+      AppDrawerDestination.about => const AboutScreen(),
+    };
+    closeDrawerThenPushReplacement(context, route);
+  }
+
+  void _openTag(String tag) {
+    closeDrawerThenPushReplacement(
+      context,
+      MemosListScreen(
+        title: '#$tag',
+        state: 'NORMAL',
+        tag: tag,
+        showDrawer: true,
+        enableCompose: true,
+      ),
+    );
+  }
+
+  void _openNotifications() {
+    closeDrawerThenPushReplacement(context, const NotificationsScreen());
+  }
+
   bool _sameIds(List<String> next) {
     if (_memoIds.length != next.length) return false;
     for (var i = 0; i < next.length; i++) {
@@ -197,6 +256,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     if (_deck.length <= 1) return;
     final last = _deck.last;
     _deck = [last, ..._deck.sublist(0, _deck.length - 1)];
+  }
+
+  void _resetSwiperToFrontCardDeferred() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _swiperController.setCardIndex(0);
+    });
   }
 
   void _startAudioProgressTimer() {
@@ -560,7 +626,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     _selectedDateRange = normalizedRange;
     final changed = _syncDeck(_filterMemos(_allMemos));
     if (changed) {
-      _swiperController.setCardIndex(0);
+      _resetSwiperToFrontCardDeferred();
     }
     unawaited(_stopAudioPlayback());
     if (!mounted) return;
@@ -844,6 +910,10 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final hasActiveFilter =
         _selectedTags.isNotEmpty || _selectedDateRange != null;
+    final enableWindowsDragToMove =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
     final selectedTags = _selectedTags.toList(growable: false)
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
@@ -860,6 +930,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
 
     final memosAsync = ref.watch(_memosProvider);
+    final drawerPanel = AppDrawer(
+      selected: AppDrawerDestination.dailyReview,
+      onSelect: _navigate,
+      onSelectTag: _openTag,
+      onOpenNotifications: _openNotifications,
+      embedded: useDesktopSidePane,
+    );
 
     return PopScope(
       canPop: false,
@@ -869,18 +946,28 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       },
       child: Scaffold(
         backgroundColor: bg,
+        drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _back,
+          automaticallyImplyLeading: !useDesktopSidePane,
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
+          leading: useDesktopSidePane
+              ? null
+              : IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _back,
+                ),
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(context.t.strings.legacy.msg_random_review),
           ),
-          title: Text(context.t.strings.legacy.msg_random_review),
-          centerTitle: true,
+          centerTitle: !useDesktopSidePane,
           actions: [
             IconButton(
               tooltip: context.t.strings.legacy.msg_filter,
@@ -892,147 +979,199 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
             ),
           ],
         ),
-        body: memosAsync.when(
-          data: (memos) {
-            if (memos.isEmpty) {
-              return Center(
-                child: Text(
-                  context.t.strings.legacy.msg_no_content_yet,
-                  style: TextStyle(color: textMuted),
-                ),
-              );
-            }
+        body: () {
+          final pageBody = memosAsync.when(
+            data: (memos) {
+              if (memos.isEmpty) {
+                return Center(
+                  child: Text(
+                    context.t.strings.legacy.msg_no_content_yet,
+                    style: TextStyle(color: textMuted),
+                  ),
+                );
+              }
 
-            final deck = _deck;
-            if (deck.isEmpty) {
-              return Center(
-                child: Text(
-                  context.t.strings.legacy.msg_no_content_yet,
-                  style: TextStyle(color: textMuted),
-                ),
-              );
-            }
-            final total = deck.length;
-            final displayIndex = total == 0 ? 0 : (_cursor + 1).clamp(1, total);
+              final deck = _deck;
+              if (deck.isEmpty) {
+                return Center(
+                  child: Text(
+                    context.t.strings.legacy.msg_no_content_yet,
+                    style: TextStyle(color: textMuted),
+                  ),
+                );
+              }
+              final total = deck.length;
+              final displayIndex = total == 0
+                  ? 0
+                  : (_cursor + 1).clamp(1, total);
 
-            return Column(
-              children: [
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          context.t.strings.legacy.msg_randomly_draw_memo_cards,
+              return Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_randomly_draw_memo_cards,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: textMuted,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$displayIndex / $total',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: textMuted,
                           ),
                         ),
-                      ),
-                      Text(
-                        '$displayIndex / $total',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (hasActiveFilter)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final tag in selectedTags)
-                          _ActiveFilterChip(label: '#$tag', isDark: isDark),
-                        if (_selectedDateRange != null)
-                          _ActiveFilterChip(
-                            label: _formatRangeLabel(
-                              _selectedDateRange,
-                              context,
-                            ),
-                            isDark: isDark,
-                          ),
                       ],
                     ),
                   ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 60, 24, 140),
-                    child: AppinioSwiper(
-                      controller: _swiperController,
-                      cardCount: deck.length,
-                      backgroundCardCount: 3,
-                      backgroundCardScale: 0.92,
-                      backgroundCardOffset: const Offset(0, 24),
-                      swipeOptions: const SwipeOptions.symmetric(
-                        horizontal: true,
+                  if (hasActiveFilter)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final tag in selectedTags)
+                            _ActiveFilterChip(label: '#$tag', isDark: isDark),
+                          if (_selectedDateRange != null)
+                            _ActiveFilterChip(
+                              label: _formatRangeLabel(
+                                _selectedDateRange,
+                                context,
+                              ),
+                              isDark: isDark,
+                            ),
+                        ],
                       ),
-                      maxAngle: 14,
-                      onSwipeEnd: (previousIndex, targetIndex, activity) {
-                        if (!mounted) return;
-                        unawaited(_stopAudioPlayback());
-                        setState(() {
-                          if (activity.direction == AxisDirection.right) {
-                            _rotateRight();
-                            _cursor = (_cursor - 1 + deck.length) % deck.length;
-                          } else {
-                            _rotateLeft();
-                            _cursor = (_cursor + 1) % deck.length;
-                          }
-                          _swiperController.setCardIndex(0);
-                        });
-                      },
-                      cardBuilder: (context, index) {
-                        final memo = deck[index];
-                        final isAudioActive = _playingMemoUid == memo.uid;
-                        return _RandomWalkCard(
-                          memo: memo,
-                          card: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          isDark: isDark,
-                          baseUrl: baseUrl,
-                          authHeader: authHeader,
-                          rebaseAbsoluteFileUrlForV024:
-                              rebaseAbsoluteFileUrlForV024,
-                          attachAuthForSameOriginAbsolute:
-                              attachAuthForSameOriginAbsolute,
-                          audioPlaying: isAudioActive && _audioPlayer.playing,
-                          audioLoading: isAudioActive && _audioLoading,
-                          audioPositionListenable: isAudioActive
-                              ? _audioPositionNotifier
-                              : null,
-                          audioDurationListenable: isAudioActive
-                              ? _audioDurationNotifier
-                              : null,
-                          onAudioTap: () =>
-                              unawaited(_toggleAudioPlayback(memo)),
-                          onToggleTask: (request) => unawaited(
-                            _toggleMemoCheckbox(memo, request.taskIndex),
-                          ),
-                        );
-                      },
+                    ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 60, 24, 140),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final maxCardWidth = useDesktopSidePane
+                              ? math.min(
+                                  kMemoFlowDesktopMemoCardMaxWidth,
+                                  constraints.maxWidth,
+                                )
+                              : constraints.maxWidth;
+                          return Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: maxCardWidth,
+                              ),
+                              child: AppinioSwiper(
+                                controller: _swiperController,
+                                cardCount: deck.length,
+                                backgroundCardCount: 3,
+                                backgroundCardScale: 0.92,
+                                backgroundCardOffset: const Offset(0, 24),
+                                swipeOptions: const SwipeOptions.symmetric(
+                                  horizontal: true,
+                                ),
+                                maxAngle: 14,
+                                onSwipeEnd:
+                                    (previousIndex, targetIndex, activity) {
+                                      if (!mounted) return;
+                                      unawaited(_stopAudioPlayback());
+                                      setState(() {
+                                        if (activity.direction ==
+                                            AxisDirection.right) {
+                                          _rotateRight();
+                                          _cursor =
+                                              (_cursor - 1 + deck.length) %
+                                              deck.length;
+                                        } else {
+                                          _rotateLeft();
+                                          _cursor = (_cursor + 1) % deck.length;
+                                        }
+                                      });
+                                      _resetSwiperToFrontCardDeferred();
+                                    },
+                                cardBuilder: (context, index) {
+                                  final memo = deck[index];
+                                  final isAudioActive =
+                                      _playingMemoUid == memo.uid;
+                                  return _RandomWalkCard(
+                                    memo: memo,
+                                    card: card,
+                                    textMain: textMain,
+                                    textMuted: textMuted,
+                                    isDark: isDark,
+                                    baseUrl: baseUrl,
+                                    authHeader: authHeader,
+                                    rebaseAbsoluteFileUrlForV024:
+                                        rebaseAbsoluteFileUrlForV024,
+                                    attachAuthForSameOriginAbsolute:
+                                        attachAuthForSameOriginAbsolute,
+                                    audioPlaying:
+                                        isAudioActive && _audioPlayer.playing,
+                                    audioLoading:
+                                        isAudioActive && _audioLoading,
+                                    audioPositionListenable: isAudioActive
+                                        ? _audioPositionNotifier
+                                        : null,
+                                    audioDurationListenable: isAudioActive
+                                        ? _audioDurationNotifier
+                                        : null,
+                                    onAudioTap: () =>
+                                        unawaited(_toggleAudioPlayback(memo)),
+                                    onToggleTask: (request) => unawaited(
+                                      _toggleMemoCheckbox(
+                                        memo,
+                                        request.taskIndex,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 22),
-              ],
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
-          ),
-        ),
+                  const SizedBox(height: 22),
+                ],
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(
+              child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+            ),
+          );
+          if (!useDesktopSidePane) {
+            return pageBody;
+          }
+          return Row(
+            children: [
+              SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+              Expanded(child: pageBody),
+            ],
+          );
+        }(),
       ),
     );
   }
@@ -1119,6 +1258,13 @@ class _RandomWalkCard extends StatelessWidget {
     );
     final imageEntries = collectMemoImageEntries(
       content: memo.content,
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+    );
+    final videoEntries = collectMemoVideoEntries(
       attachments: memo.attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
@@ -1307,6 +1453,17 @@ class _RandomWalkCard extends StatelessWidget {
                                         backgroundColor: imageBg,
                                         textColor: textMain,
                                         enableDownload: true,
+                                      ),
+                                    ],
+                                    if (videoEntries.isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      MemoVideoGrid(
+                                        videos: videoEntries,
+                                        columns: 3,
+                                        maxCount: 9,
+                                        maxHeight: maxGridHeight,
+                                        radius: 10,
+                                        spacing: 8,
                                       ),
                                     ],
                                     if (hasAudio) ...[

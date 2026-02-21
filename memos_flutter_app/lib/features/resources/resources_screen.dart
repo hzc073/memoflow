@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/drawer_navigation.dart';
 import '../../core/platform_layout.dart';
@@ -358,6 +359,7 @@ class ResourcesScreen extends ConsumerWidget {
     final dateFmt = DateFormat('yyyy-MM-dd');
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final enableWindowsDragToMove = Platform.isWindows;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final drawerPanel = AppDrawer(
@@ -383,11 +385,17 @@ class ResourcesScreen extends ConsumerWidget {
           surfaceTintColor: Colors.transparent,
           automaticallyImplyLeading: !useDesktopSidePane,
           toolbarHeight: 46,
-          title: Text(
-            context.t.strings.legacy.msg_attachments,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(
+              context.t.strings.legacy.msg_attachments,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ),
@@ -593,6 +601,7 @@ class _ImageViewerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enableWindowsDragToMove = Platform.isWindows;
     final child = localFile != null
         ? Image.file(localFile!, fit: BoxFit.contain)
         : CachedNetworkImage(
@@ -608,7 +617,15 @@ class _ImageViewerScreen extends StatelessWidget {
           );
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        flexibleSpace: enableWindowsDragToMove
+            ? const DragToMoveArea(child: SizedBox.expand())
+            : null,
+        title: IgnorePointer(
+          ignoring: enableWindowsDragToMove,
+          child: Text(title),
+        ),
+      ),
       body: SafeArea(
         child: InteractiveViewer(child: Center(child: child)),
       ),

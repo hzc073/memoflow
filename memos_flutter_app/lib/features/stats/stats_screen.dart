@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
@@ -76,9 +77,15 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               ),
               ...months.map((m) {
                 final label = _formatMonth(m);
-                final selected = m.year == _selectedMonth.year && m.month == _selectedMonth.month;
+                final selected =
+                    m.year == _selectedMonth.year &&
+                    m.month == _selectedMonth.month;
                 return ListTile(
-                  leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off),
+                  leading: Icon(
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                  ),
                   title: Text(label),
                   onTap: () {
                     context.safePop();
@@ -96,23 +103,26 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   Future<void> _sharePoster() async {
     final boundary = _posterBoundaryKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) {
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_poster_not_ready_yet,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_poster_not_ready_yet);
       return;
     }
 
     try {
       await Future.delayed(const Duration(milliseconds: 30));
       if (!mounted) return;
-      final pixelRatio = MediaQuery.of(context).devicePixelRatio.clamp(2.0, 3.0);
+      final pixelRatio = MediaQuery.of(
+        context,
+      ).devicePixelRatio.clamp(2.0, 3.0);
       final image = await boundary.toImage(pixelRatio: pixelRatio);
       final byteData = await image.toByteData(format: ImageByteFormat.png);
       if (byteData == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_poster_generation_failed)),
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_poster_generation_failed,
+            ),
+          ),
         );
         return;
       }
@@ -123,13 +133,13 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       );
       await file.writeAsBytes(byteData.buffer.asUint8List());
 
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)]),
-      );
+      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_share_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_share_failed(e: e)),
+        ),
       );
     }
   }
@@ -160,9 +170,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: CustomPaint(
-                    painter: _PaperTexturePainter(),
-                  ),
+                  child: CustomPaint(painter: _PaperTexturePainter()),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
@@ -184,7 +192,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           const SizedBox(width: 8),
                           Text(
                             context.t.strings.legacy.msg_memo_stats,
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: textMuted,
+                            ),
                           ),
                         ],
                       ),
@@ -201,14 +213,19 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                         maxMemosPerDay: monthly.maxMemosPerDay,
                         maxCharsPerDay: monthly.maxCharsPerDay,
                         activeDays: monthly.activeDays,
-                        dailyCounts: _toMonthSeries(DateTime(monthly.year, monthly.month), monthly.dailyCounts),
+                        dailyCounts: _toMonthSeries(
+                          DateTime(monthly.year, monthly.month),
+                          monthly.dailyCounts,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       _HeatmapCard(
                         card: card,
                         textMain: textMain,
                         textMuted: textMuted,
-                        title: context.t.strings.legacy.msg_last_year_memos(lastYearMemos: lastYearMemos),
+                        title: context.t.strings.legacy.msg_last_year_memos(
+                          lastYearMemos: lastYearMemos,
+                        ),
                         onShare: null,
                         dailyCounts: lastYear,
                         isDark: false,
@@ -222,8 +239,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                               textMain: textMain,
                               textMuted: textMuted,
                               icon: Icons.local_fire_department_outlined,
-                              label: context.t.strings.legacy.msg_current_streak,
-                              value: context.t.strings.legacy.msg_days_3(currentStreak: currentStreak),
+                              label:
+                                  context.t.strings.legacy.msg_current_streak,
+                              value: context.t.strings.legacy.msg_days_3(
+                                currentStreak: currentStreak,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -234,7 +254,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                               textMuted: textMuted,
                               icon: Icons.calendar_month_outlined,
                               label: context.t.strings.legacy.msg_active_days,
-                              value: context.t.strings.legacy.msg_days(stats_activeDays: stats.activeDays),
+                              value: context.t.strings.legacy.msg_days(
+                                stats_activeDays: stats.activeDays,
+                              ),
                             ),
                           ),
                         ],
@@ -266,10 +288,16 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
 
     final statsAsync = ref.watch(localStatsProvider);
 
@@ -282,7 +310,13 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Scaffold(
         backgroundColor: bg,
         appBar: AppBar(
-          title: const Text('MemoFlow'),
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: const Text('MemoFlow'),
+          ),
           centerTitle: false,
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -308,7 +342,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               },
               child: Text(
                 context.t.strings.legacy.msg_share,
-                style: TextStyle(color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.9 : 1.0)),
+                style: TextStyle(
+                  color: MemoFlowPalette.primary.withValues(
+                    alpha: isDark ? 0.9 : 1.0,
+                  ),
+                ),
               ),
             ),
           ],
@@ -317,17 +355,34 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           data: (stats) {
             final months = _deriveMonths(stats.dailyCounts);
             final selected = _selectedMonth;
-            final effectiveMonth = months.isNotEmpty && !months.any((m) => m.year == selected.year && m.month == selected.month) ? months.first : selected;
-            final monthlyAsync = ref.watch(monthlyStatsProvider((year: effectiveMonth.year, month: effectiveMonth.month)));
+            final effectiveMonth =
+                months.isNotEmpty &&
+                    !months.any(
+                      (m) =>
+                          m.year == selected.year && m.month == selected.month,
+                    )
+                ? months.first
+                : selected;
+            final monthlyAsync = ref.watch(
+              monthlyStatsProvider((
+                year: effectiveMonth.year,
+                month: effectiveMonth.month,
+              )),
+            );
 
             final lastYear = _lastNDaysCounts(stats.dailyCounts, days: 365);
-            final lastYearMemos = lastYear.values.fold<int>(0, (sum, v) => sum + v);
+            final lastYearMemos = lastYear.values.fold<int>(
+              0,
+              (sum, v) => sum + v,
+            );
 
             final currentStreak = _currentStreakDays(stats.dailyCounts);
 
             return monthlyAsync.when(
               data: (monthly) {
-                final monthLabel = _formatMonth(DateTime(monthly.year, monthly.month));
+                final monthLabel = _formatMonth(
+                  DateTime(monthly.year, monthly.month),
+                );
                 return Stack(
                   children: [
                     ListView(
@@ -335,7 +390,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                       children: [
                         Text(
                           context.t.strings.legacy.msg_memo_stats,
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: textMain),
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: textMain,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         _MonthStatsCard(
@@ -343,21 +402,28 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           textMain: textMain,
                           textMuted: textMuted,
                           monthLabel: monthLabel,
-                          onPickMonth: months.isEmpty ? null : () => _pickMonth(months),
+                          onPickMonth: months.isEmpty
+                              ? null
+                              : () => _pickMonth(months),
                           onShare: _sharePoster,
                           memos: monthly.totalMemos,
                           chars: monthly.totalChars,
                           maxMemosPerDay: monthly.maxMemosPerDay,
                           maxCharsPerDay: monthly.maxCharsPerDay,
                           activeDays: monthly.activeDays,
-                          dailyCounts: _toMonthSeries(DateTime(monthly.year, monthly.month), monthly.dailyCounts),
+                          dailyCounts: _toMonthSeries(
+                            DateTime(monthly.year, monthly.month),
+                            monthly.dailyCounts,
+                          ),
                         ),
                         const SizedBox(height: 14),
                         _HeatmapCard(
                           card: card,
                           textMain: textMain,
                           textMuted: textMuted,
-                          title: context.t.strings.legacy.msg_last_year_memos(lastYearMemos: lastYearMemos),
+                          title: context.t.strings.legacy.msg_last_year_memos(
+                            lastYearMemos: lastYearMemos,
+                          ),
                           onShare: _sharePoster,
                           dailyCounts: lastYear,
                           isDark: isDark,
@@ -371,8 +437,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                                 textMain: textMain,
                                 textMuted: textMuted,
                                 icon: Icons.local_fire_department_outlined,
-                                label: context.t.strings.legacy.msg_current_streak,
-                                value: context.t.strings.legacy.msg_days_3(currentStreak: currentStreak),
+                                label:
+                                    context.t.strings.legacy.msg_current_streak,
+                                value: context.t.strings.legacy.msg_days_3(
+                                  currentStreak: currentStreak,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -383,7 +452,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                                 textMuted: textMuted,
                                 icon: Icons.calendar_month_outlined,
                                 label: context.t.strings.legacy.msg_active_days,
-                                value: context.t.strings.legacy.msg_days(stats_activeDays: stats.activeDays),
+                                value: context.t.strings.legacy.msg_days(
+                                  stats_activeDays: stats.activeDays,
+                                ),
                               ),
                             ),
                           ],
@@ -413,11 +484,15 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
+              error: (e, _) => Center(
+                child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+              ),
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
+          error: (e, _) => Center(
+            child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+          ),
         ),
       ),
     );
@@ -484,22 +559,32 @@ class _MonthStatsCard extends StatelessWidget {
               const Spacer(),
               if (onShare != null)
                 InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: onShare,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Row(
-                    children: [
-                      Icon(Icons.share, size: 16, color: MemoFlowPalette.primary),
-                      const SizedBox(width: 6),
-                      Text(
-                        context.t.strings.legacy.msg_share,
-                        style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary),
-                      ),
-                    ],
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: onShare,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.share,
+                          size: 16,
+                          color: MemoFlowPalette.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          context.t.strings.legacy.msg_share,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: MemoFlowPalette.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -548,7 +633,9 @@ class _MonthStatsCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     _Metric(
-                      value: maxCharsPerDay == null ? '—' : _formatNumber(maxCharsPerDay!),
+                      value: maxCharsPerDay == null
+                          ? '—'
+                          : _formatNumber(maxCharsPerDay!),
                       label: context.t.strings.legacy.msg_max_chars_day,
                       textMain: textMain,
                       textMuted: textMuted,
@@ -598,10 +685,7 @@ class _MonthlyBarChart extends StatelessWidget {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 1),
-                      child: _BarDot(
-                        count: c,
-                        max: chartMax,
-                      ),
+                      child: _BarDot(count: c, max: chartMax),
                     ),
                   ),
               ],
@@ -612,7 +696,11 @@ class _MonthlyBarChart extends StatelessWidget {
             top: 0,
             child: Text(
               '$maxCount',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.5)),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: textMuted.withValues(alpha: 0.5),
+              ),
             ),
           ),
           Positioned(
@@ -620,7 +708,11 @@ class _MonthlyBarChart extends StatelessWidget {
             bottom: 0,
             child: Text(
               '0',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.5)),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: textMuted.withValues(alpha: 0.5),
+              ),
             ),
           ),
         ],
@@ -662,7 +754,9 @@ class _BarDot extends StatelessWidget {
           decoration: BoxDecoration(
             color: has
                 ? MemoFlowPalette.primary.withValues(alpha: 0.35)
-                : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.06)),
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.05)
+                      : Colors.black.withValues(alpha: 0.06)),
             shape: BoxShape.circle,
           ),
         ),
@@ -693,13 +787,18 @@ class _MonthPill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.03),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(999),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMuted)),
+              Text(
+                label,
+                style: TextStyle(fontWeight: FontWeight.w700, color: textMuted),
+              ),
               const SizedBox(width: 4),
               Icon(Icons.expand_more, size: 18, color: textMuted),
             ],
@@ -740,7 +839,14 @@ class _Metric extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.8))),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: textMuted.withValues(alpha: 0.8),
+          ),
+        ),
       ],
     );
   }
@@ -786,36 +892,52 @@ class _HeatmapCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.w800, color: textMain))),
-              if (onShare != null)
-                InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: onShare,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                  child: Text(
-                    context.t.strings.legacy.msg_share,
-                    style: TextStyle(fontWeight: FontWeight.w700, color: MemoFlowPalette.primary),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: textMain,
                   ),
                 ),
               ),
+              if (onShare != null)
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: onShare,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      context.t.strings.legacy.msg_share,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: MemoFlowPalette.primary,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
-          _YearHeatmap(
-            dailyCounts: dailyCounts,
-            isDark: isDark,
-          ),
+          _YearHeatmap(dailyCounts: dailyCounts, isDark: isDark),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: _monthLabels(dailyCounts.keys)
                 .map((m) {
-                  final label = DateFormat.MMM(Localizations.localeOf(context).toString())
-                      .format(DateTime(2000, m.month));
+                  final label = DateFormat.MMM(
+                    Localizations.localeOf(context).toString(),
+                  ).format(DateTime(2000, m.month));
                   return Text(
                     label,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textMuted.withValues(alpha: 0.35)),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: textMuted.withValues(alpha: 0.35),
+                    ),
                   );
                 })
                 .toList(growable: false),
@@ -837,7 +959,9 @@ class _HeatmapCard extends StatelessWidget {
     for (var i = 0; i < 7; i++) {
       final t = i / 6.0;
       final dt = DateTime.fromMillisecondsSinceEpoch(
-        (start.millisecondsSinceEpoch + (end.millisecondsSinceEpoch - start.millisecondsSinceEpoch) * t).round(),
+        (start.millisecondsSinceEpoch +
+                (end.millisecondsSinceEpoch - start.millisecondsSinceEpoch) * t)
+            .round(),
       );
       points.add(DateTime(dt.year, dt.month));
     }
@@ -846,10 +970,7 @@ class _HeatmapCard extends StatelessWidget {
 }
 
 class _YearHeatmap extends StatelessWidget {
-  const _YearHeatmap({
-    required this.dailyCounts,
-    required this.isDark,
-  });
+  const _YearHeatmap({required this.dailyCounts, required this.isDark});
 
   final Map<DateTime, int> dailyCounts;
   final bool isDark;
@@ -860,17 +981,33 @@ class _YearHeatmap extends StatelessWidget {
     const daysPerWeek = 7;
 
     final todayLocal = DateTime.now();
-    final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
-    final currentWeekStart = endLocal.subtract(Duration(days: endLocal.weekday - 1));
-    final alignedStart = currentWeekStart.subtract(Duration(days: (weeks - 1) * daysPerWeek));
+    final endLocal = DateTime(
+      todayLocal.year,
+      todayLocal.month,
+      todayLocal.day,
+    );
+    final currentWeekStart = endLocal.subtract(
+      Duration(days: endLocal.weekday - 1),
+    );
+    final alignedStart = currentWeekStart.subtract(
+      Duration(days: (weeks - 1) * daysPerWeek),
+    );
 
-    final maxCount = dailyCounts.values.fold<int>(0, (max, v) => v > max ? v : max);
+    final maxCount = dailyCounts.values.fold<int>(
+      0,
+      (max, v) => v > max ? v : max,
+    );
 
     Color colorFor(int c) {
-      if (c <= 0) return isDark ? const Color(0xFF262626) : Colors.black.withValues(alpha: 0.05);
+      if (c <= 0)
+        return isDark
+            ? const Color(0xFF262626)
+            : Colors.black.withValues(alpha: 0.05);
       final t = maxCount <= 0 ? 0.0 : (c / maxCount).clamp(0.0, 1.0);
-      if (t <= 0.33) return MemoFlowPalette.primary.withValues(alpha: isDark ? 0.45 : 0.25);
-      if (t <= 0.66) return MemoFlowPalette.primary.withValues(alpha: isDark ? 0.7 : 0.55);
+      if (t <= 0.33)
+        return MemoFlowPalette.primary.withValues(alpha: isDark ? 0.45 : 0.25);
+      if (t <= 0.66)
+        return MemoFlowPalette.primary.withValues(alpha: isDark ? 0.7 : 0.55);
       return MemoFlowPalette.primary.withValues(alpha: 0.95);
     }
 
@@ -884,7 +1021,11 @@ class _YearHeatmap extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         const spacing = 3.0;
-        final cellSize = ((constraints.maxWidth - spacing * (weeks - 1)) / weeks).clamp(3.0, 8.0);
+        final cellSize =
+            ((constraints.maxWidth - spacing * (weeks - 1)) / weeks).clamp(
+              3.0,
+              8.0,
+            );
         return SizedBox(
           height: cellSize * daysPerWeek + spacing * (daysPerWeek - 1),
           child: GridView.builder(
@@ -958,11 +1099,25 @@ class _MiniStatCard extends StatelessWidget {
             children: [
               Icon(icon, size: 18, color: MemoFlowPalette.primary),
               const SizedBox(width: 8),
-              Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: textMuted)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: textMuted,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
-          Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textMain)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: textMain,
+            ),
+          ),
         ],
       ),
     );
@@ -980,13 +1135,17 @@ List<DateTime> _deriveMonths(Map<DateTime, int> dailyCounts) {
   return list;
 }
 
-Map<DateTime, int> _lastNDaysCounts(Map<DateTime, int> dailyCounts, {required int days}) {
+Map<DateTime, int> _lastNDaysCounts(
+  Map<DateTime, int> dailyCounts, {
+  required int days,
+}) {
   final todayLocal = DateTime.now();
   final endLocal = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
   final startLocal = endLocal.subtract(Duration(days: days - 1));
   return {
     for (final e in dailyCounts.entries)
-      if (!e.key.isBefore(startLocal) && !e.key.isAfter(endLocal)) e.key: e.value,
+      if (!e.key.isBefore(startLocal) && !e.key.isAfter(endLocal))
+        e.key: e.value,
   };
 }
 
@@ -1017,7 +1176,8 @@ int _currentStreakDays(Map<DateTime, int> dailyCounts) {
   return streak;
 }
 
-String _formatMonth(DateTime month) => '${month.year}-${month.month.toString().padLeft(2, '0')}';
+String _formatMonth(DateTime month) =>
+    '${month.year}-${month.month.toString().padLeft(2, '0')}';
 
 String _formatNumber(int n) {
   final s = n.toString();

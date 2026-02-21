@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
@@ -1485,6 +1487,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           );
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final enableWindowsDragToMove =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.explore,
       onSelect: (d) => _navigate(context, d),
@@ -1539,9 +1543,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           automaticallyImplyLeading: !useDesktopSidePane,
           toolbarHeight: 46,
           iconTheme: IconThemeData(color: textMain),
-          title: Text(
-            context.t.strings.legacy.msg_explore,
-            style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(
+              context.t.strings.legacy.msg_explore,
+              style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+            ),
           ),
           actions: [
             IconButton(

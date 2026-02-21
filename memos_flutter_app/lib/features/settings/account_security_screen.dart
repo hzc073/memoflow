@@ -1,13 +1,9 @@
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:saf_util/saf_util.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop_settings_window.dart';
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
@@ -21,6 +17,7 @@ import '../../state/personal_access_token_repository_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';
+import 'local_mode_setup_screen.dart';
 import 'user_general_settings_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -72,46 +69,6 @@ class AccountSecurityScreen extends ConsumerWidget {
         ? currentLocalLibrary.locationLabel
         : currentAccount?.baseUrl.toString() ?? "";
 
-    Future<String?> _promptLocalLibraryName(String initialName) async {
-      final result = await showDialog<String>(
-        context: context,
-        builder: (context) => _LocalLibraryNameDialog(
-          initialName: initialName,
-          title: context.t.strings.legacy.msg_local_library_name,
-          hintText: context.t.strings.legacy.msg_enter_name_2,
-          cancelLabel: context.t.strings.legacy.msg_cancel_2,
-          confirmLabel: context.t.strings.legacy.msg_confirm,
-        ),
-      );
-      if (result == null || result.trim().isEmpty) return null;
-      return result.trim();
-    }
-
-    Future<({String? treeUri, String? rootPath, String defaultName})?>
-    _pickLocalLibraryLocation() async {
-      if (Platform.isAndroid) {
-        final doc = await SafUtil().pickDirectory(
-          writePermission: true,
-          persistablePermission: true,
-        );
-        if (doc == null) return null;
-        final name = doc.name.trim().isEmpty
-            ? context.t.strings.legacy.msg_local_library
-            : doc.name.trim();
-        return (treeUri: doc.uri, rootPath: null, defaultName: name);
-      }
-      final path = await FilePicker.platform.getDirectoryPath();
-      if (path == null || path.trim().isEmpty) return null;
-      final name = p.basename(path.trim());
-      return (
-        treeUri: null,
-        rootPath: path.trim(),
-        defaultName: name.isEmpty
-            ? context.t.strings.legacy.msg_local_library
-            : name,
-      );
-    }
-
     Future<void> _maybeScanLocalLibrary() async {
       if (!context.mounted) return;
       await WidgetsBinding.instance.endOfFrame;
@@ -159,24 +116,31 @@ class AccountSecurityScreen extends ConsumerWidget {
     }
 
     Future<void> _addLocalLibrary() async {
-      final picked = await _pickLocalLibraryLocation();
-      if (picked == null) return;
-      final name = await _promptLocalLibraryName(picked.defaultName);
-      if (name == null || name.trim().isEmpty) return;
-      final keySeed = (picked.treeUri ?? picked.rootPath ?? '').trim();
+      final result = await LocalModeSetupScreen.show(
+        context,
+        title: context.t.strings.legacy.msg_add_local_library,
+        confirmLabel: context.t.strings.legacy.msg_confirm,
+        cancelLabel: context.t.strings.legacy.msg_cancel_2,
+        initialName: context.t.strings.legacy.msg_local_library,
+      );
+      if (result == null) return;
+      final keySeed = (result.treeUri ?? result.rootPath ?? '').trim();
       if (keySeed.isEmpty) return;
       final key = 'local_${fnv1a64Hex(keySeed)}';
       final now = DateTime.now();
       final library = LocalLibrary(
         key: key,
-        name: name.trim(),
-        treeUri: picked.treeUri,
-        rootPath: picked.rootPath,
+        name: result.name.trim(),
+        treeUri: result.treeUri,
+        rootPath: result.rootPath,
         createdAt: now,
         updatedAt: now,
       );
       ref.read(localLibrariesProvider.notifier).upsert(library);
       await ref.read(appSessionProvider.notifier).switchWorkspace(key);
+      if (result.encryptionEnabled && context.mounted) {
+        showTopToast(context, '加密功能当前仅占位，暂未真正生效。');
+      }
       if (!context.mounted) return;
       await WidgetsBinding.instance.endOfFrame;
       if (!context.mounted) return;
@@ -214,6 +178,11 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!confirmed) return;
 
       final wasCurrent = library.key == currentKey;
+      final remainingLocalLibraries = localLibraries
+          .where((l) => l.key != library.key)
+          .toList(growable: false);
+      final shouldReopenOnboarding =
+          accounts.isEmpty && remainingLocalLibraries.isEmpty;
       ref.read(localLibrariesProvider.notifier).remove(library.key);
       await AppDatabase.deleteDatabaseFile(
         dbName: databaseNameForAccountKey(library.key),
@@ -228,14 +197,23 @@ class AccountSecurityScreen extends ConsumerWidget {
           }
         }
         if (nextKey == null) {
-          for (final l in localLibraries) {
-            if (l.key != library.key) {
-              nextKey = l.key;
-              break;
-            }
+          for (final l in remainingLocalLibraries) {
+            nextKey = l.key;
+            break;
           }
         }
         await ref.read(appSessionProvider.notifier).setCurrentKey(nextKey);
+      }
+
+      if (shouldReopenOnboarding) {
+        final currentPreferences = ref.read(appPreferencesProvider);
+        await ref
+            .read(appPreferencesProvider.notifier)
+            .setAll(
+              currentPreferences.copyWith(hasSelectedLanguage: false),
+              triggerSync: false,
+            );
+        await requestMainWindowReopenOnboardingIfSupported();
       }
 
       if (!context.mounted) return;
@@ -293,6 +271,7 @@ class AccountSecurityScreen extends ConsumerWidget {
           currentPreferences.copyWith(hasSelectedLanguage: false),
           triggerSync: false,
         );
+        await requestMainWindowReopenOnboardingIfSupported();
       }
       try {
         await sessionNotifier.removeAccount(accountKey);
@@ -739,65 +718,6 @@ class _AccountRow extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _LocalLibraryNameDialog extends StatefulWidget {
-  const _LocalLibraryNameDialog({
-    required this.initialName,
-    required this.title,
-    required this.hintText,
-    required this.cancelLabel,
-    required this.confirmLabel,
-  });
-
-  final String initialName;
-  final String title;
-  final String hintText;
-  final String cancelLabel;
-  final String confirmLabel;
-
-  @override
-  State<_LocalLibraryNameDialog> createState() =>
-      _LocalLibraryNameDialogState();
-}
-
-class _LocalLibraryNameDialogState extends State<_LocalLibraryNameDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    Navigator.of(context).pop(_controller.text.trim());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: TextField(
-        controller: _controller,
-        decoration: InputDecoration(hintText: widget.hintText),
-        onSubmitted: (_) => _submit(),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(null),
-          child: Text(widget.cancelLabel),
-        ),
-        FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
-      ],
     );
   }
 }

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-enum MemoComposePrimaryAction { tag, attachment, todo, link }
+enum MemoComposePrimaryAction { tag, template, attachment, todo, link }
 
 const kMemoComposePrimaryActions = <MemoComposePrimaryAction>[
   MemoComposePrimaryAction.tag,
+  MemoComposePrimaryAction.template,
   MemoComposePrimaryAction.attachment,
   MemoComposePrimaryAction.todo,
   MemoComposePrimaryAction.link,
@@ -13,6 +14,7 @@ extension MemoComposePrimaryActionX on MemoComposePrimaryAction {
   IconData get icon {
     return switch (this) {
       MemoComposePrimaryAction.tag => Icons.tag,
+      MemoComposePrimaryAction.template => Icons.description_outlined,
       MemoComposePrimaryAction.attachment => Icons.attach_file,
       MemoComposePrimaryAction.todo => Icons.playlist_add_check,
       MemoComposePrimaryAction.link => Icons.alternate_email_rounded,
@@ -22,6 +24,7 @@ extension MemoComposePrimaryActionX on MemoComposePrimaryAction {
   String get tooltip {
     return switch (this) {
       MemoComposePrimaryAction.tag => 'Tag',
+      MemoComposePrimaryAction.template => '模板',
       MemoComposePrimaryAction.attachment => 'Attachment',
       MemoComposePrimaryAction.todo => 'Todo',
       MemoComposePrimaryAction.link => 'Link',
@@ -42,8 +45,10 @@ class MemoComposePrimaryToolbar extends StatelessWidget {
     required this.visibilityColor,
     required this.tagButtonKey,
     required this.todoButtonKey,
+    required this.templateButtonKey,
     required this.visibilityButtonKey,
     required this.onTagPressed,
+    required this.onTemplatePressed,
     required this.onAttachmentPressed,
     required this.onTodoPressed,
     required this.onLinkPressed,
@@ -58,9 +63,11 @@ class MemoComposePrimaryToolbar extends StatelessWidget {
   final IconData visibilityIcon;
   final Color visibilityColor;
   final Key tagButtonKey;
+  final Key templateButtonKey;
   final Key todoButtonKey;
   final Key visibilityButtonKey;
   final VoidCallback? onTagPressed;
+  final VoidCallback? onTemplatePressed;
   final VoidCallback? onAttachmentPressed;
   final VoidCallback? onTodoPressed;
   final VoidCallback? onLinkPressed;
@@ -93,6 +100,15 @@ class MemoComposePrimaryToolbar extends StatelessWidget {
             onPressed: busy ? null : onTagPressed,
             icon: Icon(
               MemoComposePrimaryAction.tag.icon,
+              color: toolbarIconColor,
+            ),
+          ),
+          IconButton(
+            key: templateButtonKey,
+            tooltip: MemoComposePrimaryAction.template.tooltip,
+            onPressed: busy ? null : onTemplatePressed,
+            icon: Icon(
+              MemoComposePrimaryAction.template.icon,
               color: toolbarIconColor,
             ),
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
@@ -87,6 +88,8 @@ class AboutScreen extends StatelessWidget {
         : MemoFlowPalette.backgroundLight;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.about,
       onSelect: (d) => _navigate(context, d),
@@ -109,18 +112,27 @@ class AboutScreen extends StatelessWidget {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
           leading: IconButton(
             tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
             onPressed: () => _backToAllMemos(context),
           ),
-          title: Text(context.t.strings.legacy.msg_about),
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(context.t.strings.legacy.msg_about),
+          ),
           centerTitle: false,
         ),
         body: useDesktopSidePane
             ? Row(
                 children: [
-                  SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+                  SizedBox(
+                    width: kMemoFlowDesktopDrawerWidth,
+                    child: drawerPanel,
+                  ),
                   VerticalDivider(
                     width: 1,
                     thickness: 1,

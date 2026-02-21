@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/drawer_navigation.dart';
 import '../../core/platform_layout.dart';
@@ -85,6 +86,8 @@ class TagsScreen extends ConsumerWidget {
     final tagsAsync = ref.watch(tagStatsProvider);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.tags,
@@ -121,9 +124,8 @@ class TagsScreen extends ConsumerWidget {
               ],
             ),
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
-      ),
+      error: (e, _) =>
+          Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
     );
 
     return PopScope(
@@ -134,11 +136,22 @@ class TagsScreen extends ConsumerWidget {
       },
       child: Scaffold(
         drawer: useDesktopSidePane ? null : drawerPanel,
-        appBar: AppBar(title: Text(context.t.strings.legacy.msg_tags)),
+        appBar: AppBar(
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(context.t.strings.legacy.msg_tags),
+          ),
+        ),
         body: useDesktopSidePane
             ? Row(
                 children: [
-                  SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+                  SizedBox(
+                    width: kMemoFlowDesktopDrawerWidth,
+                    child: drawerPanel,
+                  ),
                   VerticalDivider(
                     width: 1,
                     thickness: 1,

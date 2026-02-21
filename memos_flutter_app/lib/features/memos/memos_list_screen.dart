@@ -21,6 +21,7 @@ import '../../core/desktop_tray_controller.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
+import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
 import '../../core/tags.dart';
@@ -33,8 +34,9 @@ import '../../data/models/location_settings.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
+import '../../data/models/memo_template_settings.dart';
 import '../../data/models/shortcut.dart';
-import '../../data/location/amap_geocoder.dart';
+import '../../data/location/location_geocoder.dart';
 import '../../data/location/device_location_service.dart';
 import '../../state/app_lock_provider.dart';
 import '../../features/home/app_drawer.dart';
@@ -45,6 +47,7 @@ import '../../state/local_library_scanner.dart';
 import '../../state/location_settings_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memo_timeline_provider.dart';
+import '../../state/memo_template_settings_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/network_log_provider.dart';
 import '../../state/note_draft_provider.dart';
@@ -407,6 +410,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   final _inlineComposeController = TextEditingController();
   final _inlineComposeFocusNode = FocusNode();
   final _inlineTagMenuKey = GlobalKey();
+  final _inlineTemplateMenuKey = GlobalKey();
   final _inlineTodoMenuKey = GlobalKey();
   final _inlineVisibilityMenuKey = GlobalKey();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -461,6 +465,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   String _inlineVisibility = 'PRIVATE';
   bool _inlineVisibilityTouched = false;
   final _inlineImagePicker = ImagePicker();
+  final _inlineTemplateRenderer = MemoTemplateRenderer();
   MemoLocation? _inlineLocation;
   bool _inlineLocating = false;
   bool _inlineMoreToolbarOpen = false;
@@ -1321,49 +1326,58 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         color: barBg,
         border: Border(bottom: BorderSide(color: divider)),
       ),
-      child: Row(
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          SizedBox(
-            width: 260,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: Image.asset(
-                      'assets/splash/splash_logo.png',
-                      fit: BoxFit.cover,
-                      filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => Icon(
-                        Icons.auto_stories_rounded,
-                        size: 22,
-                        color: textColor.withValues(alpha: 0.9),
+          const DragToMoveArea(child: SizedBox.expand()),
+          Row(
+            children: [
+              SizedBox(
+                width: 260,
+                child: Row(
+                  children: [
+                    IgnorePointer(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.asset(
+                            'assets/splash/splash_logo.png',
+                            fit: BoxFit.cover,
+                            filterQuality: FilterQuality.high,
+                            errorBuilder: (_, _, _) => Icon(
+                              Icons.auto_stories_rounded,
+                              size: 22,
+                              color: textColor.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DefaultTextStyle.merge(
-                    style: TextStyle(color: textColor, fontSize: 14),
-                    child: _buildHeaderTitleWidget(
-                      context,
-                      maybeHaptic: maybeHaptic,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DefaultTextStyle.merge(
+                        style: TextStyle(color: textColor, fontSize: 14),
+                        child: widget.enableTitleMenu
+                            ? _buildHeaderTitleWidget(
+                                context,
+                                maybeHaptic: maybeHaptic,
+                              )
+                            : IgnorePointer(
+                                child: _buildHeaderTitleWidget(
+                                  context,
+                                  maybeHaptic: maybeHaptic,
+                                ),
+                              ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                DragToMoveArea(child: const SizedBox.expand()),
-                Align(
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Align(
                   alignment: Alignment.center,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 560),
@@ -1385,71 +1399,76 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (enableHomeSort) ...[
-            _buildSortMenuButton(context, isDark: isDark),
-            const SizedBox(width: 2),
-          ],
-          if (widget.enableSearch)
-            IconButton(
-              tooltip: _windowsHeaderSearchExpanded
-                  ? context.t.strings.legacy.msg_cancel_2
-                  : context.t.strings.legacy.msg_search,
-              onPressed: _toggleWindowsHeaderSearch,
-              icon: Icon(
-                _windowsHeaderSearchExpanded ? Icons.close : Icons.search,
               ),
-            ),
-          if (kDebugMode && !screenshotModeEnabled) ...[
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 130),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: MemoFlowPalette.primary.withValues(
-                    alpha: isDark ? 0.24 : 0.12,
+              const SizedBox(width: 8),
+              if (enableHomeSort) ...[
+                _buildSortMenuButton(context, isDark: isDark),
+                const SizedBox(width: 2),
+              ],
+              if (widget.enableSearch)
+                IconButton(
+                  tooltip: _windowsHeaderSearchExpanded
+                      ? context.t.strings.legacy.msg_cancel_2
+                      : context.t.strings.legacy.msg_search,
+                  onPressed: _toggleWindowsHeaderSearch,
+                  icon: Icon(
+                    _windowsHeaderSearchExpanded ? Icons.close : Icons.search,
                   ),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: MemoFlowPalette.primary.withValues(
-                      alpha: isDark ? 0.45 : 0.25,
+                ),
+              if (kDebugMode && !screenshotModeEnabled) ...[
+                IgnorePointer(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 130),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: MemoFlowPalette.primary.withValues(
+                          alpha: isDark ? 0.24 : 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: MemoFlowPalette.primary.withValues(
+                            alpha: isDark ? 0.45 : 0.25,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        debugApiVersionText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: MemoFlowPalette.primary,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                child: Text(
-                  debugApiVersionText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: MemoFlowPalette.primary,
-                  ),
-                ),
+                const SizedBox(width: 8),
+              ],
+              _DesktopWindowIconButton(
+                tooltip: 'Minimize',
+                onPressed: () => unawaited(_minimizeDesktopWindow()),
+                icon: Icons.minimize_rounded,
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          _DesktopWindowIconButton(
-            tooltip: 'Minimize',
-            onPressed: () => unawaited(_minimizeDesktopWindow()),
-            icon: Icons.minimize_rounded,
-          ),
-          _DesktopWindowIconButton(
-            tooltip: _desktopWindowMaximized ? 'Restore' : 'Maximize',
-            onPressed: () => unawaited(_toggleDesktopWindowMaximize()),
-            icon: _desktopWindowMaximized
-                ? Icons.filter_none_rounded
-                : Icons.crop_square_rounded,
-          ),
-          _DesktopWindowIconButton(
-            tooltip: 'Close',
-            onPressed: () => unawaited(_closeDesktopWindow()),
-            icon: Icons.close_rounded,
-            destructive: true,
+              _DesktopWindowIconButton(
+                tooltip: _desktopWindowMaximized ? 'Restore' : 'Maximize',
+                onPressed: () => unawaited(_toggleDesktopWindowMaximize()),
+                icon: _desktopWindowMaximized
+                    ? Icons.filter_none_rounded
+                    : Icons.crop_square_rounded,
+              ),
+              _DesktopWindowIconButton(
+                tooltip: 'Close',
+                onPressed: () => unawaited(_closeDesktopWindow()),
+                icon: Icons.close_rounded,
+                destructive: true,
+              ),
+            ],
           ),
         ],
       ),
@@ -2129,6 +2148,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
+  void _replaceInlineComposeText(String text) {
+    _inlineComposeController.value = _inlineComposeController.value.copyWith(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+      composing: TextRange.empty,
+    );
+  }
+
   void _trackInlineComposeHistory() {
     if (_inlineApplyingHistory) return;
     final value = _inlineComposeController.value;
@@ -2323,8 +2350,24 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       setState(() => _inlineLocating = true);
       try {
         final position = await DeviceLocationService().getCurrentPosition();
+        final settings = await _resolveInlineLocationSettings();
+        String placeholder = '';
+        if (settings.enabled) {
+          final geocoder = LocationGeocoder(
+            logStore: ref.read(networkLogStoreProvider),
+            logBuffer: ref.read(networkLogBufferProvider),
+            logManager: ref.read(logManagerProvider),
+          );
+          placeholder =
+              await geocoder.reverseGeocode(
+                latitude: position.latitude,
+                longitude: position.longitude,
+                settings: settings,
+              ) ??
+              '';
+        }
         final next = MemoLocation(
-          placeholder: '',
+          placeholder: placeholder,
           latitude: position.latitude,
           longitude: position.longitude,
         );
@@ -2375,22 +2418,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     try {
       final position = await DeviceLocationService().getCurrentPosition();
       String placeholder = '';
-      if (settings.amapWebKey.trim().isNotEmpty) {
-        final geocoder = AmapGeocoder(
-          logStore: ref.read(networkLogStoreProvider),
-          logBuffer: ref.read(networkLogBufferProvider),
-          logManager: ref.read(logManagerProvider),
-        );
-        placeholder =
-            await geocoder.reverseGeocode(
-              latitude: position.latitude,
-              longitude: position.longitude,
-              apiKey: settings.amapWebKey,
-              securityKey: settings.amapSecurityKey,
-              precision: settings.precision,
-            ) ??
-            '';
-      }
+      final geocoder = LocationGeocoder(
+        logStore: ref.read(networkLogStoreProvider),
+        logBuffer: ref.read(networkLogBufferProvider),
+        logManager: ref.read(logManagerProvider),
+      );
+      placeholder =
+          await geocoder.reverseGeocode(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            settings: settings,
+          ) ??
+          '';
       final next = MemoLocation(
         placeholder: placeholder,
         latitude: position.latitude,
@@ -2621,6 +2660,74 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         : selection;
     if (normalized.isEmpty) return;
     _insertInlineComposeText('$normalized ');
+  }
+
+  Future<void> _openInlineTemplateMenuFromKey(
+    GlobalKey key,
+    List<MemoTemplate> templates,
+  ) async {
+    if (_inlineComposeBusy) return;
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    await _openInlineTemplateMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      templates,
+    );
+  }
+
+  Future<void> _openInlineTemplateMenu(
+    RelativeRect position,
+    List<MemoTemplate> templates,
+  ) async {
+    if (_inlineComposeBusy) return;
+    final items = templates.isEmpty
+        ? const <PopupMenuEntry<String>>[
+            PopupMenuItem<String>(enabled: false, child: Text('暂无模板')),
+          ]
+        : templates
+              .map(
+                (template) => PopupMenuItem<String>(
+                  value: template.id,
+                  child: Text(template.name),
+                ),
+              )
+              .toList(growable: false);
+
+    final selectedId = await showMenu<String>(
+      context: context,
+      position: position,
+      items: items,
+    );
+    if (!mounted || selectedId == null) return;
+    MemoTemplate? selected;
+    for (final item in templates) {
+      if (item.id == selectedId) {
+        selected = item;
+        break;
+      }
+    }
+    if (selected == null) return;
+    await _applyInlineTemplate(selected);
+  }
+
+  Future<void> _applyInlineTemplate(MemoTemplate template) async {
+    final templateSettings = ref.read(memoTemplateSettingsProvider);
+    final locationSettings = ref.read(locationSettingsProvider);
+    final rendered = await _inlineTemplateRenderer.render(
+      templateContent: template.content,
+      variableSettings: templateSettings.variables,
+      locationSettings: locationSettings,
+    );
+    if (!mounted) return;
+    _replaceInlineComposeText(rendered);
   }
 
   Future<void> _openInlineTodoShortcutMenuFromKey(GlobalKey key) async {
@@ -3319,6 +3426,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   Widget _buildInlineComposeCard({
     required bool isDark,
     required List<TagStat> tagStats,
+    required List<MemoTemplate> availableTemplates,
   }) {
     final cardColor = isDark
         ? MemoFlowPalette.cardDark
@@ -3479,6 +3587,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                   visibilityIcon: visibilityIcon,
                   visibilityColor: visibilityColor,
                   tagButtonKey: _inlineTagMenuKey,
+                  templateButtonKey: _inlineTemplateMenuKey,
                   todoButtonKey: _inlineTodoMenuKey,
                   visibilityButtonKey: _inlineVisibilityMenuKey,
                   onTagPressed: () {
@@ -3486,6 +3595,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                     _insertInlineComposeText('#');
                     unawaited(
                       _openInlineTagMenuFromKey(_inlineTagMenuKey, tagStats),
+                    );
+                  },
+                  onTemplatePressed: () {
+                    _closeInlineMoreToolbar();
+                    unawaited(
+                      _openInlineTemplateMenuFromKey(
+                        _inlineTemplateMenuKey,
+                        availableTemplates,
+                      ),
                     );
                   },
                   onAttachmentPressed: () {
@@ -3825,16 +3943,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     final titleBox = _titleKey.currentContext?.findRenderObject() as RenderBox?;
     if (overlay == null || titleBox == null) return;
+    if (!overlay.hasSize || !titleBox.hasSize) return;
+    if (overlay.size.width <= 40 || overlay.size.height <= 40) return;
 
     final position = titleBox.localToGlobal(Offset.zero, ancestor: overlay);
     final maxWidth = overlay.size.width - 24;
-    final width = (maxWidth < 220 ? maxWidth : 240).toDouble();
+    if (maxWidth <= 0) return;
+    final width = (maxWidth < 220 ? maxWidth : 240).toDouble().clamp(
+      140.0,
+      320.0,
+    );
     final left = position.dx.clamp(12.0, overlay.size.width - width - 12.0);
     final top = position.dy + titleBox.size.height + 6;
     final availableHeight = overlay.size.height - top - 16;
-    final menuMaxHeight = availableHeight > 120
-        ? availableHeight
-        : overlay.size.height * 0.6;
+    final menuMaxHeight =
+        (availableHeight > 120 ? availableHeight : overlay.size.height * 0.6)
+            .clamp(140.0, overlay.size.height - 12.0);
 
     final action = await showGeneralDialog<_TitleMenuAction>(
       context: context,
@@ -4294,6 +4418,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       videos: videoEntries,
     );
     final hapticsEnabled = prefs.hapticsEnabled;
+    final locationProvider = ref.watch(
+      locationSettingsProvider.select((value) => value.provider),
+    );
 
     void maybeHaptic() {
       if (hapticsEnabled) {
@@ -4329,6 +4456,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       audioDurationListenable: removing ? null : audioDurationListenable,
       imageEntries: imageEntries,
       mediaEntries: mediaEntries,
+      locationProvider: locationProvider,
       onAudioSeek: removing || !isAudioActive
           ? null
           : (pos) => _seekAudioPosition(memo, pos),
@@ -4463,6 +4591,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final searchHistory = ref.watch(searchHistoryProvider);
     final tagStats =
         ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
+    final templateSettings = ref.watch(memoTemplateSettingsProvider);
+    final availableTemplates = templateSettings.enabled
+        ? templateSettings.templates
+        : const <MemoTemplate>[];
     final recommendedTags = [...tagStats]
       ..sort((a, b) => b.count.compareTo(a.count));
     final showSearchLanding =
@@ -4812,6 +4944,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                           child: _buildInlineComposeCard(
                             isDark: isDark,
                             tagStats: tagStats,
+                            availableTemplates: availableTemplates,
                           ),
                         ),
                       ),
@@ -5079,56 +5212,46 @@ class _PillRow extends StatelessWidget {
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: Align(
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _PillButton(
-                    icon: Icons.insights,
-                    iconColor: MemoFlowPalette.primary,
-                    label: context.t.strings.legacy.msg_monthly_stats,
-                    onPressed: onWeeklyInsights,
-                    backgroundColor: bgColor,
-                    borderColor: borderColor,
-                    textColor: textColor,
-                  ),
-                  const SizedBox(width: 10),
-                  _PillButton(
-                    icon: Icons.auto_awesome,
-                    iconColor: isDark
-                        ? MemoFlowPalette.aiChipBlueDark
-                        : MemoFlowPalette.aiChipBlueLight,
-                    label: context.t.strings.legacy.msg_ai_summary,
-                    onPressed: onAiSummary,
-                    backgroundColor: bgColor,
-                    borderColor: borderColor,
-                    textColor: textColor,
-                  ),
-                  const SizedBox(width: 10),
-                  _PillButton(
-                    icon: Icons.explore,
-                    iconColor: isDark
-                        ? MemoFlowPalette.reviewChipOrangeDark
-                        : MemoFlowPalette.reviewChipOrangeLight,
-                    label: context.t.strings.legacy.msg_random_review,
-                    onPressed: onDailyReview,
-                    backgroundColor: bgColor,
-                    borderColor: borderColor,
-                    textColor: textColor,
-                  ),
-                ],
-              ),
-            ),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PillButton(
+            icon: Icons.insights,
+            iconColor: MemoFlowPalette.primary,
+            label: context.t.strings.legacy.msg_monthly_stats,
+            onPressed: onWeeklyInsights,
+            backgroundColor: bgColor,
+            borderColor: borderColor,
+            textColor: textColor,
           ),
-        );
-      },
+          const SizedBox(width: 10),
+          _PillButton(
+            icon: Icons.auto_awesome,
+            iconColor: isDark
+                ? MemoFlowPalette.aiChipBlueDark
+                : MemoFlowPalette.aiChipBlueLight,
+            label: context.t.strings.legacy.msg_ai_summary,
+            onPressed: onAiSummary,
+            backgroundColor: bgColor,
+            borderColor: borderColor,
+            textColor: textColor,
+          ),
+          const SizedBox(width: 10),
+          _PillButton(
+            icon: Icons.explore,
+            iconColor: isDark
+                ? MemoFlowPalette.reviewChipOrangeDark
+                : MemoFlowPalette.reviewChipOrangeLight,
+            label: context.t.strings.legacy.msg_random_review,
+            onPressed: onDailyReview,
+            backgroundColor: bgColor,
+            borderColor: borderColor,
+            textColor: textColor,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -5372,7 +5495,23 @@ class _TitleMenuDropdown extends ConsumerWidget {
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: SingleChildScrollView(child: Column(children: items)),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth.isFinite
+                    ? constraints.maxWidth
+                    : 240.0;
+                return SingleChildScrollView(
+                  primary: false,
+                  child: SizedBox(
+                    width: width,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: items,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -6035,6 +6174,7 @@ class _MemoCard extends StatefulWidget {
     required this.audioDurationListenable,
     required this.imageEntries,
     required this.mediaEntries,
+    required this.locationProvider,
     required this.onAudioSeek,
     required this.onAudioTap,
     required this.syncStatus,
@@ -6057,6 +6197,7 @@ class _MemoCard extends StatefulWidget {
   final ValueListenable<Duration?>? audioDurationListenable;
   final List<MemoImageEntry> imageEntries;
   final List<MemoMediaEntry> mediaEntries;
+  final LocationServiceProvider locationProvider;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
   final _MemoSyncStatus syncStatus;
@@ -6499,10 +6640,11 @@ class _MemoCardState extends State<_MemoCard> {
                             textColor: textMain.withValues(
                               alpha: isDark ? 0.4 : 0.5,
                             ),
-                            onTap: () => openAmapLocation(
+                            onTap: () => openMemoLocation(
                               context,
                               memo.location!,
                               memoUid: memo.uid,
+                              provider: widget.locationProvider,
                             ),
                           ),
                         ],

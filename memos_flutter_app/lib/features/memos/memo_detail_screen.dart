@@ -29,6 +29,7 @@ import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/session_provider.dart';
+import '../../state/location_settings_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
@@ -635,8 +636,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           MemoLocationLine(
             location: memo.location!,
             textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            onTap: () =>
-                openAmapLocation(context, memo.location!, memoUid: memo.uid),
+            onTap: () => openMemoLocation(
+              context,
+              memo.location!,
+              memoUid: memo.uid,
+              provider: ref.read(locationSettingsProvider).provider,
+            ),
             fontSize: 12,
           ),
         ],

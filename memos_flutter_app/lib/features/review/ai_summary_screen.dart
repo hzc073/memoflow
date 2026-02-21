@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/drawer_navigation.dart';
@@ -644,15 +645,19 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color textMain,
     required bool useDesktopSidePane,
   }) {
+    final enableWindowsDragToMove = Platform.isWindows;
     final titleText = useDesktopSidePane
         ? context.t.strings.legacy.msg_ai_summary
         : (isReport
               ? context.t.strings.legacy.msg_ai_summary_report
               : context.t.strings.legacy.msg_ai_summary);
     return AppBar(
-      title: Text(
-        titleText,
-        style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+      title: IgnorePointer(
+        ignoring: enableWindowsDragToMove,
+        child: Text(
+          titleText,
+          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+        ),
       ),
       centerTitle: !useDesktopSidePane,
       backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
@@ -677,14 +682,16 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
               ),
             ]
           : (useDesktopSidePane ? [const SizedBox(width: 48)] : null),
-      flexibleSpace: useDesktopSidePane
-          ? null
-          : ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: Container(color: bg.withValues(alpha: 0.9)),
-              ),
-            ),
+      flexibleSpace: enableWindowsDragToMove
+          ? const DragToMoveArea(child: SizedBox.expand())
+          : (useDesktopSidePane
+                ? null
+                : ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: Container(color: bg.withValues(alpha: 0.9)),
+                    ),
+                  )),
       bottom: isReport
           ? null
           : PreferredSize(

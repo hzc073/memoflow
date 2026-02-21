@@ -1,15 +1,10 @@
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:saf_util/saf_util.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/local_library.dart';
+import '../settings/local_mode_setup_screen.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
@@ -38,61 +33,6 @@ class _LanguageSelectionScreenState
     _selected = ref.read(appPreferencesProvider).language;
   }
 
-  Future<String?> _promptLocalLibraryName(String initialName) async {
-    var name = initialName;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t.strings.onboarding.localLibraryNameTitle),
-        content: TextFormField(
-          initialValue: initialName,
-          decoration: InputDecoration(
-            hintText: context.t.strings.onboarding.localLibraryNameHint,
-          ),
-          onChanged: (value) => name = value,
-          onFieldSubmitted: (_) => context.safePop(name.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => context.safePop(null),
-            child: Text(context.t.strings.common.cancel),
-          ),
-          FilledButton(
-            onPressed: () => context.safePop(name.trim()),
-            child: Text(context.t.strings.common.confirm),
-          ),
-        ],
-      ),
-    );
-    if (result == null || result.trim().isEmpty) return null;
-    return result.trim();
-  }
-
-  Future<({String? treeUri, String? rootPath, String defaultName})?>
-  _pickLocalLibraryLocation() async {
-    if (Platform.isAndroid) {
-      final doc = await SafUtil().pickDirectory(
-        writePermission: true,
-        persistablePermission: true,
-      );
-      if (doc == null) return null;
-      final name = doc.name.trim().isEmpty
-          ? context.t.strings.onboarding.localLibraryDefaultName
-          : doc.name.trim();
-      return (treeUri: doc.uri, rootPath: null, defaultName: name);
-    }
-    final path = await FilePicker.platform.getDirectoryPath();
-    if (path == null || path.trim().isEmpty) return null;
-    final name = p.basename(path.trim());
-    return (
-      treeUri: null,
-      rootPath: path.trim(),
-      defaultName: name.isEmpty
-          ? context.t.strings.onboarding.localLibraryDefaultName
-          : name,
-    );
-  }
-
   Future<void> _scanLocalLibrarySilently() async {
     final scanner = ref.read(localLibraryScannerProvider);
     if (scanner == null) return;
@@ -104,13 +44,13 @@ class _LanguageSelectionScreenState
   }
 
   List<AppLanguage> get _languageOptions => const [
-        AppLanguage.system,
-        AppLanguage.zhHans,
-        AppLanguage.zhHantTw,
-        AppLanguage.en,
-        AppLanguage.ja,
-        AppLanguage.de,
-      ];
+    AppLanguage.system,
+    AppLanguage.zhHans,
+    AppLanguage.zhHantTw,
+    AppLanguage.en,
+    AppLanguage.ja,
+    AppLanguage.de,
+  ];
 
   String _languageTitle(AppLanguage language) {
     final labels = context.t.strings.languages;
@@ -165,24 +105,34 @@ class _LanguageSelectionScreenState
   }
 
   Future<bool> _createLocalLibrary() async {
-    final picked = await _pickLocalLibraryLocation();
-    if (picked == null) return false;
-    final name = await _promptLocalLibraryName(picked.defaultName);
-    if (name == null || name.trim().isEmpty) return false;
-    final keySeed = (picked.treeUri ?? picked.rootPath ?? '').trim();
+    final result = await LocalModeSetupScreen.show(
+      context,
+      title: context.t.strings.onboarding.modeLocalTitle,
+      subtitle: context.t.strings.onboarding.modeLocalDesc,
+      confirmLabel: context.t.strings.common.confirm,
+      cancelLabel: context.t.strings.common.cancel,
+      initialName: context.t.strings.onboarding.localLibraryDefaultName,
+    );
+    if (result == null) return false;
+    final keySeed = (result.treeUri ?? result.rootPath ?? '').trim();
     if (keySeed.isEmpty) return false;
     final key = 'local_${fnv1a64Hex(keySeed)}';
     final now = DateTime.now();
     final library = LocalLibrary(
       key: key,
-      name: name.trim(),
-      treeUri: picked.treeUri,
-      rootPath: picked.rootPath,
+      name: result.name.trim(),
+      treeUri: result.treeUri,
+      rootPath: result.rootPath,
       createdAt: now,
       updatedAt: now,
     );
     ref.read(localLibrariesProvider.notifier).upsert(library);
     await ref.read(appSessionProvider.notifier).switchWorkspace(key);
+    if (result.encryptionEnabled && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('加密功能当前仅占位，暂未真正生效。')));
+    }
     if (!mounted) return false;
     await _scanLocalLibrarySilently();
     return true;

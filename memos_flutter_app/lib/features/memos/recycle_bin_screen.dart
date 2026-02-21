@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/drawer_navigation.dart';
@@ -112,6 +113,8 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
     final formatter = DateFormat('yyyy-MM-dd HH:mm');
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.recycleBin,
@@ -203,12 +206,18 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
       child: Scaffold(
         drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
           leading: IconButton(
             tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
             onPressed: _handleBack,
           ),
-          title: Text(context.t.strings.legacy.msg_recycle_bin),
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(context.t.strings.legacy.msg_recycle_bin),
+          ),
           actions: [
             if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[]).isNotEmpty)
               IconButton(

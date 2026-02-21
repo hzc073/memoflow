@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/app_localization.dart';
 import '../../core/desktop_shortcuts.dart';
 import '../../core/markdown_editing.dart';
+import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
@@ -19,14 +20,16 @@ import '../../core/uid.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
+import '../../data/models/memo_template_settings.dart';
 import '../../data/models/location_settings.dart';
 import '../../data/models/user_setting.dart';
-import '../../data/location/amap_geocoder.dart';
+import '../../data/location/location_geocoder.dart';
 import '../../data/location/device_location_service.dart';
 import '../../state/database_provider.dart';
 import '../../state/location_settings_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/memo_template_settings_provider.dart';
 import '../../state/network_log_provider.dart';
 import '../../state/note_draft_provider.dart';
 import '../../state/preferences_provider.dart';
@@ -99,11 +102,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _linkedMemos = <_LinkedMemo>[];
   final _pendingAttachments = <_PendingAttachment>[];
   final _tagMenuKey = GlobalKey();
+  final _templateMenuKey = GlobalKey();
   final _todoMenuKey = GlobalKey();
   final _visibilityMenuKey = GlobalKey();
   final _undoStack = <TextEditingValue>[];
   final _redoStack = <TextEditingValue>[];
   final _imagePicker = ImagePicker();
+  final _templateRenderer = MemoTemplateRenderer();
   final _pickedImages = <XFile>[];
   TextEditingValue _lastValue = const TextEditingValue();
   var _isApplyingHistory = false;
@@ -422,6 +427,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     );
   }
 
+  void _replaceText(String text) {
+    _controller.value = _controller.value.copyWith(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+      composing: TextRange.empty,
+    );
+  }
+
   void _toggleBold() {
     final value = _controller.value;
     final sel = value.selection;
@@ -601,6 +614,74 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _insertText('$normalized ');
   }
 
+  Future<void> _openTemplateMenuFromKey(
+    GlobalKey key,
+    List<MemoTemplate> templates,
+  ) async {
+    if (_busy) return;
+    final target = key.currentContext;
+    if (target == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final box = target.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox) return;
+
+    final rect = Rect.fromPoints(
+      box.localToGlobal(Offset.zero, ancestor: overlay),
+      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+    );
+    await _openTemplateMenu(
+      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+      templates,
+    );
+  }
+
+  Future<void> _openTemplateMenu(
+    RelativeRect position,
+    List<MemoTemplate> templates,
+  ) async {
+    if (_busy) return;
+    final items = templates.isEmpty
+        ? const <PopupMenuEntry<String>>[
+            PopupMenuItem<String>(enabled: false, child: Text('暂无模板')),
+          ]
+        : templates
+              .map(
+                (template) => PopupMenuItem<String>(
+                  value: template.id,
+                  child: Text(template.name),
+                ),
+              )
+              .toList(growable: false);
+
+    final selectedId = await showMenu<String>(
+      context: context,
+      position: position,
+      items: items,
+    );
+    if (!mounted || selectedId == null) return;
+    MemoTemplate? selected;
+    for (final item in templates) {
+      if (item.id == selectedId) {
+        selected = item;
+        break;
+      }
+    }
+    if (selected == null) return;
+    await _applyTemplateToComposer(selected);
+  }
+
+  Future<void> _applyTemplateToComposer(MemoTemplate template) async {
+    final templateSettings = ref.read(memoTemplateSettingsProvider);
+    final locationSettings = ref.read(locationSettingsProvider);
+    final rendered = await _templateRenderer.render(
+      templateContent: template.content,
+      variableSettings: templateSettings.variables,
+      locationSettings: locationSettings,
+    );
+    if (!mounted) return;
+    _replaceText(rendered);
+  }
+
   Future<void> _openTodoShortcutMenu(RelativeRect position) async {
     if (_busy) return;
     final action = await showMenu<MemoComposeTodoShortcutAction>(
@@ -756,8 +837,24 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       setState(() => _locating = true);
       try {
         final position = await DeviceLocationService().getCurrentPosition();
+        final settings = await _resolveLocationSettings();
+        String placeholder = '';
+        if (settings.enabled) {
+          final geocoder = LocationGeocoder(
+            logStore: ref.read(networkLogStoreProvider),
+            logBuffer: ref.read(networkLogBufferProvider),
+            logManager: ref.read(logManagerProvider),
+          );
+          placeholder =
+              await geocoder.reverseGeocode(
+                latitude: position.latitude,
+                longitude: position.longitude,
+                settings: settings,
+              ) ??
+              '';
+        }
         final next = MemoLocation(
-          placeholder: '',
+          placeholder: placeholder,
           latitude: position.latitude,
           longitude: position.longitude,
         );
@@ -808,22 +905,18 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     try {
       final position = await DeviceLocationService().getCurrentPosition();
       String placeholder = '';
-      if (settings.amapWebKey.trim().isNotEmpty) {
-        final geocoder = AmapGeocoder(
-          logStore: ref.read(networkLogStoreProvider),
-          logBuffer: ref.read(networkLogBufferProvider),
-          logManager: ref.read(logManagerProvider),
-        );
-        placeholder =
-            await geocoder.reverseGeocode(
-              latitude: position.latitude,
-              longitude: position.longitude,
-              apiKey: settings.amapWebKey,
-              securityKey: settings.amapSecurityKey,
-              precision: settings.precision,
-            ) ??
-            '';
-      }
+      final geocoder = LocationGeocoder(
+        logStore: ref.read(networkLogStoreProvider),
+        logBuffer: ref.read(networkLogBufferProvider),
+        logManager: ref.read(logManagerProvider),
+      );
+      placeholder =
+          await geocoder.reverseGeocode(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            settings: settings,
+          ) ??
+          '';
       final next = MemoLocation(
         placeholder: placeholder,
         latitude: position.latitude,
@@ -1598,8 +1691,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         : Colors.grey.shade500;
     final (visibilityLabel, visibilityIcon, visibilityColor) =
         _resolveVisibilityStyle(context, _visibility);
-
     final tagStats = _tagStatsCache;
+    final templateSettings = ref.watch(memoTemplateSettingsProvider);
+    final availableTemplates = templateSettings.enabled
+        ? templateSettings.templates
+        : const <MemoTemplate>[];
 
     return ClipRect(
       child: BackdropFilter(
@@ -1834,6 +1930,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                     visibilityIcon: visibilityIcon,
                                     visibilityColor: visibilityColor,
                                     tagButtonKey: _tagMenuKey,
+                                    templateButtonKey: _templateMenuKey,
                                     todoButtonKey: _todoMenuKey,
                                     visibilityButtonKey: _visibilityMenuKey,
                                     onTagPressed: () {
@@ -1843,6 +1940,15 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                         _openTagMenuFromKey(
                                           _tagMenuKey,
                                           tagStats,
+                                        ),
+                                      );
+                                    },
+                                    onTemplatePressed: () {
+                                      _closeMoreToolbar();
+                                      unawaited(
+                                        _openTemplateMenuFromKey(
+                                          _templateMenuKey,
+                                          availableTemplates,
                                         ),
                                       );
                                     },

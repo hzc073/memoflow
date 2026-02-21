@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/drawer_navigation.dart';
 import '../../core/memo_relations.dart';
@@ -108,6 +109,8 @@ class NotificationsScreen extends ConsumerWidget {
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.memos,
       onSelect: (d) => _navigate(context, d),
@@ -155,7 +158,10 @@ class NotificationsScreen extends ConsumerWidget {
                 ),
                 title: Text(
                   title,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
                 ),
                 subtitle: Text(meta, style: TextStyle(color: textMuted)),
                 trailing: Row(
@@ -192,9 +198,8 @@ class NotificationsScreen extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
-      ),
+      error: (e, _) =>
+          Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
     );
 
     return PopScope(
@@ -206,7 +211,13 @@ class NotificationsScreen extends ConsumerWidget {
       child: Scaffold(
         drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
-          title: Text(context.t.strings.legacy.msg_notifications),
+          flexibleSpace: enableWindowsDragToMove
+              ? const DragToMoveArea(child: SizedBox.expand())
+              : null,
+          title: IgnorePointer(
+            ignoring: enableWindowsDragToMove,
+            child: Text(context.t.strings.legacy.msg_notifications),
+          ),
           leading: IconButton(
             tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
@@ -216,7 +227,10 @@ class NotificationsScreen extends ConsumerWidget {
         body: useDesktopSidePane
             ? Row(
                 children: [
-                  SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+                  SizedBox(
+                    width: kMemoFlowDesktopDrawerWidth,
+                    child: drawerPanel,
+                  ),
                   VerticalDivider(
                     width: 1,
                     thickness: 1,

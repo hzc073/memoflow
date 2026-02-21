@@ -10,6 +10,7 @@ import '../../core/memoflow_palette.dart';
 import '../../state/image_bed_settings_provider.dart';
 import '../../state/location_settings_provider.dart';
 import '../../state/memoflow_bridge_settings_provider.dart';
+import '../../state/memo_template_settings_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
@@ -18,6 +19,7 @@ import '../reminders/reminder_settings_screen.dart';
 import 'image_bed_settings_screen.dart';
 import 'location_settings_screen.dart';
 import 'memoflow_bridge_screen.dart';
+import 'template_settings_screen.dart';
 import 'webdav_sync_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -31,6 +33,7 @@ class ComponentsSettingsScreen extends ConsumerWidget {
     final imageBedSettings = ref.watch(imageBedSettingsProvider);
     final locationSettings = ref.watch(locationSettingsProvider);
     final bridgeSettings = ref.watch(memoFlowBridgeSettingsProvider);
+    final templateSettings = ref.watch(memoTemplateSettingsProvider);
     final webDavSettings = ref.watch(webDavSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
@@ -149,6 +152,23 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const LocationSettingsScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ToggleCard(
+                card: card,
+                label: '模板',
+                description: '启用模板功能，管理模板名称、内容与变量。',
+                value: templateSettings.enabled,
+                textMain: textMain,
+                textMuted: textMuted,
+                onChanged: (v) => ref
+                    .read(memoTemplateSettingsProvider.notifier)
+                    .setEnabled(v),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TemplateSettingsScreen(),
                   ),
                 ),
               ),
