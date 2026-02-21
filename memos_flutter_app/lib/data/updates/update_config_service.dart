@@ -6,6 +6,8 @@ import 'update_config.dart';
 
 const Duration kUpdateConfigTimeout = Duration(seconds: 3);
 const List<String> kUpdateConfigUrls = [
+  'https://hzc073.github.io/memoflow/update/latest.json',
+  'https://raw.githubusercontent.com/hzc073/memoflow/gh-pages/update/latest.json',
   'https://memoflowconfig.gemmm.top/memoflow_update.json',
   'https://raw.githubusercontent.com/hzc073/memoflow_config/main/memoflow_update.json',
 ];

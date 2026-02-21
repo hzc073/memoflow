@@ -81,12 +81,25 @@ if (-not (Test-Path $pubspecPath)) {
 }
 
 $windowsDir = Join-Path $projectRootResolved "windows"
-if (-not (Test-Path $windowsDir)) {
-  throw "Windows directory not found: $windowsDir"
-}
-
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
   throw "Flutter not found in PATH."
+}
+
+if (-not (Test-Path $windowsDir)) {
+  Write-Host "Windows directory not found. Running: flutter create --platforms=windows ."
+  Push-Location $projectRootResolved
+  try {
+    & flutter create --platforms=windows .
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to generate Windows project files via flutter create."
+    }
+  } finally {
+    Pop-Location
+  }
+}
+
+if (-not (Test-Path $windowsDir)) {
+  throw "Windows directory not found: $windowsDir"
 }
 
 $outDirRoot = $OutDir

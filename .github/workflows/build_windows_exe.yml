@@ -67,3 +67,39 @@ jobs:
           replacesArtifacts: true
           omitBodyDuringUpdate: true
           omitNameDuringUpdate: true
+
+      - name: Trigger CF update-config worker
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          CF_UPDATE_CONFIG_URL: ${{ secrets.CF_UPDATE_CONFIG_URL }}
+          CF_UPDATE_CONFIG_TOKEN: ${{ secrets.CF_UPDATE_CONFIG_TOKEN }}
+          CF_UPDATE_CONFIG_REPO: ${{ vars.CF_UPDATE_CONFIG_REPO }}
+          CF_UPDATE_CONFIG_BRANCH: ${{ vars.CF_UPDATE_CONFIG_BRANCH }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_URL) -or [string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_TOKEN)) {
+            Write-Host "CF update-config secrets not configured; skip trigger."
+            exit 0
+          }
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag.StartsWith("v")) { $tag = $tag.Substring(1) }
+          $payload = @{
+            tag = $tag
+            app_repo = $env:GITHUB_REPOSITORY
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_REPO)) {
+            $payload["config_repo"] = $env:CF_UPDATE_CONFIG_REPO
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_BRANCH)) {
+            $payload["config_branch"] = $env:CF_UPDATE_CONFIG_BRANCH
+          }
+          $payload = $payload | ConvertTo-Json -Compress
+          Invoke-RestMethod `
+            -Method Post `
+            -Uri $env:CF_UPDATE_CONFIG_URL `
+            -Headers @{
+              "x-update-token" = $env:CF_UPDATE_CONFIG_TOKEN
+              "content-type" = "application/json"
+            } `
+            -Body $payload | Out-String | Write-Host

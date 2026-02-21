@@ -1,0 +1,38 @@
+{
+  "schema_version": 2,
+  "version_info": {
+    "android": {
+      "latest_version": "1.0.14",
+      "force_update": false,
+      "update_source": "google_play",
+      "url": "",
+      "publish_at": "2026-02-21T00:00:00Z"
+    },
+    "ios": {
+      "latest_version": "1.0.14",
+      "force_update": false,
+      "update_source": "app_store",
+      "url": "",
+      "publish_at": "2026-02-21T00:00:00Z"
+    },
+    "windows": {
+      "latest_version": "1.0.14",
+      "force_update": false,
+      "update_source": "windows_installer",
+      "url": "",
+      "publish_at": "2026-02-21T00:00:00Z"
+    }
+  },
+  "notice_enabled": false,
+  "notice": null,
+  "debug_announcement_source": "release_notes",
+  "debug_announcement": null,
+  "donors_file": "donors.json",
+  "announcement_tag_index": {
+    "v1.0.14": "2026022101"
+  },
+  "announcement_ids": [
+    "2026022101"
+  ],
+  "latest_announcement_id": "2026022101"
+}

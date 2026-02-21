@@ -1,0 +1,159 @@
+name: Update Config Build
+
+on:
+  release:
+    types:
+      - created
+      - published
+      - edited
+  push:
+    branches:
+      - main
+    paths:
+      - "update_config/**"
+      - ".github/scripts/build_update_config.py"
+      - ".github/workflows/update_config_build.yml"
+      - ".github/workflows/update_config_publish.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.15). Empty means keep manifest versions."
+        required: false
+        type: string
+      android_url:
+        description: "Override Android download URL"
+        required: false
+        type: string
+      ios_url:
+        description: "Override iOS App Store URL"
+        required: false
+        type: string
+      windows_url:
+        description: "Override Windows installer URL"
+        required: false
+        type: string
+      android_version:
+        description: "Override Android latest_version"
+        required: false
+        type: string
+      ios_version:
+        description: "Override iOS latest_version"
+        required: false
+        type: string
+      windows_version:
+        description: "Override Windows latest_version"
+        required: false
+        type: string
+
+jobs:
+  build-update-config:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve build context
+        id: ctx
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_ANDROID_URL: ${{ inputs.android_url }}
+          INPUT_IOS_URL: ${{ inputs.ios_url }}
+          INPUT_WINDOWS_URL: ${{ inputs.windows_url }}
+          INPUT_ANDROID_VERSION: ${{ inputs.android_version }}
+          INPUT_IOS_VERSION: ${{ inputs.ios_version }}
+          INPUT_WINDOWS_VERSION: ${{ inputs.windows_version }}
+        run: |
+          set -euo pipefail
+
+          tag=""
+          android_url="${INPUT_ANDROID_URL:-}"
+          ios_url="${INPUT_IOS_URL:-}"
+          windows_url="${INPUT_WINDOWS_URL:-}"
+          android_version="${INPUT_ANDROID_VERSION:-}"
+          ios_version="${INPUT_IOS_VERSION:-}"
+          windows_version="${INPUT_WINDOWS_VERSION:-}"
+
+          if [ "$EVENT_NAME" = "release" ]; then
+            tag="${RELEASE_TAG:-}"
+            release_id="${RELEASE_ID:-}"
+            if [ -n "$release_id" ]; then
+              api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/$release_id/assets"
+              assets_json="$(curl -fsSL \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "$api")"
+
+              if [ -z "$android_url" ]; then
+                android_url="$(echo "$assets_json" | jq -r '[.[] | select(.name | test("(?i)\\.apk$")) | .browser_download_url] | first // ""')"
+              fi
+              if [ -z "$windows_url" ]; then
+                windows_url="$(echo "$assets_json" | jq -r '[.[] | select(.name | test("(?i)(_setup\\.exe$|\\.msi$|windows.*\\.exe$)")) | .browser_download_url] | first // ""')"
+              fi
+            fi
+          else
+            tag="${INPUT_TAG:-}"
+          fi
+
+          tag="${tag#v}"
+
+          {
+            echo "tag_version=$tag"
+            echo "android_url=$android_url"
+            echo "ios_url=$ios_url"
+            echo "windows_url=$windows_url"
+            echo "android_version=$android_version"
+            echo "ios_version=$ios_version"
+            echo "windows_version=$windows_version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build merged update config
+        run: |
+          python .github/scripts/build_update_config.py \
+            --root update_config \
+            --output dist/update/latest.json \
+            --tag-version "${{ steps.ctx.outputs.tag_version }}" \
+            --android-url "${{ steps.ctx.outputs.android_url }}" \
+            --ios-url "${{ steps.ctx.outputs.ios_url }}" \
+            --windows-url "${{ steps.ctx.outputs.windows_url }}" \
+            --android-version "${{ steps.ctx.outputs.android_version }}" \
+            --ios-version "${{ steps.ctx.outputs.ios_version }}" \
+            --windows-version "${{ steps.ctx.outputs.windows_version }}"
+
+      - name: Write build metadata
+        run: |
+          set -euo pipefail
+          mkdir -p dist/update
+          cat > dist/update/build_metadata.json <<EOF
+          {
+            "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "event_name": "${{ github.event_name }}",
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "tag_version": "${{ steps.ctx.outputs.tag_version }}",
+            "android_url": "${{ steps.ctx.outputs.android_url }}",
+            "ios_url": "${{ steps.ctx.outputs.ios_url }}",
+            "windows_url": "${{ steps.ctx.outputs.windows_url }}"
+          }
+          EOF
+
+      - name: Upload merged config artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-config-bundle
+          path: |
+            dist/update/latest.json
+            dist/update/build_metadata.json
+          if-no-files-found: error

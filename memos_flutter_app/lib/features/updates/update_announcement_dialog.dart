@@ -9,11 +9,7 @@ import 'donors_wall_screen.dart';
 import 'version_announcement_dialog.dart';
 import '../../i18n/strings.g.dart';
 
-enum AnnouncementAction {
-  update,
-  later,
-  exitApp,
-}
+enum AnnouncementAction { update, later, exitApp }
 
 class UpdateAnnouncementDialog extends StatelessWidget {
   const UpdateAnnouncementDialog({
@@ -43,7 +39,10 @@ class UpdateAnnouncementDialog extends StatelessWidget {
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
@@ -58,13 +57,13 @@ class UpdateAnnouncementDialog extends StatelessWidget {
   Future<bool> _launchDownload(BuildContext context, String rawUrl) async {
     final url = rawUrl.trim();
     final uri = Uri.tryParse(url);
-    if (url.isEmpty || uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+    if (url.isEmpty ||
+        uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              context.t.strings.legacy.msg_invalid_download_link,
-            ),
+            content: Text(context.t.strings.legacy.msg_invalid_download_link),
           ),
         );
       }
@@ -74,9 +73,7 @@ class UpdateAnnouncementDialog extends StatelessWidget {
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_unable_open_browser,
-          ),
+          content: Text(context.t.strings.legacy.msg_unable_open_browser),
         ),
       );
     }
@@ -86,45 +83,68 @@ class UpdateAnnouncementDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final cardColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.65);
     final accent = MemoFlowPalette.primary;
-    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
     final shadow = Colors.black.withValues(alpha: 0.12);
-    final useDebugAnnouncement = kDebugMode &&
-        config.debugAnnouncementSource == DebugAnnouncementSource.debugAnnouncement;
+    final useDebugAnnouncement =
+        kDebugMode &&
+        config.debugAnnouncementSource ==
+            DebugAnnouncementSource.debugAnnouncement;
     final activeAnnouncement = useDebugAnnouncement
         ? (config.debugAnnouncement ?? config.announcement)
         : config.announcement;
     final donors = config.donors;
     final newDonors = activeAnnouncement.newDonorsFrom(donors);
     final newDonorLabels = newDonors
-        .map((donor) => donor.name.trim().isNotEmpty ? donor.name.trim() : donor.id.trim())
+        .map(
+          (donor) => donor.name.trim().isNotEmpty
+              ? donor.name.trim()
+              : donor.id.trim(),
+        )
         .where((name) => name.isNotEmpty)
         .map((name) => '@$name')
         .toList(growable: false);
     final version = currentVersion.trim();
     final latestVersion = config.versionInfo.latestVersion.trim();
+    final publishReady = config.versionInfo.isPublishedAt(
+      DateTime.now().toUtc(),
+    );
     final targetVersion = latestVersion.isEmpty ? version : latestVersion;
     final rawTitle = activeAnnouncement.title.trim();
     final fallbackTitle = context.t.strings.legacy.msg_release_notes;
     final titleBase = rawTitle.isEmpty ? fallbackTitle : rawTitle;
-    final title = targetVersion.isEmpty ? titleBase : '$titleBase v$targetVersion';
-    final releaseEntry = useDebugAnnouncement ? null : config.releaseNoteForVersion(targetVersion);
+    final title = targetVersion.isEmpty
+        ? titleBase
+        : '$titleBase v$targetVersion';
+    final releaseEntry = useDebugAnnouncement
+        ? null
+        : config.releaseNoteForVersion(targetVersion);
     final announcementItems = useDebugAnnouncement
         ? activeAnnouncement
-            .contentsForLanguageCode(Localizations.localeOf(context).languageCode)
-            .map(
-              (line) => VersionAnnouncementItem(
-                category: ReleaseNoteCategory.feature,
-                detailZh: line,
-                detailEn: line,
-              ),
-            )
-            .toList(growable: false)
+              .contentsForLanguageCode(
+                Localizations.localeOf(context).languageCode,
+              )
+              .map(
+                (line) => VersionAnnouncementItem(
+                  category: ReleaseNoteCategory.feature,
+                  detailZh: line,
+                  detailEn: line,
+                ),
+              )
+              .toList(growable: false)
         : buildVersionAnnouncementItems(releaseEntry);
-    final showUpdateAction = _compareVersionTriplets(config.versionInfo.latestVersion, version) > 0;
+    final showUpdateAction =
+        publishReady &&
+        _compareVersionTriplets(config.versionInfo.latestVersion, version) > 0;
     final isForce = config.versionInfo.isForce && showUpdateAction;
 
     Widget buildAnnouncementItems() {
@@ -170,7 +190,9 @@ class UpdateAnnouncementDialog extends StatelessWidget {
             child: GestureDetector(
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const DonorsWallScreen()),
+                  MaterialPageRoute<void>(
+                    builder: (_) => const DonorsWallScreen(),
+                  ),
                 );
               },
               child: Text(
@@ -197,7 +219,10 @@ class UpdateAnnouncementDialog extends StatelessWidget {
               final maxHeight = constraints.maxHeight * 0.88;
               return Center(
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 332, maxHeight: maxHeight),
+                  constraints: BoxConstraints(
+                    maxWidth: 332,
+                    maxHeight: maxHeight,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
                     decoration: BoxDecoration(
@@ -215,7 +240,11 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.rocket_launch_rounded, size: 48, color: accent),
+                        Icon(
+                          Icons.rocket_launch_rounded,
+                          size: 48,
+                          color: accent,
+                        ),
                         const SizedBox(height: 10),
                         Text(
                           title,
@@ -246,20 +275,31 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: accent,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                                 elevation: 0,
                               ),
                               onPressed: () async {
-                                final launched = await _launchDownload(context, config.versionInfo.downloadUrl);
+                                final launched = await _launchDownload(
+                                  context,
+                                  config.versionInfo.downloadUrl,
+                                );
                                 if (!launched || isForce) return;
                                 if (context.mounted) {
-                                  Navigator.of(context).pop(AnnouncementAction.update);
+                                  Navigator.of(
+                                    context,
+                                  ).pop(AnnouncementAction.update);
                                 }
                               },
                               child: Text(
                                 context.t.strings.legacy.msg_get_version,
-                                style: const TextStyle(fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
@@ -271,15 +311,23 @@ class UpdateAnnouncementDialog extends StatelessWidget {
                             },
                             child: Text(
                               context.t.strings.legacy.msg_exit_app,
-                              style: TextStyle(fontSize: 12.5, color: textMuted),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: textMuted,
+                              ),
                             ),
                           )
                         else
                           TextButton(
-                            onPressed: () => Navigator.of(context).pop(AnnouncementAction.later),
+                            onPressed: () => Navigator.of(
+                              context,
+                            ).pop(AnnouncementAction.later),
                             child: Text(
                               context.t.strings.legacy.msg_maybe_later,
-                              style: TextStyle(fontSize: 12.5, color: textMuted),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: textMuted,
+                              ),
                             ),
                           ),
                       ],
@@ -322,7 +370,10 @@ class _ReleaseNoteRow extends StatelessWidget {
             text: title,
             style: TextStyle(fontWeight: FontWeight.w700, color: highlight),
           ),
-          TextSpan(text: detail, style: TextStyle(color: textMuted)),
+          TextSpan(
+            text: detail,
+            style: TextStyle(color: textMuted),
+          ),
         ],
       ),
     );

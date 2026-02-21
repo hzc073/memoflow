@@ -1,0 +1,85 @@
+name: Update Config Publish
+
+on:
+  workflow_run:
+    workflows:
+      - Update Config Build
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build workflow run ID that produced update-config-bundle"
+        required: true
+        type: string
+
+jobs:
+  publish-update-config:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve source run ID
+        id: src
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="${INPUT_RUN_ID:-}"
+          else
+            run_id="${WORKFLOW_RUN_ID:-}"
+          fi
+          if [ -z "$run_id" ]; then
+            echo "run_id is required" >&2
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download built config artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: update-config-bundle
+          path: dist/update
+          run-id: ${{ steps.src.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare publish bundle
+        run: |
+          set -euo pipefail
+          if [ ! -f dist/update/latest.json ]; then
+            echo "dist/update/latest.json not found in artifact" >&2
+            exit 1
+          fi
+
+          ts="$(date -u +"%Y%m%dT%H%M%SZ")"
+          mkdir -p publish/update/versions
+          cp dist/update/latest.json "publish/update/latest.json"
+          cp dist/update/latest.json "publish/update/versions/latest-$ts.json"
+
+          cat > publish/update/index.json <<EOF
+          {
+            "latest": "latest.json",
+            "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "source_run_id": "${{ steps.src.outputs.run_id }}"
+          }
+          EOF
+
+          if [ -f dist/update/build_metadata.json ]; then
+            cp dist/update/build_metadata.json publish/update/build_metadata.json
+          fi
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: publish
+          keep_files: true

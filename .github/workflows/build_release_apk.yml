@@ -115,6 +115,31 @@ jobs:
           replacesArtifacts: true
           generateReleaseNotes: true
 
-      - name: Trigger CF announcement update
+      - name: Trigger CF update-config worker
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          CF_UPDATE_CONFIG_URL: ${{ secrets.CF_UPDATE_CONFIG_URL }}
+          CF_UPDATE_CONFIG_TOKEN: ${{ secrets.CF_UPDATE_CONFIG_TOKEN }}
+          CF_UPDATE_CONFIG_REPO: ${{ vars.CF_UPDATE_CONFIG_REPO }}
+          CF_UPDATE_CONFIG_BRANCH: ${{ vars.CF_UPDATE_CONFIG_BRANCH }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          curl -sS -X GET "https://gentle-wood-7340.759737361.workers.dev/"
+          set -euo pipefail
+          if [ -z "${CF_UPDATE_CONFIG_URL:-}" ] || [ -z "${CF_UPDATE_CONFIG_TOKEN:-}" ]; then
+            echo "CF update-config secrets not configured; skip trigger."
+            exit 0
+          fi
+          tag="${GITHUB_REF_NAME#v}"
+          payload="$(jq -n \
+            --arg tag "$tag" \
+            --arg app_repo "$GITHUB_REPOSITORY" \
+            --arg config_repo "${CF_UPDATE_CONFIG_REPO:-}" \
+            --arg config_branch "${CF_UPDATE_CONFIG_BRANCH:-}" \
+            '{tag: $tag, app_repo: $app_repo}
+            + (if ($config_repo | length) > 0 then {config_repo: $config_repo} else {} end)
+            + (if ($config_branch | length) > 0 then {config_branch: $config_branch} else {} end)')"
+          curl -fsS -X POST "$CF_UPDATE_CONFIG_URL" \
+            -H "content-type: application/json" \
+            -H "x-update-token: $CF_UPDATE_CONFIG_TOKEN" \
+            --data "$payload"

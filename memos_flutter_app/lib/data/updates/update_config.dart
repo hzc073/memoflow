@@ -1,10 +1,10 @@
-enum DebugAnnouncementSource {
-  releaseNotes,
-  debugAnnouncement,
-}
+import 'package:flutter/foundation.dart';
+
+enum DebugAnnouncementSource { releaseNotes, debugAnnouncement }
 
 class UpdateAnnouncementConfig {
   const UpdateAnnouncementConfig({
+    required this.schemaVersion,
     required this.versionInfo,
     required this.announcement,
     required this.donors,
@@ -15,6 +15,7 @@ class UpdateAnnouncementConfig {
     this.debugAnnouncementSource = DebugAnnouncementSource.releaseNotes,
   });
 
+  final int schemaVersion;
   final UpdateVersionInfo versionInfo;
   final UpdateAnnouncement announcement;
   final List<UpdateDonor> donors;
@@ -28,22 +29,35 @@ class UpdateAnnouncementConfig {
   bool get hasReleaseNotes => releaseNotes.isNotEmpty;
 
   factory UpdateAnnouncementConfig.fromJson(Map<String, dynamic> json) {
-    final versionInfo = UpdateVersionInfo.fromJson(_readMap(json['version_info']) ?? json);
-    final announcement = UpdateAnnouncement.fromJson(_readMap(json['announcement']) ?? json);
+    final versionInfoRaw = _readMap(json['version_info']) ?? json;
+    final versionInfo = UpdateVersionInfo.fromJson(versionInfoRaw);
+    final announcement = UpdateAnnouncement.fromJson(
+      _readMap(json['announcement']) ?? json,
+    );
     final debugSection = _readMap(json['debug']);
-    final debugAnnouncement = _readAnnouncement(debugSection?['announcement'] ?? json['debug_announcement']);
+    final debugAnnouncement = _readAnnouncement(
+      debugSection?['announcement'] ?? json['debug_announcement'],
+    );
     final debugAnnouncementSource = _readDebugAnnouncementSource(
       debugSection?['announcement_source'] ?? json['debug_announcement_source'],
     );
-    final noticeEnabled = _readBool(json, 'notice_enabled', fallbackKey: 'noticeEnabled');
+    final noticeEnabled = _readBool(
+      json,
+      'notice_enabled',
+      fallbackKey: 'noticeEnabled',
+    );
     final notice = _readNotice(json['notice']);
     final donors = _readList(json['donors'])
         .whereType<Map>()
         .map((raw) => UpdateDonor.fromJson(raw.cast<String, dynamic>()))
-        .where((donor) => donor.name.trim().isNotEmpty || donor.avatar.trim().isNotEmpty)
+        .where(
+          (donor) =>
+              donor.name.trim().isNotEmpty || donor.avatar.trim().isNotEmpty,
+        )
         .toList(growable: false);
     final releaseNotes = _readReleaseNotes(json['release_notes']);
     return UpdateAnnouncementConfig(
+      schemaVersion: _readInt(json, 'schema_version').clamp(1, 9999),
       versionInfo: versionInfo,
       announcement: announcement,
       donors: donors,
@@ -92,6 +106,8 @@ class UpdateVersionInfo {
     required this.latestVersion,
     required this.isForce,
     required this.downloadUrl,
+    required this.updateSource,
+    required this.publishAt,
     required this.debugVersion,
     required this.skipUpdateVersion,
   });
@@ -99,16 +115,70 @@ class UpdateVersionInfo {
   final String latestVersion;
   final bool isForce;
   final String downloadUrl;
+  final String updateSource;
+  final DateTime? publishAt;
   final String debugVersion;
   final String skipUpdateVersion;
 
+  bool isPublishedAt(DateTime nowUtc) {
+    final publish = publishAt;
+    if (publish == null) return true;
+    return !publish.isAfter(nowUtc.toUtc());
+  }
+
   factory UpdateVersionInfo.fromJson(Map<String, dynamic> json) {
+    final scoped = _resolvePlatformVersionInfo(json);
+    final isForceScoped =
+        _readBool(scoped, 'force_update', fallbackKey: 'is_force') ||
+        _readBool(scoped, 'isForce');
+    final isForceRoot =
+        _readBool(json, 'force_update', fallbackKey: 'is_force') ||
+        _readBool(json, 'isForce');
     return UpdateVersionInfo(
-      latestVersion: _readString(json, 'latest_version', fallbackKey: 'latestVersion'),
-      isForce: _readBool(json, 'is_force', fallbackKey: 'isForce'),
-      downloadUrl: _readString(json, 'download_url', fallbackKey: 'downloadUrl'),
-      debugVersion: _readString(json, 'debug_version', fallbackKey: 'debugVersion'),
-      skipUpdateVersion: _readString(json, 'skip_update_version', fallbackKey: 'skipUpdateVersion'),
+      latestVersion:
+          _readString(
+            scoped,
+            'latest_version',
+            fallbackKey: 'latestVersion',
+          ).ifEmpty(
+            _readString(json, 'latest_version', fallbackKey: 'latestVersion'),
+          ),
+      isForce: isForceScoped || isForceRoot,
+      downloadUrl: _readString(scoped, 'url', fallbackKey: 'download_url')
+          .ifEmpty(_readString(scoped, 'downloadUrl'))
+          .ifEmpty(_readString(json, 'url', fallbackKey: 'download_url'))
+          .ifEmpty(_readString(json, 'downloadUrl')),
+      updateSource:
+          _readString(
+            scoped,
+            'update_source',
+            fallbackKey: 'updateSource',
+          ).ifEmpty(
+            _readString(json, 'update_source', fallbackKey: 'updateSource'),
+          ),
+      publishAt:
+          _readDateTime(scoped, 'publish_at', fallbackKey: 'publishAt') ??
+          _readDateTime(json, 'publish_at', fallbackKey: 'publishAt'),
+      debugVersion:
+          _readString(
+            scoped,
+            'debug_version',
+            fallbackKey: 'debugVersion',
+          ).ifEmpty(
+            _readString(json, 'debug_version', fallbackKey: 'debugVersion'),
+          ),
+      skipUpdateVersion:
+          _readString(
+            scoped,
+            'skip_update_version',
+            fallbackKey: 'skipUpdateVersion',
+          ).ifEmpty(
+            _readString(
+              json,
+              'skip_update_version',
+              fallbackKey: 'skipUpdateVersion',
+            ),
+          ),
     );
   }
 }
@@ -117,6 +187,7 @@ class UpdateAnnouncement {
   const UpdateAnnouncement({
     required this.id,
     required this.title,
+    required this.showWhenUpToDate,
     required this.contentsByLocale,
     required this.fallbackContents,
     required this.newDonorIds,
@@ -124,13 +195,16 @@ class UpdateAnnouncement {
 
   final int id;
   final String title;
+  final bool showWhenUpToDate;
   final Map<String, List<String>> contentsByLocale;
   final List<String> fallbackContents;
   final List<String> newDonorIds;
 
   factory UpdateAnnouncement.fromJson(Map<String, dynamic> json) {
     var contentsByLocale = _readLocalizedContents(json['contents']);
-    var fallbackContents = contentsByLocale.isEmpty ? _readStringList(json['contents']) : const <String>[];
+    var fallbackContents = contentsByLocale.isEmpty
+        ? _readStringList(json['contents'])
+        : const <String>[];
 
     if (contentsByLocale.isEmpty && fallbackContents.isEmpty) {
       contentsByLocale = _readLocalizedContents(json['update_log']);
@@ -141,6 +215,11 @@ class UpdateAnnouncement {
     return UpdateAnnouncement(
       id: _readInt(json, 'id'),
       title: _readString(json, 'title'),
+      showWhenUpToDate: _readBool(
+        json,
+        'show_when_up_to_date',
+        fallbackKey: 'showWhenUpToDate',
+      ),
       contentsByLocale: contentsByLocale,
       fallbackContents: fallbackContents,
       newDonorIds: _readIdList(json['new_donor_ids']),
@@ -167,9 +246,14 @@ class UpdateAnnouncement {
 
   List<UpdateDonor> newDonorsFrom(List<UpdateDonor> allDonors) {
     if (newDonorIds.isEmpty || allDonors.isEmpty) return const [];
-    final target = newDonorIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
+    final target = newDonorIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
     if (target.isEmpty) return const [];
-    return allDonors.where((donor) => target.contains(donor.id)).toList(growable: false);
+    return allDonors
+        .where((donor) => target.contains(donor.id))
+        .toList(growable: false);
   }
 }
 
@@ -186,7 +270,9 @@ class UpdateNotice {
 
   factory UpdateNotice.fromJson(Map<String, dynamic> json) {
     var contentsByLocale = _readLocalizedContents(json['contents']);
-    var fallbackContents = contentsByLocale.isEmpty ? _readStringList(json['contents']) : const <String>[];
+    var fallbackContents = contentsByLocale.isEmpty
+        ? _readStringList(json['contents'])
+        : const <String>[];
 
     if (contentsByLocale.isEmpty && fallbackContents.isEmpty) {
       contentsByLocale = _readLocalizedContents(json['content']);
@@ -203,7 +289,8 @@ class UpdateNotice {
   }
 
   bool get hasContents =>
-      contentsByLocale.values.any((entries) => entries.isNotEmpty) || fallbackContents.isNotEmpty;
+      contentsByLocale.values.any((entries) => entries.isNotEmpty) ||
+      fallbackContents.isNotEmpty;
 
   List<String> contentsForLanguageCode(String languageCode) {
     final normalized = _normalizeLangKey(languageCode);
@@ -268,7 +355,9 @@ class UpdateReleaseNoteEntry {
         for (final content in contents) {
           final trimmed = content.trim();
           if (trimmed.isEmpty) continue;
-          items.add(UpdateReleaseNoteItem(category: category, content: trimmed));
+          items.add(
+            UpdateReleaseNoteItem(category: category, content: trimmed),
+          );
         }
       }
     }
@@ -281,32 +370,78 @@ class UpdateReleaseNoteEntry {
 }
 
 class UpdateReleaseNoteItem {
-  const UpdateReleaseNoteItem({
-    required this.category,
-    required this.content,
-  });
+  const UpdateReleaseNoteItem({required this.category, required this.content});
 
   final String category;
   final String content;
 }
 
+Map<String, dynamic> _resolvePlatformVersionInfo(Map<String, dynamic> json) {
+  final platformKey = _currentVersionInfoPlatformKey();
+  final platformScoped = _readMapValue(json[platformKey]);
+  if (platformScoped != null) return platformScoped;
+
+  final aliasKey = switch (platformKey) {
+    'windows' => 'win',
+    'macos' => 'mac',
+    _ => '',
+  };
+  if (aliasKey.isNotEmpty) {
+    final aliasScoped = _readMapValue(json[aliasKey]);
+    if (aliasScoped != null) return aliasScoped;
+  }
+
+  final defaultScoped =
+      _readMapValue(json['default']) ?? _readMapValue(json['global']);
+  if (defaultScoped != null) return defaultScoped;
+
+  return json;
+}
+
+Map<String, dynamic>? _readMapValue(dynamic value) {
+  if (value is Map) return value.cast<String, dynamic>();
+  return null;
+}
+
+String _currentVersionInfoPlatformKey() {
+  if (kIsWeb) return 'web';
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'android',
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.windows => 'windows',
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.linux => 'linux',
+    TargetPlatform.fuchsia => 'fuchsia',
+  };
+}
+
 DebugAnnouncementSource _readDebugAnnouncementSource(dynamic value) {
   if (value is bool) {
-    return value ? DebugAnnouncementSource.debugAnnouncement : DebugAnnouncementSource.releaseNotes;
+    return value
+        ? DebugAnnouncementSource.debugAnnouncement
+        : DebugAnnouncementSource.releaseNotes;
   }
   if (value is String) {
     final normalized = value.trim().toLowerCase();
-    if (normalized == 'debug' || normalized == 'debug_announcement' || normalized == 'announcement') {
+    if (normalized == 'debug' ||
+        normalized == 'debug_announcement' ||
+        normalized == 'announcement') {
       return DebugAnnouncementSource.debugAnnouncement;
     }
-    if (normalized == 'release' || normalized == 'release_notes' || normalized == 'release_announcement') {
+    if (normalized == 'release' ||
+        normalized == 'release_notes' ||
+        normalized == 'release_announcement') {
       return DebugAnnouncementSource.releaseNotes;
     }
   }
   return DebugAnnouncementSource.releaseNotes;
 }
 
-String _readString(Map<String, dynamic> json, String key, {String? fallbackKey}) {
+String _readString(
+  Map<String, dynamic> json,
+  String key, {
+  String? fallbackKey,
+}) {
   final raw = json[key] ?? (fallbackKey == null ? null : json[fallbackKey]);
   if (raw is String) return raw.trim();
   return '';
@@ -332,9 +467,34 @@ int _readInt(Map<String, dynamic> json, String key) {
   return 0;
 }
 
+DateTime? _readDateTime(
+  Map<String, dynamic> json,
+  String key, {
+  String? fallbackKey,
+}) {
+  final raw = json[key] ?? (fallbackKey == null ? null : json[fallbackKey]);
+  if (raw is String) {
+    final parsed = DateTime.tryParse(raw.trim());
+    return parsed?.toUtc();
+  }
+  if (raw is num) {
+    final value = raw.toDouble();
+    final epochMillis = value.abs() < 100000000000 ? value * 1000 : value;
+    return DateTime.fromMillisecondsSinceEpoch(
+      epochMillis.toInt(),
+      isUtc: true,
+    );
+  }
+  return null;
+}
+
 List<String> _readStringList(dynamic value) {
   if (value is List) {
-    return value.whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty).toList(growable: false);
+    return value
+        .whereType<String>()
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
   }
   if (value is String) {
     final trimmed = value.trim();
@@ -348,8 +508,12 @@ List<UpdateReleaseNoteEntry> _readReleaseNotes(dynamic value) {
   if (value is! List) return const [];
   return value
       .whereType<Map>()
-      .map((raw) => UpdateReleaseNoteEntry.fromJson(raw.cast<String, dynamic>()))
-      .where((entry) => entry.version.trim().isNotEmpty || entry.items.isNotEmpty)
+      .map(
+        (raw) => UpdateReleaseNoteEntry.fromJson(raw.cast<String, dynamic>()),
+      )
+      .where(
+        (entry) => entry.version.trim().isNotEmpty || entry.items.isNotEmpty,
+      )
       .toList(growable: false);
 }
 

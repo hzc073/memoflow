@@ -94,16 +94,20 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   AppLocale? _activeLocale;
   static const UpdateAnnouncementConfig _fallbackUpdateConfig =
       UpdateAnnouncementConfig(
+        schemaVersion: 1,
         versionInfo: UpdateVersionInfo(
           latestVersion: '',
           isForce: false,
           downloadUrl: '',
+          updateSource: '',
+          publishAt: null,
           debugVersion: '',
           skipUpdateVersion: '',
         ),
         announcement: UpdateAnnouncement(
           id: 0,
           title: '',
+          showWhenUpToDate: false,
           contentsByLocale: {},
           fallbackContents: [],
           newDonorIds: [],
@@ -1325,17 +1329,23 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     required String currentVersion,
     required AppPreferences prefs,
   }) async {
-    final isForce = config.versionInfo.isForce;
+    final nowUtc = DateTime.now().toUtc();
+    final publishReady = config.versionInfo.isPublishedAt(nowUtc);
     final latestVersion = config.versionInfo.latestVersion.trim();
     final skipUpdateVersion = config.versionInfo.skipUpdateVersion.trim();
     final hasUpdate =
+        publishReady &&
         latestVersion.isNotEmpty &&
         (skipUpdateVersion.isEmpty || latestVersion != skipUpdateVersion) &&
         _compareVersionTriplets(latestVersion, currentVersion) > 0;
+    final isForce = config.versionInfo.isForce && hasUpdate;
 
-    final lastSeenVersion = prefs.lastSeenAnnouncementVersion.trim();
+    final showWhenUpToDate = config.announcement.showWhenUpToDate;
+    final announcementId = config.announcement.id;
+    final hasUnseenAnnouncement =
+        announcementId > 0 && announcementId != prefs.lastSeenAnnouncementId;
     final shouldShow =
-        isForce || hasUpdate || lastSeenVersion != currentVersion;
+        isForce || hasUpdate || (showWhenUpToDate && hasUnseenAnnouncement);
     if (!shouldShow) return;
 
     final dialogContext = _navigatorKey.currentContext;
