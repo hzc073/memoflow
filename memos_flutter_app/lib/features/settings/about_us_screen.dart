@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../debug/debug_tools_screen.dart';
@@ -68,12 +69,26 @@ class _AboutUsContentState extends State<AboutUsContent> {
     ).push(MaterialPageRoute<void>(builder: (_) => const DebugToolsScreen()));
   }
 
-  void _showPlaceholderNotice(BuildContext context) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(content: Text(context.t.strings.legacy.msg_feature_in_progress)),
-    );
+  Future<void> _openExternalLink(BuildContext context, String rawUrl) async {
+    final uri = Uri.parse(rawUrl);
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_unable_open_browser_try),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_try)),
+      );
+    }
   }
 
   String _versionDescription(BuildContext context, PackageInfo? info) {
@@ -107,40 +122,40 @@ class _AboutUsContentState extends State<AboutUsContent> {
     final divider = isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.06);
+    const websiteUrl = 'https://memoflow.hzc073.com/';
+    const privacyUrl = 'https://memoflow.hzc073.com/help/privacy-policy';
+    const termsUrl = 'https://memoflow.hzc073.com/help/terms-of-service';
+    const helpUrl = 'https://memoflow.hzc073.com/help/';
+    const feedbackUrl = 'https://github.com/hzc073/memoflow/issues';
     final entries = <_AboutEntry>[
       _AboutEntry(
         icon: Icons.public_outlined,
         title: context.t.strings.legacy.msg_about_website_link,
         subtitle: context.t.strings.legacy.msg_about_website_link_subtitle,
-        enabled: false,
-        onTap: () => _showPlaceholderNotice(context),
+        onTap: () => _openExternalLink(context, websiteUrl),
       ),
       _AboutEntry(
         icon: Icons.privacy_tip_outlined,
         title: context.t.strings.legacy.msg_about_privacy_policy,
         subtitle: context.t.strings.legacy.msg_about_privacy_policy_subtitle,
-        enabled: false,
-        onTap: () => _showPlaceholderNotice(context),
+        onTap: () => _openExternalLink(context, privacyUrl),
       ),
       _AboutEntry(
         icon: Icons.description_outlined,
         title: context.t.strings.legacy.msg_about_user_agreement,
         subtitle: context.t.strings.legacy.msg_about_user_agreement_subtitle,
-        enabled: false,
-        onTap: () => _showPlaceholderNotice(context),
+        onTap: () => _openExternalLink(context, termsUrl),
       ),
       _AboutEntry(
         icon: Icons.help_outline,
         title: context.t.strings.legacy.msg_about_help_center,
         subtitle: context.t.strings.legacy.msg_about_help_center_subtitle,
-        enabled: false,
-        onTap: () => _showPlaceholderNotice(context),
+        onTap: () => _openExternalLink(context, helpUrl),
       ),
       _AboutEntry(
         icon: Icons.update_outlined,
         title: context.t.strings.legacy.msg_release_notes_2,
         subtitle: context.t.strings.legacy.msg_about_release_notes_subtitle,
-        enabled: true,
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const ReleaseNotesScreen()),
@@ -151,14 +166,12 @@ class _AboutUsContentState extends State<AboutUsContent> {
         icon: Icons.feedback_outlined,
         title: context.t.strings.legacy.msg_about_submit_feedback,
         subtitle: context.t.strings.legacy.msg_about_submit_feedback_subtitle,
-        enabled: false,
-        onTap: () => _showPlaceholderNotice(context),
+        onTap: () => _openExternalLink(context, feedbackUrl),
       ),
       _AboutEntry(
         icon: Icons.favorite_border,
         title: context.t.strings.legacy.msg_contributors,
         subtitle: context.t.strings.legacy.msg_about_contributors_subtitle,
-        enabled: true,
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const DonorsWallScreen()),
@@ -306,7 +319,6 @@ class _AboutEntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = entry.enabled ? MemoFlowPalette.primary : textMuted;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -336,25 +348,7 @@ class _AboutEntryRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  entry.enabled
-                      ? context.t.strings.legacy.msg_status_available
-                      : context.t.strings.legacy.msg_status_placeholder,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: statusColor,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 10),
               Icon(Icons.chevron_right, size: 20, color: textMuted),
             ],
           ),
@@ -369,13 +363,11 @@ class _AboutEntry {
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.enabled,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final bool enabled;
   final VoidCallback onTap;
 }
