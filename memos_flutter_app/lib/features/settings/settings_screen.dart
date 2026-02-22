@@ -9,7 +9,6 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/desktop_settings_window.dart';
-import '../../core/desktop_shortcuts.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../state/local_library_provider.dart';
@@ -28,8 +27,8 @@ import 'import_export_screen.dart';
 import 'laboratory_screen.dart';
 import 'password_lock_screen.dart';
 import 'preferences_settings_screen.dart';
-import 'desktop_shortcuts_settings_screen.dart';
 import 'user_guide_screen.dart';
+import 'windows_related_settings_screen.dart';
 import 'widgets_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -88,6 +87,8 @@ class SettingsScreen extends ConsumerWidget
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final enableWindowsDragToMove =
+        Theme.of(context).platform == TargetPlatform.windows;
+    final isWindowsDesktop =
         Theme.of(context).platform == TargetPlatform.windows;
     final enableAppBarDragToMove = enableDragToMove || enableWindowsDragToMove;
     final bg = isDark
@@ -309,10 +310,10 @@ class SettingsScreen extends ConsumerWidget
                         );
                       },
                     ),
-                    if (isDesktopShortcutEnabled())
+                    if (isWindowsDesktop)
                       _SettingRow(
-                        icon: Icons.keyboard_command_key,
-                        label: '快捷键',
+                        icon: Icons.desktop_windows_outlined,
+                        label: 'Windows\u76f8\u5173\u8bbe\u7f6e',
                         textMain: textMain,
                         textMuted: textMuted,
                         onTap: () {
@@ -320,7 +321,7 @@ class SettingsScreen extends ConsumerWidget
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) =>
-                                  const DesktopShortcutsSettingsScreen(),
+                                  const WindowsRelatedSettingsScreen(),
                             ),
                           );
                         },

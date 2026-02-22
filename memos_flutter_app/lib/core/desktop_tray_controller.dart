@@ -6,8 +6,11 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 const String _trayActionShow = 'show';
-const String _trayActionHide = 'hide';
+const String _trayActionOpenSettings = 'open_settings';
+const String _trayActionNewMemo = 'new_memo';
 const String _trayActionExit = 'exit';
+
+typedef TrayActionHandler = FutureOr<void> Function();
 
 class DesktopTrayController with TrayListener {
   DesktopTrayController._();
@@ -15,11 +18,21 @@ class DesktopTrayController with TrayListener {
   static final DesktopTrayController instance = DesktopTrayController._();
 
   bool _initialized = false;
+  TrayActionHandler? _onOpenSettings;
+  TrayActionHandler? _onNewMemo;
 
   bool get supported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.macOS);
+
+  void configureActions({
+    TrayActionHandler? onOpenSettings,
+    TrayActionHandler? onNewMemo,
+  }) {
+    _onOpenSettings = onOpenSettings;
+    _onNewMemo = onNewMemo;
+  }
 
   Future<void> ensureInitialized() async {
     if (!supported || _initialized) return;
@@ -32,10 +45,14 @@ class DesktopTrayController with TrayListener {
     await trayManager.setContextMenu(
       Menu(
         items: <MenuItem>[
-          MenuItem(key: _trayActionShow, label: '显示 MemoFlow'),
-          MenuItem(key: _trayActionHide, label: '隐藏到托盘'),
+          MenuItem(key: _trayActionShow, label: '\u6253\u5f00 MemoFlow'),
+          MenuItem(
+            key: _trayActionOpenSettings,
+            label: '\u6253\u5f00\u8bbe\u7f6e',
+          ),
+          MenuItem(key: _trayActionNewMemo, label: '\u65b0\u5efa Memo'),
           MenuItem.separator(),
-          MenuItem(key: _trayActionExit, label: '退出'),
+          MenuItem(key: _trayActionExit, label: '\u9000\u51fa'),
         ],
       ),
     );
@@ -67,20 +84,33 @@ class DesktopTrayController with TrayListener {
   }
 
   @override
+  void onTrayIconRightMouseDown() {
+    unawaited(trayManager.popUpContextMenu());
+  }
+
+  @override
   void onTrayMenuItemClick(MenuItem menuItem) {
     switch (menuItem.key) {
       case _trayActionShow:
         unawaited(showFromTray());
         return;
-      case _trayActionHide:
-        unawaited(hideToTray());
+      case _trayActionOpenSettings:
+        unawaited(_invokeWithForeground(_onOpenSettings));
+        return;
+      case _trayActionNewMemo:
+        unawaited(_invokeWithForeground(_onNewMemo));
         return;
       case _trayActionExit:
-        unawaited(windowManager.close());
+        unawaited(_exitFromTray());
         return;
       default:
         return;
     }
+  }
+
+  Future<void> _invokeWithForeground(TrayActionHandler? action) async {
+    await showFromTray();
+    await action?.call();
   }
 
   Future<void> _toggleByTrayIcon() async {
@@ -90,5 +120,12 @@ class DesktopTrayController with TrayListener {
       return;
     }
     await showFromTray();
+  }
+
+  Future<void> _exitFromTray() async {
+    if (Platform.isWindows || Platform.isLinux) {
+      await windowManager.setSkipTaskbar(false);
+    }
+    await windowManager.close();
   }
 }

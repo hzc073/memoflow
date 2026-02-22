@@ -133,6 +133,7 @@ flutter:
     - assets/splash/splash_logo_native.png
     - assets/images/donation_qr.png
     - assets/images/default_avatar.webp
+    - windows/runner/resources/app_icon.ico
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -1271,6 +1271,23 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   Future<void> _closeDesktopWindow() async {
     if (!Platform.isWindows) return;
+    final closeToTray = ref.read(
+      appPreferencesProvider.select((p) => p.windowsCloseToTray),
+    );
+    if (closeToTray && DesktopTrayController.instance.supported) {
+      try {
+        await DesktopTrayController.instance.hideToTray();
+        return;
+      } catch (error, stackTrace) {
+        ref
+            .read(logManagerProvider)
+            .warn(
+              'Hide to tray failed. Falling back to closing window.',
+              error: error,
+              stackTrace: stackTrace,
+            );
+      }
+    }
     await windowManager.close();
   }
 

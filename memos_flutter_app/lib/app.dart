@@ -515,6 +515,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       );
       _scheduleDesktopSubWindowPrewarm();
     }
+    if (DesktopTrayController.instance.supported) {
+      DesktopTrayController.instance.configureActions(
+        onOpenSettings: _handleOpenSettingsFromTray,
+        onNewMemo: _handleCreateMemoFromTray,
+      );
+    }
     _scheduleStatsWidgetUpdate();
   }
 
@@ -859,6 +865,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       default:
         return null;
     }
+  }
+
+  Future<void> _handleOpenSettingsFromTray() async {
+    if (!mounted) return;
+    final context = _resolveDesktopUiContext();
+    openDesktopSettingsWindowIfSupported(feedbackContext: context);
+  }
+
+  Future<void> _handleCreateMemoFromTray() async {
+    if (!mounted) return;
+    if (isDesktopShortcutEnabled()) {
+      await _handleDesktopQuickInputHotKey();
+      return;
+    }
+    final prefs = ref.read(appPreferencesProvider);
+    _openQuickInput(autoFocus: prefs.quickInputAutoFocus);
   }
 
   Future<void> _handleDesktopQuickInputHotKey() async {

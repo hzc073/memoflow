@@ -113,6 +113,7 @@ class AppPreferences {
     aiSummaryAllowPrivateMemos: false,
     supporterCrownEnabled: false,
     thirdPartyShareEnabled: true,
+    windowsCloseToTray: true,
     desktopShortcutBindings: desktopShortcutDefaultBindings,
     lastSeenAppVersion: '',
     lastSeenAnnouncementVersion: '',
@@ -155,6 +156,7 @@ class AppPreferences {
     required this.aiSummaryAllowPrivateMemos,
     required this.supporterCrownEnabled,
     required this.thirdPartyShareEnabled,
+    required this.windowsCloseToTray,
     required this.desktopShortcutBindings,
     required this.lastSeenAppVersion,
     required this.lastSeenAnnouncementVersion,
@@ -189,6 +191,7 @@ class AppPreferences {
   final bool aiSummaryAllowPrivateMemos;
   final bool supporterCrownEnabled;
   final bool thirdPartyShareEnabled;
+  final bool windowsCloseToTray;
   final Map<DesktopShortcutAction, DesktopShortcutBinding>
   desktopShortcutBindings;
   final String lastSeenAppVersion;
@@ -244,6 +247,7 @@ class AppPreferences {
     'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
     'supporterCrownEnabled': supporterCrownEnabled,
     'thirdPartyShareEnabled': thirdPartyShareEnabled,
+    'windowsCloseToTray': windowsCloseToTray,
     'desktopShortcutBindings': desktopShortcutBindingsToStorage(
       desktopShortcutBindings,
     ),
@@ -522,6 +526,10 @@ class AppPreferences {
         'thirdPartyShareEnabled',
         AppPreferences.defaults.thirdPartyShareEnabled,
       ),
+      windowsCloseToTray: parseBool(
+        'windowsCloseToTray',
+        AppPreferences.defaults.windowsCloseToTray,
+      ),
       desktopShortcutBindings: parsedDesktopShortcutBindings,
       lastSeenAppVersion: parseLastSeenAppVersion(),
       lastSeenAnnouncementVersion: parseLastSeenAnnouncementVersion(),
@@ -558,6 +566,7 @@ class AppPreferences {
     bool? aiSummaryAllowPrivateMemos,
     bool? supporterCrownEnabled,
     bool? thirdPartyShareEnabled,
+    bool? windowsCloseToTray,
     Map<DesktopShortcutAction, DesktopShortcutBinding>? desktopShortcutBindings,
     String? lastSeenAppVersion,
     String? lastSeenAnnouncementVersion,
@@ -602,6 +611,7 @@ class AppPreferences {
           supporterCrownEnabled ?? this.supporterCrownEnabled,
       thirdPartyShareEnabled:
           thirdPartyShareEnabled ?? this.thirdPartyShareEnabled,
+      windowsCloseToTray: windowsCloseToTray ?? this.windowsCloseToTray,
       desktopShortcutBindings:
           desktopShortcutBindings ?? this.desktopShortcutBindings,
       lastSeenAppVersion: lastSeenAppVersion ?? this.lastSeenAppVersion,
@@ -798,6 +808,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(supporterCrownEnabled: v));
   void setThirdPartyShareEnabled(bool v) =>
       _setAndPersist(state.copyWith(thirdPartyShareEnabled: v));
+  void setWindowsCloseToTray(bool v) =>
+      _setAndPersist(state.copyWith(windowsCloseToTray: v));
   void setDesktopShortcutBinding({
     required DesktopShortcutAction action,
     required DesktopShortcutBinding binding,
