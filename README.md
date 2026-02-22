@@ -1,19 +1,33 @@
 # MemoFlow
-# 请求帮助 | Request help [#65](https://github.com/hzc073/memoflow/issues/65)
-English version: [README_EN.md](README_EN.md)
 
-MemoFlow 是一个面向 [memos](https://github.com/usememos/memos) 后端的 Flutter 移动端客户端。本项目为独立的第三方客户端，
+<p align="center">
+  <img src="docs/memoflow-logo.png" alt="MemoFlow Logo" width="120">
+</p>
+
+<p align="center">
+  <a href="README_EN.md">English</a> |
+  <a href="https://memoflow.hzc073.com/">官网</a> |
+  <a href="https://memoflow.hzc073.com/help/">帮助中心</a>
+</p>
+
+MemoFlow 是一个面向 [memos](https://github.com/usememos/memos) 后端的 Flutter 移动端客户端。
+
+>本项目为独立的第三方客户端，
 与 Memos 官方项目没有任何关系。
 
 ## 功能
-- 离线优先：本地 SQLite 缓存 + Outbox 重试队列。
-- 支持 Markdown、标签和任务清单的 Memo 新建、编辑、搜索、置顶、归档与删除。
-- 快速输入：草稿保存、标签建议、双链引用、附件、拍照，以及撤销/重做。
-- 附件浏览：图片预览、音频播放、语音备忘录录制。
-- 随机复盘与本地统计（按月图表/热力图），支持分享。
-- AI 总结报告：可配置 Provider/Model/Prompt，支持分享海报或保存为 Memo。
-- 多账号 PAT 登录，支持旧版 Memos 的兼容模式。
-- 小组件、应用锁、偏好设置（主题/语言/字体）、Markdown+ZIP 导出。
+- 登录与版本适配：支持账号密码/PAT 两种登录方式，登录前可选择并探测 Memos API 版本（0.21~0.26）。
+- 离线优先：本地 SQLite 缓存 + Outbox 重试队列，支持同步队列查看与重试。
+- Memo 全流程：新建、编辑、搜索、置顶、归档、删除、标签过滤、Explore 浏览。
+- Markdown 与任务清单：支持常用 Markdown 渲染、任务列表进度展示、双链引用与关联跳转。
+- 多媒体输入与预览：支持附件上传、拍照、语音录制、图片/音频/视频预览与下载。
+- 版本历史与回收站：支持 Memo 历史版本查看/恢复，回收站恢复或永久删除。
+- 提醒系统：支持 Memo 提醒、测试提醒、勿扰时段、铃声/震动等提醒配置。
+- 导入导出：支持 Markdown+ZIP 导出，支持 flomo/Markdown ZIP 导入。
+- 本地库模式：支持添加并扫描本地库，与服务器模式共存切换。
+- WebDAV 能力：支持 WebDAV 同步、备份/恢复、保留策略与恢复码流程。
+- AI 与复盘统计：支持 AI 总结、随机复盘、统计与热力图展示。
+- 体验与个性化：支持通知中心、小组件、应用锁、主题/语言/字体等偏好设置。
 
 ## 待办事项
 - 用户
@@ -45,6 +59,9 @@ MemoFlow 是一个面向 [memos](https://github.com/usememos/memos) 后端的 Fl
   - [ ] 自定义快速工具
   - [x] 任务事项进度条
   - [ ] 多语言（对齐 Memos 后端语言包，33 项）
+    <details>
+    <summary>语言列表（点击展开）</summary>
+
     - [ ] `ar` 阿拉伯语
     - [ ] `ca` 加泰罗尼亚语
     - [ ] `cs` 捷克语
@@ -79,31 +96,20 @@ MemoFlow 是一个面向 [memos](https://github.com/usememos/memos) 后端的 Fl
     - [x] `zh-Hans` 简体中文
     - [x] `zh-Hant` 繁体中文（当前实现：`zh-Hant-TW`）
 
+    </details>
+
 ## 截图
-**登录**
 
-<img src="docs/登录.png" alt="登录" width="320">
+<p align="center">
+  <img src="docs/登录.png" alt="登录" width="24%">
+  <img src="docs/首页.png" alt="首页" width="24%">
+  <img src="docs/导航栏.png" alt="导航栏" width="24%">
+  <img src="docs/设置.png" alt="设置" width="24%">
+</p>
 
-**首页**
+## Star History
 
-<img src="docs/首页.png" alt="首页" width="320">
-
-**导航栏**
-
-<img src="docs/导航栏.png" alt="导航栏" width="320">
-
-**设置**
-
-<img src="docs/设置.png" alt="设置" width="320">
-
-## 数据与隐私
-- PAT 通过 `flutter_secure_storage` 存储。
-- Memo 缓存在本地 SQLite，并通过 Outbox 队列进行同步。
-- AI 总结会将选中的 Memo 内容发送至配置的 AI Provider，不会同步到 Memos 后端。
-
-## 说明
-- 导出格式为 Markdown 文件打包的 ZIP（暂未支持导入）。
-- 若遇到同步问题，可开启网络日志并在应用内导出诊断信息。
+[![Star History Chart](https://api.star-history.com/svg?repos=hzc073/memoflow&type=Date)](https://www.star-history.com/#hzc073/memoflow&Date)
 
 # 致谢
-Memos https://github.com/usememos/memos
+[Memos](https://github.com/usememos/memos)
