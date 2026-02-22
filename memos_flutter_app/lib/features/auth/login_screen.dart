@@ -13,6 +13,7 @@ import '../../data/api/memo_api_version.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/login_draft_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/home_loading_overlay_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 
@@ -269,6 +270,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         baseUrl: baseUrl,
         personalAccessToken: personalAccessToken,
         version: version,
+        probeMemoNotice: context.t.strings.legacy.msg_probe_memo_can_delete,
         deferCleanup: true,
       );
     } catch (error) {
@@ -419,6 +421,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  void _requestHomeLoadingOverlayForNextEntry() {
+    ref.read(homeLoadingOverlayForceProvider.notifier).state = true;
+  }
+
   Future<void> _handleBackPressed() async {
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
@@ -499,6 +505,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!mounted) return;
     await _showProbeSuccessDialog(selectedVersion);
     if (!mounted) return;
+    if (selectedVersion == MemoApiVersion.v025) {
+      _requestHomeLoadingOverlayForNextEntry();
+    }
     _navigateAfterLogin();
   }
 
@@ -560,6 +569,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
     if (!ready) return;
     if (!mounted) return;
+    if (selectedVersion == MemoApiVersion.v025) {
+      _requestHomeLoadingOverlayForNextEntry();
+    }
     _navigateAfterLogin();
   }
 

@@ -69,6 +69,7 @@ class SearchHistoryController extends StateNotifier<List<String>> {
 
   Future<void> _load() async {
     final stored = await _repo.read();
+    if (!mounted) return;
     state = stored;
   }
 

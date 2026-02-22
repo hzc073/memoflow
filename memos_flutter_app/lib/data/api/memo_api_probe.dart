@@ -80,6 +80,7 @@ class MemoApiProbeService {
   Future<MemoApiProbeSummary> probeAll({
     required Uri baseUrl,
     required String personalAccessToken,
+    required String probeMemoNotice,
     List<MemoApiVersion> versions = kMemoApiVersionsProbeOrder,
   }) async {
     final reports = <MemoApiVersionProbeReport>[];
@@ -89,6 +90,7 @@ class MemoApiProbeService {
           baseUrl: baseUrl,
           personalAccessToken: personalAccessToken,
           version: version,
+          probeMemoNotice: probeMemoNotice,
         ),
       );
     }
@@ -99,6 +101,7 @@ class MemoApiProbeService {
     required Uri baseUrl,
     required String personalAccessToken,
     required MemoApiVersion version,
+    required String probeMemoNotice,
     bool deferCleanup = false,
   }) async {
     final api = MemoApiFacade.authenticated(
@@ -115,6 +118,13 @@ class MemoApiProbeService {
     final seed = DateTime.now().toUtc().microsecondsSinceEpoch;
     final memoId = 'memoflow-probe-$seed';
     final contentPrefix = '[MemoFlow Probe ${version.versionString}]';
+    final normalizedProbeMemoNotice = probeMemoNotice.trim();
+    final createContent = normalizedProbeMemoNotice.isEmpty
+        ? '$contentPrefix create'
+        : '$contentPrefix create\n$normalizedProbeMemoNotice';
+    final updateContent = normalizedProbeMemoNotice.isEmpty
+        ? '$contentPrefix update'
+        : '$contentPrefix update\n$normalizedProbeMemoNotice';
 
     try {
       await _runStep(
@@ -161,7 +171,7 @@ class MemoApiProbeService {
         action: () async {
           final memo = await api.createMemo(
             memoId: memoId,
-            content: '$contentPrefix create',
+            content: createContent,
             visibility: 'PRIVATE',
             pinned: false,
           );
@@ -179,10 +189,7 @@ class MemoApiProbeService {
         step: 'update_memo',
         endpointHint: _endpointHint(version: version, step: 'update_memo'),
         action: () async {
-          await api.updateMemo(
-            memoUid: memoUid,
-            content: '$contentPrefix update',
-          );
+          await api.updateMemo(memoUid: memoUid, content: updateContent);
         },
       );
 

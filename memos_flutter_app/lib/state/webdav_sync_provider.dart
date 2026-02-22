@@ -361,6 +361,7 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     json.remove('lastSeenAnnouncementId');
     json.remove('lastSeenNoticeHash');
     json.remove('fontFile');
+    json.remove('homeInitialLoadingOverlayShown');
     return json;
   }
 
@@ -579,11 +580,9 @@ class WebDavSyncController extends StateNotifier<WebDavSyncStatus> {
     AppPreferences current,
     AppPreferences remote,
   ) {
-    final hasSelectedLanguage =
-        current.hasSelectedLanguage || remote.hasSelectedLanguage;
     return current.copyWith(
       language: remote.language,
-      hasSelectedLanguage: hasSelectedLanguage,
+      hasSelectedLanguage: remote.hasSelectedLanguage,
       fontSize: remote.fontSize,
       lineHeight: remote.lineHeight,
       fontFamily: remote.fontFamily,

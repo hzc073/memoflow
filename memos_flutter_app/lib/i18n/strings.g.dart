@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 5375 (1075 per locale)
+/// Strings: 5380 (1076 per locale)
 ///
-/// Built on 2026-02-18 at 10:10 UTC
+/// Built on 2026-02-22 at 03:07 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -513,7 +513,8 @@ class _StringsStringsLegacyEn {
 	String get msg_reset_language_selection => 'Reset language selection';
 	String get msg_v_30_days => '30 days';
 	String get msg_e_g_mood_check => 'e.g. Mood check';
-	String get msg_note_some_tokens_returned_only_once => 'Note: Some tokens are returned only once and cannot be retrieved later. Please keep them safe.';
+	String get msg_note_some_tokens_returned_only_once => 'Tip: Some tokens are shown only once. Save them securely when they are first displayed.';
+	String get msg_probe_memo_can_delete => 'This memo is created by MemoFlow API probe and can be safely deleted.';
 	String get msg_syncing => 'Syncing...';
 	String get msg_retention => 'Retention';
 	String get msg_open_login_screen => 'Open login screen';
@@ -556,7 +557,7 @@ class _StringsStringsLegacyEn {
 	String get msg_no_download_url_available => 'No download URL available';
 	String get msg_record_create_memos => 'Record to create memos';
 	String get msg_signing => 'Signing in...';
-	String get msg_memoflow_uses_system_location_permission_get => 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via Amap Web API. You can choose the display precision above.';
+	String get msg_memoflow_uses_system_location_permission_get => 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via the selected provider service (such as Amap, Baidu, or Google). You can choose the display precision above.';
 	String get msg_continue => 'Continue';
 	String get msg_notification_content_unavailable => 'Notification content unavailable';
 	String get msg_unable_read_file_path => 'Unable to read file path.';
@@ -1896,7 +1897,8 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_reset_language_selection => 'Sprachauswahl zurücksetzen';
 	@override String get msg_v_30_days => '30 Tage';
 	@override String get msg_e_g_mood_check => 'z. B. Stimmungscheck';
-	@override String get msg_note_some_tokens_returned_only_once => 'Hinweis: Einige Token werden nur einmal zurückgegeben und können später nicht wieder abgerufen werden. Bitte bewahre sie sicher auf.';
+	@override String get msg_note_some_tokens_returned_only_once => 'Hinweis: Einige Tokens werden nur einmal angezeigt. Bitte beim ersten Anzeigen sicher speichern.';
+	@override String get msg_probe_memo_can_delete => 'Diese Notiz wurde durch die MemoFlow API-Pruefung erstellt und kann sicher geloescht werden.';
 	@override String get msg_syncing => 'Synchronisierung läuft...';
 	@override String get msg_retention => 'Aufbewahrung';
 	@override String get msg_open_login_screen => 'Anmeldebildschirm öffnen';
@@ -1939,7 +1941,7 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_no_download_url_available => 'Keine Download-URL verfügbar';
 	@override String get msg_record_create_memos => 'Aufnehmen, um Memos zu erstellen';
 	@override String get msg_signing => 'Anmeldung...';
-	@override String get msg_memoflow_uses_system_location_permission_get => 'MemoFlow verwendet die Standortberechtigung des Systems, um Koordinaten zu erhalten, und führt dann eine Reverse-Geokodierung über die Amap Web API durch. Oben können Sie die Anzeigegenauigkeit auswählen.';
+	@override String get msg_memoflow_uses_system_location_permission_get => 'MemoFlow verwendet die Standortberechtigung des Systems, um Koordinaten zu erhalten, und führt die Reverse-Geokodierung über den gewählten Anbieter (z. B. Amap, Baidu oder Google) aus. Die Anzeigegenauigkeit kann oben gewählt werden.';
 	@override String get msg_continue => 'Weiter';
 	@override String get msg_notification_content_unavailable => 'Benachrichtigungsinhalt nicht verfügbar';
 	@override String get msg_unable_read_file_path => 'Dateipfad kann nicht gelesen werden.';
@@ -3279,7 +3281,8 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_reset_language_selection => '言語選択をリセット';
 	@override String get msg_v_30_days => '30日';
 	@override String get msg_e_g_mood_check => '例: 気分チェック';
-	@override String get msg_note_some_tokens_returned_only_once => '注意: 一部のトークンは一度しか返されず、後から取得できません。安全に保管してください。';
+	@override String get msg_note_some_tokens_returned_only_once => '注意: 一部のトークンは初回表示時にしか確認できません。表示されたらすぐ安全に保存してください。';
+	@override String get msg_probe_memo_can_delete => 'このメモは MemoFlow API 探測で作成されたもので、安全に削除できます。';
 	@override String get msg_syncing => '同期中...';
 	@override String get msg_retention => '保持期間';
 	@override String get msg_open_login_screen => 'ログイン画面を開く';
@@ -3322,7 +3325,7 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_no_download_url_available => 'ダウンロードURLが利用できません';
 	@override String get msg_record_create_memos => 'メモを作成するために記録する';
 	@override String get msg_signing => 'サインイン中...';
-	@override String get msg_memoflow_uses_system_location_permission_get => 'MemoFlowは座標を取得するためにシステムの位置情報権限を使用し、その後Amap Web APIで逆ジオコーディングを行います。表示精度は上で選択できます。';
+	@override String get msg_memoflow_uses_system_location_permission_get => 'MemoFlowはシステムの位置情報権限で座標を取得し、選択したプロバイダー（Amap、Baidu、Google など）で逆ジオコーディングを行います。表示精度は上で選択できます。';
 	@override String get msg_continue => '続行';
 	@override String get msg_notification_content_unavailable => '通知内容を利用できません';
 	@override String get msg_unable_read_file_path => 'ファイルパスを読み取れません。';
@@ -4662,7 +4665,8 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_reset_language_selection => '重置语言选择状态';
 	@override String get msg_v_30_days => '30 天';
 	@override String get msg_e_g_mood_check => '如：情绪分析';
-	@override String get msg_note_some_tokens_returned_only_once => '提示：Token 可能只返回一次，之后无法再次获取，请妥善保存。';
+	@override String get msg_note_some_tokens_returned_only_once => '提示：部分 Token 只会显示一次，请在首次显示时立即安全保存。';
+	@override String get msg_probe_memo_can_delete => '此条笔记由 MemoFlow API 探测创建，可安全删除。';
 	@override String get msg_syncing => '同步中...';
 	@override String get msg_retention => '版本保留数量';
 	@override String get msg_open_login_screen => '打开登录页面';
@@ -4705,7 +4709,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_no_download_url_available => '无法获取下载链接';
 	@override String get msg_record_create_memos => '录音生成 memo';
 	@override String get msg_signing => '登录中…';
-	@override String get msg_memoflow_uses_system_location_permission_get => '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析地址，可在上方选择显示精度。';
+	@override String get msg_memoflow_uses_system_location_permission_get => '定位将使用系统权限获取经纬度，并通过你选择的服务商（如高德、百度或 Google）进行反向地理解析，可在上方选择显示精度。';
 	@override String get msg_continue => '继续';
 	@override String get msg_notification_content_unavailable => '通知缺少内容';
 	@override String get msg_unable_read_file_path => '无法获取文件路径';
@@ -6045,7 +6049,8 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_reset_language_selection => '重置语言选择状态';
 	@override String get msg_v_30_days => '30 天';
 	@override String get msg_e_g_mood_check => '如：情绪分析';
-	@override String get msg_note_some_tokens_returned_only_once => '提示：Token 可能只返回一次，之后无法再次获取，请妥善保存。';
+	@override String get msg_note_some_tokens_returned_only_once => '提示：部分 Token 只會顯示一次，請在首次顯示時立即安全保存。';
+	@override String get msg_probe_memo_can_delete => '此筆記由 MemoFlow API 探測建立，可安全刪除。';
 	@override String get msg_syncing => '同步中...';
 	@override String get msg_retention => '版本保留数量';
 	@override String get msg_open_login_screen => '打开登录页面';
@@ -6088,7 +6093,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_no_download_url_available => '无法获取下载链接';
 	@override String get msg_record_create_memos => '录音生成 memo';
 	@override String get msg_signing => '登录中…';
-	@override String get msg_memoflow_uses_system_location_permission_get => '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析地址，可在上方选择显示精度。';
+	@override String get msg_memoflow_uses_system_location_permission_get => '定位將使用系統權限取得經緯度，並透過你選擇的服務商（如高德、百度或 Google）進行反向地理解析，可在上方選擇顯示精度。';
 	@override String get msg_continue => '继续';
 	@override String get msg_notification_content_unavailable => '通知缺少内容';
 	@override String get msg_unable_read_file_path => '无法获取文件路径';
@@ -7378,7 +7383,8 @@ extension on Translations {
 			case 'strings.legacy.msg_reset_language_selection': return 'Reset language selection';
 			case 'strings.legacy.msg_v_30_days': return '30 days';
 			case 'strings.legacy.msg_e_g_mood_check': return 'e.g. Mood check';
-			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return 'Note: Some tokens are returned only once and cannot be retrieved later. Please keep them safe.';
+			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return 'Tip: Some tokens are shown only once. Save them securely when they are first displayed.';
+			case 'strings.legacy.msg_probe_memo_can_delete': return 'This memo is created by MemoFlow API probe and can be safely deleted.';
 			case 'strings.legacy.msg_syncing': return 'Syncing...';
 			case 'strings.legacy.msg_retention': return 'Retention';
 			case 'strings.legacy.msg_open_login_screen': return 'Open login screen';
@@ -7421,7 +7427,7 @@ extension on Translations {
 			case 'strings.legacy.msg_no_download_url_available': return 'No download URL available';
 			case 'strings.legacy.msg_record_create_memos': return 'Record to create memos';
 			case 'strings.legacy.msg_signing': return 'Signing in...';
-			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via Amap Web API. You can choose the display precision above.';
+			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return 'MemoFlow uses system location permission to get coordinates, then reverse geocodes via the selected provider service (such as Amap, Baidu, or Google). You can choose the display precision above.';
 			case 'strings.legacy.msg_continue': return 'Continue';
 			case 'strings.legacy.msg_notification_content_unavailable': return 'Notification content unavailable';
 			case 'strings.legacy.msg_unable_read_file_path': return 'Unable to read file path.';
@@ -8461,7 +8467,8 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_reset_language_selection': return 'Sprachauswahl zurücksetzen';
 			case 'strings.legacy.msg_v_30_days': return '30 Tage';
 			case 'strings.legacy.msg_e_g_mood_check': return 'z. B. Stimmungscheck';
-			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return 'Hinweis: Einige Token werden nur einmal zurückgegeben und können später nicht wieder abgerufen werden. Bitte bewahre sie sicher auf.';
+			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return 'Hinweis: Einige Tokens werden nur einmal angezeigt. Bitte beim ersten Anzeigen sicher speichern.';
+			case 'strings.legacy.msg_probe_memo_can_delete': return 'Diese Notiz wurde durch die MemoFlow API-Pruefung erstellt und kann sicher geloescht werden.';
 			case 'strings.legacy.msg_syncing': return 'Synchronisierung läuft...';
 			case 'strings.legacy.msg_retention': return 'Aufbewahrung';
 			case 'strings.legacy.msg_open_login_screen': return 'Anmeldebildschirm öffnen';
@@ -8504,7 +8511,7 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_no_download_url_available': return 'Keine Download-URL verfügbar';
 			case 'strings.legacy.msg_record_create_memos': return 'Aufnehmen, um Memos zu erstellen';
 			case 'strings.legacy.msg_signing': return 'Anmeldung...';
-			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return 'MemoFlow verwendet die Standortberechtigung des Systems, um Koordinaten zu erhalten, und führt dann eine Reverse-Geokodierung über die Amap Web API durch. Oben können Sie die Anzeigegenauigkeit auswählen.';
+			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return 'MemoFlow verwendet die Standortberechtigung des Systems, um Koordinaten zu erhalten, und führt die Reverse-Geokodierung über den gewählten Anbieter (z. B. Amap, Baidu oder Google) aus. Die Anzeigegenauigkeit kann oben gewählt werden.';
 			case 'strings.legacy.msg_continue': return 'Weiter';
 			case 'strings.legacy.msg_notification_content_unavailable': return 'Benachrichtigungsinhalt nicht verfügbar';
 			case 'strings.legacy.msg_unable_read_file_path': return 'Dateipfad kann nicht gelesen werden.';
@@ -9544,7 +9551,8 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_reset_language_selection': return '言語選択をリセット';
 			case 'strings.legacy.msg_v_30_days': return '30日';
 			case 'strings.legacy.msg_e_g_mood_check': return '例: 気分チェック';
-			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return '注意: 一部のトークンは一度しか返されず、後から取得できません。安全に保管してください。';
+			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return '注意: 一部のトークンは初回表示時にしか確認できません。表示されたらすぐ安全に保存してください。';
+			case 'strings.legacy.msg_probe_memo_can_delete': return 'このメモは MemoFlow API 探測で作成されたもので、安全に削除できます。';
 			case 'strings.legacy.msg_syncing': return '同期中...';
 			case 'strings.legacy.msg_retention': return '保持期間';
 			case 'strings.legacy.msg_open_login_screen': return 'ログイン画面を開く';
@@ -9587,7 +9595,7 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_no_download_url_available': return 'ダウンロードURLが利用できません';
 			case 'strings.legacy.msg_record_create_memos': return 'メモを作成するために記録する';
 			case 'strings.legacy.msg_signing': return 'サインイン中...';
-			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return 'MemoFlowは座標を取得するためにシステムの位置情報権限を使用し、その後Amap Web APIで逆ジオコーディングを行います。表示精度は上で選択できます。';
+			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return 'MemoFlowはシステムの位置情報権限で座標を取得し、選択したプロバイダー（Amap、Baidu、Google など）で逆ジオコーディングを行います。表示精度は上で選択できます。';
 			case 'strings.legacy.msg_continue': return '続行';
 			case 'strings.legacy.msg_notification_content_unavailable': return '通知内容を利用できません';
 			case 'strings.legacy.msg_unable_read_file_path': return 'ファイルパスを読み取れません。';
@@ -10627,7 +10635,8 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_reset_language_selection': return '重置语言选择状态';
 			case 'strings.legacy.msg_v_30_days': return '30 天';
 			case 'strings.legacy.msg_e_g_mood_check': return '如：情绪分析';
-			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return '提示：Token 可能只返回一次，之后无法再次获取，请妥善保存。';
+			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return '提示：部分 Token 只会显示一次，请在首次显示时立即安全保存。';
+			case 'strings.legacy.msg_probe_memo_can_delete': return '此条笔记由 MemoFlow API 探测创建，可安全删除。';
 			case 'strings.legacy.msg_syncing': return '同步中...';
 			case 'strings.legacy.msg_retention': return '版本保留数量';
 			case 'strings.legacy.msg_open_login_screen': return '打开登录页面';
@@ -10670,7 +10679,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_no_download_url_available': return '无法获取下载链接';
 			case 'strings.legacy.msg_record_create_memos': return '录音生成 memo';
 			case 'strings.legacy.msg_signing': return '登录中…';
-			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析地址，可在上方选择显示精度。';
+			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return '定位将使用系统权限获取经纬度，并通过你选择的服务商（如高德、百度或 Google）进行反向地理解析，可在上方选择显示精度。';
 			case 'strings.legacy.msg_continue': return '继续';
 			case 'strings.legacy.msg_notification_content_unavailable': return '通知缺少内容';
 			case 'strings.legacy.msg_unable_read_file_path': return '无法获取文件路径';
@@ -11710,7 +11719,8 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_reset_language_selection': return '重置语言选择状态';
 			case 'strings.legacy.msg_v_30_days': return '30 天';
 			case 'strings.legacy.msg_e_g_mood_check': return '如：情绪分析';
-			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return '提示：Token 可能只返回一次，之后无法再次获取，请妥善保存。';
+			case 'strings.legacy.msg_note_some_tokens_returned_only_once': return '提示：部分 Token 只會顯示一次，請在首次顯示時立即安全保存。';
+			case 'strings.legacy.msg_probe_memo_can_delete': return '此筆記由 MemoFlow API 探測建立，可安全刪除。';
 			case 'strings.legacy.msg_syncing': return '同步中...';
 			case 'strings.legacy.msg_retention': return '版本保留数量';
 			case 'strings.legacy.msg_open_login_screen': return '打开登录页面';
@@ -11753,7 +11763,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_no_download_url_available': return '无法获取下载链接';
 			case 'strings.legacy.msg_record_create_memos': return '录音生成 memo';
 			case 'strings.legacy.msg_signing': return '登录中…';
-			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return '定位将使用系统权限获取经纬度，并通过高德 Web API 反向地理解析地址，可在上方选择显示精度。';
+			case 'strings.legacy.msg_memoflow_uses_system_location_permission_get': return '定位將使用系統權限取得經緯度，並透過你選擇的服務商（如高德、百度或 Google）進行反向地理解析，可在上方選擇顯示精度。';
 			case 'strings.legacy.msg_continue': return '继续';
 			case 'strings.legacy.msg_notification_content_unavailable': return '通知缺少内容';
 			case 'strings.legacy.msg_unable_read_file_path': return '无法获取文件路径';

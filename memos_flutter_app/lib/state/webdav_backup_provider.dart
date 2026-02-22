@@ -182,6 +182,7 @@ class WebDavBackupController extends StateNotifier<WebDavBackupStatus> {
   Future<void> checkAndBackupOnResume() async {
     if (state.running || state.restoring) return;
     final settings = _ref.read(webDavSettingsProvider);
+    if (!settings.enabled) return;
     if (!settings.backupEnabled) return;
     if (settings.backupSchedule == WebDavBackupSchedule.manual) return;
 

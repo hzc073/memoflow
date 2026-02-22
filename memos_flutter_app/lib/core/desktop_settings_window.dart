@@ -61,6 +61,12 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
   _desktopSettingsWindowOpening = true;
   try {
     var window = await _ensureDesktopSettingsWindowReady();
+    final healthy = await _isDesktopSettingsWindowResponsive(window.windowId);
+    if (!healthy) {
+      _desktopSettingsWindow = null;
+      _desktopSettingsWindowId = null;
+      window = await _ensureDesktopSettingsWindowReady();
+    }
     try {
       await window.show();
       _notifyDesktopSettingsWindowVisibility(
@@ -69,6 +75,12 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
       );
       await _refreshDesktopSettingsWindowSession(window.windowId);
       await _focusDesktopSettingsWindow(window.windowId);
+      final responsive = await _isDesktopSettingsWindowResponsive(
+        window.windowId,
+      );
+      if (!responsive) {
+        throw StateError('Desktop settings window is unresponsive');
+      }
     } catch (_) {
       _notifyDesktopSettingsWindowVisibility(
         windowId: window.windowId,
@@ -84,6 +96,12 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
       );
       await _refreshDesktopSettingsWindowSession(window.windowId);
       await _focusDesktopSettingsWindow(window.windowId);
+      final responsive = await _isDesktopSettingsWindowResponsive(
+        window.windowId,
+      );
+      if (!responsive) {
+        throw StateError('Desktop settings window reopen failed');
+      }
     }
   } catch (error) {
     final context = feedbackContext;
@@ -183,6 +201,19 @@ Future<void> _refreshDesktopSettingsWindowSession(int windowId) async {
       null,
     );
   } catch (_) {}
+}
+
+Future<bool> _isDesktopSettingsWindowResponsive(int windowId) async {
+  try {
+    final result = await DesktopMultiWindow.invokeMethod(
+      windowId,
+      desktopSettingsPingMethod,
+      null,
+    );
+    return result == null || result == true;
+  } catch (_) {
+    return false;
+  }
 }
 
 Future<void> requestMainWindowReopenOnboardingIfSupported() async {

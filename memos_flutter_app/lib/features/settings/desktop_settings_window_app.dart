@@ -243,6 +243,9 @@ class _DesktopSettingsWindowScreenState
       await _reloadSessionFromStorage();
       return true;
     }
+    if (call.method == desktopSettingsPingMethod) {
+      return true;
+    }
     return null;
   }
 
@@ -278,11 +281,15 @@ class _DesktopSettingsWindowScreenState
         navigator.popUntil((route) => route.isFirst);
       }
     }
-    final controller = WindowController.fromWindowId(widget.windowId);
+    // IMPORTANT: settings sub-window must stay warm for hot reopen.
+    // Do NOT replace this with close(); always hide to preserve process state.
     try {
-      await controller.hide();
+      await windowManager.hide();
     } catch (_) {
-      await controller.close();
+      try {
+        final controller = WindowController.fromWindowId(widget.windowId);
+        await controller.hide();
+      } catch (_) {}
     }
   }
 

@@ -77,6 +77,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
         baseUrl: currentAccount.baseUrl,
         personalAccessToken: currentAccount.personalAccessToken,
         version: version,
+        probeMemoNotice: context.t.strings.legacy.msg_probe_memo_can_delete,
         deferCleanup: true,
       );
     } catch (_) {

@@ -148,11 +148,17 @@ class _LanguageSelectionScreenState
         setState(() => _submitting = false);
         return;
       }
+    } else {
+      await ref.read(appSessionProvider.notifier).setCurrentKey(null);
     }
     final notifier = ref.read(appPreferencesProvider.notifier);
     final current = ref.read(appPreferencesProvider);
     await notifier.setAll(
-      current.copyWith(language: _selected, hasSelectedLanguage: true),
+      current.copyWith(
+        language: _selected,
+        hasSelectedLanguage: true,
+        homeInitialLoadingOverlayShown: false,
+      ),
     );
     if (!mounted) return;
     setState(() => _submitting = false);

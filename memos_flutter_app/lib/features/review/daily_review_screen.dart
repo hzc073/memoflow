@@ -948,11 +948,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
         backgroundColor: bg,
         drawer: useDesktopSidePane ? null : drawerPanel,
         appBar: AppBar(
-          backgroundColor: Colors.transparent,
+          backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
           automaticallyImplyLeading: !useDesktopSidePane,
+          toolbarHeight: 46,
+          iconTheme: IconThemeData(color: textMain),
           flexibleSpace: enableWindowsDragToMove
               ? const DragToMoveArea(child: SizedBox.expand())
               : null,
@@ -965,7 +967,10 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                 ),
           title: IgnorePointer(
             ignoring: enableWindowsDragToMove,
-            child: Text(context.t.strings.legacy.msg_random_review),
+            child: Text(
+              context.t.strings.legacy.msg_random_review,
+              style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+            ),
           ),
           centerTitle: !useDesktopSidePane,
           actions: [

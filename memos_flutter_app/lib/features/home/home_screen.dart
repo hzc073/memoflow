@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../state/home_loading_overlay_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/preferences_provider.dart';
 import '../../state/stats_providers.dart';
 import '../../state/user_settings_provider.dart';
 import '../memos/memos_list_screen.dart';
@@ -23,7 +25,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Timer? _showCloseTimer;
   ProviderSubscription<AsyncValue<void>>? _syncSubscription;
-  bool _overlayVisible = true;
+  late bool _overlayVisible;
+  bool _overlayShownPersisted = false;
   bool _showCloseAction = false;
   bool _manuallyClosed = false;
   bool _syncAwaitingCompletion = false;
@@ -34,14 +37,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    final forceOverlay = ref.read(homeLoadingOverlayForceProvider);
+    _overlayVisible =
+        forceOverlay ||
+        !ref.read(appPreferencesProvider).homeInitialLoadingOverlayShown;
     _syncSubscription = ref.listenManual<AsyncValue<void>>(
       syncControllerProvider,
       _handleSyncStateChanged,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_overlayVisible) return;
+      _consumeForceOverlayFlag();
+      _markOverlayShown();
       _startLoadingGate();
     });
+  }
+
+  void _consumeForceOverlayFlag() {
+    if (!ref.read(homeLoadingOverlayForceProvider)) return;
+    ref.read(homeLoadingOverlayForceProvider.notifier).state = false;
+  }
+
+  void _markOverlayShown() {
+    if (_overlayShownPersisted) return;
+    _overlayShownPersisted = true;
+    ref
+        .read(appPreferencesProvider.notifier)
+        .setHomeInitialLoadingOverlayShown(true);
   }
 
   void _startLoadingGate() {

@@ -88,6 +88,7 @@ class AppPreferences {
   static final defaults = AppPreferences(
     language: AppLanguage.system,
     hasSelectedLanguage: false,
+    homeInitialLoadingOverlayShown: false,
     fontSize: AppFontSize.standard,
     lineHeight: AppLineHeight.classic,
     fontFamily: null,
@@ -131,6 +132,7 @@ class AppPreferences {
   const AppPreferences({
     required this.language,
     required this.hasSelectedLanguage,
+    required this.homeInitialLoadingOverlayShown,
     required this.fontSize,
     required this.lineHeight,
     required this.fontFamily,
@@ -166,6 +168,7 @@ class AppPreferences {
 
   final AppLanguage language;
   final bool hasSelectedLanguage;
+  final bool homeInitialLoadingOverlayShown;
   final AppFontSize fontSize;
   final AppLineHeight lineHeight;
   final String? fontFamily;
@@ -218,6 +221,7 @@ class AppPreferences {
   Map<String, dynamic> toJson() => {
     'language': language.name,
     'hasSelectedLanguage': hasSelectedLanguage,
+    'homeInitialLoadingOverlayShown': homeInitialLoadingOverlayShown,
     'fontSize': fontSize.name,
     'lineHeight': lineHeight.name,
     'fontFamily': fontFamily,
@@ -275,6 +279,17 @@ class AppPreferences {
       if (raw is bool) return raw;
       if (raw is num) return raw != 0;
       return true;
+    }
+
+    bool parseHomeInitialLoadingOverlayShown() {
+      if (!json.containsKey('homeInitialLoadingOverlayShown')) {
+        // Legacy users already passed first-run home loading in prior versions.
+        return parseHasSelectedLanguage();
+      }
+      final raw = json['homeInitialLoadingOverlayShown'];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      return parseHasSelectedLanguage();
     }
 
     AppFontSize parseFontSize() {
@@ -456,6 +471,7 @@ class AppPreferences {
     return AppPreferences(
       language: parseLanguage(),
       hasSelectedLanguage: parseHasSelectedLanguage(),
+      homeInitialLoadingOverlayShown: parseHomeInitialLoadingOverlayShown(),
       fontSize: parseFontSize(),
       lineHeight: parseLineHeight(),
       fontFamily: parsedFamily,
@@ -541,6 +557,7 @@ class AppPreferences {
   AppPreferences copyWith({
     AppLanguage? language,
     bool? hasSelectedLanguage,
+    bool? homeInitialLoadingOverlayShown,
     AppFontSize? fontSize,
     AppLineHeight? lineHeight,
     Object? fontFamily = _unset,
@@ -576,6 +593,8 @@ class AppPreferences {
     return AppPreferences(
       language: language ?? this.language,
       hasSelectedLanguage: hasSelectedLanguage ?? this.hasSelectedLanguage,
+      homeInitialLoadingOverlayShown:
+          homeInitialLoadingOverlayShown ?? this.homeInitialLoadingOverlayShown,
       fontSize: fontSize ?? this.fontSize,
       lineHeight: lineHeight ?? this.lineHeight,
       fontFamily: identical(fontFamily, _unset)
@@ -710,6 +729,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(language: v));
   void setHasSelectedLanguage(bool v) =>
       _setAndPersist(state.copyWith(hasSelectedLanguage: v));
+  void setHomeInitialLoadingOverlayShown(bool v) =>
+      _setAndPersist(state.copyWith(homeInitialLoadingOverlayShown: v));
   void setFontSize(AppFontSize v) =>
       _setAndPersist(state.copyWith(fontSize: v));
   void setLineHeight(AppLineHeight v) =>
@@ -1083,8 +1104,13 @@ class AppPreferencesRepository {
     AppPreferences? device,
   ) {
     if (device == null) return prefs;
-    if (prefs.hasSelectedLanguage || !device.hasSelectedLanguage) return prefs;
-    return prefs.copyWith(language: device.language, hasSelectedLanguage: true);
+    if (!prefs.hasSelectedLanguage && device.hasSelectedLanguage) {
+      return prefs.copyWith(
+        language: device.language,
+        hasSelectedLanguage: true,
+      );
+    }
+    return prefs;
   }
 
   Future<void> _syncDeviceOnboarding(AppPreferences prefs) async {

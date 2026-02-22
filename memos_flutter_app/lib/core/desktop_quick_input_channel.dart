@@ -15,6 +15,7 @@ const String desktopQuickInputListTagsMethod = 'desktop.quickInput.listTags';
 const String desktopSettingsFocusMethod = 'desktop.settings.focus';
 const String desktopSettingsRefreshSessionMethod =
     'desktop.settings.refreshSession';
+const String desktopSettingsPingMethod = 'desktop.settings.ping';
 const String desktopSettingsReopenOnboardingMethod =
     'desktop.settings.reopenOnboarding';
 const String desktopSubWindowVisibilityMethod = 'desktop.subWindow.visibility';
