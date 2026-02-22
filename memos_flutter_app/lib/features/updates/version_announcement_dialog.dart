@@ -4,38 +4,33 @@ import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../i18n/strings.g.dart';
 
-enum ReleaseNoteCategory {
-  feature,
-  improvement,
-  fix,
-}
+enum ReleaseNoteCategory { feature, improvement, fix }
 
 extension ReleaseNoteCategoryX on ReleaseNoteCategory {
   String label(BuildContext context) => switch (this) {
-        ReleaseNoteCategory.feature => context.t.strings.legacy.msg_text_3,
-        ReleaseNoteCategory.improvement => context.t.strings.legacy.msg_improved,
-        ReleaseNoteCategory.fix => context.t.strings.legacy.msg_fixed_2,
-      };
+    ReleaseNoteCategory.feature => context.t.strings.legacy.msg_text_3,
+    ReleaseNoteCategory.improvement => context.t.strings.legacy.msg_improved,
+    ReleaseNoteCategory.fix => context.t.strings.legacy.msg_fixed_2,
+  };
 
   String labelWithColon(BuildContext context) => switch (this) {
-        ReleaseNoteCategory.feature => context.t.strings.legacy.msg_text_2,
-        ReleaseNoteCategory.improvement => context.t.strings.legacy.msg_improved_2,
-        ReleaseNoteCategory.fix => context.t.strings.legacy.msg_fixed,
-      };
+    ReleaseNoteCategory.feature => context.t.strings.legacy.msg_text_2,
+    ReleaseNoteCategory.improvement => context.t.strings.legacy.msg_improved_2,
+    ReleaseNoteCategory.fix => context.t.strings.legacy.msg_fixed,
+  };
 
   Color tone({required bool isDark}) => switch (this) {
-        ReleaseNoteCategory.feature => isDark ? MemoFlowPalette.primaryDark : MemoFlowPalette.primary,
-        ReleaseNoteCategory.improvement => const Color(0xFF7E9B8F),
-        ReleaseNoteCategory.fix => const Color(0xFFD48D4D),
-      };
+    ReleaseNoteCategory.feature =>
+      isDark ? MemoFlowPalette.primaryDark : MemoFlowPalette.primary,
+    ReleaseNoteCategory.improvement => const Color(0xFF7E9B8F),
+    ReleaseNoteCategory.fix => const Color(0xFFD48D4D),
+  };
 
   Color badgeBackground({required bool isDark}) {
     final color = tone(isDark: isDark);
     return color.withValues(alpha: isDark ? 0.22 : 0.12);
   }
 }
-
-
 
 class VersionAnnouncementDialog extends StatelessWidget {
   const VersionAnnouncementDialog({
@@ -62,7 +57,10 @@ class VersionAnnouncementDialog extends StatelessWidget {
         return VersionAnnouncementDialog(version: version, items: items);
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
@@ -77,8 +75,12 @@ class VersionAnnouncementDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final cardColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.65);
     final accent = MemoFlowPalette.primary;
     final shadow = Colors.black.withValues(alpha: 0.12);
@@ -109,7 +111,9 @@ class VersionAnnouncementDialog extends StatelessWidget {
                   Icon(Icons.rocket_launch_rounded, size: 48, color: accent),
                   const SizedBox(height: 10),
                   Text(
-                    context.t.strings.legacy.msg_release_notes_v(version: version),
+                    context.t.strings.legacy.msg_release_notes_v(
+                      version: version,
+                    ),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 18,
@@ -140,7 +144,9 @@ class VersionAnnouncementDialog extends StatelessWidget {
                         backgroundColor: accent,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         elevation: 0,
                       ),
                       onPressed: () => Navigator.of(context).pop(true),
@@ -163,19 +169,31 @@ class VersionAnnouncementDialog extends StatelessWidget {
 class VersionAnnouncementItem {
   const VersionAnnouncementItem({
     required this.category,
-    required this.detailZh,
-    required this.detailEn,
+    required this.localizedDetails,
+    required this.fallbackDetail,
   });
 
   final ReleaseNoteCategory category;
-  final String detailZh;
-  final String detailEn;
+  final Map<String, String> localizedDetails;
+  final String fallbackDetail;
 }
 
 extension VersionAnnouncementItemLocalizationX on VersionAnnouncementItem {
   String localizedDetail(BuildContext context) {
-    final languageCode = Localizations.localeOf(context).languageCode.toLowerCase();
-    return languageCode == 'zh' ? detailZh : detailEn;
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final normalized = _normalizeAnnouncementLangKey(languageCode);
+    if (normalized.isNotEmpty) {
+      final exact = localizedDetails[normalized];
+      if (exact != null && exact.trim().isNotEmpty) return exact;
+    }
+    final en = localizedDetails['en'];
+    if (en != null && en.trim().isNotEmpty) return en;
+    final zh = localizedDetails['zh'];
+    if (zh != null && zh.trim().isNotEmpty) return zh;
+    for (final value in localizedDetails.values) {
+      if (value.trim().isNotEmpty) return value;
+    }
+    return fallbackDetail;
   }
 }
 
@@ -191,14 +209,18 @@ class VersionAnnouncementEntry {
   final List<VersionAnnouncementItem> items;
 }
 
-List<VersionAnnouncementEntry> buildVersionAnnouncementEntries(List<UpdateReleaseNoteEntry> entries) {
+List<VersionAnnouncementEntry> buildVersionAnnouncementEntries(
+  List<UpdateReleaseNoteEntry> entries,
+) {
   return entries
       .map(buildVersionAnnouncementEntry)
       .whereType<VersionAnnouncementEntry>()
       .toList(growable: false);
 }
 
-VersionAnnouncementEntry? buildVersionAnnouncementEntry(UpdateReleaseNoteEntry entry) {
+VersionAnnouncementEntry? buildVersionAnnouncementEntry(
+  UpdateReleaseNoteEntry entry,
+) {
   final version = entry.version.trim();
   if (version.isEmpty && entry.items.isEmpty) return null;
   return VersionAnnouncementEntry(
@@ -222,17 +244,19 @@ VersionAnnouncementEntry? findVersionAnnouncementEntry(
   return null;
 }
 
-List<VersionAnnouncementItem> buildVersionAnnouncementItems(UpdateReleaseNoteEntry? entry) {
+List<VersionAnnouncementItem> buildVersionAnnouncementItems(
+  UpdateReleaseNoteEntry? entry,
+) {
   if (entry == null) return const [];
   final items = <VersionAnnouncementItem>[];
   for (final item in entry.items) {
-    final content = item.content.trim();
+    final content = item.fallbackContent.trim();
     if (content.isEmpty) continue;
     items.add(
       VersionAnnouncementItem(
         category: parseReleaseNoteCategory(item.category),
-        detailZh: content,
-        detailEn: content,
+        localizedDetails: item.localizedContents,
+        fallbackDetail: content,
       ),
     );
   }
@@ -242,7 +266,9 @@ List<VersionAnnouncementItem> buildVersionAnnouncementItems(UpdateReleaseNoteEnt
 ReleaseNoteCategory parseReleaseNoteCategory(String raw) {
   final normalized = raw.trim().toLowerCase();
   if (normalized.isEmpty) return ReleaseNoteCategory.feature;
-  if (normalized.contains('新增') || normalized.contains('feature') || normalized.contains('new')) {
+  if (normalized.contains('新增') ||
+      normalized.contains('feature') ||
+      normalized.contains('new')) {
     return ReleaseNoteCategory.feature;
   }
   if (normalized.contains('优化') ||
@@ -251,7 +277,9 @@ ReleaseNoteCategory parseReleaseNoteCategory(String raw) {
       normalized.contains('performance')) {
     return ReleaseNoteCategory.improvement;
   }
-  if (normalized.contains('修复') || normalized.contains('fix') || normalized.contains('bug')) {
+  if (normalized.contains('修复') ||
+      normalized.contains('fix') ||
+      normalized.contains('bug')) {
     return ReleaseNoteCategory.fix;
   }
   return ReleaseNoteCategory.feature;
@@ -264,6 +292,15 @@ String _normalizeReleaseNoteVersion(String version) {
     return trimmed.substring(1);
   }
   return trimmed;
+}
+
+String _normalizeAnnouncementLangKey(String code) {
+  final trimmed = code.trim().toLowerCase();
+  if (trimmed.isEmpty) return '';
+  final normalized = trimmed.replaceAll('_', '-');
+  if (normalized.startsWith('zh')) return 'zh';
+  if (normalized.startsWith('en')) return 'en';
+  return normalized.split('-').first;
 }
 
 class _AnnouncementItemRow extends StatelessWidget {
@@ -293,7 +330,10 @@ class _AnnouncementItemRow extends StatelessWidget {
             text: title,
             style: TextStyle(fontWeight: FontWeight.w700, color: highlight),
           ),
-          TextSpan(text: detail, style: TextStyle(color: textMuted)),
+          TextSpan(
+            text: detail,
+            style: TextStyle(color: textMuted),
+          ),
         ],
       ),
     );

@@ -351,12 +351,46 @@ class UpdateReleaseNoteEntry {
         if (rawGroup is! Map) continue;
         final group = rawGroup.cast<String, dynamic>();
         final category = _readString(group, 'category');
+        final localizedContents = _readLocalizedStringLists(group['contents']);
+        if (localizedContents.isNotEmpty) {
+          var maxLength = 0;
+          for (final values in localizedContents.values) {
+            if (values.length > maxLength) maxLength = values.length;
+          }
+          for (var index = 0; index < maxLength; index++) {
+            final localizedItem = <String, String>{};
+            for (final entry in localizedContents.entries) {
+              if (index >= entry.value.length) continue;
+              final value = entry.value[index].trim();
+              if (value.isEmpty) continue;
+              localizedItem[entry.key] = value;
+            }
+            if (localizedItem.isEmpty) continue;
+            final fallbackContent =
+                localizedItem['en'] ??
+                localizedItem['zh'] ??
+                localizedItem.values.first;
+            items.add(
+              UpdateReleaseNoteItem(
+                category: category,
+                localizedContents: localizedItem,
+                fallbackContent: fallbackContent,
+              ),
+            );
+          }
+          continue;
+        }
+
         final contents = _readStringList(group['contents']);
         for (final content in contents) {
-          final trimmed = content.trim();
-          if (trimmed.isEmpty) continue;
+          final fallbackContent = content.trim();
+          if (fallbackContent.isEmpty) continue;
           items.add(
-            UpdateReleaseNoteItem(category: category, content: trimmed),
+            UpdateReleaseNoteItem(
+              category: category,
+              localizedContents: const {},
+              fallbackContent: fallbackContent,
+            ),
           );
         }
       }
@@ -370,10 +404,31 @@ class UpdateReleaseNoteEntry {
 }
 
 class UpdateReleaseNoteItem {
-  const UpdateReleaseNoteItem({required this.category, required this.content});
+  const UpdateReleaseNoteItem({
+    required this.category,
+    required this.localizedContents,
+    required this.fallbackContent,
+  });
 
   final String category;
-  final String content;
+  final Map<String, String> localizedContents;
+  final String fallbackContent;
+
+  String contentForLanguageCode(String languageCode) {
+    final normalized = _normalizeLangKey(languageCode);
+    if (normalized.isNotEmpty) {
+      final exact = localizedContents[normalized];
+      if (exact != null && exact.trim().isNotEmpty) return exact;
+    }
+    final en = localizedContents['en'];
+    if (en != null && en.trim().isNotEmpty) return en;
+    final zh = localizedContents['zh'];
+    if (zh != null && zh.trim().isNotEmpty) return zh;
+    for (final value in localizedContents.values) {
+      if (value.trim().isNotEmpty) return value;
+    }
+    return fallbackContent;
+  }
 }
 
 Map<String, dynamic> _resolvePlatformVersionInfo(Map<String, dynamic> json) {
@@ -502,6 +557,20 @@ List<String> _readStringList(dynamic value) {
     return [trimmed];
   }
   return const [];
+}
+
+Map<String, List<String>> _readLocalizedStringLists(dynamic value) {
+  if (value is! Map) return const {};
+  final localized = <String, List<String>>{};
+  value.forEach((key, rawValue) {
+    if (key is! String) return;
+    final normalized = _normalizeLangKey(key);
+    if (normalized.isEmpty) return;
+    final values = _readStringList(rawValue);
+    if (values.isEmpty) return;
+    localized[normalized] = values;
+  });
+  return localized;
 }
 
 List<UpdateReleaseNoteEntry> _readReleaseNotes(dynamic value) {

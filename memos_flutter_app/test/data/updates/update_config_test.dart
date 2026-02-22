@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/updates/update_config.dart';
 
@@ -120,6 +120,42 @@ void main() {
       expect(config.versionInfo.skipUpdateVersion, '1.0.13');
       expect(config.versionInfo.debugVersion, '999.0');
       expect(config.announcement.showWhenUpToDate, isTrue);
+    });
+
+    test('parses multilingual release note item contents', () {
+      final config = UpdateAnnouncementConfig.fromJson({
+        'version_info': {'latest_version': '1.0.15'},
+        'announcement': {
+          'id': 20260221,
+          'title': 'Release',
+          'contents': {
+            'en': ['Summary'],
+          },
+        },
+        'release_notes': [
+          {
+            'version': '1.0.15',
+            'date': '2026-02-21',
+            'items': [
+              {
+                'category': 'feature',
+                'contents': {
+                  'zh': ['新增功能A', '新增功能B'],
+                  'en': ['Added feature A', 'Added feature B'],
+                },
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(config.releaseNotes, hasLength(1));
+      final entry = config.releaseNotes.first;
+      expect(entry.items, hasLength(2));
+      expect(entry.items.first.localizedContents['zh'], '新增功能A');
+      expect(entry.items.first.localizedContents['en'], 'Added feature A');
+      expect(entry.items.first.contentForLanguageCode('de'), 'Added feature A');
+      expect(entry.items.last.contentForLanguageCode('zh-CN'), '新增功能B');
     });
   });
 }

@@ -136,8 +136,8 @@ class UpdateAnnouncementDialog extends StatelessWidget {
               .map(
                 (line) => VersionAnnouncementItem(
                   category: ReleaseNoteCategory.feature,
-                  detailZh: line,
-                  detailEn: line,
+                  localizedDetails: {'zh': line, 'en': line},
+                  fallbackDetail: line,
                 ),
               )
               .toList(growable: false)
