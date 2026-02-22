@@ -51,3 +51,5 @@ memos_flutter_app/windows/flutter/generated_plugins.cmake
 memos_flutter_app/windows/.plugin_symlinks/
 memos_flutter_app/windows/runner/resources/*
 !memos_flutter_app/windows/runner/resources/app_icon.ico
+
+update_config/
