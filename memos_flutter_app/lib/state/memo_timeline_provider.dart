@@ -5,9 +5,9 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:saf_stream/saf_stream.dart';
 
+import '../core/debug_ephemeral_storage.dart';
 import '../core/tags.dart';
 import '../core/uid.dart';
 import '../core/url.dart';
@@ -687,7 +687,7 @@ class MemoTimelineService {
   }
 
   Future<Directory> _storageRootDir() async {
-    final base = await getApplicationSupportDirectory();
+    final base = await resolveAppSupportDirectory();
     final root = Directory(p.join(base.path, _storageRootName));
     if (!root.existsSync()) {
       root.createSync(recursive: true);

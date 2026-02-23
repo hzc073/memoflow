@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import '../../core/debug_ephemeral_storage.dart';
 
 class DebugLogEntry {
   DebugLogEntry({
@@ -37,26 +38,28 @@ class DebugLogEntry {
   final String? error;
 
   Map<String, dynamic> toJson() => {
-        'time': timestamp.toIso8601String(),
-        'category': category,
-        'label': label,
-        if (detail != null) 'detail': detail,
-        if (method != null) 'method': method,
-        if (url != null) 'url': url,
-        if (status != null) 'status': status,
-        if (durationMs != null) 'durationMs': durationMs,
-        if (requestHeaders != null) 'requestHeaders': requestHeaders,
-        if (requestBody != null) 'requestBody': requestBody,
-        if (responseHeaders != null) 'responseHeaders': responseHeaders,
-        if (responseBody != null) 'responseBody': responseBody,
-        if (error != null) 'error': error,
-      };
+    'time': timestamp.toIso8601String(),
+    'category': category,
+    'label': label,
+    if (detail != null) 'detail': detail,
+    if (method != null) 'method': method,
+    if (url != null) 'url': url,
+    if (status != null) 'status': status,
+    if (durationMs != null) 'durationMs': durationMs,
+    if (requestHeaders != null) 'requestHeaders': requestHeaders,
+    if (requestBody != null) 'requestBody': requestBody,
+    if (responseHeaders != null) 'responseHeaders': responseHeaders,
+    if (responseBody != null) 'responseBody': responseBody,
+    if (error != null) 'error': error,
+  };
 
   static DebugLogEntry? fromJson(Map<String, dynamic> json) {
     final rawTime = json['time'];
     final category = json['category'];
     final label = json['label'];
-    if (rawTime is! String || category is! String || label is! String) return null;
+    if (rawTime is! String || category is! String || label is! String) {
+      return null;
+    }
     final ts = DateTime.tryParse(rawTime);
     if (ts == null) return null;
 
@@ -86,10 +89,8 @@ class DebugLogEntry {
 }
 
 class DebugLogStore {
-  DebugLogStore({
-    this.maxEntries = 2000,
-    this.maxFileBytes = 10 * 1024 * 1024,
-  }) : enabled = kDebugMode;
+  DebugLogStore({this.maxEntries = 2000, this.maxFileBytes = 10 * 1024 * 1024})
+    : enabled = kDebugMode;
 
   final int maxEntries;
   final int maxFileBytes;
@@ -128,7 +129,9 @@ class DebugLogStore {
         try {
           final decoded = jsonDecode(line);
           if (decoded is Map) {
-            final entry = DebugLogEntry.fromJson(decoded.cast<String, dynamic>());
+            final entry = DebugLogEntry.fromJson(
+              decoded.cast<String, dynamic>(),
+            );
             if (entry != null) entries.add(entry);
           }
         } catch (_) {}
@@ -152,7 +155,7 @@ class DebugLogStore {
   Future<File> _resolveFile() async {
     final cached = _fileFuture;
     if (cached != null) return cached;
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await resolveAppDocumentsDirectory();
     final logDir = Directory(p.join(dir.path, 'logs'));
     if (!logDir.existsSync()) {
       logDir.createSync(recursive: true);

@@ -13,6 +13,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 
+import 'debug_ephemeral_storage.dart';
 import '../data/logs/log_manager.dart';
 
 const int _blankSpreadThreshold = 24;
@@ -65,8 +66,7 @@ class VideoThumbnailCache {
   ];
   static const _downloadTimeout = Duration(seconds: 90);
   static bool get _useMediaKitDesktopPipeline =>
-      !kIsWeb &&
-      (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+      !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
   static final Map<String, Future<File?>> _pending = {};
   static final Map<String, Uint8List> _memoryCache = {};
@@ -382,7 +382,7 @@ class VideoThumbnailCache {
   }
 
   static Future<Directory> _cacheDir() async {
-    final base = await getApplicationSupportDirectory();
+    final base = await resolveAppSupportDirectory();
     final dir = Directory(p.join(base.path, _folderName));
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
@@ -483,8 +483,9 @@ class VideoThumbnailCache {
     double brightestMean = -1;
 
     try {
-      final safeHeaders =
-          headers == null || headers.isEmpty ? null : Map<String, String>.from(headers);
+      final safeHeaders = headers == null || headers.isEmpty
+          ? null
+          : Map<String, String>.from(headers);
       player = Player(
         configuration: const PlayerConfiguration(
           muted: true,
@@ -501,15 +502,12 @@ class VideoThumbnailCache {
       );
 
       await player
-          .open(
-            Media(source, httpHeaders: safeHeaders),
-            play: true,
-          )
+          .open(Media(source, httpHeaders: safeHeaders), play: true)
           .timeout(_mediaKitOpenTimeout);
       try {
-        await videoController
-            .waitUntilFirstFrameRendered
-            .timeout(_mediaKitOpenTimeout);
+        await videoController.waitUntilFirstFrameRendered.timeout(
+          _mediaKitOpenTimeout,
+        );
       } catch (_) {}
       await Future<void>.delayed(_mediaKitFrameSettleDelay);
       await player.pause();

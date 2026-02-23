@@ -14,6 +14,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'core/desktop_tray_controller.dart';
+import 'core/debug_ephemeral_storage.dart';
 import 'data/logs/log_manager.dart';
 import 'core/desktop_quick_input_channel.dart';
 import 'features/memos/desktop_quick_input_window.dart';
@@ -39,7 +40,11 @@ void main(List<String> args) {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
-      if (!kIsWeb && args.isNotEmpty && args.first == 'multi_window') {
+      final isMultiWindow =
+          !kIsWeb && args.isNotEmpty && args.first == 'multi_window';
+      await prepareEphemeralDebugStorage(clearExisting: !isMultiWindow);
+
+      if (isMultiWindow) {
         final windowId = args.length > 1 ? int.tryParse(args[1]) ?? 0 : 0;
         final rawArgs = args.length > 2 ? args[2] : '';
         final launchArgs = () {

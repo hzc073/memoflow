@@ -40,6 +40,7 @@ import 'features/updates/update_announcement_dialog.dart';
 import 'data/models/account.dart';
 import 'data/models/attachment.dart';
 import 'data/models/memo_location.dart';
+import 'data/logs/log_manager.dart';
 import 'data/updates/update_config.dart';
 import 'state/database_provider.dart';
 import 'state/debug_screenshot_mode_provider.dart';
@@ -431,6 +432,20 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         final nextKey = nextState?.currentKey;
         final prevAccount = prevState?.currentAccount;
         final nextAccount = nextState?.currentAccount;
+        if (kDebugMode) {
+          LogManager.instance.info(
+            'RouteGate: session_changed',
+            context: <String, Object?>{
+              'previousKey': prevKey,
+              'nextKey': nextKey,
+              'hasPreviousAccount': prevAccount != null,
+              'hasNextAccount': nextAccount != null,
+              'currentLocalLibraryKey': ref
+                  .read(currentLocalLibraryProvider)
+                  ?.key,
+            },
+          );
+        }
         final shouldTriggerPostLoginSync = _didSessionAuthContextChange(
           prevKey: prevKey,
           nextKey: nextKey,
@@ -463,6 +478,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _prefsSubscription = ref.listenManual<AppPreferences>(
       appPreferencesProvider,
       (prev, next) {
+        if (kDebugMode) {
+          final hasOnboardingChanged =
+              prev?.hasSelectedLanguage != next.hasSelectedLanguage ||
+              prev?.language != next.language;
+          if (hasOnboardingChanged) {
+            LogManager.instance.info(
+              'RouteGate: prefs_changed',
+              context: <String, Object?>{
+                'previousLanguage': prev?.language.name,
+                'nextLanguage': next.language.name,
+                'previousHasSelectedLanguage': prev?.hasSelectedLanguage,
+                'nextHasSelectedLanguage': next.hasSelectedLanguage,
+              },
+            );
+          }
+        }
         if (prev?.fontFamily != next.fontFamily ||
             prev?.fontFile != next.fontFile) {
           unawaited(_ensureFontLoaded(next));
@@ -476,6 +507,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _prefsLoadedSubscription = ref.listenManual<bool>(
       appPreferencesLoadedProvider,
       (prev, next) {
+        if (kDebugMode) {
+          LogManager.instance.info(
+            'RouteGate: prefs_loaded_changed',
+            context: <String, Object?>{
+              'previous': prev,
+              'next': next,
+              'sessionKey': ref
+                  .read(appSessionProvider)
+                  .valueOrNull
+                  ?.currentKey,
+              'hasSelectedLanguage': ref
+                  .read(appPreferencesProvider)
+                  .hasSelectedLanguage,
+            },
+          );
+        }
         if (!next) return;
         final key =
             _pendingThemeAccountKey ??
@@ -1849,37 +1896,123 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   }
 }
 
-class MainHomePage extends ConsumerWidget {
+class MainHomePage extends ConsumerStatefulWidget {
   const MainHomePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainHomePage> createState() => _MainHomePageState();
+}
+
+class _MainHomePageState extends ConsumerState<MainHomePage> {
+  String? _lastRouteDecisionKey;
+
+  void _logRouteDecision({
+    required bool prefsLoaded,
+    required bool hasSelectedLanguage,
+    required String sessionState,
+    required String? sessionKey,
+    required bool hasCurrentAccount,
+    required bool hasLocalLibrary,
+    required String destination,
+  }) {
+    if (!kDebugMode) return;
+    final key =
+        '$prefsLoaded|$hasSelectedLanguage|$sessionState|$sessionKey|$hasCurrentAccount|$hasLocalLibrary|$destination';
+    if (_lastRouteDecisionKey == key) return;
+    _lastRouteDecisionKey = key;
+    LogManager.instance.info(
+      'RouteGate: main_home_decision',
+      context: <String, Object?>{
+        'prefsLoaded': prefsLoaded,
+        'hasSelectedLanguage': hasSelectedLanguage,
+        'sessionState': sessionState,
+        'sessionKey': sessionKey,
+        'hasCurrentAccount': hasCurrentAccount,
+        'hasLocalLibrary': hasLocalLibrary,
+        'destination': destination,
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final prefsLoaded = ref.watch(appPreferencesLoadedProvider);
     final prefs = ref.watch(appPreferencesProvider);
+    final sessionAsync = ref.watch(appSessionProvider);
+    final session = sessionAsync.valueOrNull;
+    final localLibrary = ref.watch(currentLocalLibraryProvider);
+
     if (!prefsLoaded) {
+      _logRouteDecision(
+        prefsLoaded: false,
+        hasSelectedLanguage: prefs.hasSelectedLanguage,
+        sessionState: sessionAsync.isLoading
+            ? 'loading'
+            : (sessionAsync.hasError ? 'error' : 'data'),
+        sessionKey: session?.currentKey,
+        hasCurrentAccount: session?.currentAccount != null,
+        hasLocalLibrary: localLibrary != null,
+        destination: 'splash',
+      );
       return ColoredBox(
         color: Theme.of(context).scaffoldBackgroundColor,
         child: const SizedBox.expand(),
       );
     }
     if (!prefs.hasSelectedLanguage) {
+      _logRouteDecision(
+        prefsLoaded: true,
+        hasSelectedLanguage: false,
+        sessionState: sessionAsync.isLoading
+            ? 'loading'
+            : (sessionAsync.hasError ? 'error' : 'data'),
+        sessionKey: session?.currentKey,
+        hasCurrentAccount: session?.currentAccount != null,
+        hasLocalLibrary: localLibrary != null,
+        destination: 'onboarding',
+      );
       return const LanguageSelectionScreen();
     }
 
-    final sessionAsync = ref.watch(appSessionProvider);
-    final session = sessionAsync.valueOrNull;
-    final localLibrary = ref.watch(currentLocalLibraryProvider);
-
     return sessionAsync.when(
-      data: (session) => session.currentAccount == null && localLibrary == null
-          ? const LoginScreen()
-          : const HomeScreen(),
+      data: (session) {
+        final needsLogin =
+            session.currentAccount == null && localLibrary == null;
+        _logRouteDecision(
+          prefsLoaded: true,
+          hasSelectedLanguage: true,
+          sessionState: 'data',
+          sessionKey: session.currentKey,
+          hasCurrentAccount: session.currentAccount != null,
+          hasLocalLibrary: localLibrary != null,
+          destination: needsLogin ? 'login' : 'home',
+        );
+        return needsLogin ? const LoginScreen() : const HomeScreen();
+      },
       loading: () {
         if (session != null) {
-          return session.currentAccount == null && localLibrary == null
-              ? const LoginScreen()
-              : const HomeScreen();
+          final needsLogin =
+              session.currentAccount == null && localLibrary == null;
+          _logRouteDecision(
+            prefsLoaded: true,
+            hasSelectedLanguage: true,
+            sessionState: 'loading_with_cached',
+            sessionKey: session.currentKey,
+            hasCurrentAccount: session.currentAccount != null,
+            hasLocalLibrary: localLibrary != null,
+            destination: needsLogin ? 'login' : 'home',
+          );
+          return needsLogin ? const LoginScreen() : const HomeScreen();
         }
+        _logRouteDecision(
+          prefsLoaded: true,
+          hasSelectedLanguage: true,
+          sessionState: 'loading_without_cached',
+          sessionKey: null,
+          hasCurrentAccount: false,
+          hasLocalLibrary: localLibrary != null,
+          destination: 'splash',
+        );
         return ColoredBox(
           color: Theme.of(context).scaffoldBackgroundColor,
           child: const SizedBox.expand(),
@@ -1887,10 +2020,28 @@ class MainHomePage extends ConsumerWidget {
       },
       error: (e, _) {
         if (session != null) {
-          return session.currentAccount == null && localLibrary == null
-              ? const LoginScreen()
-              : const HomeScreen();
+          final needsLogin =
+              session.currentAccount == null && localLibrary == null;
+          _logRouteDecision(
+            prefsLoaded: true,
+            hasSelectedLanguage: true,
+            sessionState: 'error_with_cached',
+            sessionKey: session.currentKey,
+            hasCurrentAccount: session.currentAccount != null,
+            hasLocalLibrary: localLibrary != null,
+            destination: needsLogin ? 'login' : 'home',
+          );
+          return needsLogin ? const LoginScreen() : const HomeScreen();
         }
+        _logRouteDecision(
+          prefsLoaded: true,
+          hasSelectedLanguage: true,
+          sessionState: 'error_without_cached',
+          sessionKey: null,
+          hasCurrentAccount: false,
+          hasLocalLibrary: localLibrary != null,
+          destination: 'login_error',
+        );
         return LoginScreen(initialError: e.toString());
       },
     );

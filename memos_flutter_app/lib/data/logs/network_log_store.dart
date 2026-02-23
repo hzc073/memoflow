@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../../core/debug_ephemeral_storage.dart';
 import '../../core/log_sanitizer.dart';
 
 class NetworkLogEntry {
@@ -32,17 +32,17 @@ class NetworkLogEntry {
   final String? requestId;
 
   Map<String, dynamic> toJson() => {
-        'time': timestamp.toIso8601String(),
-        'type': type,
-        'method': method,
-        'url': url,
-        if (status != null) 'status': status,
-        if (durationMs != null) 'durationMs': durationMs,
-        if (headers != null) 'headers': headers,
-        if (body != null) 'body': body,
-        if (error != null) 'error': error,
-        if (requestId != null) 'requestId': requestId,
-      };
+    'time': timestamp.toIso8601String(),
+    'type': type,
+    'method': method,
+    'url': url,
+    if (status != null) 'status': status,
+    if (durationMs != null) 'durationMs': durationMs,
+    if (headers != null) 'headers': headers,
+    if (body != null) 'body': body,
+    if (error != null) 'error': error,
+    if (requestId != null) 'requestId': requestId,
+  };
 
   static NetworkLogEntry? fromJson(Map<String, dynamic> json) {
     final rawTime = json['time'];
@@ -83,7 +83,8 @@ class NetworkLogEntry {
   List<String> formatLines() {
     final statusText = status == null ? '' : ' $status';
     final durationText = durationMs == null ? '' : ' ${durationMs}ms';
-    final head = '- [${timestamp.toIso8601String()}] ${type.toUpperCase()} $method $url$statusText'
+    final head =
+        '- [${timestamp.toIso8601String()}] ${type.toUpperCase()} $method $url$statusText'
         '${durationText.isNotEmpty ? ' ($durationText)' : ''}';
     final lines = <String>[head];
 
@@ -112,10 +113,7 @@ class NetworkLogEntry {
 }
 
 class NetworkLogStore {
-  NetworkLogStore({
-    this.maxEntries = 200,
-    this.maxFileBytes = 1024 * 1024,
-  });
+  NetworkLogStore({this.maxEntries = 200, this.maxFileBytes = 1024 * 1024});
 
   final int maxEntries;
   final int maxFileBytes;
@@ -154,7 +152,9 @@ class NetworkLogStore {
         try {
           final decoded = jsonDecode(line);
           if (decoded is Map) {
-            final entry = NetworkLogEntry.fromJson(decoded.cast<String, dynamic>());
+            final entry = NetworkLogEntry.fromJson(
+              decoded.cast<String, dynamic>(),
+            );
             if (entry != null) entries.add(entry);
           }
         } catch (_) {}
@@ -169,7 +169,7 @@ class NetworkLogStore {
   Future<File> _resolveFile() async {
     final cached = _fileFuture;
     if (cached != null) return cached;
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await resolveAppDocumentsDirectory();
     final logDir = Directory(p.join(dir.path, 'logs'));
     if (!logDir.existsSync()) {
       logDir.createSync(recursive: true);

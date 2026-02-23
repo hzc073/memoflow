@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/logs/log_manager.dart';
 import '../../data/models/local_library.dart';
 import '../settings/local_mode_setup_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -26,6 +28,31 @@ class _LanguageSelectionScreenState
   late AppLanguage _selected;
   OnboardingMode _mode = OnboardingMode.server;
   bool _submitting = false;
+
+  void _logFlow(
+    String message, {
+    Map<String, Object?>? context,
+    bool warn = false,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    if (!kDebugMode) return;
+    if (warn) {
+      LogManager.instance.warn(
+        'Onboarding: $message',
+        context: context,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    LogManager.instance.info(
+      'Onboarding: $message',
+      context: context,
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 
   @override
   void initState() {
@@ -104,7 +131,9 @@ class _LanguageSelectionScreenState
     );
   }
 
-  Future<bool> _createLocalLibrary() async {
+  Future<String?> _createLocalLibrary() async {
+    final librariesNotifier = ref.read(localLibrariesProvider.notifier);
+    _logFlow('create_local_library_start');
     final result = await LocalModeSetupScreen.show(
       context,
       title: context.t.strings.onboarding.modeLocalTitle,
@@ -113,9 +142,24 @@ class _LanguageSelectionScreenState
       cancelLabel: context.t.strings.common.cancel,
       initialName: context.t.strings.onboarding.localLibraryDefaultName,
     );
-    if (result == null) return false;
+    if (result == null) {
+      _logFlow('create_local_library_cancelled');
+      return null;
+    }
+    _logFlow(
+      'create_local_library_result',
+      context: <String, Object?>{
+        'nameLength': result.name.trim().length,
+        'hasTreeUri': (result.treeUri ?? '').trim().isNotEmpty,
+        'hasRootPath': (result.rootPath ?? '').trim().isNotEmpty,
+        'encryptionEnabled': result.encryptionEnabled,
+      },
+    );
     final keySeed = (result.treeUri ?? result.rootPath ?? '').trim();
-    if (keySeed.isEmpty) return false;
+    if (keySeed.isEmpty) {
+      _logFlow('create_local_library_invalid_seed', warn: true);
+      return null;
+    }
     final key = 'local_${fnv1a64Hex(keySeed)}';
     final now = DateTime.now();
     final library = LocalLibrary(
@@ -126,42 +170,106 @@ class _LanguageSelectionScreenState
       createdAt: now,
       updatedAt: now,
     );
-    ref.read(localLibrariesProvider.notifier).upsert(library);
-    await ref.read(appSessionProvider.notifier).switchWorkspace(key);
+    librariesNotifier.upsert(library);
+    _logFlow(
+      'local_library_upserted',
+      context: <String, Object?>{
+        'workspaceKey': key,
+      },
+    );
     if (result.encryptionEnabled && mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('加密功能当前仅占位，暂未真正生效。')));
     }
-    if (!mounted) return false;
-    await _scanLocalLibrarySilently();
-    return true;
+    _logFlow('local_library_ready', context: {'workspaceKey': key});
+    return key;
   }
 
   Future<void> _confirmSelection() async {
     if (_submitting) return;
+    final sessionNotifier = ref.read(appSessionProvider.notifier);
+    final prefsNotifier = ref.read(appPreferencesProvider.notifier);
+    final currentPrefs = ref.read(appPreferencesProvider);
+    final prefsLoaded = ref.read(appPreferencesLoadedProvider);
+    var sessionKeyForLog = ref.read(appSessionProvider).valueOrNull?.currentKey;
     setState(() => _submitting = true);
-    if (_mode == OnboardingMode.local) {
-      final created = await _createLocalLibrary();
-      if (!created) {
-        if (!mounted) return;
-        setState(() => _submitting = false);
-        return;
-      }
-    } else {
-      await ref.read(appSessionProvider.notifier).setCurrentKey(null);
-    }
-    final notifier = ref.read(appPreferencesProvider.notifier);
-    final current = ref.read(appPreferencesProvider);
-    await notifier.setAll(
-      current.copyWith(
-        language: _selected,
-        hasSelectedLanguage: true,
-        homeInitialLoadingOverlayShown: false,
-      ),
+    _logFlow(
+      'confirm_selection_start',
+      context: <String, Object?>{
+        'mode': _mode.name,
+        'prefsLoaded': prefsLoaded,
+      },
     );
-    if (!mounted) return;
-    setState(() => _submitting = false);
+    try {
+      String? localWorkspaceKey;
+      if (_mode == OnboardingMode.local) {
+        localWorkspaceKey = await _createLocalLibrary();
+        if (localWorkspaceKey == null) {
+          _logFlow('confirm_selection_local_creation_aborted', warn: true);
+          return;
+        }
+      } else {
+        await sessionNotifier.setCurrentKey(null);
+        sessionKeyForLog = null;
+        _logFlow('confirm_selection_server_mode_selected');
+      }
+      _logFlow(
+        'confirm_selection_before_set_all',
+        context: <String, Object?>{
+          'language': currentPrefs.language.name,
+          'hasSelectedLanguage': currentPrefs.hasSelectedLanguage,
+          'sessionKey': sessionKeyForLog,
+          'pendingWorkspaceKey': localWorkspaceKey,
+        },
+      );
+      await prefsNotifier.setAll(
+        currentPrefs.copyWith(
+          language: _selected,
+          hasSelectedLanguage: true,
+          homeInitialLoadingOverlayShown: false,
+        ),
+      );
+      _logFlow(
+        'confirm_selection_after_set_all',
+        context: <String, Object?>{
+          'language': _selected.name,
+          'hasSelectedLanguage': true,
+          'sessionKey': sessionKeyForLog,
+          'pendingWorkspaceKey': localWorkspaceKey,
+        },
+      );
+      if (localWorkspaceKey != null) {
+        await sessionNotifier.switchWorkspace(localWorkspaceKey);
+        sessionKeyForLog = localWorkspaceKey;
+        _logFlow(
+          'workspace_switched',
+          context: <String, Object?>{
+            'requestedKey': localWorkspaceKey,
+            'currentKey': sessionKeyForLog,
+            'switchApplied': true,
+          },
+        );
+        if (mounted) {
+          await _scanLocalLibrarySilently();
+          _logFlow(
+            'local_library_scan_completed',
+            context: {'workspaceKey': localWorkspaceKey},
+          );
+        }
+      }
+    } catch (error, stackTrace) {
+      _logFlow(
+        'confirm_selection_failed',
+        warn: true,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   @override

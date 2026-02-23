@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../../core/debug_ephemeral_storage.dart';
 import '../models/memo_location.dart';
 
 class AppDatabase {
@@ -19,7 +20,7 @@ class AppDatabase {
   Stream<void> get changes => _changes.stream;
 
   Future<Database> _open() async {
-    final basePath = await getDatabasesPath();
+    final basePath = await resolveDatabasesDirectoryPath();
     final path = p.join(basePath, _dbName);
 
     Future<Database> open() {
@@ -293,7 +294,7 @@ CREATE TABLE IF NOT EXISTS recycle_bin_items (
   }
 
   static Future<void> deleteDatabaseFile({required String dbName}) async {
-    final basePath = await getDatabasesPath();
+    final basePath = await resolveDatabasesDirectoryPath();
     final path = p.join(basePath, dbName);
 
     for (var attempt = 0; attempt < 3; attempt++) {

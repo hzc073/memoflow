@@ -9,24 +9,19 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../../core/debug_ephemeral_storage.dart';
 import '../../core/log_sanitizer.dart';
 
-enum LogLevel {
-  debug,
-  info,
-  warn,
-  error,
-}
+enum LogLevel { debug, info, warn, error }
 
 extension LogLevelLabel on LogLevel {
   String get label => switch (this) {
-        LogLevel.debug => 'DEBUG',
-        LogLevel.info => 'INFO',
-        LogLevel.warn => 'WARN',
-        LogLevel.error => 'ERROR',
-      };
+    LogLevel.debug => 'DEBUG',
+    LogLevel.info => 'INFO',
+    LogLevel.warn => 'WARN',
+    LogLevel.error => 'ERROR',
+  };
 }
 
 class LogManager {
@@ -55,20 +50,64 @@ class LogManager {
     await _logDeviceContext();
   }
 
-  void debug(String message, {Object? error, StackTrace? stackTrace, Map<String, Object?>? context}) {
-    log(LogLevel.debug, message, error: error, stackTrace: stackTrace, context: context);
+  void debug(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    Map<String, Object?>? context,
+  }) {
+    log(
+      LogLevel.debug,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      context: context,
+    );
   }
 
-  void info(String message, {Object? error, StackTrace? stackTrace, Map<String, Object?>? context}) {
-    log(LogLevel.info, message, error: error, stackTrace: stackTrace, context: context);
+  void info(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    Map<String, Object?>? context,
+  }) {
+    log(
+      LogLevel.info,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      context: context,
+    );
   }
 
-  void warn(String message, {Object? error, StackTrace? stackTrace, Map<String, Object?>? context}) {
-    log(LogLevel.warn, message, error: error, stackTrace: stackTrace, context: context);
+  void warn(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    Map<String, Object?>? context,
+  }) {
+    log(
+      LogLevel.warn,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      context: context,
+    );
   }
 
-  void error(String message, {Object? error, StackTrace? stackTrace, Map<String, Object?>? context}) {
-    log(LogLevel.error, message, error: error, stackTrace: stackTrace, context: context);
+  void error(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    Map<String, Object?>? context,
+  }) {
+    log(
+      LogLevel.error,
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      context: context,
+    );
   }
 
   void log(
@@ -84,9 +123,15 @@ class LogManager {
 
     final now = DateTime.now().toUtc();
     final safeMessage = LogSanitizer.sanitizeText(message);
-    final safeError = error == null ? null : LogSanitizer.sanitizeText(error.toString());
-    final safeContext = context == null ? null : LogSanitizer.sanitizeJson(context);
-    final safeContextText = safeContext == null ? null : LogSanitizer.stringify(safeContext, maxLength: 1000);
+    final safeError = error == null
+        ? null
+        : LogSanitizer.sanitizeText(error.toString());
+    final safeContext = context == null
+        ? null
+        : LogSanitizer.sanitizeJson(context);
+    final safeContextText = safeContext == null
+        ? null
+        : LogSanitizer.stringify(safeContext, maxLength: 1000);
 
     final buffer = StringBuffer()
       ..write('[${now.toIso8601String()}] ${level.label} $safeMessage');
@@ -158,7 +203,7 @@ class LogManager {
   Future<Directory> _resolveLogDir() async {
     final cached = _logDir;
     if (cached != null) return cached;
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await resolveAppDocumentsDirectory();
     final logDir = Directory(p.join(dir.path, 'logs'));
     if (!logDir.existsSync()) {
       logDir.createSync(recursive: true);
@@ -171,7 +216,11 @@ class LogManager {
     _writeQueue = _writeQueue.then((_) async {
       try {
         final file = await _resolveLogFile();
-        await file.writeAsString('$line\n', mode: FileMode.append, flush: false);
+        await file.writeAsString(
+          '$line\n',
+          mode: FileMode.append,
+          flush: false,
+        );
       } catch (_) {}
     });
   }
@@ -266,7 +315,9 @@ class LogManager {
         return os;
       }
     } catch (_) {}
-    final fallback = Platform.operatingSystemVersion.replaceAll('\n', ' ').trim();
+    final fallback = Platform.operatingSystemVersion
+        .replaceAll('\n', ' ')
+        .trim();
     return fallback.isEmpty ? Platform.operatingSystem : fallback;
   }
 

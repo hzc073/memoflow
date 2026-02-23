@@ -8,9 +8,9 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/debug_ephemeral_storage.dart';
 import '../../core/hash.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -64,12 +64,7 @@ class ImportResult {
   final List<String> newTags;
 }
 
-enum _BackendVersion {
-  v025,
-  v024,
-  v021,
-  unknown,
-}
+enum _BackendVersion { v025, v024, v021, unknown }
 
 class FlomoImportService {
   FlomoImportService({
@@ -93,15 +88,27 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.05,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_checking_server_version'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_preparing'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_may_take_few_seconds'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_checking_server_version',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_preparing',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_may_take_few_seconds',
+      ),
     );
 
     final backend = await _detectBackendVersion();
     if (backend == _BackendVersion.unknown) {
       throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_unable_detect_backend_version_check_server'),
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_unable_detect_backend_version_check_server',
+        ),
       );
     }
 
@@ -109,25 +116,40 @@ class FlomoImportService {
     final file = File(filePath);
     if (!file.existsSync()) {
       throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_import_file_not_found'),
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_import_file_not_found',
+        ),
       );
     }
 
     _reportProgress(
       onProgress,
       progress: 0.1,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_reading_file'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_preparing'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_reading_file',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_preparing',
+      ),
       progressDetail: p.basename(filePath),
     );
 
     final bytes = await file.readAsBytes();
     final fileMd5 = md5.convert(bytes).toString();
-    final existing = await db.getImportHistory(source: _source, fileMd5: fileMd5);
+    final existing = await db.getImportHistory(
+      source: _source,
+      fileMd5: fileMd5,
+    );
     final existingStatus = (existing?['status'] as int?) ?? 0;
     if (existing != null && existingStatus == 1) {
       throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_file_has_already_been_imported_skipped'),
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_file_has_already_been_imported_skipped',
+        ),
       );
     }
     if (await _importMarkerExists(fileMd5)) {
@@ -135,7 +157,10 @@ class FlomoImportService {
         await _deleteImportMarker(fileMd5);
       } else {
         throw ImportException(
-          trByLanguageKey(language: language, key: 'legacy.msg_file_has_already_been_imported_skipped'),
+          trByLanguageKey(
+            language: language,
+            key: 'legacy.msg_file_has_already_been_imported_skipped',
+          ),
         );
       }
     }
@@ -225,7 +250,10 @@ class FlomoImportService {
       );
     }
     throw ImportException(
-      trByLanguageKey(language: language, key: 'legacy.msg_unsupported_file_type'),
+      trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_unsupported_file_type',
+      ),
     );
   }
 
@@ -240,9 +268,18 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.15,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_decoding_zip'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_parsing'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_preparing_file_structure'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_decoding_zip',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_parsing',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_preparing_file_structure',
+      ),
     );
 
     final archive = ZipDecoder().decodeBytes(bytes);
@@ -262,7 +299,10 @@ class FlomoImportService {
     );
     if (htmlEntry.name.isEmpty) {
       throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_no_html_file_found_zip'),
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_no_html_file_found_zip',
+        ),
       );
     }
 
@@ -292,15 +332,27 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.2,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_parsing_memoflow_export'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_parsing'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_preparing_memo_content'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_parsing_memoflow_export',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_parsing',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_preparing_memo_content',
+      ),
     );
 
     final memoEntries = _memoFlowMemoEntries(archive);
     if (memoEntries.isEmpty) {
       throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_no_markdown_memos_found_zip'),
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_no_markdown_memos_found_zip',
+        ),
       );
     }
 
@@ -310,7 +362,9 @@ class FlomoImportService {
     final attachmentEntries = _memoFlowAttachmentEntries(archive);
     final attachmentsByMemoUid = <String, List<_MemoFlowArchiveAttachment>>{};
     for (final entry in attachmentEntries) {
-      attachmentsByMemoUid.putIfAbsent(entry.memoUid, () => <_MemoFlowArchiveAttachment>[]).add(entry);
+      attachmentsByMemoUid
+          .putIfAbsent(entry.memoUid, () => <_MemoFlowArchiveAttachment>[])
+          .add(entry);
     }
 
     final existingTags = await _loadExistingTags();
@@ -323,7 +377,10 @@ class FlomoImportService {
       _ensureNotCancelled(isCancelled);
       processed++;
 
-      final raw = utf8.decode(_readArchiveBytes(memoFile), allowMalformed: true);
+      final raw = utf8.decode(
+        _readArchiveBytes(memoFile),
+        allowMalformed: true,
+      );
       final parsed = _parseMemoFlowMarkdown(raw);
       final content = parsed.content.trimRight();
       if (content.trim().isEmpty) {
@@ -333,14 +390,22 @@ class FlomoImportService {
       }
 
       final memoUid = parsed.uid.isNotEmpty ? parsed.uid : generateUid();
-      final mergedTags = <String>{...parsed.tags, ...extractTags(content)}.toList(growable: false)..sort();
+      final mergedTags = <String>{
+        ...parsed.tags,
+        ...extractTags(content),
+      }.toList(growable: false)..sort();
       importedTags.addAll(mergedTags);
 
-      final memoAttachments = attachmentsByMemoUid[parsed.uid] ?? const <_MemoFlowArchiveAttachment>[];
+      final memoAttachments =
+          attachmentsByMemoUid[parsed.uid] ??
+          const <_MemoFlowArchiveAttachment>[];
       final attachments = <Map<String, dynamic>>[];
       final attachmentQueue = <_QueuedAttachment>[];
       for (final attachment in memoAttachments) {
-        final localPath = _resolveArchivePath(importRoot, attachment.archivePath);
+        final localPath = _resolveArchivePath(
+          importRoot,
+          attachment.archivePath,
+        );
         if (localPath == null) continue;
         final file = File(localPath);
         if (!file.existsSync()) continue;
@@ -384,31 +449,39 @@ class FlomoImportService {
         syncState: 1,
       );
 
-      await db.enqueueOutbox(type: 'create_memo', payload: {
-        'uid': memoUid,
-        'content': content,
-        'visibility': parsed.visibility,
-        'pinned': parsed.pinned,
-        'has_attachments': attachments.isNotEmpty,
-        'display_time': parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-      });
-
-      if (parsed.state.trim().isNotEmpty && parsed.state.trim().toUpperCase() != 'NORMAL') {
-        await db.enqueueOutbox(type: 'update_memo', payload: {
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
           'uid': memoUid,
-          'state': parsed.state,
-        });
+          'content': content,
+          'visibility': parsed.visibility,
+          'pinned': parsed.pinned,
+          'has_attachments': attachments.isNotEmpty,
+          'display_time':
+              parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+        },
+      );
+
+      if (parsed.state.trim().isNotEmpty &&
+          parsed.state.trim().toUpperCase() != 'NORMAL') {
+        await db.enqueueOutbox(
+          type: 'update_memo',
+          payload: {'uid': memoUid, 'state': parsed.state},
+        );
       }
 
       for (final attachment in attachmentQueue) {
-        await db.enqueueOutbox(type: 'upload_attachment', payload: {
-          'uid': attachment.uid,
-          'memo_uid': attachment.memoUid,
-          'file_path': attachment.filePath,
-          'filename': attachment.filename,
-          'mime_type': attachment.mimeType,
-          'file_size': attachment.size,
-        });
+        await db.enqueueOutbox(
+          type: 'upload_attachment',
+          payload: {
+            'uid': attachment.uid,
+            'memo_uid': attachment.memoUid,
+            'file_path': attachment.filePath,
+            'filename': attachment.filename,
+            'mime_type': attachment.mimeType,
+            'file_size': attachment.size,
+          },
+        );
         counters.setAttachmentCount(counters.attachmentCount() + 1);
       }
 
@@ -416,14 +489,24 @@ class FlomoImportService {
       _reportQueueProgress(onProgress, processed, total);
     }
 
-    final newTags = importedTags.difference(existingTags).toList(growable: false)..sort();
+    final newTags =
+        importedTags.difference(existingTags).toList(growable: false)..sort();
 
     _reportProgress(
       onProgress,
       progress: 1.0,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_import_complete'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_done'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_submitting_sync_queue'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_import_complete',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_done',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_submitting_sync_queue',
+      ),
     );
 
     return ImportResult(
@@ -445,16 +528,28 @@ class FlomoImportService {
     _reportProgress(
       onProgress,
       progress: 0.25,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_parsing_html'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_parsing'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_locating_memo_content'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_parsing_html',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_parsing',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_locating_memo_content',
+      ),
     );
 
     final html = utf8.decode(bytes, allowMalformed: true);
     final parsed = _parseFlomoHtml(html, htmlRootPath);
     if (parsed.isEmpty) {
       throw ImportException(
-        trByLanguageKey(language: language, key: 'legacy.msg_no_memos_found_html'),
+        trByLanguageKey(
+          language: language,
+          key: 'legacy.msg_no_memos_found_html',
+        ),
       );
     }
 
@@ -519,24 +614,31 @@ class FlomoImportService {
         syncState: 1,
       );
 
-      await db.enqueueOutbox(type: 'create_memo', payload: {
-        'uid': memoUid,
-        'content': content,
-        'visibility': 'PRIVATE',
-        'pinned': false,
-        'has_attachments': attachments.isNotEmpty,
-        'display_time': item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-      });
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': memoUid,
+          'content': content,
+          'visibility': 'PRIVATE',
+          'pinned': false,
+          'has_attachments': attachments.isNotEmpty,
+          'display_time':
+              item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+        },
+      );
 
       for (final attachment in attachmentQueue) {
-        await db.enqueueOutbox(type: 'upload_attachment', payload: {
-          'uid': attachment.uid,
-          'memo_uid': attachment.memoUid,
-          'file_path': attachment.filePath,
-          'filename': attachment.filename,
-          'mime_type': attachment.mimeType,
-          'file_size': attachment.size,
-        });
+        await db.enqueueOutbox(
+          type: 'upload_attachment',
+          payload: {
+            'uid': attachment.uid,
+            'memo_uid': attachment.memoUid,
+            'file_path': attachment.filePath,
+            'filename': attachment.filename,
+            'mime_type': attachment.mimeType,
+            'file_size': attachment.size,
+          },
+        );
         counters.setAttachmentCount(counters.attachmentCount() + 1);
       }
 
@@ -544,14 +646,24 @@ class FlomoImportService {
       _reportQueueProgress(onProgress, processed, total);
     }
 
-    final newTags = importedTags.difference(existingTags).toList(growable: false)..sort();
+    final newTags =
+        importedTags.difference(existingTags).toList(growable: false)..sort();
 
     _reportProgress(
       onProgress,
       progress: 1.0,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_import_complete'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_done'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_submitting_sync_queue'),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_import_complete',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_done',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_submitting_sync_queue',
+      ),
     );
 
     return ImportResult(
@@ -587,9 +699,15 @@ class FlomoImportService {
       ),
     );
 
-    if (await _probeEndpoint(dio, 'api/v1/instance/profile')) return _BackendVersion.v025;
-    if (await _probeEndpoint(dio, 'api/v1/workspace/profile')) return _BackendVersion.v024;
-    if (await _probeEndpoint(dio, 'api/v2/workspace/profile')) return _BackendVersion.v021;
+    if (await _probeEndpoint(dio, 'api/v1/instance/profile')) {
+      return _BackendVersion.v025;
+    }
+    if (await _probeEndpoint(dio, 'api/v1/workspace/profile')) {
+      return _BackendVersion.v024;
+    }
+    if (await _probeEndpoint(dio, 'api/v2/workspace/profile')) {
+      return _BackendVersion.v021;
+    }
     return _BackendVersion.unknown;
   }
 
@@ -605,11 +723,18 @@ class FlomoImportService {
     }
   }
 
-  Future<Directory> _resolveImportRoot(String fileMd5, {bool create = true}) async {
-    final base = await getApplicationDocumentsDirectory();
-    final key = account.key.isNotEmpty ? account.key : account.baseUrl.toString();
+  Future<Directory> _resolveImportRoot(
+    String fileMd5, {
+    bool create = true,
+  }) async {
+    final base = await resolveAppDocumentsDirectory();
+    final key = account.key.isNotEmpty
+        ? account.key
+        : account.baseUrl.toString();
     final accountHash = fnv1a64Hex(key);
-    final dir = Directory(p.join(base.path, 'MemoFlow_imports', accountHash, fileMd5));
+    final dir = Directory(
+      p.join(base.path, 'MemoFlow_imports', accountHash, fileMd5),
+    );
     if (create && !dir.existsSync()) {
       await dir.create(recursive: true);
     }
@@ -702,7 +827,9 @@ class FlomoImportService {
       if (!file.isFile) continue;
       final normalized = _normalizeArchivePath(file.name);
       final segments = normalized.split('/');
-      final lowerSegments = segments.map((s) => s.toLowerCase()).toList(growable: false);
+      final lowerSegments = segments
+          .map((s) => s.toLowerCase())
+          .toList(growable: false);
       final idx = lowerSegments.lastIndexOf('attachments');
       if (idx == -1 || segments.length < idx + 3) continue;
       final memoUid = segments[idx + 1].trim();
@@ -749,7 +876,9 @@ class FlomoImportService {
     }
 
     var contentLines = contentStart > 0 ? lines.sublist(contentStart) : lines;
-    if (contentStart > 0 && contentLines.isNotEmpty && contentLines.first.trim().isEmpty) {
+    if (contentStart > 0 &&
+        contentLines.isNotEmpty &&
+        contentLines.first.trim().isEmpty) {
       contentLines = contentLines.sublist(1);
     }
 
@@ -870,7 +999,10 @@ class FlomoImportService {
     return results;
   }
 
-  List<_ParsedAttachment> _extractAttachments(dom.Element memo, String htmlRootPath) {
+  List<_ParsedAttachment> _extractAttachments(
+    dom.Element memo,
+    String htmlRootPath,
+  ) {
     final files = memo.querySelector('.files');
     if (files == null) return const [];
 
@@ -916,7 +1048,9 @@ class FlomoImportService {
     if (raw == null) return null;
     var value = raw.trim();
     if (value.isEmpty) return null;
-    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) {
+    if (value.startsWith('http://') ||
+        value.startsWith('https://') ||
+        value.startsWith('data:')) {
       return null;
     }
     final queryIndex = value.indexOf('?');
@@ -959,7 +1093,11 @@ class FlomoImportService {
             break;
           case 'ul':
           case 'ol':
-            final items = node.querySelectorAll('li').map(_renderInline).where((e) => e.trim().isNotEmpty).toList();
+            final items = node
+                .querySelectorAll('li')
+                .map(_renderInline)
+                .where((e) => e.trim().isNotEmpty)
+                .toList();
             if (items.isNotEmpty) {
               addBlock(items.map((e) => '- $e').join('\n'));
             }
@@ -1038,15 +1176,29 @@ class FlomoImportService {
     };
   }
 
-  void _reportQueueProgress(ImportProgressCallback onProgress, int processed, int total) {
+  void _reportQueueProgress(
+    ImportProgressCallback onProgress,
+    int processed,
+    int total,
+  ) {
     final ratio = total == 0 ? 1.0 : processed / total;
     final progress = 0.3 + (0.6 * ratio);
     _reportProgress(
       onProgress,
       progress: progress,
-      statusText: trByLanguageKey(language: language, key: 'legacy.msg_importing_memos'),
-      progressLabel: trByLanguageKey(language: language, key: 'legacy.msg_importing'),
-      progressDetail: trByLanguageKey(language: language, key: 'legacy.msg_processing', params: {'processed': processed, 'total': total}),
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_importing_memos',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_importing',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_processing',
+        params: {'processed': processed, 'total': total},
+      ),
     );
   }
 

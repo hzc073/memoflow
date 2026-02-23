@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:saf_util/saf_util.dart';
+
+import '../../data/logs/log_manager.dart';
 
 class LocalModeSetupResult {
   const LocalModeSetupResult({
@@ -75,10 +78,36 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
   bool _obscureConfirmPassword = true;
   bool _submitting = false;
 
+  void _logFlow(
+    String message, {
+    Map<String, Object?>? context,
+    bool warn = false,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    if (!kDebugMode) return;
+    if (warn) {
+      LogManager.instance.warn(
+        'LocalModeSetup: $message',
+        context: context,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    LogManager.instance.info(
+      'LocalModeSetup: $message',
+      context: context,
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
+    _logFlow('screen_opened');
   }
 
   @override
@@ -90,15 +119,38 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
   }
 
   Future<void> _pickLocation() async {
-    final picked = await _pickLocalLibraryLocation();
-    if (picked == null || !mounted) return;
-    setState(() {
-      _treeUri = picked.treeUri;
-      _rootPath = picked.rootPath;
-      if (_nameController.text.trim().isEmpty) {
-        _nameController.text = picked.defaultName;
-      }
-    });
+    _logFlow(
+      'pick_location_start',
+      context: {'platform': Platform.operatingSystem},
+    );
+    try {
+      final picked = await _pickLocalLibraryLocation();
+      _logFlow(
+        'pick_location_result',
+        context: <String, Object?>{
+          'picked': picked != null,
+          'hasTreeUri': (picked?.treeUri ?? '').trim().isNotEmpty,
+          'hasRootPath': (picked?.rootPath ?? '').trim().isNotEmpty,
+        },
+      );
+      if (picked == null || !mounted) return;
+      setState(() {
+        _treeUri = picked.treeUri;
+        _rootPath = picked.rootPath;
+        if (_nameController.text.trim().isEmpty) {
+          _nameController.text = picked.defaultName;
+        }
+      });
+    } catch (error, stackTrace) {
+      _logFlow(
+        'pick_location_failed',
+        warn: true,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      _showMessage('Failed to select folder. Please try again.');
+    }
   }
 
   Future<_PickedLocation?> _pickLocalLibraryLocation() async {
@@ -150,11 +202,23 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
     if (_submitting) return;
 
     final name = _nameController.text.trim();
+    _logFlow(
+      'submit_start',
+      context: <String, Object?>{
+        'hasLocation': _hasLocation(),
+        'nameLength': name.length,
+        'encryptionEnabled': _encryptionEnabled,
+        'hasTreeUri': (_treeUri ?? '').trim().isNotEmpty,
+        'hasRootPath': (_rootPath ?? '').trim().isNotEmpty,
+      },
+    );
     if (!_hasLocation()) {
+      _logFlow('submit_blocked_missing_location', warn: true);
       _showMessage('请选择文件保存位置。');
       return;
     }
     if (name.isEmpty) {
+      _logFlow('submit_blocked_empty_name', warn: true);
       _showMessage('请输入仓库名称。');
       return;
     }
@@ -164,10 +228,12 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
       final pwd = _passwordController.text;
       final confirm = _confirmPasswordController.text;
       if (pwd.isEmpty || confirm.isEmpty) {
+        _logFlow('submit_blocked_empty_password', warn: true);
         _showMessage('请输入并确认密码。');
         return;
       }
       if (pwd != confirm) {
+        _logFlow('submit_blocked_password_mismatch', warn: true);
         _showMessage('两次输入的密码不一致。');
         return;
       }
@@ -175,6 +241,14 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
     }
 
     setState(() => _submitting = true);
+    _logFlow(
+      'submit_success_pop',
+      context: <String, Object?>{
+        'nameLength': name.length,
+        'hasTreeUri': (_treeUri ?? '').trim().isNotEmpty,
+        'hasRootPath': (_rootPath ?? '').trim().isNotEmpty,
+      },
+    );
     Navigator.of(context).pop(
       LocalModeSetupResult(
         name: name,

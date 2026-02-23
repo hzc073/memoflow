@@ -1,13 +1,14 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import '../../core/debug_ephemeral_storage.dart';
 
 class LocalAttachmentStore {
   static const _rootDirName = 'local_attachments';
 
   Future<Directory> _rootDir() async {
-    final base = await getApplicationSupportDirectory();
+    final base = await resolveAppSupportDirectory();
     final root = Directory(p.join(base.path, _rootDirName));
     if (!root.existsSync()) {
       root.createSync(recursive: true);

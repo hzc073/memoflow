@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/logs/log_manager.dart';
 import '../data/models/local_library.dart';
 import '../data/settings/local_library_repository.dart';
 import 'session_provider.dart';
@@ -10,21 +12,20 @@ final localLibraryRepositoryProvider = Provider<LocalLibraryRepository>((ref) {
 
 final localLibrariesLoadedProvider = StateProvider<bool>((ref) => false);
 
-final localLibrariesProvider = StateNotifierProvider<LocalLibrariesController, List<LocalLibrary>>((ref) {
-  final loadedState = ref.read(localLibrariesLoadedProvider.notifier);
-  Future.microtask(() => loadedState.state = false);
-  return LocalLibrariesController(
-    ref.watch(localLibraryRepositoryProvider),
-    onLoaded: () => loadedState.state = true,
-  );
-});
+final localLibrariesProvider =
+    StateNotifierProvider<LocalLibrariesController, List<LocalLibrary>>((ref) {
+      final loadedState = ref.read(localLibrariesLoadedProvider.notifier);
+      Future.microtask(() => loadedState.state = false);
+      return LocalLibrariesController(
+        ref.watch(localLibraryRepositoryProvider),
+        onLoaded: () => loadedState.state = true,
+      );
+    });
 
 class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
-  LocalLibrariesController(
-    this._repo, {
-    void Function()? onLoaded,
-  })  : _onLoaded = onLoaded,
-        super(const []) {
+  LocalLibrariesController(this._repo, {void Function()? onLoaded})
+    : _onLoaded = onLoaded,
+      super(const []) {
     _loadFromStorage();
   }
 
@@ -33,15 +34,36 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
   Future<void> _writeChain = Future<void>.value();
 
   Future<void> _loadFromStorage() async {
+    if (kDebugMode) {
+      LogManager.instance.info('LocalLibrary: load_start');
+    }
+    final stateBeforeLoad = state;
     final stored = await _repo.read();
     if (!mounted) return;
+    if (!identical(state, stateBeforeLoad)) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'LocalLibrary: load_skip_state_changed',
+          context: {'currentCount': state.length},
+        );
+      }
+      _onLoaded?.call();
+      return;
+    }
     state = stored.libraries;
+    if (kDebugMode) {
+      LogManager.instance.info(
+        'LocalLibrary: load_complete',
+        context: {'libraryCount': stored.libraries.length},
+      );
+    }
     _onLoaded?.call();
   }
 
   void upsert(LocalLibrary library) {
     final key = library.key.trim();
     if (key.isEmpty) return;
+    final beforeCount = state.length;
     final next = [...state];
     final index = next.indexWhere((l) => l.key == key);
     final now = DateTime.now();
@@ -55,6 +77,17 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
       next.add(updated);
     }
     state = next;
+    if (kDebugMode) {
+      LogManager.instance.info(
+        'LocalLibrary: upsert',
+        context: {
+          'key': key,
+          'beforeCount': beforeCount,
+          'afterCount': next.length,
+          'updatedExisting': index >= 0,
+        },
+      );
+    }
     _persist(next);
   }
 
@@ -67,12 +100,16 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
   }
 
   void _persist(List<LocalLibrary> libraries) {
-    _writeChain = _writeChain.then((_) => _repo.write(LocalLibraryState(libraries: libraries)));
+    _writeChain = _writeChain.then(
+      (_) => _repo.write(LocalLibraryState(libraries: libraries)),
+    );
   }
 }
 
 final currentLocalLibraryProvider = Provider<LocalLibrary?>((ref) {
-  final key = ref.watch(appSessionProvider.select((s) => s.valueOrNull?.currentKey));
+  final key = ref.watch(
+    appSessionProvider.select((s) => s.valueOrNull?.currentKey),
+  );
   if (key == null || key.trim().isEmpty) return null;
   final libraries = ref.watch(localLibrariesProvider);
   for (final library in libraries) {

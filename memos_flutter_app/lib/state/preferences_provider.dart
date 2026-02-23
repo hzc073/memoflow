@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../core/app_localization.dart';
+import '../core/debug_ephemeral_storage.dart';
 import '../core/desktop_shortcuts.dart';
 import '../core/hash.dart';
 import '../core/theme_colors.dart';
@@ -681,10 +682,28 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   Future<void> _writeChain = Future<void>.value();
 
   Future<void> _loadFromStorage() async {
+    if (kDebugMode) {
+      LogManager.instance.info('Prefs: load_start');
+    }
+    final stateBeforeLoad = state;
     try {
       final stored = await _repo.read();
       if (!mounted) return;
+      if (!identical(state, stateBeforeLoad)) {
+        return;
+      }
       state = stored;
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'Prefs: load_complete',
+          context: <String, Object?>{
+            'language': stored.language.name,
+            'hasSelectedLanguage': stored.hasSelectedLanguage,
+            'homeInitialLoadingOverlayShown':
+                stored.homeInitialLoadingOverlayShown,
+          },
+        );
+      }
     } catch (error, stackTrace) {
       LogManager.instance.error(
         'Failed to load app preferences. Falling back to defaults.',
@@ -692,6 +711,9 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
         stackTrace: stackTrace,
       );
       if (!mounted) return;
+      if (!identical(state, stateBeforeLoad)) {
+        return;
+      }
       state = AppPreferences.defaults.copyWith(
         language: AppLanguage.system,
         hasSelectedLanguage: false,
@@ -704,7 +726,27 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   }
 
   void _setAndPersist(AppPreferences next, {bool triggerSync = true}) {
+    final previous = state;
     state = next;
+    if (kDebugMode) {
+      final onboardingChanged =
+          previous.language != next.language ||
+          previous.hasSelectedLanguage != next.hasSelectedLanguage ||
+          previous.homeInitialLoadingOverlayShown !=
+              next.homeInitialLoadingOverlayShown;
+      if (onboardingChanged) {
+        LogManager.instance.info(
+          'Prefs: onboarding_state_changed',
+          context: <String, Object?>{
+            'previousLanguage': previous.language.name,
+            'nextLanguage': next.language.name,
+            'previousHasSelectedLanguage': previous.hasSelectedLanguage,
+            'nextHasSelectedLanguage': next.hasSelectedLanguage,
+            'triggerSync': triggerSync,
+          },
+        );
+      }
+    }
     // Serialize writes to avoid out-of-order persistence overwriting newer prefs.
     _writeChain = _writeChain.then((_) async {
       try {
@@ -931,7 +973,7 @@ class AppPreferencesRepository {
 
   Future<File?> _fallbackFileForKey(String key) async {
     try {
-      final dir = await getApplicationSupportDirectory();
+      final dir = await resolveAppSupportDirectory();
       final safe = fnv1a64Hex(key);
       return File('${dir.path}/$_kFallbackFilePrefix$safe.json');
     } catch (_) {

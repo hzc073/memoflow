@@ -53,3 +53,4 @@ memos_flutter_app/windows/runner/resources/*
 !memos_flutter_app/windows/runner/resources/app_icon.ico
 
 update_config/
+.stfolder/

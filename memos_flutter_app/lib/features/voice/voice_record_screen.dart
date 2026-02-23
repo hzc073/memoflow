@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/debug_ephemeral_storage.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
 import '../../state/preferences_provider.dart';
@@ -187,7 +187,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       } catch (_) {}
     }
 
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await resolveAppDocumentsDirectory();
     final recordingsDir = Directory(p.join(dir.path, 'recordings'));
     if (!recordingsDir.existsSync()) {
       recordingsDir.createSync(recursive: true);

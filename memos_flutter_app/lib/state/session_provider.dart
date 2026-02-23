@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -12,8 +13,10 @@ import '../data/logs/log_manager.dart';
 import '../data/models/account.dart';
 import '../data/models/instance_profile.dart';
 import '../data/settings/accounts_repository.dart';
+import '../data/settings/ephemeral_secure_storage.dart';
 import '../data/settings/queued_secure_storage.dart';
 import '../core/url.dart';
+import '../core/debug_ephemeral_storage.dart';
 
 class AppSessionState {
   const AppSessionState({required this.accounts, required this.currentKey});
@@ -32,6 +35,9 @@ class AppSessionState {
 }
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
+  if (isEphemeralDebugStorageEnabled) {
+    return EphemeralSecureStorage();
+  }
   return QueuedFlutterSecureStorage();
 });
 
@@ -109,6 +115,17 @@ class AppSessionNotifier extends AppSessionController {
     final trimmed = key?.trim();
     final nextKey = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
 
+    if (kDebugMode) {
+      LogManager.instance.info(
+        'Session: set_current_key',
+        context: <String, Object?>{
+          'previousKey': current.currentKey,
+          'nextKey': nextKey,
+          'accountCount': current.accounts.length,
+        },
+      );
+    }
+
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
       await _accountsRepository.write(
@@ -121,20 +138,37 @@ class AppSessionNotifier extends AppSessionController {
   final AccountsRepository _accountsRepository;
 
   Future<void> _loadFromStorage() async {
+    if (kDebugMode) {
+      LogManager.instance.info('Session: load_start');
+    }
+    final stateBeforeLoad = state;
     try {
       final stored = await _accountsRepository.read();
+      if (!mounted) return;
+      if (!identical(state, stateBeforeLoad)) return;
       state = AsyncValue.data(
         AppSessionState(
           accounts: stored.accounts,
           currentKey: stored.currentKey,
         ),
       );
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'Session: load_complete',
+          context: <String, Object?>{
+            'accountCount': stored.accounts.length,
+            'currentKey': stored.currentKey,
+          },
+        );
+      }
     } catch (error, stackTrace) {
       LogManager.instance.error(
         'Failed to load session from secure storage. Falling back to empty session.',
         error: error,
         stackTrace: stackTrace,
       );
+      if (!mounted) return;
+      if (!identical(state, stateBeforeLoad)) return;
       state = const AsyncValue.data(
         AppSessionState(accounts: [], currentKey: null),
       );
@@ -331,13 +365,36 @@ class AppSessionNotifier extends AppSessionController {
     if (key.isEmpty) return;
     final next = AppSessionState(accounts: current.accounts, currentKey: key);
 
+    if (kDebugMode) {
+      LogManager.instance.info(
+        'Session: switch_workspace_start',
+        context: <String, Object?>{
+          'previousKey': current.currentKey,
+          'nextKey': key,
+          'accountCount': current.accounts.length,
+        },
+      );
+    }
+
     // Optimistically switch workspace in memory first so local mode can start
     // even if secure storage is temporarily unavailable.
     state = AsyncValue.data(next);
+    if (kDebugMode) {
+      LogManager.instance.info(
+        'Session: switch_workspace_memory_applied',
+        context: <String, Object?>{'currentKey': state.valueOrNull?.currentKey},
+      );
+    }
     try {
       await _accountsRepository.write(
         AccountsState(accounts: current.accounts, currentKey: key),
       );
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'Session: switch_workspace_persisted',
+          context: <String, Object?>{'currentKey': key},
+        );
+      }
     } catch (error, stackTrace) {
       LogManager.instance.warn(
         'Failed to persist workspace switch. Keeping in-memory session state.',
