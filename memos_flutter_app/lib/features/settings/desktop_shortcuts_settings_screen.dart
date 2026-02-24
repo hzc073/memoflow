@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -83,6 +84,7 @@ class DesktopShortcutsSettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDesktop = isDesktopShortcutEnabled();
+    final isWindows = defaultTargetPlatform == TargetPlatform.windows;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
@@ -184,6 +186,16 @@ class DesktopShortcutsSettingsScreen extends ConsumerWidget {
               textMuted: textMuted,
             ),
             const SizedBox(height: 10),
+            if (isWindows) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Text(
+                  'Windows \u7ffb\u9875\uff1aPageUp \u4e0a\u4e00\u9875\uff0cPageDown \u4e0b\u4e00\u9875\u3002',
+                  style: TextStyle(fontSize: 12, color: textMuted),
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Text(

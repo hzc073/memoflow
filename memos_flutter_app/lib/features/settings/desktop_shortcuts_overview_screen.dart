@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/desktop_shortcuts.dart';
@@ -11,6 +12,7 @@ class DesktopShortcutsOverviewScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resolved = normalizeDesktopShortcutBindings(bindings);
+    final isWindows = defaultTargetPlatform == TargetPlatform.windows;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
@@ -60,6 +62,10 @@ class DesktopShortcutsOverviewScreen extends StatelessWidget {
               ? '${desktopShortcutBindingLabel(resolved[action]!)} / F1'
               : desktopShortcutBindingLabel(resolved[action]!),
         ),
+      if (isWindows) ...[
+        (action: '\u4e0a\u4e00\u9875', key: 'PageUp'),
+        (action: '\u4e0b\u4e00\u9875', key: 'PageDown'),
+      ],
     ];
 
     return Scaffold(
