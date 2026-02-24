@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -404,6 +406,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     with WindowListener {
   static const int _initialPageSize = 200;
   static const int _pageStep = 200;
+  static const double _mobilePullLoadThreshold = 64;
+  static const Duration _desktopWheelLoadDebounce = Duration(milliseconds: 220);
+  static const double _scrollToTopMinSpeedPxPerSecond = 2600;
+  static const double _scrollToTopMaxSpeedPxPerSecond = 14000;
+  static const double _scrollToTopDistanceSpeedFactor = 90;
+  static const Duration _scrollToTopTick = Duration(milliseconds: 16);
+  static const double _scrollToTopTickSeconds = 0.016;
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
@@ -457,6 +466,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   int _currentResultCount = 0;
   bool _currentLoading = false;
   bool _currentShowSearchLanding = false;
+  double _mobileBottomPullDistance = 0;
+  bool _mobileBottomPullArmed = false;
+  DateTime? _lastDesktopWheelLoadAt;
+  bool _scrollToTopAnimating = false;
+  Timer? _scrollToTopTimer;
+  double _lastObservedScrollOffset = 0;
+  DateTime? _lastScrollJumpLogAt;
+  int _loadMoreRequestSeq = 0;
+  int? _activeLoadMoreRequestId;
+  String? _activeLoadMoreSource;
   bool _desktopWindowMaximized = false;
   bool _windowsHeaderSearchExpanded = false;
   bool _desktopQuickInputSubmitting = false;
@@ -614,6 +633,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _inlineComposeController.dispose();
     _inlineComposeFocusNode.dispose();
     _searchFocusNode.dispose();
+    _scrollToTopTimer?.cancel();
+    _scrollToTopTimer = null;
     _scrollController.dispose();
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
@@ -656,60 +677,339 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     setState(() => _activeTagFilter = _normalizeTag(tag));
   }
 
+  bool _isTouchPullLoadPlatform() {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  void _resetMobilePullLoadState({bool notify = false}) {
+    if (_mobileBottomPullDistance == 0 && !_mobileBottomPullArmed) return;
+    if (notify && mounted) {
+      setState(() {
+        _mobileBottomPullDistance = 0;
+        _mobileBottomPullArmed = false;
+      });
+      return;
+    }
+    _mobileBottomPullDistance = 0;
+    _mobileBottomPullArmed = false;
+  }
+
+  bool _handleLoadMoreScrollNotification(ScrollNotification notification) {
+    if (!_isTouchPullLoadPlatform()) return false;
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (_scrollToTopAnimating) return false;
+
+    final canArmPullLoad =
+        !_currentShowSearchLanding &&
+        !_currentLoading &&
+        !_loadingMore &&
+        !_reachedEnd;
+    if (!canArmPullLoad) {
+      _resetMobilePullLoadState(notify: false);
+      return false;
+    }
+
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null) {
+      final nearBottom =
+          notification.metrics.pixels >=
+          (notification.metrics.maxScrollExtent - 1);
+      if (!nearBottom) {
+        _resetMobilePullLoadState(notify: true);
+      }
+    }
+
+    if (notification is OverscrollNotification &&
+        notification.dragDetails != null) {
+      final atBottom =
+          notification.metrics.maxScrollExtent > 0 &&
+          notification.metrics.pixels >=
+              (notification.metrics.maxScrollExtent - 1);
+      if (!atBottom || notification.overscroll <= 0) return false;
+
+      final nextDistance = (_mobileBottomPullDistance + notification.overscroll)
+          .clamp(0.0, _mobilePullLoadThreshold * 2);
+      final nextArmed = nextDistance >= _mobilePullLoadThreshold;
+      if (nextDistance != _mobileBottomPullDistance ||
+          nextArmed != _mobileBottomPullArmed) {
+        setState(() {
+          _mobileBottomPullDistance = nextDistance;
+          _mobileBottomPullArmed = nextArmed;
+        });
+      }
+      return false;
+    }
+
+    if (notification is ScrollEndNotification) {
+      final armed = _mobileBottomPullArmed;
+      _resetMobilePullLoadState(notify: true);
+      if (armed) {
+        _loadMoreFromActionWithSource('mobile_pull_release');
+      }
+    }
+    return false;
+  }
+
+  void _handleDesktopPointerSignal(PointerSignalEvent event) {
+    if (_isTouchPullLoadPlatform()) return;
+    if (_scrollToTopAnimating) return;
+    if (event is! PointerScrollEvent) return;
+    if (event.scrollDelta.dy <= 0) return;
+    if (!_scrollController.hasClients) return;
+
+    final metrics = _scrollController.position;
+    if (metrics.maxScrollExtent <= 0) return;
+    final nearBottom =
+        metrics.pixels >=
+        (metrics.maxScrollExtent - metrics.viewportDimension * 0.08);
+    if (!nearBottom) return;
+
+    final now = DateTime.now();
+    final last = _lastDesktopWheelLoadAt;
+    if (last != null && now.difference(last) < _desktopWheelLoadDebounce) {
+      return;
+    }
+    _lastDesktopWheelLoadAt = now;
+    _loadMoreFromActionWithSource('desktop_wheel');
+  }
+
+  String _describeLoadMoreBlockReason() {
+    if (_currentShowSearchLanding) return 'search_landing';
+    if (_currentLoading) return 'provider_loading';
+    if (_loadingMore) return 'already_loading_more';
+    if (_reachedEnd) return 'reached_end';
+    if (_currentResultCount <= 0) return 'empty_result';
+    if (_currentResultCount < _pageSize) return 'result_less_than_page_size';
+    return 'unknown';
+  }
+
+  Map<String, Object?> _paginationDebugContext({
+    ScrollMetrics? metrics,
+    Map<String, Object?>? extra,
+  }) {
+    final context = <String, Object?>{
+      'pageSize': _pageSize,
+      'resultCount': _currentResultCount,
+      'lastResultCount': _lastResultCount,
+      'loadingMore': _loadingMore,
+      'reachedEnd': _reachedEnd,
+      'providerLoading': _currentLoading,
+      'showSearchLanding': _currentShowSearchLanding,
+      if (_activeLoadMoreRequestId != null)
+        'activeRequestId': _activeLoadMoreRequestId,
+      if (_activeLoadMoreSource != null)
+        'activeRequestSource': _activeLoadMoreSource,
+    };
+    if (metrics != null) {
+      context['offset'] = metrics.pixels;
+      context['maxScrollExtent'] = metrics.maxScrollExtent;
+      context['viewportHeight'] = metrics.viewportDimension;
+    }
+    if (extra != null && extra.isNotEmpty) {
+      context.addAll(extra);
+    }
+    return context;
+  }
+
+  void _logPaginationDebug(
+    String event, {
+    ScrollMetrics? metrics,
+    Map<String, Object?>? context,
+  }) {
+    if (!mounted) return;
+    ref
+        .read(logManagerProvider)
+        .debug(
+          'Memos pagination: $event',
+          context: _paginationDebugContext(metrics: metrics, extra: context),
+        );
+  }
+
   void _handleScroll() {
     if (!_scrollController.hasClients) return;
     final metrics = _scrollController.position;
+    final previousOffset = _lastObservedScrollOffset;
+    _lastObservedScrollOffset = metrics.pixels;
+
+    final jumpedToTopUnexpectedly =
+        previousOffset > (metrics.viewportDimension * 0.8) &&
+        metrics.pixels <= 4 &&
+        (previousOffset - metrics.pixels) > (metrics.viewportDimension * 0.8);
+    if (jumpedToTopUnexpectedly) {
+      final now = DateTime.now();
+      final lastAt = _lastScrollJumpLogAt;
+      if (lastAt == null ||
+          now.difference(lastAt) > const Duration(milliseconds: 700)) {
+        _lastScrollJumpLogAt = now;
+        _logPaginationDebug(
+          'scroll_jump_to_top_detected',
+          metrics: metrics,
+          context: {'previousOffset': previousOffset},
+        );
+      }
+    }
+
     final threshold = metrics.viewportDimension * 2;
     final shouldShow = metrics.pixels >= threshold;
     if (shouldShow != _showBackToTop && mounted) {
       setState(() => _showBackToTop = shouldShow);
     }
-    _maybeLoadMore();
   }
 
-  void _triggerLoadMore() {
+  void _triggerLoadMore({required String source}) {
+    final requestId = ++_loadMoreRequestSeq;
+    final previousPageSize = _pageSize;
+    _activeLoadMoreRequestId = requestId;
+    _activeLoadMoreSource = source;
     _loadingMore = true;
     _pageSize += _pageStep;
+    _logPaginationDebug(
+      'load_more_trigger',
+      metrics: _scrollController.hasClients ? _scrollController.position : null,
+      context: {
+        'requestId': requestId,
+        'source': source,
+        'fromPageSize': previousPageSize,
+        'toPageSize': _pageSize,
+      },
+    );
     if (mounted) {
       setState(() {});
     }
   }
 
-  void _maybeLoadMore() {
-    if (_currentShowSearchLanding) return;
-    if (_currentLoading) return;
-    if (_loadingMore || _reachedEnd) return;
-    if (!_scrollController.hasClients) return;
-    final metrics = _scrollController.position;
-    if (metrics.maxScrollExtent <= 0) return;
-    final triggerOffset =
-        metrics.maxScrollExtent - (metrics.viewportDimension * 0.6);
-    if (metrics.pixels < triggerOffset) return;
+  bool _canLoadMore() {
+    if (_currentShowSearchLanding || _currentLoading) return false;
+    if (_scrollToTopAnimating) return false;
+    if (_loadingMore || _reachedEnd) return false;
+    if (_currentResultCount <= 0) return false;
     if (_currentResultCount < _pageSize) {
       _reachedEnd = true;
-      return;
+      return false;
     }
-    _triggerLoadMore();
+    return true;
   }
 
-  void _maybeAutoLoadMore() {
-    if (_currentShowSearchLanding) return;
-    if (_currentLoading) return;
-    if (_loadingMore || _reachedEnd) return;
-    if (_currentResultCount < _pageSize || _currentResultCount <= 0) {
-      _reachedEnd = true;
+  void _loadMoreFromActionWithSource(String source) {
+    if (!_canLoadMore()) {
+      _logPaginationDebug(
+        'load_more_skipped',
+        metrics: _scrollController.hasClients
+            ? _scrollController.position
+            : null,
+        context: {'source': source, 'reason': _describeLoadMoreBlockReason()},
+      );
       return;
     }
-    _triggerLoadMore();
+    _resetMobilePullLoadState(notify: false);
+    _triggerLoadMore(source: source);
   }
 
-  void _scrollToTop() {
+  void _scrollByPage({required bool down}) {
     if (!_scrollController.hasClients) return;
+    final metrics = _scrollController.position;
+    final step = metrics.viewportDimension * 0.9;
+    final rawTarget = down ? metrics.pixels + step : metrics.pixels - step;
+    final target = rawTarget.clamp(0.0, metrics.maxScrollExtent);
+    if ((target - metrics.pixels).abs() < 1) return;
     _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 520),
+      target,
+      duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  bool _handlePageNavigationShortcut({
+    required LogicalKeyboardKey key,
+    required bool primaryPressed,
+    required bool shiftPressed,
+    required bool altPressed,
+  }) {
+    if (primaryPressed || shiftPressed || altPressed) return false;
+    if (_searchFocusNode.hasFocus) return false;
+    if (key == LogicalKeyboardKey.pageUp) {
+      _scrollByPage(down: false);
+      return true;
+    }
+    if (key != LogicalKeyboardKey.pageDown) return false;
+    _scrollByPage(down: true);
+    if (!_scrollController.hasClients) {
+      _loadMoreFromActionWithSource('page_down_no_clients');
+      return true;
+    }
+    final metrics = _scrollController.position;
+    final nearBottom =
+        metrics.maxScrollExtent <= 0 ||
+        metrics.pixels >=
+            (metrics.maxScrollExtent - metrics.viewportDimension * 0.35);
+    if (nearBottom) {
+      _loadMoreFromActionWithSource('page_down_near_bottom');
+    }
+    return true;
+  }
+
+  void _stopScrollToTopFlow({bool snapToTop = false}) {
+    _scrollToTopTimer?.cancel();
+    _scrollToTopTimer = null;
+    _scrollToTopAnimating = false;
+    if (snapToTop && _scrollController.hasClients) {
+      try {
+        _scrollController.jumpTo(0);
+      } catch (_) {}
+    }
+  }
+
+  double _scrollToTopSpeedForDistance(double distanceToTopPx) {
+    final safeDistance = distanceToTopPx.isFinite
+        ? math.max(0.0, distanceToTopPx)
+        : 0.0;
+    final speed =
+        _scrollToTopMinSpeedPxPerSecond +
+        math.sqrt(safeDistance) * _scrollToTopDistanceSpeedFactor;
+    return math.min(speed, _scrollToTopMaxSpeedPxPerSecond);
+  }
+
+  Future<void> _scrollToTop() async {
+    if (!_scrollController.hasClients) return;
+    if (_scrollToTopAnimating) return;
+    _logPaginationDebug(
+      'scroll_to_top_action',
+      metrics: _scrollController.position,
+      context: {'mode': 'distance_dynamic_speed'},
+    );
+
+    _scrollToTopAnimating = true;
+    _scrollToTopTimer?.cancel();
+    _scrollToTopTimer = Timer.periodic(_scrollToTopTick, (_) {
+      if (!mounted || !_scrollController.hasClients) {
+        _stopScrollToTopFlow();
+        return;
+      }
+      final position = _scrollController.position;
+      final current = position.pixels;
+      if (current <= 0.5) {
+        _stopScrollToTopFlow(snapToTop: true);
+        return;
+      }
+
+      // Dynamic speed based on distance-to-top, but fixed per tick to avoid
+      // large compensation jumps when frames are delayed.
+      final speed = _scrollToTopSpeedForDistance(current);
+      final delta = speed * _scrollToTopTickSeconds;
+      final target = (current - delta).clamp(0.0, position.maxScrollExtent);
+      if ((current - target).abs() < 0.001) return;
+      try {
+        _scrollController.jumpTo(target);
+      } catch (_) {
+        _stopScrollToTopFlow();
+        return;
+      }
+      if (target <= 0.5) {
+        _stopScrollToTopFlow(snapToTop: true);
+      }
+    });
   }
 
   bool _shouldEnableHomeSort({required bool useRemoteSearch}) {
@@ -1213,6 +1513,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         _redoInlineCompose();
         return true;
       }
+    }
+    if (!inlineEditorActive &&
+        _handlePageNavigationShortcut(
+          key: key,
+          primaryPressed: primaryPressed,
+          shiftPressed: shiftPressed,
+          altPressed: altPressed,
+        )) {
+      return true;
     }
 
     if (matches(DesktopShortcutAction.enableAppLock)) {
@@ -4285,8 +4594,69 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final filtered = memos
         .where((m) => !_pendingRemovedUids.contains(m.uid))
         .toList(growable: true);
-    if (_listSignature != signature ||
-        !_sameMemoList(_animatedMemos, filtered)) {
+    final sameSignature = _listSignature == signature;
+
+    // Pagination appends items at the tail. Keep list state and insert rows
+    // instead of rebuilding the whole sliver to avoid scroll jumps on desktop.
+    if (sameSignature &&
+        _animatedMemos.isNotEmpty &&
+        filtered.length > _animatedMemos.length &&
+        _sameMemoPrefix(_animatedMemos, filtered)) {
+      final insertStart = _animatedMemos.length;
+      final insertCount = filtered.length - _animatedMemos.length;
+      _logPaginationDebug(
+        'animated_list_append_prepare',
+        metrics: _scrollController.hasClients
+            ? _scrollController.position
+            : null,
+        context: {
+          'signature': signature,
+          'beforeLength': _animatedMemos.length,
+          'afterLength': filtered.length,
+          'insertStart': insertStart,
+          'insertCount': insertCount,
+        },
+      );
+      _animatedMemos = filtered;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final state = _listKey.currentState;
+        if (state == null) return;
+        for (var i = 0; i < insertCount; i++) {
+          state.insertItem(insertStart + i, duration: Duration.zero);
+        }
+        _logPaginationDebug(
+          'animated_list_append_applied',
+          metrics: _scrollController.hasClients
+              ? _scrollController.position
+              : null,
+          context: {
+            'signature': signature,
+            'insertCount': insertCount,
+            'currentLength': _animatedMemos.length,
+          },
+        );
+      });
+      return;
+    }
+
+    final signatureChanged = _listSignature != signature;
+    final listChanged = !_sameMemoList(_animatedMemos, filtered);
+    if (signatureChanged || listChanged) {
+      _logPaginationDebug(
+        'animated_list_rebuild',
+        metrics: _scrollController.hasClients
+            ? _scrollController.position
+            : null,
+        context: {
+          'signatureChanged': signatureChanged,
+          'listChanged': listChanged,
+          'fromSignature': _listSignature,
+          'toSignature': signature,
+          'beforeLength': _animatedMemos.length,
+          'afterLength': filtered.length,
+        },
+      );
       _listSignature = signature;
       _animatedMemos = filtered;
       _listKey = GlobalKey<SliverAnimatedListState>();
@@ -4311,6 +4681,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
       if (a[i].uid != b[i].uid) return false;
+    }
+    return true;
+  }
+
+  static bool _sameMemoPrefix(List<LocalMemo> prefix, List<LocalMemo> full) {
+    if (prefix.length > full.length) return false;
+    for (var i = 0; i < prefix.length; i++) {
+      if (prefix[i].uid != full[i].uid) return false;
     }
     return true;
   }
@@ -4562,11 +4940,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         '${selectedQuickSearchKind?.name ?? ''}|${useQuickSearch ? 1 : 0}|'
         '${useRemoteSearch ? 1 : 0}';
     if (_paginationKey != queryKey) {
+      _logPaginationDebug(
+        'query_key_changed_reset_pagination',
+        context: {'fromKey': _paginationKey, 'toKey': queryKey},
+      );
       _paginationKey = queryKey;
       _pageSize = _initialPageSize;
       _reachedEnd = false;
       _loadingMore = false;
       _lastResultCount = 0;
+      _resetMobilePullLoadState(notify: false);
+      _lastDesktopWheelLoadAt = null;
     }
     final shortcutQuery = (
       searchQuery: searchQuery,
@@ -4622,25 +5006,40 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final enableHomeSort = _shouldEnableHomeSort(
       useRemoteSearch: useRemoteSearch,
     );
+    final hasProviderValue = memosValue != null;
 
-    _currentResultCount = memosValue?.length ?? 0;
+    _currentResultCount = hasProviderValue
+        ? memosValue.length
+        : _animatedMemos.length;
     _currentLoading = memosLoading;
     _currentShowSearchLanding = showSearchLanding;
-    if (_currentResultCount != _lastResultCount) {
+    if (hasProviderValue && _currentResultCount != _lastResultCount) {
+      final previousCount = _lastResultCount;
+      final wasLoadingMore = _loadingMore;
+      final requestId = _activeLoadMoreRequestId;
+      final requestSource = _activeLoadMoreSource;
       _lastResultCount = _currentResultCount;
       _loadingMore = false;
+      if (wasLoadingMore) {
+        _logPaginationDebug(
+          'load_more_applied',
+          metrics: _scrollController.hasClients
+              ? _scrollController.position
+              : null,
+          context: {
+            'requestId': requestId,
+            'source': requestSource,
+            'previousCount': previousCount,
+            'nextCount': _currentResultCount,
+            'delta': _currentResultCount - previousCount,
+          },
+        );
+        _activeLoadMoreRequestId = null;
+        _activeLoadMoreSource = null;
+      }
     }
-    _reachedEnd = _currentResultCount < _pageSize;
-    if (!_currentLoading &&
-        !_currentShowSearchLanding &&
-        !_reachedEnd &&
-        !_loadingMore &&
-        _currentResultCount >= _pageSize &&
-        _currentResultCount > 0) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _maybeAutoLoadMore();
-      });
+    if (hasProviderValue) {
+      _reachedEnd = _currentResultCount < _pageSize;
     }
 
     _maybeAutoScanLocalLibrary(
@@ -4666,8 +5065,25 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _syncAnimatedMemos(sortedMemos, listSignature);
     }
     final visibleMemos = _animatedMemos;
+    final showLoadMoreHint =
+        memosError == null && visibleMemos.isNotEmpty && !showSearchLanding;
+    final loadMoreBusy = _loadingMore || _currentLoading;
+    final touchPullLoadEnabled = _isTouchPullLoadPlatform();
+    final loadMoreHintText = loadMoreBusy
+        ? context.t.strings.legacy.msg_loading
+        : (_reachedEnd
+              ? context.t.strings.legacy.msg_loaded_all_content
+              : (touchPullLoadEnabled
+                    ? (_mobileBottomPullArmed
+                          ? context.t.strings.legacy.msg_release_to_load_more
+                          : context.t.strings.legacy.msg_pull_up_to_load_more)
+                    : context.t.strings.legacy.msg_scroll_down_to_load_more));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final loadMoreHintTextColor =
+        (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
+            .withValues(alpha: isDark ? 0.52 : 0.46);
+    final loadMoreHintDisplayText = '—— $loadMoreHintText ——';
     final headerBg =
         (isDark
                 ? MemoFlowPalette.backgroundDark
@@ -4756,309 +5172,370 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                     ref.invalidate(quickSearchMemosProvider(quickSearchQuery));
                   }
                 },
-                child: CustomScrollView(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    SliverAppBar(
-                      pinned: true,
-                      backgroundColor: headerBg,
-                      elevation: 0,
-                      scrolledUnderElevation: 0,
-                      surfaceTintColor: Colors.transparent,
-                      toolbarHeight: useWindowsDesktopHeader && !_searching
-                          ? 0
-                          : kToolbarHeight,
-                      titleSpacing: useWindowsDesktopHeader && !_searching
-                          ? 0
-                          : NavigationToolbar.kMiddleSpacing,
-                      automaticallyImplyLeading:
-                          !useWindowsDesktopHeader && !_searching,
-                      leading: useWindowsDesktopHeader
-                          ? null
-                          : (_searching
-                                ? IconButton(
-                                    icon: const Icon(Icons.arrow_back_ios_new),
-                                    onPressed: _closeSearch,
-                                  )
-                                : null),
-                      title: useWindowsDesktopHeader && !_searching
-                          ? null
-                          : (_searching
-                                ? _buildTopSearchField(
-                                    context,
-                                    isDark: isDark,
-                                    autofocus: true,
-                                  )
-                                : _buildHeaderTitleWidget(
-                                    context,
-                                    maybeHaptic: maybeHaptic,
-                                  )),
-                      actions: useWindowsDesktopHeader && !_searching
-                          ? null
-                          : [
-                              if (kDebugMode && !screenshotModeEnabled)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: Center(
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 150,
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _handleLoadMoreScrollNotification,
+                  child: Listener(
+                    onPointerSignal: _handleDesktopPointerSignal,
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverAppBar(
+                          pinned: true,
+                          backgroundColor: headerBg,
+                          elevation: 0,
+                          scrolledUnderElevation: 0,
+                          surfaceTintColor: Colors.transparent,
+                          toolbarHeight: useWindowsDesktopHeader && !_searching
+                              ? 0
+                              : kToolbarHeight,
+                          titleSpacing: useWindowsDesktopHeader && !_searching
+                              ? 0
+                              : NavigationToolbar.kMiddleSpacing,
+                          automaticallyImplyLeading:
+                              !useWindowsDesktopHeader && !_searching,
+                          leading: useWindowsDesktopHeader
+                              ? null
+                              : (_searching
+                                    ? IconButton(
+                                        icon: const Icon(
+                                          Icons.arrow_back_ios_new,
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: MemoFlowPalette.primary
-                                              .withValues(
-                                                alpha: isDark ? 0.24 : 0.12,
-                                              ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
+                                        onPressed: _closeSearch,
+                                      )
+                                    : null),
+                          title: useWindowsDesktopHeader && !_searching
+                              ? null
+                              : (_searching
+                                    ? _buildTopSearchField(
+                                        context,
+                                        isDark: isDark,
+                                        autofocus: true,
+                                      )
+                                    : _buildHeaderTitleWidget(
+                                        context,
+                                        maybeHaptic: maybeHaptic,
+                                      )),
+                          actions: useWindowsDesktopHeader && !_searching
+                              ? null
+                              : [
+                                  if (kDebugMode && !screenshotModeEnabled)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: Center(
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 150,
                                           ),
-                                          border: Border.all(
-                                            color: MemoFlowPalette.primary
-                                                .withValues(
-                                                  alpha: isDark ? 0.45 : 0.25,
-                                                ),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          debugApiVersionText,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: MemoFlowPalette.primary,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ...?_searching
-                                  ? (widget.enableSearch
-                                        ? [
-                                            TextButton(
-                                              onPressed: _closeSearch,
-                                              child: Text(
-                                                context
-                                                    .t
-                                                    .strings
-                                                    .legacy
-                                                    .msg_cancel_2,
-                                                style: TextStyle(
-                                                  color:
-                                                      MemoFlowPalette.primary,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: MemoFlowPalette.primary
+                                                  .withValues(
+                                                    alpha: isDark ? 0.24 : 0.12,
+                                                  ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: MemoFlowPalette.primary
+                                                    .withValues(
+                                                      alpha: isDark
+                                                          ? 0.45
+                                                          : 0.25,
+                                                    ),
                                               ),
                                             ),
-                                          ]
-                                        : null)
-                                  : (widget.enableSearch
-                                        ? [
-                                            if (enableHomeSort)
-                                              _buildSortMenuButton(
-                                                context,
-                                                isDark: isDark,
+                                            child: Text(
+                                              debugApiVersionText,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: MemoFlowPalette.primary,
                                               ),
-                                            if (!useWindowsDesktopHeader)
-                                              IconButton(
-                                                tooltip: context
-                                                    .t
-                                                    .strings
-                                                    .legacy
-                                                    .msg_search,
-                                                onPressed: _openSearch,
-                                                icon: const Icon(Icons.search),
-                                              ),
-                                          ]
-                                        : null),
-                            ],
-                      bottom: useWindowsDesktopHeader && !_searching
-                          ? null
-                          : _searching
-                          ? (useShortcutFilter
-                                ? null
-                                : PreferredSize(
-                                    preferredSize: const Size.fromHeight(46),
-                                    child: Align(
-                                      alignment: Alignment.bottomLeft,
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          16,
-                                          0,
-                                          16,
-                                          8,
-                                        ),
-                                        child: _SearchQuickFilterBar(
-                                          selectedKind:
-                                              _selectedQuickSearchKind,
-                                          onSelectKind: _toggleQuickSearchKind,
-                                        ),
-                                      ),
-                                    ),
-                                  ))
-                          : (showHeaderPillActions
-                                ? PreferredSize(
-                                    preferredSize: const Size.fromHeight(46),
-                                    child: Align(
-                                      alignment: Alignment.bottomLeft,
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          16,
-                                          0,
-                                          16,
-                                          0,
-                                        ),
-                                        child: _buildPillActionsRow(
-                                          context,
-                                          maybeHaptic: maybeHaptic,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : (widget.showFilterTagChip &&
-                                          (resolvedTag?.trim().isNotEmpty ??
-                                              false)
-                                      ? PreferredSize(
-                                          preferredSize: const Size.fromHeight(
-                                            48,
+                                            ),
                                           ),
+                                        ),
+                                      ),
+                                    ),
+                                  ...?_searching
+                                      ? (widget.enableSearch
+                                            ? [
+                                                TextButton(
+                                                  onPressed: _closeSearch,
+                                                  child: Text(
+                                                    context
+                                                        .t
+                                                        .strings
+                                                        .legacy
+                                                        .msg_cancel_2,
+                                                    style: TextStyle(
+                                                      color: MemoFlowPalette
+                                                          .primary,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ]
+                                            : null)
+                                      : (widget.enableSearch
+                                            ? [
+                                                if (enableHomeSort)
+                                                  _buildSortMenuButton(
+                                                    context,
+                                                    isDark: isDark,
+                                                  ),
+                                                if (!useWindowsDesktopHeader)
+                                                  IconButton(
+                                                    tooltip: context
+                                                        .t
+                                                        .strings
+                                                        .legacy
+                                                        .msg_search,
+                                                    onPressed: _openSearch,
+                                                    icon: const Icon(
+                                                      Icons.search,
+                                                    ),
+                                                  ),
+                                              ]
+                                            : null),
+                                ],
+                          bottom: useWindowsDesktopHeader && !_searching
+                              ? null
+                              : _searching
+                              ? (useShortcutFilter
+                                    ? null
+                                    : PreferredSize(
+                                        preferredSize: const Size.fromHeight(
+                                          46,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.bottomLeft,
                                           child: Padding(
                                             padding: const EdgeInsets.fromLTRB(
                                               16,
                                               0,
                                               16,
-                                              10,
+                                              8,
                                             ),
-                                            child: Align(
-                                              alignment: Alignment.centerLeft,
-                                              child: _FilterTagChip(
-                                                label:
-                                                    '#${resolvedTag!.trim()}',
-                                                onClear: widget.showTagFilters
-                                                    ? () =>
-                                                          _selectTagFilter(null)
-                                                    : (widget.showDrawer
-                                                          ? _backToAllMemos
-                                                          : () => context
-                                                                .safePop()),
-                                              ),
+                                            child: _SearchQuickFilterBar(
+                                              selectedKind:
+                                                  _selectedQuickSearchKind,
+                                              onSelectKind:
+                                                  _toggleQuickSearchKind,
                                             ),
                                           ),
-                                        )
-                                      : null)),
+                                        ),
+                                      ))
+                              : (showHeaderPillActions
+                                    ? PreferredSize(
+                                        preferredSize: const Size.fromHeight(
+                                          46,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.bottomLeft,
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              16,
+                                              0,
+                                              16,
+                                              0,
+                                            ),
+                                            child: _buildPillActionsRow(
+                                              context,
+                                              maybeHaptic: maybeHaptic,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : (widget.showFilterTagChip &&
+                                              (resolvedTag?.trim().isNotEmpty ??
+                                                  false)
+                                          ? PreferredSize(
+                                              preferredSize:
+                                                  const Size.fromHeight(48),
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.fromLTRB(
+                                                      16,
+                                                      0,
+                                                      16,
+                                                      10,
+                                                    ),
+                                                child: Align(
+                                                  alignment:
+                                                      Alignment.centerLeft,
+                                                  child: _FilterTagChip(
+                                                    label:
+                                                        '#${resolvedTag!.trim()}',
+                                                    onClear:
+                                                        widget.showTagFilters
+                                                        ? () =>
+                                                              _selectTagFilter(
+                                                                null,
+                                                              )
+                                                        : (widget.showDrawer
+                                                              ? _backToAllMemos
+                                                              : () => context
+                                                                    .safePop()),
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          : null)),
+                        ),
+                        if (useInlineCompose)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                              child: _buildInlineComposeCard(
+                                isDark: isDark,
+                                tagStats: tagStats,
+                                availableTemplates: availableTemplates,
+                              ),
+                            ),
+                          ),
+                        if (widget.showTagFilters &&
+                            !_searching &&
+                            recommendedTags.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _TagFilterBar(
+                              tags: recommendedTags
+                                  .take(12)
+                                  .map((e) => e.tag)
+                                  .toList(growable: false),
+                              selectedTag: resolvedTag,
+                              onSelectTag: _selectTagFilter,
+                            ),
+                          ),
+                        if (memosLoading && visibleMemos.isNotEmpty)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.only(top: 8),
+                              child: LinearProgressIndicator(minHeight: 2),
+                            ),
+                          ),
+                        if (memosError != null)
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(
+                              child: Text(
+                                context.t.strings.legacy.msg_failed_load_3(
+                                  memosError: memosError,
+                                ),
+                              ),
+                            ),
+                          )
+                        else if (showSearchLanding)
+                          SliverToBoxAdapter(
+                            child: _SearchLanding(
+                              history: searchHistory,
+                              onClearHistory: () => ref
+                                  .read(searchHistoryProvider.notifier)
+                                  .clear(),
+                              onRemoveHistory: (value) => ref
+                                  .read(searchHistoryProvider.notifier)
+                                  .remove(value),
+                              onSelectHistory: _applySearchQuery,
+                              tags: recommendedTags
+                                  .map((e) => e.tag)
+                                  .toList(growable: false),
+                              onSelectTag: _applySearchQuery,
+                            ),
+                          )
+                        else if (memosLoading && visibleMemos.isEmpty)
+                          const SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else if (visibleMemos.isEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 140),
+                              child: Center(
+                                child: Text(
+                                  _searching
+                                      ? context
+                                            .t
+                                            .strings
+                                            .legacy
+                                            .msg_no_results_found
+                                      : context
+                                            .t
+                                            .strings
+                                            .legacy
+                                            .msg_no_content_yet,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          SliverPadding(
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              listTopPadding + listVisualOffset,
+                              16,
+                              showLoadMoreHint ? 20 : 140,
+                            ),
+                            sliver: SliverAnimatedList(
+                              key: _listKey,
+                              initialItemCount: visibleMemos.length,
+                              itemBuilder: (context, index, animation) {
+                                final memo = visibleMemos[index];
+                                return _buildAnimatedMemoItem(
+                                  context: context,
+                                  memo: memo,
+                                  animation: animation,
+                                  prefs: prefs,
+                                  outboxStatus: outboxStatus,
+                                  removing: false,
+                                );
+                              },
+                            ),
+                          ),
+                        if (showLoadMoreHint)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                0,
+                                16,
+                                140,
+                              ),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 420,
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      loadMoreHintDisplayText,
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w500,
+                                            letterSpacing: 0.2,
+                                            color: loadMoreHintTextColor,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    if (useInlineCompose)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                          child: _buildInlineComposeCard(
-                            isDark: isDark,
-                            tagStats: tagStats,
-                            availableTemplates: availableTemplates,
-                          ),
-                        ),
-                      ),
-                    if (widget.showTagFilters &&
-                        !_searching &&
-                        recommendedTags.isNotEmpty)
-                      SliverToBoxAdapter(
-                        child: _TagFilterBar(
-                          tags: recommendedTags
-                              .take(12)
-                              .map((e) => e.tag)
-                              .toList(growable: false),
-                          selectedTag: resolvedTag,
-                          onSelectTag: _selectTagFilter,
-                        ),
-                      ),
-                    if (memosLoading && memosValue != null)
-                      const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.only(top: 8),
-                          child: LinearProgressIndicator(minHeight: 2),
-                        ),
-                      ),
-                    if (memosError != null)
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(
-                          child: Text(
-                            context.t.strings.legacy.msg_failed_load_3(
-                              memosError: memosError,
-                            ),
-                          ),
-                        ),
-                      )
-                    else if (showSearchLanding)
-                      SliverToBoxAdapter(
-                        child: _SearchLanding(
-                          history: searchHistory,
-                          onClearHistory: () =>
-                              ref.read(searchHistoryProvider.notifier).clear(),
-                          onRemoveHistory: (value) => ref
-                              .read(searchHistoryProvider.notifier)
-                              .remove(value),
-                          onSelectHistory: _applySearchQuery,
-                          tags: recommendedTags
-                              .map((e) => e.tag)
-                              .toList(growable: false),
-                          onSelectTag: _applySearchQuery,
-                        ),
-                      )
-                    else if (memosValue == null && memosLoading)
-                      const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (visibleMemos.isEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 140),
-                          child: Center(
-                            child: Text(
-                              _searching
-                                  ? context
-                                        .t
-                                        .strings
-                                        .legacy
-                                        .msg_no_results_found
-                                  : context.t.strings.legacy.msg_no_content_yet,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          listTopPadding + listVisualOffset,
-                          16,
-                          140,
-                        ),
-                        sliver: SliverAnimatedList(
-                          key: _listKey,
-                          initialItemCount: visibleMemos.length,
-                          itemBuilder: (context, index, animation) {
-                            final memo = visibleMemos[index];
-                            return _buildAnimatedMemoItem(
-                              context: context,
-                              memo: memo,
-                              animation: animation,
-                              prefs: prefs,
-                              outboxStatus: outboxStatus,
-                              removing: false,
-                            );
-                          },
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
               Positioned(
