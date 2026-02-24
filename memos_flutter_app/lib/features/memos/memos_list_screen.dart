@@ -464,6 +464,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   String _paginationKey = '';
   int _lastResultCount = 0;
   int _currentResultCount = 0;
+  String? _lastEmptyDiagnosticKey;
   bool _currentLoading = false;
   bool _currentShowSearchLanding = false;
   double _mobileBottomPullDistance = 0;
@@ -825,6 +826,157 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           'Memos pagination: $event',
           context: _paginationDebugContext(metrics: metrics, extra: context),
         );
+  }
+
+  void _logVisibleCountDecrease({
+    required int beforeLength,
+    required int afterLength,
+    required bool signatureChanged,
+    required bool listChanged,
+    required String fromSignature,
+    required String toSignature,
+    required List<String> removedSample,
+  }) {
+    if (!mounted || afterLength >= beforeLength) return;
+    ref
+        .read(logManagerProvider)
+        .info(
+          'Memos list: visible_count_decreased',
+          context: <String, Object?>{
+            'beforeLength': beforeLength,
+            'afterLength': afterLength,
+            'decreasedBy': beforeLength - afterLength,
+            'signatureChanged': signatureChanged,
+            'listChanged': listChanged,
+            'fromSignature': fromSignature,
+            'toSignature': toSignature,
+            if (removedSample.isNotEmpty) 'removedSample': removedSample,
+          },
+        );
+  }
+
+  void _maybeLogEmptyViewDiagnostics({
+    required String queryKey,
+    required List<LocalMemo>? memosValue,
+    required bool memosLoading,
+    required Object? memosError,
+    required List<LocalMemo> visibleMemos,
+    required String searchQuery,
+    required String? resolvedTag,
+    required bool useShortcutFilter,
+    required bool useQuickSearch,
+    required bool useRemoteSearch,
+    required int? startTimeSec,
+    required int? endTimeSecExclusive,
+    required String shortcutFilter,
+    required QuickSearchKind? quickSearchKind,
+  }) {
+    if (memosValue == null || memosLoading || memosError != null) return;
+    if (visibleMemos.isNotEmpty) return;
+    final providerCount = memosValue.length;
+    final diagnosticKey =
+        '$queryKey|provider:$providerCount|animated:${visibleMemos.length}';
+    if (_lastEmptyDiagnosticKey == diagnosticKey) return;
+    _lastEmptyDiagnosticKey = diagnosticKey;
+    unawaited(
+      _logEmptyViewDiagnostics(
+        queryKey: queryKey,
+        providerCount: providerCount,
+        animatedCount: visibleMemos.length,
+        searchQuery: searchQuery,
+        resolvedTag: resolvedTag,
+        useShortcutFilter: useShortcutFilter,
+        useQuickSearch: useQuickSearch,
+        useRemoteSearch: useRemoteSearch,
+        startTimeSec: startTimeSec,
+        endTimeSecExclusive: endTimeSecExclusive,
+        shortcutFilter: shortcutFilter,
+        quickSearchKind: quickSearchKind,
+      ),
+    );
+  }
+
+  Future<void> _logEmptyViewDiagnostics({
+    required String queryKey,
+    required int providerCount,
+    required int animatedCount,
+    required String searchQuery,
+    required String? resolvedTag,
+    required bool useShortcutFilter,
+    required bool useQuickSearch,
+    required bool useRemoteSearch,
+    required int? startTimeSec,
+    required int? endTimeSecExclusive,
+    required String shortcutFilter,
+    required QuickSearchKind? quickSearchKind,
+  }) async {
+    try {
+      final db = ref.read(databaseProvider);
+      final allRows = await db.listMemosForExport(includeArchived: true);
+      var dbNormal = 0;
+      var dbArchived = 0;
+      for (final row in allRows) {
+        final state = (row['state'] as String? ?? '').trim().toUpperCase();
+        if (state == 'ARCHIVED') {
+          dbArchived++;
+        } else {
+          dbNormal++;
+        }
+      }
+      final tag = resolvedTag?.trim();
+      final normalizedSearch = searchQuery.trim();
+      final previewRows = await db.listMemos(
+        searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
+        state: widget.state,
+        tag: (tag == null || tag.isEmpty) ? null : tag,
+        startTimeSec: startTimeSec,
+        endTimeSecExclusive: endTimeSecExclusive,
+        limit: 5,
+      );
+      final previewUids = previewRows
+          .map((row) => row['uid'])
+          .whereType<String>()
+          .toList(growable: false);
+      if (!mounted) return;
+      ref
+          .read(logManagerProvider)
+          .info(
+            'Memos list: empty_view_diagnostic',
+            context: <String, Object?>{
+              'queryKey': queryKey,
+              'state': widget.state,
+              'providerCount': providerCount,
+              'animatedCount': animatedCount,
+              'searchLength': normalizedSearch.length,
+              if (tag != null && tag.isNotEmpty) 'tag': tag,
+              'useShortcutFilter': useShortcutFilter,
+              if (shortcutFilter.trim().isNotEmpty)
+                'shortcutFilter': shortcutFilter.trim(),
+              'useQuickSearch': useQuickSearch,
+              if (quickSearchKind != null)
+                'quickSearchKind': quickSearchKind.name,
+              'useRemoteSearch': useRemoteSearch,
+              if (startTimeSec != null) 'startTimeSec': startTimeSec,
+              if (endTimeSecExclusive != null)
+                'endTimeSecExclusive': endTimeSecExclusive,
+              'dbTotal': allRows.length,
+              'dbNormal': dbNormal,
+              'dbArchived': dbArchived,
+              'dbPreviewCount': previewRows.length,
+              if (previewUids.isNotEmpty) 'dbPreviewUids': previewUids,
+            },
+          );
+    } catch (e, stackTrace) {
+      if (!mounted) return;
+      ref
+          .read(logManagerProvider)
+          .warn(
+            'Memos list: empty_view_diagnostic_failed',
+            error: e,
+            stackTrace: stackTrace,
+            context: <String, Object?>{'queryKey': queryKey},
+          );
+    }
   }
 
   void _handleScroll() {
@@ -4114,6 +4266,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   Future<void> _maybeScanLocalLibrary() async {
     if (!mounted) return;
+    final syncState = ref.read(syncControllerProvider);
+    if (syncState.isLoading) {
+      showTopToast(context, context.t.strings.legacy.msg_syncing);
+      return;
+    }
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     final confirmed =
@@ -4142,6 +4299,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         ) ??
         false;
     if (!confirmed) return;
+    if (!mounted) return;
+    final currentSyncState = ref.read(syncControllerProvider);
+    if (currentSyncState.isLoading) {
+      showTopToast(context, context.t.strings.legacy.msg_syncing);
+      return;
+    }
     final scanner = ref.read(localLibraryScannerProvider);
     if (scanner == null) return;
     try {
@@ -4181,6 +4344,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      if (ref.read(syncControllerProvider).isLoading) {
+        _autoScanInFlight = false;
+        return;
+      }
       _autoScanInFlight = true;
       try {
         final db = ref.read(databaseProvider);
@@ -4643,6 +4810,23 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final signatureChanged = _listSignature != signature;
     final listChanged = !_sameMemoList(_animatedMemos, filtered);
     if (signatureChanged || listChanged) {
+      final beforeLength = _animatedMemos.length;
+      final afterLength = filtered.length;
+      if (afterLength < beforeLength) {
+        _logVisibleCountDecrease(
+          beforeLength: beforeLength,
+          afterLength: afterLength,
+          signatureChanged: signatureChanged,
+          listChanged: listChanged,
+          fromSignature: _listSignature,
+          toSignature: signature,
+          removedSample: _collectRemovedMemoUids(
+            _animatedMemos,
+            filtered,
+            limit: 8,
+          ),
+        );
+      }
       _logPaginationDebug(
         'animated_list_rebuild',
         metrics: _scrollController.hasClients
@@ -4653,8 +4837,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           'listChanged': listChanged,
           'fromSignature': _listSignature,
           'toSignature': signature,
-          'beforeLength': _animatedMemos.length,
-          'afterLength': filtered.length,
+          'beforeLength': beforeLength,
+          'afterLength': afterLength,
         },
       );
       _listSignature = signature;
@@ -4683,6 +4867,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       if (a[i].uid != b[i].uid) return false;
     }
     return true;
+  }
+
+  static List<String> _collectRemovedMemoUids(
+    List<LocalMemo> before,
+    List<LocalMemo> after, {
+    int limit = 8,
+  }) {
+    if (before.isEmpty || limit <= 0) return const <String>[];
+    final afterUids = after.map((memo) => memo.uid).toSet();
+    final removed = <String>[];
+    for (final memo in before) {
+      if (afterUids.contains(memo.uid)) continue;
+      removed.add(memo.uid);
+      if (removed.length >= limit) break;
+    }
+    return removed;
   }
 
   static bool _sameMemoPrefix(List<LocalMemo> prefix, List<LocalMemo> full) {
@@ -4940,6 +5140,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         '${selectedQuickSearchKind?.name ?? ''}|${useQuickSearch ? 1 : 0}|'
         '${useRemoteSearch ? 1 : 0}';
     if (_paginationKey != queryKey) {
+      final previousVisibleCount = _currentResultCount;
+      if (previousVisibleCount > 0 && _paginationKey.isNotEmpty) {
+        ref
+            .read(logManagerProvider)
+            .info(
+              'Memos pagination: query_changed_reset_results',
+              context: <String, Object?>{
+                'visibleCountBeforeReset': previousVisibleCount,
+                'fromKey': _paginationKey,
+                'toKey': queryKey,
+              },
+            );
+      }
       _logPaginationDebug(
         'query_key_changed_reset_pagination',
         context: {'fromKey': _paginationKey, 'toKey': queryKey},
@@ -5065,6 +5278,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _syncAnimatedMemos(sortedMemos, listSignature);
     }
     final visibleMemos = _animatedMemos;
+    _maybeLogEmptyViewDiagnostics(
+      queryKey: queryKey,
+      memosValue: memosValue,
+      memosLoading: memosLoading,
+      memosError: memosError,
+      visibleMemos: visibleMemos,
+      searchQuery: searchQuery,
+      resolvedTag: resolvedTag,
+      useShortcutFilter: useShortcutFilter,
+      useQuickSearch: useQuickSearch,
+      useRemoteSearch: useRemoteSearch,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+      shortcutFilter: shortcutFilter,
+      quickSearchKind: selectedQuickSearchKind,
+    );
     final showLoadMoreHint =
         memosError == null && visibleMemos.isNotEmpty && !showSearchLanding;
     final loadMoreBusy = _loadingMore || _currentLoading;
@@ -5165,7 +5394,37 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             children: [
               RefreshIndicator(
                 onRefresh: () async {
-                  await ref.read(syncControllerProvider.notifier).syncNow();
+                  final scanner = ref.read(localLibraryScannerProvider);
+                  final syncController = ref.read(
+                    syncControllerProvider.notifier,
+                  );
+                  if (ref.read(syncControllerProvider).isLoading) {
+                    if (context.mounted) {
+                      showTopToast(
+                        context,
+                        context.t.strings.legacy.msg_syncing,
+                      );
+                    }
+                    return;
+                  }
+                  if (scanner != null) {
+                    try {
+                      await scanner.scanAndMerge(context, forceDisk: false);
+                      _autoScanTriggered = true;
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            context.t.strings.legacy.msg_scan_failed(e: e),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                  if (!mounted) return;
+                  await syncController.syncNow();
+                  if (!mounted) return;
                   if (useShortcutFilter) {
                     ref.invalidate(shortcutMemosProvider(shortcutQuery));
                   } else if (useQuickSearch && quickSearchQuery != null) {
@@ -6346,9 +6605,13 @@ class _SearchQuickFilterBar extends StatelessWidget {
         label: context.t.strings.legacy.msg_attachments,
       ),
       (
-        kind: QuickSearchKind.tags,
-        icon: Icons.sell_outlined,
-        label: context.t.strings.legacy.msg_tags,
+        kind: QuickSearchKind.links,
+        icon: Icons.link_outlined,
+        label: trByLanguage(
+          language: context.appLanguage,
+          zh: '链接',
+          en: 'Links',
+        ),
       ),
       (
         kind: QuickSearchKind.voice,
@@ -6360,7 +6623,7 @@ class _SearchQuickFilterBar extends StatelessWidget {
         icon: Icons.history_edu_outlined,
         label: trByLanguage(
           language: context.appLanguage,
-          zh: '閭ｅ勾浠婃棩',
+          zh: '那年今日',
           en: 'On This Day',
         ),
       ),

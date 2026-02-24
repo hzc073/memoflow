@@ -84,11 +84,14 @@ enum LaunchAction {
   }
 }
 
+enum AppOnboardingMode { local, server }
+
 class AppPreferences {
   static const Object _unset = Object();
   static final defaults = AppPreferences(
     language: AppLanguage.system,
     hasSelectedLanguage: false,
+    onboardingMode: null,
     homeInitialLoadingOverlayShown: false,
     fontSize: AppFontSize.standard,
     lineHeight: AppLineHeight.classic,
@@ -127,12 +130,14 @@ class AppPreferences {
     return AppPreferences.defaults.copyWith(
       language: language,
       hasSelectedLanguage: true,
+      onboardingMode: null,
     );
   }
 
   const AppPreferences({
     required this.language,
     required this.hasSelectedLanguage,
+    required this.onboardingMode,
     required this.homeInitialLoadingOverlayShown,
     required this.fontSize,
     required this.lineHeight,
@@ -169,6 +174,7 @@ class AppPreferences {
 
   final AppLanguage language;
   final bool hasSelectedLanguage;
+  final AppOnboardingMode? onboardingMode;
   final bool homeInitialLoadingOverlayShown;
   final AppFontSize fontSize;
   final AppLineHeight lineHeight;
@@ -222,6 +228,7 @@ class AppPreferences {
   Map<String, dynamic> toJson() => {
     'language': language.name,
     'hasSelectedLanguage': hasSelectedLanguage,
+    'onboardingMode': onboardingMode?.name,
     'homeInitialLoadingOverlayShown': homeInitialLoadingOverlayShown,
     'fontSize': fontSize.name,
     'lineHeight': lineHeight.name,
@@ -291,6 +298,16 @@ class AppPreferences {
       if (raw is bool) return raw;
       if (raw is num) return raw != 0;
       return parseHasSelectedLanguage();
+    }
+
+    AppOnboardingMode? parseOnboardingMode() {
+      final raw = json['onboardingMode'];
+      if (raw is String) {
+        for (final mode in AppOnboardingMode.values) {
+          if (mode.name == raw) return mode;
+        }
+      }
+      return null;
     }
 
     AppFontSize parseFontSize() {
@@ -472,6 +489,7 @@ class AppPreferences {
     return AppPreferences(
       language: parseLanguage(),
       hasSelectedLanguage: parseHasSelectedLanguage(),
+      onboardingMode: parseOnboardingMode(),
       homeInitialLoadingOverlayShown: parseHomeInitialLoadingOverlayShown(),
       fontSize: parseFontSize(),
       lineHeight: parseLineHeight(),
@@ -558,6 +576,7 @@ class AppPreferences {
   AppPreferences copyWith({
     AppLanguage? language,
     bool? hasSelectedLanguage,
+    Object? onboardingMode = _unset,
     bool? homeInitialLoadingOverlayShown,
     AppFontSize? fontSize,
     AppLineHeight? lineHeight,
@@ -594,6 +613,9 @@ class AppPreferences {
     return AppPreferences(
       language: language ?? this.language,
       hasSelectedLanguage: hasSelectedLanguage ?? this.hasSelectedLanguage,
+      onboardingMode: identical(onboardingMode, _unset)
+          ? this.onboardingMode
+          : onboardingMode as AppOnboardingMode?,
       homeInitialLoadingOverlayShown:
           homeInitialLoadingOverlayShown ?? this.homeInitialLoadingOverlayShown,
       fontSize: fontSize ?? this.fontSize,
@@ -699,6 +721,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
           context: <String, Object?>{
             'language': stored.language.name,
             'hasSelectedLanguage': stored.hasSelectedLanguage,
+            'onboardingMode': stored.onboardingMode?.name,
             'homeInitialLoadingOverlayShown':
                 stored.homeInitialLoadingOverlayShown,
           },
@@ -732,6 +755,7 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       final onboardingChanged =
           previous.language != next.language ||
           previous.hasSelectedLanguage != next.hasSelectedLanguage ||
+          previous.onboardingMode != next.onboardingMode ||
           previous.homeInitialLoadingOverlayShown !=
               next.homeInitialLoadingOverlayShown;
       if (onboardingChanged) {
@@ -742,6 +766,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
             'nextLanguage': next.language.name,
             'previousHasSelectedLanguage': previous.hasSelectedLanguage,
             'nextHasSelectedLanguage': next.hasSelectedLanguage,
+            'previousOnboardingMode': previous.onboardingMode?.name,
+            'nextOnboardingMode': next.onboardingMode?.name,
             'triggerSync': triggerSync,
           },
         );

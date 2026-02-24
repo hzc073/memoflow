@@ -38,7 +38,9 @@ LocalLibraryParsedMemo parseLocalLibraryMarkdown(String raw) {
   }
 
   var contentLines = contentStart > 0 ? lines.sublist(contentStart) : lines;
-  if (contentStart > 0 && contentLines.isNotEmpty && contentLines.first.trim().isEmpty) {
+  if (contentStart > 0 &&
+      contentLines.isNotEmpty &&
+      contentLines.first.trim().isEmpty) {
     contentLines = contentLines.sublist(1);
   }
 
@@ -107,7 +109,7 @@ List<String> _parseTags(String? raw) {
   final value = raw?.trim() ?? '';
   if (value.isEmpty) return const [];
   final tags = <String>{};
-  for (final part in value.split(RegExp(r'\\s+'))) {
+  for (final part in value.split(RegExp(r'\s+'))) {
     var t = part.trim();
     if (t.startsWith('#')) {
       t = t.substring(1);

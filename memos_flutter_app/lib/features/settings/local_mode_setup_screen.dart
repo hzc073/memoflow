@@ -78,6 +78,14 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
   bool _obscureConfirmPassword = true;
   bool _submitting = false;
 
+  String _locationDebugKey(_PickedLocation? picked) {
+    final treeUri = (picked?.treeUri ?? '').trim();
+    final rootPath = (picked?.rootPath ?? '').trim();
+    if (treeUri.isNotEmpty) return 'tree:$treeUri';
+    if (rootPath.isNotEmpty) return 'path:$rootPath';
+    return '';
+  }
+
   void _logFlow(
     String message, {
     Map<String, Object?>? context,
@@ -131,6 +139,7 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
           'picked': picked != null,
           'hasTreeUri': (picked?.treeUri ?? '').trim().isNotEmpty,
           'hasRootPath': (picked?.rootPath ?? '').trim().isNotEmpty,
+          'locationKey': _locationDebugKey(picked),
         },
       );
       if (picked == null || !mounted) return;

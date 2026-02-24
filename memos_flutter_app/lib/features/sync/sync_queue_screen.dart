@@ -8,6 +8,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
+import '../../data/logs/log_manager.dart';
 import '../../state/database_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/local_sync_controller.dart';
@@ -16,19 +17,35 @@ import '../../state/memos_providers.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
 
+const _syncQueueDisplayLimit = 200;
+
 final _syncQueueProvider = StreamProvider<List<_SyncQueueItem>>((ref) async* {
   final db = ref.watch(databaseProvider);
+  var lastItems = const <_SyncQueueItem>[];
 
   Future<List<_SyncQueueItem>> load() async {
-    final rows = await db.listOutboxPending(limit: 200);
-    final items = <_SyncQueueItem>[];
-    for (final row in rows) {
-      final item = await _buildQueueItem(db, row);
-      if (item != null) {
-        items.add(item);
+    try {
+      final rows = await db.listOutboxPending(limit: _syncQueueDisplayLimit);
+      final items = <_SyncQueueItem>[];
+      for (final row in rows) {
+        final item = await _buildQueueItem(db, row);
+        if (item != null) {
+          items.add(item);
+        }
       }
+      lastItems = items;
+      return items;
+    } catch (e, st) {
+      if (_isDatabaseLockedError(e)) {
+        LogManager.instance.warn(
+          'SyncQueue: list_pending_skipped_database_locked',
+          error: e,
+          stackTrace: st,
+        );
+        return lastItems;
+      }
+      rethrow;
     }
-    return items;
   }
 
   yield await load();
@@ -36,6 +53,40 @@ final _syncQueueProvider = StreamProvider<List<_SyncQueueItem>>((ref) async* {
     yield await load();
   }
 });
+
+final _syncQueuePendingCountProvider = StreamProvider<int>((ref) async* {
+  final db = ref.watch(databaseProvider);
+  var lastCount = 0;
+
+  Future<int> load() async {
+    try {
+      final count = await db.countOutboxPending();
+      lastCount = count;
+      return count;
+    } catch (e, st) {
+      if (_isDatabaseLockedError(e)) {
+        LogManager.instance.warn(
+          'SyncQueue: count_pending_skipped_database_locked',
+          error: e,
+          stackTrace: st,
+        );
+        return lastCount;
+      }
+      rethrow;
+    }
+  }
+
+  yield await load();
+  await for (final _ in db.changes) {
+    yield await load();
+  }
+});
+
+bool _isDatabaseLockedError(Object error) {
+  final text = error.toString().toLowerCase();
+  return text.contains('database is locked') ||
+      text.contains('sqlite_error: 5');
+}
 
 final _bridgeBulkPushRunningProvider = StateProvider<bool>((ref) => false);
 
@@ -379,6 +430,8 @@ class SyncQueueScreen extends ConsumerWidget {
 
     final queueAsync = ref.watch(_syncQueueProvider);
     final items = queueAsync.valueOrNull ?? const <_SyncQueueItem>[];
+    final pendingCountAsync = ref.watch(_syncQueuePendingCountProvider);
+    final pendingCount = pendingCountAsync.valueOrNull ?? items.length;
     final failedCount = items.where((item) => item.state == 2).length;
     final queueProgress = ref.watch(syncQueueProgressTrackerProvider).snapshot;
     final syncing =
@@ -453,7 +506,7 @@ class SyncQueueScreen extends ConsumerWidget {
                   textMain: textMain,
                   textMuted: textMuted,
                   border: border,
-                  pendingCount: items.length,
+                  pendingCount: pendingCount,
                   failedCount: failedCount,
                   lastSuccessLabel: lastSuccessLabel,
                   syncing: syncing,

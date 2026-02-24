@@ -127,6 +127,14 @@ class AccountSecurityScreen extends ConsumerWidget {
       final keySeed = (result.treeUri ?? result.rootPath ?? '').trim();
       if (keySeed.isEmpty) return;
       final key = 'local_${fnv1a64Hex(keySeed)}';
+      final existed = localLibraries.any((l) => l.key == key);
+      if (!existed) {
+        try {
+          await AppDatabase.deleteDatabaseFile(
+            dbName: databaseNameForAccountKey(key),
+          );
+        } catch (_) {}
+      }
       final now = DateTime.now();
       final library = LocalLibrary(
         key: key,
@@ -183,13 +191,8 @@ class AccountSecurityScreen extends ConsumerWidget {
           .toList(growable: false);
       final shouldReopenOnboarding =
           accounts.isEmpty && remainingLocalLibraries.isEmpty;
-      ref.read(localLibrariesProvider.notifier).remove(library.key);
-      await AppDatabase.deleteDatabaseFile(
-        dbName: databaseNameForAccountKey(library.key),
-      );
-
+      String? nextKey;
       if (wasCurrent) {
-        String? nextKey;
         for (final a in accounts) {
           if (a.key != library.key) {
             nextKey = a.key;
@@ -202,8 +205,15 @@ class AccountSecurityScreen extends ConsumerWidget {
             break;
           }
         }
+      }
+
+      if (wasCurrent) {
         await ref.read(appSessionProvider.notifier).setCurrentKey(nextKey);
       }
+      await ref.read(localLibrariesProvider.notifier).remove(library.key);
+      await AppDatabase.deleteDatabaseFile(
+        dbName: databaseNameForAccountKey(library.key),
+      );
 
       if (shouldReopenOnboarding) {
         final currentPreferences = ref.read(appPreferencesProvider);

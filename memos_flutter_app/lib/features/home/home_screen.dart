@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../state/home_loading_overlay_provider.dart';
+import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/stats_providers.dart';
@@ -25,6 +26,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Timer? _showCloseTimer;
   ProviderSubscription<AsyncValue<void>>? _syncSubscription;
+  ProviderSubscription<bool>? _forceOverlaySubscription;
   late bool _overlayVisible;
   bool _overlayShownPersisted = false;
   bool _showCloseAction = false;
@@ -45,10 +47,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       syncControllerProvider,
       _handleSyncStateChanged,
     );
+    _forceOverlaySubscription = ref.listenManual<bool>(
+      homeLoadingOverlayForceProvider,
+      _handleForceOverlayChanged,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_overlayVisible) return;
       _consumeForceOverlayFlag();
       _markOverlayShown();
+      _startLoadingGate();
+    });
+  }
+
+  void _handleForceOverlayChanged(bool? previous, bool next) {
+    if (!next || !mounted) return;
+    _consumeForceOverlayFlag();
+    _markOverlayShown();
+    if (_overlayVisible) return;
+    setState(() {
+      _overlayVisible = true;
+      _showCloseAction = false;
+      _manuallyClosed = false;
+      _syncAwaitingCompletion = false;
+      _syncObservedLoading = false;
+      _syncFinished = false;
+      _syncSucceeded = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_overlayVisible) return;
       _startLoadingGate();
     });
   }
@@ -125,7 +151,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required bool resourcesReady,
     required bool statsReady,
     required bool syncReady,
+    required bool syncing,
+    required double? preciseSyncProgress,
   }) {
+    if (syncing && preciseSyncProgress != null) {
+      final value = preciseSyncProgress.clamp(0.0, 0.999).toDouble();
+      return value <= 0 ? 0.01 : value;
+    }
     final doneCount = <bool>[
       userReady,
       resourcesReady,
@@ -142,6 +174,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _showCloseTimer?.cancel();
     _syncSubscription?.close();
+    _forceOverlaySubscription?.close();
     super.dispose();
   }
 
@@ -150,6 +183,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final userInfoAsync = ref.watch(userGeneralSettingProvider);
     final resourcesAsync = ref.watch(resourcesProvider);
     final statsAsync = ref.watch(localStatsProvider);
+    final syncQueueSnapshot = ref
+        .watch(syncQueueProgressTrackerProvider)
+        .snapshot;
 
     final userReady = userInfoAsync.hasValue;
     final resourcesReady = resourcesAsync.hasValue;
@@ -161,6 +197,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       resourcesReady: resourcesReady,
       statsReady: statsReady,
       syncReady: syncReady,
+      syncing: syncQueueSnapshot.syncing,
+      preciseSyncProgress: syncQueueSnapshot.overallProgress,
     );
 
     if (allReady && _overlayVisible && !_manuallyClosed) {

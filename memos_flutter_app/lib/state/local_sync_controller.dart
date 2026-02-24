@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,6 +12,7 @@ import '../data/local_library/local_attachment_store.dart';
 import '../data/local_library/local_library_fs.dart';
 import '../data/local_library/local_library_markdown.dart';
 import '../data/local_library/local_library_naming.dart';
+import '../data/logs/log_manager.dart';
 import '../data/logs/sync_queue_progress_tracker.dart';
 import '../data/models/attachment.dart';
 import '../data/models/local_memo.dart';
@@ -33,6 +35,18 @@ class BridgeBulkPushResult {
 }
 
 class LocalSyncController extends SyncControllerBase {
+  static const int _bulkOutboxTaskLogHeadCount = 3;
+  static const int _bulkOutboxTaskLogEvery = 250;
+  static const int _outboxProgressLogEvery = 200;
+  static const Duration _slowOutboxTaskThreshold = Duration(seconds: 2);
+  static const List<Duration> _retryBackoffSteps = <Duration>[
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+    Duration(seconds: 10),
+    Duration(seconds: 20),
+    Duration(seconds: 40),
+  ];
+
   LocalSyncController({
     required this.db,
     required this.fileSystem,
@@ -52,6 +66,10 @@ class LocalSyncController extends SyncControllerBase {
   final AppLanguage language;
   MemoFlowBridgeSettings _bridgeSettingsSnapshot =
       MemoFlowBridgeSettings.defaults;
+  Timer? _retrySyncTimer;
+  int _retryBackoffIndex = 0;
+  bool _rerunRequestedWhileLoading = false;
+  bool _isDisposed = false;
 
   Future<BridgeBulkPushResult> pushAllMemosToBridge({
     bool includeArchived = true,
@@ -89,9 +107,26 @@ class LocalSyncController extends SyncControllerBase {
 
   @override
   Future<void> syncNow() async {
-    if (state.isLoading) return;
+    if (_isDisposed) return;
+    final globalSyncing = syncQueueProgressTracker.snapshot.syncing;
+    if (state.isLoading || globalSyncing) {
+      _rerunRequestedWhileLoading = true;
+      LogManager.instance.debug(
+        'LocalSync: sync_skipped_loading',
+        context: <String, Object?>{
+          'rerunRequested': true,
+          'stateLoading': state.isLoading,
+          'globalSyncing': globalSyncing,
+        },
+      );
+      return;
+    }
+    _cancelRetrySyncTimer();
+    _rerunRequestedWhileLoading = false;
+    LogManager.instance.info('LocalSync: sync_start');
     syncStatusTracker.markSyncStarted();
-    syncQueueProgressTracker.markSyncStarted();
+    final totalPendingAtStart = await db.countOutboxPending();
+    syncQueueProgressTracker.markSyncStarted(totalTasks: totalPendingAtStart);
     state = const AsyncValue.loading();
     final next = await AsyncValue.guard(() async {
       _bridgeSettingsSnapshot = await bridgeSettingsRepository.read();
@@ -102,10 +137,34 @@ class LocalSyncController extends SyncControllerBase {
     state = next;
     if (next.hasError) {
       syncStatusTracker.markSyncFailed(next.error!);
+      LogManager.instance.warn(
+        'LocalSync: sync_failed',
+        error: next.error,
+        stackTrace: next.stackTrace,
+      );
     } else {
       syncStatusTracker.markSyncSuccess();
+      LogManager.instance.info('LocalSync: sync_success');
     }
     syncQueueProgressTracker.markSyncFinished();
+
+    if (!_isDisposed) {
+      final hasPendingOutbox = await _hasPendingOutbox();
+      final syncFailed = next.hasError;
+      if (!hasPendingOutbox && !syncFailed) {
+        _resetRetryState();
+      } else {
+        await _scheduleRetrySyncIfNeeded(
+          hasPendingOutbox: hasPendingOutbox,
+          syncFailed: syncFailed,
+        );
+      }
+    }
+
+    if (_rerunRequestedWhileLoading && !_isDisposed) {
+      _rerunRequestedWhileLoading = false;
+      unawaited(syncNow());
+    }
   }
 
   Future<void> _ensureIndex() async {
@@ -119,9 +178,26 @@ class LocalSyncController extends SyncControllerBase {
   }
 
   Future<void> _processOutbox() async {
+    var processedCount = 0;
+    var successCount = 0;
+    var failedCount = 0;
+    final typeCounts = <String, int>{};
+    String? stoppedOnType;
     while (true) {
       final items = await db.listOutboxPending(limit: 1);
-      if (items.isEmpty) return;
+      if (items.isEmpty) {
+        LogManager.instance.info(
+          'LocalSync outbox: summary',
+          context: <String, Object?>{
+            'processed': processedCount,
+            'succeeded': successCount,
+            'failed': failedCount,
+            if (stoppedOnType != null) 'stoppedOnType': stoppedOnType,
+            if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
+          },
+        );
+        return;
+      }
       final row = items.first;
       final id = row['id'] as int?;
       final type = row['type'] as String?;
@@ -134,11 +210,48 @@ class LocalSyncController extends SyncControllerBase {
       } catch (e) {
         await db.markOutboxError(id, error: 'Invalid payload: $e');
         await db.deleteOutbox(id);
+        failedCount++;
+        processedCount++;
+        typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+        LogManager.instance.warn(
+          'LocalSync outbox: invalid_payload_deleted',
+          error: e,
+          context: <String, Object?>{'id': id, 'type': type},
+        );
+        _maybeLogOutboxProgress(
+          processedCount: processedCount,
+          successCount: successCount,
+          failedCount: failedCount,
+          typeCounts: typeCounts,
+          currentType: type,
+        );
+        syncQueueProgressTracker.updateCompletedTasks(
+          successCount + failedCount,
+        );
         continue;
+      }
+
+      processedCount++;
+      typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+      final memoUid = _outboxMemoUid(type, payload);
+      final shouldLogTaskDetail = _shouldLogOutboxTaskDetail(
+        type: type,
+        processedCount: processedCount,
+      );
+      if (shouldLogTaskDetail) {
+        LogManager.instance.debug(
+          'LocalSync outbox: task_start',
+          context: <String, Object?>{
+            'id': id,
+            'type': type,
+            if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
+          },
+        );
       }
 
       var shouldStop = false;
       final isUploadTask = type == 'upload_attachment';
+      final taskStartAt = DateTime.now();
       syncQueueProgressTracker.markTaskStarted(id);
       try {
         switch (type) {
@@ -196,28 +309,57 @@ class LocalSyncController extends SyncControllerBase {
             await db.markOutboxError(id, error: 'Unknown op type: $type');
             await db.deleteOutbox(id);
         }
+        successCount++;
+        final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
+        final isSlowTask = elapsedMs >= _slowOutboxTaskThreshold.inMilliseconds;
+        if (shouldLogTaskDetail || isSlowTask) {
+          LogManager.instance.debug(
+            'LocalSync outbox: task_done',
+            context: <String, Object?>{
+              'id': id,
+              'type': type,
+              if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
+              'elapsedMs': elapsedMs,
+              if (isSlowTask) 'slow': true,
+            },
+          );
+        }
       } catch (e) {
+        failedCount++;
+        final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
         final memoError = e.toString();
         await db.markOutboxError(id, error: memoError);
-        final memoUid = switch (type) {
+        final failedMemoUid = switch (type) {
           'create_memo' => payload['uid'] as String?,
           'update_memo' => payload['uid'] as String?,
           'upload_attachment' => payload['memo_uid'] as String?,
           'delete_attachment' => payload['memo_uid'] as String?,
           _ => null,
         };
-        if (memoUid != null && memoUid.isNotEmpty) {
+        if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
           final errorText = trByLanguageKey(
             language: language,
             key: 'legacy.msg_local_sync_failed',
             params: {'type': type, 'memoError': memoError},
           );
           await db.updateMemoSyncState(
-            memoUid,
+            failedMemoUid,
             syncState: 2,
             lastError: errorText,
           );
         }
+        LogManager.instance.warn(
+          'LocalSync outbox: task_failed',
+          error: e,
+          context: <String, Object?>{
+            'id': id,
+            'type': type,
+            if (failedMemoUid != null && failedMemoUid.isNotEmpty)
+              'memoUid': failedMemoUid,
+            'elapsedMs': elapsedMs,
+          },
+        );
+        stoppedOnType = type;
         shouldStop = true;
       } finally {
         if (!shouldStop && isUploadTask) {
@@ -225,11 +367,142 @@ class LocalSyncController extends SyncControllerBase {
         }
         syncQueueProgressTracker.clearCurrentTask(outboxId: id);
       }
+      _maybeLogOutboxProgress(
+        processedCount: processedCount,
+        successCount: successCount,
+        failedCount: failedCount,
+        typeCounts: typeCounts,
+        currentType: type,
+      );
+      syncQueueProgressTracker.updateCompletedTasks(successCount + failedCount);
 
       if (shouldStop) {
         break;
       }
     }
+
+    LogManager.instance.info(
+      'LocalSync outbox: summary',
+      context: <String, Object?>{
+        'processed': processedCount,
+        'succeeded': successCount,
+        'failed': failedCount,
+        if (stoppedOnType != null) 'stoppedOnType': stoppedOnType,
+        if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
+      },
+    );
+  }
+
+  bool _shouldLogOutboxTaskDetail({
+    required String type,
+    required int processedCount,
+  }) {
+    if (!_isBulkOutboxTaskType(type)) {
+      return true;
+    }
+    if (processedCount <= _bulkOutboxTaskLogHeadCount) {
+      return true;
+    }
+    return processedCount % _bulkOutboxTaskLogEvery == 0;
+  }
+
+  bool _isBulkOutboxTaskType(String type) {
+    return type == 'create_memo' || type == 'update_memo';
+  }
+
+  void _maybeLogOutboxProgress({
+    required int processedCount,
+    required int successCount,
+    required int failedCount,
+    required Map<String, int> typeCounts,
+    required String currentType,
+  }) {
+    if (processedCount <= 0 || processedCount % _outboxProgressLogEvery != 0) {
+      return;
+    }
+    LogManager.instance.info(
+      'LocalSync outbox: progress',
+      context: <String, Object?>{
+        'processed': processedCount,
+        'succeeded': successCount,
+        'failed': failedCount,
+        'currentType': currentType,
+        if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
+      },
+    );
+  }
+
+  Future<bool> _hasPendingOutbox() async {
+    final items = await db.listOutboxPending(limit: 1);
+    return items.isNotEmpty;
+  }
+
+  void _cancelRetrySyncTimer() {
+    _retrySyncTimer?.cancel();
+    _retrySyncTimer = null;
+  }
+
+  Duration _consumeRetryDelay() {
+    final index = _retryBackoffIndex < 0
+        ? 0
+        : (_retryBackoffIndex >= _retryBackoffSteps.length
+              ? _retryBackoffSteps.length - 1
+              : _retryBackoffIndex);
+    final delay = _retryBackoffSteps[index];
+    if (_retryBackoffIndex < _retryBackoffSteps.length - 1) {
+      _retryBackoffIndex++;
+    }
+    return delay;
+  }
+
+  void _resetRetryState() {
+    _cancelRetrySyncTimer();
+    _retryBackoffIndex = 0;
+  }
+
+  Future<void> _scheduleRetrySyncIfNeeded({
+    required bool hasPendingOutbox,
+    required bool syncFailed,
+  }) async {
+    if (_isDisposed) return;
+    if (_retrySyncTimer?.isActive ?? false) return;
+    if (!hasPendingOutbox && !syncFailed) {
+      _resetRetryState();
+      return;
+    }
+    final delay = _consumeRetryDelay();
+    LogManager.instance.info(
+      'LocalSync: retry_scheduled',
+      context: <String, Object?>{
+        'delayMs': delay.inMilliseconds,
+        'hasPendingOutbox': hasPendingOutbox,
+        'syncFailed': syncFailed,
+        'retryBackoffIndex': _retryBackoffIndex,
+      },
+    );
+    _retrySyncTimer = Timer(delay, () {
+      _retrySyncTimer = null;
+      if (_isDisposed) return;
+      unawaited(syncNow());
+    });
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _cancelRetrySyncTimer();
+    super.dispose();
+  }
+
+  String? _outboxMemoUid(String type, Map<String, dynamic> payload) {
+    return switch (type) {
+      'create_memo' ||
+      'update_memo' ||
+      'delete_memo' => payload['uid'] as String?,
+      'upload_attachment' ||
+      'delete_attachment' => payload['memo_uid'] as String?,
+      _ => null,
+    };
   }
 
   Future<LocalMemo?> _handleUpsertMemo(Map<String, dynamic> payload) async {

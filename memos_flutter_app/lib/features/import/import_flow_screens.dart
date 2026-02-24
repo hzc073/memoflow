@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +10,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop_quick_input_channel.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/database_provider.dart';
+import '../../state/home_loading_overlay_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
@@ -327,9 +330,23 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     if (_started) return;
     _started = true;
 
-    final session = ref.read(appSessionProvider).valueOrNull;
-    final account = session?.currentAccount;
-    final isLocalLibraryMode = ref.read(isLocalLibraryModeProvider);
+    var session = ref.read(appSessionProvider).valueOrNull;
+    var account = session?.currentAccount;
+    var isLocalLibraryMode = ref.read(isLocalLibraryModeProvider);
+
+    // Recover local-only workspace when secure storage loses currentKey.
+    if (account == null && !isLocalLibraryMode) {
+      final localLibraries = ref.read(localLibrariesProvider);
+      if (localLibraries.length == 1) {
+        await ref
+            .read(appSessionProvider.notifier)
+            .switchWorkspace(localLibraries.first.key);
+        session = ref.read(appSessionProvider).valueOrNull;
+        account = session?.currentAccount;
+        isLocalLibraryMode = ref.read(isLocalLibraryModeProvider);
+      }
+    }
+
     if (account == null && !isLocalLibraryMode) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -359,6 +376,8 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
       );
       if (!mounted) return;
 
+      // Force memo streams to re-query after bulk import.
+      db.notifyDataChanged();
       unawaited(ref.read(syncControllerProvider.notifier).syncNow());
       if (!mounted) return;
 
@@ -369,8 +388,24 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             attachmentCount: result.attachmentCount,
             failedCount: result.failedCount,
             newTags: result.newTags,
-            onGoHome: () =>
-                Navigator.of(resultContext).popUntil((route) => route.isFirst),
+            onGoHome: () {
+              final container = ProviderScope.containerOf(
+                resultContext,
+                listen: false,
+              );
+              container.read(homeLoadingOverlayForceProvider.notifier).state =
+                  true;
+              if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                unawaited(
+                  DesktopMultiWindow.invokeMethod(
+                    0,
+                    desktopHomeShowLoadingOverlayMethod,
+                    null,
+                  ).catchError((_) {}),
+                );
+              }
+              Navigator.of(resultContext).popUntil((route) => route.isFirst);
+            },
             onViewImported: () => Navigator.of(resultContext).push(
               MaterialPageRoute<void>(
                 builder: (_) => const ImportedMemosScreen(),

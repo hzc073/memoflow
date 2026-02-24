@@ -18,4 +18,6 @@ const String desktopSettingsRefreshSessionMethod =
 const String desktopSettingsPingMethod = 'desktop.settings.ping';
 const String desktopSettingsReopenOnboardingMethod =
     'desktop.settings.reopenOnboarding';
+const String desktopHomeShowLoadingOverlayMethod =
+    'desktop.home.showLoadingOverlay';
 const String desktopSubWindowVisibilityMethod = 'desktop.subWindow.visibility';

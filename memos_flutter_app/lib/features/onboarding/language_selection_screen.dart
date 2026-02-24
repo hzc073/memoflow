@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
+import '../../data/db/app_database.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/local_library.dart';
 import '../settings/local_mode_setup_screen.dart';
 import '../../i18n/strings.g.dart';
+import '../../state/database_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
 import '../../state/preferences_provider.dart';
@@ -133,6 +135,7 @@ class _LanguageSelectionScreenState
 
   Future<String?> _createLocalLibrary() async {
     final librariesNotifier = ref.read(localLibrariesProvider.notifier);
+    final existingLibraries = ref.read(localLibrariesProvider);
     _logFlow('create_local_library_start');
     final result = await LocalModeSetupScreen.show(
       context,
@@ -161,6 +164,26 @@ class _LanguageSelectionScreenState
       return null;
     }
     final key = 'local_${fnv1a64Hex(keySeed)}';
+    final existed = existingLibraries.any((l) => l.key == key);
+    if (!existed) {
+      try {
+        await AppDatabase.deleteDatabaseFile(
+          dbName: databaseNameForAccountKey(key),
+        );
+        _logFlow(
+          'create_local_library_stale_db_cleared',
+          context: {'workspaceKey': key},
+        );
+      } catch (error, stackTrace) {
+        _logFlow(
+          'create_local_library_stale_db_clear_failed',
+          warn: true,
+          context: {'workspaceKey': key},
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
     final now = DateTime.now();
     final library = LocalLibrary(
       key: key,
@@ -173,9 +196,7 @@ class _LanguageSelectionScreenState
     librariesNotifier.upsert(library);
     _logFlow(
       'local_library_upserted',
-      context: <String, Object?>{
-        'workspaceKey': key,
-      },
+      context: <String, Object?>{'workspaceKey': key},
     );
     if (result.encryptionEnabled && mounted) {
       ScaffoldMessenger.of(
@@ -227,6 +248,9 @@ class _LanguageSelectionScreenState
         currentPrefs.copyWith(
           language: _selected,
           hasSelectedLanguage: true,
+          onboardingMode: _mode == OnboardingMode.local
+              ? AppOnboardingMode.local
+              : AppOnboardingMode.server,
           homeInitialLoadingOverlayShown: false,
         ),
       );

@@ -7,6 +7,7 @@ import '../core/app_localization.dart';
 import '../core/tags.dart';
 import '../core/uid.dart';
 import '../data/db/app_database.dart';
+import '../data/logs/log_manager.dart';
 import '../data/local_library/local_attachment_store.dart';
 import '../data/local_library/local_library_fs.dart';
 import '../data/local_library/local_library_naming.dart';
@@ -47,14 +48,25 @@ class LocalLibraryScanner {
     BuildContext context, {
     bool forceDisk = false,
   }) async {
+    final startedAt = DateTime.now();
+    LogManager.instance.info(
+      'LocalLibrary scan: start',
+      context: <String, Object?>{'forceDisk': forceDisk},
+    );
     await fileSystem.ensureStructure();
     final memoEntries = await fileSystem.listMemos();
     final diskMemos = <String, LocalLibraryParsedMemo>{};
     final diskAttachments = <String, List<Attachment>>{};
+    var parsedMemoCount = 0;
+    var skippedEmptyFileCount = 0;
+    var skippedMissingUidCount = 0;
 
     for (final entry in memoEntries) {
       final raw = await fileSystem.readFileText(entry);
-      if (raw == null || raw.trim().isEmpty) continue;
+      if (raw == null || raw.trim().isEmpty) {
+        skippedEmptyFileCount++;
+        continue;
+      }
       final parsed = parseLocalLibraryMarkdown(raw);
       var uid = parsed.uid.trim();
       if (uid.isEmpty) {
@@ -68,10 +80,14 @@ class LocalLibraryScanner {
         }
         uid = uid.trim();
       }
-      if (uid.isEmpty) continue;
+      if (uid.isEmpty) {
+        skippedMissingUidCount++;
+        continue;
+      }
       final attachments = await _loadDiskAttachments(uid);
       diskMemos[uid] = parsed;
       diskAttachments[uid] = attachments;
+      parsedMemoCount++;
     }
 
     final dbRows = await db.listMemosForExport(includeArchived: true);
@@ -84,6 +100,31 @@ class LocalLibraryScanner {
     }
 
     final pendingUids = await db.listPendingOutboxMemoUids();
+    var pendingOutboxDeleteGuardSkipCount = 0;
+    final pendingOutboxDeleteGuardSkipSample = <String>[];
+    final hasPendingOutbox = pendingUids.isNotEmpty;
+    final effectiveForceDisk = forceDisk && !hasPendingOutbox;
+    if (forceDisk && hasPendingOutbox) {
+      LogManager.instance.warn(
+        'LocalLibrary scan: force_disk_downgraded_due_pending_outbox',
+        context: <String, Object?>{
+          'pendingOutboxMemoCount': pendingUids.length,
+        },
+      );
+    }
+    var insertedCount = 0;
+    var updatedCount = 0;
+    var unchangedCount = 0;
+    var deletedCount = 0;
+    var skippedConflictKeepLocalCount = 0;
+    var skippedForceDiskConflictCount = 0;
+    var conflictPromptCount = 0;
+    var conflictUseDiskCount = 0;
+    var outboxClearedCount = 0;
+    final deletedSampleUids = <String>[];
+    final updatedSampleUids = <String>[];
+    final insertedSampleUids = <String>[];
+    final skippedForceDiskConflictSampleUids = <String>[];
 
     for (final entry in diskMemos.entries) {
       final uid = entry.key;
@@ -92,6 +133,10 @@ class LocalLibraryScanner {
       final row = dbByUid[uid];
       if (row == null) {
         await _upsertMemoFromDisk(uid, parsed, attachments, relationCount: 0);
+        insertedCount++;
+        if (insertedSampleUids.length < 8) {
+          insertedSampleUids.add(uid);
+        }
         continue;
       }
 
@@ -103,23 +148,44 @@ class LocalLibraryScanner {
         diskAttachments: attachments,
         mergedTags: mergedTags,
       );
-      if (!needsUpdate) continue;
+      if (!needsUpdate) {
+        unchangedCount++;
+        continue;
+      }
 
       final hasConflict =
           localMemo.syncState != SyncState.synced || pendingUids.contains(uid);
+      if (effectiveForceDisk && hasConflict) {
+        skippedForceDiskConflictCount++;
+        if (skippedForceDiskConflictSampleUids.length < 8) {
+          skippedForceDiskConflictSampleUids.add(uid);
+        }
+        continue;
+      }
       var useDisk = true;
-      if (!forceDisk && hasConflict) {
+      if (!effectiveForceDisk && hasConflict) {
+        conflictPromptCount++;
         useDisk = await _resolveConflict(context, uid, isDeletion: false);
+        if (useDisk) {
+          conflictUseDiskCount++;
+        } else {
+          skippedConflictKeepLocalCount++;
+        }
       }
       if (!useDisk) continue;
 
       await db.deleteOutboxForMemo(uid);
+      outboxClearedCount++;
       await _upsertMemoFromDisk(
         uid,
         parsed,
         attachments,
         relationCount: localMemo.relationCount,
       );
+      updatedCount++;
+      if (updatedSampleUids.length < 8) {
+        updatedSampleUids.add(uid);
+      }
     }
 
     final diskUids = diskMemos.keys.toSet();
@@ -128,20 +194,95 @@ class LocalLibraryScanner {
       if (uid is! String || uid.trim().isEmpty) continue;
       final normalized = uid.trim();
       if (diskUids.contains(normalized)) continue;
+      if (hasPendingOutbox) {
+        pendingOutboxDeleteGuardSkipCount++;
+        if (pendingOutboxDeleteGuardSkipSample.length < 8) {
+          pendingOutboxDeleteGuardSkipSample.add(normalized);
+        }
+        continue;
+      }
 
       final localMemo = LocalMemo.fromDb(row);
       final hasConflict =
           localMemo.syncState != SyncState.synced ||
           pendingUids.contains(normalized);
+      if (effectiveForceDisk && hasConflict) {
+        skippedForceDiskConflictCount++;
+        if (skippedForceDiskConflictSampleUids.length < 8) {
+          skippedForceDiskConflictSampleUids.add(normalized);
+        }
+        continue;
+      }
       var useDisk = true;
-      if (!forceDisk && hasConflict) {
+      if (!effectiveForceDisk && hasConflict) {
+        conflictPromptCount++;
         useDisk = await _resolveConflict(context, normalized, isDeletion: true);
+        if (useDisk) {
+          conflictUseDiskCount++;
+        } else {
+          skippedConflictKeepLocalCount++;
+        }
       }
       if (!useDisk) continue;
 
       await db.deleteOutboxForMemo(normalized);
+      outboxClearedCount++;
       await db.deleteMemoByUid(normalized);
+      deletedCount++;
+      if (deletedSampleUids.length < 8) {
+        deletedSampleUids.add(normalized);
+      }
     }
+
+    final dbRowsAfter = await db.listMemosForExport(includeArchived: true);
+    var dbAfterNormalCount = 0;
+    var dbAfterArchivedCount = 0;
+    for (final row in dbRowsAfter) {
+      final state = (row['state'] as String? ?? '').trim().toUpperCase();
+      if (state == 'ARCHIVED') {
+        dbAfterArchivedCount++;
+      } else {
+        dbAfterNormalCount++;
+      }
+    }
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    LogManager.instance.info(
+      'LocalLibrary scan: completed',
+      context: <String, Object?>{
+        'forceDisk': forceDisk,
+        'effectiveForceDisk': effectiveForceDisk,
+        'elapsedMs': elapsedMs,
+        'diskFiles': memoEntries.length,
+        'diskParsed': parsedMemoCount,
+        'skippedEmptyFile': skippedEmptyFileCount,
+        'skippedMissingUid': skippedMissingUidCount,
+        'dbBefore': dbRows.length,
+        'dbAfter': dbRowsAfter.length,
+        'dbAfterNormal': dbAfterNormalCount,
+        'dbAfterArchived': dbAfterArchivedCount,
+        'pendingOutboxMemoCount': pendingUids.length,
+        'inserted': insertedCount,
+        'updated': updatedCount,
+        'deleted': deletedCount,
+        'unchanged': unchangedCount,
+        'conflictPrompted': conflictPromptCount,
+        'conflictUseDisk': conflictUseDiskCount,
+        'conflictKeepLocal': skippedConflictKeepLocalCount,
+        'skippedForceDiskConflict': skippedForceDiskConflictCount,
+        'pendingOutboxDeleteGuardSkipped': pendingOutboxDeleteGuardSkipCount,
+        'outboxCleared': outboxClearedCount,
+        if (insertedSampleUids.isNotEmpty) 'insertedSample': insertedSampleUids,
+        if (updatedSampleUids.isNotEmpty) 'updatedSample': updatedSampleUids,
+        if (deletedSampleUids.isNotEmpty) 'deletedSample': deletedSampleUids,
+        if (skippedForceDiskConflictSampleUids.isNotEmpty)
+          'skippedForceDiskConflictSample': skippedForceDiskConflictSampleUids,
+        if (pendingOutboxDeleteGuardSkipSample.isNotEmpty)
+          'pendingOutboxDeleteGuardSkipSample':
+              pendingOutboxDeleteGuardSkipSample,
+      },
+    );
+    // Ensure memo list streams refresh even when scan result is unchanged.
+    db.notifyDataChanged();
   }
 
   bool _shouldUpdate({
@@ -155,8 +296,9 @@ class LocalLibraryScanner {
     final diskUpdateSec =
         parsed.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000;
     if (dbUpdateSec != diskUpdateSec) return true;
-    if (localMemo.content.trimRight() != parsed.content.trimRight())
+    if (localMemo.content.trimRight() != parsed.content.trimRight()) {
       return true;
+    }
     if (localMemo.visibility != parsed.visibility) return true;
     if (localMemo.pinned != parsed.pinned) return true;
     if (localMemo.state != parsed.state) return true;
@@ -272,7 +414,11 @@ class LocalLibraryScanner {
     final title = context.t.strings.legacy.msg_resolve_conflict;
     final content = isDeletion
         ? context.t.strings.legacy.msg_memo_missing_disk_but_has_local
-        : context.t.strings.legacy.msg_disk_content_conflicts_local_pending_changes;
+        : context
+              .t
+              .strings
+              .legacy
+              .msg_disk_content_conflicts_local_pending_changes;
     final result =
         await showDialog<bool>(
           context: context,

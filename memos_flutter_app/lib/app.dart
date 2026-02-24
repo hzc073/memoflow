@@ -44,6 +44,7 @@ import 'data/logs/log_manager.dart';
 import 'data/updates/update_config.dart';
 import 'state/database_provider.dart';
 import 'state/debug_screenshot_mode_provider.dart';
+import 'state/home_loading_overlay_provider.dart';
 import 'state/logging_provider.dart';
 import 'state/local_library_provider.dart';
 import 'state/memos_providers.dart';
@@ -894,11 +895,26 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         );
         return true;
       case desktopSettingsReopenOnboardingMethod:
+        try {
+          await ref.read(appSessionProvider.notifier).reloadFromStorage();
+        } catch (_) {}
+        try {
+          await ref.read(localLibrariesProvider.notifier).reloadFromStorage();
+        } catch (_) {}
+        final session = ref.read(appSessionProvider).valueOrNull;
+        if (session?.currentAccount == null && session?.currentKey != null) {
+          try {
+            await ref.read(appSessionProvider.notifier).setCurrentKey(null);
+          } catch (_) {}
+        }
         ref.read(appPreferencesProvider.notifier).setHasSelectedLanguage(false);
         final navigator = _navigatorKey.currentState;
         if (navigator != null) {
           navigator.pushNamedAndRemoveUntil('/', (route) => false);
         }
+        return true;
+      case desktopHomeShowLoadingOverlayMethod:
+        ref.read(homeLoadingOverlayForceProvider.notifier).state = true;
         return true;
       case desktopQuickInputPingMethod:
         return true;
@@ -1976,37 +1992,57 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
 
     return sessionAsync.when(
       data: (session) {
+        final hasCurrentAccount = session.currentAccount != null;
+        final hasLocalLibrary = localLibrary != null;
+        final hasWorkspace = hasCurrentAccount || hasLocalLibrary;
+        final showOnboarding =
+            !hasWorkspace &&
+            (prefs.onboardingMode == null ||
+                prefs.onboardingMode == AppOnboardingMode.local);
         final needsLogin =
-            session.currentAccount == null && localLibrary == null;
+            !hasWorkspace && prefs.onboardingMode == AppOnboardingMode.server;
         _logRouteDecision(
           prefsLoaded: true,
-          hasSelectedLanguage: true,
+          hasSelectedLanguage: prefs.hasSelectedLanguage,
           sessionState: 'data',
           sessionKey: session.currentKey,
-          hasCurrentAccount: session.currentAccount != null,
-          hasLocalLibrary: localLibrary != null,
-          destination: needsLogin ? 'login' : 'home',
+          hasCurrentAccount: hasCurrentAccount,
+          hasLocalLibrary: hasLocalLibrary,
+          destination: showOnboarding
+              ? 'onboarding'
+              : (needsLogin ? 'login' : 'home'),
         );
+        if (showOnboarding) return const LanguageSelectionScreen();
         return needsLogin ? const LoginScreen() : const HomeScreen();
       },
       loading: () {
         if (session != null) {
+          final hasCurrentAccount = session.currentAccount != null;
+          final hasLocalLibrary = localLibrary != null;
+          final hasWorkspace = hasCurrentAccount || hasLocalLibrary;
+          final showOnboarding =
+              !hasWorkspace &&
+              (prefs.onboardingMode == null ||
+                  prefs.onboardingMode == AppOnboardingMode.local);
           final needsLogin =
-              session.currentAccount == null && localLibrary == null;
+              !hasWorkspace && prefs.onboardingMode == AppOnboardingMode.server;
           _logRouteDecision(
             prefsLoaded: true,
-            hasSelectedLanguage: true,
+            hasSelectedLanguage: prefs.hasSelectedLanguage,
             sessionState: 'loading_with_cached',
             sessionKey: session.currentKey,
-            hasCurrentAccount: session.currentAccount != null,
-            hasLocalLibrary: localLibrary != null,
-            destination: needsLogin ? 'login' : 'home',
+            hasCurrentAccount: hasCurrentAccount,
+            hasLocalLibrary: hasLocalLibrary,
+            destination: showOnboarding
+                ? 'onboarding'
+                : (needsLogin ? 'login' : 'home'),
           );
+          if (showOnboarding) return const LanguageSelectionScreen();
           return needsLogin ? const LoginScreen() : const HomeScreen();
         }
         _logRouteDecision(
           prefsLoaded: true,
-          hasSelectedLanguage: true,
+          hasSelectedLanguage: prefs.hasSelectedLanguage,
           sessionState: 'loading_without_cached',
           sessionKey: null,
           hasCurrentAccount: false,
@@ -2020,28 +2056,42 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
       },
       error: (e, _) {
         if (session != null) {
+          final hasCurrentAccount = session.currentAccount != null;
+          final hasLocalLibrary = localLibrary != null;
+          final hasWorkspace = hasCurrentAccount || hasLocalLibrary;
+          final showOnboarding =
+              !hasWorkspace &&
+              (prefs.onboardingMode == null ||
+                  prefs.onboardingMode == AppOnboardingMode.local);
           final needsLogin =
-              session.currentAccount == null && localLibrary == null;
+              !hasWorkspace && prefs.onboardingMode == AppOnboardingMode.server;
           _logRouteDecision(
             prefsLoaded: true,
-            hasSelectedLanguage: true,
+            hasSelectedLanguage: prefs.hasSelectedLanguage,
             sessionState: 'error_with_cached',
             sessionKey: session.currentKey,
-            hasCurrentAccount: session.currentAccount != null,
-            hasLocalLibrary: localLibrary != null,
-            destination: needsLogin ? 'login' : 'home',
+            hasCurrentAccount: hasCurrentAccount,
+            hasLocalLibrary: hasLocalLibrary,
+            destination: showOnboarding
+                ? 'onboarding'
+                : (needsLogin ? 'login' : 'home'),
           );
+          if (showOnboarding) return const LanguageSelectionScreen();
           return needsLogin ? const LoginScreen() : const HomeScreen();
         }
+        final showOnboarding =
+            prefs.onboardingMode == null ||
+            prefs.onboardingMode == AppOnboardingMode.local;
         _logRouteDecision(
           prefsLoaded: true,
-          hasSelectedLanguage: true,
+          hasSelectedLanguage: prefs.hasSelectedLanguage,
           sessionState: 'error_without_cached',
           sessionKey: null,
           hasCurrentAccount: false,
           hasLocalLibrary: localLibrary != null,
-          destination: 'login_error',
+          destination: showOnboarding ? 'onboarding' : 'login_error',
         );
+        if (showOnboarding) return const LanguageSelectionScreen();
         return LoginScreen(initialError: e.toString());
       },
     );

@@ -29,6 +29,8 @@ class AppDatabase {
         version: _dbVersion,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON;');
+          await db.execute('PRAGMA journal_mode = WAL;');
+          await db.execute('PRAGMA busy_timeout = 5000;');
         },
         onCreate: (db, _) async {
           await db.execute('''
@@ -320,6 +322,10 @@ CREATE TABLE IF NOT EXISTS recycle_bin_items (
     if (!_changes.isClosed) {
       _changes.add(null);
     }
+  }
+
+  void notifyDataChanged() {
+    _notifyChanged();
   }
 
   static List<String> _normalizeTags(List<String> tags) {
@@ -1143,6 +1149,19 @@ WHERE id = 1;
       orderBy: 'id ASC',
       limit: limit,
     );
+  }
+
+  Future<int> countOutboxPending() async {
+    final db = await this.db;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM outbox WHERE state IN (0, 2)',
+    );
+    if (rows.isEmpty) return 0;
+    final raw = rows.first['count'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+    return 0;
   }
 
   Future<List<Map<String, dynamic>>> listOutboxPendingByType(

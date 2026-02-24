@@ -5,17 +5,36 @@ class SyncQueueProgressSnapshot {
     required this.syncing,
     required this.currentOutboxId,
     required this.currentProgress,
+    required this.totalTasks,
+    required this.completedTasks,
   });
 
   static const idle = SyncQueueProgressSnapshot(
     syncing: false,
     currentOutboxId: null,
     currentProgress: null,
+    totalTasks: 0,
+    completedTasks: 0,
   );
 
   final bool syncing;
   final int? currentOutboxId;
   final double? currentProgress;
+  final int totalTasks;
+  final int completedTasks;
+
+  double? get overallProgress {
+    if (!syncing) return null;
+    if (totalTasks <= 0) return null;
+    final safeTotal = totalTasks <= 0 ? 1 : totalTasks;
+    final safeCompleted = completedTasks < 0
+        ? 0
+        : (completedTasks > safeTotal ? safeTotal : completedTasks);
+    final current = currentProgress == null
+        ? 0.0
+        : currentProgress!.clamp(0.0, 0.99).toDouble();
+    return ((safeCompleted + current) / safeTotal).clamp(0.0, 1.0).toDouble();
+  }
 }
 
 class SyncQueueProgressTracker extends ChangeNotifier {
@@ -23,12 +42,16 @@ class SyncQueueProgressTracker extends ChangeNotifier {
 
   SyncQueueProgressSnapshot get snapshot => _snapshot;
 
-  void markSyncStarted() {
+  void markSyncStarted({required int totalTasks, int completedTasks = 0}) {
+    final safeTotal = totalTasks < 0 ? 0 : totalTasks;
+    final safeCompleted = completedTasks < 0 ? 0 : completedTasks;
     _setSnapshot(
-      const SyncQueueProgressSnapshot(
+      SyncQueueProgressSnapshot(
         syncing: true,
-        currentOutboxId: null,
-        currentProgress: null,
+        currentOutboxId: _snapshot.currentOutboxId,
+        currentProgress: _snapshot.currentProgress,
+        totalTasks: safeTotal,
+        completedTasks: safeCompleted > safeTotal ? safeTotal : safeCompleted,
       ),
     );
   }
@@ -39,6 +62,8 @@ class SyncQueueProgressTracker extends ChangeNotifier {
         syncing: true,
         currentOutboxId: outboxId,
         currentProgress: null,
+        totalTasks: _snapshot.totalTasks,
+        completedTasks: _snapshot.completedTasks,
       ),
     );
   }
@@ -58,6 +83,8 @@ class SyncQueueProgressTracker extends ChangeNotifier {
         syncing: true,
         currentOutboxId: outboxId,
         currentProgress: progress,
+        totalTasks: _snapshot.totalTasks,
+        completedTasks: _snapshot.completedTasks,
       ),
     );
   }
@@ -72,6 +99,8 @@ class SyncQueueProgressTracker extends ChangeNotifier {
         syncing: true,
         currentOutboxId: outboxId,
         currentProgress: 1.0,
+        totalTasks: _snapshot.totalTasks,
+        completedTasks: _snapshot.completedTasks,
       ),
     );
     if (hold > Duration.zero) {
@@ -82,10 +111,28 @@ class SyncQueueProgressTracker extends ChangeNotifier {
   void clearCurrentTask({required int outboxId}) {
     if (_snapshot.currentOutboxId != outboxId) return;
     _setSnapshot(
-      const SyncQueueProgressSnapshot(
+      SyncQueueProgressSnapshot(
         syncing: true,
         currentOutboxId: null,
         currentProgress: null,
+        totalTasks: _snapshot.totalTasks,
+        completedTasks: _snapshot.completedTasks,
+      ),
+    );
+  }
+
+  void updateCompletedTasks(int completedTasks) {
+    final safeCompleted = completedTasks < 0 ? 0 : completedTasks;
+    final safeTotal = _snapshot.totalTasks < safeCompleted
+        ? safeCompleted
+        : _snapshot.totalTasks;
+    _setSnapshot(
+      SyncQueueProgressSnapshot(
+        syncing: _snapshot.syncing,
+        currentOutboxId: _snapshot.currentOutboxId,
+        currentProgress: _snapshot.currentProgress,
+        totalTasks: safeTotal,
+        completedTasks: safeCompleted,
       ),
     );
   }
@@ -99,7 +146,9 @@ class SyncQueueProgressTracker extends ChangeNotifier {
     final unchanged =
         prev.syncing == next.syncing &&
         prev.currentOutboxId == next.currentOutboxId &&
-        prev.currentProgress == next.currentProgress;
+        prev.currentProgress == next.currentProgress &&
+        prev.totalTasks == next.totalTasks &&
+        prev.completedTasks == next.completedTasks;
     if (unchanged) return;
     _snapshot = next;
     notifyListeners();

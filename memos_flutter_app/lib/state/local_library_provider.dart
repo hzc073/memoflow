@@ -33,6 +33,10 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
   final void Function()? _onLoaded;
   Future<void> _writeChain = Future<void>.value();
 
+  Future<void> reloadFromStorage() async {
+    await _loadFromStorage();
+  }
+
   Future<void> _loadFromStorage() async {
     if (kDebugMode) {
       LogManager.instance.info('LocalLibrary: load_start');
@@ -91,18 +95,23 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
     _persist(next);
   }
 
-  void remove(String key) {
+  Future<void> remove(String key) async {
     final trimmed = key.trim();
     if (trimmed.isEmpty) return;
     final next = state.where((l) => l.key != trimmed).toList(growable: false);
     state = next;
-    _persist(next);
+    await _persistAndWait(next);
   }
 
   void _persist(List<LocalLibrary> libraries) {
     _writeChain = _writeChain.then(
       (_) => _repo.write(LocalLibraryState(libraries: libraries)),
     );
+  }
+
+  Future<void> _persistAndWait(List<LocalLibrary> libraries) {
+    _persist(libraries);
+    return _writeChain;
   }
 }
 
