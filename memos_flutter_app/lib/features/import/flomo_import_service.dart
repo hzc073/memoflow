@@ -69,12 +69,14 @@ enum _BackendVersion { v025, v024, v021, unknown }
 class FlomoImportService {
   FlomoImportService({
     required this.db,
-    required this.account,
     required this.language,
+    this.account,
+    this.importScopeKey,
   });
 
   final AppDatabase db;
-  final Account account;
+  final Account? account;
+  final String? importScopeKey;
   final AppLanguage language;
 
   static const _source = 'flomo';
@@ -102,14 +104,16 @@ class FlomoImportService {
       ),
     );
 
-    final backend = await _detectBackendVersion();
-    if (backend == _BackendVersion.unknown) {
-      throw ImportException(
-        trByLanguageKey(
-          language: language,
-          key: 'legacy.msg_unable_detect_backend_version_check_server',
-        ),
-      );
+    if (_shouldCheckBackendVersion()) {
+      final backend = await _detectBackendVersion();
+      if (backend == _BackendVersion.unknown) {
+        throw ImportException(
+          trByLanguageKey(
+            language: language,
+            key: 'legacy.msg_unable_detect_backend_version_check_server',
+          ),
+        );
+      }
     }
 
     _ensureNotCancelled(isCancelled);
@@ -688,13 +692,17 @@ class FlomoImportService {
   }
 
   Future<_BackendVersion> _detectBackendVersion() async {
+    final currentAccount = account;
+    if (currentAccount == null) {
+      return _BackendVersion.unknown;
+    }
     final dio = Dio(
       BaseOptions(
-        baseUrl: dioBaseUrlString(account.baseUrl),
+        baseUrl: dioBaseUrlString(currentAccount.baseUrl),
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
         headers: <String, Object?>{
-          'Authorization': 'Bearer ${account.personalAccessToken}',
+          'Authorization': 'Bearer ${currentAccount.personalAccessToken}',
         },
       ),
     );
@@ -723,14 +731,30 @@ class FlomoImportService {
     }
   }
 
+  bool _shouldCheckBackendVersion() {
+    final currentAccount = account;
+    if (currentAccount == null) {
+      return false;
+    }
+    if (currentAccount.personalAccessToken.trim().isEmpty) {
+      return false;
+    }
+    return currentAccount.baseUrl.toString().trim().isNotEmpty;
+  }
+
   Future<Directory> _resolveImportRoot(
     String fileMd5, {
     bool create = true,
   }) async {
     final base = await resolveAppDocumentsDirectory();
-    final key = account.key.isNotEmpty
-        ? account.key
-        : account.baseUrl.toString();
+    final accountKey = account?.key.trim() ?? '';
+    final workspaceKey = (importScopeKey ?? '').trim();
+    final baseUrl = account?.baseUrl.toString().trim() ?? '';
+    final key = accountKey.isNotEmpty
+        ? accountKey
+        : (workspaceKey.isNotEmpty
+              ? workspaceKey
+              : (baseUrl.isNotEmpty ? baseUrl : 'local'));
     final accountHash = fnv1a64Hex(key);
     final dir = Directory(
       p.join(base.path, 'MemoFlow_imports', accountHash, fileMd5),

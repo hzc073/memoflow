@@ -12,6 +12,7 @@ import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/database_provider.dart';
+import '../../state/local_library_provider.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -48,15 +49,22 @@ class ImportSourceScreen extends StatelessWidget {
 
     var path = file.path;
     final fileName = file.name.trim();
-    final displayName = fileName.isNotEmpty ? fileName : (path == null ? '' : p.basename(path));
+    final displayName = fileName.isNotEmpty
+        ? fileName
+        : (path == null ? '' : p.basename(path));
     final bytes = file.bytes;
 
-    if ((path == null || path.trim().isEmpty || !File(path).existsSync()) && bytes != null) {
+    if ((path == null || path.trim().isEmpty || !File(path).existsSync()) &&
+        bytes != null) {
       final tempDir = await getTemporaryDirectory();
       if (!context.mounted) return;
-      final fallbackExt = (file.extension ?? '').trim().isNotEmpty ? file.extension!.trim() : 'zip';
-      final safeName =
-          _sanitizeFilename(displayName.isEmpty ? 'import.$fallbackExt' : displayName, fallbackExtension: fallbackExt);
+      final fallbackExt = (file.extension ?? '').trim().isNotEmpty
+          ? file.extension!.trim()
+          : 'zip';
+      final safeName = _sanitizeFilename(
+        displayName.isEmpty ? 'import.$fallbackExt' : displayName,
+        fallbackExtension: fallbackExt,
+      );
       final tempPath = p.join(tempDir.path, safeName);
       await File(tempPath).writeAsBytes(bytes, flush: true);
       if (!context.mounted) return;
@@ -66,21 +74,23 @@ class ImportSourceScreen extends StatelessWidget {
     if (path == null || path.trim().isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_unable_read_file_path)),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_unable_read_file_path),
+        ),
       );
       return;
     }
 
     if (!context.mounted) return;
     final resolvedPath = path;
-    final shownName = displayName.isNotEmpty ? displayName : p.basename(resolvedPath);
+    final shownName = displayName.isNotEmpty
+        ? displayName
+        : p.basename(resolvedPath);
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ImportRunScreen(
-          filePath: resolvedPath,
-          fileName: shownName,
-        ),
+        builder: (_) =>
+            ImportRunScreen(filePath: resolvedPath, fileName: shownName),
       ),
     );
   }
@@ -98,15 +108,22 @@ class ImportSourceScreen extends StatelessWidget {
 
     var path = file.path;
     final fileName = file.name.trim();
-    final displayName = fileName.isNotEmpty ? fileName : (path == null ? '' : p.basename(path));
+    final displayName = fileName.isNotEmpty
+        ? fileName
+        : (path == null ? '' : p.basename(path));
     final bytes = file.bytes;
 
-    if ((path == null || path.trim().isEmpty || !File(path).existsSync()) && bytes != null) {
+    if ((path == null || path.trim().isEmpty || !File(path).existsSync()) &&
+        bytes != null) {
       final tempDir = await getTemporaryDirectory();
       if (!context.mounted) return;
-      final fallbackExt = (file.extension ?? '').trim().isNotEmpty ? file.extension!.trim() : 'zip';
-      final safeName =
-          _sanitizeFilename(displayName.isEmpty ? 'import.$fallbackExt' : displayName, fallbackExtension: fallbackExt);
+      final fallbackExt = (file.extension ?? '').trim().isNotEmpty
+          ? file.extension!.trim()
+          : 'zip';
+      final safeName = _sanitizeFilename(
+        displayName.isEmpty ? 'import.$fallbackExt' : displayName,
+        fallbackExtension: fallbackExt,
+      );
       final tempPath = p.join(tempDir.path, safeName);
       await File(tempPath).writeAsBytes(bytes, flush: true);
       if (!context.mounted) return;
@@ -116,21 +133,23 @@ class ImportSourceScreen extends StatelessWidget {
     if (path == null || path.trim().isEmpty) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_unable_read_file_path)),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_unable_read_file_path),
+        ),
       );
       return;
     }
 
     if (!context.mounted) return;
     final resolvedPath = path;
-    final shownName = displayName.isNotEmpty ? displayName : p.basename(resolvedPath);
+    final shownName = displayName.isNotEmpty
+        ? displayName
+        : p.basename(resolvedPath);
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ImportRunScreen(
-          filePath: resolvedPath,
-          fileName: shownName,
-        ),
+        builder: (_) =>
+            ImportRunScreen(filePath: resolvedPath, fileName: shownName),
       ),
     );
   }
@@ -138,9 +157,13 @@ class ImportSourceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.58 : 0.65);
     final shadow = isDark
         ? null
@@ -174,11 +197,7 @@ class ImportSourceScreen extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -189,44 +208,76 @@ class ImportSourceScreen extends StatelessWidget {
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight - 8),
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 8,
+                    ),
                     child: IntrinsicHeight(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            context.t.strings.legacy.msg_choose_data_source_start_importing_memos,
-                            style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
+                            context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_choose_data_source_start_importing_memos,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.4,
+                              color: textMuted,
+                            ),
                           ),
                           const SizedBox(height: 16),
                           _ImportSourceTile(
                             title: context.t.strings.legacy.msg_import_flomo,
-                            subtitle: context.t.strings.legacy.msg_import_exported_html_zip_package,
+                            subtitle: context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_import_exported_html_zip_package,
                             icon: Icons.auto_awesome_rounded,
-                            iconBg: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.12),
+                            iconBg: MemoFlowPalette.primary.withValues(
+                              alpha: isDark ? 0.2 : 0.12,
+                            ),
                             iconColor: MemoFlowPalette.primary,
                             card: card,
                             textMain: textMain,
                             textMuted: textMuted,
                             shadow: shadow,
-                            onTap: onSelectFlomo ?? () => _selectFlomoFile(context),
+                            onTap:
+                                onSelectFlomo ??
+                                () => _selectFlomoFile(context),
                           ),
                           const SizedBox(height: 12),
                           _ImportSourceTile(
                             title: context.t.strings.legacy.msg_import_markdown,
-                            subtitle: context.t.strings.legacy.msg_upload_zip_package_md_files,
+                            subtitle: context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_upload_zip_package_md_files,
                             icon: Icons.description_rounded,
-                            iconBg: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.1),
-                            iconColor: MemoFlowPalette.primary.withValues(alpha: 0.9),
+                            iconBg: MemoFlowPalette.primary.withValues(
+                              alpha: isDark ? 0.2 : 0.1,
+                            ),
+                            iconColor: MemoFlowPalette.primary.withValues(
+                              alpha: 0.9,
+                            ),
                             card: card,
                             textMain: textMain,
                             textMuted: textMuted,
                             shadow: shadow,
-                            onTap: onSelectMarkdown ?? () => _selectMarkdownZip(context),
+                            onTap:
+                                onSelectMarkdown ??
+                                () => _selectMarkdownZip(context),
                           ),
                           const Spacer(),
                           _ImportNoteCard(
-                            text: context.t.strings.legacy.msg_after_import_memos_sync_list_automatically,
+                            text: context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_after_import_memos_sync_list_automatically,
                             textMuted: textMuted,
                             isDark: isDark,
                           ),
@@ -276,11 +327,15 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     if (_started) return;
     _started = true;
 
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    if (account == null) {
+    final session = ref.read(appSessionProvider).valueOrNull;
+    final account = session?.currentAccount;
+    final isLocalLibraryMode = ref.read(isLocalLibraryModeProvider);
+    if (account == null && !isLocalLibraryMode) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_not_authenticated_2)),
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_not_authenticated_2),
+          ),
         );
         context.safePop();
       }
@@ -292,6 +347,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     final importer = FlomoImportService(
       db: db,
       account: account,
+      importScopeKey: session?.currentKey,
       language: language,
     );
 
@@ -313,28 +369,32 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             attachmentCount: result.attachmentCount,
             failedCount: result.failedCount,
             newTags: result.newTags,
-            onGoHome: () => Navigator.of(resultContext).popUntil((route) => route.isFirst),
+            onGoHome: () =>
+                Navigator.of(resultContext).popUntil((route) => route.isFirst),
             onViewImported: () => Navigator.of(resultContext).push(
-              MaterialPageRoute<void>(builder: (_) => const ImportedMemosScreen()),
+              MaterialPageRoute<void>(
+                builder: (_) => const ImportedMemosScreen(),
+              ),
             ),
           ),
         ),
       );
     } on ImportCancelled {
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_import_canceled,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_import_canceled);
       context.safePop();
     } on ImportException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
       context.safePop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_import_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_import_failed(e: e)),
+        ),
       );
       context.safePop();
     }
@@ -394,9 +454,13 @@ class ImportProgressScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
     final shadow = isDark
         ? null
@@ -409,9 +473,11 @@ class ImportProgressScreen extends StatelessWidget {
           ];
     final clamped = progress.clamp(0.0, 1.0).toDouble();
     final percentText = '${(clamped * 100).round()}%';
-    final label = progressLabel ?? context.t.strings.legacy.msg_parsing_progress;
+    final label =
+        progressLabel ?? context.t.strings.legacy.msg_parsing_progress;
     final status = statusText ?? context.t.strings.legacy.msg_parsing_file;
-    final detail = progressDetail ?? context.t.strings.legacy.msg_processing_content;
+    final detail =
+        progressDetail ?? context.t.strings.legacy.msg_processing_content;
 
     return Scaffold(
       backgroundColor: bg,
@@ -437,11 +503,7 @@ class ImportProgressScreen extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -465,15 +527,25 @@ class ImportProgressScreen extends StatelessWidget {
                         width: 52,
                         height: 52,
                         decoration: BoxDecoration(
-                          color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+                          color: MemoFlowPalette.primary.withValues(
+                            alpha: isDark ? 0.22 : 0.12,
+                          ),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Icon(Icons.insert_drive_file_rounded, color: MemoFlowPalette.primary, size: 26),
+                        child: Icon(
+                          Icons.insert_drive_file_rounded,
+                          color: MemoFlowPalette.primary,
+                          size: 26,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         status,
-                        style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: textMain),
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: textMain,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -484,7 +556,10 @@ class ImportProgressScreen extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(label, style: TextStyle(fontSize: 12.5, color: textMuted)),
+                          Text(
+                            label,
+                            style: TextStyle(fontSize: 12.5, color: textMuted),
+                          ),
                           Text(
                             percentText,
                             style: TextStyle(
@@ -496,10 +571,7 @@ class ImportProgressScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      _RoundedProgressBar(
-                        value: clamped,
-                        isDark: isDark,
-                      ),
+                      _RoundedProgressBar(value: clamped, isDark: isDark),
                       const SizedBox(height: 8),
                       Text(
                         detail,
@@ -508,10 +580,14 @@ class ImportProgressScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       TextButton(
-                        onPressed: onCancel ?? () => Navigator.of(context).maybePop(),
+                        onPressed:
+                            onCancel ?? () => Navigator.of(context).maybePop(),
                         style: TextButton.styleFrom(
                           foregroundColor: MemoFlowPalette.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 6,
+                          ),
                         ),
                         child: Text(context.t.strings.legacy.msg_cancel_2),
                       ),
@@ -548,11 +624,17 @@ class ImportResultScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final divider = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
     final shadow = isDark
         ? null
         : [
@@ -600,11 +682,7 @@ class ImportResultScreen extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -615,7 +693,9 @@ class ImportResultScreen extends StatelessWidget {
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight - 12),
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 12,
+                    ),
                     child: IntrinsicHeight(
                       child: Column(
                         children: [
@@ -633,27 +713,53 @@ class ImportResultScreen extends StatelessWidget {
                                   width: 54,
                                   height: 54,
                                   decoration: BoxDecoration(
-                                    color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.22 : 0.14),
+                                    color: MemoFlowPalette.primary.withValues(
+                                      alpha: isDark ? 0.22 : 0.14,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: Icon(Icons.check, color: MemoFlowPalette.primary, size: 28),
+                                  child: Icon(
+                                    Icons.check,
+                                    color: MemoFlowPalette.primary,
+                                    size: 28,
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  context.t.strings.legacy.msg_import_complete_2,
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain),
+                                  context
+                                      .t
+                                      .strings
+                                      .legacy
+                                      .msg_import_complete_2,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: textMain,
+                                  ),
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  context.t.strings.legacy.msg_data_has_been_migrated_app_successfully,
+                                  context
+                                      .t
+                                      .strings
+                                      .legacy
+                                      .msg_data_has_been_migrated_app_successfully,
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                    color: textMuted,
+                                  ),
                                 ),
                                 const SizedBox(height: 16),
                                 Divider(height: 1, color: divider),
                                 const SizedBox(height: 12),
                                 _ResultRow(
-                                  label: context.t.strings.legacy.msg_imported_memos,
+                                  label: context
+                                      .t
+                                      .strings
+                                      .legacy
+                                      .msg_imported_memos,
                                   value: formatCountLabel(
                                     memoCount,
                                     'legacy.import_count_memos',
@@ -663,7 +769,11 @@ class ImportResultScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 _ResultRow(
-                                  label: context.t.strings.legacy.msg_attachments_2,
+                                  label: context
+                                      .t
+                                      .strings
+                                      .legacy
+                                      .msg_attachments_2,
                                   value: formatCountLabel(
                                     attachmentCount,
                                     'legacy.import_count_attachments',
@@ -673,7 +783,8 @@ class ImportResultScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 _ResultRow(
-                                  label: context.t.strings.legacy.msg_failed_items,
+                                  label:
+                                      context.t.strings.legacy.msg_failed_items,
                                   value: formatCount(failedCount),
                                   textMain: textMain,
                                   textMuted: textMuted,
@@ -685,7 +796,11 @@ class ImportResultScreen extends StatelessWidget {
                                   alignment: Alignment.centerLeft,
                                   child: Text(
                                     context.t.strings.legacy.msg_tags_created,
-                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: textMain),
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: textMain,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 10),
@@ -694,7 +809,10 @@ class ImportResultScreen extends StatelessWidget {
                                     alignment: Alignment.centerLeft,
                                     child: Text(
                                       context.t.strings.legacy.msg_none,
-                                      style: TextStyle(fontSize: 12.5, color: textMuted),
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: textMuted,
+                                      ),
                                     ),
                                   )
                                 else
@@ -725,9 +843,15 @@ class ImportResultScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                           _ActionButton(
-                            label: context.t.strings.legacy.msg_view_imported_memos,
+                            label: context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_view_imported_memos,
                             onTap: onViewImported,
-                            background: isDark ? MemoFlowPalette.cardDark : const Color(0xFFF0ECE6),
+                            background: isDark
+                                ? MemoFlowPalette.cardDark
+                                : const Color(0xFFF0ECE6),
                             foreground: textMain,
                             border: divider,
                           ),
@@ -820,12 +944,20 @@ class _ImportSourceTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textMain),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: textMain,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 12, height: 1.3, color: textMuted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.3,
+                        color: textMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -853,7 +985,9 @@ class _ImportNoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = isDark ? MemoFlowPalette.cardDark : const Color(0xFFF1ECE6);
-    final border = isDark ? MemoFlowPalette.borderDark : MemoFlowPalette.borderLight;
+    final border = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -879,17 +1013,16 @@ class _ImportNoteCard extends StatelessWidget {
 }
 
 class _RoundedProgressBar extends StatelessWidget {
-  const _RoundedProgressBar({
-    required this.value,
-    required this.isDark,
-  });
+  const _RoundedProgressBar({required this.value, required this.isDark});
 
   final double value;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06);
+    final bg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: LinearProgressIndicator(
@@ -921,25 +1054,33 @@ class _ResultRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 12.5, color: textMuted)),
-        Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMain)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: textMain,
+          ),
+        ),
       ],
     );
   }
 }
 
 class _TagChip extends StatelessWidget {
-  const _TagChip({
-    required this.label,
-    required this.isDark,
-  });
+  const _TagChip({required this.label, required this.isDark});
 
   final String label;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? Colors.white.withValues(alpha: 0.08) : MemoFlowPalette.primary.withValues(alpha: 0.1);
-    final border = MemoFlowPalette.primary.withValues(alpha: isDark ? 0.5 : 0.6);
+    final bg = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : MemoFlowPalette.primary.withValues(alpha: 0.1);
+    final border = MemoFlowPalette.primary.withValues(
+      alpha: isDark ? 0.5 : 0.6,
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -949,7 +1090,11 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: MemoFlowPalette.primary),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: MemoFlowPalette.primary,
+        ),
       ),
     );
   }
@@ -988,7 +1133,11 @@ class _ActionButton extends StatelessWidget {
           child: Center(
             child: Text(
               label,
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: foreground),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: foreground,
+              ),
             ),
           ),
         ),
