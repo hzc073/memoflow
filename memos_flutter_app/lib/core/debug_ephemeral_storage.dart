@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart' show getDatabasesPath;
 
-const bool _kEphemeralDebugDefault = true;
+const bool _kEphemeralDebugDefault = false;
 const bool _kEphemeralDebugFromDefine = bool.fromEnvironment(
   'MEMOFLOW_EPHEMERAL_DEBUG',
   defaultValue: _kEphemeralDebugDefault,
