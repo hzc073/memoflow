@@ -73,6 +73,7 @@ dependencies:
   geolocator: ^10.1.0
   record: ^6.1.1
   share_plus: ^12.0.1
+  fl_chart: ^1.1.1
   sqflite: ^2.4.2
   sqflite_common_ffi: ^2.3.6
   archive: ^4.0.4
@@ -97,6 +98,7 @@ dependencies:
   just_audio_media_kit: ^2.1.0
   video_player_media_kit: ^2.0.0
   media_kit_libs_windows_video: ^1.0.11
+  word_cloud: ^1.0.3
 
 dev_dependencies:
   flutter_test:

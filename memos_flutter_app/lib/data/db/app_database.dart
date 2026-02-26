@@ -29,8 +29,10 @@ class AppDatabase {
         version: _dbVersion,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON;');
-          await db.execute('PRAGMA journal_mode = WAL;');
-          await db.execute('PRAGMA busy_timeout = 5000;');
+          // Native sqflite backends (Android/iOS) treat these PRAGMAs as
+          // query-style statements, so use rawQuery for cross-platform safety.
+          await db.rawQuery('PRAGMA journal_mode = WAL;');
+          await db.rawQuery('PRAGMA busy_timeout = 5000;');
         },
         onCreate: (db, _) async {
           await db.execute('''

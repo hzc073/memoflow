@@ -513,6 +513,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
+  fl_chart:
+    dependency: "direct main"
+    description:
+      name: fl_chart
+      sha256: "7ca9a40f4eb85949190e54087be8b4d6ac09dc4c54238d782a34cf1f7c011de9"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.1"
   flex_color_picker:
     dependency: transitive
     description:
@@ -2201,6 +2209,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.5.1"
+  word_cloud:
+    dependency: "direct main"
+    description:
+      name: word_cloud
+      sha256: ca3d6767562baebf221008ed002917f4d0bc451b485fdb30800be6b30e99ae0f
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   xdg_directories:
     dependency: transitive
     description:
