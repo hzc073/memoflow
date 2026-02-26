@@ -277,6 +277,7 @@ class MemoMarkdown extends StatelessWidget {
     super.key,
     required this.data,
     this.cacheKey,
+    this.highlightQuery,
     this.textStyle,
     this.maxLines,
     this.normalizeHeadings = false,
@@ -289,6 +290,7 @@ class MemoMarkdown extends StatelessWidget {
 
   final String data;
   final String? cacheKey;
+  final String? highlightQuery;
   final TextStyle? textStyle;
   final int? maxLines;
   final bool normalizeHeadings;
@@ -439,7 +441,8 @@ class MemoMarkdown extends StatelessWidget {
     final cachedHtml = cacheKey == null
         ? null
         : _markdownHtmlCache.get(cacheKey);
-    final html = cachedHtml ?? _buildMemoHtml(tagged);
+    final html =
+        cachedHtml ?? _buildMemoHtml(tagged, highlightQuery: highlightQuery);
     if (cacheKey != null && cachedHtml == null) {
       _markdownHtmlCache.set(cacheKey, html);
     }
@@ -728,8 +731,11 @@ class MemoMarkdown extends StatelessWidget {
         } else if (element.classes.contains('memohighlight')) {
           styles.addAll({
             'background-color': _cssColor(highlightStyle.background),
+            'color': _cssColor(highlightStyle.textColor),
+            'border': '1px solid ${_cssColor(highlightStyle.borderColor)}',
             'border-radius': '3px',
-            'padding': '0 4px',
+            'padding': '0 3px',
+            'font-weight': '700',
             'display': 'inline',
           });
         }
@@ -1053,10 +1059,11 @@ String _escapeHtmlAttribute(String value) {
       .replaceAll('>', '&gt;');
 }
 
-String _buildMemoHtml(String text) {
+String _buildMemoHtml(String text, {String? highlightQuery}) {
   final rawHtml = _renderMarkdownToHtml(text);
   final escapedCodeBlocks = _escapeCodeBlocks(rawHtml);
-  return _sanitizeHtml(escapedCodeBlocks);
+  final sanitized = _sanitizeHtml(escapedCodeBlocks);
+  return _applySearchHighlights(sanitized, highlightQuery: highlightQuery);
 }
 
 bool _looksLikeFullHtmlDocument(String text) {
@@ -1073,6 +1080,96 @@ String _sanitizeHtml(String html) {
   final fragment = html_parser.parseFragment(html);
   _sanitizeDomNode(fragment);
   return fragment.outerHtml;
+}
+
+String _applySearchHighlights(String html, {String? highlightQuery}) {
+  final terms = _extractHighlightTerms(highlightQuery);
+  if (terms.isEmpty) return html;
+  final pattern = terms.map(RegExp.escape).join('|');
+  final matcher = RegExp(pattern, caseSensitive: false, unicode: true);
+  final fragment = html_parser.parseFragment(html);
+  _decorateTextHighlights(fragment, matcher, inIgnoredSubtree: false);
+  return fragment.outerHtml;
+}
+
+List<String> _extractHighlightTerms(String? query) {
+  if (query == null) return const [];
+  final parts = query
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList(growable: false);
+  if (parts.isEmpty) return const [];
+  final normalizedSeen = <String>{};
+  final unique = <String>[];
+  for (final part in parts) {
+    final normalized = part.toLowerCase();
+    if (!normalizedSeen.add(normalized)) continue;
+    unique.add(part);
+  }
+  unique.sort((a, b) => b.runes.length.compareTo(a.runes.length));
+  return unique;
+}
+
+void _decorateTextHighlights(
+  dom.Node node,
+  RegExp matcher, {
+  required bool inIgnoredSubtree,
+}) {
+  if (node is dom.Text) {
+    if (inIgnoredSubtree) return;
+    final parent = node.parent;
+    if (parent == null) return;
+    final text = node.text;
+    if (text.trim().isEmpty) return;
+    final matches = matcher.allMatches(text).toList(growable: false);
+    if (matches.isEmpty) return;
+
+    final replacements = <dom.Node>[];
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.end <= cursor) continue;
+      if (match.start > cursor) {
+        replacements.add(dom.Text(text.substring(cursor, match.start)));
+      }
+      final span = dom.Element.tag('span')
+        ..attributes['class'] = 'memohighlight'
+        ..append(dom.Text(text.substring(match.start, match.end)));
+      replacements.add(span);
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      replacements.add(dom.Text(text.substring(cursor)));
+    }
+    if (replacements.isEmpty) return;
+
+    for (final replacement in replacements) {
+      parent.insertBefore(replacement, node);
+    }
+    node.remove();
+    return;
+  }
+
+  var ignore = inIgnoredSubtree;
+  if (node is dom.Element) {
+    final localName = node.localName ?? '';
+    final classList = (node.attributes['class'] ?? '')
+        .split(RegExp(r'\s+'))
+        .where((item) => item.isNotEmpty)
+        .toSet();
+    ignore =
+        ignore ||
+        localName == 'pre' ||
+        localName == 'code' ||
+        classList.contains('memotag') ||
+        classList.contains('memohighlight');
+  }
+  if (ignore) return;
+
+  final children = node.nodes.toList(growable: false);
+  for (final child in children) {
+    _decorateTextHighlights(child, matcher, inIgnoredSubtree: ignore);
+  }
 }
 
 void _sanitizeDomNode(dom.Node node) {
@@ -1607,18 +1704,20 @@ class _MemoTagStyle {
 class _MemoHighlightStyle {
   const _MemoHighlightStyle({
     required this.background,
+    required this.textColor,
     required this.borderColor,
   });
 
   final Color background;
+  final Color textColor;
   final Color borderColor;
 
   static _MemoHighlightStyle resolve(ThemeData theme) {
-    final isDark = theme.brightness == Brightness.dark;
-    final base = theme.colorScheme.primary;
+    const fluorescentYellow = Color(0xFFFFFF00);
     return _MemoHighlightStyle(
-      background: base.withValues(alpha: isDark ? 0.35 : 0.18),
-      borderColor: base.withValues(alpha: isDark ? 0.55 : 0.35),
+      background: fluorescentYellow,
+      textColor: Colors.black,
+      borderColor: fluorescentYellow,
     );
   }
 }

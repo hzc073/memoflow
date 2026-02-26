@@ -1238,6 +1238,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final authHeader = (account?.personalAccessToken ?? '').isEmpty
         ? null
         : 'Bearer ${account!.personalAccessToken}';
+    final searchQuery = _searchController.text.trim();
+    final highlightQuery = searchQuery.isEmpty ? null : searchQuery;
 
     void maybeHaptic() {
       if (hapticsEnabled) {
@@ -1366,6 +1368,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 commentingMode: commentMode,
                 cardColor: commentMode ? cardMuted : card,
                 borderColor: border,
+                highlightQuery: highlightQuery,
                 collapseLongContent: collapseLongContent,
                 collapseReferences: collapseReferences,
                 resolveCreator: (name) => _creatorCache[name],
@@ -1612,6 +1615,7 @@ class _ExploreMemoCard extends StatefulWidget {
     required this.commentingMode,
     required this.cardColor,
     required this.borderColor,
+    required this.highlightQuery,
     required this.collapseLongContent,
     required this.collapseReferences,
     required this.resolveCreator,
@@ -1643,6 +1647,7 @@ class _ExploreMemoCard extends StatefulWidget {
   final bool commentingMode;
   final Color cardColor;
   final Color borderColor;
+  final String? highlightQuery;
   final bool collapseLongContent;
   final bool collapseReferences;
   final User? Function(String name) resolveCreator;
@@ -1756,6 +1761,68 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
     final trimmed = content.trim();
     if (trimmed.isEmpty) return '';
     return trimmed.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  static List<String> _highlightTerms(String? query) {
+    if (query == null) return const [];
+    final tokens = query
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    if (tokens.isEmpty) return const [];
+    final seen = <String>{};
+    final terms = <String>[];
+    for (final token in tokens) {
+      final normalized = token.toLowerCase();
+      if (!seen.add(normalized)) continue;
+      terms.add(token);
+    }
+    terms.sort((a, b) => b.runes.length.compareTo(a.runes.length));
+    return terms;
+  }
+
+  static TextSpan _buildHighlightedTextSpan({
+    required String text,
+    required TextStyle baseStyle,
+    required TextStyle highlightStyle,
+    required String? query,
+  }) {
+    final terms = _highlightTerms(query);
+    if (terms.isEmpty || text.isEmpty) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+    final pattern = terms.map(RegExp.escape).join('|');
+    final matcher = RegExp(pattern, caseSensitive: false, unicode: true);
+    final matches = matcher.allMatches(text).toList(growable: false);
+    if (matches.isEmpty) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    final spans = <InlineSpan>[];
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.end <= cursor) continue;
+      if (match.start > cursor) {
+        spans.add(
+          TextSpan(text: text.substring(cursor, match.start), style: baseStyle),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(match.start, match.end),
+          style: highlightStyle,
+        ),
+      );
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
+    }
+    if (spans.isEmpty) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+    return TextSpan(style: baseStyle, children: spans);
   }
 
   static String _commentAuthor(
@@ -2645,14 +2712,23 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               ],
               if (title.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Text(
-                  title,
+                RichText(
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: textMain,
+                  text: _buildHighlightedTextSpan(
+                    text: title,
+                    query: widget.highlightQuery,
+                    baseStyle: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: textMain,
+                    ),
+                    highlightStyle: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                      backgroundColor: const Color(0xFFFFFF00),
+                    ),
                   ),
                 ),
               ],
@@ -2660,6 +2736,7 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
                 const SizedBox(height: 6),
                 MemoMarkdown(
                   data: displayText,
+                  highlightQuery: widget.highlightQuery,
                   textStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: textMain,
                     height: 1.5,

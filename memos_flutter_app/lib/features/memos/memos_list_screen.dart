@@ -5037,12 +5037,20 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final reminderText = nextReminderTime == null
         ? null
         : _formatReminderTime(nextReminderTime);
+    final inSearchContext =
+        _searching ||
+        _windowsHeaderSearchExpanded ||
+        _searchController.text.trim().isNotEmpty ||
+        _selectedQuickSearchKind != null;
+    final highlightQuery = _searchController.text.trim();
 
     return _MemoCard(
       key: ValueKey(memo.uid),
       memo: memo,
       dateText: _dateFmt.format(displayTime),
       reminderText: reminderText,
+      initiallyExpanded: inSearchContext,
+      highlightQuery: highlightQuery.isEmpty ? null : highlightQuery,
       collapseLongContent: prefs.collapseLongContent,
       collapseReferences: prefs.collapseReferences,
       isAudioPlaying: removing ? false : isAudioPlaying,
@@ -6923,6 +6931,8 @@ class _MemoCard extends StatefulWidget {
     required this.memo,
     required this.dateText,
     required this.reminderText,
+    required this.initiallyExpanded,
+    required this.highlightQuery,
     required this.collapseLongContent,
     required this.collapseReferences,
     required this.isAudioPlaying,
@@ -6946,6 +6956,8 @@ class _MemoCard extends StatefulWidget {
   final LocalMemo memo;
   final String dateText;
   final String? reminderText;
+  final bool initiallyExpanded;
+  final String? highlightQuery;
   final bool collapseLongContent;
   final bool collapseReferences;
   final bool isAudioPlaying;
@@ -6970,7 +6982,13 @@ class _MemoCard extends StatefulWidget {
 }
 
 class _MemoCardState extends State<_MemoCard> {
-  var _expanded = false;
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
 
   static String _previewText(
     String content, {
@@ -7007,7 +7025,11 @@ class _MemoCardState extends State<_MemoCard> {
   void didUpdateWidget(covariant _MemoCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.memo.uid != widget.memo.uid) {
-      _expanded = false;
+      _expanded = widget.initiallyExpanded;
+      return;
+    }
+    if (oldWidget.initiallyExpanded != widget.initiallyExpanded) {
+      _expanded = widget.initiallyExpanded;
     }
   }
 
@@ -7103,6 +7125,12 @@ class _MemoCardState extends State<_MemoCard> {
     final attachmentLines = attachmentNameLines(nonMediaAttachments);
     final attachmentCount = nonMediaAttachments.length;
     final language = context.appLanguage;
+    final normalizedHighlightQuery = widget.highlightQuery?.trim();
+    final highlightQuery =
+        normalizedHighlightQuery == null || normalizedHighlightQuery.isEmpty
+        ? null
+        : normalizedHighlightQuery;
+    final highlightKey = highlightQuery?.toLowerCase() ?? '';
     final cacheKey = _memoRenderCacheKey(
       memo,
       collapseLongContent: collapseLongContent,
@@ -7136,7 +7164,7 @@ class _MemoCardState extends State<_MemoCard> {
     final showToggle = preview.truncated;
     final showCollapsed = showToggle && !_expanded;
     final displayText = previewText;
-    final markdownCacheKey = '$cacheKey|md';
+    final markdownCacheKey = '$cacheKey|md|searchhl=v2|hl=$highlightKey';
     final showProgress = !hasAudio && taskStats.total > 0;
     final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
     final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
@@ -7235,6 +7263,7 @@ class _MemoCardState extends State<_MemoCard> {
             MemoMarkdown(
               cacheKey: markdownCacheKey,
               data: displayText,
+              highlightQuery: highlightQuery,
               maxLines: showCollapsed ? 6 : null,
               textStyle: Theme.of(
                 context,
