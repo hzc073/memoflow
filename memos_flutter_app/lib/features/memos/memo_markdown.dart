@@ -30,6 +30,12 @@ final RegExp _codeLanguagePattern = RegExp(
   r'language-([\w]+)',
   caseSensitive: false,
 );
+final RegExp _unorderedListMarkerPattern = RegExp(r'^[-*+]\s');
+final RegExp _orderedListMarkerPattern = RegExp(r'^\d+[.)]\s');
+final RegExp _horizontalRuleLinePattern = RegExp(
+  r'^(?:-{3,}|\*{3,}|_{3,})\s*$',
+);
+final RegExp _setextHeadingUnderlinePattern = RegExp(r'^(?:=+|-+)\s*$');
 final RegExp _codeBlockHtmlPattern = RegExp(
   r'<pre><code([^>]*)>([\s\S]*?)</code></pre>',
 );
@@ -859,7 +865,58 @@ String _sanitizeMarkdown(String text) {
     return url?.isNotEmpty == true ? url! : '';
   });
   final protectedHtml = _protectEmbeddedFullHtmlDocuments(stripped);
-  return _normalizeFencedCodeBlocks(_escapeEmptyTaskHeadings(protectedHtml));
+  final escapedTaskHeadings = _escapeEmptyTaskHeadings(protectedHtml);
+  final preservedBlankLines = _preserveParagraphBlankLines(escapedTaskHeadings);
+  return _normalizeFencedCodeBlocks(preservedBlankLines);
+}
+
+String _preserveParagraphBlankLines(String text) {
+  final lines = text.split('\n');
+  if (lines.length < 3) return text;
+
+  var inFence = false;
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (_codeFencePattern.hasMatch(line.trimLeft())) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || line.trim().isNotEmpty) continue;
+
+    var prev = i - 1;
+    while (prev >= 0 && lines[prev].trim().isEmpty) {
+      prev--;
+    }
+    if (prev < 0) continue;
+
+    var next = i + 1;
+    while (next < lines.length && lines[next].trim().isEmpty) {
+      next++;
+    }
+    if (next >= lines.length) continue;
+
+    if (!_isParagraphLikeTextLine(lines[prev])) continue;
+    if (!_isParagraphLikeTextLine(lines[next])) continue;
+
+    lines[i] = _zeroWidthSpace;
+  }
+
+  return lines.join('\n');
+}
+
+bool _isParagraphLikeTextLine(String line) {
+  final trimmed = line.trimLeft();
+  if (trimmed.isEmpty) return false;
+  if (trimmed.startsWith('<')) return false;
+  if (trimmed.startsWith('#')) return false;
+  if (trimmed.startsWith('>')) return false;
+  if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) return false;
+  if (trimmed.startsWith('|')) return false;
+  if (_unorderedListMarkerPattern.hasMatch(trimmed)) return false;
+  if (_orderedListMarkerPattern.hasMatch(trimmed)) return false;
+  if (_horizontalRuleLinePattern.hasMatch(trimmed)) return false;
+  if (_setextHeadingUnderlinePattern.hasMatch(trimmed)) return false;
+  return true;
 }
 
 String _protectEmbeddedFullHtmlDocuments(String text) {
