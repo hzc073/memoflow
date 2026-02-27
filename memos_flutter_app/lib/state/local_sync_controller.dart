@@ -19,6 +19,7 @@ import '../data/models/local_memo.dart';
 import '../data/models/memoflow_bridge_settings.dart';
 import '../data/settings/memoflow_bridge_settings_repository.dart';
 import '../data/logs/sync_status_tracker.dart';
+import 'local_library_scanner.dart';
 import 'preferences_provider.dart';
 import 'sync_controller_base.dart';
 
@@ -38,6 +39,8 @@ class LocalSyncController extends SyncControllerBase {
   static const int _bulkOutboxTaskLogHeadCount = 3;
   static const int _bulkOutboxTaskLogEvery = 250;
   static const int _outboxProgressLogEvery = 200;
+  static const int _attachmentOutboxConcurrency = 3;
+  static const int _attachmentOutboxBatchScanLimit = 400;
   static const Duration _slowOutboxTaskThreshold = Duration(seconds: 2);
   static const List<Duration> _retryBackoffSteps = <Duration>[
     Duration(seconds: 2),
@@ -68,7 +71,9 @@ class LocalSyncController extends SyncControllerBase {
       MemoFlowBridgeSettings.defaults;
   Timer? _retrySyncTimer;
   int _retryBackoffIndex = 0;
+  int _syncRunSeq = 0;
   bool _rerunRequestedWhileLoading = false;
+  bool _pendingScanRequested = false;
   bool _isDisposed = false;
 
   Future<BridgeBulkPushResult> pushAllMemosToBridge({
@@ -108,60 +113,131 @@ class LocalSyncController extends SyncControllerBase {
   @override
   Future<void> syncNow() async {
     if (_isDisposed) return;
-    final globalSyncing = syncQueueProgressTracker.snapshot.syncing;
+    final queueSnapshot = syncQueueProgressTracker.snapshot;
+    final globalSyncing = queueSnapshot.syncing;
     if (state.isLoading || globalSyncing) {
+      _pendingScanRequested = true;
       _rerunRequestedWhileLoading = true;
       LogManager.instance.debug(
         'LocalSync: sync_skipped_loading',
         context: <String, Object?>{
           'rerunRequested': true,
+          'pendingScanRequested': true,
           'stateLoading': state.isLoading,
           'globalSyncing': globalSyncing,
+          'currentOutboxId': queueSnapshot.currentOutboxId,
+          'queueTotalTasks': queueSnapshot.totalTasks,
+          'queueCompletedTasks': queueSnapshot.completedTasks,
         },
       );
       return;
     }
+    final runId =
+        'run_${DateTime.now().toUtc().millisecondsSinceEpoch}_${++_syncRunSeq}';
+    final runWatch = Stopwatch()..start();
     _cancelRetrySyncTimer();
     _rerunRequestedWhileLoading = false;
-    LogManager.instance.info('LocalSync: sync_start');
-    syncStatusTracker.markSyncStarted();
+    _pendingScanRequested = false;
     final totalPendingAtStart = await db.countOutboxPending();
+    final retryableAtStart = await db.countOutboxRetryable();
+    final failedAtStart = await db.countOutboxFailed();
+    LogManager.instance.info(
+      'LocalSync: sync_start',
+      context: <String, Object?>{
+        'runId': runId,
+        'pendingAtStart': totalPendingAtStart,
+        'retryableAtStart': retryableAtStart,
+        'failedAtStart': failedAtStart,
+        'retryBackoffIndex': _retryBackoffIndex,
+        'retryTimerActive': _retrySyncTimer?.isActive ?? false,
+      },
+    );
+    syncStatusTracker.markSyncStarted();
+    await db.recoverOutboxRunningTasks();
     syncQueueProgressTracker.markSyncStarted(totalTasks: totalPendingAtStart);
     state = const AsyncValue.loading();
     final next = await AsyncValue.guard(() async {
       _bridgeSettingsSnapshot = await bridgeSettingsRepository.read();
       await fileSystem.ensureStructure();
-      await _processOutbox();
-      await _ensureIndex();
+      await _runSyncStage(
+        runId: runId,
+        stage: 'scan_pre_push',
+        action: () => _scanIncremental(stage: 'pre_push'),
+      );
+      await _runSyncStage(
+        runId: runId,
+        stage: 'push_outbox',
+        action: _processOutbox,
+      );
+      await _runSyncStage(
+        runId: runId,
+        stage: 'scan_reconcile',
+        action: () => _scanIncremental(stage: 'pull_reconcile'),
+      );
+      await _runSyncStage(
+        runId: runId,
+        stage: 'write_index',
+        action: _ensureIndex,
+      );
     });
     state = next;
+    runWatch.stop();
+    final pendingAtEnd = await db.countOutboxPending();
+    final retryableAtEnd = await db.countOutboxRetryable();
+    final failedAtEnd = await db.countOutboxFailed();
     if (next.hasError) {
       syncStatusTracker.markSyncFailed(next.error!);
       LogManager.instance.warn(
         'LocalSync: sync_failed',
         error: next.error,
         stackTrace: next.stackTrace,
+        context: <String, Object?>{
+          'runId': runId,
+          'elapsedMs': runWatch.elapsedMilliseconds,
+          'pendingAtEnd': pendingAtEnd,
+          'retryableAtEnd': retryableAtEnd,
+          'failedAtEnd': failedAtEnd,
+        },
       );
     } else {
       syncStatusTracker.markSyncSuccess();
-      LogManager.instance.info('LocalSync: sync_success');
+      LogManager.instance.info(
+        'LocalSync: sync_success',
+        context: <String, Object?>{
+          'runId': runId,
+          'elapsedMs': runWatch.elapsedMilliseconds,
+          'pendingAtEnd': pendingAtEnd,
+          'retryableAtEnd': retryableAtEnd,
+          'failedAtEnd': failedAtEnd,
+        },
+      );
     }
     syncQueueProgressTracker.markSyncFinished();
 
     if (!_isDisposed) {
-      final hasPendingOutbox = await _hasPendingOutbox();
+      final hasRetryableOutbox = retryableAtEnd > 0;
       final syncFailed = next.hasError;
-      if (!hasPendingOutbox && !syncFailed) {
+      if (!hasRetryableOutbox && !syncFailed) {
         _resetRetryState();
       } else {
         await _scheduleRetrySyncIfNeeded(
-          hasPendingOutbox: hasPendingOutbox,
+          hasPendingOutbox: hasRetryableOutbox,
           syncFailed: syncFailed,
         );
       }
     }
 
-    if (_rerunRequestedWhileLoading && !_isDisposed) {
+    if ((_pendingScanRequested || _rerunRequestedWhileLoading) &&
+        !_isDisposed) {
+      LogManager.instance.info(
+        'LocalSync: rerun_requested_after_completion',
+        context: <String, Object?>{
+          'runId': runId,
+          'pendingScanRequested': _pendingScanRequested,
+          'rerunRequestedWhileLoading': _rerunRequestedWhileLoading,
+        },
+      );
+      _pendingScanRequested = false;
       _rerunRequestedWhileLoading = false;
       unawaited(syncNow());
     }
@@ -177,206 +253,149 @@ class LocalSyncController extends SyncControllerBase {
     return ['# MemoFlow Local Library', '', '- Updated: $now', ''].join('\n');
   }
 
+  Future<void> _scanIncremental({required String stage}) async {
+    final scanner = LocalLibraryScanner(
+      db: db,
+      fileSystem: fileSystem,
+      attachmentStore: attachmentStore,
+      language: language,
+    );
+    LogManager.instance.debug(
+      'LocalSync scan: start',
+      context: <String, Object?>{'stage': stage},
+    );
+    await scanner.scanAndMergeIncremental(forceDisk: false);
+    LogManager.instance.debug(
+      'LocalSync scan: completed',
+      context: <String, Object?>{'stage': stage},
+    );
+  }
+
+  Future<void> _runSyncStage({
+    required String runId,
+    required String stage,
+    required Future<void> Function() action,
+  }) async {
+    final watch = Stopwatch()..start();
+    LogManager.instance.debug(
+      'LocalSync: stage_start',
+      context: <String, Object?>{'runId': runId, 'stage': stage},
+    );
+    try {
+      await action();
+      watch.stop();
+      LogManager.instance.debug(
+        'LocalSync: stage_done',
+        context: <String, Object?>{
+          'runId': runId,
+          'stage': stage,
+          'elapsedMs': watch.elapsedMilliseconds,
+        },
+      );
+    } catch (error, stackTrace) {
+      watch.stop();
+      LogManager.instance.warn(
+        'LocalSync: stage_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: <String, Object?>{
+          'runId': runId,
+          'stage': stage,
+          'elapsedMs': watch.elapsedMilliseconds,
+        },
+      );
+      rethrow;
+    }
+  }
+
   Future<void> _processOutbox() async {
-    var processedCount = 0;
-    var successCount = 0;
-    var failedCount = 0;
-    final typeCounts = <String, int>{};
+    final startedAt = DateTime.now();
+    final pendingAtStart = await db.countOutboxPending();
+    LogManager.instance.info(
+      'LocalSync outbox: start',
+      context: <String, Object?>{'pendingAtStart': pendingAtStart},
+    );
+    final counters = _OutboxCounters();
     String? stoppedOnType;
+    String? blockedReason;
     while (true) {
-      final items = await db.listOutboxPending(limit: 1);
-      if (items.isEmpty) {
+      final headItems = await db.listOutboxPending(limit: 1);
+      if (headItems.isEmpty) {
         LogManager.instance.info(
           'LocalSync outbox: summary',
           context: <String, Object?>{
-            'processed': processedCount,
-            'succeeded': successCount,
-            'failed': failedCount,
+            'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+            'pendingAtStart': pendingAtStart,
+            'processed': counters.processedCount,
+            'succeeded': counters.successCount,
+            'failed': counters.failedCount,
+            'blocked': false,
             if (stoppedOnType != null) 'stoppedOnType': stoppedOnType,
-            if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
+            if (counters.typeCounts.isNotEmpty)
+              'typeCounts': counters.typeCounts,
           },
         );
         return;
       }
-      final row = items.first;
-      final id = row['id'] as int?;
-      final type = row['type'] as String?;
-      final payloadRaw = row['payload'] as String?;
-      if (id == null || type == null || payloadRaw == null) continue;
 
-      Map<String, dynamic> payload;
-      try {
-        payload = (jsonDecode(payloadRaw) as Map).cast<String, dynamic>();
-      } catch (e) {
-        await db.markOutboxError(id, error: 'Invalid payload: $e');
-        await db.deleteOutbox(id);
-        failedCount++;
-        processedCount++;
-        typeCounts[type] = (typeCounts[type] ?? 0) + 1;
-        LogManager.instance.warn(
-          'LocalSync outbox: invalid_payload_deleted',
-          error: e,
-          context: <String, Object?>{'id': id, 'type': type},
-        );
-        _maybeLogOutboxProgress(
-          processedCount: processedCount,
-          successCount: successCount,
-          failedCount: failedCount,
-          typeCounts: typeCounts,
-          currentType: type,
-        );
-        syncQueueProgressTracker.updateCompletedTasks(
-          successCount + failedCount,
-        );
+      final head = headItems.first;
+      final headId = head['id'] as int?;
+      final headType = head['type'] as String?;
+      final headState =
+          (head['state'] as int?) ?? AppDatabase.outboxStatePending;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      final retryAtRaw = head['retry_at'];
+      final retryAtMs = switch (retryAtRaw) {
+        int v => v,
+        num v => v.toInt(),
+        String v => int.tryParse(v.trim()),
+        _ => null,
+      };
+      if (headId == null || headType == null) {
+        continue;
+      }
+      if (headState == AppDatabase.outboxStateError) {
+        stoppedOnType = headType;
+        blockedReason = 'error_head';
+        break;
+      }
+      if (headState == AppDatabase.outboxStateRetry &&
+          retryAtMs != null &&
+          retryAtMs > nowMs) {
+        stoppedOnType = headType;
+        blockedReason = 'retry_waiting';
+        break;
+      }
+      if (headState == AppDatabase.outboxStateRunning) {
+        await db.recoverOutboxRunningTasks();
         continue;
       }
 
-      processedCount++;
-      typeCounts[type] = (typeCounts[type] ?? 0) + 1;
-      final memoUid = _outboxMemoUid(type, payload);
-      final shouldLogTaskDetail = _shouldLogOutboxTaskDetail(
-        type: type,
-        processedCount: processedCount,
-      );
-      if (shouldLogTaskDetail) {
-        LogManager.instance.debug(
-          'LocalSync outbox: task_start',
-          context: <String, Object?>{
-            'id': id,
-            'type': type,
-            if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
-          },
+      if (_isAttachmentOutboxType(headType)) {
+        final batchResult = await _processAttachmentOutboxBatch(
+          nowMs: nowMs,
+          counters: counters,
         );
+        if (batchResult.started) {
+          if (batchResult.shouldStop) {
+            stoppedOnType = batchResult.stoppedOnType ?? headType;
+            blockedReason = batchResult.blockedReason;
+            break;
+          }
+          continue;
+        }
       }
 
-      var shouldStop = false;
-      final isUploadTask = type == 'upload_attachment';
-      final taskStartAt = DateTime.now();
-      syncQueueProgressTracker.markTaskStarted(id);
-      try {
-        switch (type) {
-          case 'create_memo':
-            final memo = await _handleUpsertMemo(payload);
-            final hasAttachments = payload['has_attachments'] as bool? ?? false;
-            if (!hasAttachments && memo != null && memo.uid.isNotEmpty) {
-              await db.updateMemoSyncState(memo.uid, syncState: 0);
-              await _syncMemoToBridgeIfEnabled(memo);
-            }
-            await db.deleteOutbox(id);
-            break;
-          case 'update_memo':
-            final memo = await _handleUpsertMemo(payload);
-            final hasPendingAttachments =
-                payload['has_pending_attachments'] as bool? ?? false;
-            if (!hasPendingAttachments && memo != null && memo.uid.isNotEmpty) {
-              await db.updateMemoSyncState(memo.uid, syncState: 0);
-              await _syncMemoToBridgeIfEnabled(memo);
-            }
-            await db.deleteOutbox(id);
-            break;
-          case 'delete_memo':
-            await _handleDeleteMemo(payload);
-            await db.deleteOutbox(id);
-            break;
-          case 'upload_attachment':
-            final finalized = await _handleUploadAttachment(
-              payload,
-              currentOutboxId: id,
-            );
-            final memoUid = payload['memo_uid'] as String?;
-            if (finalized && memoUid != null && memoUid.isNotEmpty) {
-              await db.updateMemoSyncState(memoUid, syncState: 0);
-              final memo = await _loadMemoByUid(memoUid);
-              if (memo != null) {
-                await _syncMemoToBridgeIfEnabled(memo);
-              }
-            }
-            await db.deleteOutbox(id);
-            break;
-          case 'delete_attachment':
-            await _handleDeleteAttachment(payload);
-            final memoUid = payload['memo_uid'] as String?;
-            if (memoUid != null && memoUid.isNotEmpty) {
-              await db.updateMemoSyncState(memoUid, syncState: 0);
-              final memo = await _loadMemoByUid(memoUid);
-              if (memo != null) {
-                await _syncMemoToBridgeIfEnabled(memo);
-              }
-            }
-            await db.deleteOutbox(id);
-            break;
-          default:
-            await db.markOutboxError(id, error: 'Unknown op type: $type');
-            await db.deleteOutbox(id);
-        }
-        successCount++;
-        final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
-        final isSlowTask = elapsedMs >= _slowOutboxTaskThreshold.inMilliseconds;
-        if (shouldLogTaskDetail || isSlowTask) {
-          LogManager.instance.debug(
-            'LocalSync outbox: task_done',
-            context: <String, Object?>{
-              'id': id,
-              'type': type,
-              if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
-              'elapsedMs': elapsedMs,
-              if (isSlowTask) 'slow': true,
-            },
-          );
-        }
-      } catch (e) {
-        failedCount++;
-        final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
-        final memoError = e.toString();
-        await db.markOutboxError(id, error: memoError);
-        final failedMemoUid = switch (type) {
-          'create_memo' => payload['uid'] as String?,
-          'update_memo' => payload['uid'] as String?,
-          'upload_attachment' => payload['memo_uid'] as String?,
-          'delete_attachment' => payload['memo_uid'] as String?,
-          _ => null,
-        };
-        if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
-          final errorText = trByLanguageKey(
-            language: language,
-            key: 'legacy.msg_local_sync_failed',
-            params: {'type': type, 'memoError': memoError},
-          );
-          await db.updateMemoSyncState(
-            failedMemoUid,
-            syncState: 2,
-            lastError: errorText,
-          );
-        }
-        LogManager.instance.warn(
-          'LocalSync outbox: task_failed',
-          error: e,
-          context: <String, Object?>{
-            'id': id,
-            'type': type,
-            if (failedMemoUid != null && failedMemoUid.isNotEmpty)
-              'memoUid': failedMemoUid,
-            'elapsedMs': elapsedMs,
-          },
-        );
-        stoppedOnType = type;
-        shouldStop = true;
-      } finally {
-        if (!shouldStop && isUploadTask) {
-          await syncQueueProgressTracker.markTaskCompleted(outboxId: id);
-        }
-        syncQueueProgressTracker.clearCurrentTask(outboxId: id);
-      }
-      _maybeLogOutboxProgress(
-        processedCount: processedCount,
-        successCount: successCount,
-        failedCount: failedCount,
-        typeCounts: typeCounts,
-        currentType: type,
-      );
-      syncQueueProgressTracker.updateCompletedTasks(successCount + failedCount);
+      final row = await db.claimOutboxTaskById(headId, nowMs: nowMs);
+      if (row == null) continue;
 
-      if (shouldStop) {
+      final taskResult = await _runClaimedOutboxTask(
+        row: row,
+        counters: counters,
+      );
+      if (taskResult.shouldStop) {
+        stoppedOnType = taskResult.stoppedOnType;
+        blockedReason = taskResult.blockedReason;
         break;
       }
     }
@@ -384,13 +403,425 @@ class LocalSyncController extends SyncControllerBase {
     LogManager.instance.info(
       'LocalSync outbox: summary',
       context: <String, Object?>{
-        'processed': processedCount,
-        'succeeded': successCount,
-        'failed': failedCount,
+        'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+        'pendingAtStart': pendingAtStart,
+        'processed': counters.processedCount,
+        'succeeded': counters.successCount,
+        'failed': counters.failedCount,
+        'blocked': true,
+        if (blockedReason != null) 'blockedReason': blockedReason,
         if (stoppedOnType != null) 'stoppedOnType': stoppedOnType,
-        if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
+        if (counters.typeCounts.isNotEmpty) 'typeCounts': counters.typeCounts,
       },
     );
+  }
+
+  Future<_AttachmentOutboxBatchResult> _processAttachmentOutboxBatch({
+    required int nowMs,
+    required _OutboxCounters counters,
+  }) async {
+    final rows = await db.listOutboxPending(
+      limit: _attachmentOutboxBatchScanLimit,
+    );
+    if (rows.isEmpty) {
+      return _AttachmentOutboxBatchResult.notStarted();
+    }
+
+    final candidates = <_AttachmentOutboxCandidate>[];
+    for (final row in rows) {
+      final id = row['id'] as int?;
+      final type = row['type'] as String?;
+      final state = (row['state'] as int?) ?? AppDatabase.outboxStatePending;
+      final retryAtMs = _parseRetryAtMs(row['retry_at']);
+      if (id == null || type == null) {
+        if (candidates.isNotEmpty) break;
+        continue;
+      }
+
+      final isAttachmentType = _isAttachmentOutboxType(type);
+      if (state == AppDatabase.outboxStateRunning) {
+        if (candidates.isEmpty) {
+          await db.recoverOutboxRunningTasks();
+        }
+        break;
+      }
+      if (state == AppDatabase.outboxStateError) {
+        break;
+      }
+      if (state == AppDatabase.outboxStateRetry &&
+          retryAtMs != null &&
+          retryAtMs > nowMs) {
+        break;
+      }
+      final isRunnableNow =
+          state == AppDatabase.outboxStatePending ||
+          state == AppDatabase.outboxStateRetry;
+      if (!isRunnableNow) {
+        if (candidates.isNotEmpty) break;
+        continue;
+      }
+
+      if (candidates.isEmpty) {
+        if (!isAttachmentType) {
+          return _AttachmentOutboxBatchResult.notStarted();
+        }
+      } else if (!isAttachmentType) {
+        break;
+      }
+
+      candidates.add(
+        _AttachmentOutboxCandidate(
+          id: id,
+          memoUid: _extractMemoUidFromPayloadRaw(type, row['payload']),
+        ),
+      );
+    }
+
+    if (candidates.isEmpty) {
+      return _AttachmentOutboxBatchResult.notStarted();
+    }
+
+    final groupsByMemoKey = <String, List<_AttachmentOutboxCandidate>>{};
+    final groupOrder = <String>[];
+    for (final candidate in candidates) {
+      final rawMemoUid = candidate.memoUid?.trim() ?? '';
+      final memoKey = rawMemoUid.isEmpty
+          ? '__outbox_attachment_${candidate.id}'
+          : rawMemoUid;
+      final bucket = groupsByMemoKey.putIfAbsent(memoKey, () {
+        groupOrder.add(memoKey);
+        return <_AttachmentOutboxCandidate>[];
+      });
+      bucket.add(candidate);
+    }
+    final groups = groupOrder
+        .map(
+          (key) => groupsByMemoKey[key] ?? const <_AttachmentOutboxCandidate>[],
+        )
+        .where((group) => group.isNotEmpty)
+        .toList(growable: false);
+    if (groups.isEmpty) {
+      return _AttachmentOutboxBatchResult.notStarted();
+    }
+
+    LogManager.instance.info(
+      'LocalSync outbox: attachment_batch_start',
+      context: <String, Object?>{
+        'candidateCount': candidates.length,
+        'groupCount': groups.length,
+        'concurrency': _attachmentOutboxConcurrency,
+      },
+    );
+
+    var blockedReason = null as String?;
+    var stoppedOnType = null as String?;
+    var groupsProcessed = 0;
+    for (
+      var index = 0;
+      index < groups.length;
+      index += _attachmentOutboxConcurrency
+    ) {
+      final end = index + _attachmentOutboxConcurrency < groups.length
+          ? index + _attachmentOutboxConcurrency
+          : groups.length;
+      final chunk = groups.sublist(index, end);
+      final results = await Future.wait(
+        chunk.map(
+          (group) =>
+              _processAttachmentOutboxGroup(group: group, counters: counters),
+        ),
+      );
+      groupsProcessed += chunk.length;
+      for (final result in results) {
+        if (result.shouldStop) {
+          blockedReason ??= result.blockedReason;
+          stoppedOnType ??= result.stoppedOnType;
+        }
+      }
+      if (blockedReason != null) {
+        break;
+      }
+    }
+
+    LogManager.instance.info(
+      'LocalSync outbox: attachment_batch_done',
+      context: <String, Object?>{
+        'candidateCount': candidates.length,
+        'groupCount': groups.length,
+        'groupsProcessed': groupsProcessed,
+        if (blockedReason != null) 'blockedReason': blockedReason,
+        if (stoppedOnType != null) 'stoppedOnType': stoppedOnType,
+      },
+    );
+
+    return _AttachmentOutboxBatchResult(
+      started: true,
+      shouldStop: blockedReason != null,
+      blockedReason: blockedReason,
+      stoppedOnType: stoppedOnType,
+    );
+  }
+
+  Future<_OutboxTaskRunResult> _processAttachmentOutboxGroup({
+    required List<_AttachmentOutboxCandidate> group,
+    required _OutboxCounters counters,
+  }) async {
+    for (final candidate in group) {
+      final claimed = await db.claimOutboxTaskById(
+        candidate.id,
+        nowMs: DateTime.now().toUtc().millisecondsSinceEpoch,
+      );
+      if (claimed == null) {
+        continue;
+      }
+      final result = await _runClaimedOutboxTask(
+        row: claimed,
+        counters: counters,
+      );
+      if (result.shouldStop) {
+        return result;
+      }
+    }
+    return _OutboxTaskRunResult.continueRun();
+  }
+
+  Future<_OutboxTaskRunResult> _runClaimedOutboxTask({
+    required Map<String, dynamic> row,
+    required _OutboxCounters counters,
+  }) async {
+    final id = row['id'] as int?;
+    final type = row['type'] as String?;
+    final payloadRaw = row['payload'] as String?;
+    final attemptsSoFar = (row['attempts'] as int?) ?? 0;
+    if (id == null || type == null || payloadRaw == null) {
+      return _OutboxTaskRunResult.continueRun();
+    }
+
+    final processedOrdinal = counters.markTaskSeen(type);
+    Map<String, dynamic> payload;
+    try {
+      payload = (jsonDecode(payloadRaw) as Map).cast<String, dynamic>();
+    } catch (error) {
+      await db.markOutboxError(id, error: 'Invalid payload: $error');
+      counters.markFailure();
+      LogManager.instance.warn(
+        'LocalSync outbox: invalid_payload',
+        error: error,
+        context: <String, Object?>{'id': id, 'type': type},
+      );
+      _reportOutboxTaskProgress(counters: counters, currentType: type);
+      return _OutboxTaskRunResult.stop(
+        blockedReason: 'invalid_payload',
+        stoppedOnType: type,
+      );
+    }
+
+    final memoUid = _outboxMemoUid(type, payload);
+    final shouldLogTaskDetail = _shouldLogOutboxTaskDetail(
+      type: type,
+      processedCount: processedOrdinal,
+    );
+    if (shouldLogTaskDetail) {
+      LogManager.instance.debug(
+        'LocalSync outbox: task_start',
+        context: <String, Object?>{
+          'id': id,
+          'type': type,
+          if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
+        },
+      );
+    }
+
+    var shouldStop = false;
+    var blockedReason = null as String?;
+    final isUploadTask = type == 'upload_attachment';
+    final taskStartAt = DateTime.now();
+    syncQueueProgressTracker.markTaskStarted(id);
+    try {
+      switch (type) {
+        case 'create_memo':
+          final memo = await _handleUpsertMemo(payload);
+          final hasAttachments = payload['has_attachments'] as bool? ?? false;
+          if (!hasAttachments && memo != null && memo.uid.isNotEmpty) {
+            await db.updateMemoSyncState(memo.uid, syncState: 0);
+            await _syncMemoToBridgeIfEnabled(memo);
+          }
+          await db.markOutboxDone(id);
+          await db.deleteOutbox(id);
+          break;
+        case 'update_memo':
+          final memo = await _handleUpsertMemo(payload);
+          final hasPendingAttachments =
+              payload['has_pending_attachments'] as bool? ?? false;
+          if (!hasPendingAttachments && memo != null && memo.uid.isNotEmpty) {
+            await db.updateMemoSyncState(memo.uid, syncState: 0);
+            await _syncMemoToBridgeIfEnabled(memo);
+          }
+          await db.markOutboxDone(id);
+          await db.deleteOutbox(id);
+          break;
+        case 'delete_memo':
+          await _handleDeleteMemo(payload);
+          await db.markOutboxDone(id);
+          await db.deleteOutbox(id);
+          break;
+        case 'upload_attachment':
+          final finalized = await _handleUploadAttachment(
+            payload,
+            currentOutboxId: id,
+          );
+          final memoUid = payload['memo_uid'] as String?;
+          if (finalized && memoUid != null && memoUid.isNotEmpty) {
+            await db.updateMemoSyncState(memoUid, syncState: 0);
+            final memo = await _loadMemoByUid(memoUid);
+            if (memo != null) {
+              await _syncMemoToBridgeIfEnabled(memo);
+            }
+          }
+          await db.markOutboxDone(id);
+          await db.deleteOutbox(id);
+          break;
+        case 'delete_attachment':
+          await _handleDeleteAttachment(payload);
+          final memoUid = payload['memo_uid'] as String?;
+          if (memoUid != null && memoUid.isNotEmpty) {
+            await db.updateMemoSyncState(memoUid, syncState: 0);
+            final memo = await _loadMemoByUid(memoUid);
+            if (memo != null) {
+              await _syncMemoToBridgeIfEnabled(memo);
+            }
+          }
+          await db.markOutboxDone(id);
+          await db.deleteOutbox(id);
+          break;
+        default:
+          throw StateError('Unknown op type: $type');
+      }
+      counters.markSuccess();
+      final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
+      final isSlowTask = elapsedMs >= _slowOutboxTaskThreshold.inMilliseconds;
+      if (shouldLogTaskDetail || isSlowTask) {
+        LogManager.instance.debug(
+          'LocalSync outbox: task_done',
+          context: <String, Object?>{
+            'id': id,
+            'type': type,
+            if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
+            'elapsedMs': elapsedMs,
+            if (isSlowTask) 'slow': true,
+          },
+        );
+      }
+    } catch (error) {
+      counters.markFailure();
+      final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
+      final memoError = error.toString();
+      final failedMemoUid = switch (type) {
+        'create_memo' => payload['uid'] as String?,
+        'update_memo' => payload['uid'] as String?,
+        'upload_attachment' => payload['memo_uid'] as String?,
+        'delete_attachment' => payload['memo_uid'] as String?,
+        _ => null,
+      };
+      final transient = _isTransientOutboxError(error);
+      if (transient) {
+        final delay = _retryDelayForAttempt(attemptsSoFar);
+        final retryAt =
+            DateTime.now().toUtc().millisecondsSinceEpoch +
+            delay.inMilliseconds;
+        await db.markOutboxRetryScheduled(
+          id,
+          error: memoError,
+          retryAtMs: retryAt,
+        );
+        blockedReason = 'retry_scheduled';
+        if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
+          await db.updateMemoSyncState(failedMemoUid, syncState: 1);
+        }
+      } else {
+        if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
+          await db.updateMemoSyncState(
+            failedMemoUid,
+            syncState: 2,
+            lastError: trByLanguageKey(
+              language: language,
+              key: 'legacy.msg_local_sync_failed',
+              params: {'type': type, 'memoError': memoError},
+            ),
+          );
+        }
+        await db.markOutboxError(id, error: memoError);
+        blockedReason = 'error';
+      }
+      LogManager.instance.warn(
+        'LocalSync outbox: task_failed',
+        error: error,
+        context: <String, Object?>{
+          'id': id,
+          'type': type,
+          if (failedMemoUid != null && failedMemoUid.isNotEmpty)
+            'memoUid': failedMemoUid,
+          'transient': transient,
+          'elapsedMs': elapsedMs,
+        },
+      );
+      shouldStop = true;
+    } finally {
+      if (!shouldStop && isUploadTask) {
+        await syncQueueProgressTracker.markTaskCompleted(outboxId: id);
+      }
+      syncQueueProgressTracker.clearCurrentTask(outboxId: id);
+    }
+
+    _reportOutboxTaskProgress(counters: counters, currentType: type);
+    if (shouldStop) {
+      return _OutboxTaskRunResult.stop(
+        blockedReason: blockedReason ?? 'error',
+        stoppedOnType: type,
+      );
+    }
+    return _OutboxTaskRunResult.continueRun();
+  }
+
+  void _reportOutboxTaskProgress({
+    required _OutboxCounters counters,
+    required String currentType,
+  }) {
+    _maybeLogOutboxProgress(
+      processedCount: counters.processedCount,
+      successCount: counters.successCount,
+      failedCount: counters.failedCount,
+      typeCounts: counters.typeCounts,
+      currentType: currentType,
+    );
+    syncQueueProgressTracker.updateCompletedTasks(counters.completedCount);
+  }
+
+  bool _isAttachmentOutboxType(String type) {
+    return type == 'upload_attachment' || type == 'delete_attachment';
+  }
+
+  int? _parseRetryAtMs(Object? raw) {
+    return switch (raw) {
+      int v => v,
+      num v => v.toInt(),
+      String v => int.tryParse(v.trim()),
+      _ => null,
+    };
+  }
+
+  String? _extractMemoUidFromPayloadRaw(String type, Object? payloadRaw) {
+    if (payloadRaw is! String || payloadRaw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(payloadRaw);
+      if (decoded is! Map) return null;
+      final payload = decoded.cast<String, dynamic>();
+      final uid = _outboxMemoUid(type, payload);
+      final normalized = uid?.trim() ?? '';
+      return normalized.isEmpty ? null : normalized;
+    } catch (_) {
+      return null;
+    }
   }
 
   bool _shouldLogOutboxTaskDetail({
@@ -432,9 +863,40 @@ class LocalSyncController extends SyncControllerBase {
     );
   }
 
-  Future<bool> _hasPendingOutbox() async {
-    final items = await db.listOutboxPending(limit: 1);
-    return items.isNotEmpty;
+  bool _isTransientOutboxError(Object error) {
+    if (error is FileSystemException) {
+      final fileErrorText = '${error.message} ${error.osError?.message ?? ''}'
+          .toLowerCase();
+      if (fileErrorText.contains('not found') ||
+          fileErrorText.contains('no such file') ||
+          fileErrorText.contains('cannot find the file')) {
+        return false;
+      }
+      return true;
+    }
+    if (error is DioException) {
+      return error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.connectionError;
+    }
+    final text = error.toString().toLowerCase();
+    return text.contains('database is locked') ||
+        text.contains('sqlite_error: 5') ||
+        text.contains('resource busy') ||
+        text.contains('temporarily unavailable') ||
+        text.contains('timed out');
+  }
+
+  Duration _retryDelayForAttempt(int attemptsSoFar) {
+    if (_retryBackoffSteps.isEmpty) {
+      return const Duration(seconds: 5);
+    }
+    final normalizedAttempts = attemptsSoFar < 0 ? 0 : attemptsSoFar;
+    final index = normalizedAttempts >= _retryBackoffSteps.length
+        ? _retryBackoffSteps.length - 1
+        : normalizedAttempts;
+    return _retryBackoffSteps[index];
   }
 
   void _cancelRetrySyncTimer() {
@@ -483,6 +945,14 @@ class LocalSyncController extends SyncControllerBase {
     _retrySyncTimer = Timer(delay, () {
       _retrySyncTimer = null;
       if (_isDisposed) return;
+      LogManager.instance.info(
+        'LocalSync: retry_triggered',
+        context: <String, Object?>{
+          'delayMs': delay.inMilliseconds,
+          'hasPendingOutbox': hasPendingOutbox,
+          'syncFailed': syncFailed,
+        },
+      );
       unawaited(syncNow());
     });
   }
@@ -825,4 +1295,76 @@ class LocalSyncController extends SyncControllerBase {
     }
     throw const FormatException('Bridge response is not JSON object');
   }
+}
+
+class _OutboxCounters {
+  int _processedCount = 0;
+  int _successCount = 0;
+  int _failedCount = 0;
+  final Map<String, int> _typeCounts = <String, int>{};
+
+  int get processedCount => _processedCount;
+  int get successCount => _successCount;
+  int get failedCount => _failedCount;
+  int get completedCount => _successCount + _failedCount;
+  Map<String, int> get typeCounts => _typeCounts;
+
+  int markTaskSeen(String type) {
+    _processedCount++;
+    _typeCounts[type] = (_typeCounts[type] ?? 0) + 1;
+    return _processedCount;
+  }
+
+  void markSuccess() {
+    _successCount++;
+  }
+
+  void markFailure() {
+    _failedCount++;
+  }
+}
+
+class _OutboxTaskRunResult {
+  const _OutboxTaskRunResult.continueRun()
+    : shouldStop = false,
+      blockedReason = null,
+      stoppedOnType = null;
+
+  const _OutboxTaskRunResult.stop({
+    required this.blockedReason,
+    required this.stoppedOnType,
+  }) : shouldStop = true,
+       assert(blockedReason != null),
+       assert(stoppedOnType != null);
+
+  final bool shouldStop;
+  final String? blockedReason;
+  final String? stoppedOnType;
+}
+
+class _AttachmentOutboxBatchResult {
+  const _AttachmentOutboxBatchResult({
+    required this.started,
+    required this.shouldStop,
+    this.blockedReason,
+    this.stoppedOnType,
+  });
+
+  const _AttachmentOutboxBatchResult.notStarted()
+    : started = false,
+      shouldStop = false,
+      blockedReason = null,
+      stoppedOnType = null;
+
+  final bool started;
+  final bool shouldStop;
+  final String? blockedReason;
+  final String? stoppedOnType;
+}
+
+class _AttachmentOutboxCandidate {
+  const _AttachmentOutboxCandidate({required this.id, required this.memoUid});
+
+  final int id;
+  final String? memoUid;
 }

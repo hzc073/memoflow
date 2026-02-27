@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -47,6 +48,22 @@ class LocalLibraryScanner {
   Future<void> scanAndMerge(
     BuildContext context, {
     bool forceDisk = false,
+  }) async {
+    await _scanAndMergeCore(
+      forceDisk: forceDisk,
+      resolveConflict: (memoUid, isDeletion) =>
+          _resolveConflict(context, memoUid, isDeletion: isDeletion),
+    );
+  }
+
+  Future<void> scanAndMergeIncremental({bool forceDisk = false}) async {
+    await _scanAndMergeIncrementalCore(forceDisk: forceDisk);
+  }
+
+  Future<void> _scanAndMergeCore({
+    required bool forceDisk,
+    required Future<bool> Function(String memoUid, bool isDeletion)
+    resolveConflict,
   }) async {
     final startedAt = DateTime.now();
     LogManager.instance.info(
@@ -165,7 +182,7 @@ class LocalLibraryScanner {
       var useDisk = true;
       if (!effectiveForceDisk && hasConflict) {
         conflictPromptCount++;
-        useDisk = await _resolveConflict(context, uid, isDeletion: false);
+        useDisk = await resolveConflict(uid, false);
         if (useDisk) {
           conflictUseDiskCount++;
         } else {
@@ -216,7 +233,7 @@ class LocalLibraryScanner {
       var useDisk = true;
       if (!effectiveForceDisk && hasConflict) {
         conflictPromptCount++;
-        useDisk = await _resolveConflict(context, normalized, isDeletion: true);
+        useDisk = await resolveConflict(normalized, true);
         if (useDisk) {
           conflictUseDiskCount++;
         } else {
@@ -283,6 +300,317 @@ class LocalLibraryScanner {
     );
     // Ensure memo list streams refresh even when scan result is unchanged.
     db.notifyDataChanged();
+  }
+
+  Future<void> _scanAndMergeIncrementalCore({required bool forceDisk}) async {
+    final startedAt = DateTime.now();
+    LogManager.instance.info(
+      'LocalLibrary scan: incremental_start',
+      context: <String, Object?>{'forceDisk': forceDisk},
+    );
+    await fileSystem.ensureStructure();
+    final memoEntries = await fileSystem.listMemos();
+    final pendingUids = await db.listPendingOutboxMemoUids();
+    final hasPendingOutbox = pendingUids.isNotEmpty;
+    final effectiveForceDisk = forceDisk && !hasPendingOutbox;
+    if (forceDisk && hasPendingOutbox) {
+      LogManager.instance.warn(
+        'LocalLibrary scan: incremental_force_disk_downgraded',
+        context: <String, Object?>{
+          'pendingOutboxMemoCount': pendingUids.length,
+        },
+      );
+    }
+
+    final previousManifest = await _readScanManifestSafe();
+    final nextManifestByPath = <String, _ScanManifestEntry>{};
+    final currentPaths = <String>{};
+    final currentUids = <String>{};
+    var parsedAttemptedCount = 0;
+    var reusedByManifestCount = 0;
+    var skippedEmptyFileCount = 0;
+    var skippedMissingUidCount = 0;
+    var insertedCount = 0;
+    var updatedCount = 0;
+    var unchangedCount = 0;
+    var deletedCount = 0;
+    var movedPathDropCount = 0;
+    var skippedConflictKeepLocalCount = 0;
+    var skippedForceDiskConflictCount = 0;
+    var pendingOutboxDeleteGuardSkipCount = 0;
+    var outboxClearedCount = 0;
+    var staleManifestPrunedCount = 0;
+    final insertedSampleUids = <String>[];
+    final updatedSampleUids = <String>[];
+    final deletedSampleUids = <String>[];
+    final conflictSkippedSampleUids = <String>[];
+
+    for (final entry in memoEntries) {
+      final path = entry.relativePath;
+      currentPaths.add(path);
+      final cached = previousManifest.entriesByPath[path];
+      final canReuse =
+          !effectiveForceDisk &&
+          cached != null &&
+          !cached.needsRecheck &&
+          _manifestEntryMatchesFile(cached, entry);
+      if (canReuse) {
+        reusedByManifestCount++;
+        nextManifestByPath[path] = cached;
+        final cachedUid = cached.uid.trim();
+        if (cachedUid.isNotEmpty) currentUids.add(cachedUid);
+        continue;
+      }
+
+      parsedAttemptedCount++;
+      final raw = await fileSystem.readFileText(entry);
+      if (raw == null || raw.trim().isEmpty) {
+        skippedEmptyFileCount++;
+        if (cached != null) {
+          nextManifestByPath[path] = cached;
+          final cachedUid = cached.uid.trim();
+          if (cachedUid.isNotEmpty) currentUids.add(cachedUid);
+        }
+        continue;
+      }
+      final parsed = parseLocalLibraryMarkdown(raw);
+      final uid = _resolveMemoUid(parsed: parsed, entryName: entry.name);
+      if (uid.isEmpty) {
+        skippedMissingUidCount++;
+        if (cached != null) {
+          nextManifestByPath[path] = cached;
+          final cachedUid = cached.uid.trim();
+          if (cachedUid.isNotEmpty) currentUids.add(cachedUid);
+        }
+        continue;
+      }
+
+      final attachments = await _loadDiskAttachments(uid);
+      final row = await db.getMemoByUid(uid);
+      var shouldPersistCurrentManifest = true;
+
+      if (row == null) {
+        await _upsertMemoFromDisk(uid, parsed, attachments, relationCount: 0);
+        insertedCount++;
+        if (insertedSampleUids.length < 8) {
+          insertedSampleUids.add(uid);
+        }
+      } else {
+        final localMemo = LocalMemo.fromDb(row);
+        final mergedTags = _mergeTags(parsed.tags, parsed.content);
+        final needsUpdate = _shouldUpdate(
+          localMemo: localMemo,
+          parsed: parsed,
+          diskAttachments: attachments,
+          mergedTags: mergedTags,
+        );
+        if (!needsUpdate) {
+          unchangedCount++;
+        } else {
+          final hasConflict =
+              localMemo.syncState != SyncState.synced ||
+              pendingUids.contains(uid);
+          if (effectiveForceDisk && hasConflict) {
+            skippedForceDiskConflictCount++;
+            shouldPersistCurrentManifest = false;
+            if (conflictSkippedSampleUids.length < 8) {
+              conflictSkippedSampleUids.add(uid);
+            }
+          } else if (hasConflict) {
+            skippedConflictKeepLocalCount++;
+            shouldPersistCurrentManifest = false;
+            if (conflictSkippedSampleUids.length < 8) {
+              conflictSkippedSampleUids.add(uid);
+            }
+          } else {
+            await db.deleteOutboxForMemo(uid);
+            outboxClearedCount++;
+            await _upsertMemoFromDisk(
+              uid,
+              parsed,
+              attachments,
+              relationCount: localMemo.relationCount,
+            );
+            updatedCount++;
+            if (updatedSampleUids.length < 8) {
+              updatedSampleUids.add(uid);
+            }
+          }
+        }
+      }
+
+      if (shouldPersistCurrentManifest) {
+        final manifestEntry = _ScanManifestEntry(
+          uid: uid,
+          length: entry.length,
+          modifiedMs: _entryModifiedMs(entry),
+          needsRecheck: false,
+        );
+        nextManifestByPath[path] = manifestEntry;
+        currentUids.add(uid);
+      } else {
+        final recheckEntry =
+            (cached ??
+                    _ScanManifestEntry(uid: uid, length: 0, modifiedMs: null))
+                .copyWith(
+                  uid: uid,
+                  length: entry.length,
+                  modifiedMs: _entryModifiedMs(entry),
+                  needsRecheck: true,
+                );
+        nextManifestByPath[path] = recheckEntry;
+        final cachedUid = recheckEntry.uid.trim();
+        if (cachedUid.isNotEmpty) currentUids.add(cachedUid);
+      }
+    }
+
+    for (final previous in previousManifest.entriesByPath.entries) {
+      final path = previous.key;
+      final previousEntry = previous.value;
+      if (currentPaths.contains(path)) continue;
+      final uid = previousEntry.uid.trim();
+      if (uid.isEmpty) continue;
+
+      if (currentUids.contains(uid)) {
+        movedPathDropCount++;
+        continue;
+      }
+
+      if (hasPendingOutbox) {
+        pendingOutboxDeleteGuardSkipCount++;
+        nextManifestByPath[path] = previousEntry;
+        continue;
+      }
+
+      final row = await db.getMemoByUid(uid);
+      if (row == null) {
+        staleManifestPrunedCount++;
+        continue;
+      }
+      final localMemo = LocalMemo.fromDb(row);
+      final hasConflict =
+          localMemo.syncState != SyncState.synced || pendingUids.contains(uid);
+      if (effectiveForceDisk && hasConflict) {
+        skippedForceDiskConflictCount++;
+        nextManifestByPath[path] = previousEntry;
+        if (conflictSkippedSampleUids.length < 8) {
+          conflictSkippedSampleUids.add(uid);
+        }
+        continue;
+      }
+      if (hasConflict) {
+        skippedConflictKeepLocalCount++;
+        nextManifestByPath[path] = previousEntry;
+        if (conflictSkippedSampleUids.length < 8) {
+          conflictSkippedSampleUids.add(uid);
+        }
+        continue;
+      }
+
+      await db.deleteOutboxForMemo(uid);
+      outboxClearedCount++;
+      await db.deleteMemoByUid(uid);
+      deletedCount++;
+      if (deletedSampleUids.length < 8) {
+        deletedSampleUids.add(uid);
+      }
+    }
+
+    await _writeScanManifestSafe(
+      _ScanManifest(entriesByPath: nextManifestByPath),
+    );
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    LogManager.instance.info(
+      'LocalLibrary scan: incremental_completed',
+      context: <String, Object?>{
+        'forceDisk': forceDisk,
+        'effectiveForceDisk': effectiveForceDisk,
+        'elapsedMs': elapsedMs,
+        'diskFiles': memoEntries.length,
+        'manifestPrevious': previousManifest.entriesByPath.length,
+        'manifestNext': nextManifestByPath.length,
+        'parsedAttempted': parsedAttemptedCount,
+        'reusedByManifest': reusedByManifestCount,
+        'skippedEmptyFile': skippedEmptyFileCount,
+        'skippedMissingUid': skippedMissingUidCount,
+        'inserted': insertedCount,
+        'updated': updatedCount,
+        'unchanged': unchangedCount,
+        'deleted': deletedCount,
+        'movedPathDropped': movedPathDropCount,
+        'staleManifestPruned': staleManifestPrunedCount,
+        'pendingOutboxMemoCount': pendingUids.length,
+        'pendingOutboxDeleteGuardSkipped': pendingOutboxDeleteGuardSkipCount,
+        'skippedConflictKeepLocal': skippedConflictKeepLocalCount,
+        'skippedForceDiskConflict': skippedForceDiskConflictCount,
+        'outboxCleared': outboxClearedCount,
+        if (insertedSampleUids.isNotEmpty) 'insertedSample': insertedSampleUids,
+        if (updatedSampleUids.isNotEmpty) 'updatedSample': updatedSampleUids,
+        if (deletedSampleUids.isNotEmpty) 'deletedSample': deletedSampleUids,
+        if (conflictSkippedSampleUids.isNotEmpty)
+          'conflictSkippedSample': conflictSkippedSampleUids,
+      },
+    );
+    db.notifyDataChanged();
+  }
+
+  Future<_ScanManifest> _readScanManifestSafe() async {
+    try {
+      final raw = await fileSystem.readScanManifest();
+      if (raw == null || raw.trim().isEmpty) return _ScanManifest.empty();
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return _ScanManifest.empty();
+      return _ScanManifest.fromJson(decoded.cast<String, dynamic>());
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'LocalLibrary scan: manifest_read_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _ScanManifest.empty();
+    }
+  }
+
+  Future<void> _writeScanManifestSafe(_ScanManifest manifest) async {
+    try {
+      await fileSystem.writeScanManifest(jsonEncode(manifest.toJson()));
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'LocalLibrary scan: manifest_write_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: <String, Object?>{'entryCount': manifest.entriesByPath.length},
+      );
+    }
+  }
+
+  bool _manifestEntryMatchesFile(
+    _ScanManifestEntry manifestEntry,
+    LocalLibraryFileEntry fileEntry,
+  ) {
+    return manifestEntry.length == fileEntry.length &&
+        manifestEntry.modifiedMs == _entryModifiedMs(fileEntry);
+  }
+
+  int? _entryModifiedMs(LocalLibraryFileEntry entry) {
+    return entry.lastModified?.toUtc().millisecondsSinceEpoch;
+  }
+
+  String _resolveMemoUid({
+    required LocalLibraryParsedMemo parsed,
+    required String entryName,
+  }) {
+    var uid = parsed.uid.trim();
+    if (uid.isNotEmpty) return uid;
+    final lower = entryName.toLowerCase();
+    if (lower.endsWith('.md.txt')) {
+      uid = entryName.substring(0, entryName.length - 7);
+    } else if (lower.endsWith('.md')) {
+      uid = entryName.substring(0, entryName.length - 3);
+    } else {
+      uid = entryName;
+    }
+    return uid.trim();
   }
 
   bool _shouldUpdate({
@@ -476,5 +804,98 @@ class LocalLibraryScanner {
       'log' => 'text/plain',
       _ => 'application/octet-stream',
     };
+  }
+}
+
+class _ScanManifestEntry {
+  const _ScanManifestEntry({
+    required this.uid,
+    required this.length,
+    required this.modifiedMs,
+    this.needsRecheck = false,
+  });
+
+  final String uid;
+  final int length;
+  final int? modifiedMs;
+  final bool needsRecheck;
+
+  _ScanManifestEntry copyWith({
+    String? uid,
+    int? length,
+    int? modifiedMs,
+    bool? needsRecheck,
+  }) {
+    return _ScanManifestEntry(
+      uid: uid ?? this.uid,
+      length: length ?? this.length,
+      modifiedMs: modifiedMs ?? this.modifiedMs,
+      needsRecheck: needsRecheck ?? this.needsRecheck,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'uid': uid,
+    'length': length,
+    'modifiedMs': modifiedMs,
+    'needsRecheck': needsRecheck,
+  };
+
+  factory _ScanManifestEntry.fromJson(Map<String, dynamic> json) {
+    int readLength() {
+      final raw = json['length'];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+      return 0;
+    }
+
+    int? readModifiedMs() {
+      final raw = json['modifiedMs'];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim());
+      return null;
+    }
+
+    bool readNeedsRecheck() {
+      final raw = json['needsRecheck'];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      return false;
+    }
+
+    final rawUid = json['uid'];
+    final uid = rawUid is String ? rawUid.trim() : '';
+    return _ScanManifestEntry(
+      uid: uid,
+      length: readLength(),
+      modifiedMs: readModifiedMs(),
+      needsRecheck: readNeedsRecheck(),
+    );
+  }
+}
+
+class _ScanManifest {
+  const _ScanManifest({required this.entriesByPath});
+
+  final Map<String, _ScanManifestEntry> entriesByPath;
+
+  factory _ScanManifest.empty() => const _ScanManifest(entriesByPath: {});
+
+  Map<String, dynamic> toJson() => {
+    'version': 1,
+    'entries': entriesByPath.map((key, value) => MapEntry(key, value.toJson())),
+  };
+
+  factory _ScanManifest.fromJson(Map<String, dynamic> json) {
+    final rawEntries = json['entries'];
+    if (rawEntries is! Map) return _ScanManifest.empty();
+    final entries = <String, _ScanManifestEntry>{};
+    rawEntries.forEach((key, value) {
+      if (key is! String || value is! Map) return;
+      entries[key] = _ScanManifestEntry.fromJson(value.cast<String, dynamic>());
+    });
+    return _ScanManifest(entriesByPath: entries);
   }
 }

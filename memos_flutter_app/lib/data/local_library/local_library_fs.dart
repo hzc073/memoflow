@@ -29,6 +29,8 @@ class LocalLibraryFileEntry {
 }
 
 class LocalLibraryFileSystem {
+  static const String scanManifestFilename = '.memoflow_scan_manifest.json';
+
   LocalLibraryFileSystem(this.library, {SafUtil? safUtil, SafStream? safStream})
     : _saf = safUtil ?? SafUtil(),
       _stream = safStream ?? SafStream();
@@ -53,6 +55,14 @@ class LocalLibraryFileSystem {
 
   Future<String?> readIndex() async {
     return _readTextFile(['index.md']);
+  }
+
+  Future<String?> readScanManifest() async {
+    return _readTextFile([scanManifestFilename]);
+  }
+
+  Future<void> writeScanManifest(String content) async {
+    await _writeTextFile([scanManifestFilename], content);
   }
 
   Future<List<LocalLibraryFileEntry>> listMemos() async {

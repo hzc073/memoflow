@@ -9,6 +9,7 @@ import '../core/app_localization.dart';
 import '../core/image_bed_url.dart';
 import '../core/memo_relations.dart';
 import '../core/tags.dart';
+import '../core/uid.dart';
 import '../data/api/memo_api_facade.dart';
 import '../data/api/memo_api_version.dart';
 import '../data/api/memos_api.dart';
@@ -56,6 +57,32 @@ typedef ShortcutMemosQuery = ({
   int pageSize,
 });
 
+typedef _CurrentAccountAuthContext = ({
+  String key,
+  String baseUrl,
+  String personalAccessToken,
+  String userName,
+  String instanceVersion,
+  String serverVersionOverride,
+  bool? useLegacyApiOverride,
+});
+
+_CurrentAccountAuthContext? _currentAccountAuthContext(
+  AsyncValue<AppSessionState> session,
+) {
+  final account = session.valueOrNull?.currentAccount;
+  if (account == null) return null;
+  return (
+    key: account.key,
+    baseUrl: account.baseUrl.toString(),
+    personalAccessToken: account.personalAccessToken,
+    userName: account.user.name,
+    instanceVersion: account.instanceProfile.version.trim(),
+    serverVersionOverride: (account.serverVersionOverride ?? '').trim(),
+    useLegacyApiOverride: account.useLegacyApiOverride,
+  );
+}
+
 enum QuickSearchKind { attachments, links, voice, onThisDay }
 
 final RegExp _memoMarkdownLinkPattern = RegExp(
@@ -78,7 +105,13 @@ typedef QuickSearchMemosQuery = ({
 });
 
 final memosApiProvider = Provider<MemosApi>((ref) {
-  final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
+  final authContext = ref.watch(
+    appSessionProvider.select(_currentAccountAuthContext),
+  );
+  if (authContext == null) {
+    throw StateError('Not authenticated');
+  }
+  final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
   if (account == null) {
     throw StateError('Not authenticated');
   }
@@ -1421,14 +1454,16 @@ final syncControllerProvider =
         );
       }
 
-      final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
-      if (account == null) {
+      final authContext = ref.watch(
+        appSessionProvider.select(_currentAccountAuthContext),
+      );
+      if (authContext == null) {
         throw StateError('Not authenticated');
       }
       return RemoteSyncController(
         db: ref.watch(databaseProvider),
         api: ref.watch(memosApiProvider),
-        currentUserName: account.user.name,
+        currentUserName: authContext.userName,
         syncStatusTracker: ref.read(syncStatusTrackerProvider),
         syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
         language: language,
@@ -1574,8 +1609,11 @@ class RemoteSyncController extends SyncControllerBase {
   final void Function(Set<String> memoUids)? onRelationsSynced;
   Timer? _retrySyncTimer;
   int _retryBackoffIndex = 0;
+  int _syncRunSeq = 0;
   bool _rerunRequestedWhileLoading = false;
   bool _isDisposed = false;
+  final String _controllerId =
+      'remote_${DateTime.now().toUtc().millisecondsSinceEpoch}_${identityHashCode(Object())}';
 
   static const List<Duration> _retryBackoffSteps = <Duration>[
     Duration(seconds: 3),
@@ -1783,6 +1821,122 @@ class RemoteSyncController extends SyncControllerBase {
     return list;
   }
 
+  bool _shouldDuplicateConflictWithRemote({
+    required LocalMemo localMemo,
+    required Memo remoteMemo,
+  }) {
+    final remoteUpdateSec =
+        remoteMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000;
+    final localUpdateSec =
+        localMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000;
+    if (remoteUpdateSec <= localUpdateSec) {
+      return false;
+    }
+    return !_memoEquivalentLocalAndRemote(localMemo, remoteMemo);
+  }
+
+  bool _memoEquivalentLocalAndRemote(LocalMemo localMemo, Memo remoteMemo) {
+    if (localMemo.content != remoteMemo.content) return false;
+    if (localMemo.visibility != remoteMemo.visibility) return false;
+    if (localMemo.pinned != remoteMemo.pinned) return false;
+    if (localMemo.state != remoteMemo.state) return false;
+
+    final localTags = List<String>.from(localMemo.tags)..sort();
+    final remoteTags = _mergeTags(remoteMemo.tags, remoteMemo.content);
+    if (localTags.length != remoteTags.length) return false;
+    for (var i = 0; i < localTags.length; i++) {
+      if (localTags[i] != remoteTags[i]) return false;
+    }
+
+    final localLocation = localMemo.location;
+    final remoteLocation = remoteMemo.location;
+    if (localLocation == null && remoteLocation != null) return false;
+    if (localLocation != null && remoteLocation == null) return false;
+    if (localLocation != null && remoteLocation != null) {
+      if (localLocation.placeholder.trim() !=
+          remoteLocation.placeholder.trim()) {
+        return false;
+      }
+      if ((localLocation.latitude - remoteLocation.latitude).abs() > 1e-7) {
+        return false;
+      }
+      if ((localLocation.longitude - remoteLocation.longitude).abs() > 1e-7) {
+        return false;
+      }
+    }
+
+    final localAttachments =
+        localMemo.attachments.map(_attachmentSignature).toList(growable: false)
+          ..sort();
+    final remoteAttachments =
+        remoteMemo.attachments.map(_attachmentSignature).toList(growable: false)
+          ..sort();
+    if (localAttachments.length != remoteAttachments.length) return false;
+    for (var i = 0; i < localAttachments.length; i++) {
+      if (localAttachments[i] != remoteAttachments[i]) return false;
+    }
+    return true;
+  }
+
+  String _attachmentSignature(Attachment attachment) {
+    return [
+      attachment.name.trim(),
+      attachment.filename.trim(),
+      attachment.type.trim(),
+      attachment.size.toString(),
+      attachment.externalLink.trim(),
+    ].join('|');
+  }
+
+  Future<String> _duplicateConflictLocalMemo({
+    required LocalMemo localMemo,
+    required String? localLastError,
+  }) async {
+    final duplicateUid = generateUid();
+    final normalizedError =
+        (localLastError == null || localLastError.trim().isEmpty)
+        ? null
+        : localLastError.trim();
+    await db.upsertMemo(
+      uid: duplicateUid,
+      content: localMemo.content,
+      visibility: localMemo.visibility,
+      pinned: localMemo.pinned,
+      state: localMemo.state,
+      createTimeSec:
+          localMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec:
+          localMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+      tags: localMemo.tags,
+      attachments: localMemo.attachments
+          .map((attachment) => attachment.toJson())
+          .toList(growable: false),
+      location: localMemo.location,
+      relationCount: localMemo.relationCount,
+      syncState: 1,
+      lastError: normalizedError,
+    );
+    final rewritten = await db.rewriteOutboxMemoUids(
+      oldUid: localMemo.uid,
+      newUid: duplicateUid,
+    );
+    if (rewritten <= 0) {
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': duplicateUid,
+          'content': localMemo.content,
+          'visibility': localMemo.visibility,
+          'pinned': localMemo.pinned,
+          'has_attachments': false,
+          if (localMemo.location != null)
+            'location': localMemo.location!.toJson(),
+        },
+      );
+    }
+    return duplicateUid;
+  }
+
   void _cancelRetrySyncTimer() {
     _retrySyncTimer?.cancel();
     _retrySyncTimer = null;
@@ -1807,8 +1961,8 @@ class RemoteSyncController extends SyncControllerBase {
   }
 
   Future<bool> _hasPendingOutbox() async {
-    final items = await db.listOutboxPending(limit: 1);
-    return items.isNotEmpty;
+    final count = await db.countOutboxRetryable();
+    return count > 0;
   }
 
   Future<void> _scheduleRetrySyncIfNeeded({
@@ -1831,6 +1985,26 @@ class RemoteSyncController extends SyncControllerBase {
 
   @override
   void dispose() {
+    final queueSnapshot = syncQueueProgressTracker.snapshot;
+    if (queueSnapshot.syncing) {
+      syncQueueProgressTracker.markSyncFinished();
+      LogManager.instance.info(
+        'RemoteSync: controller_disposed_release_queue_lock',
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'queueCurrentOutboxId': queueSnapshot.currentOutboxId,
+          'queueTotalTasks': queueSnapshot.totalTasks,
+          'queueCompletedTasks': queueSnapshot.completedTasks,
+        },
+      );
+    }
+    LogManager.instance.info(
+      'RemoteSync: controller_disposed',
+      context: <String, Object?>{
+        'controllerId': _controllerId,
+        'retryTimerActive': _retrySyncTimer?.isActive ?? false,
+      },
+    );
     _isDisposed = true;
     _cancelRetrySyncTimer();
     super.dispose();
@@ -1838,16 +2012,35 @@ class RemoteSyncController extends SyncControllerBase {
 
   @override
   Future<void> syncNow() async {
-    if (_isDisposed) return;
-    final globalSyncing = syncQueueProgressTracker.snapshot.syncing;
-    if (state.isLoading || globalSyncing) {
+    final runId =
+        'run_${DateTime.now().toUtc().millisecondsSinceEpoch}_${++_syncRunSeq}';
+    if (_isDisposed) {
+      LogManager.instance.info(
+        'RemoteSync: sync_skipped_disposed',
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
+        },
+      );
+      return;
+    }
+    final queueSnapshot = syncQueueProgressTracker.snapshot;
+    final globalSyncing = queueSnapshot.syncing;
+    final stateLoading = _readStateLoadingSafely(runId: runId) ?? false;
+    if (stateLoading || globalSyncing) {
       _rerunRequestedWhileLoading = true;
       LogManager.instance.debug(
         'RemoteSync: sync_skipped_loading',
         context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
           'rerunRequested': true,
-          'stateLoading': state.isLoading,
+          'stateLoading': stateLoading,
           'globalSyncing': globalSyncing,
+          'queueCurrentOutboxId': queueSnapshot.currentOutboxId,
+          'queueTotalTasks': queueSnapshot.totalTasks,
+          'queueCompletedTasks': queueSnapshot.completedTasks,
+          'queueOverallProgress': queueSnapshot.overallProgress,
         },
       );
       return;
@@ -1855,6 +2048,8 @@ class RemoteSyncController extends SyncControllerBase {
     LogManager.instance.info(
       'RemoteSync: sync_start',
       context: <String, Object?>{
+        'controllerId': _controllerId,
+        'runId': runId,
         'effectiveServerVersion': api.effectiveServerVersion,
         'usesLegacyMemos': api.usesLegacyMemos,
         'requiresCreatorScopedList': api.requiresCreatorScopedListMemos,
@@ -1863,46 +2058,87 @@ class RemoteSyncController extends SyncControllerBase {
     _cancelRetrySyncTimer();
     _rerunRequestedWhileLoading = false;
     syncStatusTracker.markSyncStarted();
+    await db.recoverOutboxRunningTasks();
     final totalPendingAtStart = await db.countOutboxPending();
     syncQueueProgressTracker.markSyncStarted(totalTasks: totalPendingAtStart);
-    state = const AsyncValue.loading();
+    if (!_setStateSafely(
+      const AsyncValue.loading(),
+      runId: runId,
+      stage: 'set_loading',
+    )) {
+      syncQueueProgressTracker.markSyncFinished();
+      return;
+    }
     var outboxBlocked = false;
     final next = await AsyncValue.guard(() async {
       await api.ensureServerHintsLoaded();
-      if (_isDisposed) return;
+      if (_isDisposed) {
+        _logSyncAbortDisposed(runId: runId, stage: 'after_ensure_server_hints');
+        return;
+      }
       outboxBlocked = await _processOutbox();
-      if (_isDisposed) return;
+      if (_isDisposed) {
+        _logSyncAbortDisposed(runId: runId, stage: 'after_process_outbox');
+        return;
+      }
       final allowPrivateVisibilityPrune =
           await _allowPrivateVisibilityPruneForCurrentServer();
-      if (_isDisposed) return;
+      if (_isDisposed) {
+        _logSyncAbortDisposed(
+          runId: runId,
+          stage: 'after_resolve_visibility_prune',
+        );
+        return;
+      }
       await _syncStateMemos(
+        runId: runId,
         state: 'NORMAL',
         allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
       );
-      if (_isDisposed) return;
+      if (_isDisposed) {
+        _logSyncAbortDisposed(
+          runId: runId,
+          stage: 'after_sync_normal_state',
+          syncState: 'NORMAL',
+        );
+        return;
+      }
       await _syncStateMemos(
+        runId: runId,
         state: 'ARCHIVED',
         allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
       );
     });
     if (_isDisposed) {
+      _logSyncAbortDisposed(runId: runId, stage: 'after_guard_before_commit');
       syncQueueProgressTracker.markSyncFinished();
       return;
     }
-    state = next;
+    if (!_setStateSafely(next, runId: runId, stage: 'set_result')) {
+      syncQueueProgressTracker.markSyncFinished();
+      return;
+    }
     if (next.hasError) {
       syncStatusTracker.markSyncFailed(next.error!);
       LogManager.instance.warn(
         'RemoteSync: sync_failed',
         error: next.error,
         stackTrace: next.stackTrace,
-        context: <String, Object?>{'outboxBlocked': outboxBlocked},
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
+          'outboxBlocked': outboxBlocked,
+        },
       );
     } else {
       syncStatusTracker.markSyncSuccess();
       LogManager.instance.info(
         'RemoteSync: sync_success',
-        context: <String, Object?>{'outboxBlocked': outboxBlocked},
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
+          'outboxBlocked': outboxBlocked,
+        },
       );
     }
     syncQueueProgressTracker.markSyncFinished();
@@ -1922,8 +2158,75 @@ class RemoteSyncController extends SyncControllerBase {
 
     if (_rerunRequestedWhileLoading && !_isDisposed) {
       _rerunRequestedWhileLoading = false;
+      LogManager.instance.info(
+        'RemoteSync: sync_rerun_requested',
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
+        },
+      );
       unawaited(syncNow());
     }
+  }
+
+  bool? _readStateLoadingSafely({required String runId}) {
+    try {
+      return state.isLoading;
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'RemoteSync: read_state_loading_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
+        },
+      );
+      return null;
+    }
+  }
+
+  bool _setStateSafely(
+    AsyncValue<void> next, {
+    required String runId,
+    required String stage,
+  }) {
+    if (_isDisposed) {
+      _logSyncAbortDisposed(runId: runId, stage: 'state_set_skipped_$stage');
+      return false;
+    }
+    try {
+      state = next;
+      return true;
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'RemoteSync: set_state_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: <String, Object?>{
+          'controllerId': _controllerId,
+          'runId': runId,
+          'stage': stage,
+        },
+      );
+      return false;
+    }
+  }
+
+  void _logSyncAbortDisposed({
+    required String runId,
+    required String stage,
+    String? syncState,
+  }) {
+    LogManager.instance.info(
+      'RemoteSync: sync_aborted_disposed',
+      context: <String, Object?>{
+        'controllerId': _controllerId,
+        'runId': runId,
+        'stage': stage,
+        if (syncState != null) 'syncState': syncState,
+      },
+    );
   }
 
   Future<bool> _allowPrivateVisibilityPruneForCurrentServer() async {
@@ -1958,6 +2261,7 @@ class RemoteSyncController extends SyncControllerBase {
   }
 
   Future<void> _syncStateMemos({
+    required String runId,
     required String state,
     required bool allowPrivateVisibilityPrune,
   }) async {
@@ -2006,10 +2310,15 @@ class RemoteSyncController extends SyncControllerBase {
     var creatorFilteredOutCount = 0;
     var upsertedCount = 0;
     var preservedDraftCount = 0;
+    var duplicateConflictCount = 0;
+    final duplicateConflictSampleUids = <String>[];
+    final pendingOutboxMemoUids = await db.listPendingOutboxMemoUids();
 
     LogManager.instance.info(
       'RemoteSync state: start',
       context: <String, Object?>{
+        'controllerId': _controllerId,
+        'runId': runId,
         'state': state,
         'allowPrivateVisibilityPrune': allowPrivateVisibilityPrune,
         'syncPageSize': syncPageSize,
@@ -2019,7 +2328,14 @@ class RemoteSyncController extends SyncControllerBase {
     );
 
     while (true) {
-      if (_isDisposed) return;
+      if (_isDisposed) {
+        _logSyncAbortDisposed(
+          runId: runId,
+          stage: 'sync_state_loop_before_request',
+          syncState: state,
+        );
+        return;
+      }
       try {
         final (memos, nextToken) = await api.listMemos(
           pageSize: syncPageSize,
@@ -2029,7 +2345,14 @@ class RemoteSyncController extends SyncControllerBase {
           parent: useParent ? memoParent : null,
           receiveTimeout: syncListReceiveTimeout,
         );
-        if (_isDisposed) return;
+        if (_isDisposed) {
+          _logSyncAbortDisposed(
+            runId: runId,
+            stage: 'sync_state_loop_after_request',
+            syncState: state,
+          );
+          return;
+        }
         pageCount++;
         remoteFetchedCount += memos.length;
         LogManager.instance.debug(
@@ -2044,7 +2367,14 @@ class RemoteSyncController extends SyncControllerBase {
         );
 
         for (final memo in memos) {
-          if (_isDisposed) return;
+          if (_isDisposed) {
+            _logSyncAbortDisposed(
+              runId: runId,
+              stage: 'sync_state_loop_each_memo',
+              syncState: state,
+            );
+            return;
+          }
           final creator = memo.creator.trim();
           if (creator.isNotEmpty && !creatorMatchesCurrentUser(creator)) {
             creatorFilteredOutCount++;
@@ -2054,23 +2384,48 @@ class RemoteSyncController extends SyncControllerBase {
           final local = await db.getMemoByUid(memo.uid);
           final localSync = (local?['sync_state'] as int?) ?? 0;
           final localMemo = local == null ? null : LocalMemo.fromDb(local);
-          final preserveLocalDraft = localMemo != null && localSync != 0;
+          var preserveLocalDraft = localMemo != null && localSync != 0;
+          var effectiveLocalSync = localSync;
+          final hasPendingOutboxForMemo =
+              localMemo != null &&
+              pendingOutboxMemoUids.contains(localMemo.uid.trim());
+          if (localMemo != null &&
+              preserveLocalDraft &&
+              hasPendingOutboxForMemo &&
+              _shouldDuplicateConflictWithRemote(
+                localMemo: localMemo,
+                remoteMemo: memo,
+              )) {
+            final duplicateUid = await _duplicateConflictLocalMemo(
+              localMemo: localMemo,
+              localLastError: (local?['last_error'] as String?)?.trim(),
+            );
+            pendingOutboxMemoUids.remove(localMemo.uid.trim());
+            pendingOutboxMemoUids.add(duplicateUid.trim());
+            duplicateConflictCount++;
+            if (duplicateConflictSampleUids.length < 8) {
+              duplicateConflictSampleUids.add(localMemo.uid.trim());
+            }
+            preserveLocalDraft = false;
+            effectiveLocalSync = 0;
+          }
           if (preserveLocalDraft) {
             preservedDraftCount++;
           }
-          final tags = preserveLocalDraft
-              ? localMemo.tags
+          final draftMemo = preserveLocalDraft ? localMemo! : null;
+          final tags = draftMemo != null
+              ? draftMemo.tags
               : _mergeTags(memo.tags, memo.content);
           final attachments = memo.attachments
               .map((a) => a.toJson())
               .toList(growable: false);
-          final mergedAttachments = preserveLocalDraft
-              ? localMemo.attachments
+          final mergedAttachments = draftMemo != null
+              ? draftMemo.attachments
                     .map((a) => a.toJson())
                     .toList(growable: false)
               : attachments;
-          final relationCount = preserveLocalDraft
-              ? localMemo.relationCount
+          final relationCount = draftMemo != null
+              ? draftMemo.relationCount
               : countReferenceRelations(
                   memoUid: memo.uid,
                   relations: memo.relations,
@@ -2079,23 +2434,23 @@ class RemoteSyncController extends SyncControllerBase {
           final localLastError = localLastErrorRaw is String
               ? localLastErrorRaw
               : null;
-          final content = preserveLocalDraft ? localMemo.content : memo.content;
-          final visibility = preserveLocalDraft
-              ? localMemo.visibility
+          final content = draftMemo != null ? draftMemo.content : memo.content;
+          final visibility = draftMemo != null
+              ? draftMemo.visibility
               : memo.visibility;
-          final pinned = preserveLocalDraft ? localMemo.pinned : memo.pinned;
-          final memoState = preserveLocalDraft ? localMemo.state : memo.state;
-          final createTimeSec = preserveLocalDraft
-              ? localMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000
+          final pinned = draftMemo != null ? draftMemo.pinned : memo.pinned;
+          final memoState = draftMemo != null ? draftMemo.state : memo.state;
+          final createTimeSec = draftMemo != null
+              ? draftMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000
               : (memo.displayTime ?? memo.createTime)
                         .toUtc()
                         .millisecondsSinceEpoch ~/
                     1000;
-          final updateTimeSec = preserveLocalDraft
-              ? localMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000
+          final updateTimeSec = draftMemo != null
+              ? draftMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000
               : memo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000;
-          final location = preserveLocalDraft
-              ? localMemo.location
+          final location = draftMemo != null
+              ? draftMemo.location
               : memo.location;
 
           if (memo.uid.isNotEmpty) {
@@ -2114,7 +2469,7 @@ class RemoteSyncController extends SyncControllerBase {
             attachments: mergedAttachments,
             location: location,
             relationCount: relationCount,
-            syncState: localSync == 0 ? 0 : localSync,
+            syncState: effectiveLocalSync == 0 ? 0 : effectiveLocalSync,
             lastError: preserveLocalDraft ? localLastError : null,
           );
           upsertedCount++;
@@ -2126,7 +2481,14 @@ class RemoteSyncController extends SyncControllerBase {
           break;
         }
       } on DioException catch (e) {
-        if (_isDisposed) return;
+        if (_isDisposed) {
+          _logSyncAbortDisposed(
+            runId: runId,
+            stage: 'sync_state_dio_exception',
+            syncState: state,
+          );
+          return;
+        }
         if ((e.type == DioExceptionType.receiveTimeout ||
                 e.type == DioExceptionType.connectionTimeout) &&
             syncPageSize > 200) {
@@ -2143,6 +2505,8 @@ class RemoteSyncController extends SyncControllerBase {
           creatorFilteredOutCount = 0;
           upsertedCount = 0;
           preservedDraftCount = 0;
+          duplicateConflictCount = 0;
+          duplicateConflictSampleUids.clear();
           LogManager.instance.warn(
             'RemoteSync state: reduce_page_size_after_timeout',
             context: <String, Object?>{
@@ -2165,6 +2529,8 @@ class RemoteSyncController extends SyncControllerBase {
           creatorFilteredOutCount = 0;
           upsertedCount = 0;
           preservedDraftCount = 0;
+          duplicateConflictCount = 0;
+          duplicateConflictSampleUids.clear();
           LogManager.instance.warn(
             'RemoteSync state: fallback_parent_query_to_filter',
             context: <String, Object?>{'state': state, 'status': status},
@@ -2185,6 +2551,8 @@ class RemoteSyncController extends SyncControllerBase {
           creatorFilteredOutCount = 0;
           upsertedCount = 0;
           preservedDraftCount = 0;
+          duplicateConflictCount = 0;
+          duplicateConflictSampleUids.clear();
           LogManager.instance.warn(
             'RemoteSync state: fallback_server_filter_to_local_filter',
             context: <String, Object?>{'state': state, 'status': status},
@@ -2203,7 +2571,14 @@ class RemoteSyncController extends SyncControllerBase {
       }
     }
 
-    if (_isDisposed) return;
+    if (_isDisposed) {
+      _logSyncAbortDisposed(
+        runId: runId,
+        stage: 'sync_state_before_prune',
+        syncState: state,
+      );
+      return;
+    }
     var prunedCount = 0;
     if (completed) {
       prunedCount = await _pruneMissingMemos(
@@ -2215,6 +2590,8 @@ class RemoteSyncController extends SyncControllerBase {
     LogManager.instance.info(
       'RemoteSync state: completed',
       context: <String, Object?>{
+        'controllerId': _controllerId,
+        'runId': runId,
         'state': state,
         'completed': completed,
         'pages': pageCount,
@@ -2222,6 +2599,9 @@ class RemoteSyncController extends SyncControllerBase {
         'creatorFilteredOut': creatorFilteredOutCount,
         'upserted': upsertedCount,
         'preservedDraft': preservedDraftCount,
+        'duplicateConflict': duplicateConflictCount,
+        if (duplicateConflictSampleUids.isNotEmpty)
+          'duplicateConflictSample': duplicateConflictSampleUids,
         'remoteUidCount': remoteUids.length,
         'pruned': prunedCount,
       },
@@ -2263,9 +2643,11 @@ class RemoteSyncController extends SyncControllerBase {
     var successCount = 0;
     var failedCount = 0;
     final typeCounts = <String, int>{};
+    String? blockedType;
+    String? blockedReason;
     while (true) {
-      final items = await db.listOutboxPending(limit: 1);
-      if (items.isEmpty) {
+      final headItems = await db.listOutboxPending(limit: 1);
+      if (headItems.isEmpty) {
         LogManager.instance.info(
           'RemoteSync outbox: summary',
           context: <String, Object?>{
@@ -2278,10 +2660,44 @@ class RemoteSyncController extends SyncControllerBase {
         );
         return false;
       }
-      final row = items.first;
+
+      final head = headItems.first;
+      final headId = head['id'] as int?;
+      final headType = head['type'] as String?;
+      final headState =
+          (head['state'] as int?) ?? AppDatabase.outboxStatePending;
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      final retryAtRaw = head['retry_at'];
+      final retryAtMs = switch (retryAtRaw) {
+        int v => v,
+        num v => v.toInt(),
+        String v => int.tryParse(v.trim()),
+        _ => null,
+      };
+      if (headId == null || headType == null) continue;
+      if (headState == AppDatabase.outboxStateError) {
+        blockedType = headType;
+        blockedReason = 'error_head';
+        break;
+      }
+      if (headState == AppDatabase.outboxStateRetry &&
+          retryAtMs != null &&
+          retryAtMs > nowMs) {
+        blockedType = headType;
+        blockedReason = 'retry_waiting';
+        break;
+      }
+      if (headState == AppDatabase.outboxStateRunning) {
+        await db.recoverOutboxRunningTasks();
+        continue;
+      }
+
+      final row = await db.claimOutboxTaskById(headId, nowMs: nowMs);
+      if (row == null) continue;
       final id = row['id'] as int?;
       final type = row['type'] as String?;
       final payloadRaw = row['payload'] as String?;
+      final attemptsSoFar = (row['attempts'] as int?) ?? 0;
       if (id == null || type == null || payloadRaw == null) continue;
 
       Map<String, dynamic> payload;
@@ -2289,12 +2705,11 @@ class RemoteSyncController extends SyncControllerBase {
         payload = (jsonDecode(payloadRaw) as Map).cast<String, dynamic>();
       } catch (e) {
         await db.markOutboxError(id, error: 'Invalid payload: $e');
-        await db.deleteOutbox(id);
         processedCount++;
         failedCount++;
         typeCounts[type] = (typeCounts[type] ?? 0) + 1;
         LogManager.instance.warn(
-          'RemoteSync outbox: invalid_payload_deleted',
+          'RemoteSync outbox: invalid_payload',
           error: e,
           context: <String, Object?>{'id': id, 'type': type},
         );
@@ -2308,7 +2723,9 @@ class RemoteSyncController extends SyncControllerBase {
         syncQueueProgressTracker.updateCompletedTasks(
           successCount + failedCount,
         );
-        continue;
+        blockedType = type;
+        blockedReason = 'invalid_payload';
+        break;
       }
 
       processedCount++;
@@ -2341,6 +2758,7 @@ class RemoteSyncController extends SyncControllerBase {
             if (!hasAttachments && uid != null && uid.isNotEmpty) {
               await db.updateMemoSyncState(uid, syncState: 0);
             }
+            await db.markOutboxDone(id);
             await db.deleteOutbox(id);
             break;
           case 'update_memo':
@@ -2351,10 +2769,12 @@ class RemoteSyncController extends SyncControllerBase {
             if (!hasPendingAttachments && uid != null && uid.isNotEmpty) {
               await db.updateMemoSyncState(uid, syncState: 0);
             }
+            await db.markOutboxDone(id);
             await db.deleteOutbox(id);
             break;
           case 'delete_memo':
             await _handleDeleteMemo(payload);
+            await db.markOutboxDone(id);
             await db.deleteOutbox(id);
             break;
           case 'upload_attachment':
@@ -2366,6 +2786,7 @@ class RemoteSyncController extends SyncControllerBase {
             if (isFinalized && memoUid != null && memoUid.isNotEmpty) {
               await db.updateMemoSyncState(memoUid, syncState: 0);
             }
+            await db.markOutboxDone(id);
             await db.deleteOutbox(id);
             break;
           case 'delete_attachment':
@@ -2379,15 +2800,16 @@ class RemoteSyncController extends SyncControllerBase {
                 await db.updateMemoSyncState(memoUid, syncState: 0);
               }
             }
+            await db.markOutboxDone(id);
             await db.deleteOutbox(id);
             break;
           case 'submit_log_report':
             await _handleSubmitLogReport(payload);
+            await db.markOutboxDone(id);
             await db.deleteOutbox(id);
             break;
           default:
-            await db.markOutboxError(id, error: 'Unknown op type: $type');
-            await db.deleteOutbox(id);
+            throw StateError('Unknown op type: $type');
         }
         successCount++;
         final elapsedMs = DateTime.now().difference(taskStartAt).inMilliseconds;
@@ -2416,8 +2838,19 @@ class RemoteSyncController extends SyncControllerBase {
             ? _detailHttpError(e)
             : e.toString();
         if (transientNetworkError) {
-          // Keep this task pending and retry with backoff.
-          await db.markOutboxRetryPending(id, error: outboxError);
+          final delay = _retryDelayForOutboxAttempt(attemptsSoFar);
+          final retryAt =
+              DateTime.now().toUtc().millisecondsSinceEpoch +
+              delay.inMilliseconds;
+          await db.markOutboxRetryScheduled(
+            id,
+            error: outboxError,
+            retryAtMs: retryAt,
+          );
+          blockedReason = 'retry_scheduled';
+          if (memoUid != null && memoUid.isNotEmpty) {
+            await db.updateMemoSyncState(memoUid, syncState: 1);
+          }
         } else {
           await db.markOutboxError(id, error: outboxError);
           final failedMemoUid = switch (type) {
@@ -2438,6 +2871,7 @@ class RemoteSyncController extends SyncControllerBase {
               lastError: errorText,
             );
           }
+          blockedReason = 'error';
         }
         LogManager.instance.warn(
           'RemoteSync outbox: task_failed',
@@ -2451,6 +2885,7 @@ class RemoteSyncController extends SyncControllerBase {
           },
         );
         // Keep ordering: stop processing further ops until this one succeeds.
+        blockedType = type;
         shouldStop = true;
       } finally {
         if (!shouldStop && isUploadTask) {
@@ -2468,20 +2903,24 @@ class RemoteSyncController extends SyncControllerBase {
       syncQueueProgressTracker.updateCompletedTasks(successCount + failedCount);
 
       if (shouldStop) {
-        LogManager.instance.info(
-          'RemoteSync outbox: summary',
-          context: <String, Object?>{
-            'processed': processedCount,
-            'succeeded': successCount,
-            'failed': failedCount,
-            'blocked': true,
-            'blockedOnType': type,
-            if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
-          },
-        );
-        return true;
+        blockedType = blockedType ?? type;
+        break;
       }
     }
+    final blockedOnType = blockedType;
+    LogManager.instance.info(
+      'RemoteSync outbox: summary',
+      context: <String, Object?>{
+        'processed': processedCount,
+        'succeeded': successCount,
+        'failed': failedCount,
+        'blocked': true,
+        'blockedOnType': blockedOnType,
+        if (blockedReason != null) 'blockedReason': blockedReason,
+        if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
+      },
+    );
+    return true;
   }
 
   Future<String?> _handleCreateMemo(Map<String, dynamic> payload) async {
@@ -2735,6 +3174,17 @@ class RemoteSyncController extends SyncControllerBase {
         if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
       },
     );
+  }
+
+  Duration _retryDelayForOutboxAttempt(int attemptsSoFar) {
+    if (_retryBackoffSteps.isEmpty) {
+      return const Duration(seconds: 5);
+    }
+    final normalizedAttempts = attemptsSoFar < 0 ? 0 : attemptsSoFar;
+    final index = normalizedAttempts >= _retryBackoffSteps.length
+        ? _retryBackoffSteps.length - 1
+        : normalizedAttempts;
+    return _retryBackoffSteps[index];
   }
 
   String? _outboxMemoUid(String type, Map<String, dynamic> payload) {

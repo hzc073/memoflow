@@ -101,6 +101,7 @@ class AppPreferences {
     collapseReferences: true,
     showEngagementInAllMemoDetails: false,
     launchAction: LaunchAction.none,
+    autoSyncOnStartAndResume: true,
     quickInputAutoFocus: true,
     hapticsEnabled: true,
     useLegacyApi: true,
@@ -147,6 +148,7 @@ class AppPreferences {
     required this.collapseReferences,
     required this.showEngagementInAllMemoDetails,
     required this.launchAction,
+    required this.autoSyncOnStartAndResume,
     required this.quickInputAutoFocus,
     required this.hapticsEnabled,
     required this.useLegacyApi,
@@ -184,6 +186,7 @@ class AppPreferences {
   final bool collapseReferences;
   final bool showEngagementInAllMemoDetails;
   final LaunchAction launchAction;
+  final bool autoSyncOnStartAndResume;
   final bool quickInputAutoFocus;
   final bool hapticsEnabled;
   final bool useLegacyApi;
@@ -238,6 +241,7 @@ class AppPreferences {
     'collapseReferences': collapseReferences,
     'showEngagementInAllMemoDetails': showEngagementInAllMemoDetails,
     'launchAction': launchAction.name,
+    'autoSyncOnStartAndResume': autoSyncOnStartAndResume,
     'quickInputAutoFocus': quickInputAutoFocus,
     'hapticsEnabled': hapticsEnabled,
     'useLegacyApi': useLegacyApi,
@@ -439,6 +443,16 @@ class AppPreferences {
       return AppPreferences.defaults.launchAction;
     }
 
+    bool parseAutoSyncOnStartAndResume(LaunchAction parsedLaunchAction) {
+      final raw = json['autoSyncOnStartAndResume'];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      // Backward compatibility: legacy "launchAction=sync" users should keep
+      // auto-sync behavior after launch-action decoupling.
+      if (parsedLaunchAction == LaunchAction.sync) return true;
+      return AppPreferences.defaults.autoSyncOnStartAndResume;
+    }
+
     bool parseBool(String key, bool fallback) {
       final raw = json[key];
       if (raw is bool) return raw;
@@ -485,6 +499,13 @@ class AppPreferences {
     final parsedAccountThemeColors = parseAccountThemeColors();
     final parsedAccountCustomThemes = parseAccountCustomThemes();
     final parsedDesktopShortcutBindings = parseDesktopShortcutBindings();
+    final parsedLaunchAction = parseLaunchAction();
+    final normalizedLaunchAction = parsedLaunchAction == LaunchAction.sync
+        ? LaunchAction.none
+        : parsedLaunchAction;
+    final parsedAutoSyncOnStartAndResume = parseAutoSyncOnStartAndResume(
+      parsedLaunchAction,
+    );
 
     return AppPreferences(
       language: parseLanguage(),
@@ -507,7 +528,8 @@ class AppPreferences {
         'showEngagementInAllMemoDetails',
         AppPreferences.defaults.showEngagementInAllMemoDetails,
       ),
-      launchAction: parseLaunchAction(),
+      launchAction: normalizedLaunchAction,
+      autoSyncOnStartAndResume: parsedAutoSyncOnStartAndResume,
       quickInputAutoFocus: parseBool(
         'quickInputAutoFocus',
         AppPreferences.defaults.quickInputAutoFocus,
@@ -586,6 +608,7 @@ class AppPreferences {
     bool? collapseReferences,
     bool? showEngagementInAllMemoDetails,
     LaunchAction? launchAction,
+    bool? autoSyncOnStartAndResume,
     bool? quickInputAutoFocus,
     bool? hapticsEnabled,
     bool? useLegacyApi,
@@ -631,6 +654,8 @@ class AppPreferences {
       showEngagementInAllMemoDetails:
           showEngagementInAllMemoDetails ?? this.showEngagementInAllMemoDetails,
       launchAction: launchAction ?? this.launchAction,
+      autoSyncOnStartAndResume:
+          autoSyncOnStartAndResume ?? this.autoSyncOnStartAndResume,
       quickInputAutoFocus: quickInputAutoFocus ?? this.quickInputAutoFocus,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
@@ -815,6 +840,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(showEngagementInAllMemoDetails: v));
   void setLaunchAction(LaunchAction v) =>
       _setAndPersist(state.copyWith(launchAction: v));
+  void setAutoSyncOnStartAndResume(bool v) =>
+      _setAndPersist(state.copyWith(autoSyncOnStartAndResume: v));
   void setQuickInputAutoFocus(bool v) =>
       _setAndPersist(state.copyWith(quickInputAutoFocus: v));
   void setHapticsEnabled(bool v) =>

@@ -26,11 +26,14 @@ import '../../core/memo_relations.dart';
 import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
+import '../../core/sync_feedback.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
 import '../../data/api/server_api_profile.dart';
+import '../../data/db/app_database.dart';
+import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/location_settings.dart';
 import '../../data/models/local_memo.dart';
@@ -127,7 +130,13 @@ final _outboxMemoStatusProvider = StreamProvider<_OutboxMemoStatus>((
     final rows = await sqlite.query(
       'outbox',
       columns: const ['type', 'payload', 'state'],
-      where: 'state IN (0, 2)',
+      where: 'state IN (?, ?, ?, ?)',
+      whereArgs: const [
+        AppDatabase.outboxStatePending,
+        AppDatabase.outboxStateRunning,
+        AppDatabase.outboxStateRetry,
+        AppDatabase.outboxStateError,
+      ],
       orderBy: 'id ASC',
     );
     final pending = <String>{};
@@ -144,7 +153,13 @@ final _outboxMemoStatusProvider = StreamProvider<_OutboxMemoStatus>((
       if (uid == null || uid.trim().isEmpty) continue;
       final normalized = uid.trim();
 
-      if (state == 2) {
+      final stateCode = switch (state) {
+        int v => v,
+        num v => v.toInt(),
+        String v => int.tryParse(v.trim()),
+        _ => null,
+      };
+      if (stateCode == AppDatabase.outboxStateError) {
         failed.add(normalized);
         pending.remove(normalized);
       } else {
@@ -155,6 +170,32 @@ final _outboxMemoStatusProvider = StreamProvider<_OutboxMemoStatus>((
     }
 
     return _OutboxMemoStatus(pending: pending, failed: failed);
+  }
+
+  yield await load();
+  await for (final _ in db.changes) {
+    yield await load();
+  }
+});
+
+final _normalMemoCountProvider = StreamProvider<int>((ref) async* {
+  final db = ref.watch(databaseProvider);
+
+  Future<int> load() async {
+    final sqlite = await db.db;
+    final rows = await sqlite.rawQuery('''
+      SELECT COUNT(*) AS memo_count
+      FROM memos
+      WHERE state = 'NORMAL'
+    ''');
+    if (rows.isEmpty) return 0;
+    final raw = rows.first['memo_count'];
+    return switch (raw) {
+      int value => value,
+      num value => value.toInt(),
+      String value => int.tryParse(value.trim()) ?? 0,
+      _ => 0,
+    };
   }
 
   yield await load();
@@ -179,7 +220,8 @@ String? _extractOutboxMemoUid(String type, Map<String, dynamic> payload) {
     'create_memo' ||
     'update_memo' ||
     'delete_memo' => payload['uid'] as String?,
-    'upload_attachment' => payload['memo_uid'] as String?,
+    'upload_attachment' ||
+    'delete_attachment' => payload['memo_uid'] as String?,
     _ => null,
   };
 }
@@ -406,6 +448,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     with WindowListener {
   static const int _initialPageSize = 200;
   static const int _pageStep = 200;
+  static const int _bootstrapImportThreshold = 50;
   static const double _mobilePullLoadThreshold = 64;
   static const Duration _desktopWheelLoadDebounce = Duration(milliseconds: 220);
   static const double _scrollToTopMinSpeedPxPerSecond = 2600;
@@ -458,6 +501,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   DateTime? _lastBackPressedAt;
   bool _autoScanTriggered = false;
   bool _autoScanInFlight = false;
+  bool _bootstrapImportActive = false;
+  int _bootstrapImportTotal = 0;
+  DateTime? _bootstrapImportStartedAt;
   int _pageSize = _initialPageSize;
   bool _reachedEnd = false;
   bool _loadingMore = false;
@@ -465,6 +511,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   int _lastResultCount = 0;
   int _currentResultCount = 0;
   String? _lastEmptyDiagnosticKey;
+  String? _lastLoadingPhaseKey;
   bool _currentLoading = false;
   bool _currentShowSearchLanding = false;
   double _mobileBottomPullDistance = 0;
@@ -894,6 +941,113 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         quickSearchKind: quickSearchKind,
       ),
     );
+  }
+
+  String _describeSyncState(AsyncValue<void> state) {
+    if (state.isLoading) return 'loading';
+    if (state.hasError) return 'error';
+    if (state.hasValue) return 'value';
+    return 'idle';
+  }
+
+  String _buildMemosLoadingPhase({
+    required bool memosLoading,
+    required bool hasProviderValue,
+    required Object? memosError,
+    required int providerCount,
+    required int animatedCount,
+  }) {
+    if (memosError != null) return 'provider_error';
+    if (memosLoading && !hasProviderValue) return 'initial_loading';
+    if (memosLoading && hasProviderValue) return 'refreshing_with_cached';
+    if (!hasProviderValue) return 'no_provider_value';
+    if (providerCount > 0) return 'data_ready';
+    if (animatedCount > 0) return 'rendering_cached';
+    return 'data_empty';
+  }
+
+  void _maybeLogMemosLoadingPhase({
+    required String queryKey,
+    required bool memosLoading,
+    required Object? memosError,
+    required List<LocalMemo>? memosValue,
+    required List<LocalMemo> visibleMemos,
+    required bool useShortcutFilter,
+    required bool useQuickSearch,
+    required bool useRemoteSearch,
+    required String shortcutFilter,
+    required QuickSearchKind? quickSearchKind,
+    required AsyncValue<void> syncState,
+    required SyncQueueProgressSnapshot syncQueueSnapshot,
+  }) {
+    if (!kDebugMode || !mounted) return;
+    final hasProviderValue = memosValue != null;
+    final providerCount = memosValue?.length ?? 0;
+    final animatedCount = visibleMemos.length;
+    final phase = _buildMemosLoadingPhase(
+      memosLoading: memosLoading,
+      hasProviderValue: hasProviderValue,
+      memosError: memosError,
+      providerCount: providerCount,
+      animatedCount: animatedCount,
+    );
+    final key = [
+      phase,
+      queryKey,
+      memosLoading,
+      hasProviderValue,
+      providerCount,
+      animatedCount,
+      _pageSize,
+      _reachedEnd,
+      _loadingMore,
+      _describeSyncState(syncState),
+      syncQueueSnapshot.syncing,
+      syncQueueSnapshot.totalTasks,
+      syncQueueSnapshot.completedTasks,
+      syncQueueSnapshot.currentOutboxId,
+      syncQueueSnapshot.currentProgress?.toStringAsFixed(2) ?? '-',
+      useShortcutFilter,
+      useQuickSearch,
+      useRemoteSearch,
+      shortcutFilter.trim().isNotEmpty ? shortcutFilter.trim() : '-',
+      quickSearchKind?.name ?? '-',
+    ].join('|');
+    if (_lastLoadingPhaseKey == key) return;
+    _lastLoadingPhaseKey = key;
+
+    ref
+        .read(logManagerProvider)
+        .info(
+          'Memos loading: phase',
+          context: <String, Object?>{
+            'phase': phase,
+            'queryKey': queryKey,
+            'memosLoading': memosLoading,
+            'hasProviderValue': hasProviderValue,
+            'providerCount': providerCount,
+            'animatedCount': animatedCount,
+            'pageSize': _pageSize,
+            'reachedEnd': _reachedEnd,
+            'loadingMore': _loadingMore,
+            'providerLoading': _currentLoading,
+            'showSearchLanding': _currentShowSearchLanding,
+            'syncState': _describeSyncState(syncState),
+            'queueSyncing': syncQueueSnapshot.syncing,
+            'queueTotalTasks': syncQueueSnapshot.totalTasks,
+            'queueCompletedTasks': syncQueueSnapshot.completedTasks,
+            'queueCurrentOutboxId': syncQueueSnapshot.currentOutboxId,
+            'queueCurrentProgress': syncQueueSnapshot.currentProgress,
+            'useShortcutFilter': useShortcutFilter,
+            'useQuickSearch': useQuickSearch,
+            'useRemoteSearch': useRemoteSearch,
+            if (shortcutFilter.trim().isNotEmpty)
+              'shortcutFilter': shortcutFilter.trim(),
+            if (quickSearchKind != null)
+              'quickSearchKind': quickSearchKind.name,
+            if (memosError != null) 'error': memosError.toString(),
+          },
+        );
   }
 
   Future<void> _logEmptyViewDiagnostics({
@@ -2517,6 +2671,38 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const SyncQueueScreen()));
+  }
+
+  Future<void> _retryFailedMemoSync(String memoUid) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) {
+      _openSyncQueue();
+      return;
+    }
+    final db = ref.read(databaseProvider);
+    final retried = await db.retryOutboxErrors(memoUid: normalizedUid);
+    if (retried <= 0) {
+      _openSyncQueue();
+      return;
+    }
+    if (!mounted) return;
+    showTopToast(context, context.t.strings.legacy.msg_retry_started);
+    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+  }
+
+  Future<void> _handleMemoSyncStatusTap(
+    _MemoSyncStatus status,
+    String memoUid,
+  ) async {
+    switch (status) {
+      case _MemoSyncStatus.failed:
+        await _retryFailedMemoSync(memoUid);
+        return;
+      case _MemoSyncStatus.pending:
+      case _MemoSyncStatus.none:
+        _openSyncQueue();
+        return;
+    }
   }
 
   void _openTagFromDrawer(String tag) {
@@ -4340,15 +4526,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
     final scanner = ref.read(localLibraryScannerProvider);
     if (scanner == null) return;
-    _autoScanTriggered = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      if (ref.read(syncControllerProvider).isLoading) {
-        _autoScanInFlight = false;
-        return;
-      }
       _autoScanInFlight = true;
+      var bootstrapModeEnabled = false;
       try {
         final db = ref.read(databaseProvider);
         final existing = await db.listMemos(limit: 1);
@@ -4357,13 +4539,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
         final diskMemos = await scanner.fileSystem.listMemos();
         if (!mounted || diskMemos.isEmpty) return;
-
-        await scanner.scanAndMerge(context, forceDisk: true);
-        if (!mounted) return;
-        showTopToast(
-          context,
-          context.t.strings.legacy.msg_imported_memos_local_library,
-        );
+        if (diskMemos.length >= _bootstrapImportThreshold) {
+          bootstrapModeEnabled = true;
+          setState(() {
+            _bootstrapImportActive = true;
+            _bootstrapImportTotal = diskMemos.length;
+            _bootstrapImportStartedAt = DateTime.now();
+          });
+        }
+        _autoScanTriggered = true;
+        await ref.read(syncControllerProvider.notifier).syncNow();
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4374,9 +4559,131 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           ),
         );
       } finally {
+        if (bootstrapModeEnabled && mounted) {
+          setState(() {
+            _bootstrapImportActive = false;
+            _bootstrapImportTotal = 0;
+            _bootstrapImportStartedAt = null;
+          });
+        }
         _autoScanInFlight = false;
       }
     });
+  }
+
+  Widget _buildBootstrapImportOverlay(
+    BuildContext context, {
+    required bool isDark,
+    required int importedCount,
+    required int totalCount,
+    required Duration? elapsed,
+  }) {
+    final cardColor = isDark
+        ? MemoFlowPalette.cardDark
+        : MemoFlowPalette.cardLight;
+    final borderColor = isDark
+        ? MemoFlowPalette.borderDark
+        : MemoFlowPalette.borderLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.62 : 0.58);
+    final backdropColor =
+        (isDark
+                ? MemoFlowPalette.backgroundDark
+                : MemoFlowPalette.backgroundLight)
+            .withValues(alpha: isDark ? 0.94 : 0.96);
+    final safeTotal = totalCount <= 0 ? importedCount : totalCount;
+    final safeImported = importedCount.clamp(0, safeTotal).toInt();
+    final progress = safeTotal > 0
+        ? (safeImported / safeTotal).clamp(0.0, 1.0).toDouble()
+        : null;
+    final elapsedText = elapsed == null ? null : _formatDuration(elapsed);
+
+    return AbsorbPointer(
+      child: Container(
+        color: backdropColor,
+        alignment: Alignment.center,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor.withValues(alpha: 0.92)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.38 : 0.10),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: MemoFlowPalette.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        context.t.strings.legacy.msg_importing_memos,
+                        style: TextStyle(
+                          color: textMain,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${context.t.strings.legacy.msg_imported_memos}: $safeImported / $safeTotal',
+                  style: TextStyle(
+                    color: textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (progress != null) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      color: MemoFlowPalette.primary,
+                      backgroundColor: MemoFlowPalette.primary.withValues(
+                        alpha: isDark ? 0.2 : 0.16,
+                      ),
+                    ),
+                  ),
+                ],
+                if (elapsedText != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    '${context.t.strings.legacy.msg_loading} $elapsedText',
+                    style: TextStyle(color: textMuted, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _createShortcutFromMenu() async {
@@ -5067,7 +5374,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       syncStatus: syncStatus,
       onSyncStatusTap: syncStatus == _MemoSyncStatus.none
           ? null
-          : _openSyncQueue,
+          : () => unawaited(_handleMemoSyncStatusTap(syncStatus, memo.uid)),
       onToggleTask: removing
           ? (_) {}
           : (index) {
@@ -5207,6 +5514,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               pageSize: _pageSize,
             )),
           );
+    final syncState = ref.watch(syncControllerProvider);
+    final syncQueueSnapshot = ref
+        .watch(syncQueueProgressTrackerProvider)
+        .snapshot;
     final outboxStatus =
         ref.watch(_outboxMemoStatusProvider).valueOrNull ??
         const _OutboxMemoStatus.empty();
@@ -5224,6 +5535,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final memosValue = memosAsync.valueOrNull;
     final memosLoading = memosAsync.isLoading;
     final memosError = memosAsync.whenOrNull(error: (e, _) => e);
+    final normalMemoCount =
+        ref.watch(_normalMemoCountProvider).valueOrNull ?? 0;
+    final bootstrapImportedCount = _bootstrapImportTotal > 0
+        ? normalMemoCount.clamp(0, _bootstrapImportTotal).toInt()
+        : normalMemoCount;
+    final bootstrapElapsed = _bootstrapImportStartedAt == null
+        ? null
+        : DateTime.now().difference(_bootstrapImportStartedAt!);
     final enableHomeSort = _shouldEnableHomeSort(
       useRemoteSearch: useRemoteSearch,
     );
@@ -5286,6 +5605,20 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _syncAnimatedMemos(sortedMemos, listSignature);
     }
     final visibleMemos = _animatedMemos;
+    _maybeLogMemosLoadingPhase(
+      queryKey: queryKey,
+      memosLoading: memosLoading,
+      memosError: memosError,
+      memosValue: memosValue,
+      visibleMemos: visibleMemos,
+      useShortcutFilter: useShortcutFilter,
+      useQuickSearch: useQuickSearch,
+      useRemoteSearch: useRemoteSearch,
+      shortcutFilter: shortcutFilter,
+      quickSearchKind: selectedQuickSearchKind,
+      syncState: syncState,
+      syncQueueSnapshot: syncQueueSnapshot,
+    );
     _maybeLogEmptyViewDiagnostics(
       queryKey: queryKey,
       memosValue: memosValue,
@@ -5413,11 +5746,34 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                         context.t.strings.legacy.msg_syncing,
                       );
                     }
+                    final deadline = DateTime.now().add(
+                      const Duration(seconds: 45),
+                    );
+                    while (context.mounted &&
+                        ref.read(syncControllerProvider).isLoading &&
+                        DateTime.now().isBefore(deadline)) {
+                      await Future<void>.delayed(
+                        const Duration(milliseconds: 180),
+                      );
+                    }
+                    if (!context.mounted) return;
+                    final inFlightResult = ref.read(syncControllerProvider);
+                    if (!inFlightResult.isLoading) {
+                      final language = ref.read(
+                        appPreferencesProvider.select((p) => p.language),
+                      );
+                      showSyncFeedback(
+                        overlayContext: context,
+                        messengerContext: context,
+                        language: language,
+                        succeeded: !inFlightResult.hasError,
+                      );
+                    }
                     return;
                   }
                   if (scanner != null) {
                     try {
-                      await scanner.scanAndMerge(context, forceDisk: false);
+                      await scanner.scanAndMergeIncremental(forceDisk: false);
                       _autoScanTriggered = true;
                     } catch (e) {
                       if (!context.mounted) return;
@@ -5430,9 +5786,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                       );
                     }
                   }
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   await syncController.syncNow();
-                  if (!mounted) return;
+                  if (!context.mounted) return;
+                  final syncResult = ref.read(syncControllerProvider);
+                  final language = ref.read(
+                    appPreferencesProvider.select((p) => p.language),
+                  );
+                  showSyncFeedback(
+                    overlayContext: context,
+                    messengerContext: context,
+                    language: language,
+                    succeeded: !syncResult.hasError,
+                  );
                   if (useShortcutFilter) {
                     ref.invalidate(shortcutMemosProvider(shortcutQuery));
                   } else if (useQuickSearch && quickSearchQuery != null) {
@@ -5814,6 +6180,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                   onPressed: _scrollToTop,
                 ),
               ),
+              if (_bootstrapImportActive)
+                Positioned.fill(
+                  child: _buildBootstrapImportOverlay(
+                    context,
+                    isDark: isDark,
+                    importedCount: bootstrapImportedCount,
+                    totalCount: _bootstrapImportTotal,
+                    elapsed: bootstrapElapsed,
+                  ),
+                ),
             ],
           );
           final bodyContent = () {

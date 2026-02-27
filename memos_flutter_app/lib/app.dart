@@ -21,6 +21,7 @@ import 'core/desktop_tray_controller.dart';
 import 'core/app_theme.dart';
 import 'core/memoflow_palette.dart';
 import 'core/system_fonts.dart';
+import 'core/sync_feedback.dart';
 import 'core/tags.dart';
 import 'core/top_toast.dart';
 import 'core/uid.dart';
@@ -66,6 +67,7 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _mainHomePageKey = GlobalKey<_MainHomePageState>();
   HotKey? _desktopQuickInputHotKey;
   WindowController? _desktopQuickInputWindow;
   int? _desktopQuickInputWindowId;
@@ -87,9 +89,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   ProviderSubscription<ReminderSettings>? _reminderSettingsSubscription;
   ProviderSubscription<bool>? _prefsLoadedSubscription;
   ProviderSubscription<bool>? _debugScreenshotModeSubscription;
-  DateTime? _lastResumeSyncAt;
-  DateTime? _lastPauseSyncAt;
+  DateTime? _lastResumeAutoSyncAt;
   DateTime? _lastReminderRescheduleAt;
+  bool _autoSyncRunning = false;
+  static const Duration _resumeAutoSyncCooldown = Duration(seconds: 45);
   bool _updateAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
@@ -121,87 +124,87 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       );
 
   static const Map<String, String> _imageEditorI18nZh = {
-    'Crop': '裁剪',
-    'Brush': '涂鸦',
-    'Text': '文字',
-    'Link': '链接',
-    'Flip': '翻转',
-    'Rotate left': '向左旋转',
-    'Rotate right': '向右旋转',
-    'Blur': '模糊',
-    'Filter': '滤镜',
-    'Emoji': '贴纸',
-    'Select Emoji': '选择贴纸',
-    'Size Adjust': '大小调整',
-    'Remove': '删除',
-    'Size': '大小',
-    'Color': '颜色',
-    'Background Color': '背景颜色',
-    'Background Opacity': '背景透明度',
-    'Slider Filter Color': '滤镜颜色',
-    'Slider Color': '颜色',
-    'Slider Opicity': '透明度',
-    'Reset': '重置',
-    'Blur Radius': '模糊半径',
-    'Color Opacity': '颜色透明度',
-    'Insert Your Message': '输入文字',
-    'https://example.com': '输入链接',
+    'Crop': '\u88c1\u526a',
+    'Brush': '\u6d82\u9e26',
+    'Text': '\u6587\u5b57',
+    'Link': '\u94fe\u63a5',
+    'Flip': '\u7ffb\u8f6c',
+    'Rotate left': '\u5411\u5de6\u65cb\u8f6c',
+    'Rotate right': '\u5411\u53f3\u65cb\u8f6c',
+    'Blur': '\u6a21\u7cca',
+    'Filter': '\u6ee4\u955c',
+    'Emoji': '\u8d34\u7eb8',
+    'Select Emoji': '\u9009\u62e9\u8d34\u7eb8',
+    'Size Adjust': '\u5927\u5c0f\u8c03\u6574',
+    'Remove': '\u5220\u9664',
+    'Size': '\u5927\u5c0f',
+    'Color': '\u989c\u8272',
+    'Background Color': '\u80cc\u666f\u989c\u8272',
+    'Background Opacity': '\u80cc\u666f\u900f\u660e\u5ea6',
+    'Slider Filter Color': '\u6ee4\u955c\u989c\u8272',
+    'Slider Color': '\u989c\u8272',
+    'Slider Opicity': '\u900f\u660e\u5ea6',
+    'Reset': '\u91cd\u7f6e',
+    'Blur Radius': '\u6a21\u7cca\u534a\u5f84',
+    'Color Opacity': '\u989c\u8272\u900f\u660e\u5ea6',
+    'Insert Your Message': '\u8f93\u5165\u6587\u5b57',
+    'https://example.com': '\u8f93\u5165\u94fe\u63a5',
   };
 
   static const Map<String, String> _imageEditorI18nZhHant = {
-    'Crop': '裁切',
-    'Brush': '塗鴉',
-    'Text': '文字',
-    'Link': '連結',
-    'Flip': '翻轉',
-    'Rotate left': '向左旋轉',
-    'Rotate right': '向右旋轉',
-    'Blur': '模糊',
-    'Filter': '濾鏡',
-    'Emoji': '貼紙',
-    'Select Emoji': '選擇貼紙',
-    'Size Adjust': '大小調整',
-    'Remove': '刪除',
-    'Size': '大小',
-    'Color': '顏色',
-    'Background Color': '背景顏色',
-    'Background Opacity': '背景透明度',
-    'Slider Filter Color': '濾鏡顏色',
-    'Slider Color': '顏色',
-    'Slider Opicity': '透明度',
-    'Reset': '重設',
-    'Blur Radius': '模糊半徑',
-    'Color Opacity': '顏色透明度',
-    'Insert Your Message': '輸入文字',
-    'https://example.com': '輸入連結',
+    'Crop': '\u88c1\u5207',
+    'Brush': '\u5857\u9d09',
+    'Text': '\u6587\u5b57',
+    'Link': '\u9023\u7d50',
+    'Flip': '\u7ffb\u8f49',
+    'Rotate left': '\u5411\u5de6\u65cb\u8f49',
+    'Rotate right': '\u5411\u53f3\u65cb\u8f49',
+    'Blur': '\u6a21\u7cca',
+    'Filter': '\u6ffe\u93e1',
+    'Emoji': '\u8cbc\u7d19',
+    'Select Emoji': '\u9078\u64c7\u8cbc\u7d19',
+    'Size Adjust': '\u5927\u5c0f\u8abf\u6574',
+    'Remove': '\u522a\u9664',
+    'Size': '\u5927\u5c0f',
+    'Color': '\u984f\u8272',
+    'Background Color': '\u80cc\u666f\u984f\u8272',
+    'Background Opacity': '\u80cc\u666f\u900f\u660e\u5ea6',
+    'Slider Filter Color': '\u6ffe\u93e1\u984f\u8272',
+    'Slider Color': '\u984f\u8272',
+    'Slider Opicity': '\u900f\u660e\u5ea6',
+    'Reset': '\u91cd\u8a2d',
+    'Blur Radius': '\u6a21\u7cca\u534a\u5f91',
+    'Color Opacity': '\u984f\u8272\u900f\u660e\u5ea6',
+    'Insert Your Message': '\u8f38\u5165\u6587\u5b57',
+    'https://example.com': '\u8f38\u5165\u9023\u7d50',
   };
 
   static const Map<String, String> _imageEditorI18nJa = {
-    'Crop': 'トリミング',
-    'Brush': 'ブラシ',
-    'Text': 'テキスト',
-    'Link': 'リンク',
-    'Flip': '反転',
-    'Rotate left': '左に回転',
-    'Rotate right': '右に回転',
-    'Blur': 'ぼかし',
-    'Filter': 'フィルター',
-    'Emoji': '絵文字',
-    'Select Emoji': '絵文字を選択',
-    'Size Adjust': 'サイズ調整',
-    'Remove': '削除',
-    'Size': 'サイズ',
-    'Color': '色',
-    'Background Color': '背景色',
-    'Background Opacity': '背景の透明度',
-    'Slider Filter Color': 'フィルター色',
-    'Slider Color': '色',
-    'Slider Opicity': '透明度',
-    'Reset': 'リセット',
-    'Blur Radius': 'ぼかし半径',
-    'Color Opacity': '色の透明度',
-    'Insert Your Message': 'テキストを入力',
-    'https://example.com': 'リンクを入力',
+    'Crop': '\u30c8\u30ea\u30df\u30f3\u30b0',
+    'Brush': '\u30d6\u30e9\u30b7',
+    'Text': '\u30c6\u30ad\u30b9\u30c8',
+    'Link': '\u30ea\u30f3\u30af',
+    'Flip': '\u53cd\u8ee2',
+    'Rotate left': '\u5de6\u306b\u56de\u8ee2',
+    'Rotate right': '\u53f3\u306b\u56de\u8ee2',
+    'Blur': '\u307c\u304b\u3057',
+    'Filter': '\u30d5\u30a3\u30eb\u30bf\u30fc',
+    'Emoji': '\u7d75\u6587\u5b57',
+    'Select Emoji': '\u7d75\u6587\u5b57\u3092\u9078\u629e',
+    'Size Adjust': '\u30b5\u30a4\u30ba\u8abf\u6574',
+    'Remove': '\u524a\u9664',
+    'Size': '\u30b5\u30a4\u30ba',
+    'Color': '\u8272',
+    'Background Color': '\u80cc\u666f\u8272',
+    'Background Opacity': '\u80cc\u666f\u306e\u900f\u660e\u5ea6',
+    'Slider Filter Color': '\u30d5\u30a3\u30eb\u30bf\u30fc\u8272',
+    'Slider Color': '\u8272',
+    'Slider Opicity': '\u900f\u660e\u5ea6',
+    'Reset': '\u30ea\u30bb\u30c3\u30c8',
+    'Blur Radius': '\u307c\u304b\u3057\u534a\u5f84',
+    'Color Opacity': '\u8272\u306e\u900f\u660e\u5ea6',
+    'Insert Your Message': '\u30c6\u30ad\u30b9\u30c8\u3092\u5165\u529b',
+    'https://example.com': '\u30ea\u30f3\u30af\u3092\u5165\u529b',
   };
 
   static const Map<String, String> _imageEditorI18nDe = {
@@ -215,17 +218,17 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     'Blur': 'Weichzeichnen',
     'Filter': 'Filter',
     'Emoji': 'Emoji',
-    'Select Emoji': 'Emoji auswählen',
-    'Size Adjust': 'Größe anpassen',
+    'Select Emoji': 'Emoji ausw\u00e4hlen',
+    'Size Adjust': 'Gr\u00f6\u00dfe anpassen',
     'Remove': 'Entfernen',
-    'Size': 'Größe',
+    'Size': 'Gr\u00f6\u00dfe',
     'Color': 'Farbe',
     'Background Color': 'Hintergrundfarbe',
     'Background Opacity': 'Hintergrundtransparenz',
     'Slider Filter Color': 'Filterfarbe',
     'Slider Color': 'Farbe',
     'Slider Opicity': 'Transparenz',
-    'Reset': 'Zurücksetzen',
+    'Reset': 'Zur\u00fccksetzen',
     'Blur Radius': 'Weichzeichnungsradius',
     'Color Opacity': 'Farbtransparenz',
     'Insert Your Message': 'Text eingeben',
@@ -455,9 +458,12 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         );
         if (shouldTriggerPostLoginSync) {
           _scheduleStatsWidgetUpdate();
-          _lastResumeSyncAt = null;
-          _lastPauseSyncAt = null;
-          _triggerLifecycleSync(isResume: true);
+          _lastResumeAutoSyncAt = null;
+          _triggerLifecycleSync(
+            isResume: true,
+            refreshCurrentUserBeforeSync: false,
+            showFeedbackToast: false,
+          );
           unawaited(
             ref.read(reminderSchedulerProvider).rescheduleAll(force: true),
           );
@@ -812,10 +818,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         final args = call.arguments;
         final map = args is Map ? args.cast<Object?, Object?>() : null;
         final labelRaw = map == null ? null : map['label'];
-        final label = (labelRaw as String? ?? '功能').trim();
+        final label = (labelRaw as String? ?? '\u529f\u80fd').trim();
         final context = _resolveDesktopUiContext();
         if (context != null) {
-          showTopToast(context, '「$label」功能暂未实现（占位）。');
+          showTopToast(
+            context,
+            '\u300c$label\u300d\u529f\u80fd\u6682\u672a\u5b9e\u73b0\uff08\u5360\u4f4d\uff09\u3002',
+          );
         }
         return true;
       case desktopQuickInputPickLinkMemoMethod:
@@ -1273,8 +1282,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     if (_launchActionHandled) return;
     await _awaitPendingLaunchSources();
     if (!mounted) return;
-    final session = ref.read(appSessionProvider).valueOrNull;
-    if (session?.currentAccount == null) return;
+    if (!_hasActiveWorkspace()) return;
 
     _launchActionHandled = true;
     final prefs = ref.read(appPreferencesProvider);
@@ -1297,7 +1305,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           _openQuickInput(autoFocus: prefs.quickInputAutoFocus);
           break;
         case LaunchAction.none:
+          break;
         case LaunchAction.sync:
+          // Deprecated. Kept for backward compatibility with stale in-memory
+          // enum values before preferences migration writes back.
           break;
       }
     }
@@ -1305,17 +1316,60 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     await _maybeSyncOnLaunch(prefs);
   }
 
-  Future<void> _maybeSyncOnLaunch(AppPreferences prefs) async {
-    final db = ref.read(databaseProvider);
-    var hasLocalData = false;
-    try {
-      hasLocalData = (await db.listMemos(limit: 1)).isNotEmpty;
-    } catch (_) {}
+  bool _hasActiveWorkspace() {
+    final session = ref.read(appSessionProvider).valueOrNull;
+    final hasAccount = session?.currentAccount != null;
+    final hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
+    return hasAccount || hasLocalLibrary;
+  }
 
-    final shouldSync = !hasLocalData || prefs.launchAction == LaunchAction.sync;
-    if (shouldSync) {
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+  String _resolveActiveWorkspaceMode() {
+    final session = ref.read(appSessionProvider).valueOrNull;
+    final hasAccount = session?.currentAccount != null;
+    final hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
+    if (hasAccount && hasLocalLibrary) return 'hybrid';
+    if (hasAccount) return 'remote';
+    if (hasLocalLibrary) return 'local';
+    return 'none';
+  }
+
+  Future<void> _maybeSyncOnLaunch(AppPreferences prefs) async {
+    if (!prefs.autoSyncOnStartAndResume) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: skipped_on_launch_disabled',
+          context: <String, Object?>{
+            'trigger': 'launch',
+            'workspaceMode': _resolveActiveWorkspaceMode(),
+          },
+        );
+      }
+      return;
     }
+    if (!_hasActiveWorkspace()) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: skipped_on_launch_no_workspace',
+          context: <String, Object?>{'trigger': 'launch'},
+        );
+      }
+      return;
+    }
+    LogManager.instance.info(
+      'AutoSync: request',
+      context: <String, Object?>{
+        'trigger': 'launch',
+        'workspaceMode': _resolveActiveWorkspaceMode(),
+        'forceWidgetUpdate': false,
+      },
+    );
+    unawaited(
+      _syncAndUpdateStatsWidget(
+        forceWidgetUpdate: false,
+        reason: 'launch',
+        showFeedbackToast: true,
+      ),
+    );
   }
 
   void _openQuickInput({required bool autoFocus}) {
@@ -1536,16 +1590,222 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
 
   Future<void> _syncAndUpdateStatsWidget({
     required bool forceWidgetUpdate,
+    required String reason,
+    bool refreshCurrentUserBeforeSync = false,
+    bool showFeedbackToast = false,
   }) async {
-    final session = ref.read(appSessionProvider).valueOrNull;
-    if (session?.currentAccount == null) return;
-
-    try {
-      await ref.read(syncControllerProvider.notifier).syncNow();
-    } catch (_) {
-      // Ignore sync errors here; widget update can still proceed.
+    final startedAt = DateTime.now();
+    if (_autoSyncRunning) {
+      LogManager.instance.info(
+        'AutoSync: skipped_running',
+        context: <String, Object?>{
+          'reason': reason,
+          'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
+        },
+      );
+      return;
     }
-    await _updateStatsWidgetIfNeeded(force: forceWidgetUpdate);
+    var session = ref.read(appSessionProvider).valueOrNull;
+    var hasAccount = session?.currentAccount != null;
+    var hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
+    var hasWorkspace = hasAccount || hasLocalLibrary;
+    if (!hasWorkspace) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: skipped_no_workspace',
+          context: <String, Object?>{'reason': reason},
+        );
+      }
+      return;
+    }
+
+    LogManager.instance.info(
+      'AutoSync: start',
+      context: <String, Object?>{
+        'reason': reason,
+        'workspaceMode': _resolveActiveWorkspaceMode(),
+        'forceWidgetUpdate': forceWidgetUpdate,
+        'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
+      },
+    );
+
+    _autoSyncRunning = true;
+    var syncSucceeded = true;
+    if (showFeedbackToast) {
+      _showAutoSyncProgressToast();
+    }
+    try {
+      try {
+        if (refreshCurrentUserBeforeSync && hasAccount) {
+          await ref.read(appSessionProvider.notifier).refreshCurrentUser();
+          session = ref.read(appSessionProvider).valueOrNull;
+          hasAccount = session?.currentAccount != null;
+          hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
+          hasWorkspace = hasAccount || hasLocalLibrary;
+          if (!hasWorkspace) {
+            LogManager.instance.info(
+              'AutoSync: skipped_after_session_refresh_no_workspace',
+              context: <String, Object?>{'reason': reason},
+            );
+            return;
+          }
+        }
+        await ref.read(syncControllerProvider.notifier).syncNow();
+      } catch (error, stackTrace) {
+        syncSucceeded = false;
+        LogManager.instance.warn(
+          'AutoSync: sync_failed',
+          error: error,
+          stackTrace: stackTrace,
+          context: <String, Object?>{'reason': reason},
+        );
+        // Ignore sync errors here; widget update can still proceed.
+      }
+      if (hasAccount) {
+        await _updateStatsWidgetIfNeeded(force: forceWidgetUpdate);
+      }
+      LogManager.instance.info(
+        'AutoSync: completed',
+        context: <String, Object?>{
+          'reason': reason,
+          'workspaceMode': _resolveActiveWorkspaceMode(),
+          'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
+          'syncSucceeded': syncSucceeded,
+          'hasAccount': hasAccount,
+          'hasLocalLibrary': hasLocalLibrary,
+          'widgetUpdateAttempted': hasAccount,
+          'forceWidgetUpdate': forceWidgetUpdate,
+          'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
+        },
+      );
+      if (showFeedbackToast) {
+        _showAutoSyncFeedbackToast(succeeded: syncSucceeded);
+      }
+    } finally {
+      _autoSyncRunning = false;
+    }
+  }
+
+  void _showAutoSyncFeedbackToast({required bool succeeded}) {
+    final language = ref.read(appPreferencesProvider).language;
+    final message = buildAutoSyncFeedbackMessage(
+      language: language,
+      succeeded: succeeded,
+    );
+    var delivered = false;
+    var retryScheduled = false;
+
+    void emit({required String phase, bool allowRetry = false}) {
+      if (delivered) return;
+      final homeContext = _mainHomePageKey.currentContext;
+      final navigatorContext = _navigatorKey.currentContext;
+      final overlayContext =
+          homeContext ??
+          navigatorContext ??
+          _navigatorKey.currentState?.overlay?.context;
+      if (overlayContext == null) {
+        LogManager.instance.info(
+          'AutoSync: feedback_toast_skipped_no_context',
+          context: <String, Object?>{
+            'phase': phase,
+            'succeeded': succeeded,
+            'message': message,
+          },
+        );
+        return;
+      }
+      final channel = showSyncFeedback(
+        overlayContext: overlayContext,
+        messengerContext: navigatorContext ?? homeContext,
+        language: language,
+        succeeded: succeeded,
+        message: message,
+      );
+      final event = switch (channel) {
+        SyncFeedbackChannel.snackbar => 'AutoSync: feedback_snackbar_shown',
+        SyncFeedbackChannel.toast => 'AutoSync: feedback_toast_shown',
+        SyncFeedbackChannel.skipped =>
+          'AutoSync: feedback_toast_skipped_no_overlay',
+      };
+      LogManager.instance.info(
+        event,
+        context: <String, Object?>{
+          'phase': phase,
+          'succeeded': succeeded,
+          'message': message,
+          'hasHomeContext': homeContext != null,
+          'hasNavigatorContext': navigatorContext != null,
+        },
+      );
+      if (channel != SyncFeedbackChannel.skipped) {
+        delivered = true;
+      }
+      if (allowRetry &&
+          channel == SyncFeedbackChannel.skipped &&
+          !retryScheduled) {
+        retryScheduled = true;
+        Future<void>.delayed(const Duration(milliseconds: 320), () {
+          if (!mounted) return;
+          emit(phase: 'delayed_retry', allowRetry: false);
+        });
+      }
+    }
+
+    emit(phase: 'immediate', allowRetry: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      emit(phase: 'next_frame', allowRetry: true);
+    });
+  }
+
+  void _showAutoSyncProgressToast() {
+    final language = ref.read(appPreferencesProvider).language;
+    final message = buildAutoSyncProgressMessage(language: language);
+    final homeContext = _mainHomePageKey.currentContext;
+    final navigatorContext = _navigatorKey.currentContext;
+    final overlayContext =
+        homeContext ??
+        navigatorContext ??
+        _navigatorKey.currentState?.overlay?.context;
+    if (overlayContext == null) {
+      LogManager.instance.info(
+        'AutoSync: progress_toast_skipped_no_context',
+        context: <String, Object?>{
+          'message': message,
+          'hasHomeContext': homeContext != null,
+          'hasNavigatorContext': navigatorContext != null,
+        },
+      );
+      return;
+    }
+
+    var shown = showTopToast(
+      overlayContext,
+      message,
+      duration: const Duration(seconds: 2),
+      topOffset: 96,
+    );
+    if (!shown &&
+        navigatorContext != null &&
+        !identical(overlayContext, navigatorContext)) {
+      shown = showTopToast(
+        navigatorContext,
+        message,
+        duration: const Duration(seconds: 2),
+        topOffset: 96,
+      );
+    }
+
+    LogManager.instance.info(
+      shown
+          ? 'AutoSync: progress_toast_shown'
+          : 'AutoSync: progress_toast_skipped_no_overlay',
+      context: <String, Object?>{
+        'message': message,
+        'hasHomeContext': homeContext != null,
+        'hasNavigatorContext': navigatorContext != null,
+      },
+    );
   }
 
   bool _didSessionAuthContextChange({
@@ -1573,27 +1833,55 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return false;
   }
 
-  void _triggerLifecycleSync({required bool isResume}) {
-    final session = ref.read(appSessionProvider).valueOrNull;
-    if (session?.currentAccount == null) return;
-
-    final now = DateTime.now();
-    if (isResume) {
-      final last = _lastResumeSyncAt;
-      if (last != null && now.difference(last) < const Duration(seconds: 15)) {
-        return;
+  void _triggerLifecycleSync({
+    required bool isResume,
+    bool refreshCurrentUserBeforeSync = true,
+    bool showFeedbackToast = true,
+  }) {
+    if (!isResume) return;
+    if (!_hasActiveWorkspace()) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: lifecycle_skip_no_workspace',
+          context: <String, Object?>{'trigger': 'resumed'},
+        );
       }
-      _lastResumeSyncAt = now;
-    } else {
-      final last = _lastPauseSyncAt;
-      if (last != null && now.difference(last) < const Duration(seconds: 15)) {
-        return;
+      return;
+    }
+    final prefs = ref.read(appPreferencesProvider);
+    if (!prefs.autoSyncOnStartAndResume) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: lifecycle_skip_disabled',
+          context: <String, Object?>{
+            'trigger': 'resumed',
+            'workspaceMode': _resolveActiveWorkspaceMode(),
+          },
+        );
       }
-      _lastPauseSyncAt = now;
+      return;
     }
 
-    if (isResume) {
-      unawaited(ref.read(appSessionProvider.notifier).refreshCurrentUser());
+    final now = DateTime.now();
+    final last = _lastResumeAutoSyncAt;
+    if (last != null && now.difference(last) < _resumeAutoSyncCooldown) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: lifecycle_throttled',
+          context: <String, Object?>{
+            'trigger': 'resumed',
+            'elapsedMs': now.difference(last).inMilliseconds,
+            'cooldownMs': _resumeAutoSyncCooldown.inMilliseconds,
+            'workspaceMode': _resolveActiveWorkspaceMode(),
+          },
+        );
+      }
+      return;
+    }
+    _lastResumeAutoSyncAt = now;
+
+    final session = ref.read(appSessionProvider).valueOrNull;
+    if (session?.currentAccount != null) {
       unawaited(
         ref
             .read(webDavBackupControllerProvider.notifier)
@@ -1601,7 +1889,23 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       );
     }
 
-    unawaited(_syncAndUpdateStatsWidget(forceWidgetUpdate: true));
+    LogManager.instance.info(
+      'AutoSync: request',
+      context: <String, Object?>{
+        'trigger': 'resumed',
+        'workspaceMode': _resolveActiveWorkspaceMode(),
+        'forceWidgetUpdate': true,
+        'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
+      },
+    );
+    unawaited(
+      _syncAndUpdateStatsWidget(
+        forceWidgetUpdate: true,
+        reason: 'lifecycle_resumed',
+        refreshCurrentUserBeforeSync: refreshCurrentUserBeforeSync,
+        showFeedbackToast: showFeedbackToast,
+      ),
+    );
   }
 
   void _rescheduleRemindersIfNeeded() {
@@ -1625,7 +1929,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        _triggerLifecycleSync(isResume: false);
         break;
       case AppLifecycleState.inactive:
         break;
@@ -1805,7 +2108,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     if (prefsLoaded) {
       _scheduleUpdateAnnouncementIfNeeded();
     }
-    if (prefsLoaded && session?.currentAccount != null) {
+    final localLibrary = ref.watch(currentLocalLibraryProvider);
+    if (prefsLoaded &&
+        (session?.currentAccount != null || localLibrary != null)) {
       _scheduleLaunchActionHandling();
     }
 
@@ -1885,7 +2190,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
             ],
           );
         },
-        home: const MainHomePage(),
+        home: MainHomePage(key: _mainHomePageKey),
       ),
     );
   }

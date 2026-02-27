@@ -38,16 +38,7 @@ final _pendingOutboxCountProvider = StreamProvider<int>((ref) async* {
   final db = ref.watch(databaseProvider);
 
   Future<int> load() async {
-    final sqlite = await db.db;
-    final rows = await sqlite.rawQuery(
-      'SELECT COUNT(*) FROM outbox WHERE state IN (0, 2);',
-    );
-    if (rows.isEmpty) return 0;
-    final raw = rows.first.values.first;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    if (raw is String) return int.tryParse(raw.trim()) ?? 0;
-    return 0;
+    return db.countOutboxPending();
   }
 
   yield await load();

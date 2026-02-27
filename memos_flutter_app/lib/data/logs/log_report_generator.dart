@@ -25,13 +25,13 @@ class LogReportGenerator {
     required NetworkLogStore networkLogStore,
     required SyncStatusTracker syncStatusTracker,
     Account? currentAccount,
-  })  : _db = db,
-        _loggerService = loggerService,
-        _breadcrumbStore = breadcrumbStore,
-        _networkLogBuffer = networkLogBuffer,
-        _networkLogStore = networkLogStore,
-        _syncStatusTracker = syncStatusTracker,
-        _currentAccount = currentAccount;
+  }) : _db = db,
+       _loggerService = loggerService,
+       _breadcrumbStore = breadcrumbStore,
+       _networkLogBuffer = networkLogBuffer,
+       _networkLogStore = networkLogStore,
+       _syncStatusTracker = syncStatusTracker,
+       _currentAccount = currentAccount;
 
   final AppDatabase _db;
   final LoggerService _loggerService;
@@ -62,24 +62,48 @@ class LogReportGenerator {
 
     final sqlite = await _db.db;
     final totalMemos = await _count(sqlite, 'SELECT COUNT(*) FROM memos;');
-    final pendingQueue = await _count(sqlite, 'SELECT COUNT(*) FROM outbox WHERE state IN (0,2);');
-    final failedQueue = await _count(sqlite, 'SELECT COUNT(*) FROM outbox WHERE state = 2;');
+    final pendingQueue = await _count(
+      sqlite,
+      'SELECT COUNT(*) FROM outbox WHERE state IN (${AppDatabase.outboxStatePending}, ${AppDatabase.outboxStateRunning}, ${AppDatabase.outboxStateRetry});',
+    );
+    final failedQueue = await _count(
+      sqlite,
+      'SELECT COUNT(*) FROM outbox WHERE state = ${AppDatabase.outboxStateError};',
+    );
     final outboxTypeCounts = await _loadOutboxTypeCounts(sqlite);
     final pendingOutboxItems = includeOutbox
-        ? await _loadOutboxItems(sqlite, state: 0, limit: outboxLimit)
+        ? await _loadOutboxItems(
+            sqlite,
+            states: const [
+              AppDatabase.outboxStatePending,
+              AppDatabase.outboxStateRunning,
+              AppDatabase.outboxStateRetry,
+            ],
+            limit: outboxLimit,
+          )
         : const <Map<String, dynamic>>[];
     final failedOutboxItems = includeOutbox
-        ? await _loadOutboxItems(sqlite, state: 2, limit: outboxLimit)
+        ? await _loadOutboxItems(
+            sqlite,
+            states: const [AppDatabase.outboxStateError],
+            limit: outboxLimit,
+          )
         : const <Map<String, dynamic>>[];
     final memoSyncErrors = includeErrors
         ? await _loadMemoSyncErrors(sqlite, limit: memoErrorLimit)
         : const <Map<String, dynamic>>[];
 
-    final lifecycle = LoggerService.formatLifecycle(_loggerService.lifecycleState);
+    final lifecycle = LoggerService.formatLifecycle(
+      _loggerService.lifecycleState,
+    );
     final syncLine = _formatSyncLine(_syncStatusTracker.snapshot);
     final syncErrorLine = _formatSyncErrorLine(_syncStatusTracker.snapshot);
     final pendingLine = _formatPendingQueue(pendingQueue);
-    final outboxLine = _formatOutboxCounts(pendingQueue, failedQueue, outboxTypeCounts);
+    final outboxLine = _formatOutboxCounts(
+      pendingQueue,
+      failedQueue,
+      outboxTypeCounts,
+    );
 
     final breadcrumbs = _breadcrumbStore.list(limit: breadcrumbLimit);
     final allNetworkLogs = _networkLogBuffer.listAll();
@@ -87,11 +111,19 @@ class LogReportGenerator {
     final networkErrors = includeErrors
         ? _tail(_filterNetworkErrors(allNetworkLogs), errorLimit)
         : const <NetworkRequestLog>[];
-    final networkStoreLogs = await _networkLogStore.list(limit: networkStoreLimit);
+    final networkStoreLogs = await _networkLogStore.list(
+      limit: networkStoreLimit,
+    );
     final networkStoreErrors = includeErrors
-        ? _tailStoreEntries(_filterStoreNetworkErrors(networkStoreLogs), errorLimit)
+        ? _tailStoreEntries(
+            _filterStoreNetworkErrors(networkStoreLogs),
+            errorLimit,
+          )
         : const <NetworkLogEntry>[];
-    final networkStoreRecent = _tailStoreEntries(networkStoreLogs, networkStoreLimit);
+    final networkStoreRecent = _tailStoreEntries(
+      networkStoreLogs,
+      networkStoreLimit,
+    );
 
     final buffer = StringBuffer()
       ..writeln('[REPORT HEAD]')
@@ -117,7 +149,9 @@ class LogReportGenerator {
         buffer.writeln('1. (none)');
       } else {
         for (var i = 0; i < pendingOutboxItems.length; i++) {
-          buffer.writeln('${i + 1}. ${_formatOutboxItem(pendingOutboxItems[i])}');
+          buffer.writeln(
+            '${i + 1}. ${_formatOutboxItem(pendingOutboxItems[i])}',
+          );
         }
       }
 
@@ -129,7 +163,9 @@ class LogReportGenerator {
         buffer.writeln('1. (none)');
       } else {
         for (var i = 0; i < failedOutboxItems.length; i++) {
-          buffer.writeln('${i + 1}. ${_formatOutboxItem(failedOutboxItems[i])}');
+          buffer.writeln(
+            '${i + 1}. ${_formatOutboxItem(failedOutboxItems[i])}',
+          );
         }
       }
     }
@@ -143,7 +179,9 @@ class LogReportGenerator {
         buffer.writeln('1. (none)');
       } else {
         for (var i = 0; i < memoSyncErrors.length; i++) {
-          buffer.writeln('${i + 1}. ${_formatMemoSyncError(memoSyncErrors[i])}');
+          buffer.writeln(
+            '${i + 1}. ${_formatMemoSyncError(memoSyncErrors[i])}',
+          );
         }
       }
     }
@@ -157,7 +195,9 @@ class LogReportGenerator {
     } else {
       for (var i = 0; i < breadcrumbs.length; i++) {
         final entry = breadcrumbs[i];
-        buffer.writeln('${i + 1}. ${_formatBreadcrumbTime(entry.timestamp)} - ${entry.message}');
+        buffer.writeln(
+          '${i + 1}. ${_formatBreadcrumbTime(entry.timestamp)} - ${entry.message}',
+        );
       }
     }
 
@@ -274,7 +314,9 @@ class LogReportGenerator {
         return os;
       }
     } catch (_) {}
-    final fallback = Platform.operatingSystemVersion.replaceAll('\n', ' ').trim();
+    final fallback = Platform.operatingSystemVersion
+        .replaceAll('\n', ' ')
+        .trim();
     return fallback.isEmpty ? Platform.operatingSystem : fallback;
   }
 
@@ -315,8 +357,9 @@ class LogReportGenerator {
 
   String _formatSyncLine(SyncStatusSnapshot snapshot) {
     final lastSuccess = snapshot.lastSuccess;
-    final lastSuccessText =
-        lastSuccess == null ? '-' : DateFormat('h:mm a').format(lastSuccess);
+    final lastSuccessText = lastSuccess == null
+        ? '-'
+        : DateFormat('h:mm a').format(lastSuccess);
     if (snapshot.inProgress) {
       return 'Sync Manager: Syncing (Last success: $lastSuccessText)';
     }
@@ -342,16 +385,19 @@ class LogReportGenerator {
     if (version.isNotEmpty) parts.add('version=$version');
     final mode = profile.mode.trim();
     if (mode.isNotEmpty) parts.add('mode=$mode');
-    if (instanceUrl.isNotEmpty) parts.add('instanceUrl=${LogSanitizer.maskUrl(instanceUrl)}');
+    if (instanceUrl.isNotEmpty)
+      parts.add('instanceUrl=${LogSanitizer.maskUrl(instanceUrl)}');
     final owner = profile.owner.trim();
-    if (owner.isNotEmpty) parts.add('owner=${LogSanitizer.maskUserLabel(owner)}');
+    if (owner.isNotEmpty)
+      parts.add('owner=${LogSanitizer.maskUserLabel(owner)}');
 
     if (parts.isEmpty) return 'Server: $label';
     return 'Server: $label (${parts.join(', ')})';
   }
 
   String _formatSyncErrorLine(SyncStatusSnapshot snapshot) {
-    if (snapshot.lastFailure == null && (snapshot.lastError?.trim().isEmpty ?? true)) {
+    if (snapshot.lastFailure == null &&
+        (snapshot.lastError?.trim().isEmpty ?? true)) {
       return 'Sync Error: -';
     }
     final failureTime = snapshot.lastFailure == null
@@ -382,11 +428,16 @@ class LogReportGenerator {
     return 'Outbox: pending=$pendingQueue failed=$failedQueue$detail';
   }
 
-  void _appendNetworkEntries(StringBuffer buffer, List<NetworkRequestLog> entries) {
+  void _appendNetworkEntries(
+    StringBuffer buffer,
+    List<NetworkRequestLog> entries,
+  ) {
     for (var i = 0; i < entries.length; i++) {
       final entry = entries[i];
       buffer.writeln('------------------------------------------------');
-      buffer.writeln('${i + 1}. [${entry.method}] ${entry.path} (${_statusLabel(entry)}) - ${_latencyLabel(entry)}');
+      buffer.writeln(
+        '${i + 1}. [${entry.method}] ${entry.path} (${_statusLabel(entry)}) - ${_latencyLabel(entry)}',
+      );
 
       final query = entry.query;
       if (query != null && query.trim().isNotEmpty) {
@@ -415,11 +466,13 @@ class LogReportGenerator {
     }
   }
 
-  Future<Map<String, _OutboxCounts>> _loadOutboxTypeCounts(DatabaseExecutor sqlite) async {
+  Future<Map<String, _OutboxCounts>> _loadOutboxTypeCounts(
+    DatabaseExecutor sqlite,
+  ) async {
     final rows = await sqlite.rawQuery('''
 SELECT type, state, COUNT(*) AS count
 FROM outbox
-WHERE state IN (0, 2)
+WHERE state IN (${AppDatabase.outboxStatePending}, ${AppDatabase.outboxStateRunning}, ${AppDatabase.outboxStateRetry}, ${AppDatabase.outboxStateError})
 GROUP BY type, state;
 ''');
     final out = <String, _OutboxCounts>{};
@@ -427,11 +480,15 @@ GROUP BY type, state;
       final type = (row['type'] as String?)?.trim();
       final state = _readInt(row['state']);
       final count = _readInt(row['count']);
-      if (type == null || type.isEmpty || count == null || count <= 0 || state == null) {
+      if (type == null ||
+          type.isEmpty ||
+          count == null ||
+          count <= 0 ||
+          state == null) {
         continue;
       }
       final entry = out.putIfAbsent(type, () => _OutboxCounts());
-      if (state == 2) {
+      if (state == AppDatabase.outboxStateError) {
         entry.failed += count;
       } else {
         entry.pending += count;
@@ -442,18 +499,21 @@ GROUP BY type, state;
 
   Future<List<Map<String, dynamic>>> _loadOutboxItems(
     DatabaseExecutor sqlite, {
-    required int state,
+    required List<int> states,
     required int limit,
   }) async {
-    if (limit <= 0) return const [];
+    if (limit <= 0 || states.isEmpty) return const [];
+    final placeholders = List.filled(states.length, '?').join(', ');
     final rows = await sqlite.query(
       'outbox',
-      where: 'state = ?',
-      whereArgs: [state],
+      where: 'state IN ($placeholders)',
+      whereArgs: states,
       orderBy: 'id DESC',
       limit: limit,
     );
-    return rows.map((row) => row.map((key, value) => MapEntry(key, value))).toList(growable: false);
+    return rows
+        .map((row) => row.map((key, value) => MapEntry(key, value)))
+        .toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> _loadMemoSyncErrors(
@@ -468,7 +528,9 @@ GROUP BY type, state;
       orderBy: 'update_time DESC',
       limit: limit,
     );
-    return rows.map((row) => row.map((key, value) => MapEntry(key, value))).toList(growable: false);
+    return rows
+        .map((row) => row.map((key, value) => MapEntry(key, value)))
+        .toList(growable: false);
   }
 
   String _formatOutboxItem(Map<String, dynamic> row) {
@@ -476,14 +538,11 @@ GROUP BY type, state;
     final type = (row['type'] as String?)?.trim() ?? 'unknown';
     final attempts = _readInt(row['attempts']) ?? 0;
     final created = _formatEpochMs(row['created_time']);
-    final lastError = LogSanitizer.sanitizeText((row['last_error'] as String?) ?? '').trim();
+    final lastError = LogSanitizer.sanitizeText(
+      (row['last_error'] as String?) ?? '',
+    ).trim();
     final payloadSummary = _summarizeOutboxPayload(type, row['payload']);
-    final parts = <String>[
-      '#$id',
-      type,
-      'attempts=$attempts',
-      'at=$created',
-    ];
+    final parts = <String>['#$id', type, 'attempts=$attempts', 'at=$created'];
     if (payloadSummary.isNotEmpty) {
       parts.add(payloadSummary);
     }
@@ -496,7 +555,9 @@ GROUP BY type, state;
   String _formatMemoSyncError(Map<String, dynamic> row) {
     final uid = (row['uid'] as String?)?.trim() ?? '';
     final updated = _formatEpochSec(row['update_time']);
-    final lastError = LogSanitizer.sanitizeText((row['last_error'] as String?) ?? '').trim();
+    final lastError = LogSanitizer.sanitizeText(
+      (row['last_error'] as String?) ?? '',
+    ).trim();
     if (lastError.isEmpty) {
       return 'uid=$uid at=$updated';
     }
@@ -543,8 +604,10 @@ GROUP BY type, state;
     final parts = <String>[];
     if (memoUid.isNotEmpty) parts.add('memo=$memoUid');
     if (uid.isNotEmpty) parts.add('uid=$uid');
-    if (filename.isNotEmpty) parts.add('file=${LogSanitizer.sanitizeText(filename)}');
-    if (mimeType.isNotEmpty) parts.add('mime=${LogSanitizer.sanitizeText(mimeType)}');
+    if (filename.isNotEmpty)
+      parts.add('file=${LogSanitizer.sanitizeText(filename)}');
+    if (mimeType.isNotEmpty)
+      parts.add('mime=${LogSanitizer.sanitizeText(mimeType)}');
     if (size != null && size > 0) parts.add('size=${_formatBytes(size)}');
     return parts.join(', ');
   }
@@ -554,8 +617,12 @@ GROUP BY type, state;
     final visibility = _readString(payload['visibility']);
     final pinned = _readBool(payload['pinned']);
     final hasAttachments = _readBool(payload['has_attachments']);
-    final relations = payload['relations'] is List ? (payload['relations'] as List).length : null;
-    final contentLength = payload['content'] is String ? (payload['content'] as String).length : null;
+    final relations = payload['relations'] is List
+        ? (payload['relations'] as List).length
+        : null;
+    final contentLength = payload['content'] is String
+        ? (payload['content'] as String).length
+        : null;
     final location = _summarizeLocationPayload(payload);
     final parts = <String>[];
     if (uid.isNotEmpty) parts.add('uid=$uid');
@@ -588,7 +655,9 @@ GROUP BY type, state;
     final parts = <String>[];
     if (uid.isNotEmpty) parts.add('uid=$uid');
     if (fields.isNotEmpty) parts.add('fields=${fields.join('/')}');
-    final contentLength = payload['content'] is String ? (payload['content'] as String).length : null;
+    final contentLength = payload['content'] is String
+        ? (payload['content'] as String).length
+        : null;
     if (contentLength != null) parts.add('content_len=$contentLength');
     final location = _summarizeLocationPayload(payload);
     if (location != null) parts.add('location=$location');
@@ -627,7 +696,10 @@ GROUP BY type, state;
   String _formatEpochSec(dynamic value) {
     final seconds = _readInt(value);
     if (seconds == null || seconds <= 0) return '-';
-    final time = DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true).toLocal();
+    final time = DateTime.fromMillisecondsSinceEpoch(
+      seconds * 1000,
+      isUtc: true,
+    ).toLocal();
     return DateFormat('HH:mm:ss').format(time);
   }
 
@@ -665,11 +737,14 @@ GROUP BY type, state;
     return '${gb.toStringAsFixed(1)}GB';
   }
 
-  List<NetworkRequestLog> _filterNetworkErrors(List<NetworkRequestLog> entries) {
+  List<NetworkRequestLog> _filterNetworkErrors(
+    List<NetworkRequestLog> entries,
+  ) {
     final out = <NetworkRequestLog>[];
     for (final entry in entries) {
       final status = entry.statusCode;
-      final hasError = entry.errorMessage != null && entry.errorMessage!.trim().isNotEmpty;
+      final hasError =
+          entry.errorMessage != null && entry.errorMessage!.trim().isNotEmpty;
       if (status == null || status >= 400 || hasError) {
         out.add(entry);
       }
@@ -677,12 +752,17 @@ GROUP BY type, state;
     return out;
   }
 
-  List<NetworkLogEntry> _filterStoreNetworkErrors(List<NetworkLogEntry> entries) {
+  List<NetworkLogEntry> _filterStoreNetworkErrors(
+    List<NetworkLogEntry> entries,
+  ) {
     final out = <NetworkLogEntry>[];
     for (final entry in entries) {
       final status = entry.status;
       final hasError = entry.error != null && entry.error!.trim().isNotEmpty;
-      if (entry.type == 'error' || status == null || status >= 400 || hasError) {
+      if (entry.type == 'error' ||
+          status == null ||
+          status >= 400 ||
+          hasError) {
         out.add(entry);
       }
     }
@@ -695,17 +775,25 @@ GROUP BY type, state;
     return List<NetworkRequestLog>.unmodifiable(entries.sublist(start));
   }
 
-  List<NetworkLogEntry> _tailStoreEntries(List<NetworkLogEntry> entries, int limit) {
+  List<NetworkLogEntry> _tailStoreEntries(
+    List<NetworkLogEntry> entries,
+    int limit,
+  ) {
     if (limit <= 0 || entries.isEmpty) return const [];
     final start = entries.length > limit ? entries.length - limit : 0;
     return List<NetworkLogEntry>.unmodifiable(entries.sublist(start));
   }
 
-  void _appendStoreNetworkEntries(StringBuffer buffer, List<NetworkLogEntry> entries) {
+  void _appendStoreNetworkEntries(
+    StringBuffer buffer,
+    List<NetworkLogEntry> entries,
+  ) {
     for (var i = 0; i < entries.length; i++) {
       final entry = entries[i];
       final statusLabel = entry.status?.toString() ?? '-';
-      final durationLabel = entry.durationMs == null ? '?ms' : '${entry.durationMs}ms';
+      final durationLabel = entry.durationMs == null
+          ? '?ms'
+          : '${entry.durationMs}ms';
       buffer.writeln('------------------------------------------------');
       buffer.writeln(
         '${i + 1}. [${entry.type.toUpperCase()}] ${entry.method} ${entry.url} '
@@ -751,7 +839,8 @@ GROUP BY type, state;
   }
 
   String? _formatPaginationLine(NetworkRequestLog entry) {
-    final hasAny = entry.pageSize != null ||
+    final hasAny =
+        entry.pageSize != null ||
         entry.pageToken != null ||
         entry.nextPageToken != null ||
         entry.memosCount != null;

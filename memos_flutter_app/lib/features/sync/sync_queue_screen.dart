@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/sync_feedback.dart';
 import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
 import '../../data/logs/log_manager.dart';
@@ -14,6 +15,7 @@ import '../../state/logging_provider.dart';
 import '../../state/local_sync_controller.dart';
 import '../../state/memoflow_bridge_settings_provider.dart';
 import '../../state/memos_providers.dart';
+import '../../state/preferences_provider.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -102,6 +104,7 @@ class _SyncQueueItem {
     required this.lastError,
     required this.memoUid,
     required this.attachmentUid,
+    required this.retryAt,
   });
 
   final int id;
@@ -114,6 +117,7 @@ class _SyncQueueItem {
   final String? lastError;
   final String? memoUid;
   final String? attachmentUid;
+  final DateTime? retryAt;
 }
 
 Future<_SyncQueueItem?> _buildQueueItem(
@@ -133,6 +137,19 @@ Future<_SyncQueueItem?> _buildQueueItem(
           isUtc: true,
         ).toLocal()
       : DateTime.now();
+  final retryAtRaw = row['retry_at'];
+  final retryAtMs = switch (retryAtRaw) {
+    int v => v,
+    num v => v.toInt(),
+    String v => int.tryParse(v.trim()),
+    _ => null,
+  };
+  final retryAt = retryAtMs == null || retryAtMs <= 0
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(
+          retryAtMs > 10000000000 ? retryAtMs : retryAtMs * 1000,
+          isUtc: true,
+        ).toLocal();
   final lastError = row['last_error'] as String?;
 
   final payload = _decodePayload(row['payload']);
@@ -163,6 +180,7 @@ Future<_SyncQueueItem?> _buildQueueItem(
     lastError: lastError,
     memoUid: memoUid,
     attachmentUid: attachmentUid,
+    retryAt: retryAt,
   );
 }
 
@@ -347,8 +365,34 @@ class SyncQueueScreen extends ConsumerWidget {
     await db.deleteOutbox(item.id);
   }
 
-  Future<void> _syncAll(WidgetRef ref) async {
+  Future<void> _syncAll(BuildContext context, WidgetRef ref) async {
     await ref.read(syncControllerProvider.notifier).syncNow();
+    if (!context.mounted) return;
+    final syncResult = ref.read(syncControllerProvider);
+    if (syncResult.isLoading) return;
+    final language = ref.read(appPreferencesProvider.select((p) => p.language));
+    showSyncFeedback(
+      overlayContext: context,
+      messengerContext: context,
+      language: language,
+      succeeded: !syncResult.hasError,
+    );
+  }
+
+  Future<void> _retryItem(
+    BuildContext context,
+    WidgetRef ref,
+    _SyncQueueItem item,
+  ) async {
+    final db = ref.read(databaseProvider);
+    final memoUid = item.memoUid?.trim();
+    if (memoUid != null && memoUid.isNotEmpty) {
+      await db.retryOutboxErrors(memoUid: memoUid);
+    } else {
+      await db.retryOutboxErrors();
+    }
+    if (!context.mounted) return;
+    await _syncAll(context, ref);
   }
 
   Future<void> _pushAllToBridge(BuildContext context, WidgetRef ref) async {
@@ -431,8 +475,13 @@ class SyncQueueScreen extends ConsumerWidget {
     final queueAsync = ref.watch(_syncQueueProvider);
     final items = queueAsync.valueOrNull ?? const <_SyncQueueItem>[];
     final pendingCountAsync = ref.watch(_syncQueuePendingCountProvider);
-    final pendingCount = pendingCountAsync.valueOrNull ?? items.length;
-    final failedCount = items.where((item) => item.state == 2).length;
+    final failedCount = items
+        .where((item) => item.state == AppDatabase.outboxStateError)
+        .length;
+    final activeCount = pendingCountAsync.valueOrNull ?? items.length;
+    final pendingCount = (activeCount - failedCount) < 0
+        ? 0
+        : (activeCount - failedCount);
     final queueProgress = ref.watch(syncQueueProgressTrackerProvider).snapshot;
     final syncing =
         ref.watch(syncControllerProvider).isLoading || queueProgress.syncing;
@@ -450,7 +499,8 @@ class SyncQueueScreen extends ConsumerWidget {
     final itemIds = <int>{};
     for (final item in items) {
       itemIds.add(item.id);
-      if (firstPendingId == null && item.state != 2) {
+      if (firstPendingId == null &&
+          item.state != AppDatabase.outboxStateError) {
         firstPendingId = item.id;
       }
     }
@@ -491,7 +541,7 @@ class SyncQueueScreen extends ConsumerWidget {
               tooltip: context.t.strings.legacy.msg_sync,
               onPressed: (syncing || bridgeBulkPushing)
                   ? null
-                  : () => _syncAll(ref),
+                  : () => _syncAll(context, ref),
               icon: const Icon(Icons.sync),
             ),
           ],
@@ -542,7 +592,9 @@ class SyncQueueScreen extends ConsumerWidget {
                         onDelete: () => _confirmDelete(context, ref, item),
                         onSync: (syncing || bridgeBulkPushing)
                             ? null
-                            : () => _syncAll(ref),
+                            : () => item.state == AppDatabase.outboxStateError
+                                  ? _retryItem(context, ref, item)
+                                  : _syncAll(context, ref),
                       ),
                     );
                   }),
@@ -589,7 +641,7 @@ class SyncQueueScreen extends ConsumerWidget {
                 child: FilledButton.icon(
                   onPressed: (items.isEmpty || syncing || bridgeBulkPushing)
                       ? null
-                      : () => _syncAll(ref),
+                      : () => _syncAll(context, ref),
                   icon: syncing
                       ? const SizedBox(
                           width: 18,
@@ -674,12 +726,9 @@ class _SyncSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final statusBg = syncing
-        ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.12)
-        : (isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : Colors.black.withValues(alpha: 0.04));
-    final statusText = syncing ? MemoFlowPalette.primary : textMuted;
+    final statusText = syncing
+        ? MemoFlowPalette.primary
+        : textMuted.withValues(alpha: 0.9);
     final statusLabel = syncing
         ? context.t.strings.legacy.msg_syncing_2
         : context.t.strings.legacy.msg_idle;
@@ -714,22 +763,12 @@ class _SyncSummaryCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: statusBg,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: statusText,
-                  ),
+              Text(
+                statusLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: statusText,
                 ),
               ),
             ],
@@ -888,7 +927,7 @@ class _SyncQueueItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final failed = item.state == 2;
+    final failed = item.state == AppDatabase.outboxStateError;
     final active = !failed && activeOutboxId == item.id;
     final timeLabel = DateFormat('MM-dd HH:mm:ss.SSS').format(item.createdAt);
 
@@ -927,11 +966,12 @@ class _SyncQueueItemCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               _StatusChip(
-                failed: failed,
+                state: item.state,
                 attempts: item.attempts,
                 textMuted: textMuted,
                 active: active,
                 progress: active ? activeProgress : null,
+                retryAt: item.retryAt,
               ),
             ],
           ),
@@ -1015,22 +1055,26 @@ class _SyncQueueItemCard extends StatelessWidget {
 
 class _StatusChip extends StatelessWidget {
   const _StatusChip({
-    required this.failed,
+    required this.state,
     required this.attempts,
     required this.textMuted,
     required this.active,
     required this.progress,
+    required this.retryAt,
   });
 
-  final bool failed;
+  final int state;
   final int attempts;
   final Color textMuted;
   final bool active;
   final double? progress;
+  final DateTime? retryAt;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final failed = state == AppDatabase.outboxStateError;
+    final retrying = state == AppDatabase.outboxStateRetry;
     if (failed) {
       final failedLabel = attempts > 0
           ? context.t.strings.legacy.msg_failed_2(attempts: attempts)
@@ -1054,6 +1098,29 @@ class _StatusChip extends StatelessWidget {
       );
     }
 
+    if (retrying && !active) {
+      final now = DateTime.now();
+      final waiting = retryAt != null && retryAt!.isAfter(now);
+      final retryLabel = waiting
+          ? context.t.strings.legacy.msg_retry
+          : context.t.strings.legacy.msg_pending_2;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: MemoFlowPalette.primary.withValues(alpha: isDark ? 0.2 : 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          retryLabel,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: MemoFlowPalette.primary,
+          ),
+        ),
+      );
+    }
+
     final clamped = progress?.clamp(0.0, 1.0).toDouble();
     final indicatorValue = active ? clamped : 0.0;
     final label = active
@@ -1062,7 +1129,7 @@ class _StatusChip extends StatelessWidget {
               : (clamped >= 1.0
                     ? context.t.strings.legacy.msg_done
                     : '${(clamped * 100).round()}%'))
-        : '0%';
+        : context.t.strings.legacy.msg_pending_2;
     final baseBg = isDark
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.black.withValues(alpha: 0.05);

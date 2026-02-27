@@ -8,16 +8,32 @@ const Duration _defaultToastDuration = Duration(seconds: 4);
 OverlayEntry? _activeTopToast;
 Timer? _topToastTimer;
 
-void showTopToast(
+bool showTopToast(
   BuildContext context,
   String message, {
   Duration duration = _defaultToastDuration,
   double topOffset = 144,
+  bool retryIfOverlayMissing = true,
 }) {
   final trimmed = message.trim();
-  if (trimmed.isEmpty) return;
+  if (trimmed.isEmpty) return false;
+  if (context is Element && !context.mounted) return false;
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
-  if (overlay == null) return;
+  if (overlay == null) {
+    if (retryIfOverlayMissing && context is Element && context.mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        showTopToast(
+          context,
+          trimmed,
+          duration: duration,
+          topOffset: topOffset,
+          retryIfOverlayMissing: false,
+        );
+      });
+    }
+    return false;
+  }
 
   _topToastTimer?.cancel();
   _topToastTimer = null;
@@ -78,6 +94,7 @@ void showTopToast(
       _activeTopToast = null;
     }
   });
+  return true;
 }
 
 void dismissTopToast() {

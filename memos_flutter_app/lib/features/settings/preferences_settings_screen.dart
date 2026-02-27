@@ -33,12 +33,19 @@ class PreferencesSettingsScreen extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(alignment: Alignment.centerLeft, child: Text(title)),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(title),
+                ),
               ),
               ...values.map((v) {
                 final isSelected = v == selected;
                 return ListTile(
-                  leading: Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off),
+                  leading: Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                  ),
                   title: Text(label(v)),
                   onTap: () {
                     context.safePop();
@@ -81,18 +88,24 @@ class PreferencesSettingsScreen extends ConsumerWidget {
               for (final font in [systemDefault, ...fonts])
                 ListTile(
                   leading: Icon(
-                    font.family == selectedFamily ? Icons.radio_button_checked : Icons.radio_button_off,
+                    font.family == selectedFamily
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
                   ),
                   title: Text(font.displayName),
                   onTap: () async {
                     context.safePop();
                     if (font.isSystemDefault) {
-                      ref.read(appPreferencesProvider.notifier).setFontFamily(family: null, filePath: null);
+                      ref
+                          .read(appPreferencesProvider.notifier)
+                          .setFontFamily(family: null, filePath: null);
                       return;
                     }
                     await SystemFonts.ensureLoaded(font);
                     if (!context.mounted) return;
-                    ref.read(appPreferencesProvider.notifier).setFontFamily(
+                    ref
+                        .read(appPreferencesProvider.notifier)
+                        .setFontFamily(
                           family: font.family,
                           filePath: font.filePath,
                         );
@@ -113,9 +126,15 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     );
   }
 
-  String _fontLabel(BuildContext context, AppPreferences prefs, List<SystemFontInfo> fonts) {
+  String _fontLabel(
+    BuildContext context,
+    AppPreferences prefs,
+    List<SystemFontInfo> fonts,
+  ) {
     final family = prefs.fontFamily?.trim() ?? '';
-    if (family.isEmpty) return context.t.strings.settings.preferences.systemDefault;
+    if (family.isEmpty) {
+      return context.t.strings.settings.preferences.systemDefault;
+    }
     for (final font in fonts) {
       if (font.family == family) return font.displayName;
     }
@@ -133,14 +152,24 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     final themeColor = prefs.resolveThemeColor(accountKey);
     final customTheme = prefs.resolveCustomTheme(accountKey);
     final fontsAsync = ref.watch(systemFontsProvider);
-    final fontLabel = _fontLabel(context, prefs, fontsAsync.valueOrNull ?? const []);
+    final fontLabel = _fontLabel(
+      context,
+      prefs,
+      fontsAsync.valueOrNull ?? const [],
+    );
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
     final languageItems = AppLanguage.values
         .map(
           (language) => DropdownMenuItem<AppLanguage>(
@@ -177,11 +206,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -216,7 +241,9 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                       values: AppFontSize.values,
                       label: (v) => v.labelFor(prefs.language),
                       selected: prefs.fontSize,
-                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setFontSize(v),
+                      onSelect: (v) => ref
+                          .read(appPreferencesProvider.notifier)
+                          .setFontSize(v),
                     ),
                   ),
                   _SelectRow(
@@ -231,7 +258,9 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                       values: AppLineHeight.values,
                       label: (v) => v.labelFor(prefs.language),
                       selected: prefs.lineHeight,
-                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLineHeight(v),
+                      onSelect: (v) => ref
+                          .read(appPreferencesProvider.notifier)
+                          .setLineHeight(v),
                     ),
                   ),
                   _SelectRow(
@@ -243,34 +272,66 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     onTap: () async {
                       try {
                         final List<SystemFontInfo> fonts =
-                            fontsAsync.valueOrNull ?? await ref.read(systemFontsProvider.future);
+                            fontsAsync.valueOrNull ??
+                            await ref.read(systemFontsProvider.future);
                         if (!context.mounted) return;
-                        await _selectFont(context: context, ref: ref, prefs: prefs, fonts: fonts);
+                        await _selectFont(
+                          context: context,
+                          ref: ref,
+                          prefs: prefs,
+                          fonts: fonts,
+                        );
                       } catch (e) {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(context.t.strings.settings.preferences.loadFontsFailed(error: e.toString()))),
+                          SnackBar(
+                            content: Text(
+                              context.t.strings.settings.preferences
+                                  .loadFontsFailed(error: e.toString()),
+                            ),
+                          ),
                         );
                       }
                     },
                   ),
                   _ToggleRow(
-                    label: context.t.strings.settings.preferences.collapseLongContent,
+                    label: context
+                        .t
+                        .strings
+                        .settings
+                        .preferences
+                        .collapseLongContent,
                     value: prefs.collapseLongContent,
                     textMain: textMain,
-                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseLongContent(v),
+                    onChanged: (v) => ref
+                        .read(appPreferencesProvider.notifier)
+                        .setCollapseLongContent(v),
                   ),
                   _ToggleRow(
-                    label: context.t.strings.settings.preferences.collapseReferences,
+                    label: context
+                        .t
+                        .strings
+                        .settings
+                        .preferences
+                        .collapseReferences,
                     value: prefs.collapseReferences,
                     textMain: textMain,
-                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setCollapseReferences(v),
+                    onChanged: (v) => ref
+                        .read(appPreferencesProvider.notifier)
+                        .setCollapseReferences(v),
                   ),
                   _ToggleRow(
-                    label: context.t.strings.settings.preferences.showEngagementInAllMemoDetails,
+                    label: context
+                        .t
+                        .strings
+                        .settings
+                        .preferences
+                        .showEngagementInAllMemoDetails,
                     value: prefs.showEngagementInAllMemoDetails,
                     textMain: textMain,
-                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setShowEngagementInAllMemoDetails(v),
+                    onChanged: (v) => ref
+                        .read(appPreferencesProvider.notifier)
+                        .setShowEngagementInAllMemoDetails(v),
                   ),
                 ],
               ),
@@ -287,18 +348,30 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     textMuted: textMuted,
                     onTap: () => _selectEnum<LaunchAction>(
                       context: context,
-                      title: context.t.strings.settings.preferences.launchAction,
-                      values: LaunchAction.values,
+                      title:
+                          context.t.strings.settings.preferences.launchAction,
+                      values: LaunchAction.values
+                          .where((v) => v != LaunchAction.sync)
+                          .toList(growable: false),
                       label: (v) => v.labelFor(prefs.language),
                       selected: prefs.launchAction,
-                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setLaunchAction(v),
+                      onSelect: (v) => ref
+                          .read(appPreferencesProvider.notifier)
+                          .setLaunchAction(v),
                     ),
                   ),
                   _ToggleRow(
-                    label: context.t.strings.settings.preferences.quickInputKeyboard,
+                    label: context
+                        .t
+                        .strings
+                        .settings
+                        .preferences
+                        .quickInputKeyboard,
                     value: prefs.quickInputAutoFocus,
                     textMain: textMain,
-                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setQuickInputAutoFocus(v),
+                    onChanged: (v) => ref
+                        .read(appPreferencesProvider.notifier)
+                        .setQuickInputAutoFocus(v),
                   ),
                 ],
               ),
@@ -316,10 +389,16 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     onTap: () => _selectEnum<AppThemeMode>(
                       context: context,
                       title: context.t.strings.settings.preferences.appearance,
-                      values: const [AppThemeMode.system, AppThemeMode.light, AppThemeMode.dark],
+                      values: const [
+                        AppThemeMode.system,
+                        AppThemeMode.light,
+                        AppThemeMode.dark,
+                      ],
                       label: (v) => v.labelFor(prefs.language),
                       selected: themeMode,
-                      onSelect: (v) => ref.read(appPreferencesProvider.notifier).setThemeMode(v),
+                      onSelect: (v) => ref
+                          .read(appPreferencesProvider.notifier)
+                          .setThemeMode(v),
                     ),
                   ),
                   _ThemeColorRow(
@@ -329,23 +408,36 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     isDark: isDark,
                     onSelect: (v) => ref
                         .read(appPreferencesProvider.notifier)
-                        .setThemeColorForAccount(accountKey: accountKey, color: v),
+                        .setThemeColorForAccount(
+                          accountKey: accountKey,
+                          color: v,
+                        ),
                     onCustomTap: () async {
                       final next = await CustomThemeDialog.show(
                         context: context,
                         initial: customTheme,
                       );
                       if (next == null || !context.mounted) return;
-                      final notifier = ref.read(appPreferencesProvider.notifier);
-                      notifier.setCustomThemeForAccount(accountKey: accountKey, settings: next);
-                      notifier.setThemeColorForAccount(accountKey: accountKey, color: AppThemeColor.custom);
+                      final notifier = ref.read(
+                        appPreferencesProvider.notifier,
+                      );
+                      notifier.setCustomThemeForAccount(
+                        accountKey: accountKey,
+                        settings: next,
+                      );
+                      notifier.setThemeColorForAccount(
+                        accountKey: accountKey,
+                        color: AppThemeColor.custom,
+                      );
                     },
                   ),
                   _ToggleRow(
                     label: context.t.strings.settings.preferences.haptics,
                     value: prefs.hapticsEnabled,
                     textMain: textMain,
-                    onChanged: (v) => ref.read(appPreferencesProvider.notifier).setHapticsEnabled(v),
+                    onChanged: (v) => ref
+                        .read(appPreferencesProvider.notifier)
+                        .setHapticsEnabled(v),
                   ),
                 ],
               ),
@@ -427,10 +519,16 @@ class _SelectRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
                 ),
               ),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: textMuted)),
+              Text(
+                value,
+                style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+              ),
               const SizedBox(width: 6),
               Icon(icon, size: 18, color: textMuted),
             ],
@@ -503,8 +601,12 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactiveTrack = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.12);
-    final inactiveThumb = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.white;
+    final inactiveTrack = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.12);
+    final inactiveThumb = isDark
+        ? Colors.white.withValues(alpha: 0.6)
+        : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -577,7 +679,8 @@ class _ThemeColorRow extends StatelessWidget {
                     ringColor: ringColor,
                     onTap: () => onSelect(color),
                   ),
-                if (color != AppThemeColor.values.last) const SizedBox(width: 10),
+                if (color != AppThemeColor.values.last)
+                  const SizedBox(width: 10),
               ],
             ],
           ),
@@ -620,10 +723,7 @@ class _ThemeColorDot extends StatelessWidget {
         child: Container(
           width: size,
           height: size,
-          decoration: BoxDecoration(
-            color: fill,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
           child: selected
               ? const Icon(Icons.check, size: 14, color: Colors.white)
               : null,
@@ -703,9 +803,13 @@ class CustomThemeDialog extends StatefulWidget {
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black.withValues(alpha: 0.35),
       transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (context, animation, secondaryAnimation) => CustomThemeDialog(initial: initial),
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          CustomThemeDialog(initial: initial),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
@@ -755,18 +859,30 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
     _manualSurfacesDark = widget.initial.manualSurfacesDark;
     _history = List<CustomThemeColorPair>.from(widget.initial.history);
     _autoHexController = TextEditingController(text: _formatHex(_autoLight));
-    _manualLightHexController = TextEditingController(text: _formatHex(_manualLight));
-    _manualDarkHexController = TextEditingController(text: _formatHex(_manualDark));
-    _surfaceLightBackgroundController =
-        TextEditingController(text: _formatHex(_manualSurfacesLight.background));
-    _surfaceLightCardController = TextEditingController(text: _formatHex(_manualSurfacesLight.card));
-    _surfaceLightBorderController =
-        TextEditingController(text: _formatHex(_manualSurfacesLight.border));
-    _surfaceDarkBackgroundController =
-        TextEditingController(text: _formatHex(_manualSurfacesDark.background));
-    _surfaceDarkCardController = TextEditingController(text: _formatHex(_manualSurfacesDark.card));
-    _surfaceDarkBorderController =
-        TextEditingController(text: _formatHex(_manualSurfacesDark.border));
+    _manualLightHexController = TextEditingController(
+      text: _formatHex(_manualLight),
+    );
+    _manualDarkHexController = TextEditingController(
+      text: _formatHex(_manualDark),
+    );
+    _surfaceLightBackgroundController = TextEditingController(
+      text: _formatHex(_manualSurfacesLight.background),
+    );
+    _surfaceLightCardController = TextEditingController(
+      text: _formatHex(_manualSurfacesLight.card),
+    );
+    _surfaceLightBorderController = TextEditingController(
+      text: _formatHex(_manualSurfacesLight.border),
+    );
+    _surfaceDarkBackgroundController = TextEditingController(
+      text: _formatHex(_manualSurfacesDark.background),
+    );
+    _surfaceDarkCardController = TextEditingController(
+      text: _formatHex(_manualSurfacesDark.card),
+    );
+    _surfaceDarkBorderController = TextEditingController(
+      text: _formatHex(_manualSurfacesDark.border),
+    );
     _linkLightSurfaces = _manualSurfacesLight.matches(
       deriveThemeSurfaces(seed: _manualLight, brightness: Brightness.light),
     );
@@ -826,7 +942,9 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
     setState(() => _manualLight = color);
     _syncHex(_manualLightHexController, color);
     if (_linkLightSurfaces) {
-      _updateManualSurfacesLight(deriveThemeSurfaces(seed: color, brightness: Brightness.light));
+      _updateManualSurfacesLight(
+        deriveThemeSurfaces(seed: color, brightness: Brightness.light),
+      );
     }
   }
 
@@ -834,11 +952,16 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
     setState(() => _manualDark = color);
     _syncHex(_manualDarkHexController, color);
     if (_linkDarkSurfaces) {
-      _updateManualSurfacesDark(deriveThemeSurfaces(seed: color, brightness: Brightness.dark));
+      _updateManualSurfacesDark(
+        deriveThemeSurfaces(seed: color, brightness: Brightness.dark),
+      );
     }
   }
 
-  void _updateManualSurfacesLight(CustomThemeSurfaces surfaces, {bool linked = true}) {
+  void _updateManualSurfacesLight(
+    CustomThemeSurfaces surfaces, {
+    bool linked = true,
+  }) {
     setState(() {
       _manualSurfacesLight = surfaces;
       _linkLightSurfaces = linked;
@@ -848,7 +971,10 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
     _syncHex(_surfaceLightBorderController, surfaces.border);
   }
 
-  void _updateManualSurfacesDark(CustomThemeSurfaces surfaces, {bool linked = true}) {
+  void _updateManualSurfacesDark(
+    CustomThemeSurfaces surfaces, {
+    bool linked = true,
+  }) {
     setState(() {
       _manualSurfacesDark = surfaces;
       _linkDarkSurfaces = linked;
@@ -907,7 +1033,10 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
   void _save() {
     final pair = _mode == CustomThemeMode.manual
         ? CustomThemeColorPair(light: _manualLight, dark: _manualDark)
-        : CustomThemeColorPair(light: _autoLight, dark: deriveAutoDarkColor(_autoLight));
+        : CustomThemeColorPair(
+            light: _autoLight,
+            dark: deriveAutoDarkColor(_autoLight),
+          );
     final nextHistory = <CustomThemeColorPair>[pair, ..._history];
     if (nextHistory.length > 4) {
       nextHistory.removeRange(4, nextHistory.length);
@@ -928,13 +1057,23 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? MemoFlowPalette.cardDark : Colors.white;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.55);
-    final border = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
-    final field = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04);
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
+    final field = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
     final accent = MemoFlowPalette.primary;
     final shadow = Colors.black.withValues(alpha: 0.16);
-    final headerStyle = TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textMain);
+    final headerStyle = TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w800,
+      color: textMain,
+    );
 
     return Material(
       type: MaterialType.transparency,
@@ -948,7 +1087,11 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                 color: cardColor,
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
-                  BoxShadow(blurRadius: 26, offset: const Offset(0, 18), color: shadow),
+                  BoxShadow(
+                    blurRadius: 26,
+                    offset: const Offset(0, 18),
+                    color: shadow,
+                  ),
                 ],
               ),
               child: SingleChildScrollView(
@@ -956,7 +1099,11 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(context.t.strings.settings.preferences.customTheme, style: headerStyle, textAlign: TextAlign.center),
+                    Text(
+                      context.t.strings.settings.preferences.customTheme,
+                      style: headerStyle,
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 12),
                     _ModeToggle(
                       mode: _mode,
@@ -982,7 +1129,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                         border: border,
                         textMain: textMain,
                         textMuted: textMuted,
-                        onChanged: (value) => _handleHexChanged(value, _updateAutoLight),
+                        onChanged: (value) =>
+                            _handleHexChanged(value, _updateAutoLight),
                       ),
                       if (_history.isNotEmpty) ...[
                         const SizedBox(height: 12),
@@ -1016,7 +1164,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                         border: border,
                         textMain: textMain,
                         textMuted: textMuted,
-                        onChanged: (value) => _handleHexChanged(value, _updateManualLight),
+                        onChanged: (value) =>
+                            _handleHexChanged(value, _updateManualLight),
                       ),
                       const SizedBox(height: 12),
                       _SurfaceSectionHeader(
@@ -1025,7 +1174,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.t.strings.settings.preferences.background,
+                        label:
+                            context.t.strings.settings.preferences.background,
                         controller: _surfaceLightBackgroundController,
                         color: _manualSurfacesLight.background,
                         field: field,
@@ -1041,7 +1191,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.t.strings.settings.preferences.backgroundColor,
+                          title: context
+                              .t
+                              .strings
+                              .settings
+                              .preferences
+                              .backgroundColor,
                           isLight: true,
                           slot: _SurfaceSlot.background,
                           color: _manualSurfacesLight.background,
@@ -1065,7 +1220,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.t.strings.settings.preferences.cardColor,
+                          title:
+                              context.t.strings.settings.preferences.cardColor,
                           isLight: true,
                           slot: _SurfaceSlot.card,
                           color: _manualSurfacesLight.card,
@@ -1089,7 +1245,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.t.strings.settings.preferences.borderColor,
+                          title: context
+                              .t
+                              .strings
+                              .settings
+                              .preferences
+                              .borderColor,
                           isLight: true,
                           slot: _SurfaceSlot.border,
                           color: _manualSurfacesLight.border,
@@ -1127,7 +1288,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                         border: border,
                         textMain: textMain,
                         textMuted: textMuted,
-                        onChanged: (value) => _handleHexChanged(value, _updateManualDark),
+                        onChanged: (value) =>
+                            _handleHexChanged(value, _updateManualDark),
                       ),
                       const SizedBox(height: 12),
                       _SurfaceSectionHeader(
@@ -1136,7 +1298,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                       ),
                       const SizedBox(height: 8),
                       _SurfaceColorRow(
-                        label: context.t.strings.settings.preferences.background,
+                        label:
+                            context.t.strings.settings.preferences.background,
                         controller: _surfaceDarkBackgroundController,
                         color: _manualSurfacesDark.background,
                         field: field,
@@ -1152,7 +1315,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.t.strings.settings.preferences.backgroundColor,
+                          title: context
+                              .t
+                              .strings
+                              .settings
+                              .preferences
+                              .backgroundColor,
                           isLight: false,
                           slot: _SurfaceSlot.background,
                           color: _manualSurfacesDark.background,
@@ -1176,7 +1344,8 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.t.strings.settings.preferences.cardColor,
+                          title:
+                              context.t.strings.settings.preferences.cardColor,
                           isLight: false,
                           slot: _SurfaceSlot.card,
                           color: _manualSurfacesDark.card,
@@ -1200,7 +1369,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                           ),
                         ),
                         onPick: () => _pickSurfaceColor(
-                          title: context.t.strings.settings.preferences.borderColor,
+                          title: context
+                              .t
+                              .strings
+                              .settings
+                              .preferences
+                              .borderColor,
                           isLight: false,
                           slot: _SurfaceSlot.border,
                           color: _manualSurfacesDark.border,
@@ -1215,8 +1389,12 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                             onPressed: () => Navigator.of(context).maybePop(),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: accent,
-                              side: BorderSide(color: accent.withValues(alpha: 0.7)),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                              side: BorderSide(
+                                color: accent.withValues(alpha: 0.7),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                             child: Text(context.t.strings.common.cancel),
@@ -1229,7 +1407,9 @@ class _CustomThemeDialogState extends State<CustomThemeDialog> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: accent,
                               foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               elevation: 0,
                             ),
@@ -1319,8 +1499,12 @@ class _ModeToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fill = selected ? (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white) : Colors.transparent;
-    final shadow = isDark ? Colors.black.withValues(alpha: 0.32) : Colors.black.withValues(alpha: 0.08);
+    final fill = selected
+        ? (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white)
+        : Colors.transparent;
+    final shadow = isDark
+        ? Colors.black.withValues(alpha: 0.32)
+        : Colors.black.withValues(alpha: 0.08);
     return Expanded(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
@@ -1386,10 +1570,7 @@ class _ColorSquarePicker extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: _HslPalette(
-              color: color,
-              onChanged: onChanged,
-            ),
+            child: _HslPalette(color: color, onChanged: onChanged),
           ),
         ),
         const SizedBox(height: 8),
@@ -1404,10 +1585,7 @@ class _ColorSquarePicker extends StatelessWidget {
 }
 
 class _HslPalette extends StatelessWidget {
-  const _HslPalette({
-    required this.color,
-    required this.onChanged,
-  });
+  const _HslPalette({required this.color, required this.onChanged});
 
   final Color color;
   final ValueChanged<Color> onChanged;
@@ -1418,7 +1596,9 @@ class _HslPalette extends StatelessWidget {
     final dy = localPosition.dy.clamp(0.0, size.height);
     final saturation = (dx / size.width).clamp(0.0, 1.0);
     final lightness = (1 - dy / size.height).clamp(0.0, 1.0);
-    onChanged(hsl.withSaturation(saturation).withLightness(lightness).toColor());
+    onChanged(
+      hsl.withSaturation(saturation).withLightness(lightness).toColor(),
+    );
   }
 
   @override
@@ -1426,16 +1606,19 @@ class _HslPalette extends StatelessWidget {
     final hsl = HSLColor.fromColor(color);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
-        final height = constraints.maxHeight.isFinite ? constraints.maxHeight : 0.0;
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 0.0;
+        final height = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 0.0;
         final size = Size(width, height);
         return GestureDetector(
-          onPanDown: (details) => _handleOffset(details.localPosition, size, hsl),
-          onPanUpdate: (details) => _handleOffset(details.localPosition, size, hsl),
-          child: CustomPaint(
-            size: size,
-            painter: _HslPalettePainter(hsl),
-          ),
+          onPanDown: (details) =>
+              _handleOffset(details.localPosition, size, hsl),
+          onPanUpdate: (details) =>
+              _handleOffset(details.localPosition, size, hsl),
+          child: CustomPaint(size: size, painter: _HslPalettePainter(hsl)),
         );
       },
     );
@@ -1475,7 +1658,9 @@ class _HslPalettePainter extends CustomPainter {
       size.width * hsl.saturation,
       size.height * (1 - hsl.lightness),
     );
-    final pointerColor = useWhiteForeground(hsl.toColor()) ? Colors.white : Colors.black;
+    final pointerColor = useWhiteForeground(hsl.toColor())
+        ? Colors.white
+        : Colors.black;
     canvas.drawCircle(
       pointer,
       size.height * 0.04,
@@ -1576,11 +1761,9 @@ class _HexInputRow extends StatelessWidget {
       final text = '#${formatHex(color)}';
       await Clipboard.setData(ClipboardData(text: text));
       if (!context.mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.common.copiedToClipboard,
-      );
+      showTopToast(context, context.t.strings.common.copiedToClipboard);
     }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -1605,7 +1788,10 @@ class _HexInputRow extends StatelessWidget {
                 isDense: true,
                 border: InputBorder.none,
                 prefixText: '#',
-                prefixStyle: TextStyle(color: textMuted, fontWeight: FontWeight.w700),
+                prefixStyle: TextStyle(
+                  color: textMuted,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               style: TextStyle(
                 color: textMain,
@@ -1629,17 +1815,10 @@ class _HexInputRow extends StatelessWidget {
   }
 }
 
-enum _SurfaceSlot {
-  background,
-  card,
-  border,
-}
+enum _SurfaceSlot { background, card, border }
 
 class _SurfaceSectionHeader extends StatelessWidget {
-  const _SurfaceSectionHeader({
-    required this.title,
-    required this.textMuted,
-  });
+  const _SurfaceSectionHeader({required this.title, required this.textMuted});
 
   final String title;
   final Color textMuted;
@@ -1648,7 +1827,11 @@ class _SurfaceSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textMuted),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: textMuted,
+      ),
     );
   }
 }
@@ -1681,7 +1864,10 @@ class _SurfaceColorRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textMain)),
+          child: Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+          ),
         ),
         SizedBox(
           width: 150,
@@ -1721,7 +1907,14 @@ class _HistoryRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textMuted)),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: textMuted,
+          ),
+        ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -1786,11 +1979,19 @@ class _ModeSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+        Text(
+          label,
+          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+        ),
         const Spacer(),
         Text(
           caption,
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: textMuted),
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+            color: textMuted,
+          ),
         ),
       ],
     );
@@ -1798,10 +1999,7 @@ class _ModeSectionHeader extends StatelessWidget {
 }
 
 class _SurfaceColorDialog extends StatefulWidget {
-  const _SurfaceColorDialog({
-    required this.title,
-    required this.initial,
-  });
+  const _SurfaceColorDialog({required this.title, required this.initial});
 
   final String title;
   final Color initial;
@@ -1877,10 +2075,16 @@ class _SurfaceColorDialogState extends State<_SurfaceColorDialog> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? MemoFlowPalette.cardDark : Colors.white;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.6 : 0.55);
-    final border = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
-    final field = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04);
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
+    final field = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
     final accent = MemoFlowPalette.primary;
 
     return Dialog(
@@ -1895,7 +2099,10 @@ class _SurfaceColorDialogState extends State<_SurfaceColorDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.title, style: TextStyle(fontWeight: FontWeight.w800, color: textMain)),
+            Text(
+              widget.title,
+              style: TextStyle(fontWeight: FontWeight.w800, color: textMain),
+            ),
             const SizedBox(height: 12),
             _ColorSquarePicker(
               color: _color,
@@ -1922,7 +2129,9 @@ class _SurfaceColorDialogState extends State<_SurfaceColorDialog> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: accent,
                       side: BorderSide(color: accent.withValues(alpha: 0.7)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     child: Text(context.t.strings.common.cancel),
@@ -1935,7 +2144,9 @@ class _SurfaceColorDialogState extends State<_SurfaceColorDialog> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accent,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       elevation: 0,
                     ),

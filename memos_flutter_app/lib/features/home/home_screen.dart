@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../data/logs/log_manager.dart';
+import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../state/home_loading_overlay_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
@@ -35,6 +38,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _syncObservedLoading = false;
   bool _syncFinished = false;
   bool _syncSucceeded = false;
+  String? _lastOverlayPhaseKey;
 
   @override
   void initState() {
@@ -43,6 +47,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _overlayVisible =
         forceOverlay ||
         !ref.read(appPreferencesProvider).homeInitialLoadingOverlayShown;
+    _logOverlayLifecycle(
+      'overlay_init',
+      context: <String, Object?>{
+        'forceOverlay': forceOverlay,
+        'overlayVisible': _overlayVisible,
+        'persistedShown': ref
+            .read(appPreferencesProvider)
+            .homeInitialLoadingOverlayShown,
+      },
+    );
     _syncSubscription = ref.listenManual<AsyncValue<void>>(
       syncControllerProvider,
       _handleSyncStateChanged,
@@ -96,12 +110,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _showCloseTimer?.cancel();
     _showCloseTimer = Timer(_showCloseAfter, () {
       if (!mounted || !_overlayVisible || _manuallyClosed) return;
+      _logOverlayLifecycle(
+        'close_action_revealed',
+        context: <String, Object?>{'timeoutSec': _showCloseAfter.inSeconds},
+      );
       setState(() => _showCloseAction = true);
     });
 
     _syncAwaitingCompletion = true;
     final syncState = ref.read(syncControllerProvider);
+    final queue = ref.read(syncQueueProgressTrackerProvider).snapshot;
+    _logOverlayLifecycle(
+      'gate_start',
+      context: _overlayContext(
+        extra: <String, Object?>{
+          'syncState': _describeAsyncState(syncState),
+          'queueSyncing': queue.syncing,
+          'queueTotalTasks': queue.totalTasks,
+          'queueCompletedTasks': queue.completedTasks,
+          'queueCurrentOutboxId': queue.currentOutboxId,
+          'queueCurrentProgress': queue.currentProgress,
+        },
+      ),
+    );
     _syncObservedLoading = syncState.isLoading;
+    if (syncState.isLoading) {
+      _logOverlayLifecycle('skip_sync_request_already_loading');
+      return;
+    }
+    _logOverlayLifecycle('request_sync_now');
     unawaited(ref.read(syncControllerProvider.notifier).syncNow());
   }
 
@@ -109,6 +146,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     AsyncValue<void>? previous,
     AsyncValue<void> next,
   ) {
+    _logOverlayLifecycle(
+      'sync_state_changed',
+      context: _overlayContext(
+        extra: <String, Object?>{
+          'previousSyncState': _describeAsyncState(previous),
+          'nextSyncState': _describeAsyncState(next),
+          'observedLoading': _syncObservedLoading,
+          'awaitingCompletion': _syncAwaitingCompletion,
+        },
+      ),
+    );
     if (!_syncAwaitingCompletion || _syncFinished || !_overlayVisible) return;
 
     if (next.isLoading) {
@@ -125,6 +173,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _completeSyncTracking({required bool success}) {
     if (!mounted || _syncFinished) return;
+    _logOverlayLifecycle(
+      'sync_tracking_completed',
+      context: _overlayContext(extra: <String, Object?>{'success': success}),
+    );
     setState(() {
       _syncFinished = true;
       _syncSucceeded = success;
@@ -133,12 +185,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _hideOverlayAutomatically() {
     if (!_overlayVisible || _manuallyClosed) return;
+    _logOverlayLifecycle(
+      'overlay_hidden_auto',
+      context: _overlayContext(extra: <String, Object?>{'reason': 'all_ready'}),
+    );
     setState(() => _overlayVisible = false);
     _showCloseTimer?.cancel();
   }
 
   void _closeOverlayManually() {
     if (!_overlayVisible) return;
+    _logOverlayLifecycle(
+      'overlay_hidden_manual',
+      context: _overlayContext(
+        extra: <String, Object?>{'reason': 'user_close'},
+      ),
+    );
     setState(() {
       _manuallyClosed = true;
       _overlayVisible = false;
@@ -183,6 +245,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final userInfoAsync = ref.watch(userGeneralSettingProvider);
     final resourcesAsync = ref.watch(resourcesProvider);
     final statsAsync = ref.watch(localStatsProvider);
+    final syncState = ref.watch(syncControllerProvider);
     final syncQueueSnapshot = ref
         .watch(syncQueueProgressTrackerProvider)
         .snapshot;
@@ -199,6 +262,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       syncReady: syncReady,
       syncing: syncQueueSnapshot.syncing,
       preciseSyncProgress: syncQueueSnapshot.overallProgress,
+    );
+    _logOverlayBuildPhase(
+      userReady: userReady,
+      resourcesReady: resourcesReady,
+      statsReady: statsReady,
+      syncReady: syncReady,
+      allReady: allReady,
+      progress: progress,
+      syncState: syncState,
+      syncQueueSnapshot: syncQueueSnapshot,
     );
 
     if (allReady && _overlayVisible && !_manuallyClosed) {
@@ -226,6 +299,87 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
       ],
     );
+  }
+
+  void _logOverlayBuildPhase({
+    required bool userReady,
+    required bool resourcesReady,
+    required bool statsReady,
+    required bool syncReady,
+    required bool allReady,
+    required double progress,
+    required AsyncValue<void> syncState,
+    required SyncQueueProgressSnapshot syncQueueSnapshot,
+  }) {
+    if (!kDebugMode) return;
+    if (!_overlayVisible && allReady) return;
+    final key = [
+      _overlayVisible,
+      _manuallyClosed,
+      _showCloseAction,
+      userReady,
+      resourcesReady,
+      statsReady,
+      syncReady,
+      allReady,
+      progress.toStringAsFixed(2),
+      _describeAsyncState(syncState),
+      syncQueueSnapshot.syncing,
+      syncQueueSnapshot.totalTasks,
+      syncQueueSnapshot.completedTasks,
+      syncQueueSnapshot.currentOutboxId,
+      syncQueueSnapshot.currentProgress?.toStringAsFixed(2) ?? '-',
+    ].join('|');
+    if (_lastOverlayPhaseKey == key) return;
+    _lastOverlayPhaseKey = key;
+    _logOverlayLifecycle(
+      'overlay_phase',
+      context: _overlayContext(
+        extra: <String, Object?>{
+          'userReady': userReady,
+          'resourcesReady': resourcesReady,
+          'statsReady': statsReady,
+          'syncReady': syncReady,
+          'allReady': allReady,
+          'progress': progress,
+          'syncState': _describeAsyncState(syncState),
+          'queueSyncing': syncQueueSnapshot.syncing,
+          'queueTotalTasks': syncQueueSnapshot.totalTasks,
+          'queueCompletedTasks': syncQueueSnapshot.completedTasks,
+          'queueCurrentOutboxId': syncQueueSnapshot.currentOutboxId,
+          'queueCurrentProgress': syncQueueSnapshot.currentProgress,
+        },
+      ),
+    );
+  }
+
+  Map<String, Object?> _overlayContext({Map<String, Object?>? extra}) {
+    final context = <String, Object?>{
+      'overlayVisible': _overlayVisible,
+      'showCloseAction': _showCloseAction,
+      'manuallyClosed': _manuallyClosed,
+      'syncAwaitingCompletion': _syncAwaitingCompletion,
+      'syncObservedLoading': _syncObservedLoading,
+      'syncFinished': _syncFinished,
+      'syncSucceeded': _syncSucceeded,
+    };
+    if (extra != null && extra.isNotEmpty) {
+      context.addAll(extra);
+    }
+    return context;
+  }
+
+  String _describeAsyncState(AsyncValue<void>? state) {
+    if (state == null) return 'null';
+    if (state.isLoading) return 'loading';
+    if (state.hasError) return 'error';
+    if (state.hasValue) return 'value';
+    return 'idle';
+  }
+
+  void _logOverlayLifecycle(String event, {Map<String, Object?>? context}) {
+    if (!kDebugMode) return;
+    LogManager.instance.info('HomeLoading: $event', context: context);
   }
 }
 
