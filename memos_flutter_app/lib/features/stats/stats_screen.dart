@@ -2723,42 +2723,53 @@ class _YearCharsTrendCardNew extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const defaultChartHeight = 132.0;
+        const minChartHeight = 68.0;
+        const consumedHeight = 56.0;
+        final chartHeight = constraints.hasBoundedHeight
+            ? math.max(minChartHeight, constraints.maxHeight - consumedHeight)
+            : defaultChartHeight;
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: card,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                      color: Colors.black.withValues(alpha: 0.06),
+                    ),
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '年度字数趋势',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: textMain,
                 ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '年度字数趋势',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: textMain,
-            ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: chartHeight,
+                child: _YearCharsTrendChartNew(
+                  points: points,
+                  textMuted: textMuted,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 132,
-            child: _YearCharsTrendChartNew(
-              points: points,
-              textMuted: textMuted,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
