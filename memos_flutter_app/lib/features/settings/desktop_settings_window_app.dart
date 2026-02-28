@@ -198,12 +198,15 @@ class DesktopSettingsWindowScreen extends StatefulWidget {
 
 class _DesktopSettingsWindowScreenState
     extends State<DesktopSettingsWindowScreen> {
+  Future<bool>? _mainWindowChannelProbe;
+
   @override
   void initState() {
     super.initState();
     DesktopMultiWindow.setMethodHandler(_handleMethodCall);
     unawaited(_reloadSessionFromStorage());
     unawaited(_initializeWindowManager());
+    unawaited(_notifyMainWindowVisibility(true));
   }
 
   @override
@@ -226,18 +229,88 @@ class _DesktopSettingsWindowScreenState
 
   Future<void> _notifyMainWindowVisibility(bool visible) async {
     try {
-      await DesktopMultiWindow.invokeMethod(
-        0,
+      await _invokeMainWindowMethod(
         desktopSubWindowVisibilityMethod,
         <String, dynamic>{'visible': visible},
       );
     } catch (_) {}
   }
 
+  bool _isMainWindowChannelMissing(PlatformException error) {
+    if (error.code.trim() == '-1') return true;
+    final message = (error.message ?? '').toLowerCase();
+    return message.contains('target window not found') ||
+        message.contains('target window channel not found');
+  }
+
+  Future<void> _wakeMainWindow() async {
+    try {
+      await WindowController.main().show();
+    } catch (_) {}
+  }
+
+  Future<bool> _probeMainWindowChannel() async {
+    const maxAttempts = 10;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await DesktopMultiWindow.invokeMethod(0, desktopQuickInputPingMethod);
+        return true;
+      } on MissingPluginException {
+        // Main window handler not ready yet. Retry shortly.
+      } on PlatformException catch (error) {
+        if (!_isMainWindowChannelMissing(error)) {
+          return false;
+        }
+      }
+      if (attempt == 1 || attempt == 3 || attempt == 6) {
+        await _wakeMainWindow();
+      }
+      await Future<void>.delayed(Duration(milliseconds: 120 + (attempt * 100)));
+    }
+    return false;
+  }
+
+  Future<bool> _ensureMainWindowChannelReady({bool force = false}) {
+    if (!force) {
+      final pending = _mainWindowChannelProbe;
+      if (pending != null) return pending;
+    }
+    final future = _probeMainWindowChannel().then((ready) {
+      if (!ready) {
+        _mainWindowChannelProbe = null;
+      }
+      return ready;
+    });
+    _mainWindowChannelProbe = future;
+    return future;
+  }
+
+  Future<dynamic> _invokeMainWindowMethod(
+    String method, [
+    dynamic arguments,
+  ]) async {
+    var ready = await _ensureMainWindowChannelReady();
+    if (!ready) {
+      ready = await _ensureMainWindowChannelReady(force: true);
+    }
+    if (!ready) {
+      throw MissingPluginException('Main window channel is not ready.');
+    }
+    return DesktopMultiWindow.invokeMethod(0, method, arguments);
+  }
+
   Future<dynamic> _handleMethodCall(MethodCall call, int _) async {
     if (call.method == desktopSettingsFocusMethod) {
       await _bringWindowToFront();
       return true;
+    }
+    if (call.method == desktopSubWindowIsVisibleMethod) {
+      try {
+        await windowManager.ensureInitialized();
+        return await windowManager.isVisible();
+      } catch (_) {
+        return true;
+      }
     }
     if (call.method == desktopSettingsRefreshSessionMethod) {
       await _reloadSessionFromStorage();

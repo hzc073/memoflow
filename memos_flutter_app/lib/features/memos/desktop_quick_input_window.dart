@@ -169,6 +169,14 @@ class _DesktopQuickInputWindowScreenState
       await _bringWindowToFront();
       return true;
     }
+    if (call.method == desktopSubWindowIsVisibleMethod) {
+      try {
+        await windowManager.ensureInitialized();
+        return await windowManager.isVisible();
+      } catch (_) {
+        return true;
+      }
+    }
     return null;
   }
 

@@ -75,6 +75,13 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   Future<void>? _desktopQuickInputWindowPrepareTask;
   final Set<int> _desktopVisibleSubWindowIds = <int>{};
   bool _desktopSubWindowsPrewarmScheduled = false;
+  bool _desktopSubWindowVisibilitySyncInProgress = false;
+  bool _desktopSubWindowVisibilitySyncQueued = false;
+  bool _desktopSubWindowVisibilitySyncScheduled = false;
+  DateTime? _lastDesktopSubWindowVisibilitySyncAt;
+  static const Duration _desktopSubWindowVisibilitySyncDebounce = Duration(
+    milliseconds: 360,
+  );
   HomeWidgetType? _pendingWidgetAction;
   SharePayload? _pendingSharePayload;
   bool _shareHandlingScheduled = false;
@@ -614,6 +621,109 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         : _desktopVisibleSubWindowIds.remove(windowId);
     if (!changed || !mounted) return;
     setState(() {});
+  }
+
+  void _scheduleDesktopSubWindowVisibilitySync({bool force = false}) {
+    if (kIsWeb || _desktopVisibleSubWindowIds.isEmpty) return;
+    if (!force) {
+      final last = _lastDesktopSubWindowVisibilitySyncAt;
+      if (last != null &&
+          DateTime.now().difference(last) <
+              _desktopSubWindowVisibilitySyncDebounce) {
+        return;
+      }
+    }
+    if (_desktopSubWindowVisibilitySyncScheduled) return;
+    _desktopSubWindowVisibilitySyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _desktopSubWindowVisibilitySyncScheduled = false;
+      unawaited(_syncDesktopSubWindowVisibility());
+    });
+  }
+
+  Future<void> _syncDesktopSubWindowVisibility() async {
+    if (kIsWeb || _desktopVisibleSubWindowIds.isEmpty) return;
+    if (_desktopSubWindowVisibilitySyncInProgress) {
+      _desktopSubWindowVisibilitySyncQueued = true;
+      return;
+    }
+    _desktopSubWindowVisibilitySyncInProgress = true;
+    _lastDesktopSubWindowVisibilitySyncAt = DateTime.now();
+    try {
+      final trackedIds = _desktopVisibleSubWindowIds.toSet();
+      final nextVisibleIds = <int>{};
+      Set<int>? existingIds;
+      try {
+        existingIds = (await DesktopMultiWindow.getAllSubWindowIds())
+            .where((id) => id > 0)
+            .toSet();
+      } catch (_) {}
+
+      for (final id in trackedIds) {
+        if (existingIds != null && !existingIds.contains(id)) {
+          continue;
+        }
+        final visible = await _queryDesktopSubWindowVisible(id);
+        if (visible == true) {
+          nextVisibleIds.add(id);
+          continue;
+        }
+        if (visible == null && await _isDesktopSubWindowResponsive(id)) {
+          nextVisibleIds.add(id);
+        }
+      }
+
+      if (!mounted || setEquals(nextVisibleIds, _desktopVisibleSubWindowIds)) {
+        return;
+      }
+      setState(() {
+        _desktopVisibleSubWindowIds
+          ..clear()
+          ..addAll(nextVisibleIds);
+      });
+    } finally {
+      _desktopSubWindowVisibilitySyncInProgress = false;
+      if (_desktopSubWindowVisibilitySyncQueued) {
+        _desktopSubWindowVisibilitySyncQueued = false;
+        unawaited(_syncDesktopSubWindowVisibility());
+      }
+    }
+  }
+
+  Future<bool?> _queryDesktopSubWindowVisible(int windowId) async {
+    try {
+      final result = await DesktopMultiWindow.invokeMethod(
+        windowId,
+        desktopSubWindowIsVisibleMethod,
+        null,
+      );
+      return _parseDesktopSubWindowVisibleFlag(result);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> _isDesktopSubWindowResponsive(int windowId) async {
+    try {
+      final result = await DesktopMultiWindow.invokeMethod(
+        windowId,
+        desktopSettingsPingMethod,
+        null,
+      );
+      if (result == null || result == true) {
+        return true;
+      }
+    } catch (_) {}
+    try {
+      final result = await DesktopMultiWindow.invokeMethod(
+        windowId,
+        desktopQuickInputPingMethod,
+        null,
+      );
+      return result == null || result == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> _focusDesktopSubWindowById(int windowId) async {
@@ -2097,6 +2207,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         : false;
     final scale = _textScaleFor(prefs.fontSize);
     final blurDesktopMainWindow = _shouldBlurDesktopMainWindow;
+    if (blurDesktopMainWindow) {
+      _scheduleDesktopSubWindowVisibilitySync();
+    }
     _applyImageEditorI18n(prefs.language);
 
     if (_pendingWidgetAction != null) {

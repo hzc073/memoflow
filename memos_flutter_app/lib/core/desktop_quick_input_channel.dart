@@ -21,3 +21,4 @@ const String desktopSettingsReopenOnboardingMethod =
 const String desktopHomeShowLoadingOverlayMethod =
     'desktop.home.showLoadingOverlay';
 const String desktopSubWindowVisibilityMethod = 'desktop.subWindow.visibility';
+const String desktopSubWindowIsVisibleMethod = 'desktop.subWindow.isVisible';
