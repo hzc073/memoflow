@@ -4,6 +4,8 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
+import '../../core/log_sanitizer.dart';
+import '../logs/debug_log_store.dart';
 import '../models/webdav_settings.dart';
 
 class WebDavResponse {
@@ -29,6 +31,7 @@ class WebDavClient {
     required this.password,
     required this.authMode,
     required this.ignoreBadCert,
+    this.logWriter,
   }) {
     if (ignoreBadCert) {
       _client.badCertificateCallback = (_, _, _) => true;
@@ -40,6 +43,7 @@ class WebDavClient {
   final String password;
   final WebDavAuthMode authMode;
   final bool ignoreBadCert;
+  final void Function(DebugLogEntry entry)? logWriter;
 
   final HttpClient _client = HttpClient();
   _DigestAuthState? _digestState;
@@ -95,31 +99,79 @@ class WebDavClient {
     List<int>? body,
     bool forceDigest = false,
   }) async {
-    final request = await _client.openUrl(method, url);
-    request.headers.set('User-Agent', 'MemoFlow');
-    if (headers != null) {
-      headers.forEach(request.headers.set);
-    }
-    final authHeader = _buildAuthHeader(method, url, forceDigest: forceDigest);
-    if (authHeader != null) {
-      request.headers.set(HttpHeaders.authorizationHeader, authHeader);
-    }
-    if (body != null) {
-      request.add(body);
-    }
-    final response = await request.close();
-    final bytes = await response.fold<List<int>>(<int>[], (p, e) => p..addAll(e));
-    final responseHeaders = <String, String>{};
-    response.headers.forEach((name, values) {
-      if (values.isNotEmpty) {
-        responseHeaders[name.toLowerCase()] = values.join(',');
+    final startedAt = DateTime.now();
+    try {
+      final request = await _client.openUrl(method, url);
+      request.headers.set('User-Agent', 'MemoFlow');
+      if (headers != null) {
+        headers.forEach(request.headers.set);
       }
-    });
-    return WebDavResponse(
-      statusCode: response.statusCode,
-      reasonPhrase: response.reasonPhrase,
-      headers: responseHeaders,
-      bytes: bytes,
+      final authHeader = _buildAuthHeader(method, url, forceDigest: forceDigest);
+      if (authHeader != null) {
+        request.headers.set(HttpHeaders.authorizationHeader, authHeader);
+      }
+      if (body != null) {
+        request.add(body);
+      }
+      final response = await request.close();
+      final bytes =
+          await response.fold<List<int>>(<int>[], (p, e) => p..addAll(e));
+      final responseHeaders = <String, String>{};
+      response.headers.forEach((name, values) {
+        if (values.isNotEmpty) {
+          responseHeaders[name.toLowerCase()] = values.join(',');
+        }
+      });
+      _emitLog(
+        method: method,
+        url: url,
+        status: response.statusCode,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+      );
+      return WebDavResponse(
+        statusCode: response.statusCode,
+        reasonPhrase: response.reasonPhrase,
+        headers: responseHeaders,
+        bytes: bytes,
+      );
+    } catch (e) {
+      _emitLog(
+        method: method,
+        url: url,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        error: e,
+      );
+      rethrow;
+    }
+  }
+
+  void _emitLog({
+    required String method,
+    required Uri url,
+    int? status,
+    int? durationMs,
+    Object? error,
+  }) {
+    final writer = logWriter;
+    if (writer == null) return;
+    final detailParts = <String>[
+      'auth=${authMode.name}',
+      ignoreBadCert ? 'tls=ignored' : 'tls=verified',
+    ];
+    writer(
+      DebugLogEntry(
+        timestamp: DateTime.now(),
+        category: 'webdav',
+        label: 'WebDAV $method',
+        detail: detailParts.join(' · '),
+        method: method,
+        url: LogSanitizer.maskUrl(url.toString()),
+        status: status,
+        durationMs: durationMs,
+        error: error == null
+            ? null
+            : LogSanitizer.sanitizeText(error.toString()),
+      ),
     );
   }
 

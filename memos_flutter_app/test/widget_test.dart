@@ -79,6 +79,9 @@ class _TestSessionController extends AppSessionController {
   Future<void> refreshCurrentUser({bool ignoreErrors = true}) async {}
 
   @override
+  Future<void> reloadFromStorage() async {}
+
+  @override
   bool resolveUseLegacyApiForAccount({
     required Account account,
     required bool globalDefault,

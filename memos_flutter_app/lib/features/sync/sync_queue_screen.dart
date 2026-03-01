@@ -4,17 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/memo_sync_service.dart';
+import '../../application/sync/sync_request.dart';
+import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/sync_error_presenter.dart';
 import '../../core/sync_feedback.dart';
 import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
 import '../../data/logs/log_manager.dart';
 import '../../state/database_provider.dart';
 import '../../state/logging_provider.dart';
-import '../../state/local_sync_controller.dart';
 import '../../state/memoflow_bridge_settings_provider.dart';
-import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -366,16 +369,22 @@ class SyncQueueScreen extends ConsumerWidget {
   }
 
   Future<void> _syncAll(BuildContext context, WidgetRef ref) async {
-    await ref.read(syncControllerProvider.notifier).syncNow();
+    final result = await ref.read(syncCoordinatorProvider.notifier).requestSync(
+          const SyncRequest(
+            kind: SyncRequestKind.memos,
+            reason: SyncRequestReason.manual,
+          ),
+        );
     if (!context.mounted) return;
-    final syncResult = ref.read(syncControllerProvider);
-    if (syncResult.isLoading) return;
+    if (result is SyncRunQueued) return;
+    final syncStatus = ref.read(syncCoordinatorProvider).memos;
+    if (syncStatus.running) return;
     final language = ref.read(appPreferencesProvider.select((p) => p.language));
     showSyncFeedback(
       overlayContext: context,
       messengerContext: context,
       language: language,
-      succeeded: !syncResult.hasError,
+      succeeded: syncStatus.lastError == null,
     );
   }
 
@@ -397,8 +406,8 @@ class SyncQueueScreen extends ConsumerWidget {
 
   Future<void> _pushAllToBridge(BuildContext context, WidgetRef ref) async {
     final tr = context.t.strings.legacy;
-    final syncController = ref.read(syncControllerProvider.notifier);
-    if (syncController is! LocalSyncController) {
+    final bridgeService = ref.read(memoBridgeServiceProvider);
+    if (bridgeService == null) {
       showTopToast(context, tr.msg_bridge_local_mode_only);
       return;
     }
@@ -439,7 +448,7 @@ class SyncQueueScreen extends ConsumerWidget {
     if (ref.read(_bridgeBulkPushRunningProvider)) return;
     ref.read(_bridgeBulkPushRunningProvider.notifier).state = true;
     try {
-      final result = await syncController.pushAllMemosToBridge(
+      final result = await bridgeService.pushAllMemosToBridge(
         includeArchived: true,
       );
       if (!context.mounted) return;
@@ -484,14 +493,15 @@ class SyncQueueScreen extends ConsumerWidget {
         : (activeCount - failedCount);
     final queueProgress = ref.watch(syncQueueProgressTrackerProvider).snapshot;
     final syncing =
-        ref.watch(syncControllerProvider).isLoading || queueProgress.syncing;
+        ref.watch(syncCoordinatorProvider).memos.running ||
+        queueProgress.syncing;
     final bridgeBulkPushing = ref.watch(_bridgeBulkPushRunningProvider);
-    final currentSyncController = ref.watch(syncControllerProvider.notifier);
+    final bridgeService = ref.watch(memoBridgeServiceProvider);
     final bridgeSettings = ref.watch(memoFlowBridgeSettingsProvider);
     final canPushToBridge =
         !syncing &&
         !bridgeBulkPushing &&
-        currentSyncController is LocalSyncController &&
+        bridgeService != null &&
         bridgeSettings.enabled &&
         bridgeSettings.isPaired;
     final syncSnapshot = ref.watch(syncStatusTrackerProvider).snapshot;
@@ -930,6 +940,12 @@ class _SyncQueueItemCard extends StatelessWidget {
     final failed = item.state == AppDatabase.outboxStateError;
     final active = !failed && activeOutboxId == item.id;
     final timeLabel = DateFormat('MM-dd HH:mm:ss.SSS').format(item.createdAt);
+    final lastErrorText = item.lastError == null
+        ? null
+        : presentSyncErrorText(
+            language: context.appLanguage,
+            raw: item.lastError!.trim(),
+          );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
@@ -989,11 +1005,11 @@ class _SyncQueueItemCard extends StatelessWidget {
             ),
           ],
           if (failed &&
-              item.lastError != null &&
-              item.lastError!.trim().isNotEmpty) ...[
+              lastErrorText != null &&
+              lastErrorText.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              item.lastError!,
+              lastErrorText,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

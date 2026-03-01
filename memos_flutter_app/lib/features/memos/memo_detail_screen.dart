@@ -8,10 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
 import '../../core/tags.dart';
 import '../../core/uid.dart';
@@ -197,7 +200,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         payload: {'uid': memo.uid, 'force': false},
       );
       await ref.read(reminderSchedulerProvider).rescheduleAll();
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(
+        ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.memos,
+                reason: SyncRequestReason.manual,
+              ),
+            ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -246,7 +256,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         if (state != null) 'state': state,
       },
     );
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    unawaited(
+      ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          ),
+    );
   }
 
   static final RegExp _taskLinePattern = RegExp(
@@ -466,7 +483,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         );
       }
 
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(
+        ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.memos,
+                reason: SyncRequestReason.manual,
+              ),
+            ),
+      );
 
       if (!mounted) return;
       setState(() {
@@ -619,6 +643,13 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           : null,
     );
 
+    final memoErrorText =
+        (memo.lastError == null || memo.lastError!.trim().isEmpty)
+            ? null
+            : presentSyncErrorText(
+                language: context.appLanguage,
+                raw: memo.lastError!.trim(),
+              );
     final displayTime = memo.createTime.millisecondsSinceEpoch > 0
         ? memo.createTime
         : memo.updateTime;
@@ -665,7 +696,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        if (memo.lastError != null && memo.lastError!.isNotEmpty) ...[
+        if (memoErrorText != null && memoErrorText.trim().isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -684,7 +715,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SelectableText(
-                  memo.lastError!,
+                  memoErrorText,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.error,
                   ),
@@ -696,7 +727,14 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                       onPressed: () {
                         maybeHaptic();
                         unawaited(
-                          ref.read(syncControllerProvider.notifier).syncNow(),
+                          ref
+                              .read(syncCoordinatorProvider.notifier)
+                              .requestSync(
+                                const SyncRequest(
+                                  kind: SyncRequestKind.memos,
+                                  reason: SyncRequestReason.manual,
+                                ),
+                              ),
                         );
                         showTopToast(
                           context,
@@ -711,7 +749,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                       onPressed: () async {
                         maybeHaptic();
                         await Clipboard.setData(
-                          ClipboardData(text: memo.lastError!),
+                          ClipboardData(text: memoErrorText),
                         );
                         if (!context.mounted) return;
                         showTopToast(

@@ -6,7 +6,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:saf_stream/saf_stream.dart';
 
-import '../core/app_localization.dart';
+import '../application/sync/local_library_scan_service.dart';
+import '../application/sync/sync_error.dart';
+import '../application/sync/sync_types.dart';
 import '../data/db/app_database.dart';
 import '../data/local_library/local_attachment_store.dart';
 import '../data/local_library/local_library_fs.dart';
@@ -19,8 +21,6 @@ import '../data/models/local_memo.dart';
 import '../data/models/memoflow_bridge_settings.dart';
 import '../data/settings/memoflow_bridge_settings_repository.dart';
 import '../data/logs/sync_status_tracker.dart';
-import 'local_library_scanner.dart';
-import 'preferences_provider.dart';
 import 'sync_controller_base.dart';
 
 class BridgeBulkPushResult {
@@ -57,7 +57,6 @@ class LocalSyncController extends SyncControllerBase {
     required this.bridgeSettingsRepository,
     required this.syncStatusTracker,
     required this.syncQueueProgressTracker,
-    required this.language,
   }) : super(const AsyncValue.data(null));
 
   final AppDatabase db;
@@ -66,15 +65,9 @@ class LocalSyncController extends SyncControllerBase {
   final MemoFlowBridgeSettingsRepository bridgeSettingsRepository;
   final SyncStatusTracker syncStatusTracker;
   final SyncQueueProgressTracker syncQueueProgressTracker;
-  final AppLanguage language;
   MemoFlowBridgeSettings _bridgeSettingsSnapshot =
       MemoFlowBridgeSettings.defaults;
-  Timer? _retrySyncTimer;
-  int _retryBackoffIndex = 0;
   int _syncRunSeq = 0;
-  bool _rerunRequestedWhileLoading = false;
-  bool _pendingScanRequested = false;
-  bool _isDisposed = false;
 
   Future<BridgeBulkPushResult> pushAllMemosToBridge({
     bool includeArchived = true,
@@ -111,18 +104,13 @@ class LocalSyncController extends SyncControllerBase {
   }
 
   @override
-  Future<void> syncNow() async {
-    if (_isDisposed) return;
+  Future<MemoSyncResult> syncNow() async {
     final queueSnapshot = syncQueueProgressTracker.snapshot;
     final globalSyncing = queueSnapshot.syncing;
     if (state.isLoading || globalSyncing) {
-      _pendingScanRequested = true;
-      _rerunRequestedWhileLoading = true;
       LogManager.instance.debug(
         'LocalSync: sync_skipped_loading',
         context: <String, Object?>{
-          'rerunRequested': true,
-          'pendingScanRequested': true,
           'stateLoading': state.isLoading,
           'globalSyncing': globalSyncing,
           'currentOutboxId': queueSnapshot.currentOutboxId,
@@ -130,14 +118,11 @@ class LocalSyncController extends SyncControllerBase {
           'queueCompletedTasks': queueSnapshot.completedTasks,
         },
       );
-      return;
+      return const MemoSyncSkipped();
     }
     final runId =
         'run_${DateTime.now().toUtc().millisecondsSinceEpoch}_${++_syncRunSeq}';
     final runWatch = Stopwatch()..start();
-    _cancelRetrySyncTimer();
-    _rerunRequestedWhileLoading = false;
-    _pendingScanRequested = false;
     final totalPendingAtStart = await db.countOutboxPending();
     final retryableAtStart = await db.countOutboxRetryable();
     final failedAtStart = await db.countOutboxFailed();
@@ -148,8 +133,6 @@ class LocalSyncController extends SyncControllerBase {
         'pendingAtStart': totalPendingAtStart,
         'retryableAtStart': retryableAtStart,
         'failedAtStart': failedAtStart,
-        'retryBackoffIndex': _retryBackoffIndex,
-        'retryTimerActive': _retrySyncTimer?.isActive ?? false,
       },
     );
     syncStatusTracker.markSyncStarted();
@@ -213,34 +196,10 @@ class LocalSyncController extends SyncControllerBase {
       );
     }
     syncQueueProgressTracker.markSyncFinished();
-
-    if (!_isDisposed) {
-      final hasRetryableOutbox = retryableAtEnd > 0;
-      final syncFailed = next.hasError;
-      if (!hasRetryableOutbox && !syncFailed) {
-        _resetRetryState();
-      } else {
-        await _scheduleRetrySyncIfNeeded(
-          hasPendingOutbox: hasRetryableOutbox,
-          syncFailed: syncFailed,
-        );
-      }
+    if (next.hasError) {
+      return MemoSyncFailure(_buildSyncError(next.error!));
     }
-
-    if ((_pendingScanRequested || _rerunRequestedWhileLoading) &&
-        !_isDisposed) {
-      LogManager.instance.info(
-        'LocalSync: rerun_requested_after_completion',
-        context: <String, Object?>{
-          'runId': runId,
-          'pendingScanRequested': _pendingScanRequested,
-          'rerunRequestedWhileLoading': _rerunRequestedWhileLoading,
-        },
-      );
-      _pendingScanRequested = false;
-      _rerunRequestedWhileLoading = false;
-      unawaited(syncNow());
-    }
+    return const MemoSyncSuccess();
   }
 
   Future<void> _ensureIndex() async {
@@ -254,11 +213,10 @@ class LocalSyncController extends SyncControllerBase {
   }
 
   Future<void> _scanIncremental({required String stage}) async {
-    final scanner = LocalLibraryScanner(
+    final scanner = LocalLibraryScanService(
       db: db,
       fileSystem: fileSystem,
       attachmentStore: attachmentStore,
-      language: language,
     );
     LogManager.instance.debug(
       'LocalSync scan: start',
@@ -740,14 +698,23 @@ class LocalSyncController extends SyncControllerBase {
         }
       } else {
         if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
+          final baseError = SyncError(
+            code: SyncErrorCode.unknown,
+            retryable: false,
+            message: memoError,
+          );
+          final syncError = SyncError(
+            code: SyncErrorCode.unknown,
+            retryable: false,
+            message: memoError,
+            presentationKey: 'legacy.msg_local_sync_failed',
+            presentationParams: {'type': type},
+            cause: baseError,
+          );
           await db.updateMemoSyncState(
             failedMemoUid,
             syncState: 2,
-            lastError: trByLanguageKey(
-              language: language,
-              key: 'legacy.msg_local_sync_failed',
-              params: {'type': type, 'memoError': memoError},
-            ),
+            lastError: encodeSyncError(syncError),
           );
         }
         await db.markOutboxError(id, error: memoError);
@@ -863,6 +830,26 @@ class LocalSyncController extends SyncControllerBase {
     );
   }
 
+  SyncError _buildSyncError(Object error) {
+    if (error is SyncError) return error;
+    final retryable = _isTransientOutboxError(error);
+    if (error is DioException) {
+      return SyncError(
+        code: SyncErrorCode.network,
+        retryable: retryable,
+        message: error.toString(),
+        httpStatus: error.response?.statusCode,
+        requestMethod: error.requestOptions.method,
+        requestPath: error.requestOptions.uri.path,
+      );
+    }
+    return SyncError(
+      code: SyncErrorCode.unknown,
+      retryable: retryable,
+      message: error.toString(),
+    );
+  }
+
   bool _isTransientOutboxError(Object error) {
     if (error is FileSystemException) {
       final fileErrorText = '${error.message} ${error.osError?.message ?? ''}'
@@ -897,71 +884,6 @@ class LocalSyncController extends SyncControllerBase {
         ? _retryBackoffSteps.length - 1
         : normalizedAttempts;
     return _retryBackoffSteps[index];
-  }
-
-  void _cancelRetrySyncTimer() {
-    _retrySyncTimer?.cancel();
-    _retrySyncTimer = null;
-  }
-
-  Duration _consumeRetryDelay() {
-    final index = _retryBackoffIndex < 0
-        ? 0
-        : (_retryBackoffIndex >= _retryBackoffSteps.length
-              ? _retryBackoffSteps.length - 1
-              : _retryBackoffIndex);
-    final delay = _retryBackoffSteps[index];
-    if (_retryBackoffIndex < _retryBackoffSteps.length - 1) {
-      _retryBackoffIndex++;
-    }
-    return delay;
-  }
-
-  void _resetRetryState() {
-    _cancelRetrySyncTimer();
-    _retryBackoffIndex = 0;
-  }
-
-  Future<void> _scheduleRetrySyncIfNeeded({
-    required bool hasPendingOutbox,
-    required bool syncFailed,
-  }) async {
-    if (_isDisposed) return;
-    if (_retrySyncTimer?.isActive ?? false) return;
-    if (!hasPendingOutbox && !syncFailed) {
-      _resetRetryState();
-      return;
-    }
-    final delay = _consumeRetryDelay();
-    LogManager.instance.info(
-      'LocalSync: retry_scheduled',
-      context: <String, Object?>{
-        'delayMs': delay.inMilliseconds,
-        'hasPendingOutbox': hasPendingOutbox,
-        'syncFailed': syncFailed,
-        'retryBackoffIndex': _retryBackoffIndex,
-      },
-    );
-    _retrySyncTimer = Timer(delay, () {
-      _retrySyncTimer = null;
-      if (_isDisposed) return;
-      LogManager.instance.info(
-        'LocalSync: retry_triggered',
-        context: <String, Object?>{
-          'delayMs': delay.inMilliseconds,
-          'hasPendingOutbox': hasPendingOutbox,
-          'syncFailed': syncFailed,
-        },
-      );
-      unawaited(syncNow());
-    });
-  }
-
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _cancelRetrySyncTimer();
-    super.dispose();
   }
 
   String? _outboxMemoUid(String type, Map<String, dynamic> payload) {

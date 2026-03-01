@@ -13,10 +13,11 @@ import '../../core/app_localization.dart';
 import '../../core/desktop_quick_input_channel.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../state/database_provider.dart';
 import '../../state/home_loading_overlay_provider.dart';
 import '../../state/local_library_provider.dart';
-import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../memos/memos_list_screen.dart';
@@ -378,7 +379,14 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
 
       // Force memo streams to re-query after bulk import.
       db.notifyDataChanged();
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(
+        ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.memos,
+                reason: SyncRequestReason.manual,
+              ),
+            ),
+      );
       if (!mounted) return;
 
       Navigator.of(context).pushReplacement(

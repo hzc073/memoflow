@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../data/settings/ai_settings_repository.dart';
 import 'preferences_provider.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 final aiSettingsRepositoryProvider = Provider<AiSettingsRepository>((ref) {
   final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
@@ -37,7 +38,14 @@ class AiSettingsController extends StateNotifier<AiSettings> {
     state = next;
     await _repo.write(next);
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 

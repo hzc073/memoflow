@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../core/app_localization.dart';
 import 'preferences_provider.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 enum ReminderSoundMode { system, silent, custom }
 
@@ -209,14 +210,28 @@ class ReminderSettingsController extends StateNotifier<ReminderSettings> {
   void _setAndPersist(ReminderSettings next) {
     state = next;
     unawaited(_repo.write(next));
-    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    unawaited(
+      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.webDavSync,
+              reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
   }
 
   Future<void> setAll(ReminderSettings next, {bool triggerSync = true}) async {
     state = next;
     await _repo.write(next);
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 

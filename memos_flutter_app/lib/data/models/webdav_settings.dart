@@ -1,6 +1,8 @@
 enum WebDavAuthMode { basic, digest }
 
-enum WebDavBackupSchedule { manual, daily, weekly }
+enum WebDavBackupSchedule { manual, daily, weekly, monthly, onOpen }
+
+enum WebDavBackupEncryptionMode { encrypted, plain }
 
 class WebDavSettings {
   const WebDavSettings({
@@ -12,6 +14,9 @@ class WebDavSettings {
     required this.ignoreTlsErrors,
     required this.rootPath,
     required this.backupEnabled,
+    required this.backupContentConfig,
+    required this.backupContentMemos,
+    required this.backupEncryptionMode,
     required this.backupSchedule,
     required this.backupRetentionCount,
     required this.rememberBackupPassword,
@@ -27,11 +32,16 @@ class WebDavSettings {
   final bool ignoreTlsErrors;
   final String rootPath;
   final bool backupEnabled;
+  final bool backupContentConfig;
+  final bool backupContentMemos;
+  final WebDavBackupEncryptionMode backupEncryptionMode;
   final WebDavBackupSchedule backupSchedule;
   final int backupRetentionCount;
   final bool rememberBackupPassword;
   final String backupMirrorTreeUri;
   final String backupMirrorRootPath;
+
+  bool get isBackupEnabled => enabled && backupEnabled;
 
   static const defaults = WebDavSettings(
     enabled: false,
@@ -42,9 +52,12 @@ class WebDavSettings {
     ignoreTlsErrors: false,
     rootPath: '/MemoFlow/settings/v1',
     backupEnabled: false,
+    backupContentConfig: true,
+    backupContentMemos: true,
+    backupEncryptionMode: WebDavBackupEncryptionMode.encrypted,
     backupSchedule: WebDavBackupSchedule.daily,
     backupRetentionCount: 5,
-    rememberBackupPassword: false,
+    rememberBackupPassword: true,
     backupMirrorTreeUri: '',
     backupMirrorRootPath: '',
   );
@@ -58,6 +71,9 @@ class WebDavSettings {
     bool? ignoreTlsErrors,
     String? rootPath,
     bool? backupEnabled,
+    bool? backupContentConfig,
+    bool? backupContentMemos,
+    WebDavBackupEncryptionMode? backupEncryptionMode,
     WebDavBackupSchedule? backupSchedule,
     int? backupRetentionCount,
     bool? rememberBackupPassword,
@@ -73,6 +89,10 @@ class WebDavSettings {
       ignoreTlsErrors: ignoreTlsErrors ?? this.ignoreTlsErrors,
       rootPath: rootPath ?? this.rootPath,
       backupEnabled: backupEnabled ?? this.backupEnabled,
+      backupContentConfig: backupContentConfig ?? this.backupContentConfig,
+      backupContentMemos: backupContentMemos ?? this.backupContentMemos,
+      backupEncryptionMode:
+          backupEncryptionMode ?? this.backupEncryptionMode,
       backupSchedule: backupSchedule ?? this.backupSchedule,
       backupRetentionCount: backupRetentionCount ?? this.backupRetentionCount,
       rememberBackupPassword:
@@ -91,6 +111,9 @@ class WebDavSettings {
     'ignoreTlsErrors': ignoreTlsErrors,
     'rootPath': rootPath,
     'backupEnabled': backupEnabled,
+    'backupContentConfig': backupContentConfig,
+    'backupContentMemos': backupContentMemos,
+    'backupEncryptionMode': backupEncryptionMode.name,
     'backupSchedule': backupSchedule.name,
     'backupRetentionCount': backupRetentionCount,
     'rememberBackupPassword': rememberBackupPassword,
@@ -134,6 +157,17 @@ class WebDavSettings {
       return WebDavSettings.defaults.backupSchedule;
     }
 
+    WebDavBackupEncryptionMode readBackupEncryptionMode() {
+      final raw = json['backupEncryptionMode'];
+      if (raw is String) {
+        return WebDavBackupEncryptionMode.values.firstWhere(
+          (m) => m.name == raw,
+          orElse: () => WebDavSettings.defaults.backupEncryptionMode,
+        );
+      }
+      return WebDavSettings.defaults.backupEncryptionMode;
+    }
+
     int readInt(String key, int fallback) {
       final raw = json[key];
       if (raw is int) return raw;
@@ -157,6 +191,15 @@ class WebDavSettings {
         'backupEnabled',
         WebDavSettings.defaults.backupEnabled,
       ),
+      backupContentConfig: readBool(
+        'backupContentConfig',
+        WebDavSettings.defaults.backupContentConfig,
+      ),
+      backupContentMemos: readBool(
+        'backupContentMemos',
+        WebDavSettings.defaults.backupContentMemos,
+      ),
+      backupEncryptionMode: readBackupEncryptionMode(),
       backupSchedule: readBackupSchedule(),
       backupRetentionCount: readInt(
         'backupRetentionCount',

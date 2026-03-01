@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../core/image_bed_url.dart';
 import '../data/models/image_bed_settings.dart';
 import '../data/settings/image_bed_settings_repository.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 final imageBedSettingsRepositoryProvider = Provider<ImageBedSettingsRepository>(
   (ref) {
@@ -46,7 +47,14 @@ class ImageBedSettingsController extends StateNotifier<ImageBedSettings> {
     state = next;
     unawaited(_repo.write(next));
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 
@@ -90,7 +98,14 @@ class ImageBedSettingsController extends StateNotifier<ImageBedSettings> {
     state = next;
     await _repo.write(next);
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 

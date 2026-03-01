@@ -5,7 +5,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/app_localization.dart';
+import '../application/sync/sync_error.dart';
+import '../application/sync/sync_types.dart';
 import '../core/image_bed_url.dart';
 import '../core/memo_relations.dart';
 import '../core/tags.dart';
@@ -1436,9 +1437,6 @@ final memoRelationsProvider = StreamProvider.family<List<MemoRelation>, String>(
 
 final syncControllerProvider =
     StateNotifierProvider<SyncControllerBase, AsyncValue<void>>((ref) {
-      final language = ref.watch(
-        appPreferencesProvider.select((p) => p.language),
-      );
       final localLibrary = ref.watch(currentLocalLibraryProvider);
       if (localLibrary != null) {
         return LocalSyncController(
@@ -1450,7 +1448,6 @@ final syncControllerProvider =
           ),
           syncStatusTracker: ref.read(syncStatusTrackerProvider),
           syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
-          language: language,
         );
       }
 
@@ -1466,7 +1463,6 @@ final syncControllerProvider =
         currentUserName: authContext.userName,
         syncStatusTracker: ref.read(syncStatusTrackerProvider),
         syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
-        language: language,
         imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
         onRelationsSynced: (memoUids) {
           for (final uid in memoUids) {
@@ -1594,7 +1590,6 @@ class RemoteSyncController extends SyncControllerBase {
     required this.currentUserName,
     required this.syncStatusTracker,
     required this.syncQueueProgressTracker,
-    required this.language,
     required this.imageBedRepository,
     this.onRelationsSynced,
   }) : super(const AsyncValue.data(null));
@@ -1604,13 +1599,9 @@ class RemoteSyncController extends SyncControllerBase {
   final String currentUserName;
   final SyncStatusTracker syncStatusTracker;
   final SyncQueueProgressTracker syncQueueProgressTracker;
-  final AppLanguage language;
   final ImageBedSettingsRepository imageBedRepository;
   final void Function(Set<String> memoUids)? onRelationsSynced;
-  Timer? _retrySyncTimer;
-  int _retryBackoffIndex = 0;
   int _syncRunSeq = 0;
-  bool _rerunRequestedWhileLoading = false;
   bool _isDisposed = false;
   final String _controllerId =
       'remote_${DateTime.now().toUtc().millisecondsSinceEpoch}_${identityHashCode(Object())}';
@@ -1674,74 +1665,85 @@ class RemoteSyncController extends SyncControllerBase {
     return '';
   }
 
-  String _summarizeHttpError(DioException e) {
+  SyncError _summarizeHttpError(DioException e) {
     final status = e.response?.statusCode;
     final msg = _extractErrorMessage(e.response?.data);
+    final method = e.requestOptions.method;
+    final path = e.requestOptions.uri.path;
 
     if (status == null) {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
-        return trByLanguageKey(
-          language: language,
-          key: 'legacy.msg_network_timeout_try',
+        return SyncError(
+          code: SyncErrorCode.network,
+          retryable: true,
+          presentationKey: 'legacy.msg_network_timeout_try',
+          requestMethod: method,
+          requestPath: path,
         );
       }
       if (e.type == DioExceptionType.connectionError) {
-        return trByLanguageKey(
-          language: language,
-          key: 'legacy.msg_network_connection_failed_check_network',
+        return SyncError(
+          code: SyncErrorCode.network,
+          retryable: true,
+          presentationKey:
+              'legacy.msg_network_connection_failed_check_network',
+          requestMethod: method,
+          requestPath: path,
         );
       }
       final raw = e.message ?? '';
-      if (raw.trim().isNotEmpty) return raw.trim();
-      return trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_network_request_failed',
+      if (raw.trim().isNotEmpty) {
+        return SyncError(
+          code: SyncErrorCode.network,
+          retryable: true,
+          message: raw.trim(),
+          requestMethod: method,
+          requestPath: path,
+        );
+      }
+      return SyncError(
+        code: SyncErrorCode.network,
+        retryable: true,
+        presentationKey: 'legacy.msg_network_request_failed',
+        requestMethod: method,
+        requestPath: path,
       );
     }
 
-    final base = switch (status) {
-      400 => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_invalid_request_parameters',
-      ),
-      401 => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_authentication_failed_check_token',
-      ),
-      403 => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_insufficient_permissions',
-      ),
-      404 => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_endpoint_not_found_version_mismatch',
-      ),
-      413 => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_attachment_too_large',
-      ),
-      500 => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_server_error',
-      ),
-      _ => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_request_failed',
-      ),
+    final baseKey = switch (status) {
+      400 => 'legacy.msg_invalid_request_parameters',
+      401 => 'legacy.msg_authentication_failed_check_token',
+      403 => 'legacy.msg_insufficient_permissions',
+      404 => 'legacy.msg_endpoint_not_found_version_mismatch',
+      413 => 'legacy.msg_attachment_too_large',
+      500 => 'legacy.msg_server_error',
+      _ => 'legacy.msg_request_failed',
     };
-
-    if (msg.isEmpty) {
-      return trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_http_2',
-        params: {'base': base, 'status': status},
-      );
-    }
-    return trByLanguageKey(
-      language: language,
-      key: 'legacy.msg_http',
-      params: {'base': base, 'status': status, 'msg': msg},
+    final presentationKey =
+        msg.isEmpty ? 'legacy.msg_http_2' : 'legacy.msg_http';
+    final code = switch (status) {
+      400 => SyncErrorCode.invalidConfig,
+      401 => SyncErrorCode.authFailed,
+      403 => SyncErrorCode.permission,
+      404 => SyncErrorCode.server,
+      413 => SyncErrorCode.server,
+      >= 500 => SyncErrorCode.server,
+      _ => SyncErrorCode.unknown,
+    };
+    return SyncError(
+      code: code,
+      retryable: status >= 500,
+      message: msg.isEmpty ? null : msg,
+      httpStatus: status,
+      requestMethod: method,
+      requestPath: path,
+      presentationKey: presentationKey,
+      presentationParams: {
+        'baseKey': baseKey,
+        'status': status.toString(),
+        if (msg.isNotEmpty) 'msg': msg,
+      },
     );
   }
 
@@ -1762,6 +1764,24 @@ class RemoteSyncController extends SyncControllerBase {
       detail,
     ];
     return parts.join(' | ');
+  }
+
+  SyncError _buildSyncError(Object error) {
+    if (error is SyncError) return error;
+    if (error is DioException) return _summarizeHttpError(error);
+    return SyncError(
+      code: SyncErrorCode.unknown,
+      retryable: false,
+      message: error.toString(),
+    );
+  }
+
+  SyncError _outboxBlockedError() {
+    return const SyncError(
+      code: SyncErrorCode.unknown,
+      retryable: true,
+      message: 'Outbox blocked by pending retryable tasks',
+    );
   }
 
   static bool _isTransientOutboxNetworkError(DioException e) {
@@ -1937,50 +1957,9 @@ class RemoteSyncController extends SyncControllerBase {
     return duplicateUid;
   }
 
-  void _cancelRetrySyncTimer() {
-    _retrySyncTimer?.cancel();
-    _retrySyncTimer = null;
-  }
-
-  Duration _consumeRetryDelay() {
-    final index = _retryBackoffIndex < 0
-        ? 0
-        : (_retryBackoffIndex >= _retryBackoffSteps.length
-              ? _retryBackoffSteps.length - 1
-              : _retryBackoffIndex);
-    final delay = _retryBackoffSteps[index];
-    if (_retryBackoffIndex < _retryBackoffSteps.length - 1) {
-      _retryBackoffIndex++;
-    }
-    return delay;
-  }
-
-  void _resetRetryState() {
-    _cancelRetrySyncTimer();
-    _retryBackoffIndex = 0;
-  }
-
   Future<bool> _hasPendingOutbox() async {
     final count = await db.countOutboxRetryable();
     return count > 0;
-  }
-
-  Future<void> _scheduleRetrySyncIfNeeded({
-    required bool hasPendingOutbox,
-    required bool syncFailed,
-  }) async {
-    if (_isDisposed) return;
-    if (_retrySyncTimer?.isActive ?? false) return;
-    if (!hasPendingOutbox && !syncFailed) {
-      _resetRetryState();
-      return;
-    }
-    final delay = _consumeRetryDelay();
-    _retrySyncTimer = Timer(delay, () {
-      _retrySyncTimer = null;
-      if (_isDisposed) return;
-      unawaited(syncNow());
-    });
   }
 
   @override
@@ -2002,39 +1981,25 @@ class RemoteSyncController extends SyncControllerBase {
       'RemoteSync: controller_disposed',
       context: <String, Object?>{
         'controllerId': _controllerId,
-        'retryTimerActive': _retrySyncTimer?.isActive ?? false,
       },
     );
     _isDisposed = true;
-    _cancelRetrySyncTimer();
     super.dispose();
   }
 
   @override
-  Future<void> syncNow() async {
+  Future<MemoSyncResult> syncNow() async {
     final runId =
         'run_${DateTime.now().toUtc().millisecondsSinceEpoch}_${++_syncRunSeq}';
-    if (_isDisposed) {
-      LogManager.instance.info(
-        'RemoteSync: sync_skipped_disposed',
-        context: <String, Object?>{
-          'controllerId': _controllerId,
-          'runId': runId,
-        },
-      );
-      return;
-    }
     final queueSnapshot = syncQueueProgressTracker.snapshot;
     final globalSyncing = queueSnapshot.syncing;
     final stateLoading = _readStateLoadingSafely(runId: runId) ?? false;
     if (stateLoading || globalSyncing) {
-      _rerunRequestedWhileLoading = true;
       LogManager.instance.debug(
         'RemoteSync: sync_skipped_loading',
         context: <String, Object?>{
           'controllerId': _controllerId,
           'runId': runId,
-          'rerunRequested': true,
           'stateLoading': stateLoading,
           'globalSyncing': globalSyncing,
           'queueCurrentOutboxId': queueSnapshot.currentOutboxId,
@@ -2043,7 +2008,7 @@ class RemoteSyncController extends SyncControllerBase {
           'queueOverallProgress': queueSnapshot.overallProgress,
         },
       );
-      return;
+      return const MemoSyncSkipped();
     }
     LogManager.instance.info(
       'RemoteSync: sync_start',
@@ -2055,8 +2020,6 @@ class RemoteSyncController extends SyncControllerBase {
         'requiresCreatorScopedList': api.requiresCreatorScopedListMemos,
       },
     );
-    _cancelRetrySyncTimer();
-    _rerunRequestedWhileLoading = false;
     syncStatusTracker.markSyncStarted();
     await db.recoverOutboxRunningTasks();
     final totalPendingAtStart = await db.countOutboxPending();
@@ -2067,7 +2030,7 @@ class RemoteSyncController extends SyncControllerBase {
       stage: 'set_loading',
     )) {
       syncQueueProgressTracker.markSyncFinished();
-      return;
+      return const MemoSyncSkipped();
     }
     var outboxBlocked = false;
     final next = await AsyncValue.guard(() async {
@@ -2112,11 +2075,11 @@ class RemoteSyncController extends SyncControllerBase {
     if (_isDisposed) {
       _logSyncAbortDisposed(runId: runId, stage: 'after_guard_before_commit');
       syncQueueProgressTracker.markSyncFinished();
-      return;
+      return const MemoSyncSkipped();
     }
     if (!_setStateSafely(next, runId: runId, stage: 'set_result')) {
       syncQueueProgressTracker.markSyncFinished();
-      return;
+      return const MemoSyncSkipped();
     }
     if (next.hasError) {
       syncStatusTracker.markSyncFailed(next.error!);
@@ -2142,31 +2105,13 @@ class RemoteSyncController extends SyncControllerBase {
       );
     }
     syncQueueProgressTracker.markSyncFinished();
-
-    if (!_isDisposed) {
-      final hasPendingOutbox = await _hasPendingOutbox();
-      final syncFailed = next.hasError;
-      if (!hasPendingOutbox && !syncFailed) {
-        _resetRetryState();
-      } else if (outboxBlocked || syncFailed) {
-        await _scheduleRetrySyncIfNeeded(
-          hasPendingOutbox: hasPendingOutbox,
-          syncFailed: syncFailed,
-        );
-      }
+    if (next.hasError) {
+      return MemoSyncFailure(_buildSyncError(next.error!));
     }
-
-    if (_rerunRequestedWhileLoading && !_isDisposed) {
-      _rerunRequestedWhileLoading = false;
-      LogManager.instance.info(
-        'RemoteSync: sync_rerun_requested',
-        context: <String, Object?>{
-          'controllerId': _controllerId,
-          'runId': runId,
-        },
-      );
-      unawaited(syncNow());
+    if (outboxBlocked) {
+      return MemoSyncFailure(_outboxBlockedError());
     }
+    return const MemoSyncSuccess();
   }
 
   bool? _readStateLoadingSafely({required String runId}) {
@@ -2559,15 +2504,7 @@ class RemoteSyncController extends SyncControllerBase {
           );
           continue;
         }
-        final method = e.requestOptions.method;
-        final path = e.requestOptions.uri.path;
-        final requestLabel = trByLanguageKey(
-          language: language,
-          key: 'legacy.msg_request_2',
-        );
-        throw StateError(
-          '${_summarizeHttpError(e)} ($requestLabel: $method $path)',
-        );
+        throw _summarizeHttpError(e);
       }
     }
 
@@ -2833,7 +2770,11 @@ class RemoteSyncController extends SyncControllerBase {
             e is DioException && _isTransientOutboxNetworkError(e);
         final memoError = e is DioException
             ? _summarizeHttpError(e)
-            : e.toString();
+            : SyncError(
+                code: SyncErrorCode.unknown,
+                retryable: false,
+                message: e.toString(),
+              );
         final outboxError = e is DioException
             ? _detailHttpError(e)
             : e.toString();
@@ -2860,15 +2801,21 @@ class RemoteSyncController extends SyncControllerBase {
             _ => null,
           };
           if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
-            final errorText = trByLanguageKey(
-              language: language,
-              key: 'legacy.msg_sync_failed',
-              params: {'type': type, 'memoError': memoError},
+            final memoErrorMessage = memoError.message?.trim();
+            final syncError = SyncError(
+              code: SyncErrorCode.unknown,
+              retryable: false,
+              message: memoErrorMessage != null && memoErrorMessage.isNotEmpty
+                  ? memoErrorMessage
+                  : memoError.toString(),
+              presentationKey: 'legacy.msg_sync_failed',
+              presentationParams: {'type': type},
+              cause: memoError,
             );
             await db.updateMemoSyncState(
               failedMemoUid,
               syncState: 2,
-              lastError: errorText,
+              lastError: encodeSyncError(syncError),
             );
           }
           blockedReason = 'error';

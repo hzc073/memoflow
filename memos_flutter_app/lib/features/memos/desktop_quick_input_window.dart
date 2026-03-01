@@ -25,6 +25,7 @@ import '../../state/location_settings_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memo_template_settings_provider.dart';
 import '../../state/network_log_provider.dart';
+import '../../state/preferences_provider.dart';
 import 'attachment_gallery_screen.dart';
 import 'compose_toolbar_shared.dart';
 import 'link_memo_sheet.dart';
@@ -524,13 +525,16 @@ class _DesktopQuickInputWindowScreenState
     if (event is! KeyDownEvent) return false;
 
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final bindings = normalizeDesktopShortcutBindings(
+      ref.read(appPreferencesProvider).desktopShortcutBindings,
+    );
     final primaryPressed = isPrimaryShortcutModifierPressed(pressed);
     final shiftPressed = isShiftModifierPressed(pressed);
     final altPressed = isAltModifierPressed(pressed);
     final key = event.logicalKey;
 
     bool matches(DesktopShortcutAction action) {
-      final binding = desktopShortcutDefaultBindings[action];
+      final binding = bindings[action];
       if (binding == null) return false;
       return matchesDesktopShortcut(
         event: event,
@@ -541,23 +545,53 @@ class _DesktopQuickInputWindowScreenState
 
     if (_focusNode.hasFocus) {
       if (matches(DesktopShortcutAction.publishMemo)) {
+        ref
+            .read(logManagerProvider)
+            .info(
+              'Desktop quick input shortcut matched',
+              context: {'action': DesktopShortcutAction.publishMemo.name},
+            );
         unawaited(_submit());
         return true;
       }
       if (matches(DesktopShortcutAction.bold)) {
+        ref
+            .read(logManagerProvider)
+            .info(
+              'Desktop quick input shortcut matched',
+              context: {'action': DesktopShortcutAction.bold.name},
+            );
         _toggleBold();
         return true;
       }
       if (matches(DesktopShortcutAction.highlight) ||
           matches(DesktopShortcutAction.underline)) {
+        ref
+            .read(logManagerProvider)
+            .info(
+              'Desktop quick input shortcut matched',
+              context: {'action': DesktopShortcutAction.highlight.name},
+            );
         _toggleHighlight();
         return true;
       }
       if (matches(DesktopShortcutAction.unorderedList)) {
+        ref
+            .read(logManagerProvider)
+            .info(
+              'Desktop quick input shortcut matched',
+              context: {'action': DesktopShortcutAction.unorderedList.name},
+            );
         _insertText('- ');
         return true;
       }
       if (matches(DesktopShortcutAction.orderedList)) {
+        ref
+            .read(logManagerProvider)
+            .info(
+              'Desktop quick input shortcut matched',
+              context: {'action': DesktopShortcutAction.orderedList.name},
+            );
         _insertText('1. ');
         return true;
       }

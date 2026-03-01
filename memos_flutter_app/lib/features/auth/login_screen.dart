@@ -12,7 +12,8 @@ import '../../data/api/memo_api_probe.dart';
 import '../../data/api/memo_api_version.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/login_draft_provider.dart';
-import '../../state/memos_providers.dart';
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../state/home_loading_overlay_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -307,7 +308,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!deferred.hasPending) return;
 
     try {
-      await ref.read(syncControllerProvider.notifier).syncNow();
+      await ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          );
     } catch (_) {
       return;
     }
@@ -336,7 +342,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     try {
-      await ref.read(syncControllerProvider.notifier).syncNow();
+      await ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          );
     } catch (_) {}
   }
 

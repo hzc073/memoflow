@@ -89,11 +89,16 @@ class DebugLogEntry {
 }
 
 class DebugLogStore {
-  DebugLogStore({this.maxEntries = 2000, this.maxFileBytes = 10 * 1024 * 1024})
-    : enabled = kDebugMode;
+  DebugLogStore({
+    this.maxEntries = 2000,
+    this.maxFileBytes = 10 * 1024 * 1024,
+    this.fileName = 'debug_logs.jsonl',
+    bool? enabled,
+  }) : enabled = enabled ?? kDebugMode;
 
   final int maxEntries;
   final int maxFileBytes;
+  final String fileName;
   bool enabled;
 
   int _appendCount = 0;
@@ -160,7 +165,7 @@ class DebugLogStore {
     if (!logDir.existsSync()) {
       logDir.createSync(recursive: true);
     }
-    final file = File(p.join(logDir.path, 'debug_logs.jsonl'));
+    final file = File(p.join(logDir.path, fileName));
     _fileFuture = Future.value(file);
     return file;
   }

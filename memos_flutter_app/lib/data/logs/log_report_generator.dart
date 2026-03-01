@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../application/sync/sync_error.dart';
 import '../../core/log_sanitizer.dart';
 import '../db/app_database.dart';
 import '../models/account.dart';
@@ -556,12 +557,24 @@ GROUP BY type, state;
     final uid = (row['uid'] as String?)?.trim() ?? '';
     final updated = _formatEpochSec(row['update_time']);
     final lastError = LogSanitizer.sanitizeText(
-      (row['last_error'] as String?) ?? '',
+      _normalizeMemoLastError(row['last_error'] as String?),
     ).trim();
     if (lastError.isEmpty) {
       return 'uid=$uid at=$updated';
     }
     return 'uid=$uid at=$updated | error=$lastError';
+  }
+
+  String _normalizeMemoLastError(String? raw) {
+    final trimmed = (raw ?? '').trim();
+    if (trimmed.isEmpty) return '';
+    final decoded = decodeSyncError(trimmed);
+    if (decoded == null) return trimmed;
+    final message = decoded.message?.trim();
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+    return decoded.toString();
   }
 
   String _summarizeOutboxPayload(String type, Object? payloadRaw) {

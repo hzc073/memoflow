@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 final noteDraftRepositoryProvider = Provider<NoteDraftRepository>((ref) {
   final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
@@ -37,14 +38,28 @@ class NoteDraftController extends StateNotifier<AsyncValue<String>> {
       await _repo.write(normalized);
     }
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 
   Future<void> clear() async {
     state = const AsyncValue.data('');
     await _repo.clear();
-    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    unawaited(
+      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.webDavSync,
+              reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
   }
 }
 

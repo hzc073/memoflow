@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../core/webdav_url.dart';
 import '../data/models/webdav_settings.dart';
 import '../data/settings/webdav_settings_repository.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 final webDavSettingsRepositoryProvider = Provider<WebDavSettingsRepository>((
   ref,
@@ -44,7 +45,14 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
   void _setAndPersist(WebDavSettings next) {
     state = next;
     unawaited(_repo.write(next));
-    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    unawaited(
+      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.webDavSync,
+              reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
   }
 
   void setEnabled(bool value) => _setAndPersist(state.copyWith(enabled: value));
@@ -70,6 +78,15 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
 
   void setBackupEnabled(bool value) =>
       _setAndPersist(state.copyWith(backupEnabled: value));
+
+  void setBackupContentConfig(bool value) =>
+      _setAndPersist(state.copyWith(backupContentConfig: value));
+
+  void setBackupContentMemos(bool value) =>
+      _setAndPersist(state.copyWith(backupContentMemos: value));
+
+  void setBackupEncryptionMode(WebDavBackupEncryptionMode mode) =>
+      _setAndPersist(state.copyWith(backupEncryptionMode: mode));
 
   void setBackupSchedule(WebDavBackupSchedule schedule) =>
       _setAndPersist(state.copyWith(backupSchedule: schedule));

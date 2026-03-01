@@ -8,13 +8,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/app_localization.dart';
+import '../../core/desktop_shortcuts.dart';
 import '../../core/app_theme.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/desktop_quick_input_channel.dart';
+import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
+import '../../state/logging_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
-import 'settings_screen.dart';
+import '../stats/stats_screen.dart';
+import 'about_us_screen.dart';
+import 'account_security_screen.dart';
+import 'ai_settings_screen.dart';
+import 'api_plugins_screen.dart';
+import 'components_settings_screen.dart';
+import 'feedback_screen.dart';
+import 'import_export_screen.dart';
+import 'laboratory_screen.dart';
+import 'password_lock_screen.dart';
+import 'preferences_settings_screen.dart';
+import 'desktop_shortcuts_overview_screen.dart';
+import 'user_guide_screen.dart';
+import 'widgets_screen.dart';
+import 'windows_related_settings_screen.dart';
 
 class DesktopSettingsWindowApp extends ConsumerWidget {
   const DesktopSettingsWindowApp({super.key, required this.windowId});
@@ -368,9 +386,337 @@ class _DesktopSettingsWindowScreenState
 
   @override
   Widget build(BuildContext context) {
-    return SettingsScreen(
+    return _DesktopSettingsWorkbench(
       onRequestClose: () => unawaited(_closeWindow()),
-      enableDragToMove: true,
     );
+  }
+}
+
+enum _DesktopSettingsPane {
+  account,
+  preferences,
+  windowsRelated,
+  ai,
+  appLock,
+  laboratory,
+  components,
+  feedback,
+  importExport,
+  about,
+  userGuide,
+  stats,
+  widgets,
+  apiPlugins,
+}
+
+class _DesktopSettingsWorkbench extends StatefulWidget {
+  const _DesktopSettingsWorkbench({required this.onRequestClose});
+
+  final VoidCallback onRequestClose;
+
+  @override
+  State<_DesktopSettingsWorkbench> createState() =>
+      _DesktopSettingsWorkbenchState();
+}
+
+class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
+  var _pane = _DesktopSettingsPane.account;
+
+  bool _handleDesktopSettingsShortcuts(KeyEvent event) {
+    if (!mounted || !isDesktopShortcutEnabled()) return false;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    if (event is! KeyDownEvent) return false;
+
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final primaryPressed = isPrimaryShortcutModifierPressed(pressed);
+    final altPressed = isAltModifierPressed(pressed);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final bindings = normalizeDesktopShortcutBindings(
+      container.read(appPreferencesProvider).desktopShortcutBindings,
+    );
+    final overviewBinding = bindings[DesktopShortcutAction.shortcutOverview];
+    final shortcutMatched =
+        (overviewBinding != null &&
+            matchesDesktopShortcut(
+              event: event,
+              pressedKeys: pressed,
+              binding: overviewBinding,
+            )) ||
+        (event.logicalKey == LogicalKeyboardKey.f1 &&
+            !primaryPressed &&
+            !altPressed);
+    if (!shortcutMatched) return false;
+
+    container
+        .read(logManagerProvider)
+        .info(
+          'Desktop shortcut matched in settings window',
+          context: <String, Object?>{
+            'action': DesktopShortcutAction.shortcutOverview.name,
+            'keyId': event.logicalKey.keyId,
+            'keyLabel': event.logicalKey.keyLabel,
+          },
+        );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DesktopShortcutsOverviewScreen(bindings: bindings),
+      ),
+    );
+    showTopToast(context, '已打开快捷键总览。');
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.58 : 0.64);
+    final leftBg = isDark ? const Color(0xFF1D1D1D) : const Color(0xFFF7F5F2);
+    final rightBg = isDark ? const Color(0xFF181818) : const Color(0xFFEFEBE6);
+    final divider = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE0DBD3);
+    final items = <_DesktopPaneItem>[
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.account,
+        icon: Icons.person_outline,
+        label: context.t.strings.legacy.msg_account_security,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.preferences,
+        icon: Icons.tune,
+        label: context.t.strings.legacy.msg_preferences,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.windowsRelated,
+        icon: Icons.desktop_windows_outlined,
+        label: context.tr(zh: 'Windows相关设置', en: 'Windows settings'),
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.ai,
+        icon: Icons.smart_toy_outlined,
+        label: context.t.strings.legacy.msg_ai_settings,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.appLock,
+        icon: Icons.lock_outline,
+        label: context.t.strings.legacy.msg_app_lock,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.laboratory,
+        icon: Icons.science_outlined,
+        label: context.t.strings.legacy.msg_laboratory,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.components,
+        icon: Icons.extension_outlined,
+        label: context.t.strings.legacy.msg_components,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.feedback,
+        icon: Icons.chat_bubble_outline,
+        label: context.t.strings.legacy.msg_feedback,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.importExport,
+        icon: Icons.import_export,
+        label: context.t.strings.legacy.msg_import_export,
+      ),
+      _DesktopPaneItem(
+        pane: _DesktopSettingsPane.about,
+        icon: Icons.info_outline,
+        label: context.t.strings.legacy.msg_about,
+      ),
+    ];
+
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        return _handleDesktopSettingsShortcuts(event)
+            ? KeyEventResult.handled
+            : KeyEventResult.ignored;
+      },
+      child: Column(
+        children: [
+          Container(
+            height: 46,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF151515) : const Color(0xFFF1ECE6),
+              border: Border(bottom: BorderSide(color: divider)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DragToMoveArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          context.t.strings.legacy.msg_settings,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: textMain,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: context.t.strings.legacy.msg_close,
+                  icon: Icon(Icons.close, size: 18, color: textMuted),
+                  onPressed: widget.onRequestClose,
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 270,
+                  child: ColoredBox(
+                    color: leftBg,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
+                      children: [
+                        for (final item in items)
+                          _DesktopPaneNavTile(
+                            icon: item.icon,
+                            label: item.label,
+                            selected: _pane == item.pane,
+                            onTap: () => setState(() => _pane = item.pane),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                VerticalDivider(width: 1, thickness: 1, color: divider),
+                Expanded(
+                  child: ColoredBox(
+                    color: rightBg,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 160),
+                      child: KeyedSubtree(
+                        key: ValueKey(_pane),
+                        child: _DesktopPaneContent(pane: _pane),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopPaneItem {
+  const _DesktopPaneItem({
+    required this.pane,
+    required this.icon,
+    required this.label,
+  });
+
+  final _DesktopSettingsPane pane;
+  final IconData icon;
+  final String label;
+}
+
+class _DesktopPaneNavTile extends StatelessWidget {
+  const _DesktopPaneNavTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeBg = isDark
+        ? MemoFlowPalette.primary.withValues(alpha: 0.22)
+        : MemoFlowPalette.primary.withValues(alpha: 0.12);
+    final hoverBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.7 : 0.78);
+    final fg = selected ? MemoFlowPalette.primary : textMuted;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          hoverColor: hoverBg,
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: selected ? activeBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: fg),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      color: fg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopPaneContent extends StatelessWidget {
+  const _DesktopPaneContent({required this.pane});
+
+  final _DesktopSettingsPane pane;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (pane) {
+      _DesktopSettingsPane.account => const AccountSecurityScreen(),
+      _DesktopSettingsPane.preferences => const PreferencesSettingsScreen(),
+      _DesktopSettingsPane.windowsRelated =>
+        const WindowsRelatedSettingsScreen(),
+      _DesktopSettingsPane.ai => const AiSettingsScreen(),
+      _DesktopSettingsPane.appLock => const PasswordLockScreen(),
+      _DesktopSettingsPane.laboratory => const LaboratoryScreen(),
+      _DesktopSettingsPane.components => const ComponentsSettingsScreen(),
+      _DesktopSettingsPane.feedback => const FeedbackScreen(),
+      _DesktopSettingsPane.importExport => const ImportExportScreen(),
+      _DesktopSettingsPane.about => const AboutUsScreen(),
+      _DesktopSettingsPane.userGuide => const UserGuideScreen(),
+      _DesktopSettingsPane.stats => const StatsScreen(),
+      _DesktopSettingsPane.widgets => const WidgetsScreen(),
+      _DesktopSettingsPane.apiPlugins => const ApiPluginsScreen(),
+    };
   }
 }

@@ -6,10 +6,11 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../core/app_localization.dart';
 import 'preferences_provider.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 enum AutoLockTime {
   immediately('legacy.auto_lock_time.immediately'),
@@ -198,19 +199,40 @@ class AppLockController extends StateNotifier<AppLockState> {
     );
     state = next;
     unawaited(_repo.writeSettings(AppLockSettings(enabled: v, autoLockTime: next.autoLockTime)));
-    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    unawaited(
+      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.webDavSync,
+              reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
   }
 
   void setAutoLockTime(AutoLockTime v) {
     state = state.copyWith(autoLockTime: v);
     unawaited(_repo.writeSettings(AppLockSettings(enabled: state.enabled, autoLockTime: v)));
-    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    unawaited(
+      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.webDavSync,
+              reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
   }
 
   Future<void> setPassword(String password) async {
     await _repo.setPassword(password);
     state = state.copyWith(hasPassword: true);
-    _ref.read(webDavSyncTriggerProvider.notifier).bump();
+    unawaited(
+      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.webDavSync,
+              reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
   }
 
   Future<bool> verifyPassword(String password) async {
@@ -254,7 +276,14 @@ class AppLockController extends StateNotifier<AppLockState> {
       clearLastBackgroundAt: true,
     );
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 }

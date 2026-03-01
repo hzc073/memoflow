@@ -66,7 +66,7 @@ class _LanguageSelectionScreenState
     final scanner = ref.read(localLibraryScannerProvider);
     if (scanner == null) return;
     try {
-      await scanner.scanAndMerge(context, forceDisk: true);
+      await scanner.scanAndMerge(forceDisk: true);
     } catch (_) {
       // Silent on purpose; users can re-scan from settings later.
     }

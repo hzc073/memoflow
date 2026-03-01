@@ -13,6 +13,9 @@ import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:image_editor_plus/image_editor_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'application/app/app_sync_orchestrator.dart';
+import 'application/sync/sync_coordinator.dart';
+import 'application/sync/sync_request.dart';
 import 'core/app_localization.dart';
 import 'core/desktop_quick_input_channel.dart';
 import 'core/desktop_settings_window.dart';
@@ -55,8 +58,6 @@ import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
 import 'state/update_config_provider.dart';
 import 'state/user_settings_provider.dart';
-import 'state/webdav_backup_provider.dart';
-import 'state/webdav_sync_provider.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -96,10 +97,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   ProviderSubscription<ReminderSettings>? _reminderSettingsSubscription;
   ProviderSubscription<bool>? _prefsLoadedSubscription;
   ProviderSubscription<bool>? _debugScreenshotModeSubscription;
-  DateTime? _lastResumeAutoSyncAt;
+  late final AppSyncOrchestrator _syncOrchestrator;
   DateTime? _lastReminderRescheduleAt;
-  bool _autoSyncRunning = false;
-  static const Duration _resumeAutoSyncCooldown = Duration(seconds: 45);
   bool _updateAnnouncementChecked = false;
   Future<String?>? _appVersionFuture;
   String? _pendingThemeAccountKey;
@@ -429,7 +428,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       _setDesktopSubWindowVisibility(windowId: windowId, visible: visible);
     });
     ref.read(logManagerProvider);
-    ref.read(webDavSyncControllerProvider);
+    _syncOrchestrator = AppSyncOrchestrator(
+      ref: ref,
+      updateStatsWidgetIfNeeded:
+          ({required bool force}) => _updateStatsWidgetIfNeeded(force: force),
+      showFeedbackToast: ({required bool succeeded}) =>
+          _showAutoSyncFeedbackToast(succeeded: succeeded),
+      showProgressToast: _showAutoSyncProgressToast,
+    );
     HomeWidgetService.setLaunchHandler(_handleWidgetLaunch);
     _pendingWidgetActionLoad = _loadPendingWidgetAction();
     ShareHandlerService.setShareHandler(_handleShareLaunch);
@@ -465,8 +471,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         );
         if (shouldTriggerPostLoginSync) {
           _scheduleStatsWidgetUpdate();
-          _lastResumeAutoSyncAt = null;
-          _triggerLifecycleSync(
+          _syncOrchestrator.resetResumeCooldown();
+          _syncOrchestrator.triggerLifecycleSync(
             isResume: true,
             refreshCurrentUserBeforeSync: false,
             showFeedbackToast: false,
@@ -851,6 +857,15 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       await hotKeyManager.register(
         nextHotKey,
         keyDownHandler: (_) {
+          ref
+              .read(logManagerProvider)
+              .info(
+                'Desktop shortcut matched',
+                context: const <String, Object?>{
+                  'action': 'quickRecord',
+                  'source': 'system_hotkey',
+                },
+              );
           unawaited(_handleDesktopQuickInputHotKey());
         },
       );
@@ -1322,7 +1337,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
     }
 
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    unawaited(
+      ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          ),
+    );
   }
 
   Future<void> _loadPendingWidgetAction() async {
@@ -1423,7 +1445,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       }
     }
 
-    await _maybeSyncOnLaunch(prefs);
+    await _syncOrchestrator.maybeSyncOnLaunch(prefs);
   }
 
   bool _hasActiveWorkspace() {
@@ -1431,55 +1453,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final hasAccount = session?.currentAccount != null;
     final hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
     return hasAccount || hasLocalLibrary;
-  }
-
-  String _resolveActiveWorkspaceMode() {
-    final session = ref.read(appSessionProvider).valueOrNull;
-    final hasAccount = session?.currentAccount != null;
-    final hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
-    if (hasAccount && hasLocalLibrary) return 'hybrid';
-    if (hasAccount) return 'remote';
-    if (hasLocalLibrary) return 'local';
-    return 'none';
-  }
-
-  Future<void> _maybeSyncOnLaunch(AppPreferences prefs) async {
-    if (!prefs.autoSyncOnStartAndResume) {
-      if (kDebugMode) {
-        LogManager.instance.info(
-          'AutoSync: skipped_on_launch_disabled',
-          context: <String, Object?>{
-            'trigger': 'launch',
-            'workspaceMode': _resolveActiveWorkspaceMode(),
-          },
-        );
-      }
-      return;
-    }
-    if (!_hasActiveWorkspace()) {
-      if (kDebugMode) {
-        LogManager.instance.info(
-          'AutoSync: skipped_on_launch_no_workspace',
-          context: <String, Object?>{'trigger': 'launch'},
-        );
-      }
-      return;
-    }
-    LogManager.instance.info(
-      'AutoSync: request',
-      context: <String, Object?>{
-        'trigger': 'launch',
-        'workspaceMode': _resolveActiveWorkspaceMode(),
-        'forceWidgetUpdate': false,
-      },
-    );
-    unawaited(
-      _syncAndUpdateStatsWidget(
-        forceWidgetUpdate: false,
-        reason: 'launch',
-        showFeedbackToast: true,
-      ),
-    );
   }
 
   void _openQuickInput({required bool autoFocus}) {
@@ -1698,104 +1671,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _syncAndUpdateStatsWidget({
-    required bool forceWidgetUpdate,
-    required String reason,
-    bool refreshCurrentUserBeforeSync = false,
-    bool showFeedbackToast = false,
-  }) async {
-    final startedAt = DateTime.now();
-    if (_autoSyncRunning) {
-      LogManager.instance.info(
-        'AutoSync: skipped_running',
-        context: <String, Object?>{
-          'reason': reason,
-          'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
-        },
-      );
-      return;
-    }
-    var session = ref.read(appSessionProvider).valueOrNull;
-    var hasAccount = session?.currentAccount != null;
-    var hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
-    var hasWorkspace = hasAccount || hasLocalLibrary;
-    if (!hasWorkspace) {
-      if (kDebugMode) {
-        LogManager.instance.info(
-          'AutoSync: skipped_no_workspace',
-          context: <String, Object?>{'reason': reason},
-        );
-      }
-      return;
-    }
-
-    LogManager.instance.info(
-      'AutoSync: start',
-      context: <String, Object?>{
-        'reason': reason,
-        'workspaceMode': _resolveActiveWorkspaceMode(),
-        'forceWidgetUpdate': forceWidgetUpdate,
-        'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
-      },
-    );
-
-    _autoSyncRunning = true;
-    var syncSucceeded = true;
-    if (showFeedbackToast) {
-      _showAutoSyncProgressToast();
-    }
-    try {
-      try {
-        if (refreshCurrentUserBeforeSync && hasAccount) {
-          await ref.read(appSessionProvider.notifier).refreshCurrentUser();
-          session = ref.read(appSessionProvider).valueOrNull;
-          hasAccount = session?.currentAccount != null;
-          hasLocalLibrary = ref.read(currentLocalLibraryProvider) != null;
-          hasWorkspace = hasAccount || hasLocalLibrary;
-          if (!hasWorkspace) {
-            LogManager.instance.info(
-              'AutoSync: skipped_after_session_refresh_no_workspace',
-              context: <String, Object?>{'reason': reason},
-            );
-            return;
-          }
-        }
-        await ref.read(syncControllerProvider.notifier).syncNow();
-      } catch (error, stackTrace) {
-        syncSucceeded = false;
-        LogManager.instance.warn(
-          'AutoSync: sync_failed',
-          error: error,
-          stackTrace: stackTrace,
-          context: <String, Object?>{'reason': reason},
-        );
-        // Ignore sync errors here; widget update can still proceed.
-      }
-      if (hasAccount) {
-        await _updateStatsWidgetIfNeeded(force: forceWidgetUpdate);
-      }
-      LogManager.instance.info(
-        'AutoSync: completed',
-        context: <String, Object?>{
-          'reason': reason,
-          'workspaceMode': _resolveActiveWorkspaceMode(),
-          'elapsedMs': DateTime.now().difference(startedAt).inMilliseconds,
-          'syncSucceeded': syncSucceeded,
-          'hasAccount': hasAccount,
-          'hasLocalLibrary': hasLocalLibrary,
-          'widgetUpdateAttempted': hasAccount,
-          'forceWidgetUpdate': forceWidgetUpdate,
-          'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
-        },
-      );
-      if (showFeedbackToast) {
-        _showAutoSyncFeedbackToast(succeeded: syncSucceeded);
-      }
-    } finally {
-      _autoSyncRunning = false;
-    }
-  }
-
   void _showAutoSyncFeedbackToast({required bool succeeded}) {
     final language = ref.read(appPreferencesProvider).language;
     final message = buildAutoSyncFeedbackMessage(
@@ -1943,81 +1818,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return false;
   }
 
-  void _triggerLifecycleSync({
-    required bool isResume,
-    bool refreshCurrentUserBeforeSync = true,
-    bool showFeedbackToast = true,
-  }) {
-    if (!isResume) return;
-    if (!_hasActiveWorkspace()) {
-      if (kDebugMode) {
-        LogManager.instance.info(
-          'AutoSync: lifecycle_skip_no_workspace',
-          context: <String, Object?>{'trigger': 'resumed'},
-        );
-      }
-      return;
-    }
-    final prefs = ref.read(appPreferencesProvider);
-    if (!prefs.autoSyncOnStartAndResume) {
-      if (kDebugMode) {
-        LogManager.instance.info(
-          'AutoSync: lifecycle_skip_disabled',
-          context: <String, Object?>{
-            'trigger': 'resumed',
-            'workspaceMode': _resolveActiveWorkspaceMode(),
-          },
-        );
-      }
-      return;
-    }
-
-    final now = DateTime.now();
-    final last = _lastResumeAutoSyncAt;
-    if (last != null && now.difference(last) < _resumeAutoSyncCooldown) {
-      if (kDebugMode) {
-        LogManager.instance.info(
-          'AutoSync: lifecycle_throttled',
-          context: <String, Object?>{
-            'trigger': 'resumed',
-            'elapsedMs': now.difference(last).inMilliseconds,
-            'cooldownMs': _resumeAutoSyncCooldown.inMilliseconds,
-            'workspaceMode': _resolveActiveWorkspaceMode(),
-          },
-        );
-      }
-      return;
-    }
-    _lastResumeAutoSyncAt = now;
-
-    final session = ref.read(appSessionProvider).valueOrNull;
-    if (session?.currentAccount != null) {
-      unawaited(
-        ref
-            .read(webDavBackupControllerProvider.notifier)
-            .checkAndBackupOnResume(),
-      );
-    }
-
-    LogManager.instance.info(
-      'AutoSync: request',
-      context: <String, Object?>{
-        'trigger': 'resumed',
-        'workspaceMode': _resolveActiveWorkspaceMode(),
-        'forceWidgetUpdate': true,
-        'refreshCurrentUserBeforeSync': refreshCurrentUserBeforeSync,
-      },
-    );
-    unawaited(
-      _syncAndUpdateStatsWidget(
-        forceWidgetUpdate: true,
-        reason: 'lifecycle_resumed',
-        refreshCurrentUserBeforeSync: refreshCurrentUserBeforeSync,
-        showFeedbackToast: showFeedbackToast,
-      ),
-    );
-  }
-
   void _rescheduleRemindersIfNeeded() {
     final now = DateTime.now();
     final last = _lastReminderRescheduleAt;
@@ -2033,7 +1833,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.resumed:
         _bindDesktopMultiWindowHandler();
-        _triggerLifecycleSync(isResume: true);
+        _syncOrchestrator.triggerLifecycleSync(isResume: true);
         _rescheduleRemindersIfNeeded();
         break;
       case AppLifecycleState.paused:

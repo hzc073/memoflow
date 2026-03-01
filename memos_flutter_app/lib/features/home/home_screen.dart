@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
+import '../../application/sync/sync_types.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
@@ -28,7 +31,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const int _totalLoadingSteps = 4;
 
   Timer? _showCloseTimer;
-  ProviderSubscription<AsyncValue<void>>? _syncSubscription;
+  ProviderSubscription<SyncFlowStatus>? _syncSubscription;
   ProviderSubscription<bool>? _forceOverlaySubscription;
   late bool _overlayVisible;
   bool _overlayShownPersisted = false;
@@ -57,8 +60,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             .homeInitialLoadingOverlayShown,
       },
     );
-    _syncSubscription = ref.listenManual<AsyncValue<void>>(
-      syncControllerProvider,
+    _syncSubscription = ref.listenManual<SyncFlowStatus>(
+      syncCoordinatorProvider.select((state) => state.memos),
       _handleSyncStateChanged,
     );
     _forceOverlaySubscription = ref.listenManual<bool>(
@@ -118,7 +121,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     _syncAwaitingCompletion = true;
-    final syncState = ref.read(syncControllerProvider);
+    final syncState = ref.read(syncCoordinatorProvider).memos;
     final queue = ref.read(syncQueueProgressTrackerProvider).snapshot;
     _logOverlayLifecycle(
       'gate_start',
@@ -133,18 +136,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
       ),
     );
-    _syncObservedLoading = syncState.isLoading;
-    if (syncState.isLoading) {
+    _syncObservedLoading = syncState.running;
+    if (syncState.running) {
       _logOverlayLifecycle('skip_sync_request_already_loading');
       return;
     }
     _logOverlayLifecycle('request_sync_now');
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    unawaited(
+      ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.launch,
+            ),
+          ),
+    );
   }
 
   void _handleSyncStateChanged(
-    AsyncValue<void>? previous,
-    AsyncValue<void> next,
+    SyncFlowStatus? previous,
+    SyncFlowStatus next,
   ) {
     _logOverlayLifecycle(
       'sync_state_changed',
@@ -159,16 +169,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     if (!_syncAwaitingCompletion || _syncFinished || !_overlayVisible) return;
 
-    if (next.isLoading) {
+    if (next.running) {
       _syncObservedLoading = true;
       return;
     }
 
-    if (!_syncObservedLoading && previous?.isLoading != true) {
+    if (!_syncObservedLoading && previous?.running != true) {
       return;
     }
 
-    _completeSyncTracking(success: next.hasValue);
+    _completeSyncTracking(success: next.lastError == null);
   }
 
   void _completeSyncTracking({required bool success}) {
@@ -245,7 +255,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final userInfoAsync = ref.watch(userGeneralSettingProvider);
     final resourcesAsync = ref.watch(resourcesProvider);
     final statsAsync = ref.watch(localStatsProvider);
-    final syncState = ref.watch(syncControllerProvider);
+    final syncState = ref.watch(syncCoordinatorProvider).memos;
     final syncQueueSnapshot = ref
         .watch(syncQueueProgressTrackerProvider)
         .snapshot;
@@ -308,7 +318,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required bool syncReady,
     required bool allReady,
     required double progress,
-    required AsyncValue<void> syncState,
+    required SyncFlowStatus syncState,
     required SyncQueueProgressSnapshot syncQueueSnapshot,
   }) {
     if (!kDebugMode) return;
@@ -369,11 +379,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return context;
   }
 
-  String _describeAsyncState(AsyncValue<void>? state) {
+  String _describeAsyncState(SyncFlowStatus? state) {
     if (state == null) return 'null';
-    if (state.isLoading) return 'loading';
-    if (state.hasError) return 'error';
-    if (state.hasValue) return 'value';
+    if (state.running) return 'running';
+    final error = state.lastError;
+    if (error != null) return 'error(${error.code.name})';
     return 'idle';
   }
 

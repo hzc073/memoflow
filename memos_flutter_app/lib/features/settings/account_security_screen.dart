@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../application/sync/sync_error.dart';
+import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../core/desktop_settings_window.dart';
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
 import '../../data/db/app_database.dart';
 import '../../data/models/local_library.dart';
@@ -69,6 +72,52 @@ class AccountSecurityScreen extends ConsumerWidget {
         ? currentLocalLibrary.locationLabel
         : currentAccount?.baseUrl.toString() ?? "";
 
+    Future<Map<String, bool>> _resolveLocalScanConflicts(
+      BuildContext context,
+      List<LocalScanConflict> conflicts,
+    ) async {
+      final decisions = <String, bool>{};
+      for (final conflict in conflicts) {
+        final useDisk =
+            await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(context.t.strings.legacy.msg_resolve_conflict),
+                content: Text(
+                  conflict.isDeletion
+                      ? context
+                          .t
+                          .strings
+                          .legacy
+                          .msg_memo_missing_disk_but_has_local
+                      : context
+                          .t
+                          .strings
+                          .legacy
+                          .msg_disk_content_conflicts_local_pending_changes,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => context.safePop(false),
+                    child: Text(context.t.strings.legacy.msg_keep_local),
+                  ),
+                  FilledButton(
+                    onPressed: () => context.safePop(true),
+                    child: Text(context.t.strings.legacy.msg_use_disk),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        decisions[conflict.memoUid] = useDisk;
+      }
+      return decisions;
+    }
+
+    String _formatLocalScanError(BuildContext context, SyncError error) {
+      return presentSyncError(language: context.appLanguage, error: error);
+    }
+
     Future<void> _maybeScanLocalLibrary() async {
       if (!context.mounted) return;
       await WidgetsBinding.instance.endOfFrame;
@@ -102,9 +151,36 @@ class AccountSecurityScreen extends ConsumerWidget {
       final scanner = ref.read(localLibraryScannerProvider);
       if (scanner == null) return;
       try {
-        await scanner.scanAndMerge(context);
+        var result = await scanner.scanAndMerge(forceDisk: false);
+        while (result is LocalScanConflictResult) {
+          final decisions = await _resolveLocalScanConflicts(
+            context,
+            result.conflicts,
+          );
+          result = await scanner.scanAndMerge(
+            forceDisk: false,
+            conflictDecisions: decisions,
+          );
+        }
         if (!context.mounted) return;
-        showTopToast(context, context.t.strings.legacy.msg_scan_completed);
+        switch (result) {
+          case LocalScanSuccess():
+            showTopToast(context, context.t.strings.legacy.msg_scan_completed);
+            return;
+          case LocalScanFailure(:final error):
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  context.t.strings.legacy.msg_scan_failed(
+                        e: _formatLocalScanError(context, error),
+                      ),
+                ),
+              ),
+            );
+            return;
+          default:
+            return;
+        }
       } catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(

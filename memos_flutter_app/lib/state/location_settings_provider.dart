@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../data/models/location_settings.dart';
 import '../data/settings/location_settings_repository.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 final locationSettingsRepositoryProvider = Provider<LocationSettingsRepository>(
   (ref) {
@@ -45,7 +46,14 @@ class LocationSettingsController extends StateNotifier<LocationSettings> {
     state = next;
     unawaited(_repo.write(next));
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 
@@ -79,7 +87,14 @@ class LocationSettingsController extends StateNotifier<LocationSettings> {
     state = next;
     await _repo.write(next);
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 }

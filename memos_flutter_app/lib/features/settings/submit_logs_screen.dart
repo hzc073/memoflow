@@ -9,11 +9,12 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/api/memo_api_version.dart';
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/database_provider.dart';
 import '../../state/logging_provider.dart';
-import '../../state/memos_providers.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -160,7 +161,14 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
           },
         );
 
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    unawaited(
+      ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          ),
+    );
   }
 
   @override

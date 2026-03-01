@@ -147,7 +147,7 @@ Future<WindowController> _ensureDesktopSettingsWindowReady() async {
     _desktopSettingsWindow = window;
     _desktopSettingsWindowId = window.windowId;
     await window.setTitle('MemoFlow Settings');
-    await window.setFrame(const Offset(0, 0) & Size(520, 680));
+    await window.setFrame(const Offset(0, 0) & Size(1260, 820));
     await window.center();
     return window;
   } finally {

@@ -4,11 +4,12 @@ import 'package:flutter/services.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../data/api/memo_api_facade.dart';
 import '../../data/api/memo_api_probe.dart';
 import '../../data/api/memo_api_version.dart';
 import '../../data/models/account.dart';
-import '../../state/memos_providers.dart';
 import '../../state/session_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
@@ -108,7 +109,12 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     if (!deferred.hasPending) return;
 
     try {
-      await ref.read(syncControllerProvider.notifier).syncNow();
+      await ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          );
     } catch (_) {
       return;
     }
@@ -137,7 +143,12 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     }
 
     try {
-      await ref.read(syncControllerProvider.notifier).syncNow();
+      await ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          );
     } catch (_) {}
   }
 

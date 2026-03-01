@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../data/models/memo_template_settings.dart';
 import '../data/settings/memo_template_settings_repository.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 final memoTemplateSettingsRepositoryProvider =
     Provider<MemoTemplateSettingsRepository>((ref) {
@@ -48,7 +49,14 @@ class MemoTemplateSettingsController
     state = next;
     unawaited(_repo.write(next));
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 
@@ -59,7 +67,14 @@ class MemoTemplateSettingsController
     state = next;
     await _repo.write(next);
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 

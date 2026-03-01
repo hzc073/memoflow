@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
 import '../../core/markdown_editing.dart';
 import '../../core/memo_template_renderer.dart';
@@ -728,7 +730,14 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         }
       }
 
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(
+        ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.memos,
+                reason: SyncRequestReason.manual,
+              ),
+            ),
+      );
 
       _pendingAttachments.clear();
       _pickedImages.clear();

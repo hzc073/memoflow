@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:saf_stream/saf_stream.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../core/debug_ephemeral_storage.dart';
 import '../core/tags.dart';
 import '../core/uid.dart';
@@ -21,7 +23,6 @@ import '../data/models/memo_location.dart';
 import '../data/models/memo_version.dart';
 import '../data/models/recycle_bin_item.dart';
 import 'database_provider.dart';
-import 'memos_providers.dart';
 import 'session_provider.dart';
 
 final memoTimelineServiceProvider = Provider<MemoTimelineService>((ref) {
@@ -30,7 +31,12 @@ final memoTimelineServiceProvider = Provider<MemoTimelineService>((ref) {
     db: ref.watch(databaseProvider),
     account: account,
     triggerSync: () async {
-      await ref.read(syncControllerProvider.notifier).syncNow();
+      await ref.read(syncCoordinatorProvider.notifier).requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          );
     },
   );
 });

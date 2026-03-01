@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../application/sync/sync_coordinator.dart';
+import '../application/sync/sync_request.dart';
 import '../core/app_localization.dart';
 import '../core/debug_ephemeral_storage.dart';
 import '../core/desktop_shortcuts.dart';
@@ -13,7 +15,6 @@ import '../core/hash.dart';
 import '../core/theme_colors.dart';
 import '../data/logs/log_manager.dart';
 import 'session_provider.dart';
-import 'webdav_sync_trigger_provider.dart';
 
 enum AppLanguage {
   system('legacy.app_language.system'),
@@ -811,7 +812,14 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       }
     });
     if (triggerSync) {
-      _ref.read(webDavSyncTriggerProvider.notifier).bump();
+      unawaited(
+        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
+            ),
+      );
     }
   }
 

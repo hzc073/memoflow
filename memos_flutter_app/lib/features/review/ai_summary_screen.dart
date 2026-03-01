@@ -35,7 +35,8 @@ import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
 import '../../state/ai_settings_provider.dart';
 import '../../state/database_provider.dart';
-import '../../state/memos_providers.dart';
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_request.dart';
 import '../../state/preferences_provider.dart';
 import 'daily_review_screen.dart';
 import 'quick_prompt_editor_screen.dart';
@@ -494,7 +495,14 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
           'has_attachments': false,
         },
       );
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(
+        ref.read(syncCoordinatorProvider.notifier).requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.memos,
+                reason: SyncRequestReason.manual,
+              ),
+            ),
+      );
       if (!mounted) return;
       showTopToast(context, context.t.strings.legacy.msg_saved_memo);
     } catch (e) {

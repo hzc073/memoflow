@@ -15,6 +15,10 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../application/sync/sync_coordinator.dart';
+import '../../application/sync/sync_error.dart';
+import '../../application/sync/sync_request.dart';
+import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
 import '../../core/desktop_settings_window.dart';
@@ -26,6 +30,7 @@ import '../../core/memo_relations.dart';
 import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
+import '../../core/sync_error_presenter.dart';
 import '../../core/sync_feedback.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
@@ -943,10 +948,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
-  String _describeSyncState(AsyncValue<void> state) {
-    if (state.isLoading) return 'loading';
-    if (state.hasError) return 'error';
-    if (state.hasValue) return 'value';
+  String _describeSyncState(SyncFlowStatus state) {
+    if (state.running) return 'loading';
+    if (state.lastError != null) return 'error';
+    if (state.lastSuccessAt != null) return 'value';
     return 'idle';
   }
 
@@ -977,7 +982,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     required bool useRemoteSearch,
     required String shortcutFilter,
     required QuickSearchKind? quickSearchKind,
-    required AsyncValue<void> syncState,
+    required SyncFlowStatus syncState,
     required SyncQueueProgressSnapshot syncQueueSnapshot,
   }) {
     if (!kDebugMode || !mounted) return;
@@ -1620,7 +1625,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         },
       );
 
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
       if (!mounted) return;
       showTopToast(context, '已保存到 MemoFlow');
     } catch (error, stackTrace) {
@@ -1640,22 +1645,24 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
   }
 
-  void _toggleDesktopDrawerFromShortcut() {
-    if (!widget.showDrawer) return;
+  String _toggleDesktopDrawerFromShortcut() {
+    if (!widget.showDrawer) return 'drawer_disabled';
 
     final width = MediaQuery.sizeOf(context).width;
     final supportsDesktopPane = shouldUseDesktopSidePaneLayout(width);
     if (supportsDesktopPane) {
       // Desktop side pane remains pinned open.
-      return;
+      return 'desktop_sidepane_pinned';
     }
 
     final scaffold = _scaffoldKey.currentState;
-    if (scaffold == null) return;
+    if (scaffold == null) return 'scaffold_missing';
     if (scaffold.isDrawerOpen) {
       Navigator.of(context).maybePop();
+      return 'drawer_closed';
     } else {
       scaffold.openDrawer();
+      return 'drawer_opened';
     }
   }
 
@@ -1716,6 +1723,47 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
+  bool _shouldTraceDesktopShortcut(
+    KeyEvent event,
+    Set<LogicalKeyboardKey> pressedKeys,
+  ) {
+    if (event is! KeyDownEvent) return false;
+    if (event.logicalKey == LogicalKeyboardKey.f1) return true;
+    return isPrimaryShortcutModifierPressed(pressedKeys) ||
+        isShiftModifierPressed(pressedKeys) ||
+        isAltModifierPressed(pressedKeys);
+  }
+
+  void _logDesktopShortcutEvent({
+    required String stage,
+    required KeyEvent event,
+    required Set<LogicalKeyboardKey> pressedKeys,
+    DesktopShortcutAction? action,
+    String? reason,
+    Map<String, Object?>? extra,
+  }) {
+    if (!mounted) return;
+    final payload = <String, Object?>{
+      'keyId': event.logicalKey.keyId,
+      'keyLabel': event.logicalKey.keyLabel,
+      'debugName': event.logicalKey.debugName,
+      'primaryPressed': isPrimaryShortcutModifierPressed(pressedKeys),
+      'shiftPressed': isShiftModifierPressed(pressedKeys),
+      'altPressed': isAltModifierPressed(pressedKeys),
+      if (action != null) 'action': action.name,
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason,
+    };
+    if (extra != null && extra.isNotEmpty) {
+      payload.addAll(extra);
+    }
+    final logger = ref.read(logManagerProvider);
+    if (stage == 'matched' || stage == 'delegated') {
+      logger.info('Desktop shortcut: $stage', context: payload);
+    } else {
+      logger.debug('Desktop shortcut: $stage', context: payload);
+    }
+  }
+
   void _toggleInlineHighlight() {
     final value = _inlineComposeController.value;
     final selection = value.selection;
@@ -1738,10 +1786,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   bool _handleDesktopShortcuts(KeyEvent event) {
-    if (!_isDesktopShortcutRouteActive()) return false;
     if (event is! KeyDownEvent) return false;
 
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    if (!_isDesktopShortcutRouteActive()) {
+      if (_shouldTraceDesktopShortcut(event, pressed)) {
+        _logDesktopShortcutEvent(
+          stage: 'ignored',
+          event: event,
+          pressedKeys: pressed,
+          reason: 'route_inactive_or_locked',
+        );
+      }
+      return false;
+    }
+
     final bindings = normalizeDesktopShortcutBindings(
       ref.read(appPreferencesProvider).desktopShortcutBindings,
     );
@@ -1758,18 +1817,39 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final altPressed = isAltModifierPressed(pressed);
     final key = event.logicalKey;
     final inlineEditorActive = _inlineComposeFocusNode.hasFocus;
+    final traceThisKey = _shouldTraceDesktopShortcut(event, pressed);
 
     if (matches(DesktopShortcutAction.shortcutOverview) ||
         key == LogicalKeyboardKey.f1) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.shortcutOverview,
+        reason: key == LogicalKeyboardKey.f1 ? 'f1_fallback' : null,
+      );
       _openShortcutOverviewPage();
+      showTopToast(context, '已打开快捷键总览。');
       return true;
     }
 
     if (matches(DesktopShortcutAction.search)) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.search,
+      );
       _focusSearchFromShortcut();
       return true;
     }
     if (matches(DesktopShortcutAction.quickInput)) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.quickInput,
+      );
       unawaited(_openQuickInputFromShortcut());
       return true;
     }
@@ -1777,7 +1857,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       // Desktop global hotkey is handled in App-level hotkey_manager to avoid
       // duplicate dialogs when the app is foregrounded.
       if (!DesktopTrayController.instance.supported) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.quickRecord,
+          reason: 'in_window_dialog',
+        );
         unawaited(_openQuickRecordFromShortcut());
+      } else {
+        _logDesktopShortcutEvent(
+          stage: 'delegated',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.quickRecord,
+          reason: 'handled_by_app_hotkey_manager',
+        );
       }
       return true;
     }
@@ -1788,34 +1883,85 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               shiftPressed &&
               !altPressed &&
               key == LogicalKeyboardKey.enter)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.publishMemo,
+          reason: matches(DesktopShortcutAction.publishMemo)
+              ? 'binding'
+              : 'shift_enter_fallback',
+        );
         unawaited(_submitInlineCompose());
         return true;
       }
       if (matches(DesktopShortcutAction.bold)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.bold,
+        );
         _toggleInlineBold();
         return true;
       }
       if (matches(DesktopShortcutAction.underline)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.underline,
+        );
         _toggleInlineUnderline();
         return true;
       }
       if (matches(DesktopShortcutAction.highlight)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.highlight,
+        );
         _toggleInlineHighlight();
         return true;
       }
       if (matches(DesktopShortcutAction.unorderedList)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.unorderedList,
+        );
         _insertInlineComposeText('- ');
         return true;
       }
       if (matches(DesktopShortcutAction.orderedList)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.orderedList,
+        );
         _insertInlineComposeText('1. ');
         return true;
       }
       if (matches(DesktopShortcutAction.undo)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.undo,
+        );
         _undoInlineCompose();
         return true;
       }
       if (matches(DesktopShortcutAction.redo)) {
+        _logDesktopShortcutEvent(
+          stage: 'matched',
+          event: event,
+          pressedKeys: pressed,
+          action: DesktopShortcutAction.redo,
+        );
         _redoInlineCompose();
         return true;
       }
@@ -1831,22 +1977,53 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
 
     if (matches(DesktopShortcutAction.enableAppLock)) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.enableAppLock,
+      );
       _openPasswordLockFromShortcut();
       return true;
     }
     if (matches(DesktopShortcutAction.toggleSidebar)) {
-      _toggleDesktopDrawerFromShortcut();
+      final drawerResult = _toggleDesktopDrawerFromShortcut();
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.toggleSidebar,
+        extra: {'drawerResult': drawerResult},
+      );
       return true;
     }
     if (matches(DesktopShortcutAction.refresh)) {
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.refresh,
+      );
+      unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
       return true;
     }
     if (matches(DesktopShortcutAction.backHome)) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.backHome,
+      );
       _backToAllMemos();
       return true;
     }
     if (matches(DesktopShortcutAction.openSettings)) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.openSettings,
+      );
       if (openDesktopSettingsWindowIfSupported(feedbackContext: context)) {
         return true;
       }
@@ -1856,8 +2033,22 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       return true;
     }
     if (matches(DesktopShortcutAction.toggleFlomo)) {
+      _logDesktopShortcutEvent(
+        stage: 'matched',
+        event: event,
+        pressedKeys: pressed,
+        action: DesktopShortcutAction.toggleFlomo,
+      );
       unawaited(_toggleMemoFlowVisibilityFromShortcut());
       return true;
+    }
+    if (traceThisKey) {
+      _logDesktopShortcutEvent(
+        stage: 'no_match',
+        event: event,
+        pressedKeys: pressed,
+        extra: {'inlineEditorActive': inlineEditorActive},
+      );
     }
     return false;
   }
@@ -2687,7 +2878,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
     if (!mounted) return;
     showTopToast(context, context.t.strings.legacy.msg_retry_started);
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
   }
 
   Future<void> _handleMemoSyncStatusTap(
@@ -4049,7 +4240,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         );
       }
 
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
       _inlineComposeDraftTimer?.cancel();
       _inlineComposeController.clear();
       await ref.read(noteDraftProvider.notifier).clear();
@@ -4452,8 +4643,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   Future<void> _maybeScanLocalLibrary() async {
     if (!mounted) return;
-    final syncState = ref.read(syncControllerProvider);
-    if (syncState.isLoading) {
+    final syncState = ref.read(syncCoordinatorProvider).memos;
+    if (syncState.running) {
       showTopToast(context, context.t.strings.legacy.msg_syncing);
       return;
     }
@@ -4486,17 +4677,41 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         false;
     if (!confirmed) return;
     if (!mounted) return;
-    final currentSyncState = ref.read(syncControllerProvider);
-    if (currentSyncState.isLoading) {
+    final currentSyncState = ref.read(syncCoordinatorProvider).memos;
+    if (currentSyncState.running) {
       showTopToast(context, context.t.strings.legacy.msg_syncing);
       return;
     }
     final scanner = ref.read(localLibraryScannerProvider);
     if (scanner == null) return;
     try {
-      await scanner.scanAndMerge(context);
+      var result = await scanner.scanAndMerge(forceDisk: false);
+      while (result is LocalScanConflictResult) {
+        final decisions = await _resolveLocalScanConflicts(result.conflicts);
+        result = await scanner.scanAndMerge(
+          forceDisk: false,
+          conflictDecisions: decisions,
+        );
+      }
       if (!mounted) return;
-      showTopToast(context, context.t.strings.legacy.msg_scan_completed);
+      switch (result) {
+        case LocalScanSuccess():
+          showTopToast(context, context.t.strings.legacy.msg_scan_completed);
+          return;
+        case LocalScanFailure(:final error):
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                context.t.strings.legacy.msg_scan_failed(
+                      e: _formatLocalScanError(error),
+                    ),
+              ),
+            ),
+          );
+          return;
+        default:
+          return;
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4504,6 +4719,52 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       );
     }
   }
+
+  Future<Map<String, bool>> _resolveLocalScanConflicts(
+    List<LocalScanConflict> conflicts,
+  ) async {
+    final decisions = <String, bool>{};
+    for (final conflict in conflicts) {
+      final useDisk =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(context.t.strings.legacy.msg_resolve_conflict),
+              content: Text(
+                conflict.isDeletion
+                    ? context
+                        .t
+                        .strings
+                        .legacy
+                        .msg_memo_missing_disk_but_has_local
+                    : context
+                        .t
+                        .strings
+                        .legacy
+                        .msg_disk_content_conflicts_local_pending_changes,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => context.safePop(false),
+                  child: Text(context.t.strings.legacy.msg_keep_local),
+                ),
+                FilledButton(
+                  onPressed: () => context.safePop(true),
+                  child: Text(context.t.strings.legacy.msg_use_disk),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      decisions[conflict.memoUid] = useDisk;
+    }
+    return decisions;
+  }
+
+  String _formatLocalScanError(SyncError error) {
+    return presentSyncError(language: context.appLanguage, error: error);
+  }
+
 
   void _maybeAutoScanLocalLibrary({
     required bool memosLoading,
@@ -4548,7 +4809,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           });
         }
         _autoScanTriggered = true;
-        await ref.read(syncControllerProvider.notifier).syncNow();
+        await ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual));
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4836,7 +5097,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         if (state != null) 'state': state,
       },
     );
-    unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+    unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
   }
 
   Future<void> _updateMemoContent(
@@ -4880,7 +5141,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       },
     );
     if (triggerSync) {
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
     }
   }
 
@@ -4944,7 +5205,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         payload: {'uid': memo.uid, 'force': false},
       );
       await ref.read(reminderSchedulerProvider).rescheduleAll();
-      unawaited(ref.read(syncControllerProvider.notifier).syncNow());
+      unawaited(ref.read(syncCoordinatorProvider.notifier).requestSync(const SyncRequest(kind: SyncRequestKind.memos, reason: SyncRequestReason.manual)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -5514,7 +5775,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               pageSize: _pageSize,
             )),
           );
-    final syncState = ref.watch(syncControllerProvider);
+    final syncState = ref.watch(syncCoordinatorProvider).memos;
     final syncQueueSnapshot = ref
         .watch(syncQueueProgressTrackerProvider)
         .snapshot;
@@ -5736,10 +5997,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               RefreshIndicator(
                 onRefresh: () async {
                   final scanner = ref.read(localLibraryScannerProvider);
-                  final syncController = ref.read(
-                    syncControllerProvider.notifier,
+                  final coordinator = ref.read(
+                    syncCoordinatorProvider.notifier,
                   );
-                  if (ref.read(syncControllerProvider).isLoading) {
+                  if (ref.read(syncCoordinatorProvider).memos.running) {
                     if (context.mounted) {
                       showTopToast(
                         context,
@@ -5750,15 +6011,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                       const Duration(seconds: 45),
                     );
                     while (context.mounted &&
-                        ref.read(syncControllerProvider).isLoading &&
+                        ref.read(syncCoordinatorProvider).memos.running &&
                         DateTime.now().isBefore(deadline)) {
                       await Future<void>.delayed(
                         const Duration(milliseconds: 180),
                       );
                     }
                     if (!context.mounted) return;
-                    final inFlightResult = ref.read(syncControllerProvider);
-                    if (!inFlightResult.isLoading) {
+                    final inFlightStatus =
+                        ref.read(syncCoordinatorProvider).memos;
+                    if (!inFlightStatus.running) {
                       final language = ref.read(
                         appPreferencesProvider.select((p) => p.language),
                       );
@@ -5766,7 +6028,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                         overlayContext: context,
                         messengerContext: context,
                         language: language,
-                        succeeded: !inFlightResult.hasError,
+                        succeeded: inFlightStatus.lastError == null,
                       );
                     }
                     return;
@@ -5787,9 +6049,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                     }
                   }
                   if (!context.mounted) return;
-                  await syncController.syncNow();
+                  final syncResult = await coordinator.requestSync(
+                    const SyncRequest(
+                      kind: SyncRequestKind.memos,
+                      reason: SyncRequestReason.manual,
+                    ),
+                  );
                   if (!context.mounted) return;
-                  final syncResult = ref.read(syncControllerProvider);
+                  if (syncResult is SyncRunQueued) return;
+                  final syncStatus = ref.read(syncCoordinatorProvider).memos;
+                  if (syncStatus.running) return;
                   final language = ref.read(
                     appPreferencesProvider.select((p) => p.language),
                   );
@@ -5797,7 +6066,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                     overlayContext: context,
                     messengerContext: context,
                     language: language,
-                    succeeded: !syncResult.hasError,
+                    succeeded: syncStatus.lastError == null,
                   );
                   if (useShortcutFilter) {
                     ref.invalidate(shortcutMemosProvider(shortcutQuery));
