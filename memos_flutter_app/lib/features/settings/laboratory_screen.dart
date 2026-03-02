@@ -4,12 +4,8 @@ import 'package:flutter/services.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
-import '../../state/sync_coordinator_provider.dart';
-import '../../application/sync/sync_request.dart';
-import '../../data/api/memo_api_facade.dart';
-import '../../data/api/memo_api_probe.dart';
-import '../../data/api/memo_api_version.dart';
 import '../../data/models/account.dart';
+import '../../state/memos/laboratory_providers.dart';
 import '../../state/session_provider.dart';
 import 'customize_drawer_screen.dart';
 import 'shortcuts_settings_screen.dart';
@@ -36,10 +32,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
   bool _savingVersion = false;
   bool _probingVersion = false;
 
-  Future<void> _showProbeFailureReport(MemoApiVersionProbeReport report) async {
-    final diagnostics = report.failures
-        .map((failure) => failure.toDiagnosticLine())
-        .join('\n');
+  Future<void> _showProbeFailureReport(String diagnostics) async {
     await showDialog<void>(
       context: context,
       builder: (context) {
@@ -68,19 +61,17 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     );
   }
 
-  Future<MemoApiVersionProbeReport?> _probeSingleVersion({
+  Future<LaboratoryProbeResult?> _probeSingleVersion({
     required Account currentAccount,
-    required MemoApiVersion version,
+    required LaboratoryVersion version,
   }) async {
     setState(() => _probingVersion = true);
     try {
-      return await const MemoApiProbeService().probeSingle(
-        baseUrl: currentAccount.baseUrl,
-        personalAccessToken: currentAccount.personalAccessToken,
-        version: version,
-        probeMemoNotice: context.t.strings.legacy.msg_probe_memo_can_delete,
-        deferCleanup: true,
-      );
+      return await ref.read(laboratoryControllerProvider).probeSingleVersion(
+            account: currentAccount,
+            version: version,
+            probeMemoNotice: context.t.strings.legacy.msg_probe_memo_can_delete,
+          );
     } catch (_) {
       return null;
     } finally {
@@ -90,66 +81,18 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     }
   }
 
-  bool _supportsForceDeleteMemo(MemoApiVersion version) {
-    return switch (version) {
-      MemoApiVersion.v025 || MemoApiVersion.v026 => true,
-      MemoApiVersion.v021 ||
-      MemoApiVersion.v022 ||
-      MemoApiVersion.v023 ||
-      MemoApiVersion.v024 => false,
-    };
-  }
-
   Future<void> _cleanupProbeArtifactsAfterSync({
     required Account account,
-    required MemoApiVersion version,
-    required MemoApiVersionProbeReport report,
+    required LaboratoryVersion version,
+    required LaboratoryProbeCleanup cleanup,
   }) async {
-    final deferred = report.deferredCleanup;
-    if (!deferred.hasPending) return;
-
-    try {
-      await ref.read(syncCoordinatorProvider.notifier).requestSync(
-            const SyncRequest(
-              kind: SyncRequestKind.memos,
-              reason: SyncRequestReason.manual,
-            ),
-          );
-    } catch (_) {
-      return;
-    }
-
-    final api = MemoApiFacade.authenticated(
-      baseUrl: account.baseUrl,
-      personalAccessToken: account.personalAccessToken,
-      version: version,
-    );
-
-    final attachmentName = deferred.attachmentName?.trim() ?? '';
-    if (attachmentName.isNotEmpty) {
-      try {
-        await api.deleteAttachment(attachmentName: attachmentName);
-      } catch (_) {}
-    }
-
-    final memoUid = deferred.memoUid?.trim() ?? '';
-    if (memoUid.isNotEmpty) {
-      try {
-        await api.deleteMemo(
-          memoUid: memoUid,
-          force: _supportsForceDeleteMemo(version),
+    await ref
+        .read(laboratoryControllerProvider)
+        .cleanupProbeArtifactsAfterSync(
+          account: account,
+          version: version,
+          cleanup: cleanup,
         );
-      } catch (_) {}
-    }
-
-    try {
-      await ref.read(syncCoordinatorProvider.notifier).requestSync(
-            const SyncRequest(
-              kind: SyncRequestKind.memos,
-              reason: SyncRequestReason.manual,
-            ),
-          );
-    } catch (_) {}
   }
 
   Future<void> _selectServerVersion(Account? currentAccount) async {
@@ -158,9 +101,10 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
         currentAccount.serverVersionOverride?.trim().isNotEmpty == true
         ? currentAccount.serverVersionOverride!.trim()
         : '';
+    final controller = ref.read(laboratoryControllerProvider);
     final selectedVersion =
-        parseMemoApiVersion(selectedRaw) ?? MemoApiVersion.v026;
-    final detected = normalizeMemoApiVersion(
+        controller.parseVersion(selectedRaw) ?? controller.defaultVersion;
+    final detected = controller.normalizeServerVersion(
       currentAccount.instanceProfile.version,
     );
     final options = <String>{
@@ -210,7 +154,7 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
       },
     );
     if (result == null) return;
-    final parsed = parseMemoApiVersion(result);
+    final parsed = controller.parseVersion(result);
     if (parsed == null) {
       if (!mounted) return;
       showTopToast(context, '不支持的版本：$result');
@@ -223,13 +167,13 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     );
     if (!mounted || probeReport == null) return;
     if (!probeReport.passed) {
-      await _showProbeFailureReport(probeReport);
+      await _showProbeFailureReport(probeReport.diagnostics);
       return;
     }
     await _cleanupProbeArtifactsAfterSync(
       account: currentAccount,
       version: parsed,
-      report: probeReport,
+      cleanup: probeReport.cleanup,
     );
 
     setState(() => _savingVersion = true);
@@ -256,11 +200,12 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
 
   Future<void> _reprobeCurrentVersion(Account? currentAccount) async {
     if (currentAccount == null || _savingVersion || _probingVersion) return;
-    final effectiveVersion = normalizeMemoApiVersion(
+    final controller = ref.read(laboratoryControllerProvider);
+    final effectiveVersion = controller.normalizeServerVersion(
       currentAccount.serverVersionOverride ??
           currentAccount.instanceProfile.version,
     );
-    final parsed = parseMemoApiVersion(effectiveVersion);
+    final parsed = controller.parseVersion(effectiveVersion);
     if (parsed == null) {
       showTopToast(
         context,
@@ -274,13 +219,13 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
     );
     if (!mounted || report == null) return;
     if (!report.passed) {
-      await _showProbeFailureReport(report);
+      await _showProbeFailureReport(report.diagnostics);
       return;
     }
     await _cleanupProbeArtifactsAfterSync(
       account: currentAccount,
       version: parsed,
-      report: report,
+      cleanup: report.cleanup,
     );
     if (!mounted) return;
     showTopToast(context, 'v${parsed.versionString} 探测通过');
