@@ -1,282 +1,25 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../state/sync_coordinator_provider.dart';
 import '../../state/memo_sync_service.dart';
-import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/sync_feedback.dart';
 import '../../core/top_toast.dart';
-import '../../data/db/app_database.dart';
-import '../../data/logs/log_manager.dart';
-import '../../state/database_provider.dart';
-import '../../state/logging_provider.dart';
 import '../../state/memoflow_bridge_settings_provider.dart';
+import '../../state/memos/sync_queue_controller.dart';
+import '../../state/memos/sync_queue_models.dart';
+import '../../state/memos/sync_queue_provider.dart';
+import '../../state/logging_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
 
-const _syncQueueDisplayLimit = 200;
-
-final _syncQueueProvider = StreamProvider<List<_SyncQueueItem>>((ref) async* {
-  final db = ref.watch(databaseProvider);
-  var lastItems = const <_SyncQueueItem>[];
-
-  Future<List<_SyncQueueItem>> load() async {
-    try {
-      final rows = await db.listOutboxPending(limit: _syncQueueDisplayLimit);
-      final items = <_SyncQueueItem>[];
-      for (final row in rows) {
-        final item = await _buildQueueItem(db, row);
-        if (item != null) {
-          items.add(item);
-        }
-      }
-      lastItems = items;
-      return items;
-    } catch (e, st) {
-      if (_isDatabaseLockedError(e)) {
-        LogManager.instance.warn(
-          'SyncQueue: list_pending_skipped_database_locked',
-          error: e,
-          stackTrace: st,
-        );
-        return lastItems;
-      }
-      rethrow;
-    }
-  }
-
-  yield await load();
-  await for (final _ in db.changes) {
-    yield await load();
-  }
-});
-
-final _syncQueuePendingCountProvider = StreamProvider<int>((ref) async* {
-  final db = ref.watch(databaseProvider);
-  var lastCount = 0;
-
-  Future<int> load() async {
-    try {
-      final count = await db.countOutboxPending();
-      lastCount = count;
-      return count;
-    } catch (e, st) {
-      if (_isDatabaseLockedError(e)) {
-        LogManager.instance.warn(
-          'SyncQueue: count_pending_skipped_database_locked',
-          error: e,
-          stackTrace: st,
-        );
-        return lastCount;
-      }
-      rethrow;
-    }
-  }
-
-  yield await load();
-  await for (final _ in db.changes) {
-    yield await load();
-  }
-});
-
-bool _isDatabaseLockedError(Object error) {
-  final text = error.toString().toLowerCase();
-  return text.contains('database is locked') ||
-      text.contains('sqlite_error: 5');
-}
-
 final _bridgeBulkPushRunningProvider = StateProvider<bool>((ref) => false);
-
-class _SyncQueueItem {
-  const _SyncQueueItem({
-    required this.id,
-    required this.type,
-    required this.state,
-    required this.attempts,
-    required this.createdAt,
-    required this.preview,
-    required this.filename,
-    required this.lastError,
-    required this.memoUid,
-    required this.attachmentUid,
-    required this.retryAt,
-  });
-
-  final int id;
-  final String type;
-  final int state;
-  final int attempts;
-  final DateTime createdAt;
-  final String? preview;
-  final String? filename;
-  final String? lastError;
-  final String? memoUid;
-  final String? attachmentUid;
-  final DateTime? retryAt;
-}
-
-Future<_SyncQueueItem?> _buildQueueItem(
-  AppDatabase db,
-  Map<String, dynamic> row,
-) async {
-  final id = row['id'];
-  final type = row['type'];
-  if (id is! int || type is! String) return null;
-
-  final state = row['state'] as int? ?? 0;
-  final attempts = row['attempts'] as int? ?? 0;
-  final createdRaw = row['created_time'] as int? ?? 0;
-  final createdAt = createdRaw > 0
-      ? DateTime.fromMillisecondsSinceEpoch(
-          createdRaw > 10000000000 ? createdRaw : createdRaw * 1000,
-          isUtc: true,
-        ).toLocal()
-      : DateTime.now();
-  final retryAtRaw = row['retry_at'];
-  final retryAtMs = switch (retryAtRaw) {
-    int v => v,
-    num v => v.toInt(),
-    String v => int.tryParse(v.trim()),
-    _ => null,
-  };
-  final retryAt = retryAtMs == null || retryAtMs <= 0
-      ? null
-      : DateTime.fromMillisecondsSinceEpoch(
-          retryAtMs > 10000000000 ? retryAtMs : retryAtMs * 1000,
-          isUtc: true,
-        ).toLocal();
-  final lastError = row['last_error'] as String?;
-
-  final payload = _decodePayload(row['payload']);
-  final memoUid = _extractMemoUid(type, payload);
-  final attachmentUid = _extractAttachmentUid(type, payload);
-  var content = payload['content'];
-  if (content is! String || content.trim().isEmpty) {
-    if (memoUid != null && memoUid.trim().isNotEmpty) {
-      final memoRow = await db.getMemoByUid(memoUid);
-      final memoContent = memoRow?['content'];
-      if (memoContent is String && memoContent.trim().isNotEmpty) {
-        content = memoContent;
-      }
-    }
-  }
-
-  final preview = _firstNonEmptyLine(content is String ? content : null);
-  final filename = payload['filename'] as String?;
-
-  return _SyncQueueItem(
-    id: id,
-    type: type,
-    state: state,
-    attempts: attempts,
-    createdAt: createdAt,
-    preview: preview,
-    filename: filename,
-    lastError: lastError,
-    memoUid: memoUid,
-    attachmentUid: attachmentUid,
-    retryAt: retryAt,
-  );
-}
-
-Map<String, dynamic> _decodePayload(Object? raw) {
-  if (raw is! String || raw.trim().isEmpty) return const {};
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is Map) {
-      return decoded.cast<String, dynamic>();
-    }
-  } catch (_) {}
-  return const {};
-}
-
-String? _extractMemoUid(String type, Map<String, dynamic> payload) {
-  return switch (type) {
-    'create_memo' ||
-    'update_memo' ||
-    'delete_memo' => payload['uid'] as String?,
-    'upload_attachment' => payload['memo_uid'] as String?,
-    _ => null,
-  };
-}
-
-String? _extractAttachmentUid(String type, Map<String, dynamic> payload) {
-  return switch (type) {
-    'upload_attachment' => payload['uid'] as String?,
-    _ => null,
-  };
-}
-
-String? _firstNonEmptyLine(String? raw) {
-  if (raw == null) return null;
-  for (final line in raw.split('\n')) {
-    final trimmed = line.trim();
-    if (trimmed.isNotEmpty) return trimmed;
-  }
-  return null;
-}
-
-Future<void> _removePendingAttachmentFromMemo(
-  AppDatabase db, {
-  required String memoUid,
-  required String attachmentUid,
-}) async {
-  final trimmedMemoUid = memoUid.trim();
-  final trimmedAttachmentUid = attachmentUid.trim();
-  if (trimmedMemoUid.isEmpty || trimmedAttachmentUid.isEmpty) return;
-
-  final row = await db.getMemoByUid(trimmedMemoUid);
-  final raw = row?['attachments_json'];
-  if (raw is! String || raw.trim().isEmpty) return;
-
-  dynamic decoded;
-  try {
-    decoded = jsonDecode(raw);
-  } catch (_) {
-    return;
-  }
-  if (decoded is! List) return;
-
-  final expectedNames = <String>{
-    'attachments/$trimmedAttachmentUid',
-    'resources/$trimmedAttachmentUid',
-  };
-
-  var changed = false;
-  final next = <Map<String, dynamic>>[];
-  for (final item in decoded) {
-    if (item is! Map) continue;
-    final map = item.cast<String, dynamic>();
-    final name = (map['name'] as String?)?.trim() ?? '';
-    if (expectedNames.contains(name)) {
-      changed = true;
-      continue;
-    }
-    next.add(map);
-  }
-
-  if (!changed) return;
-  await db.updateMemoAttachmentsJson(
-    trimmedMemoUid,
-    attachmentsJson: jsonEncode(next),
-  );
-}
-
-Future<void> _clearMemoSyncErrorIfIdle(AppDatabase db, String memoUid) async {
-  final trimmed = memoUid.trim();
-  if (trimmed.isEmpty) return;
-  final pending = await db.listPendingOutboxMemoUids();
-  if (pending.contains(trimmed)) return;
-  await db.updateMemoSyncState(trimmed, syncState: 0, lastError: null);
-}
 
 class SyncQueueScreen extends ConsumerWidget {
   const SyncQueueScreen({super.key});
@@ -306,9 +49,8 @@ class SyncQueueScreen extends ConsumerWidget {
   Future<void> _confirmDelete(
     BuildContext context,
     WidgetRef ref,
-    _SyncQueueItem item,
+    SyncQueueItem item,
   ) async {
-    final db = ref.read(databaseProvider);
     final memoUid = item.memoUid?.trim();
     if (memoUid != null && memoUid.isNotEmpty) {
       final confirmed =
@@ -333,15 +75,7 @@ class SyncQueueScreen extends ConsumerWidget {
           ) ??
           false;
       if (!confirmed) return;
-      await db.deleteOutbox(item.id);
-      if (item.type == 'upload_attachment' && item.attachmentUid != null) {
-        await _removePendingAttachmentFromMemo(
-          db,
-          memoUid: memoUid,
-          attachmentUid: item.attachmentUid!,
-        );
-      }
-      await _clearMemoSyncErrorIfIdle(db, memoUid);
+      await ref.read(syncQueueControllerProvider).deleteItem(item);
       return;
     }
 
@@ -365,16 +99,11 @@ class SyncQueueScreen extends ConsumerWidget {
         ) ??
         false;
     if (!confirmed) return;
-    await db.deleteOutbox(item.id);
+    await ref.read(syncQueueControllerProvider).deleteItem(item);
   }
 
   Future<void> _syncAll(BuildContext context, WidgetRef ref) async {
-    final result = await ref.read(syncCoordinatorProvider.notifier).requestSync(
-          const SyncRequest(
-            kind: SyncRequestKind.memos,
-            reason: SyncRequestReason.manual,
-          ),
-        );
+    final result = await ref.read(syncQueueControllerProvider).requestSync();
     if (!context.mounted) return;
     if (result is SyncRunQueued) return;
     final syncStatus = ref.read(syncCoordinatorProvider).memos;
@@ -391,15 +120,9 @@ class SyncQueueScreen extends ConsumerWidget {
   Future<void> _retryItem(
     BuildContext context,
     WidgetRef ref,
-    _SyncQueueItem item,
+    SyncQueueItem item,
   ) async {
-    final db = ref.read(databaseProvider);
-    final memoUid = item.memoUid?.trim();
-    if (memoUid != null && memoUid.isNotEmpty) {
-      await db.retryOutboxErrors(memoUid: memoUid);
-    } else {
-      await db.retryOutboxErrors();
-    }
+    await ref.read(syncQueueControllerProvider).retryItem(item);
     if (!context.mounted) return;
     await _syncAll(context, ref);
   }
@@ -481,11 +204,11 @@ class SyncQueueScreen extends ConsumerWidget {
         ? MemoFlowPalette.borderDark
         : MemoFlowPalette.borderLight;
 
-    final queueAsync = ref.watch(_syncQueueProvider);
-    final items = queueAsync.valueOrNull ?? const <_SyncQueueItem>[];
-    final pendingCountAsync = ref.watch(_syncQueuePendingCountProvider);
+    final queueAsync = ref.watch(syncQueueItemsProvider);
+    final items = queueAsync.valueOrNull ?? const <SyncQueueItem>[];
+    final pendingCountAsync = ref.watch(syncQueuePendingCountProvider);
     final failedCount = items
-        .where((item) => item.state == AppDatabase.outboxStateError)
+        .where((item) => item.isFailed)
         .length;
     final activeCount = pendingCountAsync.valueOrNull ?? items.length;
     final pendingCount = (activeCount - failedCount) < 0
@@ -509,8 +232,7 @@ class SyncQueueScreen extends ConsumerWidget {
     final itemIds = <int>{};
     for (final item in items) {
       itemIds.add(item.id);
-      if (firstPendingId == null &&
-          item.state != AppDatabase.outboxStateError) {
+      if (firstPendingId == null && !item.isFailed) {
         firstPendingId = item.id;
       }
     }
@@ -602,7 +324,7 @@ class SyncQueueScreen extends ConsumerWidget {
                         onDelete: () => _confirmDelete(context, ref, item),
                         onSync: (syncing || bridgeBulkPushing)
                             ? null
-                            : () => item.state == AppDatabase.outboxStateError
+                            : () => item.isFailed
                                   ? _retryItem(context, ref, item)
                                   : _syncAll(context, ref),
                       ),
@@ -680,7 +402,7 @@ class SyncQueueScreen extends ConsumerWidget {
   }
 }
 
-String _resolveItemTitle(BuildContext context, _SyncQueueItem item) {
+String _resolveItemTitle(BuildContext context, SyncQueueItem item) {
   if (item.type == 'upload_attachment') {
     return item.filename?.trim().isNotEmpty == true
         ? item.filename!.trim()
@@ -695,7 +417,7 @@ String _resolveItemTitle(BuildContext context, _SyncQueueItem item) {
   return _actionLabel(context, item.type);
 }
 
-String? _resolveItemSubtitle(_SyncQueueItem item) {
+String? _resolveItemSubtitle(SyncQueueItem item) {
   if (item.type == 'upload_attachment') {
     return item.preview;
   }
@@ -922,7 +644,7 @@ class _SyncQueueItemCard extends StatelessWidget {
     required this.onSync,
   });
 
-  final _SyncQueueItem item;
+  final SyncQueueItem item;
   final String title;
   final String? subtitle;
   final Color card;
@@ -937,7 +659,7 @@ class _SyncQueueItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final failed = item.state == AppDatabase.outboxStateError;
+    final failed = item.isFailed;
     final active = !failed && activeOutboxId == item.id;
     final timeLabel = DateFormat('MM-dd HH:mm:ss.SSS').format(item.createdAt);
     final lastErrorText = item.lastError == null
@@ -1089,8 +811,8 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final failed = state == AppDatabase.outboxStateError;
-    final retrying = state == AppDatabase.outboxStateRetry;
+    final failed = state == SyncQueueOutboxState.error;
+    final retrying = state == SyncQueueOutboxState.retry;
     if (failed) {
       final failedLabel = attempts > 0
           ? context.t.strings.legacy.msg_failed_2(attempts: attempts)
