@@ -33,6 +33,7 @@ import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/app_lock_gate.dart';
 import 'features/memos/link_memo_sheet.dart';
+import 'features/memos/memo_detail_screen.dart';
 import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
 import 'features/onboarding/language_selection_screen.dart';
@@ -557,7 +558,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       },
     );
     final reminderScheduler = ref.read(reminderSchedulerProvider);
-    reminderScheduler.bindNavigator(_navigatorKey);
+    reminderScheduler.setTapHandler(_handleReminderTap);
     unawaited(reminderScheduler.initialize());
     _reminderSettingsSubscription = ref.listenManual<ReminderSettings>(
       reminderSettingsProvider,
@@ -1974,6 +1975,41 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       context,
       context.t.strings.legacy.msg_third_party_share_disabled,
     );
+  }
+
+  Future<void> _handleReminderTap(ReminderTapPayload payload) async {
+    if (!mounted) return;
+    final navigator = _navigatorKey.currentState;
+    final context = _navigatorKey.currentContext;
+    if (navigator == null || context == null) return;
+
+    switch (payload.target) {
+      case ReminderTapTarget.memosList:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.t.strings.legacy.msg_memo_not_found)),
+        );
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute<void>(
+            builder: (_) => const MemosListScreen(
+              title: 'MemoFlow',
+              state: 'NORMAL',
+              showDrawer: true,
+              enableCompose: true,
+            ),
+          ),
+          (route) => false,
+        );
+        return;
+      case ReminderTapTarget.memoDetail:
+        final memo = payload.memo;
+        if (memo == null) return;
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => MemoDetailScreen(initialMemo: memo),
+          ),
+        );
+        return;
+    }
   }
 
   void _openAllMemos(NavigatorState navigator) {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../state/reminder_settings_provider.dart';
+import 'reminder_settings_provider.dart';
 
 int minutesFromTimeOfDay(TimeOfDay time) => time.hour * 60 + time.minute;
 

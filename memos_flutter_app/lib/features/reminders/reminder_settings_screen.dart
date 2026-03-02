@@ -12,8 +12,8 @@ import '../../state/reminder_scheduler.dart';
 import '../../state/reminder_settings_provider.dart';
 import 'custom_notification_screen.dart';
 import 'ringtone_picker.dart';
-import 'reminder_utils.dart';
-import 'system_settings_launcher.dart';
+import '../../state/reminder_utils.dart';
+import '../../core/system_settings_launcher.dart';
 import '../../i18n/strings.g.dart';
 
 class ReminderSettingsScreen extends ConsumerStatefulWidget {

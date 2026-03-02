@@ -72,7 +72,7 @@ import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../reminders/memo_reminder_editor_screen.dart';
-import '../reminders/reminder_utils.dart';
+import '../../state/reminder_utils.dart';
 import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,18 +15,15 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../core/app_localization.dart';
 import '../core/desktop_tray_controller.dart';
+import '../core/system_settings_launcher.dart';
 import '../data/models/local_memo.dart';
 import '../data/models/memo_reminder.dart';
-import '../features/memos/memo_detail_screen.dart';
-import '../features/memos/memos_list_screen.dart';
-import '../features/reminders/reminder_utils.dart';
-import '../features/reminders/system_settings_launcher.dart';
+import 'reminder_utils.dart';
 import 'database_provider.dart';
 import 'logging_provider.dart';
 import 'preferences_provider.dart';
 import 'reminder_settings_provider.dart';
 import 'session_provider.dart';
-import '../i18n/strings.g.dart';
 
 final reminderSchedulerProvider = Provider<ReminderScheduler>((ref) {
   final scheduler = ReminderScheduler(ref);
@@ -35,13 +31,29 @@ final reminderSchedulerProvider = Provider<ReminderScheduler>((ref) {
   return scheduler;
 });
 
+enum ReminderTapTarget { memoDetail, memosList }
+
+class ReminderTapPayload {
+  const ReminderTapPayload({
+    required this.memoUid,
+    required this.target,
+    this.memo,
+  });
+
+  final String memoUid;
+  final ReminderTapTarget target;
+  final LocalMemo? memo;
+}
+
+typedef ReminderTapHandler = Future<void> Function(ReminderTapPayload payload);
+
 class ReminderScheduler {
   ReminderScheduler(this._ref);
 
   final Ref _ref;
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
-  GlobalKey<NavigatorState>? _navigatorKey;
+  ReminderTapHandler? _tapHandler;
   bool _initialized = false;
   Completer<void>? _initCompleter;
   DateTime? _lastRescheduleAt;
@@ -58,8 +70,8 @@ class ReminderScheduler {
   bool get _supportsReminderNotifications =>
       Platform.isAndroid || Platform.isWindows;
 
-  void bindNavigator(GlobalKey<NavigatorState> navigatorKey) {
-    _navigatorKey = navigatorKey;
+  void setTapHandler(ReminderTapHandler? handler) {
+    _tapHandler = handler;
   }
 
   String channelIdFor(ReminderSettings settings) => _channelIdFor(settings);
@@ -854,7 +866,7 @@ class ReminderScheduler {
 
   Future<void> dispose() async {
     await _clearWindowsSchedules();
-    _navigatorKey = null;
+    _tapHandler = null;
   }
 
   Future<_ReminderPermissionStatus> _checkPermissions() async {
@@ -1077,13 +1089,6 @@ class ReminderScheduler {
   }
 
   Future<void> _handleNotificationTap(String payload) async {
-    final navigator = _navigatorKey?.currentState;
-    final context = _navigatorKey?.currentContext;
-    if (navigator == null || context == null) {
-      _logWarn('tap_missing_navigator');
-      return;
-    }
-
     Map<String, dynamic>? data;
     try {
       final decoded = jsonDecode(payload);
@@ -1106,33 +1111,36 @@ class ReminderScheduler {
       return;
     }
 
+    final handler = _tapHandler;
+    if (handler == null) {
+      _logWarn('tap_missing_handler', context: {'memo': memoToken});
+      return;
+    }
+
     final db = _ref.read(databaseProvider);
     final row = await db.getMemoByUid(memoUid);
-    if (!context.mounted) return;
     if (row == null) {
       _logWarn('tap_memo_missing', context: {'memo': memoToken});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_memo_not_found)),
-      );
-      navigator.pushAndRemoveUntil(
-        MaterialPageRoute<void>(
-          builder: (_) => const MemosListScreen(
-            title: 'MemoFlow',
-            state: 'NORMAL',
-            showDrawer: true,
-            enableCompose: true,
+      unawaited(
+        handler(
+          ReminderTapPayload(
+            memoUid: memoUid,
+            target: ReminderTapTarget.memosList,
           ),
         ),
-        (route) => false,
       );
       return;
     }
 
     _logInfo('tap_open_memo', context: {'memo': memoToken});
     final memo = LocalMemo.fromDb(row);
-    navigator.push(
-      MaterialPageRoute<void>(
-        builder: (_) => MemoDetailScreen(initialMemo: memo),
+    unawaited(
+      handler(
+        ReminderTapPayload(
+          memoUid: memoUid,
+          memo: memo,
+          target: ReminderTapTarget.memoDetail,
+        ),
       ),
     );
   }
