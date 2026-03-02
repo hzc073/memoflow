@@ -9,12 +9,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
-import '../../data/api/server_api_profile.dart';
 import '../../data/logs/debug_log_store.dart';
 import '../../data/models/user.dart';
 import '../../state/debug_log_provider.dart';
 import '../../state/debug_screenshot_mode_provider.dart';
 import '../../state/login_draft_provider.dart';
+import '../../state/memos/debug_tools_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';
@@ -467,23 +467,6 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
     final head = token.substring(0, 6);
     final tail = token.substring(token.length - 4);
     return '$head...$tail';
-  }
-
-  String _apiVersionBandLabel(MemosVersionNumber? version) {
-    if (version == null) return '-';
-    if (version.major == 0 && version.minor >= 20 && version.minor < 30) {
-      return '0.2x';
-    }
-    return '${version.major}.${version.minor}x';
-  }
-
-  String _apiRouteVersionLabel(MemosVersionResolution? resolution) {
-    if (resolution == null) return '-';
-    final band = _apiVersionBandLabel(resolution.parsedVersion);
-    final effective = resolution.effectiveVersion.trim();
-    final flavor = resolution.profile.flavor.name;
-    if (effective.isEmpty) return '$band | $flavor';
-    return '$band | $effective | $flavor';
   }
 
   Future<void> _logAction(String label, {String? detail}) async {
@@ -974,13 +957,12 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
         : (accountUser.displayName.isNotEmpty
               ? accountUser.displayName
               : accountUser.username);
-    final apiVersionResolution = account == null
-        ? null
-        : MemosServerApiProfiles.resolve(
-            manualVersionOverride: account.serverVersionOverride,
-            detectedVersion: account.instanceProfile.version,
-          );
-    final apiRouteVersion = _apiRouteVersionLabel(apiVersionResolution);
+    final apiRouteVersion = ref
+        .read(debugToolsControllerProvider)
+        .buildApiRouteVersionLabel(
+          manualVersionOverride: account?.serverVersionOverride,
+          detectedVersion: account?.instanceProfile.version,
+        );
     final token = _activeToken;
     final tokenLabel = token == null || token.isEmpty
         ? context.t.strings.legacy.msg_none

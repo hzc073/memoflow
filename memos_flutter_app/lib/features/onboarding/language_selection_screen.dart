@@ -4,14 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
-import '../../data/db/app_database.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/local_library.dart';
 import '../settings/local_mode_setup_screen.dart';
 import '../../i18n/strings.g.dart';
-import '../../state/database_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
+import '../../state/memos/onboarding_providers.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 
@@ -167,9 +166,9 @@ class _LanguageSelectionScreenState
     final existed = existingLibraries.any((l) => l.key == key);
     if (!existed) {
       try {
-        await AppDatabase.deleteDatabaseFile(
-          dbName: databaseNameForAccountKey(key),
-        );
+        await ref
+            .read(onboardingControllerProvider)
+            .deleteStaleLocalLibraryDatabase(workspaceKey: key);
         _logFlow(
           'create_local_library_stale_db_cleared',
           context: {'workspaceKey': key},
