@@ -7,6 +7,10 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cryptography/cryptography.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/hash.dart';
 import '../../core/log_sanitizer.dart';
@@ -18,22 +22,138 @@ import '../../data/local_library/local_library_fs.dart';
 import '../../data/local_library/local_library_markdown.dart';
 import '../../data/local_library/local_library_naming.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/image_bed_settings.dart';
 import '../../data/models/local_library.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/location_settings.dart';
+import '../../data/models/memo_template_settings.dart';
 import '../../data/models/webdav_backup.dart';
 import '../../data/models/webdav_backup_state.dart';
+import '../../data/models/webdav_export_signature.dart';
+import '../../data/models/webdav_export_status.dart';
 import '../../data/models/webdav_settings.dart';
+import '../../data/logs/webdav_backup_progress_tracker.dart';
 import '../../data/logs/debug_log_store.dart';
+import '../../data/settings/ai_settings_repository.dart';
 import '../../data/settings/webdav_backup_password_repository.dart';
 import '../../data/settings/webdav_backup_state_repository.dart';
+import '../../data/settings/webdav_vault_password_repository.dart';
 import '../../data/webdav/webdav_client.dart';
+import '../../state/app_lock_provider.dart';
+import '../../state/preferences_provider.dart';
+import '../../state/reminder_settings_provider.dart';
 import 'local_library_scan_service.dart';
 import 'sync_error.dart';
 import 'sync_types.dart';
+import 'webdav_sync_service.dart';
+import 'webdav_vault_service.dart';
 
 enum WebDavBackupExportIssueKind { memo, attachment }
 
 enum WebDavBackupExportAction { retry, skip, abort }
+
+enum WebDavExportCleanupStatus { cleaned, notFound, blocked }
+
+enum WebDavBackupConfigType {
+  preferences,
+  aiSettings,
+  reminderSettings,
+  imageBedSettings,
+  locationSettings,
+  templateSettings,
+  appLock,
+  noteDraft,
+  webdavSettings,
+}
+
+class WebDavBackupConfigBundle {
+  const WebDavBackupConfigBundle({
+    this.preferences,
+    this.aiSettings,
+    this.reminderSettings,
+    this.imageBedSettings,
+    this.locationSettings,
+    this.templateSettings,
+    this.appLockSnapshot,
+    this.noteDraft,
+    this.webDavSettings,
+  });
+
+  final AppPreferences? preferences;
+  final AiSettings? aiSettings;
+  final ReminderSettings? reminderSettings;
+  final ImageBedSettings? imageBedSettings;
+  final LocationSettings? locationSettings;
+  final MemoTemplateSettings? templateSettings;
+  final AppLockSnapshot? appLockSnapshot;
+  final String? noteDraft;
+  final WebDavSettings? webDavSettings;
+
+  bool get isEmpty =>
+      preferences == null &&
+      aiSettings == null &&
+      reminderSettings == null &&
+      imageBedSettings == null &&
+      locationSettings == null &&
+      templateSettings == null &&
+      appLockSnapshot == null &&
+      noteDraft == null &&
+      webDavSettings == null;
+}
+
+class _BackupConfigFile {
+  const _BackupConfigFile({
+    required this.type,
+    required this.path,
+    required this.bytes,
+  });
+
+  final WebDavBackupConfigType type;
+  final String path;
+  final Uint8List bytes;
+}
+
+typedef WebDavBackupConfigDecisionHandler =
+    Future<Set<WebDavBackupConfigType>> Function(
+      WebDavBackupConfigBundle bundle,
+    );
+
+const _autoRestoreConfigTypes = <WebDavBackupConfigType>{
+  WebDavBackupConfigType.preferences,
+  WebDavBackupConfigType.reminderSettings,
+  WebDavBackupConfigType.templateSettings,
+  WebDavBackupConfigType.locationSettings,
+};
+
+const _confirmRestoreConfigTypes = <WebDavBackupConfigType>{
+  WebDavBackupConfigType.webdavSettings,
+  WebDavBackupConfigType.imageBedSettings,
+  WebDavBackupConfigType.appLock,
+  WebDavBackupConfigType.aiSettings,
+};
+
+const _exportOnlyConfigTypes = <WebDavBackupConfigType>{
+  WebDavBackupConfigType.noteDraft,
+};
+
+const _safeBackupConfigTypes = <WebDavBackupConfigType>{
+  WebDavBackupConfigType.preferences,
+  WebDavBackupConfigType.reminderSettings,
+  WebDavBackupConfigType.templateSettings,
+  WebDavBackupConfigType.locationSettings,
+};
+
+const _fullBackupConfigTypes = <WebDavBackupConfigType>{
+  WebDavBackupConfigType.preferences,
+  WebDavBackupConfigType.reminderSettings,
+  WebDavBackupConfigType.templateSettings,
+  WebDavBackupConfigType.locationSettings,
+  WebDavBackupConfigType.webdavSettings,
+  WebDavBackupConfigType.imageBedSettings,
+  WebDavBackupConfigType.appLock,
+  WebDavBackupConfigType.noteDraft,
+  WebDavBackupConfigType.aiSettings,
+};
 
 class WebDavBackupExportIssue {
   const WebDavBackupExportIssue({
@@ -76,6 +196,10 @@ class WebDavBackupService {
     required LocalAttachmentStore attachmentStore,
     required WebDavBackupStateRepository stateRepository,
     required WebDavBackupPasswordRepository passwordRepository,
+    required WebDavVaultService vaultService,
+    required WebDavVaultPasswordRepository vaultPasswordRepository,
+    WebDavSyncLocalAdapter? configAdapter,
+    WebDavBackupProgressTracker? progressTracker,
     LocalLibraryScanService Function(LocalLibrary library)? scanServiceFactory,
     WebDavBackupClientFactory? clientFactory,
     void Function(DebugLogEntry entry)? logWriter,
@@ -83,6 +207,10 @@ class WebDavBackupService {
        _attachmentStore = attachmentStore,
        _stateRepository = stateRepository,
        _passwordRepository = passwordRepository,
+       _vaultService = vaultService,
+       _vaultPasswordRepository = vaultPasswordRepository,
+       _configAdapter = configAdapter,
+       _progressTracker = progressTracker,
        _scanServiceFactory = scanServiceFactory,
        _clientFactory = clientFactory ?? _defaultBackupClientFactory,
        _logWriter = logWriter;
@@ -91,6 +219,10 @@ class WebDavBackupService {
   final LocalAttachmentStore _attachmentStore;
   final WebDavBackupStateRepository _stateRepository;
   final WebDavBackupPasswordRepository _passwordRepository;
+  final WebDavVaultService _vaultService;
+  final WebDavVaultPasswordRepository _vaultPasswordRepository;
+  final WebDavSyncLocalAdapter? _configAdapter;
+  final WebDavBackupProgressTracker? _progressTracker;
   final LocalLibraryScanService Function(LocalLibrary library)?
   _scanServiceFactory;
   final WebDavBackupClientFactory _clientFactory;
@@ -102,8 +234,21 @@ class WebDavBackupService {
   static const _backupIndexFile = 'index.enc';
   static const _backupObjectsDir = 'objects';
   static const _backupSnapshotsDir = 'snapshots';
+  static const _backupConfigDir = 'config';
   static const _backupSettingsSnapshotPath = 'config/webdav_settings.json';
+  static const _backupPreferencesSnapshotPath = 'config/preferences.json';
+  static const _backupAiSettingsSnapshotPath = 'config/ai_settings.json';
+  static const _backupReminderSnapshotPath = 'config/reminder_settings.json';
+  static const _backupImageBedSnapshotPath = 'config/image_bed.json';
+  static const _backupLocationSnapshotPath = 'config/location_settings.json';
+  static const _backupTemplateSnapshotPath = 'config/template_settings.json';
+  static const _backupAppLockSnapshotPath = 'config/app_lock.json';
+  static const _backupNoteDraftSnapshotPath = 'config/note_draft.json';
+  static const _backupManifestFile = 'manifest.json';
   static const _plainBackupIndexFile = 'index.json';
+  static const _exportEncSignatureFile = '.memoflow_export_enc.json';
+  static const _exportPlainSignatureFile = '.memoflow_export_plain.json';
+  static const _exportStagingDir = '.memoflow_export_staging';
   static const _chunkSize = 4 * 1024 * 1024;
   static const _nonceLength = 12;
   static const _macLength = 16;
@@ -125,6 +270,47 @@ class WebDavBackupService {
             : LogSanitizer.sanitizeText(error.toString()),
       ),
     );
+  }
+
+  void _startProgress(WebDavBackupProgressOperation operation) {
+    _progressTracker?.start(operation: operation);
+  }
+
+  void _updateProgress({
+    WebDavBackupProgressStage? stage,
+    int? completed,
+    int? total,
+    String? currentPath,
+    WebDavBackupProgressItemGroup? itemGroup,
+  }) {
+    _progressTracker?.update(
+      stage: stage,
+      completed: completed,
+      total: total,
+      currentPath: currentPath,
+      itemGroup: itemGroup,
+    );
+  }
+
+  Future<void> _waitIfPaused() async {
+    final tracker = _progressTracker;
+    if (tracker == null) return;
+    await tracker.waitIfPaused();
+  }
+
+  void _finishProgress() {
+    _progressTracker?.finish();
+  }
+
+  Future<void> _setWakelockEnabled(bool enabled) async {
+    if (kIsWeb) return;
+    try {
+      if (enabled) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } catch (_) {}
   }
 
   Future<String?> setupBackupPassword({
@@ -253,14 +439,28 @@ class WebDavBackupService {
     WebDavBackupExportIssueHandler? onExportIssue,
   }) async {
     final normalizedAccountKey = accountKey?.trim() ?? '';
-    final includeConfig = settings.backupContentConfig;
+    final includeConfig =
+        settings.backupConfigScope != WebDavBackupConfigScope.none;
     final includeMemos = settings.backupContentMemos;
     final usePlainBackup =
         settings.backupEncryptionMode == WebDavBackupEncryptionMode.plain;
+    final useVault = settings.vaultEnabled && !usePlainBackup;
     final backupLibrary = includeMemos
         ? _resolveBackupLibrary(settings, activeLocalLibrary)
         : null;
     final usesMirrorLibrary = includeMemos && activeLocalLibrary == null;
+    final exportEncrypted =
+        includeMemos &&
+        usesMirrorLibrary &&
+        !usePlainBackup &&
+        settings.backupExportEncrypted;
+    final exportLibrary = usesMirrorLibrary ? backupLibrary : null;
+    LocalLibrary? snapshotLibrary = backupLibrary;
+    Directory? tempExportDir;
+    _ExportWriter? exportWriter;
+    DateTime? exportSuccessAt;
+    DateTime? uploadSuccessAt;
+    var plainExportCompleted = false;
     final triggerLabel = manual ? 'manual' : 'auto';
     if (!settings.isBackupEnabled) {
       _logEvent('Backup skipped', detail: 'disabled ($triggerLabel)');
@@ -305,30 +505,63 @@ class WebDavBackupService {
     }
 
     String? resolvedPassword;
+    String? resolvedVaultPassword;
     if (!usePlainBackup) {
-      resolvedPassword = await _resolvePassword(password);
-      if (resolvedPassword == null || resolvedPassword.trim().isEmpty) {
-        _logEvent('Backup skipped', detail: 'password_missing ($triggerLabel)');
-        return const WebDavBackupMissingPassword();
+      if (useVault) {
+        resolvedVaultPassword = await _resolveVaultPassword(password);
+        if (resolvedVaultPassword == null ||
+            resolvedVaultPassword.trim().isEmpty) {
+          _logEvent('Backup skipped', detail: 'password_missing ($triggerLabel)');
+          return const WebDavBackupMissingPassword();
+        }
+      } else {
+        resolvedPassword = await _resolvePassword(password);
+        if (resolvedPassword == null || resolvedPassword.trim().isEmpty) {
+          _logEvent('Backup skipped', detail: 'password_missing ($triggerLabel)');
+          return const WebDavBackupMissingPassword();
+        }
       }
     }
 
+    final exportedAt = DateTime.now().toUtc().toIso8601String();
     _logEvent(
       'Backup started',
       detail: 'mode=${usePlainBackup ? 'plain' : 'encrypted'} ($triggerLabel)',
     );
+    _startProgress(WebDavBackupProgressOperation.backup);
+    _updateProgress(stage: WebDavBackupProgressStage.preparing);
+    await _setWakelockEnabled(true);
     try {
       if (includeMemos) {
+        if (exportEncrypted) {
+          final tempRoot = await getTemporaryDirectory();
+          final parent = Directory(
+            p.join(tempRoot.path, 'memoflow_backup_export'),
+          );
+          if (!await parent.exists()) {
+            await parent.create(recursive: true);
+          }
+          tempExportDir = await parent.createTemp('export_');
+          snapshotLibrary = LocalLibrary(
+            key: 'webdav_backup_export',
+            name: 'WebDAV Backup Export',
+            rootPath: tempExportDir!.path,
+          );
+        }
         final exportedMemos = await _exportLocalLibraryForBackup(
-          backupLibrary!,
-          pruneToCurrentData: usesMirrorLibrary,
+          snapshotLibrary!,
+          pruneToCurrentData: usesMirrorLibrary && !exportEncrypted,
           attachmentBaseUrl: attachmentBaseUrl,
           attachmentAuthHeader: attachmentAuthHeader,
           issueHandler: manual ? onExportIssue : null,
         );
+        if (!exportEncrypted && usesMirrorLibrary) {
+          exportSuccessAt = DateTime.now();
+          plainExportCompleted = true;
+        }
         if (exportedMemos > 0) {
           final memoFiles = await LocalLibraryFileSystem(
-            backupLibrary,
+            snapshotLibrary!,
           ).listMemos();
           if (memoFiles.isEmpty) {
             return WebDavBackupFailure(
@@ -348,6 +581,8 @@ class WebDavBackupService {
       try {
         await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
         final now = DateTime.now();
+        WebDavBackupConfig? legacyConfig;
+        String vaultKeyId = '';
         if (usePlainBackup) {
           await _backupPlain(
             settings: settings,
@@ -357,27 +592,100 @@ class WebDavBackupService {
             accountId: accountId,
             localLibrary: backupLibrary,
             includeMemos: includeMemos,
-            includeConfig: includeConfig,
+            configFiles:
+                includeConfig
+                    ? await _buildConfigFiles(
+                        settings: settings,
+                        scope: settings.backupConfigScope,
+                        exportedAt: exportedAt,
+                      )
+                    : const [],
+            exportedAt: exportedAt,
+            backupMode: _resolveBackupMode(
+              usesServerMode: activeLocalLibrary == null,
+            ),
           );
+          uploadSuccessAt = DateTime.now();
+          if (plainExportCompleted && exportLibrary != null) {
+            final fileSystem = LocalLibraryFileSystem(exportLibrary);
+            final previousPlain = await _readExportSignature(
+              fileSystem,
+              _exportPlainSignatureFile,
+              accountId,
+            );
+            final successAt = _resolveExportLastSuccessAt(
+              exportAt: exportSuccessAt ?? now,
+              uploadAt: uploadSuccessAt,
+              webDavConfigured: settings.serverUrl.trim().isNotEmpty,
+            );
+            final signature = _buildExportSignature(
+              mode: WebDavExportMode.plain,
+              accountIdHash: accountId,
+              snapshotId: '',
+              exportFormat: WebDavExportFormat.full,
+              vaultKeyId: '',
+              createdAt: previousPlain?.createdAt,
+              lastSuccessAt: successAt,
+            );
+            await _writeExportSignature(
+              fileSystem,
+              _exportPlainSignatureFile,
+              signature,
+            );
+          }
+
+          final previousState = await _stateRepository.read();
           await _stateRepository.write(
-            WebDavBackupState(
+            previousState.copyWith(
               lastBackupAt: now.toUtc().toIso8601String(),
               lastSnapshotId: null,
+              lastExportSuccessAt:
+                  exportSuccessAt?.toUtc().toIso8601String() ??
+                  previousState.lastExportSuccessAt,
+              lastUploadSuccessAt:
+                  uploadSuccessAt?.toUtc().toIso8601String() ??
+                  previousState.lastUploadSuccessAt,
             ),
+          );
+          _updateProgress(
+            stage: WebDavBackupProgressStage.completed,
+            currentPath: '',
           );
           _logEvent('Backup completed', detail: 'mode=plain');
           return const WebDavBackupSuccess();
         }
 
-        final securedPassword = resolvedPassword!;
-        final config = await _loadOrCreateConfig(
-          client,
-          baseUrl,
-          rootPath,
-          accountId,
-          securedPassword,
-        );
-        final masterKey = await _resolveMasterKey(securedPassword, config);
+        SecretKey masterKey;
+        String? legacyPassword;
+        String? vaultPassword;
+        if (useVault) {
+          vaultPassword = resolvedVaultPassword!;
+          final vaultConfig = await _vaultService.loadConfig(
+            settings: settings,
+            accountKey: normalizedAccountKey,
+          );
+          if (vaultConfig == null) {
+            throw _keyedError(
+              'legacy.webdav.config_invalid',
+              code: SyncErrorCode.invalidConfig,
+            );
+          }
+          vaultKeyId = vaultConfig.keyId;
+          masterKey = await _vaultService.resolveMasterKey(
+            vaultPassword,
+            vaultConfig,
+          );
+        } else {
+          legacyPassword = resolvedPassword!;
+          legacyConfig = await _loadOrCreateConfig(
+            client,
+            baseUrl,
+            rootPath,
+            accountId,
+            legacyPassword,
+          );
+          masterKey = await _resolveMasterKey(legacyPassword, legacyConfig);
+        }
         var index = await _loadIndex(
           client,
           baseUrl,
@@ -385,14 +693,29 @@ class WebDavBackupService {
           accountId,
           masterKey,
         );
+        if (exportEncrypted && exportLibrary != null) {
+          exportWriter = _ExportWriter(
+            library: exportLibrary,
+            backupBaseDir: _backupBaseDir(accountId),
+            exportStagingDir: _exportStagingDir,
+            chunkSize: _chunkSize,
+            logEvent: _logEvent,
+          );
+        }
 
         final snapshotId = _buildSnapshotId(now);
+        final configFiles =
+            includeConfig
+                ? await _buildConfigFiles(
+                    settings: settings,
+                    scope: settings.backupConfigScope,
+                    exportedAt: exportedAt,
+                  )
+                : const <_BackupConfigFile>[];
         final build = await _buildSnapshot(
-          localLibrary: backupLibrary,
+          localLibrary: snapshotLibrary,
           includeMemos: includeMemos,
-          configPayload: includeConfig
-              ? _buildBackupSettingsSnapshotPayload(settings)
-              : null,
+          configFiles: configFiles,
           index: index,
           masterKey: masterKey,
           client: client,
@@ -400,6 +723,11 @@ class WebDavBackupService {
           rootPath: rootPath,
           accountId: accountId,
           snapshotId: snapshotId,
+          exportedAt: exportedAt,
+          backupMode: _resolveBackupMode(
+            usesServerMode: activeLocalLibrary == null,
+          ),
+          exportWriter: exportWriter,
         );
         if (build.snapshot.files.isEmpty) {
           return WebDavBackupSkipped(
@@ -428,6 +756,70 @@ class WebDavBackupService {
           retention: settings.backupRetentionCount,
         );
 
+        if (exportWriter != null && exportLibrary != null) {
+          final exportIndex = _buildExportIndexFromSnapshot(
+            snapshot: snapshot,
+            objectSizes: build.objectSizes,
+            now: now,
+          );
+          final snapshotKey =
+              await _deriveSubKey(masterKey, 'snapshot:${snapshot.id}');
+          final snapshotBytes =
+              await _encryptJson(snapshotKey, snapshot.toJson());
+          await exportWriter.writeSnapshot(snapshot.id, snapshotBytes);
+
+          final indexKey = await _deriveSubKey(masterKey, 'index');
+          final indexBytes = await _encryptJson(indexKey, exportIndex.toJson());
+          await exportWriter.writeIndex(indexBytes);
+
+          if (legacyConfig != null) {
+            final configBytes = Uint8List.fromList(
+              utf8.encode(jsonEncode(legacyConfig!.toJson())),
+            );
+            await exportWriter.writeConfig(configBytes);
+          }
+          await exportWriter.commit();
+          exportSuccessAt = DateTime.now();
+          assert(() {
+            final ok = _assertExportMirrorIntegritySync(
+              exportLibrary: exportLibrary,
+              exportIndex: exportIndex,
+              backupBaseDir: _backupBaseDir(accountId),
+            );
+            if (!ok) {
+              _logEvent('Export mirror integrity check failed');
+            }
+            return ok;
+          }());
+
+          final fileSystem = LocalLibraryFileSystem(exportLibrary);
+          final previousEnc = await _readExportSignature(
+            fileSystem,
+            _exportEncSignatureFile,
+            accountId,
+          );
+          final signature = _buildExportSignature(
+            mode: WebDavExportMode.enc,
+            accountIdHash: accountId,
+            snapshotId: snapshot.id,
+            exportFormat: WebDavExportFormat.full,
+            vaultKeyId: vaultKeyId,
+            createdAt: previousEnc?.createdAt,
+            lastSuccessAt: exportSuccessAt!,
+          );
+          await _writeExportSignature(
+            fileSystem,
+            _exportEncSignatureFile,
+            signature,
+          );
+        }
+
+        await _waitIfPaused();
+        _updateProgress(
+          stage: WebDavBackupProgressStage.writingManifest,
+          currentPath: '${_backupSnapshotsDir}/${snapshot.id}.enc',
+          itemGroup: WebDavBackupProgressItemGroup.manifest,
+        );
         await _uploadSnapshot(
           client,
           baseUrl,
@@ -435,6 +827,12 @@ class WebDavBackupService {
           accountId,
           masterKey,
           snapshot,
+        );
+        await _waitIfPaused();
+        _updateProgress(
+          stage: WebDavBackupProgressStage.writingManifest,
+          currentPath: _backupIndexFile,
+          itemGroup: WebDavBackupProgressItemGroup.manifest,
         );
         await _saveIndex(
           client,
@@ -445,19 +843,92 @@ class WebDavBackupService {
           index,
         );
 
+        uploadSuccessAt = DateTime.now();
+        if (exportLibrary != null) {
+          final fileSystem = LocalLibraryFileSystem(exportLibrary);
+          if (exportWriter != null) {
+            final previousEnc = await _readExportSignature(
+              fileSystem,
+              _exportEncSignatureFile,
+              accountId,
+            );
+            if (previousEnc != null) {
+              final successAt = _resolveExportLastSuccessAt(
+                exportAt: exportSuccessAt ?? now,
+                uploadAt: uploadSuccessAt,
+                webDavConfigured: settings.serverUrl.trim().isNotEmpty,
+              );
+              final signature = _buildExportSignature(
+                mode: WebDavExportMode.enc,
+                accountIdHash: accountId,
+                snapshotId: snapshot.id,
+                exportFormat: WebDavExportFormat.full,
+                vaultKeyId: vaultKeyId,
+                createdAt: previousEnc.createdAt,
+                lastSuccessAt: successAt,
+              );
+              await _writeExportSignature(
+                fileSystem,
+                _exportEncSignatureFile,
+                signature,
+              );
+            }
+          } else if (plainExportCompleted) {
+            final previousPlain = await _readExportSignature(
+              fileSystem,
+              _exportPlainSignatureFile,
+              accountId,
+            );
+            final successAt = _resolveExportLastSuccessAt(
+              exportAt: exportSuccessAt ?? now,
+              uploadAt: uploadSuccessAt,
+              webDavConfigured: settings.serverUrl.trim().isNotEmpty,
+            );
+            final signature = _buildExportSignature(
+              mode: WebDavExportMode.plain,
+              accountIdHash: accountId,
+              snapshotId: '',
+              exportFormat: WebDavExportFormat.full,
+              vaultKeyId: vaultKeyId,
+              createdAt: previousPlain?.createdAt,
+              lastSuccessAt: successAt,
+            );
+            await _writeExportSignature(
+              fileSystem,
+              _exportPlainSignatureFile,
+              signature,
+            );
+          }
+        }
+
+        final previousState = await _stateRepository.read();
         await _stateRepository.write(
-          WebDavBackupState(
+          previousState.copyWith(
             lastBackupAt: now.toUtc().toIso8601String(),
             lastSnapshotId: snapshot.id,
+            lastExportSuccessAt:
+                exportSuccessAt?.toUtc().toIso8601String() ??
+                previousState.lastExportSuccessAt,
+            lastUploadSuccessAt:
+                uploadSuccessAt?.toUtc().toIso8601String() ??
+                previousState.lastUploadSuccessAt,
           ),
         );
-        if (settings.rememberBackupPassword) {
-          await _passwordRepository.write(securedPassword);
+        if (useVault) {
+          if (settings.rememberVaultPassword && vaultPassword != null) {
+            await _vaultPasswordRepository.write(vaultPassword);
+          }
+        } else if (settings.rememberBackupPassword && legacyPassword != null) {
+          await _passwordRepository.write(legacyPassword);
         }
 
         _logEvent(
           'Backup completed',
           detail: 'snapshot=${snapshot.id}',
+        );
+        _updateProgress(
+          stage: WebDavBackupProgressStage.completed,
+          currentPath: '',
         );
         return const WebDavBackupSuccess();
       } finally {
@@ -476,6 +947,14 @@ class WebDavBackupService {
       final mapped = _mapUnexpectedError(error);
       _logEvent('Backup failed', error: mapped);
       return WebDavBackupFailure(mapped);
+    } finally {
+      if (tempExportDir != null) {
+        try {
+          await tempExportDir!.delete(recursive: true);
+        } catch (_) {}
+      }
+      await _setWakelockEnabled(false);
+      _finishProgress();
     }
   }
 
@@ -496,31 +975,576 @@ class WebDavBackupService {
   }
 
   Map<String, dynamic> _buildBackupSettingsSnapshotPayload(
-    WebDavSettings settings,
-  ) {
+    WebDavSettings settings, {
+    required String exportedAt,
+  }) {
+    return _wrapConfigPayload(
+      exportedAt: exportedAt,
+      data: settings.toJson(),
+    );
+  }
+
+  Map<String, dynamic> _wrapConfigPayload({
+    required String exportedAt,
+    required Object? data,
+  }) {
     return {
       'schemaVersion': 1,
-      'generatedAt': DateTime.now().toUtc().toIso8601String(),
-      'webDav': {
-        'enabled': settings.enabled,
-        'serverUrl': settings.serverUrl,
-        'username': settings.username,
-        'authMode': settings.authMode.name,
-        'ignoreTlsErrors': settings.ignoreTlsErrors,
-        'rootPath': settings.rootPath,
-      },
-      'backup': {
-      'backupEnabled': settings.backupEnabled,
-      'backupEncryptionMode': settings.backupEncryptionMode.name,
-      'backupSchedule': settings.backupSchedule.name,
-      'backupRetentionCount': settings.backupRetentionCount,
-      'rememberBackupPassword': settings.rememberBackupPassword,
-        'backupMirrorTreeUri': settings.backupMirrorTreeUri,
-        'backupMirrorRootPath': settings.backupMirrorRootPath,
-        'backupContentConfig': settings.backupContentConfig,
-        'backupContentMemos': settings.backupContentMemos,
-      },
+      'exportedAt': exportedAt,
+      'data': data,
     };
+  }
+
+  Uint8List _encodeJsonBytes(Object payload) {
+    return Uint8List.fromList(utf8.encode(jsonEncode(payload)));
+  }
+
+  String _resolveBackupMode({required bool usesServerMode}) {
+    return usesServerMode ? 'server' : 'local';
+  }
+
+  String _formatExportPathLabel(LocalLibrary library, String prefix) {
+    final base = library.locationLabel.trim();
+    final normalized = prefix.replaceAll('\\', '/').trim();
+    if (normalized.isEmpty) return base;
+    if (base.isEmpty) return normalized;
+    return '$base/$normalized';
+  }
+
+  String _prefixExportPath(String prefix, String relativePath) {
+    final normalizedPrefix = prefix.replaceAll('\\', '/').trim();
+    final normalizedPath = relativePath.replaceAll('\\', '/').trim();
+    if (normalizedPrefix.isEmpty) return normalizedPath;
+    if (normalizedPath.isEmpty) return normalizedPrefix;
+    return '$normalizedPrefix/$normalizedPath';
+  }
+
+  Set<WebDavBackupConfigType> _resolveBackupConfigTypes({
+    required WebDavBackupConfigScope scope,
+    required WebDavBackupEncryptionMode encryptionMode,
+  }) {
+    if (scope == WebDavBackupConfigScope.none) return const {};
+    if (scope == WebDavBackupConfigScope.full &&
+        encryptionMode != WebDavBackupEncryptionMode.encrypted) {
+      return _safeBackupConfigTypes;
+    }
+    return scope == WebDavBackupConfigScope.full
+        ? _fullBackupConfigTypes
+        : _safeBackupConfigTypes;
+  }
+
+  WebDavBackupConfigType? _configTypeForPath(String path) {
+    final normalized = path.replaceAll('\\', '/').toLowerCase();
+    if (normalized == _backupPreferencesSnapshotPath) {
+      return WebDavBackupConfigType.preferences;
+    }
+    if (normalized == _backupAiSettingsSnapshotPath) {
+      return WebDavBackupConfigType.aiSettings;
+    }
+    if (normalized == _backupReminderSnapshotPath) {
+      return WebDavBackupConfigType.reminderSettings;
+    }
+    if (normalized == _backupImageBedSnapshotPath) {
+      return WebDavBackupConfigType.imageBedSettings;
+    }
+    if (normalized == _backupLocationSnapshotPath) {
+      return WebDavBackupConfigType.locationSettings;
+    }
+    if (normalized == _backupTemplateSnapshotPath) {
+      return WebDavBackupConfigType.templateSettings;
+    }
+    if (normalized == _backupAppLockSnapshotPath) {
+      return WebDavBackupConfigType.appLock;
+    }
+    if (normalized == _backupNoteDraftSnapshotPath) {
+      return WebDavBackupConfigType.noteDraft;
+    }
+    if (normalized == _backupSettingsSnapshotPath) {
+      return WebDavBackupConfigType.webdavSettings;
+    }
+    return null;
+  }
+
+  Future<List<_BackupConfigFile>> _buildConfigFiles({
+    required WebDavSettings settings,
+    required WebDavBackupConfigScope scope,
+    required String exportedAt,
+  }) async {
+    final types = _resolveBackupConfigTypes(
+      scope: scope,
+      encryptionMode: settings.backupEncryptionMode,
+    );
+    if (types.isEmpty) return const [];
+    WebDavSyncLocalSnapshot? snapshot;
+    final needsLocalSnapshot = types.any(
+      (type) => type != WebDavBackupConfigType.webdavSettings,
+    );
+    if (needsLocalSnapshot && _configAdapter != null) {
+      snapshot = await _configAdapter!.readSnapshot();
+    }
+
+    final files = <_BackupConfigFile>[];
+    if (types.contains(WebDavBackupConfigType.preferences) &&
+        snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.preferences.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.preferences,
+          path: _backupPreferencesSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.aiSettings) && snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.aiSettings.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.aiSettings,
+          path: _backupAiSettingsSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.reminderSettings) &&
+        snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.reminderSettings.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.reminderSettings,
+          path: _backupReminderSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.imageBedSettings) &&
+        snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.imageBedSettings.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.imageBedSettings,
+          path: _backupImageBedSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.locationSettings) &&
+        snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.locationSettings.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.locationSettings,
+          path: _backupLocationSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.templateSettings) &&
+        snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.templateSettings.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.templateSettings,
+          path: _backupTemplateSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.appLock) && snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: snapshot.appLockSnapshot.toJson(),
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.appLock,
+          path: _backupAppLockSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.noteDraft) && snapshot != null) {
+      final payload = _wrapConfigPayload(
+        exportedAt: exportedAt,
+        data: {'text': snapshot.noteDraft},
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.noteDraft,
+          path: _backupNoteDraftSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+    if (types.contains(WebDavBackupConfigType.webdavSettings)) {
+      final payload = _buildBackupSettingsSnapshotPayload(
+        settings,
+        exportedAt: exportedAt,
+      );
+      files.add(
+        _BackupConfigFile(
+          type: WebDavBackupConfigType.webdavSettings,
+          path: _backupSettingsSnapshotPath,
+          bytes: _encodeJsonBytes(payload),
+        ),
+      );
+    }
+
+    return files;
+  }
+
+  WebDavBackupConfigBundle _parseConfigBundle(
+    Map<WebDavBackupConfigType, Uint8List> configBytes,
+  ) {
+    AppPreferences? preferences;
+    AiSettings? aiSettings;
+    ReminderSettings? reminderSettings;
+    ImageBedSettings? imageBedSettings;
+    LocationSettings? locationSettings;
+    MemoTemplateSettings? templateSettings;
+    AppLockSnapshot? appLockSnapshot;
+    String? noteDraft;
+    WebDavSettings? webDavSettings;
+
+    T? safeParse<T>(T Function() parser) {
+      try {
+        return parser();
+      } catch (_) {
+        return null;
+      }
+    }
+
+    Map<String, dynamic>? readEnvelope(Uint8List bytes) {
+      final decoded = _decodeJsonValue(bytes);
+      if (decoded is Map) {
+        return decoded.cast<String, dynamic>();
+      }
+      return null;
+    }
+
+    Map<String, dynamic>? readConfigData(Map<String, dynamic> envelope) {
+      if (!_isValidConfigEnvelope(envelope)) return null;
+      final data = envelope['data'];
+      if (data is Map) return data.cast<String, dynamic>();
+      return null;
+    }
+
+    final preferencesBytes = configBytes[WebDavBackupConfigType.preferences];
+    if (preferencesBytes != null) {
+      final envelope = readEnvelope(preferencesBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        preferences = safeParse(() => AppPreferences.fromJson(data));
+      }
+    }
+
+    final reminderBytes = configBytes[WebDavBackupConfigType.reminderSettings];
+    if (reminderBytes != null) {
+      final envelope = readEnvelope(reminderBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        final fallbackLanguage =
+            preferences?.language ?? AppPreferences.defaults.language;
+        reminderSettings = safeParse(
+          () => ReminderSettings.fromJson(
+            data,
+            fallback: ReminderSettings.defaultsFor(fallbackLanguage),
+          ),
+        );
+      }
+    }
+
+    final aiBytes = configBytes[WebDavBackupConfigType.aiSettings];
+    if (aiBytes != null) {
+      final envelope = readEnvelope(aiBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        aiSettings = safeParse(() => AiSettings.fromJson(data));
+      }
+    }
+
+    final imageBedBytes =
+        configBytes[WebDavBackupConfigType.imageBedSettings];
+    if (imageBedBytes != null) {
+      final envelope = readEnvelope(imageBedBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        imageBedSettings = safeParse(() => ImageBedSettings.fromJson(data));
+      }
+    }
+
+    final locationBytes =
+        configBytes[WebDavBackupConfigType.locationSettings];
+    if (locationBytes != null) {
+      final envelope = readEnvelope(locationBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        locationSettings = safeParse(() => LocationSettings.fromJson(data));
+      }
+    }
+
+    final templateBytes =
+        configBytes[WebDavBackupConfigType.templateSettings];
+    if (templateBytes != null) {
+      final envelope = readEnvelope(templateBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        templateSettings = safeParse(() => MemoTemplateSettings.fromJson(data));
+      }
+    }
+
+    final appLockBytes = configBytes[WebDavBackupConfigType.appLock];
+    if (appLockBytes != null) {
+      final envelope = readEnvelope(appLockBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        appLockSnapshot = safeParse(() => AppLockSnapshot.fromJson(data));
+      }
+    }
+
+    final noteDraftBytes = configBytes[WebDavBackupConfigType.noteDraft];
+    if (noteDraftBytes != null) {
+      final envelope = readEnvelope(noteDraftBytes);
+      if (envelope != null && _isValidConfigEnvelope(envelope)) {
+        final data = envelope['data'];
+        if (data is String) {
+          noteDraft = data;
+        } else if (data is Map) {
+          final text = data['text'];
+          if (text is String) noteDraft = text;
+        }
+      }
+    }
+
+    final webDavBytes = configBytes[WebDavBackupConfigType.webdavSettings];
+    if (webDavBytes != null) {
+      final envelope = readEnvelope(webDavBytes);
+        if (envelope != null && _isValidConfigEnvelope(envelope)) {
+          final data = envelope['data'];
+          Map<String, dynamic>? settingsJson;
+          if (data is Map) {
+            settingsJson = data.cast<String, dynamic>();
+          } else {
+            settingsJson = _extractLegacyWebDavSettings(envelope);
+          }
+        if (settingsJson != null) {
+          final resolved = settingsJson;
+          webDavSettings =
+              safeParse(() => WebDavSettings.fromJson(resolved));
+        }
+      }
+    }
+
+    return WebDavBackupConfigBundle(
+      preferences: preferences,
+      aiSettings: aiSettings,
+      reminderSettings: reminderSettings,
+      imageBedSettings: imageBedSettings,
+      locationSettings: locationSettings,
+      templateSettings: templateSettings,
+      appLockSnapshot: appLockSnapshot,
+      noteDraft: noteDraft,
+      webDavSettings: webDavSettings,
+    );
+  }
+
+  Object? _decodeJsonValue(Uint8List bytes) {
+    try {
+      return jsonDecode(utf8.decode(bytes, allowMalformed: true));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isValidConfigEnvelope(Map<String, dynamic> envelope) {
+    int readInt(String key) {
+      final raw = envelope[key];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim()) ?? -1;
+      return -1;
+    }
+
+    final schemaVersion = readInt('schemaVersion');
+    final exportedAt = envelope['exportedAt'];
+    return schemaVersion >= 1 &&
+        exportedAt is String &&
+        exportedAt.trim().isNotEmpty;
+  }
+
+  Map<String, dynamic>? _extractLegacyWebDavSettings(
+    Map<String, dynamic> envelope,
+  ) {
+    final webDav = envelope['webDav'];
+    final backup = envelope['backup'];
+    final vault = envelope['vault'];
+    if (webDav is! Map && backup is! Map && vault is! Map) {
+      return null;
+    }
+    final settings = <String, dynamic>{};
+    if (webDav is Map) {
+      settings['enabled'] = webDav['enabled'];
+      settings['serverUrl'] = webDav['serverUrl'];
+      settings['username'] = webDav['username'];
+      settings['authMode'] = webDav['authMode'];
+      settings['ignoreTlsErrors'] = webDav['ignoreTlsErrors'];
+      settings['rootPath'] = webDav['rootPath'];
+    }
+    if (backup is Map) {
+      settings['backupEnabled'] = backup['backupEnabled'];
+      settings['backupEncryptionMode'] = backup['backupEncryptionMode'];
+      settings['backupSchedule'] = backup['backupSchedule'];
+      settings['backupRetentionCount'] = backup['backupRetentionCount'];
+      settings['rememberBackupPassword'] = backup['rememberBackupPassword'];
+      settings['backupExportEncrypted'] = backup['backupExportEncrypted'];
+      settings['backupMirrorTreeUri'] = backup['backupMirrorTreeUri'];
+      settings['backupMirrorRootPath'] = backup['backupMirrorRootPath'];
+      settings['backupConfigScope'] = backup['backupConfigScope'];
+      settings['backupContentConfig'] = backup['backupContentConfig'];
+      settings['backupContentMemos'] = backup['backupContentMemos'];
+    }
+    if (vault is Map) {
+      settings['vaultEnabled'] = vault['enabled'];
+      settings['rememberVaultPassword'] = vault['rememberPassword'];
+      settings['vaultKeepPlainCache'] = vault['keepPlainCache'];
+    }
+    return settings.isEmpty ? null : settings;
+  }
+
+  Set<WebDavBackupConfigType> _availableConfigTypes(
+    WebDavBackupConfigBundle bundle,
+  ) {
+    final types = <WebDavBackupConfigType>{};
+    if (bundle.preferences != null) {
+      types.add(WebDavBackupConfigType.preferences);
+    }
+    if (bundle.aiSettings != null) {
+      types.add(WebDavBackupConfigType.aiSettings);
+    }
+    if (bundle.reminderSettings != null) {
+      types.add(WebDavBackupConfigType.reminderSettings);
+    }
+    if (bundle.imageBedSettings != null) {
+      types.add(WebDavBackupConfigType.imageBedSettings);
+    }
+    if (bundle.locationSettings != null) {
+      types.add(WebDavBackupConfigType.locationSettings);
+    }
+    if (bundle.templateSettings != null) {
+      types.add(WebDavBackupConfigType.templateSettings);
+    }
+    if (bundle.appLockSnapshot != null) {
+      types.add(WebDavBackupConfigType.appLock);
+    }
+    if (bundle.noteDraft != null) {
+      types.add(WebDavBackupConfigType.noteDraft);
+    }
+    if (bundle.webDavSettings != null) {
+      types.add(WebDavBackupConfigType.webdavSettings);
+    }
+    return types;
+  }
+
+  Future<void> _applyConfigBundle({
+    required WebDavBackupConfigBundle bundle,
+    WebDavBackupConfigDecisionHandler? decisionHandler,
+  }) async {
+    if (_configAdapter == null || bundle.isEmpty) return;
+    final available = _availableConfigTypes(bundle);
+    final exportOnlyTypes = available.intersection(_exportOnlyConfigTypes);
+    final autoTypes = available.intersection(_autoRestoreConfigTypes);
+    final confirmTypes = available.intersection(_confirmRestoreConfigTypes);
+    final allowed = <WebDavBackupConfigType>{...autoTypes};
+    if (confirmTypes.isNotEmpty && decisionHandler != null) {
+      final selected = await decisionHandler(bundle);
+      allowed.addAll(confirmTypes.intersection(selected));
+    }
+    if (exportOnlyTypes.isNotEmpty) {
+      _logEvent(
+        'Config export-only',
+        detail: exportOnlyTypes.map((e) => e.name).join(','),
+      );
+    }
+
+    for (final type in allowed) {
+      try {
+        switch (type) {
+          case WebDavBackupConfigType.preferences:
+            final prefs = bundle.preferences;
+            if (prefs != null) {
+              await _configAdapter!.applyPreferences(prefs);
+            }
+            break;
+          case WebDavBackupConfigType.aiSettings:
+            final ai = bundle.aiSettings;
+            if (ai != null) {
+              await _configAdapter!.applyAiSettings(ai);
+            }
+            break;
+          case WebDavBackupConfigType.reminderSettings:
+            final reminder = bundle.reminderSettings;
+            if (reminder != null) {
+              await _configAdapter!.applyReminderSettings(reminder);
+            }
+            break;
+          case WebDavBackupConfigType.imageBedSettings:
+            final imageBed = bundle.imageBedSettings;
+            if (imageBed != null) {
+              await _configAdapter!.applyImageBedSettings(imageBed);
+            }
+            break;
+          case WebDavBackupConfigType.locationSettings:
+            final location = bundle.locationSettings;
+            if (location != null) {
+              await _configAdapter!.applyLocationSettings(location);
+            }
+            break;
+          case WebDavBackupConfigType.templateSettings:
+            final template = bundle.templateSettings;
+            if (template != null) {
+              await _configAdapter!.applyTemplateSettings(template);
+            }
+            break;
+          case WebDavBackupConfigType.appLock:
+            final lockSnapshot = bundle.appLockSnapshot;
+            if (lockSnapshot != null) {
+              await _configAdapter!.applyAppLockSnapshot(lockSnapshot);
+            }
+            break;
+          case WebDavBackupConfigType.noteDraft:
+            final draft = bundle.noteDraft;
+            if (draft != null) {
+              await _configAdapter!.applyNoteDraft(draft);
+            }
+            break;
+          case WebDavBackupConfigType.webdavSettings:
+            final webDavSettings = bundle.webDavSettings;
+            if (webDavSettings != null) {
+              await _configAdapter!.applyWebDavSettings(webDavSettings);
+            }
+            break;
+        }
+      } catch (error) {
+        _logEvent('Config restore failed', error: error);
+      }
+    }
   }
 
   Future<List<WebDavBackupSnapshotInfo>> listSnapshots({
@@ -536,9 +1560,18 @@ class WebDavBackupService {
     final client = _buildClient(settings, baseUrl);
     try {
       await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
-      final config = await _loadConfig(client, baseUrl, rootPath, accountId);
-      if (config == null) return const [];
-      final masterKey = await _resolveMasterKey(password, config);
+      SecretKey masterKey;
+      if (settings.vaultEnabled) {
+        masterKey = await _resolveVaultMasterKey(
+          settings: settings,
+          accountKey: normalizedAccountKey,
+          password: password,
+        );
+      } else {
+        final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+        if (config == null) return const [];
+        masterKey = await _resolveMasterKey(password, config);
+      }
       final index = await _loadIndex(
         client,
         baseUrl,
@@ -582,6 +1615,259 @@ class WebDavBackupService {
     }
   }
 
+  Future<SyncError?> verifyBackup({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required String password,
+    bool deep = false,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    if (normalizedAccountKey.isEmpty) {
+      return _keyedError(
+        'legacy.webdav.backup_account_missing',
+        code: SyncErrorCode.invalidConfig,
+      );
+    }
+    if (settings.backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
+      return _keyedError(
+        'legacy.webdav.backup_disabled',
+        code: SyncErrorCode.invalidConfig,
+      );
+    }
+    final baseUrl = _parseBaseUrl(settings.serverUrl);
+    final accountId = fnv1a64Hex(normalizedAccountKey);
+    final rootPath = normalizeWebDavRootPath(settings.rootPath);
+    final client = _buildClient(settings, baseUrl);
+    try {
+      await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
+      final masterKey = settings.vaultEnabled
+          ? await _resolveVaultMasterKey(
+              settings: settings,
+              accountKey: normalizedAccountKey,
+              password: password,
+            )
+          : await _resolveMasterKeyFromLegacy(
+              client: client,
+              baseUrl: baseUrl,
+              rootPath: rootPath,
+              accountId: accountId,
+              password: password,
+            );
+      final index = await _loadIndex(
+        client,
+        baseUrl,
+        rootPath,
+        accountId,
+        masterKey,
+      );
+      if (index.snapshots.isEmpty) {
+        return _keyedError(
+          'legacy.webdav.backup_empty',
+          code: SyncErrorCode.dataCorrupt,
+        );
+      }
+      final sorted = [...index.snapshots]
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final latest = sorted.first;
+      final snapshot = await _loadSnapshot(
+        client: client,
+        baseUrl: baseUrl,
+        rootPath: rootPath,
+        accountId: accountId,
+        masterKey: masterKey,
+        snapshotId: latest.id,
+      );
+      if (snapshot.files.isEmpty) {
+        return _keyedError(
+          'legacy.webdav.backup_empty',
+          code: SyncErrorCode.dataCorrupt,
+        );
+      }
+      if (deep) {
+        final tempRoot = await getTemporaryDirectory();
+        final parent = Directory(
+          p.join(tempRoot.path, 'memoflow_backup_verify'),
+        );
+        if (!await parent.exists()) {
+          await parent.create(recursive: true);
+        }
+        final tempDir = await parent.createTemp('restore_');
+        final tempLibrary = LocalLibrary(
+          key: 'webdav_backup_verify',
+          name: 'WebDAV Backup Verify',
+          rootPath: tempDir.path,
+        );
+        final fileSystem = LocalLibraryFileSystem(tempLibrary);
+        try {
+          for (final entry in snapshot.files) {
+            await _restoreFile(
+              entry: entry,
+              fileSystem: fileSystem,
+              client: client,
+              baseUrl: baseUrl,
+              rootPath: rootPath,
+              accountId: accountId,
+              masterKey: masterKey,
+            );
+          }
+        } finally {
+          try {
+            await tempDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      } else {
+        String? firstObject;
+        for (final entry in snapshot.files) {
+          if (entry.objects.isEmpty) continue;
+          firstObject = entry.objects.first;
+          break;
+        }
+        if (firstObject != null && firstObject.isNotEmpty) {
+          await _decryptObject(
+            client: client,
+            baseUrl: baseUrl,
+            rootPath: rootPath,
+            accountId: accountId,
+            masterKey: masterKey,
+            hash: firstObject,
+          );
+        }
+      }
+      return null;
+    } on SyncError catch (error) {
+      return error;
+    } catch (error) {
+      return _mapUnexpectedError(error);
+    } finally {
+      await client.close();
+    }
+  }
+
+  Future<WebDavExportStatus> fetchExportStatus({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary? activeLocalLibrary,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    final accountId = normalizedAccountKey.isEmpty
+        ? ''
+        : fnv1a64Hex(normalizedAccountKey);
+    final webDavConfigured = settings.serverUrl.trim().isNotEmpty;
+    final exportLibrary = activeLocalLibrary == null
+        ? _resolveBackupLibrary(settings, null)
+        : null;
+    final state = await _stateRepository.read();
+
+    if (exportLibrary == null || accountId.isEmpty) {
+      return WebDavExportStatus(
+        webDavConfigured: webDavConfigured,
+        encSignature: null,
+        plainSignature: null,
+        plainDetected: false,
+        plainDeprecated: false,
+        plainDetectedAt: state.exportPlainDetectedAt,
+        plainRemindAfter: state.exportPlainRemindAfter,
+        lastExportSuccessAt: state.lastExportSuccessAt,
+        lastUploadSuccessAt: state.lastUploadSuccessAt,
+      );
+    }
+
+    final fileSystem = LocalLibraryFileSystem(exportLibrary);
+    final encSignature = await _readExportSignature(
+      fileSystem,
+      _exportEncSignatureFile,
+      accountId,
+    );
+    final plainSignature = await _readExportSignature(
+      fileSystem,
+      _exportPlainSignatureFile,
+      accountId,
+    );
+    final legacyPlainDetected = await _detectPlainExport(fileSystem);
+    final plainDetected = plainSignature != null || legacyPlainDetected;
+    final plainDeprecated = encSignature != null && plainDetected;
+
+    var detectedAt = state.exportPlainDetectedAt;
+    var remindAfter = state.exportPlainRemindAfter;
+    if (plainDetected && detectedAt == null) {
+      final now = DateTime.now().toUtc();
+      detectedAt = now.toIso8601String();
+      remindAfter = now.add(const Duration(days: 7)).toIso8601String();
+      await _stateRepository.write(
+        state.copyWith(
+          exportPlainDetectedAt: detectedAt,
+          exportPlainRemindAfter: remindAfter,
+        ),
+      );
+    }
+
+    return WebDavExportStatus(
+      webDavConfigured: webDavConfigured,
+      encSignature: encSignature,
+      plainSignature: plainSignature,
+      plainDetected: plainDetected,
+      plainDeprecated: plainDeprecated,
+      plainDetectedAt: detectedAt,
+      plainRemindAfter: remindAfter,
+      lastExportSuccessAt: state.lastExportSuccessAt,
+      lastUploadSuccessAt: state.lastUploadSuccessAt,
+    );
+  }
+
+  Future<WebDavExportCleanupStatus> cleanPlainExport({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary? activeLocalLibrary,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    if (normalizedAccountKey.isEmpty) {
+      return WebDavExportCleanupStatus.notFound;
+    }
+    final exportLibrary = activeLocalLibrary == null
+        ? _resolveBackupLibrary(settings, null)
+        : null;
+    if (exportLibrary == null) {
+      return WebDavExportCleanupStatus.notFound;
+    }
+
+    final status = await fetchExportStatus(
+      settings: settings,
+      accountKey: accountKey,
+      activeLocalLibrary: activeLocalLibrary,
+    );
+    if (!status.plainDetected) {
+      return WebDavExportCleanupStatus.notFound;
+    }
+    final hasUpload = status.lastUploadSuccessAt != null;
+    final hasExport = status.lastExportSuccessAt != null;
+    final requiresUpload = status.webDavConfigured;
+    if (requiresUpload && !hasUpload) {
+      return WebDavExportCleanupStatus.blocked;
+    }
+    if (!requiresUpload && !hasExport) {
+      return WebDavExportCleanupStatus.blocked;
+    }
+
+    final fileSystem = LocalLibraryFileSystem(exportLibrary);
+    await _deletePlainExportFiles(fileSystem);
+
+    final previous = await _stateRepository.read();
+    final clearedAt = DateTime.now().toUtc().toIso8601String();
+    await _stateRepository.write(
+      WebDavBackupState(
+        lastBackupAt: previous.lastBackupAt,
+        lastSnapshotId: previous.lastSnapshotId,
+        lastExportSuccessAt: previous.lastExportSuccessAt,
+        lastUploadSuccessAt: previous.lastUploadSuccessAt,
+        exportPlainDetectedAt: null,
+        exportPlainRemindAfter: null,
+        exportPlainClearedAt: clearedAt,
+      ),
+    );
+
+    return WebDavExportCleanupStatus.cleaned;
+  }
+
   Future<WebDavRestoreResult> restoreSnapshot({
     required WebDavSettings settings,
     required String? accountKey,
@@ -589,6 +1875,7 @@ class WebDavBackupService {
     required WebDavBackupSnapshotInfo snapshot,
     required String password,
     Map<String, bool>? conflictDecisions,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
   }) async {
     final normalizedAccountKey = accountKey?.trim() ?? '';
     if (normalizedAccountKey.isEmpty) {
@@ -610,6 +1897,9 @@ class WebDavBackupService {
     }
 
     _logEvent('Restore started', detail: 'snapshot=${snapshot.id}');
+    _startProgress(WebDavBackupProgressOperation.restore);
+    _updateProgress(stage: WebDavBackupProgressStage.preparing);
+    await _setWakelockEnabled(true);
     try {
       final baseUrl = _parseBaseUrl(settings.serverUrl);
       final accountId = fnv1a64Hex(normalizedAccountKey);
@@ -617,14 +1907,23 @@ class WebDavBackupService {
       final client = _buildClient(settings, baseUrl);
       try {
         await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
-        final config = await _loadConfig(client, baseUrl, rootPath, accountId);
-        if (config == null) {
-          throw _keyedError(
-            'legacy.msg_no_backups_found',
-            code: SyncErrorCode.unknown,
+        SecretKey masterKey;
+        if (settings.vaultEnabled) {
+          masterKey = await _resolveVaultMasterKey(
+            settings: settings,
+            accountKey: normalizedAccountKey,
+            password: password,
           );
+        } else {
+          final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+          if (config == null) {
+            throw _keyedError(
+              'legacy.msg_no_backups_found',
+              code: SyncErrorCode.unknown,
+            );
+          }
+          masterKey = await _resolveMasterKey(password, config);
         }
-        final masterKey = await _resolveMasterKey(password, config);
         final snapshotData = await _loadSnapshot(
           client: client,
           baseUrl: baseUrl,
@@ -653,14 +1952,73 @@ class WebDavBackupService {
         }
 
         final fileSystem = LocalLibraryFileSystem(activeLocalLibrary);
+        final configPayloads = <WebDavBackupConfigType, Uint8List>{};
         await fileSystem.clearLibrary();
         await _attachmentStore.clearAll();
         await fileSystem.ensureStructure();
 
-        for (final entry in snapshotData.files) {
-          if (_isBackupSettingsSnapshotPath(entry.path)) {
+        final entries =
+            snapshotData.files
+                .where((entry) => entry.path != _backupManifestFile)
+                .toList(growable: false);
+        var restoredCount = 0;
+        final totalCount = entries.length;
+        _updateProgress(
+          stage: WebDavBackupProgressStage.downloading,
+          completed: restoredCount,
+          total: totalCount,
+          currentPath: '',
+          itemGroup: WebDavBackupProgressItemGroup.other,
+        );
+        for (final entry in entries) {
+          await _waitIfPaused();
+          _updateProgress(
+            stage: WebDavBackupProgressStage.downloading,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
+          final configType = _configTypeForPath(entry.path);
+          if (configType != null) {
+            try {
+              final bytes = await _readSnapshotFileBytes(
+                entry: entry,
+                client: client,
+                baseUrl: baseUrl,
+                rootPath: rootPath,
+                accountId: accountId,
+                masterKey: masterKey,
+              );
+              configPayloads[configType] = bytes;
+              restoredCount += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.writing,
+                completed: restoredCount,
+                total: totalCount,
+                currentPath: entry.path,
+                itemGroup: WebDavBackupProgressItemGroup.config,
+              );
+            } catch (error) {
+              _logEvent('Config restore skipped', error: error);
+              restoredCount += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.writing,
+                completed: restoredCount,
+                total: totalCount,
+                currentPath: entry.path,
+                itemGroup: WebDavBackupProgressItemGroup.config,
+              );
+            }
             continue;
           }
+          _updateProgress(
+            stage: WebDavBackupProgressStage.writing,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
           await _restoreFile(
             entry: entry,
             fileSystem: fileSystem,
@@ -670,11 +2028,26 @@ class WebDavBackupService {
             accountId: accountId,
             masterKey: masterKey,
           );
+          restoredCount += 1;
+          _updateProgress(
+            stage: WebDavBackupProgressStage.writing,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
         }
 
         await _db.clearOutbox();
         final scanService = _scanServiceFor(activeLocalLibrary);
         if (scanService != null) {
+          await _waitIfPaused();
+          _updateProgress(
+            stage: WebDavBackupProgressStage.scanning,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: '',
+          );
           final scanResult = await scanService.scanAndMerge(
             forceDisk: true,
             conflictDecisions: conflictDecisions,
@@ -689,7 +2062,19 @@ class WebDavBackupService {
           }
         }
 
+        if (configPayloads.isNotEmpty) {
+          final bundle = _parseConfigBundle(configPayloads);
+          await _applyConfigBundle(
+            bundle: bundle,
+            decisionHandler: configDecisionHandler,
+          );
+        }
+
         _logEvent('Restore completed', detail: 'snapshot=${snapshot.id}');
+        _updateProgress(
+          stage: WebDavBackupProgressStage.completed,
+          currentPath: '',
+        );
         return const WebDavRestoreSuccess();
       } finally {
         await client.close();
@@ -701,6 +2086,9 @@ class WebDavBackupService {
       final mapped = _mapUnexpectedError(error);
       _logEvent('Restore failed', error: mapped);
       return WebDavRestoreFailure(mapped);
+    } finally {
+      await _setWakelockEnabled(false);
+      _finishProgress();
     }
   }
 
@@ -709,6 +2097,7 @@ class WebDavBackupService {
     required String? accountKey,
     required LocalLibrary? activeLocalLibrary,
     Map<String, bool>? conflictDecisions,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
   }) async {
     final normalizedAccountKey = accountKey?.trim() ?? '';
     if (normalizedAccountKey.isEmpty) {
@@ -730,6 +2119,9 @@ class WebDavBackupService {
     }
 
     _logEvent('Restore started', detail: 'mode=plain');
+    _startProgress(WebDavBackupProgressOperation.restore);
+    _updateProgress(stage: WebDavBackupProgressStage.preparing);
+    await _setWakelockEnabled(true);
     try {
       final baseUrl = _parseBaseUrl(settings.serverUrl);
       final accountId = fnv1a64Hex(normalizedAccountKey);
@@ -772,14 +2164,60 @@ class WebDavBackupService {
         }
 
         final fileSystem = LocalLibraryFileSystem(activeLocalLibrary);
+        final configPayloads = <WebDavBackupConfigType, Uint8List>{};
         await fileSystem.clearLibrary();
         await _attachmentStore.clearAll();
         await fileSystem.ensureStructure();
 
-        for (final entry in index.files) {
-          if (_isBackupSettingsSnapshotPath(entry.path)) {
+        final entries =
+            index.files
+                .where((entry) => entry.path != _backupManifestFile)
+                .toList(growable: false);
+        var restoredCount = 0;
+        final totalCount = entries.length;
+        _updateProgress(
+          stage: WebDavBackupProgressStage.downloading,
+          completed: restoredCount,
+          total: totalCount,
+          currentPath: '',
+          itemGroup: WebDavBackupProgressItemGroup.other,
+        );
+
+        for (final entry in entries) {
+          await _waitIfPaused();
+          _updateProgress(
+            stage: WebDavBackupProgressStage.downloading,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
+          final configType = _configTypeForPath(entry.path);
+          if (configType != null) {
+            final bytes = await _getBytes(
+              client,
+              _plainFileUri(baseUrl, rootPath, accountId, entry.path),
+            );
+            if (bytes != null) {
+              configPayloads[configType] = Uint8List.fromList(bytes);
+            }
+            restoredCount += 1;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.config,
+            );
             continue;
           }
+          _updateProgress(
+            stage: WebDavBackupProgressStage.writing,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
           final bytes = await _getBytes(
             client,
             _plainFileUri(baseUrl, rootPath, accountId, entry.path),
@@ -796,11 +2234,26 @@ class WebDavBackupService {
             Stream<Uint8List>.value(Uint8List.fromList(bytes)),
             mimeType: _guessMimeType(entry.path),
           );
+          restoredCount += 1;
+          _updateProgress(
+            stage: WebDavBackupProgressStage.writing,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
         }
 
         await _db.clearOutbox();
         final scanService = _scanServiceFor(activeLocalLibrary);
         if (scanService != null) {
+          await _waitIfPaused();
+          _updateProgress(
+            stage: WebDavBackupProgressStage.scanning,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: '',
+          );
           final scanResult = await scanService.scanAndMerge(
             forceDisk: true,
             conflictDecisions: conflictDecisions,
@@ -815,7 +2268,19 @@ class WebDavBackupService {
           }
         }
 
+        if (configPayloads.isNotEmpty) {
+          final bundle = _parseConfigBundle(configPayloads);
+          await _applyConfigBundle(
+            bundle: bundle,
+            decisionHandler: configDecisionHandler,
+          );
+        }
+
         _logEvent('Restore completed', detail: 'mode=plain');
+        _updateProgress(
+          stage: WebDavBackupProgressStage.completed,
+          currentPath: '',
+        );
         return const WebDavRestoreSuccess();
       } finally {
         await client.close();
@@ -827,6 +2292,487 @@ class WebDavBackupService {
       final mapped = _mapUnexpectedError(error);
       _logEvent('Restore failed', error: mapped);
       return WebDavRestoreFailure(mapped);
+    } finally {
+      await _setWakelockEnabled(false);
+      _finishProgress();
+    }
+  }
+
+  Future<WebDavRestoreResult> restoreSnapshotToDirectory({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required WebDavBackupSnapshotInfo snapshot,
+    required String password,
+    required LocalLibrary exportLibrary,
+    required String exportPrefix,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    if (normalizedAccountKey.isEmpty) {
+      return WebDavRestoreSkipped(
+        reason: _keyedError(
+          'legacy.webdav.restore_account_missing',
+          code: SyncErrorCode.invalidConfig,
+        ),
+      );
+    }
+
+    _logEvent('Restore started', detail: 'snapshot=${snapshot.id} (export)');
+    _startProgress(WebDavBackupProgressOperation.restore);
+    _updateProgress(stage: WebDavBackupProgressStage.preparing);
+    await _setWakelockEnabled(true);
+    try {
+      final baseUrl = _parseBaseUrl(settings.serverUrl);
+      final accountId = fnv1a64Hex(normalizedAccountKey);
+      final rootPath = normalizeWebDavRootPath(settings.rootPath);
+      final client = _buildClient(settings, baseUrl);
+      try {
+        await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
+        SecretKey masterKey;
+        if (settings.vaultEnabled) {
+          masterKey = await _resolveVaultMasterKey(
+            settings: settings,
+            accountKey: normalizedAccountKey,
+            password: password,
+          );
+        } else {
+          final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+          if (config == null) {
+            throw _keyedError(
+              'legacy.msg_no_backups_found',
+              code: SyncErrorCode.unknown,
+            );
+          }
+          masterKey = await _resolveMasterKey(password, config);
+        }
+        final snapshotData = await _loadSnapshot(
+          client: client,
+          baseUrl: baseUrl,
+          rootPath: rootPath,
+          accountId: accountId,
+          masterKey: masterKey,
+          snapshotId: snapshot.id,
+        );
+        if (snapshotData.files.isEmpty) {
+          _logEvent('Restore failed', detail: 'snapshot_empty');
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.webdav.backup_empty',
+              code: SyncErrorCode.dataCorrupt,
+            ),
+          );
+        }
+
+        WebDavBackupManifest? manifest;
+        WebDavBackupFileEntry? manifestEntry;
+        for (final entry in snapshotData.files) {
+          if (entry.path == _backupManifestFile) {
+            manifestEntry = entry;
+            break;
+          }
+        }
+        if (manifestEntry != null) {
+          final bytes = await _readSnapshotFileBytes(
+            entry: manifestEntry,
+            client: client,
+            baseUrl: baseUrl,
+            rootPath: rootPath,
+            accountId: accountId,
+            masterKey: masterKey,
+          );
+          final decoded = _decodeJsonValue(bytes);
+          if (decoded is Map) {
+            manifest = WebDavBackupManifest.fromJson(
+              decoded.cast<String, dynamic>(),
+            );
+          }
+        }
+        if (manifest == null) {
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.webdav.data_corrupted',
+              code: SyncErrorCode.dataCorrupt,
+            ),
+          );
+        }
+
+        final fileSystem = LocalLibraryFileSystem(exportLibrary);
+        final configPayloads = <WebDavBackupConfigType, Uint8List>{};
+        var restoredMemoCount = 0;
+        var missingAttachments = 0;
+        var restoredCount = 0;
+        final totalCount = snapshotData.files.length;
+        _updateProgress(
+          stage: WebDavBackupProgressStage.downloading,
+          completed: restoredCount,
+          total: totalCount,
+          currentPath: '',
+          itemGroup: WebDavBackupProgressItemGroup.other,
+        );
+        for (final entry in snapshotData.files) {
+          await _waitIfPaused();
+          _updateProgress(
+            stage: WebDavBackupProgressStage.downloading,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
+          final targetPath = _prefixExportPath(exportPrefix, entry.path);
+          if (entry.path == _backupManifestFile) {
+            final bytes = await _readSnapshotFileBytes(
+              entry: entry,
+              client: client,
+              baseUrl: baseUrl,
+              rootPath: rootPath,
+              accountId: accountId,
+              masterKey: masterKey,
+            );
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.manifest,
+            );
+            await fileSystem.writeFileFromChunks(
+              targetPath,
+              Stream<Uint8List>.value(bytes),
+              mimeType: _guessMimeType(entry.path),
+            );
+            restoredCount += 1;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.manifest,
+            );
+            continue;
+          }
+          final configType = _configTypeForPath(entry.path);
+          if (configType != null) {
+            final bytes = await _readSnapshotFileBytes(
+              entry: entry,
+              client: client,
+              baseUrl: baseUrl,
+              rootPath: rootPath,
+              accountId: accountId,
+              masterKey: masterKey,
+            );
+            configPayloads[configType] = bytes;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.config,
+            );
+            await fileSystem.writeFileFromChunks(
+              targetPath,
+              Stream<Uint8List>.value(bytes),
+              mimeType: _guessMimeType(entry.path),
+            );
+            restoredCount += 1;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.config,
+            );
+            continue;
+          }
+          try {
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: _progressItemGroupForPath(entry.path),
+            );
+            await _restoreFileToPath(
+              entry: entry,
+              targetPath: targetPath,
+              fileSystem: fileSystem,
+              client: client,
+              baseUrl: baseUrl,
+              rootPath: rootPath,
+              accountId: accountId,
+              masterKey: masterKey,
+            );
+            restoredCount += 1;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: _progressItemGroupForPath(entry.path),
+            );
+            if (_isMemoPath(entry.path)) {
+              restoredMemoCount += 1;
+            }
+          } catch (error) {
+            if (_isAttachmentPath(entry.path)) {
+              missingAttachments += 1;
+              try {
+                await fileSystem.deleteRelativeFile(targetPath);
+              } catch (_) {}
+              restoredCount += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.writing,
+                completed: restoredCount,
+                total: totalCount,
+                currentPath: entry.path,
+                itemGroup: WebDavBackupProgressItemGroup.attachment,
+              );
+              continue;
+            }
+            return WebDavRestoreFailure(_mapUnexpectedError(error));
+          }
+        }
+
+        if (restoredMemoCount < manifest.memoCount) {
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.webdav.backup_no_memos',
+              code: SyncErrorCode.dataCorrupt,
+            ),
+          );
+        }
+
+        if (configPayloads.isNotEmpty) {
+          final bundle = _parseConfigBundle(configPayloads);
+          await _applyConfigBundle(
+            bundle: bundle,
+            decisionHandler: configDecisionHandler,
+          );
+        }
+
+        _logEvent('Restore completed', detail: 'snapshot=${snapshot.id} (export)');
+        _updateProgress(
+          stage: WebDavBackupProgressStage.completed,
+          currentPath: '',
+        );
+        return WebDavRestoreSuccess(
+          missingAttachments: missingAttachments,
+          exportPath: _formatExportPathLabel(exportLibrary, exportPrefix),
+        );
+      } finally {
+        await client.close();
+      }
+    } on SyncError catch (error) {
+      _logEvent('Restore failed', error: error);
+      return WebDavRestoreFailure(error);
+    } catch (error) {
+      final mapped = _mapUnexpectedError(error);
+      _logEvent('Restore failed', error: mapped);
+      return WebDavRestoreFailure(mapped);
+    } finally {
+      await _setWakelockEnabled(false);
+      _finishProgress();
+    }
+  }
+
+  Future<WebDavRestoreResult> restorePlainBackupToDirectory({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary exportLibrary,
+    required String exportPrefix,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    if (normalizedAccountKey.isEmpty) {
+      return WebDavRestoreSkipped(
+        reason: _keyedError(
+          'legacy.webdav.restore_account_missing',
+          code: SyncErrorCode.invalidConfig,
+        ),
+      );
+    }
+
+    _logEvent('Restore started', detail: 'mode=plain (export)');
+    _startProgress(WebDavBackupProgressOperation.restore);
+    _updateProgress(stage: WebDavBackupProgressStage.preparing);
+    await _setWakelockEnabled(true);
+    try {
+      final baseUrl = _parseBaseUrl(settings.serverUrl);
+      final accountId = fnv1a64Hex(normalizedAccountKey);
+      final rootPath = normalizeWebDavRootPath(settings.rootPath);
+      final client = _buildClient(settings, baseUrl);
+      try {
+        await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
+        final index = await _loadPlainIndex(
+          client,
+          baseUrl,
+          rootPath,
+          accountId,
+        );
+        if (index == null) {
+          _logEvent('Restore failed', detail: 'no_backups_found');
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.msg_no_backups_found',
+              code: SyncErrorCode.unknown,
+            ),
+          );
+        }
+        if (index.files.isEmpty) {
+          _logEvent('Restore failed', detail: 'backup_empty');
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.webdav.backup_empty',
+              code: SyncErrorCode.dataCorrupt,
+            ),
+          );
+        }
+
+        WebDavBackupManifest? manifest;
+        _PlainBackupFile? manifestEntry;
+        for (final entry in index.files) {
+          if (entry.path == _backupManifestFile) {
+            manifestEntry = entry;
+            break;
+          }
+        }
+        if (manifestEntry != null) {
+          final bytes = await _getBytes(
+            client,
+            _plainFileUri(baseUrl, rootPath, accountId, manifestEntry.path),
+          );
+          if (bytes != null) {
+            final decoded = _decodeJsonValue(Uint8List.fromList(bytes));
+            if (decoded is Map) {
+              manifest = WebDavBackupManifest.fromJson(
+                decoded.cast<String, dynamic>(),
+              );
+            }
+          }
+        }
+        if (manifest == null) {
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.webdav.data_corrupted',
+              code: SyncErrorCode.dataCorrupt,
+            ),
+          );
+        }
+
+        final fileSystem = LocalLibraryFileSystem(exportLibrary);
+        final configPayloads = <WebDavBackupConfigType, Uint8List>{};
+        var restoredMemoCount = 0;
+        var missingAttachments = 0;
+        var restoredCount = 0;
+        final totalCount = index.files.length;
+        _updateProgress(
+          stage: WebDavBackupProgressStage.downloading,
+          completed: restoredCount,
+          total: totalCount,
+          currentPath: '',
+          itemGroup: WebDavBackupProgressItemGroup.other,
+        );
+        for (final entry in index.files) {
+          await _waitIfPaused();
+          _updateProgress(
+            stage: WebDavBackupProgressStage.downloading,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
+          final targetPath = _prefixExportPath(exportPrefix, entry.path);
+          final bytes = await _getBytes(
+            client,
+            _plainFileUri(baseUrl, rootPath, accountId, entry.path),
+          );
+          if (bytes == null) {
+            if (_isAttachmentPath(entry.path)) {
+              missingAttachments += 1;
+              restoredCount += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.writing,
+                completed: restoredCount,
+                total: totalCount,
+                currentPath: entry.path,
+                itemGroup: WebDavBackupProgressItemGroup.attachment,
+              );
+              continue;
+            }
+            return WebDavRestoreFailure(
+              _keyedError(
+                'legacy.webdav.backup_no_memos',
+                code: SyncErrorCode.dataCorrupt,
+              ),
+            );
+          }
+          final configType = _configTypeForPath(entry.path);
+          if (configType != null) {
+            configPayloads[configType] = Uint8List.fromList(bytes);
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.config,
+            );
+          }
+          await fileSystem.writeFileFromChunks(
+            targetPath,
+            Stream<Uint8List>.value(Uint8List.fromList(bytes)),
+            mimeType: _guessMimeType(entry.path),
+          );
+          restoredCount += 1;
+          _updateProgress(
+            stage: WebDavBackupProgressStage.writing,
+            completed: restoredCount,
+            total: totalCount,
+            currentPath: entry.path,
+            itemGroup: _progressItemGroupForPath(entry.path),
+          );
+          if (_isMemoPath(entry.path)) {
+            restoredMemoCount += 1;
+          }
+        }
+
+        if (restoredMemoCount < manifest.memoCount) {
+          return WebDavRestoreFailure(
+            _keyedError(
+              'legacy.webdav.backup_no_memos',
+              code: SyncErrorCode.dataCorrupt,
+            ),
+          );
+        }
+
+        if (configPayloads.isNotEmpty) {
+          final bundle = _parseConfigBundle(configPayloads);
+          await _applyConfigBundle(
+            bundle: bundle,
+            decisionHandler: configDecisionHandler,
+          );
+        }
+
+        _logEvent('Restore completed', detail: 'mode=plain (export)');
+        _updateProgress(
+          stage: WebDavBackupProgressStage.completed,
+          currentPath: '',
+        );
+        return WebDavRestoreSuccess(
+          missingAttachments: missingAttachments,
+          exportPath: _formatExportPathLabel(exportLibrary, exportPrefix),
+        );
+      } finally {
+        await client.close();
+      }
+    } on SyncError catch (error) {
+      _logEvent('Restore failed', error: error);
+      return WebDavRestoreFailure(error);
+    } catch (error) {
+      final mapped = _mapUnexpectedError(error);
+      _logEvent('Restore failed', error: mapped);
+      return WebDavRestoreFailure(mapped);
+    } finally {
+      await _setWakelockEnabled(false);
+      _finishProgress();
     }
   }
 
@@ -841,6 +2787,19 @@ class WebDavBackupService {
     await fileSystem.ensureStructure();
 
     final rows = await _db.listMemosForExport(includeArchived: true);
+    final memos = rows.map(LocalMemo.fromDb).toList(growable: false);
+    final totalAttachments = memos.fold<int>(
+      0,
+      (sum, memo) => sum + memo.attachments.length,
+    );
+    final totalFiles = memos.length + totalAttachments;
+    var completedFiles = 0;
+    _updateProgress(
+      stage: WebDavBackupProgressStage.exporting,
+      completed: completedFiles,
+      total: totalFiles,
+      itemGroup: WebDavBackupProgressItemGroup.memo,
+    );
     final stickyResolutions =
         <WebDavBackupExportIssueKind, WebDavBackupExportResolution>{};
     final targetMemoUids = <String>{};
@@ -849,8 +2808,8 @@ class WebDavBackupService {
     var memoCount = 0;
     final httpClient = Dio();
     try {
-      for (final row in rows) {
-        final memo = LocalMemo.fromDb(row);
+      for (final memo in memos) {
+        await _waitIfPaused();
         final uid = memo.uid.trim();
         if (uid.isEmpty) continue;
         targetMemoUids.add(uid);
@@ -862,6 +2821,14 @@ class WebDavBackupService {
             await fileSystem.writeMemo(uid: uid, content: markdown);
             memoWritten = true;
             memoCount += 1;
+            completedFiles += 1;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.exporting,
+              completed: completedFiles,
+              total: totalFiles,
+              currentPath: 'memos/$uid.md',
+              itemGroup: WebDavBackupProgressItemGroup.memo,
+            );
           } catch (error) {
             final resolution = await _resolveExportIssue(
               issue: WebDavBackupExportIssue(
@@ -876,6 +2843,14 @@ class WebDavBackupService {
               continue;
             }
             if (resolution.action == WebDavBackupExportAction.skip) {
+              completedFiles += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.exporting,
+                completed: completedFiles,
+                total: totalFiles,
+                currentPath: 'memos/$uid.md',
+                itemGroup: WebDavBackupProgressItemGroup.memo,
+              );
               skipAttachmentPruneUids.add(uid);
               break;
             }
@@ -889,6 +2864,7 @@ class WebDavBackupService {
         final usedAttachmentNames = <String>{};
         var attachmentFailed = false;
         for (final attachment in memo.attachments) {
+          await _waitIfPaused();
           final localLookupName = attachmentArchiveName(attachment);
           final archiveName = _dedupeAttachmentFilename(
             localLookupName,
@@ -911,6 +2887,14 @@ class WebDavBackupService {
               );
               expectedAttachmentNames.add(archiveName);
               exported = true;
+              completedFiles += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.exporting,
+                completed: completedFiles,
+                total: totalFiles,
+                currentPath: 'attachments/$uid/$archiveName',
+                itemGroup: WebDavBackupProgressItemGroup.attachment,
+              );
             } catch (error) {
               final resolution = await _resolveExportIssue(
                 issue: WebDavBackupExportIssue(
@@ -926,6 +2910,14 @@ class WebDavBackupService {
                 continue;
               }
               if (resolution.action == WebDavBackupExportAction.skip) {
+                completedFiles += 1;
+                _updateProgress(
+                  stage: WebDavBackupProgressStage.exporting,
+                  completed: completedFiles,
+                  total: totalFiles,
+                  currentPath: 'attachments/$uid/$archiveName',
+                  itemGroup: WebDavBackupProgressItemGroup.attachment,
+                );
                 attachmentFailed = true;
                 break;
               }
@@ -1196,9 +3188,27 @@ class WebDavBackupService {
   int _countMemosInSnapshot(WebDavBackupSnapshot snapshot) {
     var count = 0;
     for (final entry in snapshot.files) {
-      final path = entry.path.trim().toLowerCase();
-      if (path.startsWith('memos/') &&
-          (path.endsWith('.md') || path.endsWith('.md.txt'))) {
+      if (_isMemoPath(entry.path)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  int _countMemosInEntries(Iterable<WebDavBackupFileEntry> entries) {
+    var count = 0;
+    for (final entry in entries) {
+      if (_isMemoPath(entry.path)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  int _countAttachmentsInEntries(Iterable<WebDavBackupFileEntry> entries) {
+    var count = 0;
+    for (final entry in entries) {
+      if (_isAttachmentPath(entry.path)) {
         count += 1;
       }
     }
@@ -1212,9 +3222,27 @@ class WebDavBackupService {
   int _countMemosInPlainIndex(_PlainBackupIndex index) {
     var count = 0;
     for (final entry in index.files) {
-      final path = entry.path.trim().toLowerCase();
-      if (path.startsWith('memos/') &&
-          (path.endsWith('.md') || path.endsWith('.md.txt'))) {
+      if (_isMemoPath(entry.path)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  int _countMemosInUploads(Iterable<_PlainBackupFileUpload> uploads) {
+    var count = 0;
+    for (final entry in uploads) {
+      if (_isMemoPath(entry.path)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  int _countAttachmentsInUploads(Iterable<_PlainBackupFileUpload> uploads) {
+    var count = 0;
+    for (final entry in uploads) {
+      if (_isAttachmentPath(entry.path)) {
         count += 1;
       }
     }
@@ -1225,9 +3253,35 @@ class WebDavBackupService {
     return _countMemosInPlainIndex(index) > 0;
   }
 
-  bool _isBackupSettingsSnapshotPath(String relativePath) {
-    return relativePath.replaceAll('\\', '/').toLowerCase() ==
-        _backupSettingsSnapshotPath;
+  bool _isMemoPath(String rawPath) {
+    final path = rawPath.trim().toLowerCase();
+    return path.startsWith('memos/') &&
+        (path.endsWith('.md') || path.endsWith('.md.txt'));
+  }
+
+  bool _isAttachmentPath(String rawPath) {
+    final path = rawPath.trim().toLowerCase();
+    return path.startsWith('attachments/');
+  }
+
+  WebDavBackupProgressItemGroup _progressItemGroupForPath(String rawPath) {
+    final path = rawPath.trim();
+    if (path.isEmpty) return WebDavBackupProgressItemGroup.other;
+    if (path == _backupManifestFile ||
+        path == _plainBackupIndexFile ||
+        path.endsWith('.enc')) {
+      return WebDavBackupProgressItemGroup.manifest;
+    }
+    if (_configTypeForPath(path) != null) {
+      return WebDavBackupProgressItemGroup.config;
+    }
+    if (_isMemoPath(path)) {
+      return WebDavBackupProgressItemGroup.memo;
+    }
+    if (_isAttachmentPath(path)) {
+      return WebDavBackupProgressItemGroup.attachment;
+    }
+    return WebDavBackupProgressItemGroup.other;
   }
 
   Future<void> _backupPlain({
@@ -1238,7 +3292,9 @@ class WebDavBackupService {
     required String accountId,
     required LocalLibrary? localLibrary,
     required bool includeMemos,
-    required bool includeConfig,
+    required List<_BackupConfigFile> configFiles,
+    required String exportedAt,
+    required String backupMode,
   }) async {
     final uploads = <_PlainBackupFileUpload>[];
     LocalLibraryFileSystem? fileSystem;
@@ -1269,17 +3325,17 @@ class WebDavBackupService {
       }
     }
 
-    if (includeConfig) {
-      final payload = _buildBackupSettingsSnapshotPayload(settings);
-      final bytes = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
-      uploads.add(
-        _PlainBackupFileUpload(
-          path: _backupSettingsSnapshotPath,
-          size: bytes.length,
-          modifiedAt: DateTime.now().toUtc().toIso8601String(),
-          bytes: bytes,
-        ),
-      );
+    if (configFiles.isNotEmpty) {
+      for (final configFile in configFiles) {
+        uploads.add(
+          _PlainBackupFileUpload(
+            path: configFile.path,
+            size: configFile.bytes.length,
+            modifiedAt: DateTime.now().toUtc().toIso8601String(),
+            bytes: configFile.bytes,
+          ),
+        );
+      }
     }
 
     if (uploads.isEmpty) {
@@ -1288,6 +3344,15 @@ class WebDavBackupService {
         code: SyncErrorCode.invalidConfig,
       );
     }
+
+    var uploadedCount = 0;
+    _updateProgress(
+      stage: WebDavBackupProgressStage.uploading,
+      completed: uploadedCount,
+      total: uploads.length,
+      currentPath: '',
+      itemGroup: WebDavBackupProgressItemGroup.other,
+    );
 
     final previousIndex = await _loadPlainIndex(
       client,
@@ -1329,6 +3394,14 @@ class WebDavBackupService {
     }
 
     for (final upload in uploads) {
+      await _waitIfPaused();
+      _updateProgress(
+        stage: WebDavBackupProgressStage.uploading,
+        completed: uploadedCount,
+        total: uploads.length,
+        currentPath: upload.path,
+        itemGroup: _progressItemGroupForPath(upload.path),
+      );
       final bytes = upload.bytes ??
           await _readLocalEntryBytes(fileSystem, upload.entry);
       await _putBytes(
@@ -1336,10 +3409,50 @@ class WebDavBackupService {
         _plainFileUri(baseUrl, rootPath, accountId, upload.path),
         bytes,
       );
+      uploadedCount += 1;
+      _updateProgress(
+        stage: WebDavBackupProgressStage.uploading,
+        completed: uploadedCount,
+        total: uploads.length,
+        currentPath: upload.path,
+        itemGroup: _progressItemGroupForPath(upload.path),
+      );
     }
+
+    final memoCount = _countMemosInUploads(uploads);
+    final attachmentCount = _countAttachmentsInUploads(uploads);
+    final totalSize = uploads.fold<int>(
+      0,
+      (sum, entry) => sum + entry.size,
+    );
+    final manifest = WebDavBackupManifest(
+      schemaVersion: 1,
+      exportedAt: exportedAt,
+      memoCount: memoCount,
+      attachmentCount: attachmentCount,
+      totalSize: totalSize,
+      backupMode: backupMode,
+      encrypted: false,
+    );
+    final manifestBytes = _encodeJsonBytes(manifest.toJson());
+    uploads.add(
+      _PlainBackupFileUpload(
+        path: _backupManifestFile,
+        size: manifestBytes.length,
+        modifiedAt: DateTime.now().toUtc().toIso8601String(),
+        bytes: manifestBytes,
+      ),
+    );
 
     final now = DateTime.now();
     final indexPayload = _buildPlainBackupIndexPayload(uploads, now);
+    _updateProgress(
+      stage: WebDavBackupProgressStage.writingManifest,
+      completed: uploads.length,
+      total: uploads.length,
+      currentPath: _plainBackupIndexFile,
+      itemGroup: WebDavBackupProgressItemGroup.manifest,
+    );
     await _putJson(
       client,
       _plainIndexUri(baseUrl, rootPath, accountId),
@@ -1412,10 +3525,98 @@ class WebDavBackupService {
     };
   }
 
+  Future<WebDavExportSignature?> _readExportSignature(
+    LocalLibraryFileSystem fileSystem,
+    String filename,
+    String accountIdHash,
+  ) async {
+    final content = await fileSystem.readText(filename);
+    if (content == null || content.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is Map) {
+        final signature =
+            WebDavExportSignature.fromJson(decoded.cast<String, dynamic>());
+        if (signature == null) return null;
+        if (signature.accountIdHash.trim() != accountIdHash.trim()) {
+          return null;
+        }
+        return signature;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _writeExportSignature(
+    LocalLibraryFileSystem fileSystem,
+    String filename,
+    WebDavExportSignature signature,
+  ) async {
+    await fileSystem.writeText(filename, jsonEncode(signature.toJson()));
+  }
+
+  WebDavExportSignature _buildExportSignature({
+    required WebDavExportMode mode,
+    required String accountIdHash,
+    required String snapshotId,
+    required WebDavExportFormat exportFormat,
+    required String vaultKeyId,
+    required DateTime lastSuccessAt,
+    String? createdAt,
+  }) {
+    return WebDavExportSignature(
+      schemaVersion: 1,
+      mode: mode,
+      accountIdHash: accountIdHash,
+      createdAt: createdAt ?? DateTime.now().toUtc().toIso8601String(),
+      lastSuccessAt: lastSuccessAt.toUtc().toIso8601String(),
+      snapshotId: snapshotId,
+      exportFormat: exportFormat,
+      vaultKeyId: vaultKeyId,
+    );
+  }
+
+  DateTime _resolveExportLastSuccessAt({
+    required DateTime exportAt,
+    required DateTime? uploadAt,
+    required bool webDavConfigured,
+  }) {
+    if (webDavConfigured && uploadAt != null) return uploadAt;
+    return exportAt;
+  }
+
+  Future<bool> _detectPlainExport(LocalLibraryFileSystem fileSystem) async {
+    final hasIndex =
+        await fileSystem.fileExists('index.md') ||
+        await fileSystem.fileExists('index.md.txt');
+    if (hasIndex) return true;
+    final hasManifest = await fileSystem.fileExists(
+      LocalLibraryFileSystem.scanManifestFilename,
+    );
+    if (hasManifest) return true;
+    final hasMemos = await fileSystem.dirExists('memos');
+    if (hasMemos) return true;
+    final hasAttachments = await fileSystem.dirExists('attachments');
+    return hasAttachments;
+  }
+
+  Future<void> _deletePlainExportFiles(
+    LocalLibraryFileSystem fileSystem,
+  ) async {
+    await fileSystem.deleteRelativeFile('index.md');
+    await fileSystem.deleteRelativeFile('index.md.txt');
+    await fileSystem.deleteRelativeFile(
+      LocalLibraryFileSystem.scanManifestFilename,
+    );
+    await fileSystem.deleteDirRelative('memos');
+    await fileSystem.deleteDirRelative('attachments');
+    await fileSystem.deleteRelativeFile(_exportPlainSignatureFile);
+  }
+
   Future<_SnapshotBuildResult> _buildSnapshot({
     required LocalLibrary? localLibrary,
     required bool includeMemos,
-    required Map<String, dynamic>? configPayload,
+    required List<_BackupConfigFile> configFiles,
     required WebDavBackupIndex index,
     required SecretKey masterKey,
     required WebDavClient client,
@@ -1423,10 +3624,16 @@ class WebDavBackupService {
     required String rootPath,
     required String accountId,
     required String snapshotId,
+    required String exportedAt,
+    required String backupMode,
+    _ExportWriter? exportWriter,
   }) async {
     final knownObjects = <String>{...index.objects.keys};
     final newObjectSizes = <String, int>{};
+    final objectSizes = <String, int>{};
     final files = <WebDavBackupFileEntry>[];
+    var processedFiles = 0;
+    var totalFiles = 0;
 
     if (includeMemos) {
       final targetLibrary = localLibrary;
@@ -1440,8 +3647,24 @@ class WebDavBackupService {
       await fileSystem.ensureStructure();
       final entries = await fileSystem.listAllFiles();
       entries.sort((a, b) => a.relativePath.compareTo(b.relativePath));
+      totalFiles = entries.length + configFiles.length + 1;
+      _updateProgress(
+        stage: WebDavBackupProgressStage.uploading,
+        completed: processedFiles,
+        total: totalFiles,
+        currentPath: '',
+        itemGroup: WebDavBackupProgressItemGroup.other,
+      );
 
       for (final entry in entries) {
+        await _waitIfPaused();
+        _updateProgress(
+          stage: WebDavBackupProgressStage.uploading,
+          completed: processedFiles,
+          total: totalFiles,
+          currentPath: entry.relativePath,
+          itemGroup: _progressItemGroupForPath(entry.relativePath),
+        );
         final objects = <String>[];
         final stream = await fileSystem.openReadStream(
           entry,
@@ -1449,17 +3672,23 @@ class WebDavBackupService {
         );
         await for (final chunk in _chunkStream(stream)) {
           final hash = crypto.sha256.convert(chunk).toString();
+          objectSizes[hash] = chunk.length;
           objects.add(hash);
-          if (!knownObjects.contains(hash)) {
+          if (exportWriter != null || !knownObjects.contains(hash)) {
             final objectKey = await _deriveObjectKey(masterKey, hash);
             final encrypted = await _encryptBytes(objectKey, chunk);
-            await _putBytes(
-              client,
-              _objectUri(baseUrl, rootPath, accountId, hash),
-              encrypted,
-            );
-            knownObjects.add(hash);
-            newObjectSizes[hash] = chunk.length;
+            if (exportWriter != null) {
+              await exportWriter.writeObject(hash, encrypted);
+            }
+            if (!knownObjects.contains(hash)) {
+              await _putBytes(
+                client,
+                _objectUri(baseUrl, rootPath, accountId, hash),
+                encrypted,
+              );
+              knownObjects.add(hash);
+              newObjectSizes[hash] = chunk.length;
+            }
           }
         }
         files.add(
@@ -1470,34 +3699,125 @@ class WebDavBackupService {
             modifiedAt: entry.lastModified?.toUtc().toIso8601String(),
           ),
         );
+        processedFiles += 1;
+        _updateProgress(
+          stage: WebDavBackupProgressStage.uploading,
+          completed: processedFiles,
+          total: totalFiles,
+          currentPath: entry.relativePath,
+          itemGroup: _progressItemGroupForPath(entry.relativePath),
+        );
       }
     }
 
-    if (configPayload != null) {
-      final payloadBytes = Uint8List.fromList(
-        utf8.encode(jsonEncode(configPayload)),
-      );
-      final hash = crypto.sha256.convert(payloadBytes).toString();
-      if (!knownObjects.contains(hash)) {
-        final objectKey = await _deriveObjectKey(masterKey, hash);
-        final encrypted = await _encryptBytes(objectKey, payloadBytes);
+    if (configFiles.isNotEmpty) {
+      for (final configFile in configFiles) {
+        if (totalFiles == 0) {
+          totalFiles = configFiles.length + 1;
+          _updateProgress(
+            stage: WebDavBackupProgressStage.uploading,
+            completed: processedFiles,
+            total: totalFiles,
+            currentPath: '',
+            itemGroup: WebDavBackupProgressItemGroup.other,
+          );
+        }
+        await _waitIfPaused();
+        _updateProgress(
+          stage: WebDavBackupProgressStage.uploading,
+          completed: processedFiles,
+          total: totalFiles,
+          currentPath: configFile.path,
+          itemGroup: WebDavBackupProgressItemGroup.config,
+        );
+        final payloadBytes = configFile.bytes;
+        final hash = crypto.sha256.convert(payloadBytes).toString();
+        if (exportWriter != null || !knownObjects.contains(hash)) {
+          final objectKey = await _deriveObjectKey(masterKey, hash);
+          final encrypted = await _encryptBytes(objectKey, payloadBytes);
+          if (exportWriter != null) {
+            await exportWriter.writeObject(hash, encrypted);
+          }
+          if (!knownObjects.contains(hash)) {
+            await _putBytes(
+              client,
+              _objectUri(baseUrl, rootPath, accountId, hash),
+              encrypted,
+            );
+            knownObjects.add(hash);
+            newObjectSizes[hash] = payloadBytes.length;
+          }
+        }
+        objectSizes[hash] = payloadBytes.length;
+        files.add(
+          WebDavBackupFileEntry(
+            path: configFile.path,
+            size: payloadBytes.length,
+            objects: [hash],
+            modifiedAt: DateTime.now().toUtc().toIso8601String(),
+          ),
+        );
+        processedFiles += 1;
+        _updateProgress(
+          stage: WebDavBackupProgressStage.uploading,
+          completed: processedFiles,
+          total: totalFiles,
+          currentPath: configFile.path,
+          itemGroup: WebDavBackupProgressItemGroup.config,
+        );
+      }
+    }
+
+    final memoCount = _countMemosInEntries(files);
+    final attachmentCount = _countAttachmentsInEntries(files);
+    final totalSize = files.fold<int>(
+      0,
+      (sum, entry) => sum + entry.size,
+    );
+    final manifest = WebDavBackupManifest(
+      schemaVersion: 1,
+      exportedAt: exportedAt,
+      memoCount: memoCount,
+      attachmentCount: attachmentCount,
+      totalSize: totalSize,
+      backupMode: backupMode,
+      encrypted: true,
+    );
+    final manifestBytes = _encodeJsonBytes(manifest.toJson());
+    final manifestHash = crypto.sha256.convert(manifestBytes).toString();
+    if (exportWriter != null || !knownObjects.contains(manifestHash)) {
+      final objectKey = await _deriveObjectKey(masterKey, manifestHash);
+      final encrypted = await _encryptBytes(objectKey, manifestBytes);
+      if (exportWriter != null) {
+        await exportWriter.writeObject(manifestHash, encrypted);
+      }
+      if (!knownObjects.contains(manifestHash)) {
         await _putBytes(
           client,
-          _objectUri(baseUrl, rootPath, accountId, hash),
+          _objectUri(baseUrl, rootPath, accountId, manifestHash),
           encrypted,
         );
-        knownObjects.add(hash);
-        newObjectSizes[hash] = payloadBytes.length;
+        knownObjects.add(manifestHash);
+        newObjectSizes[manifestHash] = manifestBytes.length;
       }
-      files.add(
-        WebDavBackupFileEntry(
-          path: _backupSettingsSnapshotPath,
-          size: payloadBytes.length,
-          objects: [hash],
-          modifiedAt: DateTime.now().toUtc().toIso8601String(),
-        ),
-      );
     }
+    objectSizes[manifestHash] = manifestBytes.length;
+    files.add(
+      WebDavBackupFileEntry(
+        path: _backupManifestFile,
+        size: manifestBytes.length,
+        objects: [manifestHash],
+        modifiedAt: DateTime.now().toUtc().toIso8601String(),
+      ),
+    );
+    processedFiles += 1;
+    _updateProgress(
+      stage: WebDavBackupProgressStage.uploading,
+      completed: processedFiles,
+      total: totalFiles > 0 ? totalFiles : processedFiles,
+      currentPath: _backupManifestFile,
+      itemGroup: WebDavBackupProgressItemGroup.manifest,
+    );
 
     final snapshot = WebDavBackupSnapshot(
       schemaVersion: 1,
@@ -1508,6 +3828,7 @@ class WebDavBackupService {
     return _SnapshotBuildResult(
       snapshot: snapshot,
       newObjectSizes: newObjectSizes,
+      objectSizes: objectSizes,
     );
   }
 
@@ -1556,6 +3877,68 @@ class WebDavBackupService {
       snapshots: nextSnapshots,
       objects: updatedObjects,
     );
+  }
+
+  WebDavBackupIndex _buildExportIndexFromSnapshot({
+    required WebDavBackupSnapshot snapshot,
+    required Map<String, int> objectSizes,
+    required DateTime now,
+  }) {
+    final totalBytes = snapshot.files.fold<int>(
+      0,
+      (sum, entry) => sum + entry.size,
+    );
+    final memosCount = _countMemosInSnapshot(snapshot);
+    final snapshotInfo = WebDavBackupSnapshotInfo(
+      id: snapshot.id,
+      createdAt: snapshot.createdAt,
+      memosCount: memosCount,
+      fileCount: snapshot.files.length,
+      totalBytes: totalBytes,
+    );
+    final snapshotObjects = <String>{};
+    for (final file in snapshot.files) {
+      snapshotObjects.addAll(file.objects);
+    }
+    final objects = <String, WebDavBackupObjectInfo>{};
+    for (final hash in snapshotObjects) {
+      objects[hash] = WebDavBackupObjectInfo(
+        size: objectSizes[hash] ?? 0,
+        refs: 1,
+      );
+    }
+    return WebDavBackupIndex(
+      schemaVersion: 1,
+      updatedAt: now.toUtc().toIso8601String(),
+      snapshots: [snapshotInfo],
+      objects: objects,
+    );
+  }
+
+  bool _assertExportMirrorIntegritySync({
+    required LocalLibrary exportLibrary,
+    required WebDavBackupIndex exportIndex,
+    required String backupBaseDir,
+  }) {
+    if (exportLibrary.isSaf) return true;
+    final rootPath = exportLibrary.rootPath ?? '';
+    if (rootPath.trim().isEmpty) return true;
+    final basePath = p.join(rootPath, backupBaseDir);
+    final indexPath = p.join(basePath, _backupIndexFile);
+    if (!File(indexPath).existsSync()) return false;
+    for (final snapshot in exportIndex.snapshots) {
+      final snapshotPath = p.join(
+        basePath,
+        _backupSnapshotsDir,
+        '${snapshot.id}.enc',
+      );
+      if (!File(snapshotPath).existsSync()) return false;
+    }
+    for (final hash in exportIndex.objects.keys) {
+      final objectPath = p.join(basePath, _backupObjectsDir, '$hash.bin');
+      if (!File(objectPath).existsSync()) return false;
+    }
+    return true;
   }
 
   Future<WebDavBackupIndex> _applyRetention({
@@ -1739,6 +4122,77 @@ class WebDavBackupService {
 
     await controller.close();
     await writeFuture;
+  }
+
+  Future<void> _restoreFileToPath({
+    required WebDavBackupFileEntry entry,
+    required String targetPath,
+    required LocalLibraryFileSystem fileSystem,
+    required WebDavClient client,
+    required Uri baseUrl,
+    required String rootPath,
+    required String accountId,
+    required SecretKey masterKey,
+  }) async {
+    final controller = StreamController<Uint8List>();
+    final writeFuture = fileSystem.writeFileFromChunks(
+      targetPath,
+      controller.stream,
+      mimeType: _guessMimeType(entry.path),
+    );
+
+    if (entry.objects.isEmpty) {
+      await controller.close();
+      await writeFuture;
+      return;
+    }
+
+    for (final hash in entry.objects) {
+      final objectData = await _getBytes(
+        client,
+        _objectUri(baseUrl, rootPath, accountId, hash),
+      );
+      if (objectData == null) {
+        throw _keyedError(
+          'legacy.webdav.object_missing',
+          code: SyncErrorCode.dataCorrupt,
+        );
+      }
+      final key = await _deriveObjectKey(masterKey, hash);
+      final plain = await _decryptBytes(key, objectData);
+      controller.add(plain);
+    }
+
+    await controller.close();
+    await writeFuture;
+  }
+
+  Future<Uint8List> _readSnapshotFileBytes({
+    required WebDavBackupFileEntry entry,
+    required WebDavClient client,
+    required Uri baseUrl,
+    required String rootPath,
+    required String accountId,
+    required SecretKey masterKey,
+  }) async {
+    if (entry.objects.isEmpty) return Uint8List(0);
+    final builder = BytesBuilder(copy: false);
+    for (final hash in entry.objects) {
+      final objectData = await _getBytes(
+        client,
+        _objectUri(baseUrl, rootPath, accountId, hash),
+      );
+      if (objectData == null) {
+        throw _keyedError(
+          'legacy.webdav.object_missing',
+          code: SyncErrorCode.dataCorrupt,
+        );
+      }
+      final key = await _deriveObjectKey(masterKey, hash);
+      final plain = await _decryptBytes(key, objectData);
+      builder.add(plain);
+    }
+    return builder.toBytes();
   }
 
   Future<WebDavBackupConfig> _loadOrCreateConfig(
@@ -2170,6 +4624,10 @@ class WebDavBackupService {
     return 'accounts/$accountId/$_backupDir/$_backupVersion/$relative';
   }
 
+  String _backupBaseDir(String accountId) {
+    return 'accounts/$accountId/$_backupDir/$_backupVersion';
+  }
+
   String _plainBase(String accountId, String relative) {
     return _backupBase(accountId, relative);
   }
@@ -2410,6 +4868,68 @@ class WebDavBackupService {
     return _passwordRepository.read();
   }
 
+  Future<String?> _resolveVaultPassword(String? override) async {
+    if (override != null && override.trim().isNotEmpty) return override;
+    return _vaultPasswordRepository.read();
+  }
+
+  Future<SecretKey> _resolveMasterKeyFromLegacy({
+    required WebDavClient client,
+    required Uri baseUrl,
+    required String rootPath,
+    required String accountId,
+    required String password,
+  }) async {
+    final config = await _loadConfig(client, baseUrl, rootPath, accountId);
+    if (config == null) {
+      throw _keyedError(
+        'legacy.msg_no_backups_found',
+        code: SyncErrorCode.unknown,
+      );
+    }
+    return _resolveMasterKey(password, config);
+  }
+
+  Future<SecretKey> _resolveVaultMasterKey({
+    required WebDavSettings settings,
+    required String accountKey,
+    required String password,
+  }) async {
+    final config = await _vaultService.loadConfig(
+      settings: settings,
+      accountKey: accountKey,
+    );
+    if (config == null) {
+      throw _keyedError(
+        'legacy.webdav.config_invalid',
+        code: SyncErrorCode.invalidConfig,
+      );
+    }
+    return _vaultService.resolveMasterKey(password, config);
+  }
+
+  Future<void> _decryptObject({
+    required WebDavClient client,
+    required Uri baseUrl,
+    required String rootPath,
+    required String accountId,
+    required SecretKey masterKey,
+    required String hash,
+  }) async {
+    final objectData = await _getBytes(
+      client,
+      _objectUri(baseUrl, rootPath, accountId, hash),
+    );
+    if (objectData == null) {
+      throw _keyedError(
+        'legacy.webdav.object_missing',
+        code: SyncErrorCode.dataCorrupt,
+      );
+    }
+    final key = await _deriveObjectKey(masterKey, hash);
+    await _decryptBytes(key, objectData);
+  }
+
   String _guessMimeType(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.md')) return 'text/markdown';
@@ -2439,14 +4959,134 @@ WebDavClient _defaultBackupClientFactory({
   );
 }
 
+class _ExportWriter {
+  _ExportWriter({
+    required this.library,
+    required this.backupBaseDir,
+    required this.exportStagingDir,
+    required this.chunkSize,
+    this.logEvent,
+  }) : _fileSystem = LocalLibraryFileSystem(library);
+
+  final LocalLibrary library;
+  final String backupBaseDir;
+  final String exportStagingDir;
+  final int chunkSize;
+  final void Function(String label, {String? detail, Object? error})? logEvent;
+  final LocalLibraryFileSystem _fileSystem;
+
+  String _resolvedPath(String relative) {
+    return '$exportStagingDir/$backupBaseDir/$relative';
+  }
+
+  Future<void> writeObject(String hash, Uint8List bytes) async {
+    await _writeBytes('objects/$hash.bin', bytes);
+  }
+
+  Future<void> writeSnapshot(String snapshotId, Uint8List bytes) async {
+    await _writeBytes('snapshots/$snapshotId.enc', bytes);
+  }
+
+  Future<void> writeIndex(Uint8List bytes) async {
+    await _writeBytes('index.enc', bytes);
+  }
+
+  Future<void> writeConfig(Uint8List bytes) async {
+    await _writeBytes('config.json', bytes);
+  }
+
+  Future<void> _writeBytes(String relative, Uint8List bytes) async {
+    await _fileSystem.writeFileFromChunks(
+      _resolvedPath(relative),
+      Stream<Uint8List>.value(bytes),
+      mimeType: 'application/octet-stream',
+    );
+  }
+
+  Future<void> commit() async {
+    if (library.isSaf) {
+      await _promoteStagingSaf();
+    } else {
+      await _promoteStagingLocal();
+    }
+  }
+
+  Future<void> _promoteStagingSaf() async {
+    final prefix = '$exportStagingDir/';
+    final entries = await _fileSystem.listAllFiles();
+    for (final entry in entries) {
+      if (!entry.relativePath.startsWith(prefix)) continue;
+      final target = entry.relativePath.substring(prefix.length);
+      final stream = await _fileSystem.openReadStream(
+        entry,
+        bufferSize: chunkSize,
+      );
+      await _fileSystem.writeFileFromChunks(
+        target,
+        stream,
+        mimeType: 'application/octet-stream',
+      );
+    }
+    await _fileSystem.deleteDirRelative(exportStagingDir);
+  }
+
+  Future<void> _promoteStagingLocal() async {
+    final rootPath = library.rootPath ?? '';
+    if (rootPath.trim().isEmpty) return;
+    final stagingBase = p.join(rootPath, exportStagingDir, backupBaseDir);
+    final finalBase = p.join(rootPath, backupBaseDir);
+    final stagingDir = Directory(stagingBase);
+    if (!stagingDir.existsSync()) return;
+    final finalDir = Directory(finalBase);
+    final finalParent = Directory(p.dirname(finalBase));
+    if (!finalParent.existsSync()) {
+      finalParent.createSync(recursive: true);
+    }
+    final prevPath = '$finalBase.prev';
+    final prevDir = Directory(prevPath);
+    if (finalDir.existsSync()) {
+      if (prevDir.existsSync()) {
+        prevDir.deleteSync(recursive: true);
+      }
+      await finalDir.rename(prevPath);
+    }
+    await stagingDir.rename(finalBase);
+    if (prevDir.existsSync()) {
+      try {
+        await prevDir.delete(recursive: true);
+      } catch (error) {
+        logEvent?.call(
+          'Export cleanup failed',
+          detail: prevDir.path,
+          error: error,
+        );
+      }
+    }
+    final stagingRoot = Directory(p.join(rootPath, exportStagingDir));
+    if (stagingRoot.existsSync()) {
+      try {
+        await stagingRoot.delete(recursive: true);
+      } catch (error) {
+        logEvent?.call(
+          'Export staging cleanup failed',
+          detail: stagingRoot.path,
+          error: error,
+        );
+      }
+    }
+  }
+}
+
 class _SnapshotBuildResult {
   const _SnapshotBuildResult({
     required this.snapshot,
     required this.newObjectSizes,
+    required this.objectSizes,
   });
 
   final WebDavBackupSnapshot snapshot;
   final Map<String, int> newObjectSizes;
+  final Map<String, int> objectSizes;
 }
 
 class _PlainBackupIndex {

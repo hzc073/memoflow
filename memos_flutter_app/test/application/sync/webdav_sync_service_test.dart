@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/application/sync/sync_types.dart';
 import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
+import 'package:memos_flutter_app/application/sync/webdav_vault_service.dart';
 import 'package:memos_flutter_app/data/logs/debug_log_store.dart';
 import 'package:memos_flutter_app/data/models/image_bed_settings.dart';
 import 'package:memos_flutter_app/data/models/location_settings.dart';
@@ -13,6 +15,7 @@ import 'package:memos_flutter_app/data/models/webdav_settings.dart';
 import 'package:memos_flutter_app/data/models/webdav_sync_meta.dart';
 import 'package:memos_flutter_app/data/models/webdav_sync_state.dart';
 import 'package:memos_flutter_app/data/settings/ai_settings_repository.dart';
+import 'package:memos_flutter_app/data/settings/webdav_vault_password_repository.dart';
 import 'package:memos_flutter_app/data/settings/webdav_device_id_repository.dart';
 import 'package:memos_flutter_app/data/settings/webdav_sync_state_repository.dart';
 import 'package:memos_flutter_app/data/webdav/webdav_client.dart';
@@ -59,6 +62,25 @@ class FakeWebDavDeviceIdRepository implements WebDavDeviceIdRepository {
   Future<String> readOrCreate() async => deviceId;
 }
 
+class FakeWebDavVaultPasswordRepository extends WebDavVaultPasswordRepository {
+  FakeWebDavVaultPasswordRepository() : super(const FlutterSecureStorage(), accountKey: 'test');
+
+  String? value;
+
+  @override
+  Future<String?> read() async => value;
+
+  @override
+  Future<void> write(String password) async {
+    value = password;
+  }
+
+  @override
+  Future<void> clear() async {
+    value = null;
+  }
+}
+
 class FakeWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
   FakeWebDavSyncLocalAdapter(this.snapshot);
 
@@ -90,6 +112,9 @@ class FakeWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
 
   @override
   Future<void> applyNoteDraft(String text) async {}
+
+  @override
+  Future<void> applyWebDavSettings(WebDavSettings settings) async {}
 }
 
 class _PutCall {
@@ -259,6 +284,8 @@ void main() {
       syncStateRepository: stateRepo,
       deviceIdRepository: deviceRepo,
       localAdapter: localAdapter,
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
       clientFactory: ({
         required Uri baseUrl,
         required WebDavSettings settings,
@@ -314,6 +341,8 @@ void main() {
       syncStateRepository: stateRepo,
       deviceIdRepository: deviceRepo,
       localAdapter: localAdapter,
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
       clientFactory: ({
         required Uri baseUrl,
         required WebDavSettings settings,
@@ -402,6 +431,8 @@ void main() {
       syncStateRepository: stateRepo,
       deviceIdRepository: deviceRepo,
       localAdapter: localAdapter,
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
       clientFactory: ({
         required Uri baseUrl,
         required WebDavSettings settings,

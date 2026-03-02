@@ -16,7 +16,9 @@ import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/webdav_backup.dart';
 import 'package:memos_flutter_app/data/models/webdav_backup_state.dart';
+import 'package:memos_flutter_app/data/models/webdav_export_status.dart';
 import 'package:memos_flutter_app/data/models/webdav_settings.dart';
+import 'package:memos_flutter_app/data/models/webdav_sync_meta.dart';
 import 'package:memos_flutter_app/data/settings/webdav_backup_password_repository.dart';
 import 'package:memos_flutter_app/data/settings/webdav_backup_state_repository.dart';
 import 'package:memos_flutter_app/data/settings/webdav_settings_repository.dart';
@@ -73,6 +75,22 @@ class FakeWebDavSyncService implements WebDavSyncService {
     calls.add('webdavSync');
     return result;
   }
+
+  @override
+  Future<WebDavSyncMeta?> fetchRemoteMeta({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<WebDavSyncMeta?> cleanDeprecatedRemotePlainFiles({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    return null;
+  }
 }
 
 class FakeWebDavBackupService implements WebDavBackupService {
@@ -100,6 +118,44 @@ class FakeWebDavBackupService implements WebDavBackupService {
     lastPassword = password;
     lastIssueHandler = onExportIssue;
     return result;
+  }
+
+  @override
+  Future<SyncError?> verifyBackup({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required String password,
+    bool deep = false,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<WebDavExportStatus> fetchExportStatus({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary? activeLocalLibrary,
+  }) async {
+    return const WebDavExportStatus(
+      webDavConfigured: false,
+      encSignature: null,
+      plainSignature: null,
+      plainDetected: false,
+      plainDeprecated: false,
+      plainDetectedAt: null,
+      plainRemindAfter: null,
+      lastExportSuccessAt: null,
+      lastUploadSuccessAt: null,
+    );
+  }
+
+  @override
+  Future<WebDavExportCleanupStatus> cleanPlainExport({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary? activeLocalLibrary,
+  }) async {
+    return WebDavExportCleanupStatus.notFound;
   }
 
   @override
@@ -138,6 +194,7 @@ class FakeWebDavBackupService implements WebDavBackupService {
     required WebDavBackupSnapshotInfo snapshot,
     required String password,
     Map<String, bool>? conflictDecisions,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
   }) {
     throw UnimplementedError();
   }
@@ -148,6 +205,31 @@ class FakeWebDavBackupService implements WebDavBackupService {
     required String? accountKey,
     required LocalLibrary? activeLocalLibrary,
     Map<String, bool>? conflictDecisions,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WebDavRestoreResult> restoreSnapshotToDirectory({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required WebDavBackupSnapshotInfo snapshot,
+    required String password,
+    required LocalLibrary exportLibrary,
+    required String exportPrefix,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WebDavRestoreResult> restorePlainBackupToDirectory({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary exportLibrary,
+    required String exportPrefix,
+    WebDavBackupConfigDecisionHandler? configDecisionHandler,
   }) {
     throw UnimplementedError();
   }

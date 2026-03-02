@@ -161,6 +161,87 @@ class WebDavBackupWrappedKey {
   }
 }
 
+class WebDavBackupManifest {
+  const WebDavBackupManifest({
+    required this.schemaVersion,
+    required this.exportedAt,
+    required this.memoCount,
+    required this.attachmentCount,
+    required this.totalSize,
+    required this.backupMode,
+    required this.encrypted,
+  });
+
+  final int schemaVersion;
+  final String exportedAt;
+  final int memoCount;
+  final int attachmentCount;
+  final int totalSize;
+  final String backupMode;
+  final bool encrypted;
+
+  Map<String, dynamic> toJson() => {
+    'schemaVersion': schemaVersion,
+    'exportedAt': exportedAt,
+    'memoCount': memoCount,
+    'attachmentCount': attachmentCount,
+    'totalSize': totalSize,
+    'backupMode': backupMode,
+    'encrypted': encrypted,
+  };
+
+  static WebDavBackupManifest? fromJson(Map<String, dynamic> json) {
+    int readInt(String key) {
+      final raw = json[key];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim()) ?? -1;
+      return -1;
+    }
+
+    String readString(String key) {
+      final raw = json[key];
+      if (raw is String) return raw;
+      return '';
+    }
+
+    bool readBool(String key) {
+      final raw = json[key];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      if (raw is String) {
+        final normalized = raw.trim().toLowerCase();
+        return normalized == 'true' || normalized == '1';
+      }
+      return false;
+    }
+
+    final schemaVersion = readInt('schemaVersion');
+    final memoCount = readInt('memoCount');
+    final attachmentCount = readInt('attachmentCount');
+    final totalSize = readInt('totalSize');
+    final exportedAt = readString('exportedAt');
+    final backupMode = readString('backupMode');
+    if (schemaVersion < 1 ||
+        memoCount < 0 ||
+        attachmentCount < 0 ||
+        totalSize < 0 ||
+        exportedAt.trim().isEmpty ||
+        backupMode.trim().isEmpty) {
+      return null;
+    }
+    return WebDavBackupManifest(
+      schemaVersion: schemaVersion,
+      exportedAt: exportedAt,
+      memoCount: memoCount,
+      attachmentCount: attachmentCount,
+      totalSize: totalSize,
+      backupMode: backupMode,
+      encrypted: readBool('encrypted'),
+    );
+  }
+}
+
 class WebDavBackupIndex {
   const WebDavBackupIndex({
     required this.schemaVersion,

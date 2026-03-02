@@ -1,7 +1,9 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show FontFeature;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,21 +14,28 @@ import '../../application/sync/sync_coordinator.dart';
 import '../../application/sync/sync_error.dart';
 import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
+import '../../application/sync/webdav_backup_service.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
 import '../../data/logs/debug_log_store.dart';
+import '../../data/logs/webdav_backup_progress_tracker.dart';
 import '../../data/models/local_library.dart';
 import '../../core/webdav_url.dart';
 import '../../data/models/webdav_backup.dart';
+import '../../data/models/webdav_export_status.dart';
 import '../../data/models/webdav_settings.dart';
+import '../../data/models/webdav_sync_meta.dart';
+import '../../data/settings/webdav_vault_state_repository.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/session_provider.dart';
 import '../../state/webdav_backup_provider.dart';
 import '../../state/webdav_log_provider.dart';
 import '../../state/webdav_settings_provider.dart';
+import '../../state/webdav_vault_provider.dart';
 import '../../i18n/strings.g.dart';
+part 'vault_security_status_screen.dart';
 
 class WebDavSyncScreen extends ConsumerStatefulWidget {
   const WebDavSyncScreen({super.key});
@@ -47,11 +56,14 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   var _ignoreTlsErrors = false;
   var _enabled = false;
   var _backupSchedule = WebDavBackupSchedule.daily;
-  var _backupContentConfig = true;
+  var _backupConfigScope = WebDavBackupConfigScope.safe;
   var _backupContentMemos = true;
   var _backupEncryptionMode = WebDavBackupEncryptionMode.encrypted;
+  var _backupExportEncrypted = true;
   var _rememberBackupPassword = true;
   var _backupPasswordSet = false;
+  var _vaultEnabled = false;
+  var _rememberVaultPassword = true;
   var _backupMirrorTreeUri = '';
   var _backupMirrorRootPath = '';
   var _dirty = false;
@@ -92,12 +104,15 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     _usernameController.text = settings.username;
     _passwordController.text = settings.password;
     _rootPathController.text = settings.rootPath;
-    _backupContentConfig = settings.backupContentConfig;
+    _backupConfigScope = settings.backupConfigScope;
     _backupContentMemos = settings.backupContentMemos;
     _backupEncryptionMode = settings.backupEncryptionMode;
+    _backupExportEncrypted = settings.backupExportEncrypted;
     _backupSchedule = settings.backupSchedule;
     _backupRetentionController.text = settings.backupRetentionCount.toString();
     _rememberBackupPassword = settings.rememberBackupPassword;
+    _vaultEnabled = settings.vaultEnabled;
+    _rememberVaultPassword = settings.rememberVaultPassword;
     _backupMirrorTreeUri = settings.backupMirrorTreeUri;
     _backupMirrorRootPath = settings.backupMirrorRootPath;
     setState(() {});
@@ -232,9 +247,9 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     ref.read(webDavSettingsProvider.notifier).setBackupSchedule(schedule);
   }
 
-  void _setBackupContentConfig(bool value) {
-    setState(() => _backupContentConfig = value);
-    ref.read(webDavSettingsProvider.notifier).setBackupContentConfig(value);
+  void _setBackupConfigScope(WebDavBackupConfigScope scope) {
+    setState(() => _backupConfigScope = scope);
+    ref.read(webDavSettingsProvider.notifier).setBackupConfigScope(scope);
   }
 
   void _setBackupContentMemos(bool value) {
@@ -247,6 +262,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     ref.read(webDavSettingsProvider.notifier).setBackupEncryptionMode(mode);
   }
 
+  void _setBackupExportEncrypted(bool value) {
+    setState(() => _backupExportEncrypted = value);
+    ref.read(webDavSettingsProvider.notifier).setBackupExportEncrypted(value);
+  }
+
   void _setBackupRetention(String value) {
     _markDirty();
     final parsed = int.tryParse(value.trim());
@@ -256,6 +276,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<void> _refreshBackupPasswordStatus() async {
+    if (_vaultEnabled) {
+      if (!mounted) return;
+      setState(() => _backupPasswordSet = true);
+      return;
+    }
     final stored = await ref.read(webDavBackupPasswordRepositoryProvider).read();
     if (!mounted) return;
     setState(() {
@@ -363,15 +388,18 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               mirrorLibrary?.locationLabel ??
               context.t.strings.legacy.msg_not_set,
           onPickBackupMirrorPath: _pickBackupMirrorLocation,
-          backupContentConfig: _backupContentConfig,
+          backupConfigScope: _backupConfigScope,
           backupContentMemos: _backupContentMemos,
           backupEncryptionMode: _backupEncryptionMode,
+          backupExportEncrypted: _backupExportEncrypted,
           backupPasswordSet: _backupPasswordSet,
+          vaultEnabled: _vaultEnabled,
           backupSchedule: _backupSchedule,
           backupRetentionController: _backupRetentionController,
-          onBackupContentConfigChanged: _setBackupContentConfig,
+          onBackupConfigScopeChanged: _setBackupConfigScope,
           onBackupContentMemosChanged: _setBackupContentMemos,
           onBackupEncryptionModeChanged: _setBackupEncryptionMode,
+          onBackupExportEncryptedChanged: _setBackupExportEncrypted,
           onBackupScheduleChanged: _setBackupSchedule,
           onBackupRetentionChanged: _setBackupRetention,
           onSetupBackupPassword: _setupBackupPassword,
@@ -380,14 +408,28 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     );
   }
 
-  Future<String?> _promptBackupPassword({required bool confirm}) async {
+  Future<String?> _promptBackupPassword({
+    required bool confirm,
+    String? title,
+    String? hint,
+  }) async {
     var password = '';
     var confirmPassword = '';
+    final resolvedTitle =
+        title ??
+        (_vaultEnabled
+            ? context.tr(zh: 'Vault 密码', en: 'Vault password')
+            : context.t.strings.legacy.msg_backup_password);
+    final resolvedHint =
+        hint ??
+        (_vaultEnabled
+            ? context.tr(zh: '请输入 Vault 密码', en: 'Enter Vault password')
+            : context.t.strings.legacy.msg_enter_backup_password);
     final confirmed =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(context.t.strings.legacy.msg_backup_password),
+            title: Text(resolvedTitle),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -398,8 +440,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                       ? TextInputAction.next
                       : TextInputAction.done,
                   decoration: InputDecoration(
-                    hintText:
-                        context.t.strings.legacy.msg_enter_backup_password,
+                    hintText: resolvedHint,
                   ),
                   onChanged: (value) => password = value,
                   onFieldSubmitted: (_) {
@@ -464,45 +505,314 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<bool> _setupBackupPassword() async {
-    final password = await _promptBackupPassword(confirm: true);
-    if (!mounted || password == null) return false;
+    if (!_vaultEnabled) {
+      final enabled = await _setupVaultPasswordFlow();
+      if (!mounted || !enabled) return false;
+      setState(() => _vaultEnabled = true);
+      ref.read(webDavSettingsProvider.notifier).setVaultEnabled(true);
+      _refreshBackupPasswordStatus();
+      return true;
+    }
+    final enabled = await _setupVaultPasswordFlow();
+    if (!mounted || !enabled) return false;
+    _refreshBackupPasswordStatus();
+    return true;
+  }
+
+  Future<bool> _setupVaultPasswordFlow() async {
+    final settings = ref.read(webDavSettingsProvider);
+    final accountKey = ref.read(appSessionProvider).valueOrNull?.currentKey;
+    if (accountKey == null || accountKey.trim().isEmpty) {
+      if (mounted) {
+        showTopToast(context, context.t.strings.legacy.msg_not_signed);
+      }
+      return false;
+    }
+    final vaultService = ref.read(webDavVaultServiceProvider);
+    final vaultPasswordRepo = ref.read(webDavVaultPasswordRepositoryProvider);
+    final vaultRecoveryRepo = ref.read(webDavVaultRecoveryRepositoryProvider);
+    final vaultStateRepo = ref.read(webDavVaultStateRepositoryProvider);
+
     try {
-      final settings = ref.read(webDavSettingsProvider);
-      final accountKey = ref.read(appSessionProvider).valueOrNull?.currentKey;
-      final service = ref.read(webDavBackupServiceProvider);
-      final recoveryCode = await service.setupBackupPassword(
+      final existingConfig = await vaultService.loadConfig(
         settings: settings,
         accountKey: accountKey,
-        password: password,
       );
+      if (existingConfig != null) {
+        final action = await _promptExistingVaultAction();
+        if (!mounted || action == null) return false;
+        if (action == _VaultExistingAction.recover) {
+          return await _recoverVaultPassword();
+        }
+        final vaultPassword = await _promptBackupPassword(
+          confirm: false,
+          title: context.tr(zh: 'Vault 密码', en: 'Vault password'),
+          hint: context.tr(zh: '请输入 Vault 密码', en: 'Enter Vault password'),
+        );
+        if (!mounted || vaultPassword == null || vaultPassword.trim().isEmpty) {
+          return false;
+        }
+        await vaultService.resolveMasterKey(vaultPassword, existingConfig);
+        if (_rememberVaultPassword) {
+          await vaultPasswordRepo.write(vaultPassword);
+        } else {
+          await vaultPasswordRepo.clear();
+        }
+        if (!_rememberVaultPassword) {
+          setState(() => _rememberVaultPassword = true);
+          ref
+              .read(webDavSettingsProvider.notifier)
+              .setRememberVaultPassword(true);
+        }
+        setState(() => _backupPasswordSet = true);
+        return true;
+      }
+    } catch (e) {
       if (!mounted) return false;
-      if (recoveryCode != null && recoveryCode.trim().isNotEmpty) {
-        await _showRecoveryCodeDialog(
-          recoveryCode,
-          reset: false,
-          message: context.t.strings.legacy.webdav.recovery_code_setup_message,
+      final message = _formatBackupError(e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return false;
+    }
+
+    List<int>? masterKeyOverride;
+    String? vaultPassword;
+    try {
+      final legacyConfig = await vaultService.loadLegacyBackupConfig(
+        settings: settings,
+        accountKey: accountKey,
+      );
+      if (legacyConfig != null) {
+        final legacyPassword = await _promptBackupPassword(
+          confirm: false,
+          title: context.tr(zh: '旧备份密码', en: 'Legacy backup password'),
+          hint: context.tr(zh: '请输入旧备份密码', en: 'Enter legacy backup password'),
+        );
+        if (!mounted || legacyPassword == null) return false;
+        final masterKey = await vaultService.resolveLegacyMasterKey(
+          password: legacyPassword,
+          config: legacyConfig,
+        );
+        masterKeyOverride = await masterKey.extractBytes();
+        vaultPassword = legacyPassword;
+      } else {
+        vaultPassword = await _promptBackupPassword(
+          confirm: true,
+          title: context.tr(zh: 'Vault 密码', en: 'Vault password'),
+          hint: context.tr(zh: '请输入 Vault 密码', en: 'Enter Vault password'),
         );
       }
     } catch (e) {
       if (!mounted) return false;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
       return false;
     }
 
-    await ref.read(webDavBackupPasswordRepositoryProvider).write(password);
-    if (!_rememberBackupPassword) {
-      setState(() => _rememberBackupPassword = true);
-      ref.read(webDavSettingsProvider.notifier).setRememberBackupPassword(true);
+    if (!mounted || vaultPassword == null || vaultPassword.trim().isEmpty) {
+      return false;
     }
-    if (!mounted) return false;
+
+    String recoveryCode;
+    try {
+      recoveryCode = await vaultService.setupVault(
+        settings: settings,
+        accountKey: accountKey,
+        password: vaultPassword,
+        masterKeyOverride: masterKeyOverride,
+      );
+    } catch (e) {
+      if (!mounted) return false;
+      final message = _formatBackupError(e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return false;
+    }
+
+    final confirmed = await _confirmVaultRecoveryCode(recoveryCode);
+    if (!mounted || !confirmed) return false;
+    await vaultRecoveryRepo.write(recoveryCode);
+    await vaultStateRepo.write(const WebDavVaultState(recoveryVerified: true));
+    if (_rememberVaultPassword) {
+      await vaultPasswordRepo.write(vaultPassword);
+    } else {
+      await vaultPasswordRepo.clear();
+    }
+    if (!_rememberVaultPassword) {
+      setState(() => _rememberVaultPassword = true);
+      ref.read(webDavSettingsProvider.notifier).setRememberVaultPassword(true);
+    }
     setState(() => _backupPasswordSet = true);
     return true;
   }
 
+  Future<_VaultExistingAction?> _promptExistingVaultAction() async {
+    return showDialog<_VaultExistingAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          context.tr(zh: '检测到已有 Vault', en: 'Existing Vault detected'),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                context.tr(zh: '验证 Vault 密码', en: 'Verify Vault password'),
+              ),
+              subtitle: Text(
+                context.tr(
+                  zh: '使用已有密码解锁',
+                  en: 'Use existing password to unlock',
+                ),
+              ),
+              onTap: () =>
+                  dialogContext.safePop(_VaultExistingAction.verify),
+            ),
+            ListTile(
+              title: Text(
+                context.tr(zh: '使用恢复码', en: 'Use recovery code'),
+              ),
+              subtitle: Text(
+                context.tr(
+                  zh: '通过恢复码重置密码',
+                  en: 'Reset password using recovery code',
+                ),
+              ),
+              onTap: () =>
+                  dialogContext.safePop(_VaultExistingAction.recover),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => dialogContext.safePop(),
+            child: Text(context.tr(zh: '取消', en: 'Cancel')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _confirmVaultRecoveryCode(String code) async {
+    var copied = false;
+    var saved = false;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            return StatefulBuilder(
+              builder: (context, setState) {
+                final canContinue = copied && saved;
+                return AlertDialog(
+                  title: Text(context.tr(zh: 'Vault 恢复码', en: 'Vault recovery code')),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.tr(
+                          zh: '请复制并保存恢复码。丢失密码时只能用恢复码找回。',
+                          en: 'Copy and save the recovery code. It is required if you lose the password.',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SelectableText(
+                        code,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        value: saved,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          context.tr(
+                            zh: '我已保存恢复码',
+                            en: 'I have saved the recovery code',
+                          ),
+                        ),
+                        onChanged: (value) {
+                          setState(() => saved = value ?? false);
+                        },
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: code));
+                        if (!dialogContext.mounted) return;
+                        setState(() => copied = true);
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              context.tr(
+                                zh: '恢复码已复制',
+                                en: 'Recovery code copied',
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      child: Text(context.t.strings.legacy.msg_copy),
+                    ),
+                    FilledButton(
+                      onPressed: canContinue
+                          ? () => dialogContext.safePop(true)
+                          : null,
+                      child: Text(context.t.strings.legacy.msg_continue),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ) ??
+        false;
+    return confirmed;
+  }
+
   Future<String?> _resolveBackupPassword({required bool confirm}) async {
+    if (_vaultEnabled) {
+      final repo = ref.read(webDavVaultPasswordRepositoryProvider);
+      final stored = await repo.read();
+      if (stored != null && stored.trim().isNotEmpty) {
+        if (mounted && !_backupPasswordSet) {
+          setState(() => _backupPasswordSet = true);
+        }
+        return stored;
+      }
+      final entered = await _promptBackupPassword(confirm: confirm);
+      if (entered == null || entered.trim().isEmpty) return null;
+      if (_rememberVaultPassword) {
+        await repo.write(entered);
+      }
+      if (!_rememberVaultPassword) {
+        if (mounted) {
+          setState(() => _rememberVaultPassword = true);
+        }
+        ref
+            .read(webDavSettingsProvider.notifier)
+            .setRememberVaultPassword(true);
+        await repo.write(entered);
+      }
+      if (mounted) {
+        setState(() => _backupPasswordSet = true);
+      }
+      return entered;
+    }
+
     final repo = ref.read(webDavBackupPasswordRepositoryProvider);
     final stored = await repo.read();
     if (stored != null && stored.trim().isNotEmpty) {
@@ -512,7 +822,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       return stored;
     }
     final entered = await _promptBackupPassword(confirm: confirm);
-    if (entered == null || entered.trim().isEmpty) return null;
+    if (entered == null || entered.trim().isNotEmpty == false) return null;
     await repo.write(entered);
     if (!_rememberBackupPassword) {
       if (mounted) {
@@ -546,8 +856,9 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     }
   }
 
-  Future<({String recoveryCode, String password})?>
-  _promptRecoveryReset() async {
+  Future<({String recoveryCode, String password})?> _promptRecoveryReset({
+    String? title,
+  }) async {
     var recoveryCode = '';
     var password = '';
     var confirmPassword = '';
@@ -555,7 +866,10 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: Text(context.t.strings.legacy.webdav.recover_password_title),
+            title: Text(
+              title ??
+                  context.t.strings.legacy.webdav.recover_password_title,
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -682,6 +996,10 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<void> _recoverBackupPassword() async {
+    if (_vaultEnabled) {
+      await _recoverVaultPassword();
+      return;
+    }
     final payload = await _promptRecoveryReset();
     if (!mounted || payload == null) return;
     final newPassword = payload.password;
@@ -723,6 +1041,60 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<bool> _recoverVaultPassword() async {
+    final payload = await _promptRecoveryReset(
+      title: context.tr(zh: '找回 Vault 密码', en: 'Recover Vault password'),
+    );
+    if (!mounted || payload == null) return false;
+    final newPassword = payload.password;
+    final recoveryCode = payload.recoveryCode;
+    try {
+      final settings = ref.read(webDavSettingsProvider);
+      final accountKey = ref.read(appSessionProvider).valueOrNull?.currentKey;
+      final service = ref.read(webDavVaultServiceProvider);
+      final newRecoveryCode = await service.recoverVaultPassword(
+        settings: settings,
+        accountKey: accountKey,
+        recoveryCode: recoveryCode,
+        newPassword: newPassword,
+      );
+      await ref
+          .read(webDavVaultPasswordRepositoryProvider)
+          .write(newPassword);
+      if (!_rememberVaultPassword) {
+        setState(() => _rememberVaultPassword = true);
+        ref
+            .read(webDavSettingsProvider.notifier)
+            .setRememberVaultPassword(true);
+      }
+      if (mounted) {
+        setState(() => _backupPasswordSet = true);
+      }
+      if (!mounted) return false;
+      final confirmed = await _confirmVaultRecoveryCode(newRecoveryCode);
+      if (!mounted || !confirmed) return false;
+      await ref
+          .read(webDavVaultRecoveryRepositoryProvider)
+          .write(newRecoveryCode);
+      await ref
+          .read(webDavVaultStateRepositoryProvider)
+          .write(const WebDavVaultState(recoveryVerified: true));
+      if (!mounted) return false;
+      showTopToast(
+        context,
+        context.tr(zh: 'Vault 密码已重置', en: 'Vault password reset'),
+      );
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      final message = _formatBackupError(e);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return false;
     }
   }
 
@@ -830,16 +1202,14 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
 
   Future<void> _restoreBackup() async {
     final localLibrary = ref.read(currentLocalLibraryProvider);
-    if (localLibrary == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_restore_only_available_local_libraries,
-          ),
-        ),
-      );
-      return;
+    final usesServerMode = localLibrary == null;
+    LocalLibrary? exportLibrary;
+    String? exportPrefix;
+    if (usesServerMode) {
+      final target = await _pickRestoreDirectory();
+      if (!mounted || target == null) return;
+      exportLibrary = target.library;
+      exportPrefix = target.prefix;
     }
 
     final settings = ref.read(webDavSettingsProvider);
@@ -859,12 +1229,28 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     ) async {
       if (!mounted) return;
       switch (result) {
-        case WebDavRestoreSuccess():
+        case WebDavRestoreSuccess(
+          :final missingAttachments,
+          :final exportPath,
+        ):
           setState(() => _backupRestoreError = null);
-          showTopToast(
-            context,
-            context.t.strings.legacy.msg_restore_completed,
-          );
+          final completedMessage = exportPath == null || exportPath.trim().isEmpty
+              ? context.t.strings.legacy.msg_restore_completed
+              : context.t.strings.legacy.msg_restore_completed_to_path(
+                  path: exportPath,
+                );
+          showTopToast(context, completedMessage);
+          if (missingAttachments > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  context.t.strings.legacy.msg_restore_missing_attachments(
+                    count: missingAttachments,
+                  ),
+                ),
+              ),
+            );
+          }
           return;
         case WebDavRestoreSkipped(:final reason):
           if (mounted) {
@@ -895,18 +1281,14 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     }
 
     try {
-      if (_backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
+      if (usesServerMode) {
         final confirmed =
             await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
                 title: Text(context.t.strings.legacy.msg_restore_backup),
                 content: Text(
-                  context
-                      .t
-                      .strings
-                      .legacy
-                      .msg_restoring_overwrite_local_library_files_rebuild,
+                  context.t.strings.legacy.msg_restore_export_only_notice,
                 ),
                 actions: [
                   TextButton(
@@ -922,18 +1304,70 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
             ) ??
             false;
         if (!mounted || !confirmed) return;
-        final result = await service.restorePlainBackup(
-          settings: settings,
-          accountKey: accountKey,
-          activeLocalLibrary: localLibrary,
-        );
-        await handleResult(
-          result,
-          (decisions) => service.restorePlainBackup(
+      }
+
+      if (_backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
+        if (!usesServerMode) {
+          final confirmed =
+              await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text(context.t.strings.legacy.msg_restore_backup),
+                  content: Text(
+                    context
+                        .t
+                        .strings
+                        .legacy
+                        .msg_restoring_overwrite_local_library_files_rebuild,
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => context.safePop(false),
+                      child: Text(context.t.strings.legacy.msg_cancel_2),
+                    ),
+                    FilledButton(
+                      onPressed: () => context.safePop(true),
+                      child: Text(context.t.strings.legacy.msg_confirm),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+          if (!mounted || !confirmed) return;
+          final result = await service.restorePlainBackup(
             settings: settings,
             accountKey: accountKey,
             activeLocalLibrary: localLibrary,
-            conflictDecisions: decisions,
+            configDecisionHandler: _promptConfigRestoreDecision,
+          );
+          await handleResult(
+            result,
+            (decisions) => service.restorePlainBackup(
+              settings: settings,
+              accountKey: accountKey,
+              activeLocalLibrary: localLibrary,
+              conflictDecisions: decisions,
+              configDecisionHandler: _promptConfigRestoreDecision,
+            ),
+          );
+          return;
+        }
+
+        final result = await service.restorePlainBackupToDirectory(
+          settings: settings,
+          accountKey: accountKey,
+          exportLibrary: exportLibrary!,
+          exportPrefix: exportPrefix!,
+          configDecisionHandler: _promptConfigRestoreDecision,
+        );
+        await handleResult(
+          result,
+          (_) => service.restorePlainBackupToDirectory(
+            settings: settings,
+            accountKey: accountKey,
+            exportLibrary: exportLibrary!,
+            exportPrefix: exportPrefix!,
+            configDecisionHandler: _promptConfigRestoreDecision,
           ),
         );
         return;
@@ -1039,24 +1473,50 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       );
       if (!mounted || selected == null) return;
 
-      final result = await service.restoreSnapshot(
-        settings: settings,
-        accountKey: accountKey,
-        activeLocalLibrary: localLibrary,
-        snapshot: selected,
-        password: password,
-      );
-      await handleResult(
-        result,
-        (decisions) => service.restoreSnapshot(
+      if (usesServerMode) {
+        final result = await service.restoreSnapshotToDirectory(
+          settings: settings,
+          accountKey: accountKey,
+          snapshot: selected,
+          password: password,
+          exportLibrary: exportLibrary!,
+          exportPrefix: exportPrefix!,
+          configDecisionHandler: _promptConfigRestoreDecision,
+        );
+        await handleResult(
+          result,
+          (_) => service.restoreSnapshotToDirectory(
+            settings: settings,
+            accountKey: accountKey,
+            snapshot: selected,
+            password: password,
+            exportLibrary: exportLibrary!,
+            exportPrefix: exportPrefix!,
+            configDecisionHandler: _promptConfigRestoreDecision,
+          ),
+        );
+      } else {
+        final result = await service.restoreSnapshot(
           settings: settings,
           accountKey: accountKey,
           activeLocalLibrary: localLibrary,
           snapshot: selected,
           password: password,
-          conflictDecisions: decisions,
-        ),
-      );
+          configDecisionHandler: _promptConfigRestoreDecision,
+        );
+        await handleResult(
+          result,
+          (decisions) => service.restoreSnapshot(
+            settings: settings,
+            accountKey: accountKey,
+            activeLocalLibrary: localLibrary,
+            snapshot: selected,
+            password: password,
+            conflictDecisions: decisions,
+            configDecisionHandler: _promptConfigRestoreDecision,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _backupRestoring = false);
@@ -1113,6 +1573,135 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       context: context,
       builder: (context) =>
           _WebDavConflictDialog(conflicts: conflicts),
+    );
+  }
+
+  Future<Set<WebDavBackupConfigType>> _promptConfigRestoreDecision(
+    WebDavBackupConfigBundle bundle,
+  ) async {
+    final candidates = <WebDavBackupConfigType>[
+      if (bundle.webDavSettings != null)
+        WebDavBackupConfigType.webdavSettings,
+      if (bundle.imageBedSettings != null)
+        WebDavBackupConfigType.imageBedSettings,
+      if (bundle.appLockSnapshot != null) WebDavBackupConfigType.appLock,
+      if (bundle.aiSettings != null) WebDavBackupConfigType.aiSettings,
+    ];
+    if (candidates.isEmpty) return const {};
+    var selected = candidates.toSet();
+    final result =
+        await showDialog<Set<WebDavBackupConfigType>>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setState) => AlertDialog(
+              title: Text(
+                context.t.strings.legacy.msg_restore_config_confirm_title,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    context.t.strings.legacy.msg_restore_config_confirm_hint,
+                  ),
+                  const SizedBox(height: 12),
+                  for (final item in candidates)
+                    CheckboxListTile(
+                      value: selected.contains(item),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(_backupConfigTypeLabel(item)),
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            selected.add(item);
+                          } else {
+                            selected.remove(item);
+                          }
+                        });
+                      },
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () =>
+                      dialogContext.safePop(const <WebDavBackupConfigType>{}),
+                  child: Text(context.t.strings.legacy.msg_skip),
+                ),
+                FilledButton(
+                  onPressed: () => dialogContext.safePop(selected),
+                  child: Text(context.t.strings.legacy.msg_confirm),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        const <WebDavBackupConfigType>{};
+    return result;
+  }
+
+  String _backupConfigTypeLabel(WebDavBackupConfigType type) {
+    return switch (type) {
+      WebDavBackupConfigType.webdavSettings =>
+        context.t.strings.legacy.msg_restore_config_item_webdav,
+      WebDavBackupConfigType.imageBedSettings =>
+        context.t.strings.legacy.msg_restore_config_item_image_bed,
+      WebDavBackupConfigType.appLock =>
+        context.t.strings.legacy.msg_restore_config_item_app_lock,
+      WebDavBackupConfigType.aiSettings =>
+        context.t.strings.legacy.msg_restore_config_item_ai,
+      _ => type.name,
+    };
+  }
+
+  Future<({LocalLibrary library, String prefix})?> _pickRestoreDirectory()
+      async {
+    try {
+      String? treeUri;
+      String? rootPath;
+      if (Platform.isAndroid) {
+        final doc = await SafUtil().pickDirectory(
+          writePermission: true,
+          persistablePermission: true,
+        );
+        if (doc == null) return null;
+        treeUri = doc.uri;
+      } else {
+        final path = await FilePicker.platform.getDirectoryPath();
+        if (path == null || path.trim().isEmpty) return null;
+        rootPath = path.trim();
+      }
+      final library = LocalLibrary(
+        key: 'webdav_backup_restore',
+        name: context.tr(zh: 'WebDAV 备份恢复', en: 'WebDAV Backup Restore'),
+        treeUri: treeUri,
+        rootPath: rootPath,
+      );
+      final prefix = _buildRestoreExportPrefix();
+      return (library: library, prefix: prefix);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _buildRestoreExportPrefix() {
+    final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    return 'RecoveredBackup_$stamp';
+  }
+
+  Future<void> _openVaultSecurityStatus() async {
+    if (!_vaultEnabled) {
+      final enabled = await _setupVaultPasswordFlow();
+      if (!mounted || !enabled) return;
+      setState(() => _vaultEnabled = true);
+      ref.read(webDavSettingsProvider.notifier).setVaultEnabled(true);
+      _refreshBackupPasswordStatus();
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const VaultSecurityStatusScreen(),
+      ),
     );
   }
 
@@ -1197,33 +1786,6 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     return DateFormat('yyyy-MM-dd HH:mm').format(time);
   }
 
-  String _formatLogSubtitle(DebugLogEntry entry) {
-    final parts = <String>[];
-    final methodUrl = [
-      entry.method?.trim(),
-      entry.url?.trim(),
-    ].whereType<String>().where((v) => v.isNotEmpty).join(' ');
-    if (methodUrl.isNotEmpty) {
-      parts.add(methodUrl);
-    }
-    final statusDuration = [
-      if (entry.status != null) 'HTTP ${entry.status}',
-      if (entry.durationMs != null) '${entry.durationMs}ms',
-    ].join(' · ');
-    if (statusDuration.trim().isNotEmpty) {
-      parts.add(statusDuration);
-    }
-    final detail = entry.detail?.trim() ?? '';
-    if (detail.isNotEmpty) {
-      parts.add(detail);
-    }
-    final error = entry.error?.trim() ?? '';
-    if (error.isNotEmpty) {
-      parts.add('Error: $error');
-    }
-    return parts.join(' · ');
-  }
-
   String _backupScheduleLabel(WebDavBackupSchedule schedule) {
     return switch (schedule) {
       WebDavBackupSchedule.manual => context.t.strings.legacy.msg_manual,
@@ -1236,11 +1798,90 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     };
   }
 
+  String _progressStageLabel(WebDavBackupProgressStage? stage) {
+    return switch (stage) {
+      WebDavBackupProgressStage.preparing =>
+        context.tr(zh: '准备', en: 'Preparing'),
+      WebDavBackupProgressStage.exporting =>
+        context.tr(zh: '导出本地', en: 'Exporting local'),
+      WebDavBackupProgressStage.uploading =>
+        context.tr(zh: '上传', en: 'Uploading'),
+      WebDavBackupProgressStage.writingManifest =>
+        context.tr(zh: '写入清单', en: 'Writing manifest'),
+      WebDavBackupProgressStage.downloading =>
+        context.tr(zh: '下载', en: 'Downloading'),
+      WebDavBackupProgressStage.writing =>
+        context.tr(zh: '写入', en: 'Writing'),
+      WebDavBackupProgressStage.scanning =>
+        context.tr(zh: '重建/扫描', en: 'Rebuild/Scan'),
+      WebDavBackupProgressStage.completed =>
+        context.tr(zh: '完成', en: 'Completed'),
+      _ => context.tr(zh: '准备', en: 'Preparing'),
+    };
+  }
+
+  String _progressActionLabel(WebDavBackupProgressStage? stage) {
+    return switch (stage) {
+      WebDavBackupProgressStage.preparing =>
+        context.tr(zh: '正在准备', en: 'Preparing'),
+      WebDavBackupProgressStage.exporting =>
+        context.tr(zh: '正在导出本地', en: 'Exporting local data'),
+      WebDavBackupProgressStage.uploading =>
+        context.tr(zh: '正在上传', en: 'Uploading'),
+      WebDavBackupProgressStage.writingManifest =>
+        context.tr(zh: '正在写入清单', en: 'Writing manifest'),
+      WebDavBackupProgressStage.downloading =>
+        context.tr(zh: '正在下载', en: 'Downloading'),
+      WebDavBackupProgressStage.writing =>
+        context.tr(zh: '正在写入', en: 'Writing'),
+      WebDavBackupProgressStage.scanning =>
+        context.tr(zh: '正在重建/扫描本地库', en: 'Rebuilding/Scanning local library'),
+      WebDavBackupProgressStage.completed =>
+        context.tr(zh: '已完成', en: 'Completed'),
+      _ => context.tr(zh: '正在准备', en: 'Preparing'),
+    };
+  }
+
+  String _progressItemGroupLabel(WebDavBackupProgressItemGroup group) {
+    return switch (group) {
+      WebDavBackupProgressItemGroup.memo =>
+        context.t.strings.legacy.msg_memo,
+      WebDavBackupProgressItemGroup.attachment =>
+        context.t.strings.legacy.msg_attachments,
+      WebDavBackupProgressItemGroup.config =>
+        context.tr(zh: '配置', en: 'Config'),
+      WebDavBackupProgressItemGroup.manifest =>
+        context.tr(zh: '清单', en: 'Manifest'),
+      WebDavBackupProgressItemGroup.other =>
+        context.tr(zh: '文件', en: 'Files'),
+    };
+  }
+
+  String _progressDetail(WebDavBackupProgressSnapshot snapshot) {
+    if (snapshot.stage == WebDavBackupProgressStage.scanning) {
+      return _progressActionLabel(snapshot.stage);
+    }
+    final action = _progressActionLabel(snapshot.stage);
+    final path = snapshot.currentPath?.trim() ?? '';
+    if (path.isNotEmpty) {
+      return '$action $path';
+    }
+    final group = snapshot.itemGroup;
+    if (group != null &&
+        group != WebDavBackupProgressItemGroup.other &&
+        snapshot.total > 0) {
+      return '${_progressItemGroupLabel(group)} ${snapshot.completed}/${snapshot.total}';
+    }
+    return action;
+  }
+
   @override
   Widget build(BuildContext context) {
     final coordinator = ref.watch(syncCoordinatorProvider);
     final syncStatus = coordinator.webDavSync;
     final backupStatus = coordinator.webDavBackup;
+    final progressSnapshot =
+        ref.watch(webDavBackupProgressTrackerProvider).snapshot;
     final syncErrorText = syncStatus.lastError == null
         ? null
         : _formatSyncError(syncStatus.lastError!);
@@ -1252,6 +1893,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         ? '${context.t.strings.legacy.msg_export} ${context.t.strings.legacy.msg_path}: ${context.t.strings.legacy.msg_not_set}'
         : context.t.strings.legacy.msg_local_library_only;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
@@ -1264,7 +1906,6 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.06);
     final serverUrl = _serverUrlController.text.trim();
-    final isHttp = serverUrl.startsWith('http://');
     final connectionSubtitle = serverUrl.isEmpty
         ? context.t.strings.legacy.msg_not_set
         : serverUrl;
@@ -1293,7 +1934,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         centerTitle: false,
         actions: [
           IconButton(
-            tooltip: context.t.strings.legacy.msg_sync,
+            tooltip: context.t.strings.legacy.msg_backup_settings,
             onPressed: (!_enabled || syncStatus.running) ? null : _syncNow,
             icon: syncStatus.running
                 ? const SizedBox.square(
@@ -1352,18 +1993,29 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                 onTap: _openBackupSettings,
               ),
               const SizedBox(height: 12),
-              Text(
-                context.tr(zh: '备份操作', en: 'Backup actions'),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: textMuted,
-                ),
+              _NavCard(
+                card: card,
+                title: context.tr(zh: '安全状态检查', en: 'Vault security status'),
+                subtitle: _vaultEnabled
+                    ? context.tr(zh: '已启用', en: 'Enabled')
+                    : context.tr(zh: '未启用', en: 'Not enabled'),
+                icon: Icons.lock_outline,
+                onTap: _openVaultSecurityStatus,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              _NavCard(
+                card: card,
+                title: 'WebDAV ${context.t.strings.legacy.msg_logs}',
+                subtitle: context.t.strings.legacy.msg_view_debug_logs,
+                icon: Icons.receipt_long_outlined,
+                onTap: _openWebDavLogs,
+              ),
+              const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Wrap(
+                  alignment:
+                      isCompact ? WrapAlignment.center : WrapAlignment.start,
                   spacing: 12,
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -1401,9 +2053,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                       height: 42,
                       child: OutlinedButton.icon(
                         onPressed:
-                            (!_enabled || backupBusy || localLibrary == null)
-                                ? null
-                                : _restoreBackup,
+                            (!_enabled || backupBusy) ? null : _restoreBackup,
                         icon: _backupRestoring
                             ? const SizedBox.square(
                                 dimension: 16,
@@ -1415,7 +2065,13 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                         label: Text(
                           _backupRestoring
                               ? context.t.strings.legacy.msg_restoring
-                              : context.t.strings.legacy.msg_restore_cloud,
+                              : usesServerMode
+                                  ? context
+                                      .t
+                                      .strings
+                                      .legacy
+                                      .msg_restore_to_directory
+                                  : context.t.strings.legacy.msg_restore_cloud,
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
@@ -1428,69 +2084,142 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                         ),
                       ),
                     ),
-                    if (_backupEncryptionMode ==
-                        WebDavBackupEncryptionMode.encrypted)
-                      SizedBox(
-                        height: 42,
-                        child: TextButton(
-                          onPressed:
-                              (!_enabled || backupBusy)
-                                  ? null
-                                  : _recoverBackupPassword,
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                            ),
-                            minimumSize: const Size(0, 42),
-                            foregroundColor: isDark
-                                ? const Color(0xFFFF8A80)
-                                : const Color(0xFFD32F2F),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: Text(
-                            context
-                                .t
-                                .strings
-                                .legacy
-                                .webdav
-                                .recover_password_button,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
-              if (localLibrary == null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  context
-                      .t
-                      .strings
-                      .legacy
-                      .msg_restore_only_available_local_libraries,
-                  style: TextStyle(fontSize: 12, color: textMuted),
+              if (progressSnapshot.running) ...[
+                const SizedBox(height: 10),
+                Builder(
+                  builder: (context) {
+                    final snapshot = progressSnapshot;
+                    final progressText =
+                        snapshot.total > 0
+                            ? '${snapshot.completed}/${snapshot.total}'
+                            : '-';
+                    final detail = _progressDetail(snapshot);
+                    final stageLabel = _progressStageLabel(snapshot.stage);
+                    return Container(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      decoration: BoxDecoration(
+                        color: card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: divider),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${context.tr(zh: '阶段', en: 'Stage')}: $stageLabel',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: textMain,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Text(
+                                '${context.tr(zh: '进度', en: 'Progress')}:',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: LinearProgressIndicator(
+                                  value: snapshot.progress,
+                                  minHeight: 6,
+                                  backgroundColor:
+                                      textMuted.withValues(alpha: 0.15),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                progressText,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: textMuted,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${context.tr(zh: '说明', en: 'Detail')}: $detail',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: textMuted),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            context.tr(
+                              zh: '备份/恢复需要保持前台，进入后台将自动暂停。',
+                              en: 'Keep the app in foreground during backup/restore; it will pause in background.',
+                            ),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark
+                                  ? const Color(0xFFFF8A80)
+                                  : const Color(0xFFD32F2F),
+                            ),
+                          ),
+                          if (snapshot.paused) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.05)
+                                    : Colors.black.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.pause_circle_outline,
+                                    size: 18,
+                                    color: textMuted,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      context.tr(
+                                        zh: '已暂停：回到前台可继续',
+                                        en: 'Paused: return to foreground to continue',
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: textMain,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton(
+                                    onPressed: () => ref
+                                        .read(
+                                          webDavBackupProgressTrackerProvider,
+                                        )
+                                        .resume(),
+                                    child: Text(
+                                      context.tr(zh: '继续', en: 'Resume'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
-              if (isHttp || _ignoreTlsErrors) ...[
-                const SizedBox(height: 12),
-                _WarningCard(
-                  text: context
-                      .t
-                      .strings
-                      .legacy
-                      .msg_use_https_avoid_ignoring_tls_errors,
-                  isDark: isDark,
-                ),
-              ],
-              const SizedBox(height: 16),
-              _SyncStatusLine(
-                label: context.t.strings.legacy.msg_last_sync,
-                value: _formatTime(syncStatus.lastSuccessAt),
-                syncing: syncStatus.running,
-                textMuted: textMuted,
-              ),
               if (syncErrorText != null &&
                   syncErrorText.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -1499,111 +2228,6 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                   style: TextStyle(fontSize: 12, color: textMuted),
                 ),
               ],
-              const SizedBox(height: 16),
-              Text(
-                'WebDAV ${context.t.strings.legacy.msg_logs}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: textMuted,
-                ),
-              ),
-              const SizedBox(height: 8),
-              FutureBuilder<List<DebugLogEntry>>(
-                future: ref.read(webDavLogStoreProvider).list(limit: 1),
-                builder: (context, snapshot) {
-                  final entries = snapshot.data ?? const <DebugLogEntry>[];
-                  final latest =
-                      entries.isNotEmpty ? entries.last : null;
-                  final subtitle =
-                      latest == null ? '' : _formatLogSubtitle(latest);
-                  final timeText = latest == null
-                      ? null
-                      : _formatTime(latest.timestamp.toLocal());
-                  return Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: _openWebDavLogs,
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                        decoration: BoxDecoration(
-                          color: card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: isDark
-                              ? null
-                              : [
-                                  BoxShadow(
-                                    blurRadius: 16,
-                                    offset: const Offset(0, 8),
-                                    color:
-                                        Colors.black.withValues(alpha: 0.06),
-                                  ),
-                                ],
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.receipt_long_outlined,
-                              size: 18,
-                              color: textMuted,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    latest?.label ??
-                                        context
-                                            .t
-                                            .strings
-                                            .legacy
-                                            .msg_no_logs_yet,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: textMain,
-                                    ),
-                                  ),
-                                  if (subtitle.trim().isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      subtitle,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                  if (timeText != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      timeText,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              Icons.chevron_right,
-                              size: 18,
-                              color: textMuted,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
             ],
           ),
         ],
@@ -1650,7 +2274,7 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
     final language = context.appLanguage;
     return AlertDialog(
       title: Text(
-        trByLanguageKey(language: language, key: 'legacy.msg_sync_conflicts'),
+        context.tr(zh: '设置备份冲突', en: 'Settings backup conflicts'),
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -2353,6 +2977,7 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
@@ -2364,6 +2989,8 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
     final divider = isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.06);
+    final serverUrl = widget.serverUrlController.text.trim();
+    final isHttp = serverUrl.startsWith('http://');
 
     return Scaffold(
       backgroundColor: bg,
@@ -2403,7 +3030,11 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 textMain: textMain,
                 textMuted: textMuted,
                 keyboardType: TextInputType.url,
-                onChanged: widget.onServerUrlChanged,
+                onChanged: (value) {
+                  widget.onServerUrlChanged(value);
+                  if (!mounted) return;
+                  setState(() {});
+                },
                 onEditingComplete: widget.onServerUrlEditingComplete,
               ),
               _InputRow(
@@ -2458,6 +3089,13 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          if (isHttp || _ignoreTlsErrors) ...[
+            _WarningCard(
+              text: context.t.strings.legacy.msg_use_https_avoid_ignoring_tls_errors,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 16),
+          ],
           Text(
             context.t.strings.legacy.msg_auth_settings,
             style: TextStyle(
@@ -2528,15 +3166,18 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
     required this.backupRestoring,
     required this.backupMirrorPathLabel,
     required this.onPickBackupMirrorPath,
-    required this.backupContentConfig,
+    required this.backupConfigScope,
     required this.backupContentMemos,
     required this.backupEncryptionMode,
+    required this.backupExportEncrypted,
     required this.backupPasswordSet,
+    required this.vaultEnabled,
     required this.backupSchedule,
     required this.backupRetentionController,
-    required this.onBackupContentConfigChanged,
+    required this.onBackupConfigScopeChanged,
     required this.onBackupContentMemosChanged,
     required this.onBackupEncryptionModeChanged,
+    required this.onBackupExportEncryptedChanged,
     required this.onBackupScheduleChanged,
     required this.onBackupRetentionChanged,
     required this.onSetupBackupPassword,
@@ -2548,15 +3189,18 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
   final bool backupRestoring;
   final String backupMirrorPathLabel;
   final Future<void> Function() onPickBackupMirrorPath;
-  final bool backupContentConfig;
+  final WebDavBackupConfigScope backupConfigScope;
   final bool backupContentMemos;
   final WebDavBackupEncryptionMode backupEncryptionMode;
+  final bool backupExportEncrypted;
   final bool backupPasswordSet;
+  final bool vaultEnabled;
   final WebDavBackupSchedule backupSchedule;
   final TextEditingController backupRetentionController;
-  final ValueChanged<bool> onBackupContentConfigChanged;
+  final ValueChanged<WebDavBackupConfigScope> onBackupConfigScopeChanged;
   final ValueChanged<bool> onBackupContentMemosChanged;
   final ValueChanged<WebDavBackupEncryptionMode> onBackupEncryptionModeChanged;
+  final ValueChanged<bool> onBackupExportEncryptedChanged;
   final ValueChanged<WebDavBackupSchedule> onBackupScheduleChanged;
   final ValueChanged<String> onBackupRetentionChanged;
   final Future<bool> Function() onSetupBackupPassword;
@@ -2568,18 +3212,20 @@ class _WebDavBackupSettingsScreen extends ConsumerStatefulWidget {
 
 class _WebDavBackupSettingsScreenState
     extends ConsumerState<_WebDavBackupSettingsScreen> {
-  late bool _backupContentConfig;
+  late WebDavBackupConfigScope _configScope;
   late bool _backupContentMemos;
   late WebDavBackupEncryptionMode _encryptionMode;
+  late bool _backupExportEncrypted;
   late bool _backupPasswordSet;
   late WebDavBackupSchedule _schedule;
 
   @override
   void initState() {
     super.initState();
-    _backupContentConfig = widget.backupContentConfig;
+    _configScope = widget.backupConfigScope;
     _backupContentMemos = widget.backupContentMemos;
     _encryptionMode = widget.backupEncryptionMode;
+    _backupExportEncrypted = widget.backupExportEncrypted;
     _backupPasswordSet = widget.backupPasswordSet;
     _schedule = widget.backupSchedule;
   }
@@ -2587,14 +3233,17 @@ class _WebDavBackupSettingsScreenState
   @override
   void didUpdateWidget(covariant _WebDavBackupSettingsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.backupContentConfig != widget.backupContentConfig) {
-      _backupContentConfig = widget.backupContentConfig;
+    if (oldWidget.backupConfigScope != widget.backupConfigScope) {
+      _configScope = widget.backupConfigScope;
     }
     if (oldWidget.backupContentMemos != widget.backupContentMemos) {
       _backupContentMemos = widget.backupContentMemos;
     }
     if (oldWidget.backupEncryptionMode != widget.backupEncryptionMode) {
       _encryptionMode = widget.backupEncryptionMode;
+    }
+    if (oldWidget.backupExportEncrypted != widget.backupExportEncrypted) {
+      _backupExportEncrypted = widget.backupExportEncrypted;
     }
     if (oldWidget.backupPasswordSet != widget.backupPasswordSet) {
       _backupPasswordSet = widget.backupPasswordSet;
@@ -2604,14 +3253,84 @@ class _WebDavBackupSettingsScreenState
     }
   }
 
-  void _handleBackupContentConfig(bool value) {
-    setState(() => _backupContentConfig = value);
-    widget.onBackupContentConfigChanged(value);
+  void _handleBackupConfigScope(WebDavBackupConfigScope scope) {
+    setState(() => _configScope = scope);
+    widget.onBackupConfigScopeChanged(scope);
+  }
+
+  void _handleBackupConfigToggle(bool enabled) {
+    if (!enabled) {
+      _handleBackupConfigScope(WebDavBackupConfigScope.none);
+      return;
+    }
+    var nextScope = _configScope;
+    if (nextScope == WebDavBackupConfigScope.none) {
+      nextScope = WebDavBackupConfigScope.safe;
+    }
+    if (_encryptionMode != WebDavBackupEncryptionMode.encrypted &&
+        nextScope == WebDavBackupConfigScope.full) {
+      nextScope = WebDavBackupConfigScope.safe;
+    }
+    _handleBackupConfigScope(nextScope);
   }
 
   void _handleBackupContentMemos(bool value) {
     setState(() => _backupContentMemos = value);
     widget.onBackupContentMemosChanged(value);
+  }
+
+  Future<void> _handleBackupExportEncrypted(bool value) async {
+    if (!value) {
+      final confirm = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(context.tr(zh: '关闭导出加密', en: 'Disable export encryption')),
+              content: Text(
+                context.tr(
+                  zh: '关闭后导出路径会保存明文文件，存在泄露风险，是否继续？',
+                  en:
+                      'Disabling this will store plaintext exports and may expose sensitive data. Continue?',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => dialogContext.safePop(false),
+                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => dialogContext.safePop(true),
+                  child: Text(context.tr(zh: '确认', en: 'Confirm')),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!confirm) return;
+    }
+    setState(() => _backupExportEncrypted = value);
+    widget.onBackupExportEncryptedChanged(value);
+  }
+
+  Future<void> _showFullConfigRequiresEncryptionDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr(zh: '需要加密', en: 'Encryption required')),
+        content: Text(
+          context.tr(
+            zh: '“全部配置（敏感）”仅支持加密备份，请先切换为加密模式并设置密码。',
+            en:
+                '"Full config (sensitive)" requires encrypted backup. Switch to encrypted mode and set a password first.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => dialogContext.safePop(),
+            child: Text(context.t.strings.legacy.msg_ok),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickBackupEncryptionMode() async {
@@ -2655,7 +3374,15 @@ class _WebDavBackupSettingsScreenState
       ),
     );
     if (!mounted || selected == null) return;
+    if (selected == WebDavBackupEncryptionMode.plain) {
+      final confirmed = await _confirmPlainBackupRisk();
+      if (!confirmed) return;
+    }
     setState(() => _encryptionMode = selected);
+    if (selected == WebDavBackupEncryptionMode.plain &&
+        _configScope == WebDavBackupConfigScope.full) {
+      _handleBackupConfigScope(WebDavBackupConfigScope.safe);
+    }
     widget.onBackupEncryptionModeChanged(selected);
   }
 
@@ -2675,13 +3402,26 @@ class _WebDavBackupSettingsScreenState
           context: context,
           builder: (context) => AlertDialog(
             title: Text(
-              context.tr(zh: '备份密码未设置', en: 'Backup password missing'),
+              widget.vaultEnabled
+                  ? context.tr(
+                      zh: 'Vault 密码未设置',
+                      en: 'Vault password missing',
+                    )
+                  : context.tr(
+                      zh: '备份密码未设置',
+                      en: 'Backup password missing',
+                    ),
             ),
             content: Text(
-              context.tr(
-                zh: '加密备份需要设置密码，是否现在设置？',
-                en: 'Encrypted backup requires a password. Set it now?',
-              ),
+              widget.vaultEnabled
+                  ? context.tr(
+                      zh: '加密备份需要设置 Vault 密码，是否现在设置？',
+                      en: 'Encrypted backup requires a Vault password. Set it now?',
+                    )
+                  : context.tr(
+                      zh: '加密备份需要设置密码，是否现在设置？',
+                      en: 'Encrypted backup requires a password. Set it now?',
+                    ),
             ),
             actions: [
               TextButton(
@@ -2704,9 +3444,38 @@ class _WebDavBackupSettingsScreenState
       await _handleSetupBackupPassword();
       return _backupPasswordSet;
     }
+    final confirmed = await _confirmPlainBackupRisk();
+    if (!confirmed) return false;
     setState(() => _encryptionMode = WebDavBackupEncryptionMode.plain);
     widget.onBackupEncryptionModeChanged(WebDavBackupEncryptionMode.plain);
     return true;
+  }
+
+  Future<bool> _confirmPlainBackupRisk() async {
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(
+              context.t.strings.legacy.msg_backup_plain_risk_title,
+            ),
+            content: Text(
+              context.t.strings.legacy.msg_backup_plain_risk_body,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => dialogContext.safePop(false),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
+              ),
+              FilledButton(
+                onPressed: () => dialogContext.safePop(true),
+                child: Text(context.t.strings.legacy.msg_confirm),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    return confirmed;
   }
 
   Future<void> _pickSchedule() async {
@@ -2877,8 +3646,7 @@ class _WebDavBackupSettingsScreenState
                     Expanded(
                       child: Text(
                         context.tr(
-                          zh:
-                              '服务器模式下，WebDAV 备份会先在本地目录生成 Markdown（.md）文件和附件镜像，再上传到 WebDAV。',
+                          zh: '服务端模式下，WebDAV 备份会先在本地目录生成 Markdown（.md）文件和附件镜像，再上传到 WebDAV。',
                           en:
                               'In server mode, WebDAV backup first generates local Markdown (.md) files and attachment mirrors, then uploads them.',
                         ),
@@ -2940,6 +3708,35 @@ class _WebDavBackupSettingsScreenState
                   ),
                 ],
               ),
+              if (_encryptionMode ==
+                  WebDavBackupEncryptionMode.encrypted) ...[
+                const SizedBox(height: 8),
+                _Group(
+                  card: card,
+                  divider: divider,
+                  showDividers: false,
+                  children: [
+                    _ToggleRow(
+                      label: context.tr(
+                        zh: '导出路径加密',
+                        en: 'Encrypt export path',
+                      ),
+                      value: _backupExportEncrypted,
+                      textMain: textMain,
+                      onChanged: busy ? null : _handleBackupExportEncrypted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  context.tr(
+                    zh: '开启后导出目录仅保存加密版本（仅保留最近一次备份）。',
+                    en:
+                        'When enabled, the export path stores encrypted data only (latest snapshot only).',
+                  ),
+                  style: TextStyle(fontSize: 12, color: textMuted),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
             Text(
@@ -2958,10 +3755,94 @@ class _WebDavBackupSettingsScreenState
               children: [
                 _ToggleRow(
                   label: context.tr(zh: '备份配置', en: 'Backup config'),
-                  value: _backupContentConfig,
+                  value: _configScope != WebDavBackupConfigScope.none,
                   textMain: textMain,
-                  onChanged: busy ? null : _handleBackupContentConfig,
+                  onChanged: busy ? null : _handleBackupConfigToggle,
                 ),
+                if (_configScope != WebDavBackupConfigScope.none) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    title: Text(
+                      context.tr(zh: '配置内容', en: 'Config scope'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textMain,
+                      ),
+                    ),
+                    trailing: DropdownButtonHideUnderline(
+                      child: DropdownButton<WebDavBackupConfigScope>(
+                        value: _configScope,
+                        isDense: true,
+                        borderRadius: BorderRadius.circular(12),
+                        icon: Icon(Icons.expand_more, color: textMuted),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: textMain,
+                        ),
+                        onChanged: busy
+                            ? null
+                            : (value) async {
+                                if (value == null) return;
+                                if (value == WebDavBackupConfigScope.full &&
+                                    _encryptionMode !=
+                                        WebDavBackupEncryptionMode.encrypted) {
+                                  await _showFullConfigRequiresEncryptionDialog();
+                                  return;
+                                }
+                                _handleBackupConfigScope(value);
+                              },
+                        items: [
+                          DropdownMenuItem(
+                            value: WebDavBackupConfigScope.safe,
+                            child: Text(
+                              context.t.strings.legacy.msg_backup_config_safe,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: WebDavBackupConfigScope.full,
+                            child: Text(
+                              context.t.strings.legacy.msg_backup_config_full,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      _configScope == WebDavBackupConfigScope.full
+                          ? (_encryptionMode ==
+                                  WebDavBackupEncryptionMode.encrypted
+                              ? context
+                                  .t
+                                  .strings
+                                  .legacy
+                                  .msg_backup_config_full_desc
+                              : context
+                                  .t
+                                  .strings
+                                  .legacy
+                                  .msg_backup_config_full_requires_encryption)
+                          : context
+                              .t
+                              .strings
+                              .legacy
+                              .msg_backup_config_safe_desc,
+                      style: TextStyle(fontSize: 12, color: textMuted),
+                    ),
+                  ),
+                ] else
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      context.t.strings.legacy.msg_backup_config_none_desc,
+                      style: TextStyle(fontSize: 12, color: textMuted),
+                    ),
+                  ),
+                const Divider(height: 1),
                 _ToggleRow(
                   label: context.tr(zh: '备份笔记', en: 'Backup memos'),
                   value: _backupContentMemos,
@@ -3001,7 +3882,9 @@ class _WebDavBackupSettingsScreenState
                 ),
                 if (_encryptionMode == WebDavBackupEncryptionMode.encrypted)
                   _SelectRow(
-                    label: context.tr(zh: '设置密码', en: 'Set password'),
+                    label: widget.vaultEnabled
+                        ? context.tr(zh: '设置 Vault 密码', en: 'Set Vault password')
+                        : context.tr(zh: '设置密码', en: 'Set password'),
                     value: _backupPasswordSet
                         ? context.tr(zh: '已设置', en: 'Set')
                         : context.t.strings.legacy.msg_not_set,
@@ -3237,3 +4120,15 @@ class _WebDavLogsScreenState extends ConsumerState<WebDavLogsScreen> {
 }
 
 enum _BackupPasswordExitAction { setup, abandon }
+
+enum _VaultExistingAction { verify, recover }
+
+
+
+
+
+
+
+
+
+

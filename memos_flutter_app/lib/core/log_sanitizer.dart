@@ -74,7 +74,7 @@ class LogSanitizer {
     final scheme = hasScheme && uri.scheme.isNotEmpty ? '${uri.scheme}://' : '';
     final host = uri.host.isNotEmpty ? maskHost(uri.host) : '';
     final port = uri.hasPort ? ':${uri.port}' : '';
-    final path = uri.path;
+    final path = _decodePath(uri.path);
     final query = _sanitizeQuery(uri.queryParametersAll);
     final fragment = uri.fragment.isNotEmpty ? '#${uri.fragment}' : '';
     final queryPart = query.isNotEmpty ? '?$query' : '';
@@ -279,6 +279,21 @@ class LogSanitizer {
       }
     }
     return pairs.join('&');
+  }
+
+  static String _decodePath(String path) {
+    if (path.isEmpty || !path.contains('%')) return path;
+    try {
+      final parts = path.split('/');
+      final decoded = parts
+          .map((segment) => segment.isEmpty
+              ? segment
+              : Uri.decodeComponent(segment))
+          .toList(growable: false);
+      return decoded.join('/');
+    } catch (_) {
+      return path;
+    }
   }
 
   static String locationFingerprint({

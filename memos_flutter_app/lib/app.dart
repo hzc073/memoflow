@@ -58,6 +58,7 @@ import 'state/reminder_settings_provider.dart';
 import 'state/session_provider.dart';
 import 'state/update_config_provider.dart';
 import 'state/user_settings_provider.dart';
+import 'state/webdav_backup_provider.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -1832,6 +1833,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        ref.read(webDavBackupProgressTrackerProvider).resume();
         _bindDesktopMultiWindowHandler();
         _syncOrchestrator.triggerLifecycleSync(isResume: true);
         _rescheduleRemindersIfNeeded();
@@ -1839,8 +1841,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        ref.read(webDavBackupProgressTrackerProvider).pauseIfRunning();
         break;
       case AppLifecycleState.inactive:
+        ref.read(webDavBackupProgressTrackerProvider).pauseIfRunning();
         break;
     }
   }
@@ -2074,7 +2078,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           final media = MediaQuery.of(context);
           final appContent = MediaQuery(
             data: media.copyWith(textScaler: TextScaler.linear(scale)),
-            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            child: AppLockGate(
+              child: child ?? const SizedBox.shrink(),
+              navigatorKey: _navigatorKey,
+            ),
           );
           if (!blurDesktopMainWindow) return appContent;
 

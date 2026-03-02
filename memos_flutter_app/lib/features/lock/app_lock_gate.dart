@@ -7,9 +7,14 @@ import '../../state/app_lock_provider.dart';
 import '../../i18n/strings.g.dart';
 
 class AppLockGate extends ConsumerStatefulWidget {
-  const AppLockGate({super.key, required this.child});
+  const AppLockGate({
+    super.key,
+    required this.child,
+    required this.navigatorKey,
+  });
 
   final Widget child;
+  final GlobalKey<NavigatorState> navigatorKey;
 
   @override
   ConsumerState<AppLockGate> createState() => _AppLockGateState();
@@ -17,15 +22,40 @@ class AppLockGate extends ConsumerStatefulWidget {
 
 class _AppLockGateState extends ConsumerState<AppLockGate>
     with WidgetsBindingObserver {
+  ProviderSubscription<AppLockState>? _lockSubscription;
+  bool _lockDialogVisible = false;
+  bool _pendingShow = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lockSubscription = ref.listenManual<AppLockState>(
+      appLockProvider,
+      (previous, next) {
+        final wasLocked = previous?.locked ?? false;
+        if (next.locked == wasLocked) return;
+        if (next.locked) {
+          _ensureLockRoute();
+        } else {
+          _dismissLockDialog();
+        }
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(appLockProvider).locked) {
+        _ensureLockRoute();
+      }
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _lockSubscription?.close();
+    _lockSubscription = null;
+    _dismissLockDialog();
     super.dispose();
   }
 
@@ -48,21 +78,63 @@ class _AppLockGateState extends ConsumerState<AppLockGate>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer(
-      builder: (context, ref, _) {
-        final lockState = ref.watch(appLockProvider);
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            widget.child,
-            if (lockState.locked)
-              const Positioned.fill(
-                child: PopScope(canPop: false, child: _AppLockOverlay()),
-              ),
-          ],
-        );
+    return widget.child;
+  }
+
+  void _ensureLockRoute() => _ensureLockDialog();
+
+  void _ensureLockDialog() {
+    if (_lockDialogVisible) return;
+    final navigator = widget.navigatorKey.currentState;
+    final overlayContext = navigator?.overlay?.context;
+    final dialogContext = overlayContext ?? widget.navigatorKey.currentContext;
+    if (navigator == null || dialogContext == null) {
+      if (_pendingShow) return;
+      _pendingShow = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pendingShow = false;
+        if (!mounted) return;
+        if (ref.read(appLockProvider).locked) {
+          _ensureLockDialog();
+        }
+      });
+      return;
+    }
+    _lockDialogVisible = true;
+    showGeneralDialog<void>(
+      context: dialogContext,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      barrierLabel: 'App lock',
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return const PopScope(canPop: false, child: _AppLockOverlay());
       },
-    );
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      transitionDuration: const Duration(milliseconds: 160),
+    ).whenComplete(() {
+      if (!mounted) return;
+      _lockDialogVisible = false;
+      if (ref.read(appLockProvider).locked) {
+        _ensureLockDialog();
+      }
+    });
+  }
+
+  void _dismissLockDialog() {
+    if (!_lockDialogVisible) return;
+    final dialogContext = widget.navigatorKey.currentContext;
+    if (dialogContext == null) {
+      _lockDialogVisible = false;
+      return;
+    }
+    final navigator = Navigator.of(dialogContext, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      _lockDialogVisible = false;
+    }
   }
 }
 

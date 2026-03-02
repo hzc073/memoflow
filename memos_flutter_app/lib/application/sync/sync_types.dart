@@ -75,7 +75,13 @@ sealed class WebDavRestoreResult {
 }
 
 class WebDavRestoreSuccess extends WebDavRestoreResult {
-  const WebDavRestoreSuccess();
+  const WebDavRestoreSuccess({
+    this.missingAttachments = 0,
+    this.exportPath,
+  });
+
+  final int missingAttachments;
+  final String? exportPath;
 }
 
 class WebDavRestoreSkipped extends WebDavRestoreResult {

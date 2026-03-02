@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:cryptography/cryptography.dart';
 
 import '../../core/hash.dart';
 import '../../core/log_sanitizer.dart';
@@ -15,6 +16,8 @@ import '../../data/models/webdav_settings.dart';
 import '../../data/models/webdav_sync_meta.dart';
 import '../../data/models/webdav_sync_state.dart';
 import '../../data/settings/ai_settings_repository.dart';
+import '../../data/models/webdav_vault.dart';
+import '../../data/settings/webdav_vault_password_repository.dart';
 import '../../data/settings/webdav_device_id_repository.dart';
 import '../../data/settings/webdav_sync_state_repository.dart';
 import '../../data/webdav/webdav_client.dart';
@@ -23,6 +26,7 @@ import '../../state/preferences_provider.dart' show AppPreferences;
 import '../../state/reminder_settings_provider.dart' show ReminderSettings;
 import 'sync_error.dart';
 import 'sync_types.dart';
+import 'webdav_vault_service.dart';
 
 const _webDavMetaFile = 'meta.json';
 const _webDavPreferencesFile = 'preferences.json';
@@ -33,6 +37,15 @@ const _webDavReminderFile = 'reminder_settings.json';
 const _webDavImageBedFile = 'image_bed.json';
 const _webDavLocationFile = 'location_settings.json';
 const _webDavTemplateFile = 'template_settings.json';
+const _webDavPreferencesEncFile = 'preferences.enc';
+const _webDavAiEncFile = 'ai_settings.enc';
+const _webDavAppLockEncFile = 'app_lock.enc';
+const _webDavDraftEncFile = 'note_draft.enc';
+const _webDavReminderEncFile = 'reminder_settings.enc';
+const _webDavImageBedEncFile = 'image_bed.enc';
+const _webDavLocationEncFile = 'location_settings.enc';
+const _webDavTemplateEncFile = 'template_settings.enc';
+const _webDavDeprecatedDelay = Duration(days: 7);
 
 class WebDavSyncLocalSnapshot {
   const WebDavSyncLocalSnapshot({
@@ -67,6 +80,7 @@ abstract class WebDavSyncLocalAdapter {
   Future<void> applyTemplateSettings(MemoTemplateSettings settings);
   Future<void> applyAppLockSnapshot(AppLockSnapshot snapshot);
   Future<void> applyNoteDraft(String text);
+  Future<void> applyWebDavSettings(WebDavSettings settings);
 }
 
 typedef WebDavClientFactory = WebDavClient Function({
@@ -80,17 +94,23 @@ class WebDavSyncService {
     required WebDavSyncStateRepository syncStateRepository,
     required WebDavDeviceIdRepository deviceIdRepository,
     required WebDavSyncLocalAdapter localAdapter,
+    required WebDavVaultService vaultService,
+    required WebDavVaultPasswordRepository vaultPasswordRepository,
     WebDavClientFactory? clientFactory,
     void Function(DebugLogEntry entry)? logWriter,
   }) : _syncStateRepository = syncStateRepository,
        _deviceIdRepository = deviceIdRepository,
        _localAdapter = localAdapter,
+       _vaultService = vaultService,
+       _vaultPasswordRepository = vaultPasswordRepository,
        _clientFactory = clientFactory ?? _defaultClientFactory,
        _logWriter = logWriter;
 
   final WebDavSyncStateRepository _syncStateRepository;
   final WebDavDeviceIdRepository _deviceIdRepository;
   final WebDavSyncLocalAdapter _localAdapter;
+  final WebDavVaultService _vaultService;
+  final WebDavVaultPasswordRepository _vaultPasswordRepository;
   final WebDavClientFactory _clientFactory;
   final void Function(DebugLogEntry entry)? _logWriter;
 
@@ -124,26 +144,38 @@ class WebDavSyncService {
 
     final accountId = fnv1a64Hex(normalizedAccountKey);
     final rootPath = normalizeWebDavRootPath(settings.rootPath);
-    final client = _clientFactory(
-      baseUrl: baseUrl,
-      settings: settings,
-      logWriter: _logWriter,
-    );
-    _logEvent('Sync started');
-    try {
-      await _ensureCollections(client, baseUrl, rootPath, accountId);
-      final lastSync = await _syncStateRepository.read();
-      final snapshot = await _localAdapter.readSnapshot();
-      final localPayloads = _buildLocalPayloads(snapshot);
-      final remoteMeta = await _fetchRemoteMeta(
-        client,
-        baseUrl,
-        rootPath,
-        accountId,
+      final client = _clientFactory(
+        baseUrl: baseUrl,
+        settings: settings,
+        logWriter: _logWriter,
       );
-      final diff = _diffFiles(localPayloads, remoteMeta, lastSync);
-      final diffDetail =
-          'uploads=${diff.uploads.length} downloads=${diff.downloads.length} conflicts=${diff.conflicts.length}';
+      _logEvent('Sync started');
+      try {
+        await _ensureCollections(client, baseUrl, rootPath, accountId);
+        final lastSync = await _syncStateRepository.read();
+        final snapshot = await _localAdapter.readSnapshot();
+        final vaultContext = await _resolveVaultContext(
+          settings: settings,
+          accountKey: normalizedAccountKey,
+        );
+        final localPayloads = await _buildLocalPayloads(
+          snapshot,
+          vaultContext: vaultContext,
+        );
+        final remoteMeta = await _fetchRemoteMeta(
+          client,
+          baseUrl,
+          rootPath,
+          accountId,
+        );
+        final deprecatedInfo = _resolveDeprecatedInfo(
+          remoteMeta: remoteMeta,
+          now: DateTime.now().toUtc(),
+          useVault: vaultContext != null,
+        );
+        final diff = _diffFiles(localPayloads, remoteMeta, lastSync);
+        final diffDetail =
+            'uploads=${diff.uploads.length} downloads=${diff.downloads.length} conflicts=${diff.conflicts.length}';
 
       if (diff.conflicts.isNotEmpty) {
         if (conflictResolutions == null) {
@@ -160,6 +192,7 @@ class WebDavSyncService {
         rootPath,
         accountId,
         diff.downloads,
+        vaultContext,
       );
       await _uploadLocal(
         client,
@@ -175,6 +208,7 @@ class WebDavSyncService {
         diff,
         now,
         await _resolveDeviceId(),
+        deprecatedInfo: deprecatedInfo,
       );
       await _writeRemoteMeta(
         client,
@@ -195,6 +229,91 @@ class WebDavSyncService {
       final mapped = _mapUnexpectedError(error);
       _logEvent('Sync failed', error: mapped);
       return WebDavSyncFailure(mapped);
+    } finally {
+      await client.close();
+    }
+  }
+
+  Future<WebDavSyncMeta?> fetchRemoteMeta({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    if (normalizedAccountKey.isEmpty) return null;
+    final baseUrl = Uri.tryParse(settings.serverUrl.trim());
+    if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
+      return null;
+    }
+    final accountId = fnv1a64Hex(normalizedAccountKey);
+    final rootPath = normalizeWebDavRootPath(settings.rootPath);
+    final client = _clientFactory(
+      baseUrl: baseUrl,
+      settings: settings,
+      logWriter: _logWriter,
+    );
+    try {
+      await _ensureCollections(client, baseUrl, rootPath, accountId);
+      return _fetchRemoteMeta(client, baseUrl, rootPath, accountId);
+    } finally {
+      await client.close();
+    }
+  }
+
+  Future<WebDavSyncMeta?> cleanDeprecatedRemotePlainFiles({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    if (normalizedAccountKey.isEmpty) return null;
+    final baseUrl = Uri.tryParse(settings.serverUrl.trim());
+    if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
+      return null;
+    }
+    final accountId = fnv1a64Hex(normalizedAccountKey);
+    final rootPath = normalizeWebDavRootPath(settings.rootPath);
+    final client = _clientFactory(
+      baseUrl: baseUrl,
+      settings: settings,
+      logWriter: _logWriter,
+    );
+    try {
+      await _ensureCollections(client, baseUrl, rootPath, accountId);
+      final meta = await _fetchRemoteMeta(client, baseUrl, rootPath, accountId);
+      if (meta == null) return null;
+      final deprecated = meta.deprecatedFiles.isNotEmpty
+          ? meta.deprecatedFiles.toList(growable: false)
+          : meta.files.keys
+              .where(_legacyPlainFiles().contains)
+              .toList(growable: false);
+      if (deprecated.isEmpty) return meta;
+      for (final name in deprecated) {
+        final uri = _fileUri(baseUrl, rootPath, accountId, name);
+        final res = await client.delete(uri);
+        if (res.statusCode == 404) continue;
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          throw _httpError(
+            statusCode: res.statusCode,
+            message: 'WebDAV delete failed (HTTP ${res.statusCode})',
+          );
+        }
+      }
+      final nextFiles = Map<String, WebDavFileMeta>.from(meta.files);
+      for (final name in deprecated) {
+        nextFiles.remove(name);
+      }
+      final now = DateTime.now().toUtc().toIso8601String();
+      final updated = WebDavSyncMeta(
+        schemaVersion: meta.schemaVersion,
+        deviceId: meta.deviceId,
+        updatedAt: now,
+        files: nextFiles,
+        deprecatedFiles: const <String>[],
+        deprecatedDetectedAt: meta.deprecatedDetectedAt,
+        deprecatedRemindAfter: meta.deprecatedRemindAfter,
+        deprecatedClearedAt: now,
+      );
+      await _writeRemoteMeta(client, baseUrl, rootPath, accountId, updated);
+      return updated;
     } finally {
       await client.close();
     }
@@ -270,23 +389,52 @@ class WebDavSyncService {
     return _deviceIdRepository.readOrCreate();
   }
 
-  Map<String, _WebDavFilePayload> _buildLocalPayloads(
-    WebDavSyncLocalSnapshot snapshot,
-  ) {
-    return <String, _WebDavFilePayload>{
-      _webDavPreferencesFile: _payloadFromJson(
-        _preferencesForSync(snapshot.preferences),
-      ),
-      _webDavAiFile: _payloadFromJson(snapshot.aiSettings.toJson()),
-      _webDavReminderFile: _payloadFromJson(snapshot.reminderSettings.toJson()),
-      _webDavImageBedFile: _payloadFromJson(snapshot.imageBedSettings.toJson()),
-      _webDavLocationFile: _payloadFromJson(snapshot.locationSettings.toJson()),
-      _webDavTemplateFile: _payloadFromJson(
-        snapshot.templateSettings.toJson(),
-      ),
-      _webDavAppLockFile: _payloadFromJson(snapshot.appLockSnapshot.toJson()),
-      _webDavDraftFile: _payloadFromJson({'text': snapshot.noteDraft}),
+  Future<Map<String, _WebDavFilePayload>> _buildLocalPayloads(
+    WebDavSyncLocalSnapshot snapshot, {
+    required _VaultContext? vaultContext,
+  }) async {
+    final useVault = vaultContext != null;
+    final preferencesPayload = _preferencesForSync(snapshot.preferences);
+    final entries = <String, Map<String, dynamic>>{
+      useVault ? _webDavPreferencesEncFile : _webDavPreferencesFile:
+          preferencesPayload,
+      useVault ? _webDavAiEncFile : _webDavAiFile: snapshot.aiSettings.toJson(),
+      useVault ? _webDavReminderEncFile : _webDavReminderFile:
+          snapshot.reminderSettings.toJson(),
+      useVault ? _webDavImageBedEncFile : _webDavImageBedFile:
+          snapshot.imageBedSettings.toJson(),
+      useVault ? _webDavLocationEncFile : _webDavLocationFile:
+          snapshot.locationSettings.toJson(),
+      useVault ? _webDavTemplateEncFile : _webDavTemplateFile:
+          snapshot.templateSettings.toJson(),
+      useVault ? _webDavAppLockEncFile : _webDavAppLockFile:
+          snapshot.appLockSnapshot.toJson(),
+      useVault ? _webDavDraftEncFile : _webDavDraftFile: {
+        'text': snapshot.noteDraft,
+      },
     };
+
+    final payloads = <String, _WebDavFilePayload>{};
+    for (final entry in entries.entries) {
+      final name = entry.key;
+      final json = entry.value;
+      if (useVault) {
+        final stableHash = _hashCanonicalJson(json);
+        final encrypted = await _vaultService.encryptJsonPayload(
+          masterKey: vaultContext!.masterKey,
+          info: 'sync:$name',
+          payload: json,
+        );
+        payloads[name] = _payloadFromEncrypted(
+          encrypted,
+          hashOverride: stableHash,
+        );
+      } else {
+        payloads[name] = _payloadFromJson(json);
+      }
+    }
+
+    return payloads;
   }
 
   Map<String, dynamic> _preferencesForSync(AppPreferences prefs) {
@@ -309,6 +457,44 @@ class WebDavSyncService {
       hash: hash,
       size: bytes.length,
     );
+  }
+
+  _WebDavFilePayload _payloadFromEncrypted(
+    WebDavVaultEncryptedPayload payload, {
+    required String hashOverride,
+  }) {
+    final encoded = jsonEncode(payload.toJson());
+    final bytes = utf8.encode(encoded);
+    return _WebDavFilePayload(
+      jsonText: encoded,
+      hash: hashOverride,
+      size: bytes.length,
+    );
+  }
+
+  String _hashCanonicalJson(Map<String, dynamic> json) {
+    final canonical = _canonicalizeJson(json);
+    final encoded = jsonEncode(canonical);
+    final bytes = utf8.encode(encoded);
+    return sha256.convert(bytes).toString();
+  }
+
+  dynamic _canonicalizeJson(dynamic value) {
+    if (value is Map) {
+      final entries = value.entries
+          .map((entry) => MapEntry(entry.key.toString(), entry.value))
+          .toList(growable: false);
+      entries.sort((a, b) => a.key.compareTo(b.key));
+      final result = <String, dynamic>{};
+      for (final entry in entries) {
+        result[entry.key] = _canonicalizeJson(entry.value);
+      }
+      return result;
+    }
+    if (value is List) {
+      return value.map(_canonicalizeJson).toList(growable: false);
+    }
+    return value;
   }
 
   Future<WebDavSyncMeta?> _fetchRemoteMeta(
@@ -409,6 +595,7 @@ class WebDavSyncService {
     String rootPath,
     String accountId,
     Set<String> files,
+    _VaultContext? vaultContext,
   ) async {
     if (files.isEmpty) return;
     for (final name in files) {
@@ -421,7 +608,7 @@ class WebDavSyncService {
           message: 'WebDAV download failed (HTTP ${res.statusCode})',
         );
       }
-      await _applyRemoteFile(name, res.bodyText);
+      await _applyRemoteFile(name, res.bodyText, vaultContext: vaultContext);
     }
   }
 
@@ -452,7 +639,11 @@ class WebDavSyncService {
     }
   }
 
-  Future<void> _applyRemoteFile(String name, String raw) async {
+  Future<void> _applyRemoteFile(
+    String name,
+    String raw, {
+    required _VaultContext? vaultContext,
+  }) async {
     Map<String, dynamic>? json;
     try {
       final decoded = jsonDecode(raw);
@@ -462,7 +653,18 @@ class WebDavSyncService {
     } catch (_) {}
     if (json == null) return;
 
-    switch (name) {
+    var resolvedName = name;
+    if (vaultContext != null && name.endsWith('.enc')) {
+      final encrypted = WebDavVaultEncryptedPayload.fromJson(json);
+      json = await _vaultService.decryptJsonPayload(
+        masterKey: vaultContext.masterKey,
+        info: 'sync:$name',
+        payload: encrypted,
+      );
+      resolvedName = _plainNameFromEncrypted(name);
+    }
+
+    switch (resolvedName) {
       case _webDavPreferencesFile:
         final remote = AppPreferences.fromJson(json);
         final merged = await _mergePreferences(remote);
@@ -514,6 +716,99 @@ class WebDavSyncService {
     return AppPreferences.fromJson(mergedJson);
   }
 
+  Future<_VaultContext?> _resolveVaultContext({
+    required WebDavSettings settings,
+    required String accountKey,
+  }) async {
+    if (!settings.vaultEnabled) return null;
+    final stored = await _vaultPasswordRepository.read();
+    if (stored == null || stored.trim().isEmpty) {
+      throw SyncError(
+        code: SyncErrorCode.invalidConfig,
+        retryable: false,
+        presentationKey: 'legacy.webdav.backup_password_missing',
+      );
+    }
+    final config = await _vaultService.loadConfig(
+      settings: settings,
+      accountKey: accountKey,
+    );
+    if (config == null) {
+      throw SyncError(
+        code: SyncErrorCode.invalidConfig,
+        retryable: false,
+        presentationKey: 'legacy.webdav.config_invalid',
+      );
+    }
+    final masterKey = await _vaultService.resolveMasterKey(
+      stored,
+      config,
+    );
+    return _VaultContext(masterKey: masterKey);
+  }
+
+  _DeprecatedInfo _resolveDeprecatedInfo({
+    required WebDavSyncMeta? remoteMeta,
+    required DateTime now,
+    required bool useVault,
+  }) {
+    if (!useVault) {
+      return _DeprecatedInfo(
+        files: remoteMeta?.deprecatedFiles ?? const <String>[],
+        detectedAt: remoteMeta?.deprecatedDetectedAt,
+        remindAfter: remoteMeta?.deprecatedRemindAfter,
+        clearedAt: remoteMeta?.deprecatedClearedAt,
+      );
+    }
+    final legacyFiles = _legacyPlainFiles();
+    final remoteFiles = remoteMeta?.files.keys.toSet() ?? const <String>{};
+    final deprecated = remoteFiles.intersection(legacyFiles).toList()..sort();
+    if (deprecated.isEmpty) {
+      if (remoteMeta?.deprecatedFiles.isNotEmpty ?? false) {
+        return _DeprecatedInfo(
+          files: const <String>[],
+          detectedAt: remoteMeta?.deprecatedDetectedAt,
+          remindAfter: remoteMeta?.deprecatedRemindAfter,
+          clearedAt: now.toIso8601String(),
+        );
+      }
+      return _DeprecatedInfo(
+        files: const <String>[],
+        detectedAt: remoteMeta?.deprecatedDetectedAt,
+        remindAfter: remoteMeta?.deprecatedRemindAfter,
+        clearedAt: remoteMeta?.deprecatedClearedAt,
+      );
+    }
+    final detectedAt = remoteMeta?.deprecatedDetectedAt;
+    final remindAfter = remoteMeta?.deprecatedRemindAfter;
+    return _DeprecatedInfo(
+      files: deprecated,
+      detectedAt: (detectedAt != null && detectedAt.trim().isNotEmpty)
+          ? detectedAt
+          : now.toIso8601String(),
+      remindAfter: (remindAfter != null && remindAfter.trim().isNotEmpty)
+          ? remindAfter
+          : now.add(_webDavDeprecatedDelay).toIso8601String(),
+      clearedAt: null,
+    );
+  }
+
+  Set<String> _legacyPlainFiles() => const <String>{
+        _webDavPreferencesFile,
+        _webDavAiFile,
+        _webDavAppLockFile,
+        _webDavDraftFile,
+        _webDavReminderFile,
+        _webDavImageBedFile,
+        _webDavLocationFile,
+        _webDavTemplateFile,
+      };
+
+  String _plainNameFromEncrypted(String name) {
+    if (!name.endsWith('.enc')) return name;
+    return '${name.substring(0, name.length - 4)}.json';
+  }
+
   Uri _fileUri(Uri baseUrl, String rootPath, String accountId, String name) {
     final relative = 'accounts/$accountId/$name';
     return joinWebDavUri(
@@ -529,6 +824,7 @@ class WebDavSyncService {
     _WebDavDiff diff,
     String now,
     String deviceId,
+    {required _DeprecatedInfo deprecatedInfo}
   ) {
     final files = <String, WebDavFileMeta>{};
     for (final entry in localPayloads.entries) {
@@ -556,6 +852,10 @@ class WebDavSyncService {
       deviceId: deviceId,
       updatedAt: now,
       files: files,
+      deprecatedFiles: deprecatedInfo.files,
+      deprecatedDetectedAt: deprecatedInfo.detectedAt,
+      deprecatedRemindAfter: deprecatedInfo.remindAfter,
+      deprecatedClearedAt: deprecatedInfo.clearedAt,
     );
   }
 
@@ -644,4 +944,24 @@ class _WebDavDiff {
     }
     conflicts.clear();
   }
+}
+
+class _VaultContext {
+  const _VaultContext({required this.masterKey});
+
+  final SecretKey masterKey;
+}
+
+class _DeprecatedInfo {
+  const _DeprecatedInfo({
+    required this.files,
+    required this.detectedAt,
+    required this.remindAfter,
+    required this.clearedAt,
+  });
+
+  final List<String> files;
+  final String? detectedAt;
+  final String? remindAfter;
+  final String? clearedAt;
 }

@@ -76,11 +76,20 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
     _setAndPersist(state.copyWith(rootPath: normalized));
   }
 
+  void setVaultEnabled(bool value) =>
+      _setAndPersist(state.copyWith(vaultEnabled: value));
+
+  void setRememberVaultPassword(bool value) =>
+      _setAndPersist(state.copyWith(rememberVaultPassword: value));
+
+  void setVaultKeepPlainCache(bool value) =>
+      _setAndPersist(state.copyWith(vaultKeepPlainCache: value));
+
   void setBackupEnabled(bool value) =>
       _setAndPersist(state.copyWith(backupEnabled: value));
 
-  void setBackupContentConfig(bool value) =>
-      _setAndPersist(state.copyWith(backupContentConfig: value));
+  void setBackupConfigScope(WebDavBackupConfigScope scope) =>
+      _setAndPersist(state.copyWith(backupConfigScope: scope));
 
   void setBackupContentMemos(bool value) =>
       _setAndPersist(state.copyWith(backupContentMemos: value));
@@ -99,6 +108,9 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
   void setRememberBackupPassword(bool value) =>
       _setAndPersist(state.copyWith(rememberBackupPassword: value));
 
+  void setBackupExportEncrypted(bool value) =>
+      _setAndPersist(state.copyWith(backupExportEncrypted: value));
+
   void setBackupMirrorLocation({String? treeUri, String? rootPath}) {
     final normalizedTreeUri = (treeUri ?? '').trim();
     final normalizedRootPath = (rootPath ?? '').trim();
@@ -109,4 +121,6 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
       ),
     );
   }
+
+  void setAll(WebDavSettings settings) => _setAndPersist(settings);
 }

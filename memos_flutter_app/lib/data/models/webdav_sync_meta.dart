@@ -47,18 +47,33 @@ class WebDavSyncMeta {
     required this.deviceId,
     required this.updatedAt,
     required this.files,
+    this.deprecatedFiles = const <String>[],
+    this.deprecatedDetectedAt,
+    this.deprecatedRemindAfter,
+    this.deprecatedClearedAt,
   });
 
   final int schemaVersion;
   final String deviceId;
   final String updatedAt;
   final Map<String, WebDavFileMeta> files;
+  final List<String> deprecatedFiles;
+  final String? deprecatedDetectedAt;
+  final String? deprecatedRemindAfter;
+  final String? deprecatedClearedAt;
 
   Map<String, dynamic> toJson() => {
         'schemaVersion': schemaVersion,
         'deviceId': deviceId,
         'updatedAt': updatedAt,
         'files': files.map((key, value) => MapEntry(key, value.toJson())),
+        if (deprecatedFiles.isNotEmpty) 'deprecatedFiles': deprecatedFiles,
+        if (deprecatedDetectedAt != null)
+          'deprecatedDetectedAt': deprecatedDetectedAt,
+        if (deprecatedRemindAfter != null)
+          'deprecatedRemindAfter': deprecatedRemindAfter,
+        if (deprecatedClearedAt != null)
+          'deprecatedClearedAt': deprecatedClearedAt,
       };
 
   factory WebDavSyncMeta.fromJson(Map<String, dynamic> json) {
@@ -87,11 +102,29 @@ class WebDavSyncMeta {
       }
     }
 
+    final deprecatedFiles = <String>[];
+    final rawDeprecated = json['deprecatedFiles'];
+    if (rawDeprecated is List) {
+      for (final item in rawDeprecated) {
+        if (item is String && item.trim().isNotEmpty) {
+          deprecatedFiles.add(item);
+        }
+      }
+    }
+
+    final detectedAt = readString('deprecatedDetectedAt', '');
+    final remindAfter = readString('deprecatedRemindAfter', '');
+    final clearedAt = readString('deprecatedClearedAt', '');
+
     return WebDavSyncMeta(
       schemaVersion: readInt('schemaVersion', 1),
       deviceId: readString('deviceId', ''),
       updatedAt: readString('updatedAt', ''),
       files: files,
+      deprecatedFiles: deprecatedFiles,
+      deprecatedDetectedAt: detectedAt.trim().isEmpty ? null : detectedAt,
+      deprecatedRemindAfter: remindAfter.trim().isEmpty ? null : remindAfter,
+      deprecatedClearedAt: clearedAt.trim().isEmpty ? null : clearedAt,
     );
   }
 }

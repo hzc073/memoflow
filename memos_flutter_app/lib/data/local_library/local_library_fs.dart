@@ -65,6 +65,38 @@ class LocalLibraryFileSystem {
     await _writeTextFile([scanManifestFilename], content);
   }
 
+  Future<String?> readText(String relativePath) async {
+    final segments = _normalizeSegments(relativePath);
+    if (segments.isEmpty) return null;
+    return _readTextFile(segments);
+  }
+
+  Future<void> writeText(String relativePath, String content) async {
+    final segments = _normalizeSegments(relativePath);
+    if (segments.isEmpty) return;
+    await _writeTextFile(segments, content);
+  }
+
+  Future<bool> fileExists(String relativePath) async {
+    final segments = _normalizeSegments(relativePath);
+    if (segments.isEmpty) return false;
+    final target = await _findFile(segments);
+    return target != null;
+  }
+
+  Future<bool> dirExists(String relativePath) async {
+    final segments = _normalizeSegments(relativePath);
+    if (segments.isEmpty) return false;
+    final target = await _findDir(segments);
+    return target != null;
+  }
+
+  Future<void> deleteDirRelative(String relativePath) async {
+    final segments = _normalizeSegments(relativePath);
+    if (segments.isEmpty) return;
+    await _deleteDir(segments);
+  }
+
   Future<List<LocalLibraryFileEntry>> listMemos() async {
     return _listFilesInDir(
       ['memos'],
@@ -95,11 +127,7 @@ class LocalLibraryFileSystem {
   }
 
   Future<void> deleteRelativeFile(String relativePath) async {
-    final segments = relativePath
-        .replaceAll('\\', '/')
-        .split('/')
-        .where((s) => s.trim().isNotEmpty)
-        .toList(growable: false);
+    final segments = _normalizeSegments(relativePath);
     if (segments.isEmpty) return;
     await _deleteFile(segments);
   }
@@ -144,6 +172,14 @@ class LocalLibraryFileSystem {
     await _deleteFile(['index.md']);
     await _deleteDir(['memos']);
     await _deleteDir(['attachments']);
+  }
+
+  List<String> _normalizeSegments(String relativePath) {
+    return relativePath
+        .replaceAll('\\', '/')
+        .split('/')
+        .where((s) => s.trim().isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<void> copyToLocal(LocalLibraryFileEntry entry, String destPath) async {

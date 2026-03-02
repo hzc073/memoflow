@@ -6,34 +6,30 @@ import '../../data/db/app_database.dart';
 import '../../data/local_library/local_attachment_store.dart';
 import '../../data/local_library/local_library_fs.dart';
 import '../../data/models/local_library.dart';
-import '../../data/models/image_bed_settings.dart';
-import '../../data/models/location_settings.dart';
-import '../../data/models/memo_template_settings.dart';
+import '../../data/models/webdav_export_status.dart';
+import '../../data/models/webdav_sync_meta.dart';
 import '../../data/models/webdav_settings.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/logs/sync_status_tracker.dart';
-import '../../data/settings/ai_settings_repository.dart';
-import '../../state/ai_settings_provider.dart';
-import '../../state/app_lock_provider.dart';
 import '../../state/database_provider.dart';
-import '../../state/image_bed_settings_provider.dart';
 import '../../state/local_library_provider.dart';
-import '../../state/location_settings_provider.dart';
-import '../../state/memo_template_settings_provider.dart';
 import '../../state/memos_providers.dart';
-import '../../state/note_draft_provider.dart';
-import '../../state/preferences_provider.dart';
-import '../../state/reminder_settings_provider.dart';
 import '../../state/session_provider.dart';
-import '../../state/webdav_backup_provider.dart' show webDavBackupPasswordRepositoryProvider, webDavBackupStateRepositoryProvider;
+import '../../state/webdav_backup_provider.dart'
+    show
+        webDavBackupPasswordRepositoryProvider,
+        webDavBackupProgressTrackerProvider,
+        webDavBackupStateRepositoryProvider;
 import '../../state/webdav_log_provider.dart';
 import '../../state/webdav_settings_provider.dart';
 import '../../state/webdav_sync_provider.dart' show webDavDeviceIdRepositoryProvider, webDavSyncStateRepositoryProvider;
+import '../../state/webdav_vault_provider.dart';
 import 'local_library_scan_service.dart';
 import 'memo_sync_service.dart';
 import 'sync_error.dart';
 import 'sync_request.dart';
 import 'sync_types.dart';
+import 'webdav_local_adapter.dart';
 import 'webdav_backup_service.dart';
 import 'webdav_sync_service.dart';
 
@@ -205,6 +201,60 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     }
     return requestSync(
       SyncRequest(kind: SyncRequestKind.webDavBackup, reason: reason),
+    );
+  }
+
+  Future<WebDavSyncMeta?> fetchWebDavSyncMeta() async {
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _ref.read(appSessionProvider).valueOrNull?.currentKey;
+    return _webDavSyncService.fetchRemoteMeta(
+      settings: settings,
+      accountKey: accountKey,
+    );
+  }
+
+  Future<WebDavSyncMeta?> cleanWebDavDeprecatedPlainFiles() async {
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _ref.read(appSessionProvider).valueOrNull?.currentKey;
+    return _webDavSyncService.cleanDeprecatedRemotePlainFiles(
+      settings: settings,
+      accountKey: accountKey,
+    );
+  }
+
+  Future<SyncError?> verifyWebDavBackup({
+    required String password,
+    required bool deep,
+  }) async {
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _ref.read(appSessionProvider).valueOrNull?.currentKey;
+    return _webDavBackupService.verifyBackup(
+      settings: settings,
+      accountKey: accountKey,
+      password: password,
+      deep: deep,
+    );
+  }
+
+  Future<WebDavExportStatus> fetchWebDavExportStatus() async {
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _ref.read(appSessionProvider).valueOrNull?.currentKey;
+    final localLibrary = _ref.read(currentLocalLibraryProvider);
+    return _webDavBackupService.fetchExportStatus(
+      settings: settings,
+      accountKey: accountKey,
+      activeLocalLibrary: localLibrary,
+    );
+  }
+
+  Future<WebDavExportCleanupStatus> cleanWebDavPlainExport() async {
+    final settings = _ref.read(webDavSettingsProvider);
+    final accountKey = _ref.read(appSessionProvider).valueOrNull?.currentKey;
+    final localLibrary = _ref.read(currentLocalLibraryProvider);
+    return _webDavBackupService.cleanPlainExport(
+      settings: settings,
+      accountKey: accountKey,
+      activeLocalLibrary: localLibrary,
     );
   }
 
@@ -656,7 +706,10 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     final settings = _ref.read(webDavSettingsProvider);
     if (!settings.isBackupEnabled) return;
     if (settings.backupSchedule == WebDavBackupSchedule.manual) return;
-    if (!settings.backupContentConfig && !settings.backupContentMemos) return;
+    if (settings.backupConfigScope == WebDavBackupConfigScope.none &&
+        !settings.backupContentMemos) {
+      return;
+    }
     final lastAt = state.webDavLastBackupAt;
     if (!_isBackupDue(lastAt, settings.backupSchedule)) return;
     _queueRequest(
@@ -730,89 +783,6 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
   }
 }
 
-class _RiverpodWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
-  _RiverpodWebDavSyncLocalAdapter(this._ref);
-
-  final Ref _ref;
-
-  @override
-  Future<WebDavSyncLocalSnapshot> readSnapshot() async {
-    final prefs = _ref.read(appPreferencesProvider);
-    final ai = _ref.read(aiSettingsProvider);
-    final reminder = _ref.read(reminderSettingsProvider);
-    final imageBed = _ref.read(imageBedSettingsProvider);
-    final location = _ref.read(locationSettingsProvider);
-    final template = _ref.read(memoTemplateSettingsProvider);
-    final lockRepo = _ref.read(appLockRepositoryProvider);
-    final lockSnapshot = await lockRepo.readSnapshot();
-    final draft = _ref.read(noteDraftProvider).valueOrNull ?? '';
-    return WebDavSyncLocalSnapshot(
-      preferences: prefs,
-      aiSettings: ai,
-      reminderSettings: reminder,
-      imageBedSettings: imageBed,
-      locationSettings: location,
-      templateSettings: template,
-      appLockSnapshot: lockSnapshot,
-      noteDraft: draft,
-    );
-  }
-
-  @override
-  Future<void> applyPreferences(AppPreferences preferences) async {
-    await _ref
-        .read(appPreferencesProvider.notifier)
-        .setAll(preferences, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyAiSettings(AiSettings settings) async {
-    await _ref.read(aiSettingsProvider.notifier).setAll(settings, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyReminderSettings(ReminderSettings settings) async {
-    await _ref
-        .read(reminderSettingsProvider.notifier)
-        .setAll(settings, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyImageBedSettings(ImageBedSettings settings) async {
-    await _ref
-        .read(imageBedSettingsProvider.notifier)
-        .setAll(settings, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyLocationSettings(LocationSettings settings) async {
-    await _ref
-        .read(locationSettingsProvider.notifier)
-        .setAll(settings, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyTemplateSettings(MemoTemplateSettings settings) async {
-    await _ref
-        .read(memoTemplateSettingsProvider.notifier)
-        .setAll(settings, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyAppLockSnapshot(AppLockSnapshot snapshot) async {
-    await _ref
-        .read(appLockProvider.notifier)
-        .setSnapshot(snapshot, triggerSync: false);
-  }
-
-  @override
-  Future<void> applyNoteDraft(String text) async {
-    await _ref
-        .read(noteDraftProvider.notifier)
-        .setDraft(text, triggerSync: false);
-  }
-}
-
 final syncCoordinatorProvider =
     StateNotifierProvider<SyncCoordinator, SyncCoordinatorState>((ref) {
       final db = ref.watch(databaseProvider);
@@ -820,7 +790,9 @@ final syncCoordinatorProvider =
       final webDavSyncService = WebDavSyncService(
         syncStateRepository: ref.watch(webDavSyncStateRepositoryProvider),
         deviceIdRepository: ref.watch(webDavDeviceIdRepositoryProvider),
-        localAdapter: _RiverpodWebDavSyncLocalAdapter(ref),
+        localAdapter: RiverpodWebDavSyncLocalAdapter(ref),
+        vaultService: ref.watch(webDavVaultServiceProvider),
+        vaultPasswordRepository: ref.watch(webDavVaultPasswordRepositoryProvider),
         logWriter: (entry) =>
             unawaited(ref.read(webDavLogStoreProvider).add(entry)),
       );
@@ -829,6 +801,10 @@ final syncCoordinatorProvider =
         attachmentStore: attachmentStore,
         stateRepository: ref.watch(webDavBackupStateRepositoryProvider),
         passwordRepository: ref.watch(webDavBackupPasswordRepositoryProvider),
+        vaultService: ref.watch(webDavVaultServiceProvider),
+        vaultPasswordRepository: ref.watch(webDavVaultPasswordRepositoryProvider),
+        configAdapter: RiverpodWebDavSyncLocalAdapter(ref),
+        progressTracker: ref.watch(webDavBackupProgressTrackerProvider),
         logWriter: (entry) =>
             unawaited(ref.read(webDavLogStoreProvider).add(entry)),
       );
