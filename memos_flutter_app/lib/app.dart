@@ -33,11 +33,9 @@ import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lock/app_lock_gate.dart';
 import 'features/memos/link_memo_sheet.dart';
-import 'features/memos/memo_detail_screen.dart';
 import 'features/memos/memos_list_screen.dart';
 import 'features/memos/note_input_sheet.dart';
 import 'features/onboarding/language_selection_screen.dart';
-import 'features/review/daily_review_screen.dart';
 import 'features/share/share_handler.dart';
 import 'features/settings/widgets_service.dart';
 import 'features/updates/notice_dialog.dart';
@@ -60,6 +58,8 @@ import 'state/session_provider.dart';
 import 'state/update_config_provider.dart';
 import 'state/user_settings_provider.dart';
 import 'state/webdav_backup_provider.dart';
+import 'presentation/navigation/app_navigator.dart';
+import 'presentation/reminders/reminder_tap_handler.dart';
 
 class App extends ConsumerStatefulWidget {
   const App({super.key});
@@ -70,6 +70,7 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  late final AppNavigator _appNavigator = AppNavigator(_navigatorKey);
   final _mainHomePageKey = GlobalKey<_MainHomePageState>();
   HotKey? _desktopQuickInputHotKey;
   WindowController? _desktopQuickInputWindow;
@@ -558,7 +559,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       },
     );
     final reminderScheduler = ref.read(reminderSchedulerProvider);
-    reminderScheduler.setTapHandler(_handleReminderTap);
+    reminderScheduler.setTapHandler(
+      ReminderTapHandlerImpl(_navigatorKey).handle,
+    );
     unawaited(reminderScheduler.initialize());
     _reminderSettingsSubscription = ref.listenManual<ReminderSettings>(
       reminderSettingsProvider,
@@ -1426,14 +1429,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     if (!hasPendingUiAction) {
       switch (prefs.launchAction) {
         case LaunchAction.dailyReview:
-          final navigator = _navigatorKey.currentState;
-          if (navigator != null) {
-            navigator.push(
-              MaterialPageRoute<void>(
-                builder: (_) => const DailyReviewScreen(),
-              ),
-            );
-          }
+          _appNavigator.openDailyReview();
           break;
         case LaunchAction.quickInput:
           _openQuickInput(autoFocus: prefs.quickInputAutoFocus);
@@ -1460,7 +1456,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   void _openQuickInput({required bool autoFocus}) {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
-    _openAllMemos(navigator);
+    _appNavigator.openAllMemos();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final sheetContext = _navigatorKey.currentContext;
       if (sheetContext != null) {
@@ -1883,12 +1879,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _pendingWidgetAction = null;
     switch (type) {
       case HomeWidgetType.dailyReview:
-        navigator.push(
-          MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()),
-        );
+        _appNavigator.openDailyReview();
         break;
       case HomeWidgetType.quickInput:
-        _openAllMemos(navigator);
+        _appNavigator.openAllMemos();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final sheetContext = _navigatorKey.currentContext;
           if (sheetContext != null) {
@@ -1900,7 +1894,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         });
         break;
       case HomeWidgetType.stats:
-        _openAllMemos(navigator);
+        _appNavigator.openAllMemos();
         break;
     }
   }
@@ -1925,7 +1919,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     if (navigator == null || context == null) return;
 
     _pendingSharePayload = null;
-    _openAllMemos(navigator);
+    _appNavigator.openAllMemos();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final sheetContext = _navigatorKey.currentContext;
@@ -1974,55 +1968,6 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     showTopToast(
       context,
       context.t.strings.legacy.msg_third_party_share_disabled,
-    );
-  }
-
-  Future<void> _handleReminderTap(ReminderTapPayload payload) async {
-    if (!mounted) return;
-    final navigator = _navigatorKey.currentState;
-    final context = _navigatorKey.currentContext;
-    if (navigator == null || context == null) return;
-
-    switch (payload.target) {
-      case ReminderTapTarget.memosList:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_memo_not_found)),
-        );
-        navigator.pushAndRemoveUntil(
-          MaterialPageRoute<void>(
-            builder: (_) => const MemosListScreen(
-              title: 'MemoFlow',
-              state: 'NORMAL',
-              showDrawer: true,
-              enableCompose: true,
-            ),
-          ),
-          (route) => false,
-        );
-        return;
-      case ReminderTapTarget.memoDetail:
-        final memo = payload.memo;
-        if (memo == null) return;
-        navigator.push(
-          MaterialPageRoute<void>(
-            builder: (_) => MemoDetailScreen(initialMemo: memo),
-          ),
-        );
-        return;
-    }
-  }
-
-  void _openAllMemos(NavigatorState navigator) {
-    navigator.pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
-          state: 'NORMAL',
-          showDrawer: true,
-          enableCompose: true,
-        ),
-      ),
-      (route) => false,
     );
   }
 
