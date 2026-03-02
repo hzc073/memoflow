@@ -14,7 +14,7 @@ import '../../data/models/user.dart';
 import '../../state/debug_log_provider.dart';
 import '../../state/debug_screenshot_mode_provider.dart';
 import '../../state/login_draft_provider.dart';
-import '../../state/memos/debug_tools_providers.dart';
+import '../../state/memos/debug_tools_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';

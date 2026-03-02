@@ -1,4 +1,4 @@
-part of 'debug_tools_providers.dart';
+part of 'debug_tools_provider.dart';
 
 class DebugToolsController {
   String buildApiRouteVersionLabel({
