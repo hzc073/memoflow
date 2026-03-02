@@ -12,7 +12,6 @@ import '../../state/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
 import '../../core/location_launcher.dart';
-import '../../core/memo_relations.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
@@ -26,11 +25,9 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/reaction.dart';
 import '../../data/models/user.dart';
-import '../../state/database_provider.dart';
-import '../../state/memo_timeline_provider.dart';
+import '../../state/memos/memo_detail_providers.dart';
 import '../../state/memos_providers.dart';
 import '../../state/preferences_provider.dart';
-import '../../state/reminder_scheduler.dart';
 import '../../state/session_provider.dart';
 import '../../state/location_settings_provider.dart';
 import 'attachment_gallery_screen.dart';
@@ -81,10 +78,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
   Future<void> _reload() async {
     final uid = _memo?.uid ?? widget.initialMemo.uid;
-    final row = await ref.read(databaseProvider).getMemoByUid(uid);
-    if (row == null) return;
+    final memo =
+        await ref.read(memoDetailControllerProvider).loadMemoByUid(uid);
+    if (memo == null) return;
     if (!mounted) return;
-    setState(() => _memo = LocalMemo.fromDb(row));
+    setState(() => _memo = memo);
   }
 
   bool _isArchivedMemo() {
@@ -190,16 +188,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         false;
     if (!confirmed) return;
 
-    final db = ref.read(databaseProvider);
-    final timelineService = ref.read(memoTimelineServiceProvider);
+    final controller = ref.read(memoDetailControllerProvider);
     try {
-      await timelineService.moveMemoToRecycleBin(memo);
-      await db.deleteMemoByUid(memo.uid);
-      await db.enqueueOutbox(
-        type: 'delete_memo',
-        payload: {'uid': memo.uid, 'force': false},
-      );
-      await ref.read(reminderSchedulerProvider).rescheduleAll();
+      await controller.deleteMemo(memo);
       unawaited(
         ref.read(syncCoordinatorProvider.notifier).requestSync(
               const SyncRequest(
@@ -227,35 +218,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     bool? pinned,
     String? state,
   }) async {
-    final db = ref.read(databaseProvider);
-    final now = DateTime.now();
-
-    await db.upsertMemo(
-      uid: memo.uid,
-      content: memo.content,
-      visibility: memo.visibility,
-      pinned: pinned ?? memo.pinned,
-      state: state ?? memo.state,
-      createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-      updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-      tags: memo.tags,
-      attachments: memo.attachments
-          .map((a) => a.toJson())
-          .toList(growable: false),
-      location: memo.location,
-      relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
-    );
-
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        if (pinned != null) 'pinned': pinned,
-        if (state != null) 'state': state,
-      },
-    );
+    await ref.read(memoDetailControllerProvider).updateLocalAndEnqueue(
+          memo: memo,
+          pinned: pinned,
+          state: state,
+        );
     unawaited(
       ref.read(syncCoordinatorProvider.notifier).requestSync(
             const SyncRequest(
@@ -288,38 +255,16 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
     final updateTime = memo.updateTime;
     final tags = extractTags(updated);
-    final db = ref.read(databaseProvider);
-    final timelineService = ref.read(memoTimelineServiceProvider);
 
     try {
-      await timelineService.captureMemoVersion(memo);
-      await db.upsertMemo(
-        uid: memo.uid,
-        content: updated,
-        visibility: memo.visibility,
-        pinned: memo.pinned,
-        state: memo.state,
-        createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-        updateTimeSec: updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-        tags: tags,
-        attachments: memo.attachments
-            .map((a) => a.toJson())
-            .toList(growable: false),
-        location: memo.location,
-        relationCount: memo.relationCount,
-        syncState: 1,
-        lastError: null,
-      );
-
-      await db.enqueueOutbox(
-        type: 'update_memo',
-        payload: {
-          'uid': memo.uid,
-          'content': updated,
-          'visibility': memo.visibility,
-          'pinned': memo.pinned,
-        },
-      );
+      await ref
+          .read(memoDetailControllerProvider)
+          .updateMemoContentForTaskToggle(
+            memo: memo,
+            content: updated,
+            updateTime: updateTime,
+            tags: tags,
+          );
 
       if (!mounted) return;
       setState(() {
@@ -423,65 +368,21 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final updatedAttachments = [...memo.attachments];
     updatedAttachments[index] = newAttachment;
 
-    final db = ref.read(databaseProvider);
-    final timelineService = ref.read(memoTimelineServiceProvider);
+    final controller = ref.read(memoDetailControllerProvider);
     try {
       final now = DateTime.now();
-      await timelineService.captureMemoVersion(memo);
-      await timelineService.moveAttachmentToRecycleBin(
+      await controller.replaceMemoAttachment(
         memo: memo,
-        attachment: oldAttachment,
+        oldAttachment: oldAttachment,
+        updatedAttachments: updatedAttachments,
         index: index,
+        newUid: newUid,
+        filePath: result.filePath,
+        filename: result.filename,
+        mimeType: result.mimeType,
+        size: result.size,
+        now: now,
       );
-      await db.upsertMemo(
-        uid: memo.uid,
-        content: memo.content,
-        visibility: memo.visibility,
-        pinned: memo.pinned,
-        state: memo.state,
-        createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-        tags: memo.tags,
-        attachments: updatedAttachments
-            .map((a) => a.toJson())
-            .toList(growable: false),
-        location: memo.location,
-        relationCount: memo.relationCount,
-        syncState: 1,
-        lastError: null,
-      );
-
-      await db.enqueueOutbox(
-        type: 'update_memo',
-        payload: {
-          'uid': memo.uid,
-          'content': memo.content,
-          'visibility': memo.visibility,
-          'pinned': memo.pinned,
-          'sync_attachments': true,
-          'has_pending_attachments': true,
-        },
-      );
-      await db.enqueueOutbox(
-        type: 'upload_attachment',
-        payload: {
-          'uid': newUid,
-          'memo_uid': memo.uid,
-          'file_path': result.filePath,
-          'filename': result.filename,
-          'mime_type': result.mimeType,
-          'file_size': result.size,
-        },
-      );
-      final oldName = oldAttachment.name.isNotEmpty
-          ? oldAttachment.name
-          : oldAttachment.uid;
-      if (oldName.isNotEmpty) {
-        await db.enqueueOutbox(
-          type: 'delete_attachment',
-          payload: {'attachment_name': oldName, 'memo_uid': memo.uid},
-        );
-      }
 
       unawaited(
         ref.read(syncCoordinatorProvider.notifier).requestSync(
@@ -1025,8 +926,9 @@ class _MemoEngagementSectionState
       _reactionsError = null;
     });
     try {
-      final api = ref.read(memosApiProvider);
-      final result = await api.listMemoReactions(memoUid: uid, pageSize: 50);
+      final result = await ref
+          .read(memoDetailControllerProvider)
+          .listMemoReactions(memoUid: uid, pageSize: 50);
       if (!mounted) return;
       setState(() {
         _reactions = result.reactions;
@@ -1050,8 +952,9 @@ class _MemoEngagementSectionState
       _commentsError = null;
     });
     try {
-      final api = ref.read(memosApiProvider);
-      final result = await api.listMemoComments(memoUid: uid, pageSize: 50);
+      final result = await ref
+          .read(memoDetailControllerProvider)
+          .listMemoComments(memoUid: uid, pageSize: 50);
       if (!mounted) return;
       setState(() {
         _comments = result.memos;
@@ -1125,12 +1028,13 @@ class _MemoEngagementSectionState
       final visibility = widget.memoVisibility.trim().isNotEmpty
           ? widget.memoVisibility.trim()
           : 'PUBLIC';
-      final api = ref.read(memosApiProvider);
-      final created = await api.createMemoComment(
-        memoUid: uid,
-        content: content,
-        visibility: visibility,
-      );
+      final created = await ref
+          .read(memoDetailControllerProvider)
+          .createMemoComment(
+            memoUid: uid,
+            content: content,
+            visibility: visibility,
+          );
       if (!mounted) return;
       setState(() {
         _comments = [created, ..._comments];
@@ -1248,7 +1152,6 @@ class _MemoEngagementSectionState
   }
 
   Future<void> _prefetchCreators(Iterable<String> creators) async {
-    final api = ref.read(memosApiProvider);
     final updates = <String, User>{};
     for (final creator in creators) {
       final normalized = creator.trim();
@@ -1258,8 +1161,12 @@ class _MemoEngagementSectionState
         continue;
       _creatorFetching.add(normalized);
       try {
-        updates[normalized] = await api.getUser(name: normalized);
-      } catch (_) {
+        final user = await ref
+            .read(memoDetailControllerProvider)
+            .fetchUser(name: normalized);
+        if (user != null) {
+          updates[normalized] = user;
+        }
       } finally {
         _creatorFetching.remove(normalized);
       }
@@ -2047,49 +1954,19 @@ class _MemoRelationsSection extends ConsumerWidget {
     final uid = _normalizeMemoUid(rawName);
     if (uid.isEmpty || uid == memoUid) return;
 
-    final db = ref.read(databaseProvider);
-    final row = await db.getMemoByUid(uid);
-    LocalMemo? memo = row == null ? null : LocalMemo.fromDb(row);
-
-    if (memo == null) {
-      try {
-        final api = ref.read(memosApiProvider);
-        final remote = await api.getMemo(memoUid: uid);
-        final remoteUid = remote.uid.isNotEmpty ? remote.uid : uid;
-        await db.upsertMemo(
-          uid: remoteUid,
-          content: remote.content,
-          visibility: remote.visibility,
-          pinned: remote.pinned,
-          state: remote.state,
-          createTimeSec:
-              remote.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          updateTimeSec:
-              remote.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          tags: remote.tags,
-          attachments: remote.attachments
-              .map((a) => a.toJson())
-              .toList(growable: false),
-          location: remote.location,
-          relationCount: countReferenceRelations(
-            memoUid: remoteUid,
-            relations: remote.relations,
-          ),
-          syncState: 0,
-        );
-        final refreshed = await db.getMemoByUid(remoteUid);
-        if (refreshed != null) {
-          memo = LocalMemo.fromDb(refreshed);
-        }
-      } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
-          ),
-        );
-        return;
-      }
+    LocalMemo? memo;
+    try {
+      memo = await ref
+          .read(memoDetailControllerProvider)
+          .resolveMemoForOpen(uid: uid);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+        ),
+      );
+      return;
     }
 
     if (memo == null) {

@@ -35,7 +35,7 @@ import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
-import '../../state/memos_list_controller.dart';
+import '../../state/memos/memos_list_providers.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/location_settings.dart';
