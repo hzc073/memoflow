@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,12 +7,9 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
-import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
-import '../../state/database_provider.dart';
-import '../../state/memos_providers.dart';
-import '../../state/session_provider.dart';
 import '../../i18n/strings.g.dart';
+import '../../state/memos/link_memo_providers.dart';
 
 class LinkMemoSheet extends ConsumerStatefulWidget {
   const LinkMemoSheet({super.key, required this.existingNames});
@@ -70,10 +66,6 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
   }
 
   Future<void> _loadMemos(String query) async {
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final userName = account?.user.name ?? '';
-    final trimmed = query.trim();
-
     final requestId = ++_requestId;
     setState(() {
       _loading = true;
@@ -81,65 +73,9 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
     });
 
     try {
-      List<Memo> memos;
-      if (account == null) {
-        final db = ref.read(databaseProvider);
-        final rows = await db.listMemos(
-          searchQuery: trimmed.isEmpty ? null : trimmed,
-          state: 'NORMAL',
-          tag: null,
-          startTimeSec: null,
-          endTimeSecExclusive: null,
-          limit: 200,
-        );
-        memos = rows
-            .map(LocalMemo.fromDb)
-            .map(_memoFromLocal)
-            .toList(growable: false);
-      } else {
-        final api = ref.read(memosApiProvider);
-        await api.ensureServerHintsLoaded();
-        String? filter;
-        String? oldFilter;
-        String? parent;
-
-        final useLegacyApi = api.useLegacyApi;
-        if (useLegacyApi) {
-          if (userName.isNotEmpty) {
-            parent = userName;
-          }
-          if (trimmed.isNotEmpty) {
-            oldFilter = 'content_search == [${jsonEncode(trimmed)}]';
-          }
-        } else {
-          final userId = _tryExtractUserId(userName);
-          final conditions = <String>[];
-          if (userId != null) {
-            conditions.add(
-              _buildCreatorFilterExpression(
-                userId,
-                useLegacyDialect: api.usesLegacySearchFilterDialect,
-              ),
-            );
-          }
-          if (trimmed.isNotEmpty) {
-            final escaped = _escapeFilterText(trimmed);
-            conditions.add('content.contains("$escaped")');
-          }
-          if (conditions.isNotEmpty) {
-            filter = conditions.join(' && ');
-          }
-        }
-
-        final (remoteMemos, _) = await api.listMemos(
-          pageSize: 200,
-          filter: filter,
-          oldFilter: oldFilter,
-          parent: parent,
-          preferModern: true,
-        );
-        memos = remoteMemos;
-      }
+      final memos = await ref
+          .read(linkMemoControllerProvider)
+          .loadMemos(query: query);
 
       if (!mounted || requestId != _requestId) return;
       final filtered = memos
@@ -158,51 +94,6 @@ class _LinkMemoSheetState extends ConsumerState<LinkMemoSheet> {
         setState(() => _loading = false);
       }
     }
-  }
-
-  static String? _tryExtractUserId(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return null;
-    final normalized = trimmed.startsWith('users/')
-        ? trimmed.substring('users/'.length)
-        : trimmed;
-    final last = normalized.contains('/')
-        ? normalized.split('/').last
-        : normalized;
-    return int.tryParse(last) != null ? last : null;
-  }
-
-  static String _escapeFilterText(String input) {
-    return input.replaceAll('\\', r'\\').replaceAll('"', r'\"');
-  }
-
-  static String _buildCreatorFilterExpression(
-    String userId, {
-    required bool useLegacyDialect,
-  }) {
-    if (useLegacyDialect) {
-      return "creator == 'users/$userId'";
-    }
-    return 'creator_id == $userId';
-  }
-
-  Memo _memoFromLocal(LocalMemo memo) {
-    final uid = memo.uid.trim();
-    final name = uid.isEmpty ? '' : 'memos/$uid';
-    return Memo(
-      name: name,
-      creator: '',
-      content: memo.content,
-      contentFingerprint: memo.contentFingerprint,
-      visibility: memo.visibility,
-      pinned: memo.pinned,
-      state: memo.state,
-      createTime: memo.createTime,
-      updateTime: memo.updateTime,
-      tags: memo.tags,
-      attachments: memo.attachments,
-      location: memo.location,
-    );
   }
 
   String _snippetFor(Memo memo) {

@@ -27,7 +27,6 @@ import '../../data/models/location_settings.dart';
 import '../../data/models/user_setting.dart';
 import '../../data/location/location_geocoder.dart';
 import '../../data/location/device_location_service.dart';
-import '../../state/database_provider.dart';
 import '../../state/location_settings_provider.dart';
 import '../../state/logging_provider.dart';
 import '../../state/memos_providers.dart';
@@ -36,6 +35,7 @@ import '../../state/network_log_provider.dart';
 import '../../state/note_draft_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/user_settings_provider.dart';
+import '../../state/memos/note_input_providers.dart';
 import 'attachment_gallery_screen.dart';
 import 'compose_toolbar_shared.dart';
 import 'memo_video_grid.dart';
@@ -1590,7 +1590,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final now = DateTime.now();
       final uid = generateUid();
       final tags = extractTags(content);
-      final db = ref.read(databaseProvider);
       final visibility = _normalizedVisibility();
 
       final attachments = pendingAttachments
@@ -1610,48 +1609,30 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             ).toJson();
           })
           .toList(growable: false);
+      final pendingUploads = pendingAttachments
+          .map(
+            (attachment) => NoteInputPendingAttachment(
+              uid: attachment.uid,
+              filePath: attachment.filePath,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+            ),
+          )
+          .toList(growable: false);
 
-      await db.upsertMemo(
-        uid: uid,
-        content: content,
-        visibility: visibility,
-        pinned: false,
-        state: 'NORMAL',
-        createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-        updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-        tags: tags,
-        attachments: attachments,
-        location: _location,
-        relationCount: 0,
-        syncState: 1,
-      );
-
-      await db.enqueueOutbox(
-        type: 'create_memo',
-        payload: {
-          'uid': uid,
-          'content': content,
-          'visibility': visibility,
-          'pinned': false,
-          'has_attachments': hasAttachments,
-          if (_location != null) 'location': _location!.toJson(),
-          if (relations.isNotEmpty) 'relations': relations,
-        },
-      );
-
-      for (final attachment in pendingAttachments) {
-        await db.enqueueOutbox(
-          type: 'upload_attachment',
-          payload: {
-            'uid': attachment.uid,
-            'memo_uid': uid,
-            'file_path': attachment.filePath,
-            'filename': attachment.filename,
-            'mime_type': attachment.mimeType,
-            'file_size': attachment.size,
-          },
-        );
-      }
+      await ref.read(noteInputControllerProvider).createMemo(
+            uid: uid,
+            content: content,
+            visibility: visibility,
+            now: now,
+            tags: tags,
+            attachments: attachments,
+            location: _location,
+            hasAttachments: hasAttachments,
+            relations: relations,
+            pendingAttachments: pendingUploads,
+          );
 
       unawaited(
         ref.read(syncCoordinatorProvider.notifier).requestSync(
