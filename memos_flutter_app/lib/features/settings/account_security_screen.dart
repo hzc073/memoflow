@@ -10,12 +10,11 @@ import '../../core/hash.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
-import '../../data/db/app_database.dart';
 import '../../data/models/local_library.dart';
 import '../../data/settings/image_bed_settings_repository.dart';
-import '../../state/database_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
+import '../../state/memos/account_security_provider.dart';
 import '../../state/personal_access_token_repository_provider.dart';
 import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
@@ -206,9 +205,9 @@ class AccountSecurityScreen extends ConsumerWidget {
       final existed = localLibraries.any((l) => l.key == key);
       if (!existed) {
         try {
-          await AppDatabase.deleteDatabaseFile(
-            dbName: databaseNameForAccountKey(key),
-          );
+          await ref
+              .read(accountSecurityControllerProvider)
+              .deleteDatabaseForWorkspaceKey(key);
         } catch (_) {}
       }
       final now = DateTime.now();
@@ -287,9 +286,9 @@ class AccountSecurityScreen extends ConsumerWidget {
         await ref.read(appSessionProvider.notifier).setCurrentKey(nextKey);
       }
       await ref.read(localLibrariesProvider.notifier).remove(library.key);
-      await AppDatabase.deleteDatabaseFile(
-        dbName: databaseNameForAccountKey(library.key),
-      );
+      await ref
+          .read(accountSecurityControllerProvider)
+          .deleteDatabaseForWorkspaceKey(library.key);
 
       if (shouldReopenOnboarding) {
         final currentPreferences = ref.read(appPreferencesProvider);
@@ -350,7 +349,6 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!confirmed) return;
       if (!context.mounted) return;
 
-      final dbName = databaseNameForAccountKey(accountKey);
       if (shouldReopenOnboarding) {
         final currentPreferences = ref.read(appPreferencesProvider);
         await preferencesNotifier.setAll(
@@ -361,7 +359,9 @@ class AccountSecurityScreen extends ConsumerWidget {
       }
       try {
         await sessionNotifier.removeAccount(accountKey);
-        await AppDatabase.deleteDatabaseFile(dbName: dbName);
+        await ref
+            .read(accountSecurityControllerProvider)
+            .deleteDatabaseForWorkspaceKey(accountKey);
         await tokenRepo.deleteForAccount(accountKey: accountKey);
         await imageBedRepo.clear();
         if (!context.mounted) return;
