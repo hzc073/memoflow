@@ -19,7 +19,9 @@ import '../../state/stats_providers.dart';
 import '../../i18n/strings.g.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
-  const StatsScreen({super.key});
+  const StatsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   ConsumerState<StatsScreen> createState() => _StatsScreenState();
@@ -323,11 +325,14 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleBack,
-          ),
+          automaticallyImplyLeading: widget.showBackButton,
+          leading: widget.showBackButton
+              ? IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _handleBack,
+                )
+              : null,
           actions: [
             TextButton(
               onPressed: () {

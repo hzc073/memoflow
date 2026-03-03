@@ -23,7 +23,9 @@ import '../import/import_flow_screens.dart';
 import '../../i18n/strings.g.dart';
 
 class ImportExportScreen extends ConsumerStatefulWidget {
-  const ImportExportScreen({super.key});
+  const ImportExportScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   ConsumerState<ImportExportScreen> createState() => _ImportExportScreenState();
@@ -341,11 +343,14 @@ class _ImportExportScreenState extends ConsumerState<ImportExportScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_import_export),
         centerTitle: false,
       ),

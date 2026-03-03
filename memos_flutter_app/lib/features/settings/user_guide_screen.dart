@@ -9,7 +9,9 @@ import '../../state/preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 
 class UserGuideScreen extends ConsumerWidget {
-  const UserGuideScreen({super.key});
+  const UserGuideScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   Future<void> _openBackendDocs(BuildContext context) async {
     final uri = Uri.parse('https://usememos.com/docs');
@@ -72,11 +74,14 @@ class UserGuideScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_user_guide),
         centerTitle: false,
       ),

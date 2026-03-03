@@ -8,7 +8,9 @@ import 'widgets_service.dart';
 import '../../i18n/strings.g.dart';
 
 class WidgetsScreen extends StatelessWidget {
-  const WidgetsScreen({super.key});
+  const WidgetsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context) {
@@ -93,11 +95,14 @@ class WidgetsScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_widgets),
         centerTitle: false,
       ),

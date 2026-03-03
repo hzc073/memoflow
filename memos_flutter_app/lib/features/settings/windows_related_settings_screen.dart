@@ -8,7 +8,9 @@ import '../../state/preferences_provider.dart';
 import 'desktop_shortcuts_settings_screen.dart';
 
 class WindowsRelatedSettingsScreen extends ConsumerWidget {
-  const WindowsRelatedSettingsScreen({super.key});
+  const WindowsRelatedSettingsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -34,11 +36,14 @@ class WindowsRelatedSettingsScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: '\u8fd4\u56de',
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: '\u8fd4\u56de',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: const Text('Windows\u76f8\u5173\u8bbe\u7f6e'),
         centerTitle: false,
       ),

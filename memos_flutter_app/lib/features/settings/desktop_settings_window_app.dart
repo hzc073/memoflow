@@ -702,21 +702,33 @@ class _DesktopPaneContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (pane) {
-      _DesktopSettingsPane.account => const AccountSecurityScreen(),
-      _DesktopSettingsPane.preferences => const PreferencesSettingsScreen(),
+      _DesktopSettingsPane.account =>
+        const AccountSecurityScreen(showBackButton: false),
+      _DesktopSettingsPane.preferences =>
+        const PreferencesSettingsScreen(showBackButton: false),
       _DesktopSettingsPane.windowsRelated =>
-        const WindowsRelatedSettingsScreen(),
-      _DesktopSettingsPane.ai => const AiSettingsScreen(),
-      _DesktopSettingsPane.appLock => const PasswordLockScreen(),
-      _DesktopSettingsPane.laboratory => const LaboratoryScreen(),
-      _DesktopSettingsPane.components => const ComponentsSettingsScreen(),
-      _DesktopSettingsPane.feedback => const FeedbackScreen(),
-      _DesktopSettingsPane.importExport => const ImportExportScreen(),
-      _DesktopSettingsPane.about => const AboutUsScreen(),
-      _DesktopSettingsPane.userGuide => const UserGuideScreen(),
-      _DesktopSettingsPane.stats => const StatsScreen(),
-      _DesktopSettingsPane.widgets => const WidgetsScreen(),
-      _DesktopSettingsPane.apiPlugins => const ApiPluginsScreen(),
+        const WindowsRelatedSettingsScreen(showBackButton: false),
+      _DesktopSettingsPane.ai =>
+        const AiSettingsScreen(showBackButton: false),
+      _DesktopSettingsPane.appLock =>
+        const PasswordLockScreen(showBackButton: false),
+      _DesktopSettingsPane.laboratory =>
+        const LaboratoryScreen(showBackButton: false),
+      _DesktopSettingsPane.components =>
+        const ComponentsSettingsScreen(showBackButton: false),
+      _DesktopSettingsPane.feedback =>
+        const FeedbackScreen(showBackButton: false),
+      _DesktopSettingsPane.importExport =>
+        const ImportExportScreen(showBackButton: false),
+      _DesktopSettingsPane.about =>
+        const AboutUsScreen(showBackButton: false),
+      _DesktopSettingsPane.userGuide =>
+        const UserGuideScreen(showBackButton: false),
+      _DesktopSettingsPane.stats => const StatsScreen(showBackButton: false),
+      _DesktopSettingsPane.widgets =>
+        const WidgetsScreen(showBackButton: false),
+      _DesktopSettingsPane.apiPlugins =>
+        const ApiPluginsScreen(showBackButton: false),
     };
   }
 }

@@ -7,7 +7,9 @@ import 'ai_user_profile_screen.dart';
 import '../../i18n/strings.g.dart';
 
 class AiSettingsScreen extends StatelessWidget {
-  const AiSettingsScreen({super.key});
+  const AiSettingsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +26,14 @@ class AiSettingsScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_ai_settings),
         centerTitle: false,
       ),

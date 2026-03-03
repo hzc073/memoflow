@@ -10,7 +10,9 @@ import '../updates/release_notes_screen.dart';
 import '../../i18n/strings.g.dart';
 
 class AboutUsScreen extends StatelessWidget {
-  const AboutUsScreen({super.key});
+  const AboutUsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   static final Future<PackageInfo> _packageInfoFuture =
       PackageInfo.fromPlatform();
@@ -28,11 +30,14 @@ class AboutUsScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_about),
         centerTitle: false,
       ),

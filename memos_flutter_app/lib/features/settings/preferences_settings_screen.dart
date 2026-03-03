@@ -14,7 +14,9 @@ import '../../state/session_provider.dart';
 import '../../state/system_fonts_provider.dart';
 
 class PreferencesSettingsScreen extends ConsumerWidget {
-  const PreferencesSettingsScreen({super.key});
+  const PreferencesSettingsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   Future<void> _selectEnum<T>({
     required BuildContext context,
@@ -189,11 +191,14 @@ class PreferencesSettingsScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.common.back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.common.back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.settings.preferences.title),
         centerTitle: false,
       ),

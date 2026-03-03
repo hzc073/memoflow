@@ -34,7 +34,9 @@ extension on _TokenExpiration {
 }
 
 class ApiPluginsScreen extends ConsumerStatefulWidget {
-  const ApiPluginsScreen({super.key});
+  const ApiPluginsScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   ConsumerState<ApiPluginsScreen> createState() => _ApiPluginsScreenState();
@@ -342,11 +344,14 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_api_plugins),
         centerTitle: false,
       ),

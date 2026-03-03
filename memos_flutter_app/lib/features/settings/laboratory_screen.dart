@@ -13,7 +13,9 @@ import 'webhooks_settings_screen.dart';
 import '../../i18n/strings.g.dart';
 
 class LaboratoryScreen extends ConsumerStatefulWidget {
-  const LaboratoryScreen({super.key});
+  const LaboratoryScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   ConsumerState<LaboratoryScreen> createState() => _LaboratoryScreenState();
@@ -261,11 +263,14 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_laboratory),
         centerTitle: false,
       ),

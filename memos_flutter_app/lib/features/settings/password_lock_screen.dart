@@ -9,7 +9,9 @@ import '../../state/app_lock_provider.dart';
 import '../../i18n/strings.g.dart';
 
 class PasswordLockScreen extends ConsumerWidget {
-  const PasswordLockScreen({super.key});
+  const PasswordLockScreen({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   Future<String?> _showSetPasswordDialog(BuildContext context, {required bool isChange}) async {
     final password = await showDialog<String?>(
@@ -73,11 +75,14 @@ class PasswordLockScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: showBackButton,
+        leading: showBackButton
+            ? IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
         title: Text(context.t.strings.legacy.msg_app_lock),
         centerTitle: false,
       ),
