@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/logs/breadcrumb_store.dart';
+import '../data/logs/log_bundle_exporter.dart';
 import '../data/logs/log_manager.dart';
 import '../data/logs/logger_service.dart';
 import '../data/logs/log_report_generator.dart';
@@ -10,8 +11,10 @@ import '../data/logs/network_log_buffer.dart';
 import '../data/logs/sync_queue_progress_tracker.dart';
 import '../data/logs/sync_status_tracker.dart';
 import 'database_provider.dart';
+import 'debug_log_provider.dart';
 import 'network_log_provider.dart';
 import 'session_provider.dart';
+import 'webdav_log_provider.dart';
 
 final breadcrumbStoreProvider = Provider<BreadcrumbStore>((ref) {
   return BreadcrumbStore();
@@ -58,5 +61,14 @@ final logReportGeneratorProvider = Provider<LogReportGenerator>((ref) {
     networkLogStore: ref.watch(networkLogStoreProvider),
     syncStatusTracker: ref.watch(syncStatusTrackerProvider),
     currentAccount: account,
+  );
+});
+
+final logBundleExporterProvider = Provider<LogBundleExporter>((ref) {
+  return LogBundleExporter(
+    logManager: ref.read(logManagerProvider),
+    debugLogStore: ref.read(debugLogStoreProvider),
+    networkLogStore: ref.read(networkLogStoreProvider),
+    webDavLogStore: ref.read(webDavLogStoreProvider),
   );
 });

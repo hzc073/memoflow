@@ -42,6 +42,10 @@ class LogReportGenerator {
   final SyncStatusTracker _syncStatusTracker;
   final Account? _currentAccount;
 
+  static const int _maxNetworkBodyChars = 1400;
+  static const int _maxHeaderChars = 800;
+  static const int _maxUserNoteChars = 800;
+
   Future<String> buildReport({
     int breadcrumbLimit = 15,
     int networkLimit = 30,
@@ -52,14 +56,22 @@ class LogReportGenerator {
     bool includeErrors = true,
     bool includeOutbox = true,
     String? userNote,
+    String? exportId,
   }) async {
     final now = DateTime.now();
-    final reportTime = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(now);
+    final exportIdResolved = (exportId ?? '').trim().isNotEmpty
+        ? exportId!.trim()
+        : _buildExportId(now);
+    final timeZoneLabel = _formatTimeZoneLabel(now);
+    final reportTime = _formatDateTimeWithZone(now, timeZoneLabel);
     final appLabel = await _loadAppLabel();
     final deviceLabel = await _loadDeviceLabel();
     final networkLabel = await _loadNetworkLabel();
     final serverLine = _formatServerLine(_currentAccount);
-    final note = (userNote ?? '').trim();
+    final note = _sanitizeTextBlock(
+      userNote,
+      maxLength: _maxUserNoteChars,
+    ).trim();
 
     final sqlite = await _db.db;
     final totalMemos = await _count(sqlite, 'SELECT COUNT(*) FROM memos;');
@@ -125,15 +137,55 @@ class LogReportGenerator {
       networkStoreLogs,
       networkStoreLimit,
     );
+    final networkLoggingEnabled = _networkLogStore.enabled;
+    final requestIdSamples = _collectRequestIdSamples(networkStoreLogs);
+    final syncSnapshot = _syncStatusTracker.snapshot;
+    final summaryAccount = _formatAccountSummary(_currentAccount);
+    final summaryLastSuccess = _formatSummaryValue(
+      _formatTime(syncSnapshot.lastSuccess),
+    );
+    final summaryLastFailure = _formatSummaryValue(
+      _formatTime(syncSnapshot.lastFailure),
+    );
 
     final buffer = StringBuffer()
+      ..writeln('How to use this log')
+      ..writeln('1) Reproduce the issue, then export immediately.')
+      ..writeln(
+        '2) For login/sync/backup issues, enable network logging before exporting.',
+      )
+      ..writeln('')
       ..writeln('[REPORT HEAD]')
+      ..writeln('ExportId: $exportIdResolved')
       ..writeln('Time: $reportTime')
       ..writeln('App: $appLabel')
       ..writeln('Device: $deviceLabel')
       ..writeln('Network: $networkLabel')
-      ..writeln('User Note: ${note.isEmpty ? '-' : note}')
+      ..writeln('User Note: ${note.isEmpty ? 'N/A' : note}')
       ..writeln(serverLine)
+      ..writeln(
+        'Truncation: headers max $_maxHeaderChars chars; text bodies max $_maxNetworkBodyChars chars.',
+      )
+      ..writeln('')
+      ..writeln('[SUMMARY]')
+      ..writeln('ExportId: $exportIdResolved')
+      ..writeln('App: $appLabel')
+      ..writeln('Device: $deviceLabel')
+      ..writeln('Account: ${_formatSummaryValue(summaryAccount)}')
+      ..writeln('Sync Last Success: $summaryLastSuccess')
+      ..writeln('Sync Last Failure: $summaryLastFailure')
+      ..writeln('Outbox: pending=$pendingQueue failed=$failedQueue')
+      ..writeln(
+        'Network logging: ${networkLoggingEnabled ? 'enabled' : 'disabled'} '
+        '(buffer=${allNetworkLogs.length}, store=${networkStoreLogs.length})',
+      );
+
+    if (requestIdSamples.isNotEmpty) {
+      buffer.writeln('RequestIds: ${requestIdSamples.join(', ')}');
+    }
+
+    buffer
+      ..writeln('Times are local ($timeZoneLabel)')
       ..writeln('')
       ..writeln('[APP STATE SNAPSHOT]')
       ..writeln('Lifecycle: $lifecycle')
@@ -358,9 +410,7 @@ class LogReportGenerator {
 
   String _formatSyncLine(SyncStatusSnapshot snapshot) {
     final lastSuccess = snapshot.lastSuccess;
-    final lastSuccessText = lastSuccess == null
-        ? '-'
-        : DateFormat('h:mm a').format(lastSuccess);
+    final lastSuccessText = _formatTime(lastSuccess);
     if (snapshot.inProgress) {
       return 'Sync Manager: Syncing (Last success: $lastSuccessText)';
     }
@@ -401,9 +451,7 @@ class LogReportGenerator {
         (snapshot.lastError?.trim().isEmpty ?? true)) {
       return 'Sync Error: -';
     }
-    final failureTime = snapshot.lastFailure == null
-        ? '-'
-        : DateFormat('h:mm a').format(snapshot.lastFailure!);
+    final failureTime = _formatTime(snapshot.lastFailure);
     final error = (snapshot.lastError ?? '').trim();
     if (error.isEmpty) {
       return 'Sync Error: (Last failure: $failureTime)';
@@ -440,13 +488,13 @@ class LogReportGenerator {
         '${i + 1}. [${entry.method}] ${entry.path} (${_statusLabel(entry)}) - ${_latencyLabel(entry)}',
       );
 
-      final query = entry.query;
-      if (query != null && query.trim().isNotEmpty) {
+      final query = _sanitizeTextBlock(entry.query);
+      if (query.isNotEmpty) {
         buffer.writeln('   Query: $query');
       }
 
-      final payload = entry.requestBody;
-      if (payload != null && payload.trim().isNotEmpty) {
+      final payload = _sanitizeTextBlock(entry.requestBody);
+      if (payload.isNotEmpty) {
         buffer.writeln('   Payload: $payload');
       }
 
@@ -455,13 +503,13 @@ class LogReportGenerator {
         buffer.writeln(paginationLine);
       }
 
-      final responseBody = entry.responseBody;
-      if (responseBody != null && responseBody.trim().isNotEmpty) {
+      final responseBody = _sanitizeTextBlock(entry.responseBody);
+      if (responseBody.isNotEmpty) {
         buffer.writeln('   Response: $responseBody');
       }
 
-      final errorMessage = entry.errorMessage;
-      if (errorMessage != null && errorMessage.trim().isNotEmpty) {
+      final errorMessage = _sanitizeTextBlock(entry.errorMessage);
+      if (errorMessage.isNotEmpty) {
         buffer.writeln('   Error: $errorMessage');
       }
     }
@@ -703,7 +751,7 @@ GROUP BY type, state;
     final ms = _readInt(value);
     if (ms == null || ms <= 0) return '-';
     final time = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
-    return DateFormat('HH:mm:ss').format(time);
+    return _formatTime(time);
   }
 
   String _formatEpochSec(dynamic value) {
@@ -713,7 +761,7 @@ GROUP BY type, state;
       seconds * 1000,
       isUtc: true,
     ).toLocal();
-    return DateFormat('HH:mm:ss').format(time);
+    return _formatTime(time);
   }
 
   int? _readInt(dynamic value) {
@@ -807,34 +855,35 @@ GROUP BY type, state;
       final durationLabel = entry.durationMs == null
           ? '?ms'
           : '${entry.durationMs}ms';
+      final requestId = entry.requestId?.trim() ?? '';
+      final requestIdLabel = requestId.isEmpty ? '' : ', requestId=$requestId';
       buffer.writeln('------------------------------------------------');
       buffer.writeln(
         '${i + 1}. [${entry.type.toUpperCase()}] ${entry.method} ${entry.url} '
-        '(status=$statusLabel, $durationLabel)',
+        '(status=$statusLabel, $durationLabel$requestIdLabel)',
       );
-      final requestId = entry.requestId?.trim() ?? '';
-      if (requestId.isNotEmpty) {
-        buffer.writeln('   RequestId: $requestId');
-      }
       final headers = entry.headers;
       if (headers != null && headers.isNotEmpty) {
-        buffer.writeln(
-          '   Headers: ${LogSanitizer.stringify(LogSanitizer.sanitizeJson(headers), maxLength: 800)}',
+        final sanitizedHeaders = _sanitizeHeaderMapForReport(headers);
+        final headersText = _stringifySanitizedWithLimit(
+          sanitizedHeaders,
+          _maxHeaderChars,
         );
+        buffer.writeln('   Headers: $headersText');
       }
-      final body = entry.body;
-      if (body != null && body.trim().isNotEmpty) {
+      final body = _sanitizeTextBlock(entry.body);
+      if (body.isNotEmpty) {
         buffer.writeln('   Body: $body');
       }
-      final error = entry.error;
-      if (error != null && error.trim().isNotEmpty) {
+      final error = _sanitizeTextBlock(entry.error);
+      if (error.isNotEmpty) {
         buffer.writeln('   Error: $error');
       }
     }
   }
 
   String _formatBreadcrumbTime(DateTime time) {
-    return DateFormat('HH:mm:ss').format(time);
+    return _formatTime(time);
   }
 
   String _statusLabel(NetworkRequestLog entry) {
@@ -888,6 +937,109 @@ GROUP BY type, state;
     503: 'Service Unavailable',
     504: 'Gateway Timeout',
   };
+
+  String _buildExportId(DateTime now) {
+    return DateFormat('yyyyMMdd_HHmmss_SSS').format(now.toUtc());
+  }
+
+  String _formatDateTimeWithZone(DateTime time, String timeZoneLabel) {
+    final local = time.toLocal();
+    final stamp = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(local);
+    return '$stamp ($timeZoneLabel)';
+  }
+
+  String _formatTime(DateTime? time) {
+    if (time == null) return '-';
+    final local = time.toLocal();
+    final stamp = DateFormat('HH:mm:ss').format(local);
+    final zone = _formatTimeZoneLabel(local);
+    return '$stamp ($zone)';
+  }
+
+  String _formatTimeZoneLabel(DateTime time) {
+    final offset = time.timeZoneOffset;
+    final isNegative = offset.isNegative;
+    final totalMinutes = offset.inMinutes.abs();
+    final hours = (totalMinutes ~/ 60).toString().padLeft(2, '0');
+    final minutes = (totalMinutes % 60).toString().padLeft(2, '0');
+    final sign = isNegative ? '-' : '+';
+    return 'UTC$sign$hours:$minutes';
+  }
+
+  String _formatAccountSummary(Account? account) {
+    if (account == null) return 'N/A';
+    final baseUrl = account.baseUrl.toString().trim();
+    final instanceUrl = account.instanceProfile.instanceUrl.trim();
+    final mode = account.instanceProfile.mode.trim();
+    final label = baseUrl.isNotEmpty
+        ? LogSanitizer.maskUrl(baseUrl)
+        : (instanceUrl.isNotEmpty ? LogSanitizer.maskUrl(instanceUrl) : '-');
+    final modeLabel = mode.isEmpty ? 'server' : mode;
+    final safeLabel = (label.trim().isEmpty || label.trim() == '-')
+        ? 'N/A'
+        : label;
+    return '$modeLabel @ $safeLabel';
+  }
+
+  String _formatSummaryValue(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == '-') return 'N/A';
+    return trimmed;
+  }
+
+  List<String> _collectRequestIdSamples(List<NetworkLogEntry> entries) {
+    final ids = <String>[];
+    for (final entry in entries.reversed) {
+      final id = entry.requestId?.trim() ?? '';
+      if (id.isEmpty || ids.contains(id)) continue;
+      ids.add(id);
+      if (ids.length >= 6) break;
+    }
+    return ids.reversed.toList(growable: false);
+  }
+
+  Map<String, String> _sanitizeHeaderMapForReport(Map<String, String> headers) {
+    final out = <String, String>{};
+    headers.forEach((key, value) {
+      final lower = key.toLowerCase();
+      if (lower == 'authorization' ||
+          lower == 'cookie' ||
+          lower == 'set-cookie' ||
+          lower.contains('token')) {
+        out[key] = LogSanitizer.maskToken(value);
+      } else {
+        out[key] = LogSanitizer.sanitizeText(value);
+      }
+    });
+    return out;
+  }
+
+  String _sanitizeTextBlock(
+    String? raw, {
+    int maxLength = _maxNetworkBodyChars,
+  }) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    final sanitized = LogSanitizer.sanitizeJson(raw);
+    final text = _stringifySanitizedWithLimit(sanitized, maxLength).trim();
+    return text;
+  }
+
+  String _stringifySanitizedWithLimit(Object? value, int maxLength) {
+    if (value == null) return '';
+    String text;
+    if (value is String) {
+      text = value;
+    } else {
+      try {
+        text = jsonEncode(value);
+      } catch (_) {
+        text = value.toString();
+      }
+    }
+    if (text.length <= maxLength) return text;
+    final truncated = text.substring(0, maxLength);
+    return '$truncated...(truncated to $maxLength chars, original ${text.length})';
+  }
 }
 
 extension _FirstOrNullLogExt<T> on List<T> {

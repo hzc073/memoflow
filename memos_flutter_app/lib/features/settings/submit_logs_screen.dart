@@ -29,6 +29,45 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
   var _includeOutbox = true;
   var _busy = false;
   String? _lastPath;
+  String? _lastExportId;
+
+  void _showNonBlockingHint(String message) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _queueSubmissionInBackground({
+    required String reportText,
+    required String reportPath,
+  }) {
+    unawaited(() async {
+      try {
+        final result = await _queueServerLogSubmission(
+          reportText: reportText,
+          reportPath: reportPath,
+        );
+        if (!mounted) return;
+        switch (result) {
+          case LogQueueResult.queued:
+            _showNonBlockingHint('Log submission queued in background.');
+            break;
+          case LogQueueResult.skipped:
+            _showNonBlockingHint('Log file saved. Submission not queued.');
+            break;
+          case LogQueueResult.failed:
+            _showNonBlockingHint(
+              'Log file saved, but failed to queue submission.',
+            );
+            break;
+        }
+      } catch (e) {
+        if (!mounted) return;
+        _showNonBlockingHint('Log file saved, but failed to queue submission.');
+      }
+    }());
+  }
 
   @override
   void dispose() {
@@ -36,18 +75,23 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
     super.dispose();
   }
 
-  Future<String> _buildReport() async {
+  Future<String> _buildReport({String? exportId}) async {
     final generator = ref.read(logReportGeneratorProvider);
     return generator.buildReport(
       includeErrors: _includeErrors,
       includeOutbox: _includeOutbox,
       userNote: _noteController.text,
+      exportId: exportId,
     );
   }
 
   Future<void> _copyReport() async {
     final text = await _buildReport();
     await Clipboard.setData(ClipboardData(text: text));
+  }
+
+  String _generateExportId() {
+    return DateFormat('yyyyMMdd_HHmmss_SSS').format(DateTime.now().toUtc());
   }
 
   Future<Directory?> _tryGetDownloadsDirectory() async {
@@ -86,19 +130,37 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final text = await _buildReport();
+      final exportId = _generateExportId();
+      final text = await _buildReport(exportId: exportId);
       final rootDir = await _resolveExportDirectory();
       final logDir = Directory(p.join(rootDir.path, 'logs'));
-      if (!logDir.existsSync()) {
-        logDir.createSync(recursive: true);
+      if (!await logDir.exists()) {
+        await logDir.create(recursive: true);
       }
       final now = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final outPath = p.join(logDir.path, 'MemoFlow_log_$now.txt');
-      await File(outPath).writeAsString(text, flush: true);
-      await _queueServerLogSubmission(reportText: text, reportPath: outPath);
+      final reportPath = p.join(logDir.path, 'MemoFlow_log_$now.txt');
+      await File(reportPath).writeAsString(text, flush: true);
+      final networkEnabled = ref
+          .read(appPreferencesProvider)
+          .networkLoggingEnabled;
+      final bundleFile = await ref
+          .read(logBundleExporterProvider)
+          .exportBundle(
+            exportId: exportId,
+            reportText: text,
+            outputDirectory: logDir,
+            includeNetworkStore: networkEnabled,
+          );
       if (!mounted) return;
-      setState(() => _lastPath = outPath);
-      showTopToast(context, context.t.strings.legacy.msg_log_file_created);
+      setState(() {
+        _lastPath = bundleFile.path;
+        _lastExportId = exportId;
+      });
+      showTopToast(
+        context,
+        '${context.t.strings.legacy.msg_log_file_created}: ${bundleFile.path} (ExportId: $exportId)',
+      );
+      _queueSubmissionInBackground(reportText: text, reportPath: reportPath);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -111,11 +173,13 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
     }
   }
 
-  Future<void> _queueServerLogSubmission({
+  Future<LogQueueResult> _queueServerLogSubmission({
     required String reportText,
     required String reportPath,
   }) async {
-    await ref.read(submitLogsControllerProvider).queueServerLogSubmission(
+    return ref
+        .read(submitLogsControllerProvider)
+        .queueServerLogSubmission(
           reportText: reportText,
           reportPath: reportPath,
           includeErrors: _includeErrors,
@@ -286,32 +350,6 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 divider: divider,
                 children: [
                   _ActionRow(
-                    icon: Icons.content_copy,
-                    label: context.t.strings.legacy.msg_copy_log_text,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () async {
-                      haptic();
-                      try {
-                        await _copyReport();
-                        if (!context.mounted) return;
-                        showTopToast(
-                          context,
-                          context.t.strings.legacy.msg_log_copied,
-                        );
-                      } catch (e) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              context.t.strings.legacy.msg_copy_failed(e: e),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                  _ActionRow(
                     icon: Icons.file_present_outlined,
                     label: _busy
                         ? context.t.strings.legacy.msg_generating
@@ -376,6 +414,17 @@ class _SubmitLogsScreenState extends ConsumerState<SubmitLogsScreen> {
                 ),
               ],
               const SizedBox(height: 16),
+              if (!networkLoggingEnabled) ...[
+                Text(
+                  'For login/sync/backup issues, enable network logging before exporting.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: textMuted.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               Text(
                 context
                     .t
@@ -472,7 +521,6 @@ class _ActionRow extends StatelessWidget {
                   ),
                 ),
               ),
-              Icon(Icons.chevron_right, size: 20, color: textMuted),
             ],
           ),
         ),

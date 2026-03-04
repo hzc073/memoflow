@@ -115,6 +115,12 @@ class NetworkLogEntry {
 class NetworkLogStore {
   NetworkLogStore({this.maxEntries = 200, this.maxFileBytes = 1024 * 1024});
 
+  static const int _maxUrlChars = 800;
+  static const int _maxHeaderChars = 1200;
+  static const int _maxBodyChars = 2000;
+  static const int _maxErrorChars = 1200;
+  static const int _maxRequestIdChars = 120;
+
   final int maxEntries;
   final int maxFileBytes;
   bool enabled = false;
@@ -129,8 +135,9 @@ class NetworkLogStore {
   Future<void> add(NetworkLogEntry entry) async {
     if (!enabled) return;
     try {
+      final sanitizedEntry = _sanitizeEntry(entry);
       final file = await _resolveFile();
-      final line = jsonEncode(entry.toJson());
+      final line = jsonEncode(sanitizedEntry.toJson());
       await file.writeAsString('$line\n', mode: FileMode.append, flush: false);
       _appendCount++;
       if (_appendCount % 20 == 0) {
@@ -171,8 +178,8 @@ class NetworkLogStore {
     if (cached != null) return cached;
     final dir = await resolveAppDocumentsDirectory();
     final logDir = Directory(p.join(dir.path, 'logs'));
-    if (!logDir.existsSync()) {
-      logDir.createSync(recursive: true);
+    if (!await logDir.exists()) {
+      await logDir.create(recursive: true);
     }
     final file = File(p.join(logDir.path, 'network_logs.jsonl'));
     _fileFuture = Future.value(file);
@@ -186,5 +193,52 @@ class NetworkLogStore {
     if (lines.length <= maxEntries) return;
     final trimmed = lines.sublist(lines.length - maxEntries);
     await file.writeAsString('${trimmed.join('\n')}\n', flush: true);
+  }
+
+  NetworkLogEntry _sanitizeEntry(NetworkLogEntry entry) {
+    final headers = entry.headers == null
+        ? null
+        : LogSanitizer.sanitizeHeaders(entry.headers!);
+    final url = _sanitizeField(entry.url, _maxUrlChars) ?? '-';
+    return NetworkLogEntry(
+      timestamp: entry.timestamp,
+      type: entry.type,
+      method: entry.method,
+      url: url,
+      status: entry.status,
+      durationMs: entry.durationMs,
+      headers: headers,
+      body: _sanitizeField(entry.body, _maxBodyChars),
+      error: _sanitizeField(entry.error, _maxErrorChars),
+      requestId: _sanitizeField(entry.requestId, _maxRequestIdChars),
+    );
+  }
+
+  String? _sanitizeField(String? raw, int maxLength) {
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final sanitized = LogSanitizer.sanitizeJson(trimmed);
+    String text;
+    if (sanitized is String) {
+      text = sanitized;
+    } else {
+      try {
+        text = jsonEncode(sanitized);
+      } catch (_) {
+        text = sanitized.toString();
+      }
+    }
+    text = text.replaceAll('\n', r'\n').trim();
+    return _truncateField(text, maxLength);
+  }
+
+  String _truncateField(String value, int maxLength) {
+    if (value.length <= maxLength) return value;
+    final marker =
+        '...(truncated to $maxLength chars, original ${value.length})';
+    final available = maxLength - marker.length;
+    if (available <= 0) return marker;
+    return '${value.substring(0, available)}$marker';
   }
 }

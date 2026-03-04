@@ -1,10 +1,7 @@
 import '../../core/log_sanitizer.dart';
 
 class BreadcrumbEntry {
-  BreadcrumbEntry({
-    required this.timestamp,
-    required this.message,
-  });
+  BreadcrumbEntry({required this.timestamp, required this.message});
 
   final DateTime timestamp;
   final String message;
@@ -21,13 +18,17 @@ class BreadcrumbStore {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return;
 
-    var sanitized = LogSanitizer.sanitizeText(trimmed).replaceAll('\n', ' ').trim();
+    var sanitized = LogSanitizer.sanitizeText(
+      trimmed,
+    ).replaceAll('\n', ' ').trim();
     if (sanitized.isEmpty) return;
     if (sanitized.length > maxMessageLength) {
-      sanitized = '${sanitized.substring(0, maxMessageLength)}...';
+      sanitized = _truncateField(sanitized, maxMessageLength);
     }
 
-    _entries.add(BreadcrumbEntry(timestamp: DateTime.now(), message: sanitized));
+    _entries.add(
+      BreadcrumbEntry(timestamp: DateTime.now(), message: sanitized),
+    );
     if (_entries.length > maxEntries) {
       _entries.removeRange(0, _entries.length - maxEntries);
     }
@@ -37,5 +38,14 @@ class BreadcrumbStore {
     if (limit <= 0 || _entries.isEmpty) return const [];
     final start = _entries.length > limit ? _entries.length - limit : 0;
     return List<BreadcrumbEntry>.unmodifiable(_entries.sublist(start));
+  }
+
+  String _truncateField(String value, int maxLength) {
+    if (value.length <= maxLength) return value;
+    final marker =
+        '...(truncated to $maxLength chars, original ${value.length})';
+    final available = maxLength - marker.length;
+    if (available <= 0) return marker;
+    return '${value.substring(0, available)}$marker';
   }
 }

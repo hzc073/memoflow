@@ -19,6 +19,7 @@ import '../../state/preferences_provider.dart';
 import '../../state/session_provider.dart';
 import '../auth/login_screen.dart';
 import '../debug/debug_logs_screen.dart';
+import '../debug/system_logs_screen.dart';
 import '../onboarding/language_selection_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -1449,6 +1450,19 @@ class _DebugToolsScreenState extends ConsumerState<DebugToolsScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const DebugLogsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _ActionRow(
+                    icon: Icons.subject_outlined,
+                    label: 'System Logs',
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SystemLogsScreen(),
                         ),
                       );
                     },

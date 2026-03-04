@@ -49,6 +49,7 @@ import '../../data/location/device_location_service.dart';
 import '../../state/app_lock_provider.dart';
 import '../../features/home/app_drawer.dart';
 import '../../state/debug_screenshot_mode_provider.dart';
+import '../../state/database_provider.dart';
 import '../../state/local_library_provider.dart';
 import '../../state/local_library_scanner.dart';
 import '../../state/location_settings_provider.dart';
@@ -5637,6 +5638,32 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         ? ref.watch(debugScreenshotModeProvider)
         : false;
     final session = ref.watch(appSessionProvider).valueOrNull;
+    final currentLocalLibrary = ref.watch(currentLocalLibraryProvider);
+    if (kDebugMode) {
+      final currentKey = session?.currentKey;
+      final resolvedDb =
+          (currentKey == null || currentKey.trim().isEmpty)
+              ? null
+              : databaseNameForAccountKey(currentKey);
+      final workspaceMode = currentLocalLibrary != null
+          ? 'local'
+          : (session?.currentAccount != null ? 'remote' : 'none');
+      ref
+          .read(logManagerProvider)
+          .info(
+            'MemosList build: workspace_debug',
+            context: <String, Object?>{
+              'event': 'build',
+              'currentKey': currentKey,
+              'resolvedDbName': resolvedDb,
+              'workspaceMode': workspaceMode,
+              'currentLocalLibraryNull': currentLocalLibrary == null,
+              'localLibraryKey': currentLocalLibrary?.key,
+              'localLibraryName': currentLocalLibrary?.name,
+              'localLibraryLocation': currentLocalLibrary?.locationLabel,
+            },
+          );
+    }
     final account = session?.currentAccount;
     final debugApiVersionText =
         ref.watch(memosListDebugApiVersionTextProvider);

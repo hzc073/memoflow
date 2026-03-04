@@ -96,6 +96,19 @@ class LogSanitizer {
     return s;
   }
 
+  static Map<String, String> sanitizeHeaders(Map<String, String> headers) {
+    final out = <String, String>{};
+    headers.forEach((key, value) {
+      final lower = key.trim().toLowerCase();
+      if (_isSensitiveKey(lower)) {
+        out[key] = maskToken(value);
+      } else {
+        out[key] = sanitizeText(value);
+      }
+    });
+    return out;
+  }
+
   static Object? sanitizeJson(Object? value) {
     if (value == null) return null;
     if (value is Map) {
@@ -201,12 +214,67 @@ class LogSanitizer {
   }
 
   static bool _isSensitiveKey(String key) {
-    return key.contains('token') ||
-        key.contains('secret') ||
-        key.contains('password') ||
-        key == 'authorization' ||
-        key == 'cookie' ||
-        key == 'set-cookie';
+    final lower = key.trim().toLowerCase();
+    if (lower.isEmpty) return false;
+    if (lower == 'authorization' ||
+        lower == 'cookie' ||
+        lower == 'set-cookie') {
+      return true;
+    }
+    if (lower.contains('token') ||
+        lower.contains('secret') ||
+        lower.contains('password')) {
+      return true;
+    }
+    if (_matchesPatKey(lower) ||
+        _matchesApiKey(lower) ||
+        _matchesAuthKey(lower) ||
+        _matchesSignatureKey(lower) ||
+        _matchesGenericKey(lower)) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _matchesPatKey(String key) {
+    if (key.contains('personalaccesstoken') ||
+        key.contains('personal_access_token')) {
+      return true;
+    }
+    if (key == 'pat' || key.endsWith('_pat') || key.endsWith('-pat')) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _matchesApiKey(String key) {
+    if (key.contains('apikey') ||
+        key.contains('api_key') ||
+        key.contains('api-key')) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _matchesAuthKey(String key) {
+    if (key == 'auth') return true;
+    if (key.startsWith('auth')) return true;
+    if (key.contains('_auth') || key.contains('-auth')) return true;
+    return false;
+  }
+
+  static bool _matchesSignatureKey(String key) {
+    if (key.contains('signature')) return true;
+    if (key == 'sig' || key.endsWith('_sig') || key.endsWith('-sig')) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _matchesGenericKey(String key) {
+    if (key == 'key') return true;
+    if (key.endsWith('_key') || key.endsWith('-key')) return true;
+    return false;
   }
 
   static bool _isContentKey(String key) {
@@ -275,7 +343,9 @@ class LogSanitizer {
         } else if (_isLocationNameKey(lower)) {
           sanitized = '<location_name_redacted>';
         }
-        pairs.add('${Uri.encodeQueryComponent(key)}=${Uri.encodeQueryComponent(sanitized)}');
+        pairs.add(
+          '${Uri.encodeQueryComponent(key)}=${Uri.encodeQueryComponent(sanitized)}',
+        );
       }
     }
     return pairs.join('&');
@@ -286,9 +356,10 @@ class LogSanitizer {
     try {
       final parts = path.split('/');
       final decoded = parts
-          .map((segment) => segment.isEmpty
-              ? segment
-              : Uri.decodeComponent(segment))
+          .map(
+            (segment) =>
+                segment.isEmpty ? segment : Uri.decodeComponent(segment),
+          )
           .toList(growable: false);
       return decoded.join('/');
     } catch (_) {
@@ -319,7 +390,11 @@ class LogSanitizer {
     return hash.toRadixString(16).padLeft(8, '0');
   }
 
-  static String _maskValue(String raw, {required int keepStart, required int keepEnd}) {
+  static String _maskValue(
+    String raw, {
+    required int keepStart,
+    required int keepEnd,
+  }) {
     final s = raw.trim();
     if (s.isEmpty) return s;
     final runes = s.runes.toList();
@@ -343,9 +418,12 @@ class LogSanitizer {
   }
 
   static final RegExp _ipv4Regex = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$');
-  static final RegExp _bearerRegex = RegExp(r'Bearer\s+([A-Za-z0-9\-\._=]+)', caseSensitive: false);
+  static final RegExp _bearerRegex = RegExp(
+    r'Bearer\s+([A-Za-z0-9\-\._=]+)',
+    caseSensitive: false,
+  );
   static final RegExp _tokenParamRegex = RegExp(
-    r'(token|access_token|refresh_token)=([^\s&]+)',
+    r'(token|access_token|refresh_token|api[_-]?key|apikey|personalaccesstoken|personal_access_token|pat|auth|signature|sig|key|password|secret)=([^\s&]+)',
     caseSensitive: false,
   );
   static final RegExp _urlRegex = RegExp(r'https?://[^\s)]+');

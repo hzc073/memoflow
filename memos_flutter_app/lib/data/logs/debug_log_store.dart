@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/debug_ephemeral_storage.dart';
+import '../../core/log_sanitizer.dart';
 
 class DebugLogEntry {
   DebugLogEntry({
@@ -96,6 +97,12 @@ class DebugLogStore {
     bool? enabled,
   }) : enabled = enabled ?? kDebugMode;
 
+  static const int _maxLabelChars = 400;
+  static const int _maxDetailChars = 1200;
+  static const int _maxHeaderChars = 1200;
+  static const int _maxBodyChars = 2000;
+  static const int _maxErrorChars = 1200;
+
   final int maxEntries;
   final int maxFileBytes;
   final String fileName;
@@ -111,8 +118,9 @@ class DebugLogStore {
   Future<void> add(DebugLogEntry entry) async {
     if (!enabled) return;
     try {
+      final sanitizedEntry = _sanitizeEntry(entry);
       final file = await _resolveFile();
-      final line = jsonEncode(entry.toJson());
+      final line = jsonEncode(sanitizedEntry.toJson());
       await file.writeAsString('$line\n', mode: FileMode.append, flush: false);
       _appendCount++;
       if (_appendCount % 20 == 0) {
@@ -162,8 +170,8 @@ class DebugLogStore {
     if (cached != null) return cached;
     final dir = await resolveAppDocumentsDirectory();
     final logDir = Directory(p.join(dir.path, 'logs'));
-    if (!logDir.existsSync()) {
-      logDir.createSync(recursive: true);
+    if (!await logDir.exists()) {
+      await logDir.create(recursive: true);
     }
     final file = File(p.join(logDir.path, fileName));
     _fileFuture = Future.value(file);
@@ -177,5 +185,52 @@ class DebugLogStore {
     if (lines.length <= maxEntries) return;
     final trimmed = lines.sublist(lines.length - maxEntries);
     await file.writeAsString('${trimmed.join('\n')}\n', flush: true);
+  }
+
+  DebugLogEntry _sanitizeEntry(DebugLogEntry entry) {
+    final label = _sanitizeField(entry.label, _maxLabelChars) ?? '';
+    return DebugLogEntry(
+      timestamp: entry.timestamp,
+      category: entry.category,
+      label: label.isEmpty ? '-' : label,
+      detail: _sanitizeField(entry.detail, _maxDetailChars),
+      method: _sanitizeField(entry.method, 32),
+      url: _sanitizeField(entry.url, 500),
+      status: entry.status,
+      durationMs: entry.durationMs,
+      requestHeaders: _sanitizeField(entry.requestHeaders, _maxHeaderChars),
+      requestBody: _sanitizeField(entry.requestBody, _maxBodyChars),
+      responseHeaders: _sanitizeField(entry.responseHeaders, _maxHeaderChars),
+      responseBody: _sanitizeField(entry.responseBody, _maxBodyChars),
+      error: _sanitizeField(entry.error, _maxErrorChars),
+    );
+  }
+
+  String? _sanitizeField(String? raw, int maxLength) {
+    if (raw == null) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final sanitized = LogSanitizer.sanitizeJson(trimmed);
+    String text;
+    if (sanitized is String) {
+      text = sanitized;
+    } else {
+      try {
+        text = jsonEncode(sanitized);
+      } catch (_) {
+        text = sanitized.toString();
+      }
+    }
+    text = text.replaceAll('\n', r'\n').trim();
+    return _truncateField(text, maxLength);
+  }
+
+  String _truncateField(String value, int maxLength) {
+    if (value.length <= maxLength) return value;
+    final marker =
+        '...(truncated to $maxLength chars, original ${value.length})';
+    final available = maxLength - marker.length;
+    if (available <= 0) return marker;
+    return '${value.substring(0, available)}$marker';
   }
 }
