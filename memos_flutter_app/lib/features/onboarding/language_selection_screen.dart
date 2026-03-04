@@ -252,6 +252,7 @@ class _LanguageSelectionScreenState
               : AppOnboardingMode.server,
           homeInitialLoadingOverlayShown: false,
         ),
+        triggerSync: false,
       );
       _logFlow(
         'confirm_selection_after_set_all',

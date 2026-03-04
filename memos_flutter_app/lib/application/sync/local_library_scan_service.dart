@@ -366,8 +366,20 @@ class LocalLibraryScanService {
     final memoEntries = await fileSystem.listMemos();
     final pendingUids = await db.listPendingOutboxMemoUids();
     final hasPendingOutbox = pendingUids.isNotEmpty;
-    final effectiveForceDisk = forceDisk && !hasPendingOutbox;
-    if (forceDisk && hasPendingOutbox) {
+    final previousManifest = await _readScanManifestSafe();
+    final hasManifest = previousManifest.entriesByPath.isNotEmpty;
+    final memosCount = hasManifest ? await db.countMemos() : 0;
+    final shouldForceDisk = forceDisk || (hasManifest && memosCount == 0);
+    if (shouldForceDisk && hasManifest && memosCount == 0) {
+      LogManager.instance.info(
+        'LocalLibrary scan: incremental_force_disk_due_empty_db',
+        context: <String, Object?>{
+          'manifestCount': previousManifest.entriesByPath.length,
+        },
+      );
+    }
+    final effectiveForceDisk = shouldForceDisk && !hasPendingOutbox;
+    if (shouldForceDisk && hasPendingOutbox) {
       LogManager.instance.warn(
         'LocalLibrary scan: incremental_force_disk_downgraded',
         context: <String, Object?>{
@@ -375,8 +387,6 @@ class LocalLibraryScanService {
         },
       );
     }
-
-    final previousManifest = await _readScanManifestSafe();
     final nextManifestByPath = <String, _ScanManifestEntry>{};
     final currentPaths = <String>{};
     final currentUids = <String>{};

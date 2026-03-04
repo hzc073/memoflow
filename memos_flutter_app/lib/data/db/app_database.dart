@@ -1225,6 +1225,17 @@ WHERE id = 1;
     return 0;
   }
 
+  Future<int> countMemos() async {
+    final db = await this.db;
+    final rows = await db.rawQuery('SELECT COUNT(*) AS count FROM memos');
+    if (rows.isEmpty) return 0;
+    final raw = rows.first['count'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+    return 0;
+  }
+
   Future<List<Map<String, dynamic>>> listOutboxPendingByType(
     String type,
   ) async {

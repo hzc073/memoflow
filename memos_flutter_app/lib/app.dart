@@ -347,24 +347,46 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     return theme.apply(fontFamily: family, fontFamilyFallback: fallback);
   }
 
+  static const List<String> _windowsDefaultFonts = [
+    'Microsoft YaHei',
+    'Microsoft YaHei UI',
+    '微软雅黑',
+  ];
+  static const List<String> _windowsDefaultFontFallback = [
+    'Microsoft YaHei UI',
+    '微软雅黑',
+  ];
+
+  static bool _shouldForceWindowsDefaultFont(AppPreferences prefs) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return false;
+    final family = prefs.fontFamily?.trim() ?? '';
+    return family.isEmpty;
+  }
+
   static ThemeData _applyPreferencesToTheme(
     ThemeData theme,
     AppPreferences prefs,
   ) {
+    final forceWindowsDefault = _shouldForceWindowsDefaultFont(prefs);
+    final fontFamily = forceWindowsDefault
+        ? _windowsDefaultFonts.first
+        : prefs.fontFamily;
+    final fontFallback =
+        forceWindowsDefault ? _windowsDefaultFontFallback : null;
     final lineHeight = _lineHeightFor(prefs.lineHeight);
     final textTheme = _applyLineHeight(
       _applyFontFamily(
         theme.textTheme,
-        family: prefs.fontFamily,
-        fallback: null,
+        family: fontFamily,
+        fallback: fontFallback,
       ),
       lineHeight,
     );
     final primaryTextTheme = _applyLineHeight(
       _applyFontFamily(
         theme.primaryTextTheme,
-        family: prefs.fontFamily,
-        fallback: null,
+        family: fontFamily,
+        fallback: fontFallback,
       ),
       lineHeight,
     );

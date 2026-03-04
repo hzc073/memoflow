@@ -4075,6 +4075,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final chipText = isDark
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
+    final inlineComposeMinLines = Platform.isWindows ? 3 : 1;
+    final inlineComposeMaxLines = Platform.isWindows ? 8 : 5;
     final (visibilityLabel, visibilityIcon, visibilityColor) =
         _resolveInlineVisibilityStyle(context, _currentInlineVisibility());
 
@@ -4172,8 +4174,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             controller: _inlineComposeController,
             focusNode: _inlineComposeFocusNode,
             enabled: !_inlineComposeBusy,
-            minLines: 1,
-            maxLines: 5,
+            minLines: inlineComposeMinLines,
+            maxLines: inlineComposeMaxLines,
             keyboardType: TextInputType.multiline,
             style: TextStyle(fontSize: 15, height: 1.35, color: textColor),
             decoration: InputDecoration(
