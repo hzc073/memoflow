@@ -70,7 +70,7 @@ class WebDavSettings {
     backupContentMemos: true,
     backupConfigScope: WebDavBackupConfigScope.safe,
     backupEncryptionMode: WebDavBackupEncryptionMode.encrypted,
-    backupSchedule: WebDavBackupSchedule.daily,
+    backupSchedule: WebDavBackupSchedule.manual,
     backupRetentionCount: 5,
     rememberBackupPassword: true,
     backupExportEncrypted: true,

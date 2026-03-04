@@ -8,6 +8,7 @@ import '../data/local_library/local_attachment_store.dart';
 import '../data/logs/webdav_backup_progress_tracker.dart';
 import '../data/settings/webdav_backup_password_repository.dart';
 import '../data/settings/webdav_backup_state_repository.dart';
+import 'webdav_device_id_provider.dart';
 import 'webdav_vault_provider.dart';
 import 'database_provider.dart';
 import 'session_provider.dart';
@@ -30,9 +31,7 @@ final webDavBackupProgressTrackerProvider =
 
 final webDavBackupStateRepositoryProvider =
     Provider<WebDavBackupStateRepository>((ref) {
-      final accountKey = ref.watch(
-        appSessionProvider.select((state) => state.valueOrNull?.currentKey),
-      );
+      final accountKey = ref.watch(webDavAccountKeyProvider);
       return WebDavBackupStateRepository(
         ref.watch(secureStorageProvider),
         accountKey: accountKey,
@@ -41,9 +40,7 @@ final webDavBackupStateRepositoryProvider =
 
 final webDavBackupPasswordRepositoryProvider =
     Provider<WebDavBackupPasswordRepository>((ref) {
-      final accountKey = ref.watch(
-        appSessionProvider.select((state) => state.valueOrNull?.currentKey),
-      );
+      final accountKey = ref.watch(webDavAccountKeyProvider);
       return WebDavBackupPasswordRepository(
         ref.watch(secureStorageProvider),
         accountKey: accountKey,

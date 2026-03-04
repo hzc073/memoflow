@@ -8,13 +8,12 @@ import '../core/webdav_url.dart';
 import '../data/models/webdav_settings.dart';
 import '../data/settings/webdav_settings_repository.dart';
 import 'session_provider.dart';
+import 'webdav_device_id_provider.dart';
 
 final webDavSettingsRepositoryProvider = Provider<WebDavSettingsRepository>((
   ref,
 ) {
-  final accountKey = ref.watch(
-    appSessionProvider.select((state) => state.valueOrNull?.currentKey),
-  );
+  final accountKey = ref.watch(webDavAccountKeyProvider);
   return WebDavSettingsRepository(
     ref.watch(secureStorageProvider),
     accountKey: accountKey,

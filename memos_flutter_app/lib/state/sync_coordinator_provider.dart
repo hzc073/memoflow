@@ -19,8 +19,10 @@ import 'webdav_backup_provider.dart'
 import 'webdav_local_adapter.dart';
 import 'webdav_log_provider.dart';
 import 'webdav_settings_provider.dart';
+import 'webdav_device_id_provider.dart'
+    show webDavAccountKeyProvider, webDavDeviceIdRepositoryProvider;
 import 'webdav_sync_provider.dart'
-    show webDavDeviceIdRepositoryProvider, webDavSyncStateRepositoryProvider;
+    show webDavSyncStateRepositoryProvider;
 import 'webdav_vault_provider.dart';
 
 final syncCoordinatorProvider =
@@ -56,8 +58,7 @@ final syncCoordinatorProvider =
           webDavBackupStateRepositoryProvider,
         ),
         readWebDavSettings: () => ref.read(webDavSettingsProvider),
-        readCurrentAccountKey: () =>
-            ref.read(appSessionProvider).valueOrNull?.currentKey,
+        readCurrentAccountKey: () => ref.read(webDavAccountKeyProvider),
         readCurrentAccount: () =>
             ref.read(appSessionProvider).valueOrNull?.currentAccount,
         readCurrentLocalLibrary: () => ref.read(currentLocalLibraryProvider),
