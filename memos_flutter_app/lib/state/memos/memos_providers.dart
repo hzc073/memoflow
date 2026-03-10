@@ -1499,6 +1499,7 @@ class TagStat {
     this.parentId,
     this.pinned = false,
     this.colorHex,
+    this.lastUsedTimeSec,
     String? path,
   }) : path = path ?? tag;
 
@@ -1508,6 +1509,7 @@ class TagStat {
   final int? parentId;
   final bool pinned;
   final String? colorHex;
+  final int? lastUsedTimeSec;
   final String path;
 }
 
@@ -1528,14 +1530,19 @@ final tagStatsProvider = StreamProvider<List<TagStat>>((ref) async* {
     try {
       final rows = await sqlite.rawQuery('''
 SELECT t.id, t.parent_id, t.path, t.pinned, t.color_hex,
-       COALESCE(ts.memo_count, 0) AS memo_count
+       COALESCE(ts.memo_count, 0) AS memo_count,
+       MAX(m.update_time) AS last_used_time
 FROM tags t
-LEFT JOIN tag_stats_cache ts ON ts.tag = t.path;
+LEFT JOIN tag_stats_cache ts ON ts.tag = t.path
+LEFT JOIN memo_tags mt ON mt.tag_id = t.id
+LEFT JOIN memos m ON m.uid = mt.memo_uid AND m.state = 'NORMAL'
+GROUP BY t.id, t.parent_id, t.path, t.pinned, t.color_hex, ts.memo_count;
 ''');
       for (final row in rows) {
         final path = row['path'];
         if (path is! String || path.trim().isEmpty) continue;
         final count = readInt(row['memo_count']);
+        final lastUsedTimeSec = readInt(row['last_used_time']);
         final tagId = readInt(row['id']);
         final parentId = readInt(row['parent_id']);
         final pinned = readInt(row['pinned']) == 1;
@@ -1550,6 +1557,7 @@ LEFT JOIN tag_stats_cache ts ON ts.tag = t.path;
             parentId: parentId == 0 ? null : parentId,
             pinned: pinned,
             colorHex: colorHex,
+            lastUsedTimeSec: lastUsedTimeSec == 0 ? null : lastUsedTimeSec,
           ),
         );
         seenPaths.add(trimmedPath);
