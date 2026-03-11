@@ -109,6 +109,18 @@ settings:
     border: "Border"
     borderColor: "Border Color"
 
+locationPicker:
+  searchNearbyPlaces: "Search nearby places"
+  latitudeValue: "Latitude $value"
+  longitudeValue: "Longitude $value"
+  noPlacesFound: "No places found"
+  mapInitializeFailed: "Failed to initialize map."
+  providerNotReady: "Location provider is not ready."
+  providerMissingAmapKeys: "Amap Web API Key and Security Key are required before selecting a location."
+  providerMissingBaiduKey: "Baidu AK is required before selecting a location."
+  providerMissingGoogleKey: "Google Maps API Key is required before selecting a location."
+  providerUnsupportedPlatform: "Embedded map picker is only available on Android and Windows."
+
 aiInsight:
   title: "AI Insight Studio"
   subtitle: "Let AI help you understand your notes from different angles."

@@ -47,8 +47,6 @@ import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../data/models/shortcut.dart';
-import '../../data/location/location_geocoder.dart';
-import '../../data/location/device_location_service.dart';
 import '../../state/settings/app_lock_provider.dart';
 import '../home/app_drawer.dart';
 import '../../state/system/debug_screenshot_mode_provider.dart';
@@ -59,7 +57,6 @@ import '../../state/settings/location_settings_provider.dart';
 import '../../state/system/logging_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import '../../state/memos/memos_providers.dart';
-import '../../state/system/network_log_provider.dart';
 import '../../state/memos/note_draft_provider.dart';
 import '../../state/settings/preferences_provider.dart';
 import '../../state/system/reminder_providers.dart';
@@ -76,7 +73,7 @@ import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
 import '../settings/desktop_shortcuts_overview_screen.dart';
-import '../settings/location_settings_screen.dart';
+import '../location_picker/show_location_picker.dart';
 import '../settings/password_lock_screen.dart';
 import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
@@ -3054,74 +3051,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
-  Future<void> _openInlineLocationSettings() async {
-    if (_inlineComposeBusy) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
-    );
-  }
-
-  Future<LocationSettings> _resolveInlineLocationSettings() async {
-    final current = ref.read(locationSettingsProvider);
-    if (current.enabled) return current;
-    final stored = await ref.read(locationSettingsRepositoryProvider).read();
-    if (!mounted) return stored;
-    await ref
-        .read(locationSettingsProvider.notifier)
-        .setAll(stored, triggerSync: false);
-    return stored;
-  }
-
-  String _inlineLocationErrorText(Object error) {
-    if (error is LocationException) {
-      return switch (error.code) {
-        'service_disabled' =>
-          context.t.strings.legacy.msg_location_services_disabled,
-        'permission_denied' =>
-          context.t.strings.legacy.msg_location_permission_denied,
-        'permission_denied_forever' =>
-          context.t.strings.legacy.msg_location_permission_denied_permanently,
-        'timeout' => context.t.strings.legacy.msg_location_timed_try,
-        _ => context.t.strings.legacy.msg_failed_get_location,
-      };
-    }
-    if (error is TimeoutException) {
-      return context.t.strings.legacy.msg_location_timed_try;
-    }
-    return context.t.strings.legacy.msg_failed_get_location;
-  }
-
-  bool _isInlineWindowsLocationSettingsActionable(Object error) {
-    if (!Platform.isWindows || error is! LocationException) return false;
-    return error.code == 'permission_denied' ||
-        error.code == 'permission_denied_forever' ||
-        error.code == 'service_disabled';
-  }
-
-  void _showInlineLocationError(Object error) {
-    final messenger = ScaffoldMessenger.of(context);
-    final message = _inlineLocationErrorText(error);
-    if (!_isInlineWindowsLocationSettingsActionable(error)) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-      return;
-    }
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          context.t.strings.legacy.msg_windows_enable_location_access(
-            message: message,
-          ),
-        ),
-        action: SnackBarAction(
-          label: context.t.strings.legacy.msg_settings,
-          onPressed: () {
-            unawaited(DeviceLocationService().openSystemLocationSettings());
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _openWindowsCameraSettings() async {
     if (!Platform.isWindows) return;
     try {
@@ -3159,122 +3088,31 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   Future<void> _requestInlineLocation() async {
     if (_inlineComposeBusy || _inlineLocating) return;
-    if (Platform.isWindows) {
-      setState(() => _inlineLocating = true);
-      try {
-        final position = await DeviceLocationService().getCurrentPosition();
-        final settings = await _resolveInlineLocationSettings();
-        String placeholder = '';
-        if (settings.enabled) {
-          final geocoder = LocationGeocoder(
-            logStore: ref.read(networkLogStoreProvider),
-            logBuffer: ref.read(networkLogBufferProvider),
-            logManager: ref.read(logManagerProvider),
-          );
-          placeholder =
-              await geocoder.reverseGeocode(
-                latitude: position.latitude,
-                longitude: position.longitude,
-                settings: settings,
-              ) ??
-              '';
-        }
-        final next = MemoLocation(
-          placeholder: placeholder,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-        if (!mounted) return;
-        setState(() => _inlineLocation = next);
-        showTopToast(
-          context,
-          context.t.strings.legacy.msg_location_updated(
-            next_displayText_fractionDigits_6: next.displayText(
-              fractionDigits: 6,
-            ),
-          ),
-          duration: const Duration(seconds: 2),
-        );
-      } catch (error) {
-        if (!mounted) return;
-        _showInlineLocationError(error);
-      } finally {
-        if (mounted) {
-          setState(() => _inlineLocating = false);
-        }
-      }
-      return;
-    }
-
-    final settings = await _resolveInlineLocationSettings();
-    if (!settings.enabled) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context
-                .t
-                .strings
-                .legacy
-                .msg_location_disabled_enable_settings_first,
-          ),
-          action: SnackBarAction(
-            label: context.t.strings.legacy.msg_settings,
-            onPressed: _openInlineLocationSettings,
-          ),
+    final next = await showLocationPickerSheetOrDialog(
+      context: context,
+      ref: ref,
+      initialLocation: _inlineLocation,
+    );
+    if (!mounted || next == null) return;
+    setState(() => _inlineLocation = next);
+    showTopToast(
+      context,
+      context.t.strings.legacy.msg_location_updated(
+        next_displayText_fractionDigits_6: next.displayText(
+          fractionDigits: 6,
         ),
-      );
-      return;
-    }
-
-    setState(() => _inlineLocating = true);
-    try {
-      final position = await DeviceLocationService().getCurrentPosition();
-      String placeholder = '';
-      final geocoder = LocationGeocoder(
-        logStore: ref.read(networkLogStoreProvider),
-        logBuffer: ref.read(networkLogBufferProvider),
-        logManager: ref.read(logManagerProvider),
-      );
-      placeholder =
-          await geocoder.reverseGeocode(
-            latitude: position.latitude,
-            longitude: position.longitude,
-            settings: settings,
-          ) ??
-          '';
-      final next = MemoLocation(
-        placeholder: placeholder,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      if (!mounted) return;
-      setState(() => _inlineLocation = next);
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_location_updated(
-          next_displayText_fractionDigits_6: next.displayText(
-            fractionDigits: 6,
-          ),
-        ),
-        duration: const Duration(seconds: 2),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      _showInlineLocationError(error);
-    } finally {
-      if (mounted) {
-        setState(() => _inlineLocating = false);
-      }
-    }
+      ),
+      duration: const Duration(seconds: 2),
+    );
   }
 
   Future<void> _captureInlinePhoto() async {
     if (_inlineComposeBusy) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
+      final navigator = Navigator.of(context);
       final photo = Platform.isWindows
-          ? await WindowsCameraCaptureScreen.capture(context)
+          ? await WindowsCameraCaptureScreen.captureWithNavigator(navigator)
           : await _inlineImagePicker.pickImage(source: ImageSource.camera);
       if (!mounted || photo == null) return;
       final path = photo.path.trim();
@@ -4312,6 +4150,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                   ),
                   backgroundColor: chipBg,
                   deleteIconColor: chipText.withValues(alpha: 0.55),
+                  onPressed: _inlineComposeBusy ? null : _requestInlineLocation,
                   onDeleted: _inlineComposeBusy
                       ? null
                       : () => setState(() => _inlineLocation = null),
@@ -5885,7 +5724,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final loadMoreHintTextColor =
         (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
             .withValues(alpha: isDark ? 0.52 : 0.46);
-    final loadMoreHintDisplayText = '—— $loadMoreHintText ——';
+    final loadMoreHintDisplayText = '— $loadMoreHintText —';
     final headerBg =
         (isDark
                 ? MemoFlowPalette.backgroundDark
@@ -8309,7 +8148,7 @@ class _MemoCardState extends State<_MemoCard> {
   static Duration? _parseVoiceDurationValue(String content) {
     final linePattern = RegExp(r'^[-*+•]?\s*', unicode: true);
     final valuePattern = RegExp(
-      r'^(时长|Duration)\s*[:：]\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$',
+      r'^(时长|Duration)\s*[:：]?\s*(\d{1,2}):(\d{1,2}):(\d{1,2})$',
       caseSensitive: false,
       unicode: true,
     );
@@ -8854,7 +8693,7 @@ class _TaskProgressBarState extends State<_TaskProgressBar>
       final currentValue = _animation.value;
       final difference = (targetValue - currentValue).abs();
 
-      // 鏍规嵁杩涘害宸窛璋冩暣鍔ㄧ敾鏃堕暱锛氬樊璺濊秺澶э紝鍔ㄧ敾鏃堕棿瓒婇暱
+      // 閺嶈宓佹潻娑樺瀹割喛绐涚拫鍐╂殻閸斻劎鏁鹃弮鍫曟毐閿涙艾妯婄捄婵婄Ш婢堆嶇礉閸斻劎鏁鹃弮鍫曟？鐡掑﹪鏆?
       final animationDuration = Duration(
         milliseconds: (400 + difference * 500).round(),
       );

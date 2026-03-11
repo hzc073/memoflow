@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 6423 (1284 per locale)
+/// Strings: 6473 (1294 per locale)
 ///
-/// Built on 2026-03-07 at 14:29 UTC
+/// Built on 2026-03-10 at 23:42 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -167,6 +167,7 @@ class _StringsStringsEn {
 	late final _StringsStringsOnboardingEn onboarding = _StringsStringsOnboardingEn._(_root);
 	late final _StringsStringsLoginEn login = _StringsStringsLoginEn._(_root);
 	late final _StringsStringsSettingsEn settings = _StringsStringsSettingsEn._(_root);
+	late final _StringsStringsLocationPickerEn locationPicker = _StringsStringsLocationPickerEn._(_root);
 	late final _StringsStringsAiInsightEn aiInsight = _StringsStringsAiInsightEn._(_root);
 	late final _StringsStringsLegacyEn legacy = _StringsStringsLegacyEn._(_root);
 }
@@ -270,6 +271,25 @@ class _StringsStringsSettingsEn {
 
 	// Translations
 	late final _StringsStringsSettingsPreferencesEn preferences = _StringsStringsSettingsPreferencesEn._(_root);
+}
+
+// Path: strings.locationPicker
+class _StringsStringsLocationPickerEn {
+	_StringsStringsLocationPickerEn._(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+	String get searchNearbyPlaces => 'Search nearby places';
+	String latitudeValue({required Object value}) => 'Latitude ${value}';
+	String longitudeValue({required Object value}) => 'Longitude ${value}';
+	String get noPlacesFound => 'No places found';
+	String get mapInitializeFailed => 'Failed to initialize map.';
+	String get providerNotReady => 'Location provider is not ready.';
+	String get providerMissingAmapKeys => 'Amap Web API Key and Security Key are required before selecting a location.';
+	String get providerMissingBaiduKey => 'Baidu AK is required before selecting a location.';
+	String get providerMissingGoogleKey => 'Google Maps API Key is required before selecting a location.';
+	String get providerUnsupportedPlatform => 'Embedded map picker is only available on Android and Windows.';
 }
 
 // Path: strings.aiInsight
@@ -2029,6 +2049,7 @@ class _StringsStringsDe extends _StringsStringsEn {
 	@override late final _StringsStringsOnboardingDe onboarding = _StringsStringsOnboardingDe._(_root);
 	@override late final _StringsStringsLoginDe login = _StringsStringsLoginDe._(_root);
 	@override late final _StringsStringsSettingsDe settings = _StringsStringsSettingsDe._(_root);
+	@override late final _StringsStringsLocationPickerDe locationPicker = _StringsStringsLocationPickerDe._(_root);
 	@override late final _StringsStringsLegacyDe legacy = _StringsStringsLegacyDe._(_root);
 }
 
@@ -2130,6 +2151,25 @@ class _StringsStringsSettingsDe extends _StringsStringsSettingsEn {
 
 	// Translations
 	@override late final _StringsStringsSettingsPreferencesDe preferences = _StringsStringsSettingsPreferencesDe._(_root);
+}
+
+// Path: strings.locationPicker
+class _StringsStringsLocationPickerDe extends _StringsStringsLocationPickerEn {
+	_StringsStringsLocationPickerDe._(_StringsDe root) : this._root = root, super._(root);
+
+	@override final _StringsDe _root; // ignore: unused_field
+
+	// Translations
+	@override String get searchNearbyPlaces => 'Orte in der Nähe suchen';
+	@override String latitudeValue({required Object value}) => 'Breitengrad ${value}';
+	@override String longitudeValue({required Object value}) => 'Längengrad ${value}';
+	@override String get noPlacesFound => 'Keine Orte gefunden';
+	@override String get mapInitializeFailed => 'Karte konnte nicht initialisiert werden.';
+	@override String get providerNotReady => 'Standortanbieter ist nicht bereit.';
+	@override String get providerMissingAmapKeys => 'Vor der Standortauswahl werden der Amap Web API Key und der Security Key benötigt.';
+	@override String get providerMissingBaiduKey => 'Vor der Standortauswahl wird der Baidu AK benötigt.';
+	@override String get providerMissingGoogleKey => 'Vor der Standortauswahl wird der Google Maps API Key benötigt.';
+	@override String get providerUnsupportedPlatform => 'Der eingebettete Kartenwähler ist nur auf Android und Windows verfügbar.';
 }
 
 // Path: strings.legacy
@@ -3467,6 +3507,7 @@ class _StringsStringsJa extends _StringsStringsEn {
 	@override late final _StringsStringsOnboardingJa onboarding = _StringsStringsOnboardingJa._(_root);
 	@override late final _StringsStringsLoginJa login = _StringsStringsLoginJa._(_root);
 	@override late final _StringsStringsSettingsJa settings = _StringsStringsSettingsJa._(_root);
+	@override late final _StringsStringsLocationPickerJa locationPicker = _StringsStringsLocationPickerJa._(_root);
 	@override late final _StringsStringsLegacyJa legacy = _StringsStringsLegacyJa._(_root);
 }
 
@@ -3568,6 +3609,25 @@ class _StringsStringsSettingsJa extends _StringsStringsSettingsEn {
 
 	// Translations
 	@override late final _StringsStringsSettingsPreferencesJa preferences = _StringsStringsSettingsPreferencesJa._(_root);
+}
+
+// Path: strings.locationPicker
+class _StringsStringsLocationPickerJa extends _StringsStringsLocationPickerEn {
+	_StringsStringsLocationPickerJa._(_StringsJa root) : this._root = root, super._(root);
+
+	@override final _StringsJa _root; // ignore: unused_field
+
+	// Translations
+	@override String get searchNearbyPlaces => '近くの場所を検索';
+	@override String latitudeValue({required Object value}) => '緯度 ${value}';
+	@override String longitudeValue({required Object value}) => '経度 ${value}';
+	@override String get noPlacesFound => '場所が見つかりません';
+	@override String get mapInitializeFailed => '地図の初期化に失敗しました。';
+	@override String get providerNotReady => '位置情報プロバイダーの準備ができていません。';
+	@override String get providerMissingAmapKeys => '位置を選択する前に、Amap Web API Key と Security Key の設定が必要です。';
+	@override String get providerMissingBaiduKey => '位置を選択する前に、Baidu AK の設定が必要です。';
+	@override String get providerMissingGoogleKey => '位置を選択する前に、Google Maps API Key の設定が必要です。';
+	@override String get providerUnsupportedPlatform => '埋め込み地図ピッカーは Android と Windows でのみ利用できます。';
 }
 
 // Path: strings.legacy
@@ -4905,6 +4965,7 @@ class _StringsStringsZhHans extends _StringsStringsEn {
 	@override late final _StringsStringsOnboardingZhHans onboarding = _StringsStringsOnboardingZhHans._(_root);
 	@override late final _StringsStringsLoginZhHans login = _StringsStringsLoginZhHans._(_root);
 	@override late final _StringsStringsSettingsZhHans settings = _StringsStringsSettingsZhHans._(_root);
+	@override late final _StringsStringsLocationPickerZhHans locationPicker = _StringsStringsLocationPickerZhHans._(_root);
 	@override late final _StringsStringsAiInsightZhHans aiInsight = _StringsStringsAiInsightZhHans._(_root);
 	@override late final _StringsStringsLegacyZhHans legacy = _StringsStringsLegacyZhHans._(_root);
 }
@@ -5008,6 +5069,25 @@ class _StringsStringsSettingsZhHans extends _StringsStringsSettingsEn {
 
 	// Translations
 	@override late final _StringsStringsSettingsPreferencesZhHans preferences = _StringsStringsSettingsPreferencesZhHans._(_root);
+}
+
+// Path: strings.locationPicker
+class _StringsStringsLocationPickerZhHans extends _StringsStringsLocationPickerEn {
+	_StringsStringsLocationPickerZhHans._(_StringsZhHans root) : this._root = root, super._(root);
+
+	@override final _StringsZhHans _root; // ignore: unused_field
+
+	// Translations
+	@override String get searchNearbyPlaces => '搜索附近地点';
+	@override String latitudeValue({required Object value}) => '纬度 ${value}';
+	@override String longitudeValue({required Object value}) => '经度 ${value}';
+	@override String get noPlacesFound => '未找到地点';
+	@override String get mapInitializeFailed => '地图初始化失败。';
+	@override String get providerNotReady => '定位服务尚未就绪。';
+	@override String get providerMissingAmapKeys => '选择位置前需要先配置高德 Web API Key 和安全密钥。';
+	@override String get providerMissingBaiduKey => '选择位置前需要先配置百度地图 AK。';
+	@override String get providerMissingGoogleKey => '选择位置前需要先配置 Google Maps API Key。';
+	@override String get providerUnsupportedPlatform => '嵌入式地图选点仅支持 Android 和 Windows。';
 }
 
 // Path: strings.aiInsight
@@ -6767,6 +6847,7 @@ class _StringsStringsZhHantTw extends _StringsStringsEn {
 	@override late final _StringsStringsOnboardingZhHantTw onboarding = _StringsStringsOnboardingZhHantTw._(_root);
 	@override late final _StringsStringsLoginZhHantTw login = _StringsStringsLoginZhHantTw._(_root);
 	@override late final _StringsStringsSettingsZhHantTw settings = _StringsStringsSettingsZhHantTw._(_root);
+	@override late final _StringsStringsLocationPickerZhHantTw locationPicker = _StringsStringsLocationPickerZhHantTw._(_root);
 	@override late final _StringsStringsLegacyZhHantTw legacy = _StringsStringsLegacyZhHantTw._(_root);
 }
 
@@ -6869,6 +6950,25 @@ class _StringsStringsSettingsZhHantTw extends _StringsStringsSettingsEn {
 
 	// Translations
 	@override late final _StringsStringsSettingsPreferencesZhHantTw preferences = _StringsStringsSettingsPreferencesZhHantTw._(_root);
+}
+
+// Path: strings.locationPicker
+class _StringsStringsLocationPickerZhHantTw extends _StringsStringsLocationPickerEn {
+	_StringsStringsLocationPickerZhHantTw._(_StringsZhHantTw root) : this._root = root, super._(root);
+
+	@override final _StringsZhHantTw _root; // ignore: unused_field
+
+	// Translations
+	@override String get searchNearbyPlaces => '搜尋附近地點';
+	@override String latitudeValue({required Object value}) => '緯度 ${value}';
+	@override String longitudeValue({required Object value}) => '經度 ${value}';
+	@override String get noPlacesFound => '未找到地點';
+	@override String get mapInitializeFailed => '地圖初始化失敗。';
+	@override String get providerNotReady => '定位服務尚未就緒。';
+	@override String get providerMissingAmapKeys => '選擇位置前需要先設定高德 Web API Key 與安全金鑰。';
+	@override String get providerMissingBaiduKey => '選擇位置前需要先設定百度地圖 AK。';
+	@override String get providerMissingGoogleKey => '選擇位置前需要先設定 Google Maps API Key。';
+	@override String get providerUnsupportedPlatform => '嵌入式地圖選點僅支援 Android 和 Windows。';
 }
 
 // Path: strings.legacy
@@ -8491,6 +8591,16 @@ extension on Translations {
 			case 'strings.settings.preferences.cardColor': return 'Card Color';
 			case 'strings.settings.preferences.border': return 'Border';
 			case 'strings.settings.preferences.borderColor': return 'Border Color';
+			case 'strings.locationPicker.searchNearbyPlaces': return 'Search nearby places';
+			case 'strings.locationPicker.latitudeValue': return ({required Object value}) => 'Latitude ${value}';
+			case 'strings.locationPicker.longitudeValue': return ({required Object value}) => 'Longitude ${value}';
+			case 'strings.locationPicker.noPlacesFound': return 'No places found';
+			case 'strings.locationPicker.mapInitializeFailed': return 'Failed to initialize map.';
+			case 'strings.locationPicker.providerNotReady': return 'Location provider is not ready.';
+			case 'strings.locationPicker.providerMissingAmapKeys': return 'Amap Web API Key and Security Key are required before selecting a location.';
+			case 'strings.locationPicker.providerMissingBaiduKey': return 'Baidu AK is required before selecting a location.';
+			case 'strings.locationPicker.providerMissingGoogleKey': return 'Google Maps API Key is required before selecting a location.';
+			case 'strings.locationPicker.providerUnsupportedPlatform': return 'Embedded map picker is only available on Android and Windows.';
 			case 'strings.aiInsight.title': return 'AI Insight Studio';
 			case 'strings.aiInsight.subtitle': return 'Let AI help you understand your notes from different angles.';
 			case 'strings.aiInsight.settingsTitle': return 'AI Analysis Settings';
@@ -9902,6 +10012,16 @@ extension on _StringsDe {
 			case 'strings.settings.preferences.cardColor': return 'Kartenfarbe';
 			case 'strings.settings.preferences.border': return 'Rahmen';
 			case 'strings.settings.preferences.borderColor': return 'Rahmenfarbe';
+			case 'strings.locationPicker.searchNearbyPlaces': return 'Orte in der Nähe suchen';
+			case 'strings.locationPicker.latitudeValue': return ({required Object value}) => 'Breitengrad ${value}';
+			case 'strings.locationPicker.longitudeValue': return ({required Object value}) => 'Längengrad ${value}';
+			case 'strings.locationPicker.noPlacesFound': return 'Keine Orte gefunden';
+			case 'strings.locationPicker.mapInitializeFailed': return 'Karte konnte nicht initialisiert werden.';
+			case 'strings.locationPicker.providerNotReady': return 'Standortanbieter ist nicht bereit.';
+			case 'strings.locationPicker.providerMissingAmapKeys': return 'Vor der Standortauswahl werden der Amap Web API Key und der Security Key benötigt.';
+			case 'strings.locationPicker.providerMissingBaiduKey': return 'Vor der Standortauswahl wird der Baidu AK benötigt.';
+			case 'strings.locationPicker.providerMissingGoogleKey': return 'Vor der Standortauswahl wird der Google Maps API Key benötigt.';
+			case 'strings.locationPicker.providerUnsupportedPlatform': return 'Der eingebettete Kartenwähler ist nur auf Android und Windows verfügbar.';
 			case 'strings.legacy.msg_memos_backend_docs': return 'MemoFlow-Backend-Dokumentation';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return 'Erinnere dich an den Moment und spüre die Wärme des Lebens.\\nMach jeden Tag eine kurze Rückschau.';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return 'Möchten Sie diese Verknüpfung wirklich löschen?';
@@ -11040,6 +11160,16 @@ extension on _StringsJa {
 			case 'strings.settings.preferences.cardColor': return 'カード色';
 			case 'strings.settings.preferences.border': return '枠線';
 			case 'strings.settings.preferences.borderColor': return '枠線色';
+			case 'strings.locationPicker.searchNearbyPlaces': return '近くの場所を検索';
+			case 'strings.locationPicker.latitudeValue': return ({required Object value}) => '緯度 ${value}';
+			case 'strings.locationPicker.longitudeValue': return ({required Object value}) => '経度 ${value}';
+			case 'strings.locationPicker.noPlacesFound': return '場所が見つかりません';
+			case 'strings.locationPicker.mapInitializeFailed': return '地図の初期化に失敗しました。';
+			case 'strings.locationPicker.providerNotReady': return '位置情報プロバイダーの準備ができていません。';
+			case 'strings.locationPicker.providerMissingAmapKeys': return '位置を選択する前に、Amap Web API Key と Security Key の設定が必要です。';
+			case 'strings.locationPicker.providerMissingBaiduKey': return '位置を選択する前に、Baidu AK の設定が必要です。';
+			case 'strings.locationPicker.providerMissingGoogleKey': return '位置を選択する前に、Google Maps API Key の設定が必要です。';
+			case 'strings.locationPicker.providerUnsupportedPlatform': return '埋め込み地図ピッカーは Android と Windows でのみ利用できます。';
 			case 'strings.legacy.msg_memos_backend_docs': return 'Memos バックエンドドキュメント';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return 'その瞬間を記録し、暮らしのぬくもりを感じましょう。\\n毎日さっと振り返りましょう。';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return 'このショートカットを削除してもよろしいですか？';
@@ -12179,6 +12309,16 @@ extension on _StringsZhHans {
 			case 'strings.settings.preferences.cardColor': return '卡片色';
 			case 'strings.settings.preferences.border': return '边框';
 			case 'strings.settings.preferences.borderColor': return '边框色';
+			case 'strings.locationPicker.searchNearbyPlaces': return '搜索附近地点';
+			case 'strings.locationPicker.latitudeValue': return ({required Object value}) => '纬度 ${value}';
+			case 'strings.locationPicker.longitudeValue': return ({required Object value}) => '经度 ${value}';
+			case 'strings.locationPicker.noPlacesFound': return '未找到地点';
+			case 'strings.locationPicker.mapInitializeFailed': return '地图初始化失败。';
+			case 'strings.locationPicker.providerNotReady': return '定位服务尚未就绪。';
+			case 'strings.locationPicker.providerMissingAmapKeys': return '选择位置前需要先配置高德 Web API Key 和安全密钥。';
+			case 'strings.locationPicker.providerMissingBaiduKey': return '选择位置前需要先配置百度地图 AK。';
+			case 'strings.locationPicker.providerMissingGoogleKey': return '选择位置前需要先配置 Google Maps API Key。';
+			case 'strings.locationPicker.providerUnsupportedPlatform': return '嵌入式地图选点仅支持 Android 和 Windows。';
 			case 'strings.aiInsight.title': return 'AI 思考室';
 			case 'strings.aiInsight.subtitle': return '让 AI 帮你从不同角度理解你的记录';
 			case 'strings.aiInsight.settingsTitle': return 'AI 分析设置';
@@ -13591,6 +13731,16 @@ extension on _StringsZhHantTw {
 			case 'strings.settings.preferences.cardColor': return '卡片色';
 			case 'strings.settings.preferences.border': return '邊框';
 			case 'strings.settings.preferences.borderColor': return '邊框色';
+			case 'strings.locationPicker.searchNearbyPlaces': return '搜尋附近地點';
+			case 'strings.locationPicker.latitudeValue': return ({required Object value}) => '緯度 ${value}';
+			case 'strings.locationPicker.longitudeValue': return ({required Object value}) => '經度 ${value}';
+			case 'strings.locationPicker.noPlacesFound': return '未找到地點';
+			case 'strings.locationPicker.mapInitializeFailed': return '地圖初始化失敗。';
+			case 'strings.locationPicker.providerNotReady': return '定位服務尚未就緒。';
+			case 'strings.locationPicker.providerMissingAmapKeys': return '選擇位置前需要先設定高德 Web API Key 與安全金鑰。';
+			case 'strings.locationPicker.providerMissingBaiduKey': return '選擇位置前需要先設定百度地圖 AK。';
+			case 'strings.locationPicker.providerMissingGoogleKey': return '選擇位置前需要先設定 Google Maps API Key。';
+			case 'strings.locationPicker.providerUnsupportedPlatform': return '嵌入式地圖選點僅支援 Android 和 Windows。';
 			case 'strings.legacy.msg_memos_backend_docs': return 'memos后端使用文档';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return '记住这一刻，感受生活的温度。\\n每天来一次随机漫步。';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return '确定要删除该快捷筛选吗？';

@@ -109,6 +109,18 @@ settings:
     border: "边框"
     borderColor: "边框色"
 
+locationPicker:
+  searchNearbyPlaces: "搜索附近地点"
+  latitudeValue: "纬度 $value"
+  longitudeValue: "经度 $value"
+  noPlacesFound: "未找到地点"
+  mapInitializeFailed: "地图初始化失败。"
+  providerNotReady: "定位服务尚未就绪。"
+  providerMissingAmapKeys: "选择位置前需要先配置高德 Web API Key 和安全密钥。"
+  providerMissingBaiduKey: "选择位置前需要先配置百度地图 AK。"
+  providerMissingGoogleKey: "选择位置前需要先配置 Google Maps API Key。"
+  providerUnsupportedPlatform: "嵌入式地图选点仅支持 Android 和 Windows。"
+
 aiInsight:
   title: "AI 思考室"
   subtitle: "让 AI 帮你从不同角度理解你的记录"

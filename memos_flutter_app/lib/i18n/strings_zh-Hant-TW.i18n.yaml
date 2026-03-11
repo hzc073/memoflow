@@ -109,6 +109,18 @@ settings:
     border: "邊框"
     borderColor: "邊框色"
 
+locationPicker:
+  searchNearbyPlaces: "搜尋附近地點"
+  latitudeValue: "緯度 $value"
+  longitudeValue: "經度 $value"
+  noPlacesFound: "未找到地點"
+  mapInitializeFailed: "地圖初始化失敗。"
+  providerNotReady: "定位服務尚未就緒。"
+  providerMissingAmapKeys: "選擇位置前需要先設定高德 Web API Key 與安全金鑰。"
+  providerMissingBaiduKey: "選擇位置前需要先設定百度地圖 AK。"
+  providerMissingGoogleKey: "選擇位置前需要先設定 Google Maps API Key。"
+  providerUnsupportedPlatform: "嵌入式地圖選點僅支援 Android 和 Windows。"
+
 legacy:
   msg_memos_backend_docs: "memos后端使用文档"
   msg_remember_moment_feel_warmth_life_take: "记住这一刻，感受生活的温度。\\\\n每天来一次随机漫步。"

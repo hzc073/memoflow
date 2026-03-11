@@ -108,6 +108,18 @@ settings:
     border: "Rahmen"
     borderColor: "Rahmenfarbe"
 
+locationPicker:
+  searchNearbyPlaces: "Orte in der Nähe suchen"
+  latitudeValue: "Breitengrad $value"
+  longitudeValue: "Längengrad $value"
+  noPlacesFound: "Keine Orte gefunden"
+  mapInitializeFailed: "Karte konnte nicht initialisiert werden."
+  providerNotReady: "Standortanbieter ist nicht bereit."
+  providerMissingAmapKeys: "Vor der Standortauswahl werden der Amap Web API Key und der Security Key benötigt."
+  providerMissingBaiduKey: "Vor der Standortauswahl wird der Baidu AK benötigt."
+  providerMissingGoogleKey: "Vor der Standortauswahl wird der Google Maps API Key benötigt."
+  providerUnsupportedPlatform: "Der eingebettete Kartenwähler ist nur auf Android und Windows verfügbar."
+
 legacy:
   msg_memos_backend_docs: "MemoFlow-Backend-Dokumentation"
   msg_remember_moment_feel_warmth_life_take: "Erinnere dich an den Moment und spüre die Wärme des Lebens.\\\\nMach jeden Tag eine kurze Rückschau."

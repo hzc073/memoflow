@@ -11,7 +11,11 @@ class WindowsCameraCaptureScreen extends StatefulWidget {
   const WindowsCameraCaptureScreen({super.key});
 
   static Future<XFile?> capture(BuildContext context) {
-    return Navigator.of(context).push<XFile>(
+    return captureWithNavigator(Navigator.of(context));
+  }
+
+  static Future<XFile?> captureWithNavigator(NavigatorState navigator) {
+    return navigator.push<XFile>(
       MaterialPageRoute<XFile>(
         builder: (_) => const WindowsCameraCaptureScreen(),
         fullscreenDialog: true,
@@ -183,7 +187,9 @@ class _WindowsCameraCaptureScreenState
                       const SizedBox(height: 12),
                       FilledButton(
                         onPressed: _openWindowsCameraSettings,
-                        child: Text(context.t.strings.legacy.msg_open_camera_settings),
+                        child: Text(
+                          context.t.strings.legacy.msg_open_camera_settings,
+                        ),
                       ),
                     ],
                   ],

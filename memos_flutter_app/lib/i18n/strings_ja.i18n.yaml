@@ -108,6 +108,18 @@ settings:
     border: "枠線"
     borderColor: "枠線色"
 
+locationPicker:
+  searchNearbyPlaces: "近くの場所を検索"
+  latitudeValue: "緯度 $value"
+  longitudeValue: "経度 $value"
+  noPlacesFound: "場所が見つかりません"
+  mapInitializeFailed: "地図の初期化に失敗しました。"
+  providerNotReady: "位置情報プロバイダーの準備ができていません。"
+  providerMissingAmapKeys: "位置を選択する前に、Amap Web API Key と Security Key の設定が必要です。"
+  providerMissingBaiduKey: "位置を選択する前に、Baidu AK の設定が必要です。"
+  providerMissingGoogleKey: "位置を選択する前に、Google Maps API Key の設定が必要です。"
+  providerUnsupportedPlatform: "埋め込み地図ピッカーは Android と Windows でのみ利用できます。"
+
 legacy:
   msg_memos_backend_docs: "Memos バックエンドドキュメント"
   msg_remember_moment_feel_warmth_life_take: "その瞬間を記録し、暮らしのぬくもりを感じましょう。\\\\n毎日さっと振り返りましょう。"

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <style>
+    html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #f3f4f6; }
+  </style>
+  <script>
+    function memoflowEmit(payload) {
+      const message = JSON.stringify(payload);
+      if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+        window.chrome.webview.postMessage(message);
+        return;
+      }
+      if (window.MemoflowHost && window.MemoflowHost.postMessage) {
+        window.MemoflowHost.postMessage(message);
+      }
+    }
+    window.onerror = function(message, source, lineno, colno) {
+      memoflowEmit({
+        type: 'error',
+        message: String(message) + ' @ ' + String(source || '') + ':' + String(lineno || 0) + ':' + String(colno || 0)
+      });
+    };
+  </script>
+  <script src="https://api.map.baidu.com/api?v=3.0&ak=__API_KEY__"></script>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    (function () {
+      let map;
+      function emit(type, payload) {
+        memoflowEmit(Object.assign({ type: type }, payload || {}));
+      }
+      function currentCenterPayload(type) {
+        if (!map) return;
+        const center = map.getCenter();
+        emit(type, {
+          lat: center.lat,
+          lng: center.lng,
+          zoom: map.getZoom()
+        });
+      }
+      window.memoflowMap = {
+        moveTo: function(lat, lng, zoom) {
+          if (!map) return;
+          const point = new BMap.Point(lng, lat);
+          map.centerAndZoom(point, typeof zoom === 'number' ? zoom : map.getZoom());
+        }
+      };
+      try {
+        map = new BMap.Map('map');
+        map.centerAndZoom(new BMap.Point(__LNG__, __LAT__), __ZOOM__);
+        map.enableScrollWheelZoom(true);
+        map.addEventListener('tilesloaded', function() {
+          currentCenterPayload('ready');
+        });
+        map.addEventListener('moveend', function () {
+          currentCenterPayload('cameraIdle');
+        });
+        map.addEventListener('zoomend', function () {
+          currentCenterPayload('cameraIdle');
+        });
+        map.addEventListener('click', function (event) {
+          emit('tap', {
+            lat: event.latlng.lat,
+            lng: event.latlng.lng,
+            zoom: map.getZoom()
+          });
+        });
+      } catch (error) {
+        emit('error', { message: String(error) });
+      }
+    })();
+  </script>
+</body>
+</html>

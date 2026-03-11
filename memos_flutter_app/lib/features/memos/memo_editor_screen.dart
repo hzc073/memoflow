@@ -20,21 +20,16 @@ import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
-import '../../data/location/location_geocoder.dart';
-import '../../data/location/device_location_service.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
-import '../../data/models/location_settings.dart';
 import '../../state/settings/location_settings_provider.dart';
-import '../../state/system/logging_provider.dart';
 import '../../state/memos/memo_editor_draft_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import '../../state/memos/memo_editor_providers.dart';
 import '../../state/memos/memos_providers.dart';
-import '../../state/system/network_log_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import 'attachment_gallery_screen.dart';
@@ -42,7 +37,7 @@ import 'link_memo_sheet.dart';
 import 'memo_video_grid.dart';
 import 'tag_autocomplete.dart';
 import 'windows_camera_capture_screen.dart';
-import '../settings/location_settings_screen.dart';
+import '../location_picker/show_location_picker.dart';
 import '../../i18n/strings.g.dart';
 
 class MemoEditorScreen extends ConsumerStatefulWidget {
@@ -121,7 +116,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   var _saving = false;
   MemoLocation? _location;
   MemoLocation? _initialLocation;
-  var _locating = false;
+  final _locating = false;
   int _tagAutocompleteIndex = 0;
   String? _tagAutocompleteToken;
 
@@ -1021,55 +1016,6 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     setState(() => _isMoreToolbarOpen = false);
   }
 
-  Future<void> _openLocationSettings() async {
-    if (_saving) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
-    );
-  }
-
-  Future<LocationSettings> _resolveLocationSettings() async {
-    final current = ref.read(locationSettingsProvider);
-    if (current.enabled) return current;
-    final stored = await ref.read(locationSettingsRepositoryProvider).read();
-    if (!mounted) return stored;
-    await ref
-        .read(locationSettingsProvider.notifier)
-        .setAll(stored, triggerSync: false);
-    return stored;
-  }
-
-  bool _isWindowsLocationSettingsActionable(Object error) {
-    if (!Platform.isWindows || error is! LocationException) return false;
-    return error.code == 'permission_denied' ||
-        error.code == 'permission_denied_forever' ||
-        error.code == 'service_disabled';
-  }
-
-  void _showLocationError(Object error) {
-    final messenger = ScaffoldMessenger.of(context);
-    final message = _locationErrorText(error);
-    if (!_isWindowsLocationSettingsActionable(error)) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-      return;
-    }
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          context.t.strings.legacy.msg_windows_enable_location_access(
-            message: message,
-          ),
-        ),
-        action: SnackBarAction(
-          label: context.t.strings.legacy.msg_settings,
-          onPressed: () {
-            unawaited(DeviceLocationService().openSystemLocationSettings());
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _openWindowsCameraSettings() async {
     if (!Platform.isWindows) return;
     try {
@@ -1107,135 +1053,23 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
   Future<void> _requestLocation() async {
     if (_saving || _locating) return;
-    if (Platform.isWindows) {
-      setState(() => _locating = true);
-      try {
-        final position = await DeviceLocationService().getCurrentPosition();
-        final settings = await _resolveLocationSettings();
-        String placeholder = '';
-        if (settings.enabled) {
-          final geocoder = LocationGeocoder(
-            logStore: ref.read(networkLogStoreProvider),
-            logBuffer: ref.read(networkLogBufferProvider),
-            logManager: ref.read(logManagerProvider),
-          );
-          placeholder =
-              await geocoder.reverseGeocode(
-                latitude: position.latitude,
-                longitude: position.longitude,
-                settings: settings,
-              ) ??
-              '';
-        }
-        final next = MemoLocation(
-          placeholder: placeholder,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-        if (!mounted) return;
-        setState(() => _location = next);
-        _scheduleDraftSave();
-        showTopToast(
-          context,
-          context.t.strings.legacy.msg_location_updated(
-            next_displayText_fractionDigits_6: next.displayText(
-              fractionDigits: 6,
-            ),
-          ),
-          duration: const Duration(seconds: 2),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        _showLocationError(e);
-      } finally {
-        if (mounted) {
-          setState(() => _locating = false);
-        }
-      }
-      return;
-    }
-
-    final settings = await _resolveLocationSettings();
-    if (!settings.enabled) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context
-                .t
-                .strings
-                .legacy
-                .msg_location_disabled_enable_settings_first,
-          ),
-          action: SnackBarAction(
-            label: context.t.strings.legacy.msg_settings,
-            onPressed: _openLocationSettings,
-          ),
+    final next = await showLocationPickerSheetOrDialog(
+      context: context,
+      ref: ref,
+      initialLocation: _location,
+    );
+    if (!mounted || next == null) return;
+    setState(() => _location = next);
+    _scheduleDraftSave();
+    showTopToast(
+      context,
+      context.t.strings.legacy.msg_location_updated(
+        next_displayText_fractionDigits_6: next.displayText(
+          fractionDigits: 6,
         ),
-      );
-      return;
-    }
-
-    setState(() => _locating = true);
-    try {
-      final position = await DeviceLocationService().getCurrentPosition();
-      String placeholder = '';
-      final geocoder = LocationGeocoder(
-        logStore: ref.read(networkLogStoreProvider),
-        logBuffer: ref.read(networkLogBufferProvider),
-        logManager: ref.read(logManagerProvider),
-      );
-      placeholder =
-          await geocoder.reverseGeocode(
-            latitude: position.latitude,
-            longitude: position.longitude,
-            settings: settings,
-          ) ??
-          '';
-      final next = MemoLocation(
-        placeholder: placeholder,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      if (!mounted) return;
-      setState(() => _location = next);
-      _scheduleDraftSave();
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_location_updated(
-          next_displayText_fractionDigits_6: next.displayText(
-            fractionDigits: 6,
-          ),
-        ),
-        duration: const Duration(seconds: 2),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showLocationError(e);
-    } finally {
-      if (mounted) {
-        setState(() => _locating = false);
-      }
-    }
-  }
-
-  String _locationErrorText(Object error) {
-    if (error is LocationException) {
-      return switch (error.code) {
-        'service_disabled' =>
-          context.t.strings.legacy.msg_location_services_disabled,
-        'permission_denied' =>
-          context.t.strings.legacy.msg_location_permission_denied,
-        'permission_denied_forever' =>
-          context.t.strings.legacy.msg_location_permission_denied_permanently,
-        'timeout' => context.t.strings.legacy.msg_location_timed_try,
-        _ => context.t.strings.legacy.msg_failed_get_location,
-      };
-    }
-    if (error is TimeoutException) {
-      return context.t.strings.legacy.msg_location_timed_try;
-    }
-    return context.t.strings.legacy.msg_failed_get_location;
+      ),
+      duration: const Duration(seconds: 2),
+    );
   }
 
   bool _sameLocation(MemoLocation? a, MemoLocation? b) {
@@ -1498,9 +1332,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           ),
       ];
       final summary = skipped.isEmpty
-          ? context.t.strings.legacy.msg_added_files(
-              count: added.length,
-            )
+          ? context.t.strings.legacy.msg_added_files(count: added.length)
           : context.t.strings.legacy.msg_added_files_with_skipped(
               count: added.length,
               details: skipped.join(', '),
@@ -1508,9 +1340,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             context.t.strings.legacy.msg_file_selection_failed(error: e),
@@ -1524,8 +1354,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (_saving) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
+      final navigator = Navigator.of(context);
       final photo = Platform.isWindows
-          ? await WindowsCameraCaptureScreen.capture(context)
+          ? await WindowsCameraCaptureScreen.captureWithNavigator(navigator)
           : await _imagePicker.pickImage(source: ImageSource.camera);
       if (!mounted || photo == null) return;
 
@@ -2560,6 +2391,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                               ),
                               backgroundColor: chipBg,
                               deleteIconColor: chipDelete,
+                              onPressed: _saving ? null : _requestLocation,
                               onDeleted: _saving ? null : _clearLocation,
                             ),
                           ),
@@ -2621,7 +2453,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                     ),
                                     IconButton(
                                       key: _templateMenuKey,
-                                      tooltip: context.t.strings.legacy.msg_template,
+                                      tooltip:
+                                          context.t.strings.legacy.msg_template,
                                       onPressed: _saving
                                           ? null
                                           : () async {
@@ -2639,7 +2472,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                       ),
                                     ),
                                     IconButton(
-                                      tooltip: context.t.strings.legacy.msg_attachment,
+                                      tooltip: context
+                                          .t
+                                          .strings
+                                          .legacy
+                                          .msg_attachment,
                                       onPressed: _saving
                                           ? null
                                           : () async {
@@ -2655,7 +2492,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                     ),
                                     IconButton(
                                       key: _todoMenuKey,
-                                      tooltip: context.t.strings.legacy.msg_todo,
+                                      tooltip:
+                                          context.t.strings.legacy.msg_todo,
                                       onPressed: _saving
                                           ? null
                                           : () async {
@@ -2672,7 +2510,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                       ),
                                     ),
                                     IconButton(
-                                      tooltip: context.t.strings.legacy.msg_link,
+                                      tooltip:
+                                          context.t.strings.legacy.msg_link,
                                       onPressed: _saving
                                           ? null
                                           : () async {
@@ -2708,7 +2547,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                                             : null,
                                       ),
                                       child: IconButton(
-                                        tooltip: context.t.strings.legacy.msg_more,
+                                        tooltip:
+                                            context.t.strings.legacy.msg_more,
                                         onPressed: _saving
                                             ? null
                                             : _toggleMoreToolbar,

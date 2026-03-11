@@ -23,15 +23,10 @@ import '../../data/models/attachment.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
-import '../../data/models/location_settings.dart';
 import '../../data/models/user_setting.dart';
-import '../../data/location/location_geocoder.dart';
-import '../../data/location/device_location_service.dart';
 import '../../state/settings/location_settings_provider.dart';
-import '../../state/system/logging_provider.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
-import '../../state/system/network_log_provider.dart';
 import '../../state/memos/note_draft_provider.dart';
 import '../../state/settings/preferences_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
@@ -44,7 +39,7 @@ import 'tag_autocomplete.dart';
 import 'link_memo_sheet.dart';
 import 'windows_camera_capture_screen.dart';
 import '../voice/voice_record_screen.dart';
-import '../settings/location_settings_screen.dart';
+import '../location_picker/show_location_picker.dart';
 import '../../i18n/strings.g.dart';
 
 class NoteInputSheet extends ConsumerStatefulWidget {
@@ -122,7 +117,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   bool _visibilityTouched = false;
   bool _isMoreToolbarOpen = false;
   MemoLocation? _location;
-  var _locating = false;
+  final _locating = false;
   int _tagAutocompleteIndex = 0;
   String? _tagAutocompleteToken;
   ProviderSubscription<AsyncValue<UserGeneralSetting>>? _settingsSubscription;
@@ -828,55 +823,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     setState(() => _isMoreToolbarOpen = false);
   }
 
-  Future<void> _openLocationSettings() async {
-    if (_busy) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const LocationSettingsScreen()),
-    );
-  }
-
-  Future<LocationSettings> _resolveLocationSettings() async {
-    final current = ref.read(locationSettingsProvider);
-    if (current.enabled) return current;
-    final stored = await ref.read(locationSettingsRepositoryProvider).read();
-    if (!mounted) return stored;
-    await ref
-        .read(locationSettingsProvider.notifier)
-        .setAll(stored, triggerSync: false);
-    return stored;
-  }
-
-  bool _isWindowsLocationSettingsActionable(Object error) {
-    if (!Platform.isWindows || error is! LocationException) return false;
-    return error.code == 'permission_denied' ||
-        error.code == 'permission_denied_forever' ||
-        error.code == 'service_disabled';
-  }
-
-  void _showLocationError(Object error) {
-    final messenger = ScaffoldMessenger.of(context);
-    final message = _locationErrorText(error);
-    if (!_isWindowsLocationSettingsActionable(error)) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-      return;
-    }
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          context.t.strings.legacy.msg_windows_enable_location_access(
-            message: message,
-          ),
-        ),
-        action: SnackBarAction(
-          label: context.t.strings.legacy.msg_settings,
-          onPressed: () {
-            unawaited(DeviceLocationService().openSystemLocationSettings());
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _openWindowsCameraSettings() async {
     if (!Platform.isWindows) return;
     try {
@@ -914,133 +860,22 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
   Future<void> _requestLocation() async {
     if (_busy || _locating) return;
-    if (Platform.isWindows) {
-      setState(() => _locating = true);
-      try {
-        final position = await DeviceLocationService().getCurrentPosition();
-        final settings = await _resolveLocationSettings();
-        String placeholder = '';
-        if (settings.enabled) {
-          final geocoder = LocationGeocoder(
-            logStore: ref.read(networkLogStoreProvider),
-            logBuffer: ref.read(networkLogBufferProvider),
-            logManager: ref.read(logManagerProvider),
-          );
-          placeholder =
-              await geocoder.reverseGeocode(
-                latitude: position.latitude,
-                longitude: position.longitude,
-                settings: settings,
-              ) ??
-              '';
-        }
-        final next = MemoLocation(
-          placeholder: placeholder,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-        if (!mounted) return;
-        setState(() => _location = next);
-        showTopToast(
-          context,
-          context.t.strings.legacy.msg_location_updated(
-            next_displayText_fractionDigits_6: next.displayText(
-              fractionDigits: 6,
-            ),
-          ),
-          duration: const Duration(seconds: 2),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        _showLocationError(e);
-      } finally {
-        if (mounted) {
-          setState(() => _locating = false);
-        }
-      }
-      return;
-    }
-
-    final settings = await _resolveLocationSettings();
-    if (!settings.enabled) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context
-                .t
-                .strings
-                .legacy
-                .msg_location_disabled_enable_settings_first,
-          ),
-          action: SnackBarAction(
-            label: context.t.strings.legacy.msg_settings,
-            onPressed: _openLocationSettings,
-          ),
+    final next = await showLocationPickerSheetOrDialog(
+      context: context,
+      ref: ref,
+      initialLocation: _location,
+    );
+    if (!mounted || next == null) return;
+    setState(() => _location = next);
+    showTopToast(
+      context,
+      context.t.strings.legacy.msg_location_updated(
+        next_displayText_fractionDigits_6: next.displayText(
+          fractionDigits: 6,
         ),
-      );
-      return;
-    }
-
-    setState(() => _locating = true);
-    try {
-      final position = await DeviceLocationService().getCurrentPosition();
-      String placeholder = '';
-      final geocoder = LocationGeocoder(
-        logStore: ref.read(networkLogStoreProvider),
-        logBuffer: ref.read(networkLogBufferProvider),
-        logManager: ref.read(logManagerProvider),
-      );
-      placeholder =
-          await geocoder.reverseGeocode(
-            latitude: position.latitude,
-            longitude: position.longitude,
-            settings: settings,
-          ) ??
-          '';
-      final next = MemoLocation(
-        placeholder: placeholder,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      if (!mounted) return;
-      setState(() => _location = next);
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_location_updated(
-          next_displayText_fractionDigits_6: next.displayText(
-            fractionDigits: 6,
-          ),
-        ),
-        duration: const Duration(seconds: 2),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showLocationError(e);
-    } finally {
-      if (mounted) {
-        setState(() => _locating = false);
-      }
-    }
-  }
-
-  String _locationErrorText(Object error) {
-    if (error is LocationException) {
-      return switch (error.code) {
-        'service_disabled' =>
-          context.t.strings.legacy.msg_location_services_disabled,
-        'permission_denied' =>
-          context.t.strings.legacy.msg_location_permission_denied,
-        'permission_denied_forever' =>
-          context.t.strings.legacy.msg_location_permission_denied_permanently,
-        'timeout' => context.t.strings.legacy.msg_location_timed_try,
-        _ => context.t.strings.legacy.msg_failed_get_location,
-      };
-    }
-    if (error is TimeoutException) {
-      return context.t.strings.legacy.msg_location_timed_try;
-    }
-    return context.t.strings.legacy.msg_failed_get_location;
+      ),
+      duration: const Duration(seconds: 2),
+    );
   }
 
   Widget _buildMoreToolbar({required bool isDark}) {
@@ -1214,9 +1049,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           ),
       ];
       final summary = skipped.isEmpty
-          ? context.t.strings.legacy.msg_added_files(
-              count: added.length,
-            )
+          ? context.t.strings.legacy.msg_added_files(count: added.length)
           : context.t.strings.legacy.msg_added_files_with_skipped(
               count: added.length,
               details: skipped.join(', '),
@@ -1224,9 +1057,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       showTopToast(context, summary);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             context.t.strings.legacy.msg_file_selection_failed(error: e),
@@ -1285,8 +1116,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     if (_busy) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
+      final navigator = Navigator.of(context);
       final photo = Platform.isWindows
-          ? await WindowsCameraCaptureScreen.capture(context)
+          ? await WindowsCameraCaptureScreen.captureWithNavigator(navigator)
           : await _imagePicker.pickImage(source: ImageSource.camera);
       if (!mounted || photo == null) return;
 
@@ -1764,9 +1596,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       context.safePop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(context.t.strings.legacy.msg_create_failed_2(e: e)),
         ),
@@ -2038,6 +1868,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                   ),
                                   backgroundColor: chipBg,
                                   deleteIconColor: chipDelete,
+                                  onPressed: _busy
+                                      ? null
+                                      : () => unawaited(_requestLocation()),
                                   onDeleted: _busy
                                       ? null
                                       : () => setState(() => _location = null),

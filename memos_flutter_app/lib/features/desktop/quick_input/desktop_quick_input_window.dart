@@ -19,19 +19,16 @@ import '../../../core/memo_template_renderer.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/tags.dart';
 import '../../../core/uid.dart';
-import '../../../data/location/location_geocoder.dart';
-import '../../../data/location/device_location_service.dart';
-import '../../../data/models/location_settings.dart';
 import '../../../data/models/memo_location.dart';
 import '../../../data/models/memo_template_settings.dart';
 import '../../../state/settings/location_settings_provider.dart';
 import '../../../state/system/logging_provider.dart';
 import '../../../state/settings/memo_template_settings_provider.dart';
-import '../../../state/system/network_log_provider.dart';
 import '../../../state/settings/preferences_provider.dart';
 import '../../memos/attachment_gallery_screen.dart';
 import '../../memos/compose_toolbar_shared.dart';
 import '../../memos/link_memo_sheet.dart';
+import '../../location_picker/show_location_picker.dart';
 import '../../memos/memo_video_grid.dart';
 import '../../memos/windows_camera_capture_screen.dart';
 
@@ -1190,78 +1187,22 @@ class _DesktopQuickInputWindowScreenState
     }
   }
 
-  Future<LocationSettings> _resolveLocationSettings() async {
-    final current = ref.read(locationSettingsProvider);
-    if (current.enabled) return current;
-    final stored = await ref.read(locationSettingsRepositoryProvider).read();
-    if (!mounted) return stored;
-    await ref
-        .read(locationSettingsProvider.notifier)
-        .setAll(stored, triggerSync: false);
-    return stored;
-  }
-
-  String _locationErrorText(Object error) {
-    if (error is LocationException) {
-      return switch (error.code) {
-        'service_disabled' =>
-          context.t.strings.legacy.msg_location_services_disabled,
-        'permission_denied' =>
-          context.t.strings.legacy.msg_location_permission_denied,
-        'permission_denied_forever' =>
-          context.t.strings.legacy.msg_location_permission_denied_permanently,
-        'timeout' => context.t.strings.legacy.msg_location_timed_try,
-        _ => context.t.strings.legacy.msg_failed_get_location,
-      };
-    }
-    if (error is TimeoutException) {
-      return context.t.strings.legacy.msg_location_timed_try;
-    }
-    return context.t.strings.legacy.msg_failed_get_location;
-  }
-
   Future<void> _requestLocation() async {
     if (_submitting || _locating) return;
-    setState(() => _locating = true);
-    try {
-      final position = await DeviceLocationService().getCurrentPosition();
-      final settings = await _resolveLocationSettings();
-      String placeholder = '';
-      if (settings.enabled) {
-        final geocoder = LocationGeocoder(
-          logStore: ref.read(networkLogStoreProvider),
-          logBuffer: ref.read(networkLogBufferProvider),
-          logManager: ref.read(logManagerProvider),
-        );
-        placeholder =
-            await geocoder.reverseGeocode(
-              latitude: position.latitude,
-              longitude: position.longitude,
-              settings: settings,
-            ) ??
-            '';
-      }
-      final next = MemoLocation(
-        placeholder: placeholder,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      if (!mounted) return;
-      setState(() => _location = next);
-      _showSnack(
-        context.t.strings.legacy.msg_location_updated(
-          next_displayText_fractionDigits_6: next.displayText(
-            fractionDigits: 6,
-          ),
+    final next = await showLocationPickerSheetOrDialog(
+      context: context,
+      ref: ref,
+      initialLocation: _location,
+    );
+    if (!mounted || next == null) return;
+    setState(() => _location = next);
+    _showSnack(
+      context.t.strings.legacy.msg_location_updated(
+        next_displayText_fractionDigits_6: next.displayText(
+          fractionDigits: 6,
         ),
-      );
-    } catch (error) {
-      _showSnack(_locationErrorText(error));
-    } finally {
-      if (mounted) {
-        setState(() => _locating = false);
-      }
-    }
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -1281,6 +1222,7 @@ class _DesktopQuickInputWindowScreenState
           'relations': _linkedMemos.map((e) => e.toRelationJson()).toList(),
       };
       final result = await _invokeSubmitToMainWindow(payload);
+      if (!mounted) return;
 
       if (result is bool && !result) {
         _showSnack(
@@ -1291,10 +1233,12 @@ class _DesktopQuickInputWindowScreenState
 
       await _closeWindow();
     } on MissingPluginException {
+      if (!mounted) return;
       _showSnack(
         context.t.strings.legacy.msg_quick_input_channel_not_ready_retry,
       );
     } on PlatformException catch (error) {
+      if (!mounted) return;
       if (_isMainWindowChannelMissing(error)) {
         _showSnack(
           context.t.strings.legacy.msg_quick_input_channel_not_ready_retry,
@@ -1499,6 +1443,9 @@ class _DesktopQuickInputWindowScreenState
                         ),
                         backgroundColor: chipBg,
                         deleteIconColor: chipDelete,
+                        onPressed: _submitting
+                            ? null
+                            : () => unawaited(_requestLocation()),
                         onDeleted: _submitting
                             ? null
                             : () => setState(() => _location = null),
