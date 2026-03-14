@@ -112,13 +112,14 @@ class MemosListController {
 
     await db.enqueueOutbox(
       type: 'create_memo',
-      payload: {
-        'uid': uid,
-        'content': content,
-        'visibility': visibility,
-        'pinned': false,
-        'has_attachments': false,
-      },
+      payload: buildCreateMemoOutboxPayload(
+        uid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: false,
+        createTimeSec: nowSec,
+        hasAttachments: false,
+      ),
     );
   }
 
@@ -157,15 +158,16 @@ class MemosListController {
     final hasAttachments = pendingAttachments.isNotEmpty;
     await db.enqueueOutbox(
       type: 'create_memo',
-      payload: {
-        'uid': uid,
-        'content': content,
-        'visibility': visibility,
-        'pinned': false,
-        'has_attachments': hasAttachments,
-        if (location != null) 'location': location.toJson(),
-        if (relations.isNotEmpty) 'relations': relations,
-      },
+      payload: buildCreateMemoOutboxPayload(
+        uid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: false,
+        createTimeSec: nowSec,
+        hasAttachments: hasAttachments,
+        location: location,
+        relations: relations,
+      ),
     );
 
     for (final attachment in pendingAttachments) {
@@ -183,11 +185,7 @@ class MemosListController {
     }
   }
 
-  Future<void> updateMemo(
-    LocalMemo memo, {
-    bool? pinned,
-    String? state,
-  }) async {
+  Future<void> updateMemo(LocalMemo memo, {bool? pinned, String? state}) async {
     final now = DateTime.now();
     final db = _ref.read(databaseProvider);
 
@@ -344,7 +342,8 @@ class MemosListController {
     final api = _ref.read(memosApiProvider);
     await api.ensureServerHintsLoaded();
     final useLocalShortcuts =
-        api.usesLegacySearchFilterDialect || api.shortcutsSupportedHint == false;
+        api.usesLegacySearchFilterDialect ||
+        api.shortcutsSupportedHint == false;
     return useLocalShortcuts
         ? await _ref
               .read(localShortcutsRepositoryProvider)

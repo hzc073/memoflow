@@ -7,6 +7,7 @@ import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/memo_location.dart';
+import '../../state/memos/create_memo_outbox_payload.dart';
 import '../../state/memos/app_bootstrap_adapter_provider.dart';
 
 class QuickInputService {
@@ -130,15 +131,16 @@ class QuickInputService {
 
     await db.enqueueOutbox(
       type: 'create_memo',
-      payload: {
-        'uid': uid,
-        'content': content,
-        'visibility': visibility,
-        'pinned': false,
-        'has_attachments': hasAttachments,
-        if (location != null) 'location': location.toJson(),
-        if (normalizedRelations.isNotEmpty) 'relations': normalizedRelations,
-      },
+      payload: buildCreateMemoOutboxPayload(
+        uid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: false,
+        createTimeSec: nowSec,
+        hasAttachments: hasAttachments,
+        location: location,
+        relations: normalizedRelations,
+      ),
     );
 
     for (final payload in uploadPayloads) {

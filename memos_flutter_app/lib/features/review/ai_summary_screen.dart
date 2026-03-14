@@ -25,6 +25,7 @@ import '../../data/ai/ai_route_config.dart';
 import '../../data/ai/ai_settings_models.dart';
 import '../../data/ai/ai_summary_service.dart';
 import '../../data/models/local_memo.dart';
+import '../../state/memos/create_memo_outbox_payload.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
@@ -611,13 +612,14 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       await aiAnalysisRepository.upsertMemoPolicy(memoUid: uid, allowAi: false);
       await db.enqueueOutbox(
         type: 'create_memo',
-        payload: {
-          'uid': uid,
-          'content': content,
-          'visibility': 'PRIVATE',
-          'pinned': false,
-          'has_attachments': false,
-        },
+        payload: buildCreateMemoOutboxPayload(
+          uid: uid,
+          content: content,
+          visibility: 'PRIVATE',
+          pinned: false,
+          createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+          hasAttachments: false,
+        ),
       );
       unawaited(
         ref

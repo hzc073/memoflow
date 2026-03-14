@@ -120,6 +120,67 @@ void main() {
       );
     }
   });
+
+  group('MemoApiFacade updateMemo createTime compatibility', () {
+    test(
+      'version 0.25.0 ignores create_time and keeps display_time only',
+      () async {
+        final harness = await _FakeUpdateMemoServer.start(MemoApiVersion.v025);
+        addTearDown(() async {
+          await harness.close();
+        });
+
+        final api = MemoApiFacade.authenticated(
+          baseUrl: harness.baseUrl,
+          personalAccessToken: 'test-pat',
+          version: MemoApiVersion.v025,
+        );
+
+        final memo = await api.updateMemo(
+          memoUid: '101',
+          createTime: DateTime.utc(2026, 3, 13, 18, 0),
+          displayTime: DateTime.utc(2026, 3, 13, 18, 0),
+        );
+        expect(memo.uid, '101');
+
+        final capturedRequest = harness.findUpdateRequest();
+        expect(capturedRequest, isNotNull);
+        expect(capturedRequest!.path, '/api/v1/memos/101');
+        expect(capturedRequest.queryParameters['updateMask'], 'display_time');
+      },
+    );
+
+    test(
+      'version 0.26.0 sends create_time and display_time together',
+      () async {
+        final harness = await _FakeUpdateMemoServer.start(MemoApiVersion.v026);
+        addTearDown(() async {
+          await harness.close();
+        });
+
+        final api = MemoApiFacade.authenticated(
+          baseUrl: harness.baseUrl,
+          personalAccessToken: 'test-pat',
+          version: MemoApiVersion.v026,
+        );
+
+        final memo = await api.updateMemo(
+          memoUid: '101',
+          createTime: DateTime.utc(2026, 3, 13, 18, 0),
+          displayTime: DateTime.utc(2026, 3, 13, 18, 0),
+        );
+        expect(memo.uid, '101');
+
+        final capturedRequest = harness.findUpdateRequest();
+        expect(capturedRequest, isNotNull);
+        expect(capturedRequest!.path, '/api/v1/memos/101');
+        expect(
+          capturedRequest.queryParameters['updateMask'],
+          'create_time,display_time',
+        );
+      },
+    );
+  });
 }
 
 class _CapturedRequest {

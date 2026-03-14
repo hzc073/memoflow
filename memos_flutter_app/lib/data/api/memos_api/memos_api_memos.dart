@@ -282,6 +282,9 @@ mixin _MemosApiMemos on _MemosApiBase {
     String visibility = 'PRIVATE',
     bool pinned = false,
     MemoLocation? location,
+    DateTime? createTime,
+    DateTime? displayTime,
+    List<Map<String, dynamic>> relations = const <Map<String, dynamic>>[],
   }) async {
     await _ensureServerHints();
     if (_useLegacyMemos) {
@@ -306,8 +309,19 @@ mixin _MemosApiMemos on _MemosApiBase {
       visibility: visibility,
       pinned: pinned,
       location: location,
+      createTime: createTime,
+      displayTime: displayTime,
+      relations: relations,
     );
   }
+
+  bool get supportsCreateMemoTimestampsInCreateBody =>
+      _supportsCreateMemoTimestampFieldsInModernBody();
+
+  bool get supportsCreateMemoRelationsInCreateBody =>
+      _supportsCreateMemoRelationsInModernBody();
+
+  bool get supportsMemoCreateTimeUpdate => _supportsMemoCreateTimeUpdate();
 
   Future<Memo> _createMemoModern({
     required String memoId,
@@ -315,9 +329,16 @@ mixin _MemosApiMemos on _MemosApiBase {
     required String visibility,
     required bool pinned,
     MemoLocation? location,
+    DateTime? createTime,
+    DateTime? displayTime,
+    required List<Map<String, dynamic>> relations,
   }) async {
     final supportsLocation = _supportsMemoLocationField();
     final supportsPinned = _supportsPinnedInModernMemoBody();
+    final supportsCreateTimestamps =
+        _supportsCreateMemoTimestampFieldsInModernBody();
+    final supportsCreateRelations = _supportsCreateMemoRelationsInModernBody();
+    final resolvedDisplayTime = displayTime ?? createTime;
     final response = await _dio.post(
       'api/v1/memos',
       queryParameters: <String, Object?>{'memoId': memoId},
@@ -326,6 +347,12 @@ mixin _MemosApiMemos on _MemosApiBase {
         'visibility': visibility,
         if (supportsPinned) 'pinned': pinned,
         if (supportsLocation && location != null) 'location': location.toJson(),
+        if (supportsCreateTimestamps && createTime != null)
+          'createTime': createTime.toUtc().toIso8601String(),
+        if (supportsCreateTimestamps && resolvedDisplayTime != null)
+          'displayTime': resolvedDisplayTime.toUtc().toIso8601String(),
+        if (supportsCreateRelations && relations.isNotEmpty)
+          'relations': relations,
       },
     );
     final memo = _memoFromJson(_expectJsonMap(response.data));
@@ -346,6 +373,7 @@ mixin _MemosApiMemos on _MemosApiBase {
     String? visibility,
     bool? pinned,
     String? state,
+    DateTime? createTime,
     DateTime? displayTime,
     Object? location = _unset,
   }) async {
@@ -367,6 +395,7 @@ mixin _MemosApiMemos on _MemosApiBase {
         visibility: visibility,
         pinned: pinned,
         state: state,
+        createTime: createTime,
         displayTime: displayTime,
       );
     }
@@ -376,6 +405,7 @@ mixin _MemosApiMemos on _MemosApiBase {
       visibility: visibility,
       pinned: pinned,
       state: state,
+      createTime: createTime,
       displayTime: displayTime,
       location: location,
     );
@@ -387,6 +417,7 @@ mixin _MemosApiMemos on _MemosApiBase {
     String? visibility,
     bool? pinned,
     String? state,
+    DateTime? createTime,
     DateTime? displayTime,
     required Object? location,
   }) async {
@@ -415,6 +446,10 @@ mixin _MemosApiMemos on _MemosApiBase {
         updateMask.add('state');
         data['state'] = state;
       }
+    }
+    if (createTime != null && _supportsMemoCreateTimeUpdate()) {
+      updateMask.add('create_time');
+      data['createTime'] = createTime.toUtc().toIso8601String();
     }
     if (displayTime != null) {
       updateMask.add(_displayTimeUpdateMaskField());
@@ -521,6 +556,35 @@ mixin _MemosApiMemos on _MemosApiBase {
   bool _supportsPinnedInModernMemoBody() {
     return _serverFlavor != _ServerApiFlavor.v0_22 &&
         _serverFlavor != _ServerApiFlavor.v0_23;
+  }
+
+  bool _supportsCreateMemoTimestampFieldsInModernBody() {
+    return _supportsModernCreateMemoBodyFields(
+      minimum: const _ServerVersion(0, 26, 0),
+    );
+  }
+
+  bool _supportsCreateMemoRelationsInModernBody() {
+    return _supportsModernCreateMemoBodyFields(
+      minimum: const _ServerVersion(0, 26, 0),
+    );
+  }
+
+  bool _supportsMemoCreateTimeUpdate() {
+    return _supportsModernCreateMemoBodyFields(
+      minimum: const _ServerVersion(0, 26, 0),
+    );
+  }
+
+  bool _supportsModernCreateMemoBodyFields({required _ServerVersion minimum}) {
+    final version = _serverVersion;
+    if (version == null) {
+      return false;
+    }
+    if (version.major > 0) {
+      return true;
+    }
+    return version >= minimum;
   }
 
   Future<Memo> _setMemoPinnedWithLegacyOrganizer({
@@ -1441,6 +1505,7 @@ mixin _MemosApiMemos on _MemosApiBase {
     String? visibility,
     bool? pinned,
     String? state,
+    DateTime? createTime,
     DateTime? displayTime,
   }) async {
     if (!_supportsLegacyMemoUpdateEndpoint()) {
@@ -1456,7 +1521,7 @@ mixin _MemosApiMemos on _MemosApiBase {
         'Legacy memo endpoint is blocked for server flavor ${_serverFlavor.name}',
       );
     }
-    final _ = displayTime;
+    final _ = (createTime, displayTime);
     if (pinned != null) {
       await _dio.post(
         'api/v1/memo/$memoUid/organizer',

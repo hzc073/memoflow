@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/memo_location.dart';
+import 'create_memo_outbox_payload.dart';
 import '../system/database_provider.dart';
+
 class NoteInputPendingAttachment {
   const NoteInputPendingAttachment({
     required this.uid,
@@ -54,15 +56,16 @@ class NoteInputController {
 
     await db.enqueueOutbox(
       type: 'create_memo',
-      payload: {
-        'uid': uid,
-        'content': content,
-        'visibility': visibility,
-        'pinned': false,
-        'has_attachments': hasAttachments,
-        if (location != null) 'location': location.toJson(),
-        if (relations.isNotEmpty) 'relations': relations,
-      },
+      payload: buildCreateMemoOutboxPayload(
+        uid: uid,
+        content: content,
+        visibility: visibility,
+        pinned: false,
+        createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+        hasAttachments: hasAttachments,
+        location: location,
+        relations: relations,
+      ),
     );
 
     for (final attachment in pendingAttachments) {

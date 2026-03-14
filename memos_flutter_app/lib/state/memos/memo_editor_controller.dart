@@ -4,9 +4,11 @@ import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo_relation.dart';
 import '../../data/models/memo_location.dart';
+import 'create_memo_outbox_payload.dart';
 import '../system/database_provider.dart';
 import 'memo_timeline_provider.dart';
 import 'memos_providers.dart';
+
 class MemoEditorPendingAttachment {
   const MemoEditorPendingAttachment({
     required this.uid,
@@ -107,15 +109,16 @@ class MemoEditorController {
     if (existing == null) {
       await db.enqueueOutbox(
         type: 'create_memo',
-        payload: {
-          'uid': uid,
-          'content': content,
-          'visibility': visibility,
-          'pinned': pinned,
-          'has_attachments': attachments.isNotEmpty,
-          if (location != null) 'location': location.toJson(),
-          if (includeRelations) 'relations': relations,
-        },
+        payload: buildCreateMemoOutboxPayload(
+          uid: uid,
+          content: content,
+          visibility: visibility,
+          pinned: pinned,
+          createTimeSec: createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          hasAttachments: attachments.isNotEmpty,
+          location: location,
+          relations: includeRelations ? relations : const [],
+        ),
       );
     } else {
       await db.enqueueOutbox(

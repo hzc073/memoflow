@@ -18,6 +18,7 @@ import '../../core/url.dart';
 import '../../data/models/account.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/attachment.dart';
+import 'create_memo_outbox_payload.dart';
 import 'flomo_import_models.dart';
 
 enum _BackendVersion { v025, v024, v021, unknown }
@@ -437,15 +438,15 @@ class _FlomoImportEngine {
 
       await db.enqueueOutbox(
         type: 'create_memo',
-        payload: {
-          'uid': memoUid,
-          'content': content,
-          'visibility': parsed.visibility,
-          'pinned': parsed.pinned,
-          'has_attachments': attachments.isNotEmpty,
-          'display_time':
+        payload: buildCreateMemoOutboxPayload(
+          uid: memoUid,
+          content: content,
+          visibility: parsed.visibility,
+          pinned: parsed.pinned,
+          createTimeSec:
               parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-        },
+          hasAttachments: attachments.isNotEmpty,
+        ),
       );
 
       if (parsed.state.trim().isNotEmpty &&
@@ -602,15 +603,14 @@ class _FlomoImportEngine {
 
       await db.enqueueOutbox(
         type: 'create_memo',
-        payload: {
-          'uid': memoUid,
-          'content': content,
-          'visibility': 'PRIVATE',
-          'pinned': false,
-          'has_attachments': attachments.isNotEmpty,
-          'display_time':
-              item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-        },
+        payload: buildCreateMemoOutboxPayload(
+          uid: memoUid,
+          content: content,
+          visibility: 'PRIVATE',
+          pinned: false,
+          createTimeSec: item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          hasAttachments: attachments.isNotEmpty,
+        ),
       );
 
       for (final attachment in attachmentQueue) {

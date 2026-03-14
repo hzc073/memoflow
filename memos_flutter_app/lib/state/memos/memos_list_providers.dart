@@ -11,6 +11,7 @@ import '../../data/models/memo_location.dart';
 import '../../data/models/shortcut.dart';
 import '../system/database_provider.dart';
 import '../system/logging_provider.dart';
+import 'create_memo_outbox_payload.dart';
 import 'memo_timeline_provider.dart';
 import 'memos_providers.dart';
 import '../system/reminder_scheduler.dart';
@@ -18,7 +19,6 @@ import '../system/session_provider.dart';
 import '../settings/user_settings_provider.dart';
 part 'memos_list_controller.dart';
 part 'memos_list_outbox_parser.dart';
-
 
 class OutboxMemoStatus {
   const OutboxMemoStatus({required this.pending, required this.failed});
@@ -48,11 +48,9 @@ class MemosListPendingAttachment {
 
 class MemosListMemoResolveResult {
   const MemosListMemoResolveResult._({this.memo, this.error});
-  const MemosListMemoResolveResult.found(LocalMemo memo)
-    : this._(memo: memo);
+  const MemosListMemoResolveResult.found(LocalMemo memo) : this._(memo: memo);
   const MemosListMemoResolveResult.notFound() : this._();
-  const MemosListMemoResolveResult.error(Object error)
-    : this._(error: error);
+  const MemosListMemoResolveResult.error(Object error) : this._(error: error);
 
   final LocalMemo? memo;
   final Object? error;
@@ -76,7 +74,9 @@ final memosListControllerProvider = Provider<MemosListController>((ref) {
   return MemosListController(ref);
 });
 
-final memosListOutboxStatusProvider = StreamProvider<OutboxMemoStatus>((ref) async* {
+final memosListOutboxStatusProvider = StreamProvider<OutboxMemoStatus>((
+  ref,
+) async* {
   final db = ref.watch(databaseProvider);
 
   Future<OutboxMemoStatus> load() async {

@@ -28,6 +28,8 @@ import '../../data/models/memo_relation.dart';
 import '../../data/repositories/image_bed_settings_repository.dart';
 import '../../data/local_library/local_attachment_store.dart';
 import '../../data/local_library/local_library_fs.dart';
+import 'create_memo_outbox_payload.dart';
+import 'create_memo_time_policy.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../system/database_provider.dart';
 import '../attachments/attachment_preprocessor_provider.dart';
@@ -2026,15 +2028,16 @@ class RemoteSyncController extends SyncControllerBase {
     if (rewritten <= 0) {
       await db.enqueueOutbox(
         type: 'create_memo',
-        payload: {
-          'uid': duplicateUid,
-          'content': localMemo.content,
-          'visibility': localMemo.visibility,
-          'pinned': localMemo.pinned,
-          'has_attachments': false,
-          if (localMemo.location != null)
-            'location': localMemo.location!.toJson(),
-        },
+        payload: buildCreateMemoOutboxPayload(
+          uid: duplicateUid,
+          content: localMemo.content,
+          visibility: localMemo.visibility,
+          pinned: localMemo.pinned,
+          createTimeSec:
+              localMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+          hasAttachments: false,
+          location: localMemo.location,
+        ),
       );
     }
     return duplicateUid;
@@ -2434,6 +2437,13 @@ class RemoteSyncController extends SyncControllerBase {
             preservedDraftCount++;
           }
           final draftMemo = preserveLocalDraft ? localMemo! : null;
+          final preserveLocalCreateTime =
+              draftMemo == null &&
+              shouldPreserveLocalCreateTime(
+                localMemo: localMemo,
+                localSyncState: localSync,
+                remoteMemo: memo,
+              );
           final tags = draftMemo != null
               ? draftMemo.tags
               : _mergeTags(memo.tags, memo.content);
@@ -2463,6 +2473,8 @@ class RemoteSyncController extends SyncControllerBase {
           final memoState = draftMemo != null ? draftMemo.state : memo.state;
           final createTimeSec = draftMemo != null
               ? draftMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000
+              : preserveLocalCreateTime
+              ? localMemo!.createTime.toUtc().millisecondsSinceEpoch ~/ 1000
               : (memo.displayTime ?? memo.createTime)
                         .toUtc()
                         .millisecondsSinceEpoch ~/
@@ -2958,12 +2970,16 @@ class RemoteSyncController extends SyncControllerBase {
     final visibility = payload['visibility'] as String? ?? 'PRIVATE';
     final pinned = payload['pinned'] as bool? ?? false;
     final location = _parseLocationPayload(payload['location']);
-    final displayTime = _parsePayloadTime(
-      payload['display_time'] ??
-          payload['displayTime'] ??
-          payload['create_time'] ??
-          payload['createTime'],
+    final createTime = _parsePayloadTime(
+      payload['create_time'] ??
+          payload['createTime'] ??
+          payload['display_time'] ??
+          payload['displayTime'],
     );
+    final displayTime = _parsePayloadTime(
+      payload['display_time'] ?? payload['displayTime'],
+    );
+    final resolvedDisplayTime = displayTime ?? createTime;
     final relationsRaw = payload['relations'];
     final relations = <Map<String, dynamic>>[];
     if (relationsRaw is List) {
@@ -2976,6 +2992,16 @@ class RemoteSyncController extends SyncControllerBase {
     if (uid == null || uid.isEmpty || content == null) {
       throw const FormatException('create_memo missing fields');
     }
+    final normalizedRelations = normalizeReferenceRelationPayloads(
+      memoUid: uid,
+      relations: relations,
+    );
+    final followUpDisplayTime = resolveCreateMemoFollowUpDisplayTime(
+      supportsCreateMemoTimestampsInCreateBody:
+          api.supportsCreateMemoTimestampsInCreateBody,
+      createTime: createTime,
+      displayTime: resolvedDisplayTime,
+    );
     try {
       final created = await api.createMemo(
         memoId: uid,
@@ -2983,19 +3009,28 @@ class RemoteSyncController extends SyncControllerBase {
         visibility: visibility,
         pinned: pinned,
         location: location,
+        createTime: createTime,
+        displayTime: resolvedDisplayTime,
+        relations: normalizedRelations,
       );
       final remoteUid = created.uid;
       final targetUid = remoteUid.isNotEmpty ? remoteUid : uid;
-      if (relations.isNotEmpty) {
-        await _applyMemoRelations(targetUid, relations);
-      }
       if (remoteUid.isNotEmpty && remoteUid != uid) {
         await db.renameMemoUid(oldUid: uid, newUid: remoteUid);
         await db.rewriteOutboxMemoUids(oldUid: uid, newUid: remoteUid);
       }
-      if (displayTime != null) {
+      if (normalizedRelations.isNotEmpty &&
+          !api.supportsCreateMemoRelationsInCreateBody) {
+        await _applyMemoRelations(targetUid, normalizedRelations);
+      } else if (normalizedRelations.isNotEmpty) {
+        _notifyRelationsSynced(targetUid, normalizedRelations);
+      }
+      if (followUpDisplayTime != null) {
         try {
-          await api.updateMemo(memoUid: targetUid, displayTime: displayTime);
+          await api.updateMemo(
+            memoUid: targetUid,
+            displayTime: followUpDisplayTime,
+          );
         } on DioException catch (e) {
           final status = e.response?.statusCode ?? 0;
           if (status != 400 && status != 404 && status != 405) {
@@ -3007,7 +3042,31 @@ class RemoteSyncController extends SyncControllerBase {
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status == 409) {
-        // Already exists (idempotency after retry).
+        if (api.supportsMemoCreateTimeUpdate &&
+            (createTime != null || resolvedDisplayTime != null)) {
+          await api.updateMemo(
+            memoUid: uid,
+            createTime: createTime,
+            displayTime: resolvedDisplayTime,
+          );
+        } else if (followUpDisplayTime != null) {
+          try {
+            await api.updateMemo(
+              memoUid: uid,
+              displayTime: followUpDisplayTime,
+            );
+          } on DioException catch (e) {
+            final retryStatus = e.response?.statusCode ?? 0;
+            if (retryStatus != 400 &&
+                retryStatus != 404 &&
+                retryStatus != 405) {
+              rethrow;
+            }
+          }
+        }
+        if (normalizedRelations.isNotEmpty) {
+          await _applyMemoRelations(uid, normalizedRelations);
+        }
         return uid;
       }
       rethrow;
@@ -3098,35 +3157,19 @@ class RemoteSyncController extends SyncControllerBase {
   ) async {
     final normalizedUid = _normalizeMemoUid(memoUid);
     if (normalizedUid.isEmpty) return;
-    final memoName = 'memos/$normalizedUid';
-
-    final normalizedRelations = <Map<String, dynamic>>[];
-    final seenNames = <String>{};
-    for (final relation in relations) {
-      final name = _readRelationRelatedMemoName(relation);
-      final trimmedName = name.trim();
-      if (trimmedName.isEmpty || trimmedName == memoName) continue;
-      if (!seenNames.add(trimmedName)) continue;
-      normalizedRelations.add(<String, dynamic>{
-        'relatedMemo': {'name': trimmedName},
-        'type': 'REFERENCE',
-      });
+    final patch = prepareReferenceRelationPatch(
+      memoUid: normalizedUid,
+      relations: relations,
+    );
+    if (!patch.shouldSync) {
+      return;
     }
 
     await api.setMemoRelations(
       memoUid: normalizedUid,
-      relations: normalizedRelations,
+      relations: patch.relations,
     );
-    _notifyRelationsSynced(normalizedUid, normalizedRelations);
-  }
-
-  String _readRelationRelatedMemoName(Map<String, dynamic> relation) {
-    final relatedRaw = relation['relatedMemo'] ?? relation['related_memo'];
-    if (relatedRaw is Map) {
-      final name = relatedRaw['name'];
-      if (name is String) return name.trim();
-    }
-    return '';
+    _notifyRelationsSynced(normalizedUid, patch.relations);
   }
 
   void _notifyRelationsSynced(
@@ -3147,8 +3190,15 @@ class RemoteSyncController extends SyncControllerBase {
     if (normalized.isNotEmpty) {
       uids.add(normalized);
     }
-    for (final relation in relations) {
-      final relatedName = _readRelationRelatedMemoName(relation);
+    final normalizedRelations = normalizeReferenceRelationPayloads(
+      memoUid: normalized,
+      relations: relations,
+    );
+    for (final relation in normalizedRelations) {
+      final relatedRaw = relation['relatedMemo'];
+      final relatedName = relatedRaw is Map
+          ? ((relatedRaw['name'] as String?) ?? '')
+          : '';
       final relatedUid = _normalizeMemoUid(relatedName);
       if (relatedUid.isNotEmpty) {
         uids.add(relatedUid);

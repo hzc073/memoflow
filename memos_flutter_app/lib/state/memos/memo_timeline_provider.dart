@@ -22,6 +22,7 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_version.dart';
 import '../../data/models/recycle_bin_item.dart';
+import 'create_memo_outbox_payload.dart';
 import '../system/database_provider.dart';
 import '../system/session_provider.dart';
 
@@ -31,7 +32,9 @@ final memoTimelineServiceProvider = Provider<MemoTimelineService>((ref) {
     db: ref.watch(databaseProvider),
     account: account,
     triggerSync: () async {
-      await ref.read(syncCoordinatorProvider.notifier).requestSync(
+      await ref
+          .read(syncCoordinatorProvider.notifier)
+          .requestSync(
             const SyncRequest(
               kind: SyncRequestKind.memos,
               reason: SyncRequestReason.manual,
@@ -376,14 +379,15 @@ class MemoTimelineService {
     if (existing == null) {
       await db.enqueueOutbox(
         type: 'create_memo',
-        payload: {
-          'uid': memoUid,
-          'content': content,
-          'visibility': visibility,
-          'pinned': pinned,
-          'has_attachments': hasPendingAttachments,
-          if (location != null) 'location': location.toJson(),
-        },
+        payload: buildCreateMemoOutboxPayload(
+          uid: memoUid,
+          content: content,
+          visibility: visibility,
+          pinned: pinned,
+          createTimeSec: safeCreateTimeSec,
+          hasAttachments: hasPendingAttachments,
+          location: location,
+        ),
       );
       if (state == 'ARCHIVED') {
         await db.enqueueOutbox(
