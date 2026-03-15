@@ -87,6 +87,28 @@ Widget _buildTestApp(
 }
 
 void main() {
+  test('gallery cache extent limits mobile decode size', () {
+    expect(resolveAttachmentGalleryCacheExtent(360, 3, isDesktop: false), 1620);
+    expect(
+      resolveAttachmentGalleryCacheExtent(4000, 3, isDesktop: false),
+      1920,
+    );
+    expect(resolveAttachmentGalleryCacheExtent(0, 3, isDesktop: false), isNull);
+    expect(resolveAttachmentGalleryCacheExtent(2000, 2, isDesktop: true), 1920);
+  });
+
+  test('gallery preview extent stays below full decode size', () {
+    expect(resolveAttachmentGalleryPreviewExtent(1620, isDesktop: false), 810);
+    expect(resolveAttachmentGalleryPreviewExtent(3072, isDesktop: false), 960);
+    expect(resolveAttachmentGalleryPreviewExtent(600, isDesktop: false), 300);
+    expect(resolveAttachmentGalleryPreviewExtent(240, isDesktop: false), 120);
+    expect(resolveAttachmentGalleryPreviewExtent(4096, isDesktop: true), 1440);
+    expect(
+      resolveAttachmentGalleryPreviewExtent(null, isDesktop: false),
+      isNull,
+    );
+  });
+
   testWidgets('desktop gallery supports keyboard and click navigation', (
     tester,
   ) async {

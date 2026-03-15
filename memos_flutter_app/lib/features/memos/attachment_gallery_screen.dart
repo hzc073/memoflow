@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,6 +28,48 @@ import '../../i18n/strings.g.dart';
 import '../../state/system/scene_micro_guide_provider.dart';
 import 'attachment_video_screen.dart';
 import 'memo_video_grid.dart';
+
+const double _galleryDecodeOverscan = 1.5;
+const int _galleryMobileMaxDecodePx = 1920;
+const int _galleryDesktopMaxDecodePx = 1920;
+const double _galleryPreviewDecodeFactor = 0.5;
+const int _galleryMobilePreviewMaxDecodePx = 960;
+const int _galleryDesktopPreviewMaxDecodePx = 1440;
+
+@visibleForTesting
+int? resolveAttachmentGalleryCacheExtent(
+  double logicalExtent,
+  double devicePixelRatio, {
+  required bool isDesktop,
+}) {
+  if (!logicalExtent.isFinite || logicalExtent <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  final pixels = (logicalExtent * devicePixelRatio * _galleryDecodeOverscan)
+      .round();
+  if (pixels <= 0) return null;
+  final maxDecodePx = isDesktop
+      ? _galleryDesktopMaxDecodePx
+      : _galleryMobileMaxDecodePx;
+  return pixels > maxDecodePx ? maxDecodePx : pixels;
+}
+
+@visibleForTesting
+int? resolveAttachmentGalleryPreviewExtent(
+  int? fullExtent, {
+  required bool isDesktop,
+}) {
+  if (fullExtent == null || fullExtent <= 0) return null;
+  final previewMaxDecodePx = isDesktop
+      ? _galleryDesktopPreviewMaxDecodePx
+      : _galleryMobilePreviewMaxDecodePx;
+  final previewExtent = (fullExtent * _galleryPreviewDecodeFactor).round();
+  final normalizedExtent = previewExtent <= 0 ? fullExtent : previewExtent;
+  final cappedExtent = normalizedExtent > previewMaxDecodePx
+      ? previewMaxDecodePx
+      : normalizedExtent;
+  return cappedExtent > fullExtent ? fullExtent : cappedExtent;
+}
 
 class AttachmentImageSource {
   const AttachmentImageSource({
@@ -517,7 +560,17 @@ class _AttachmentGalleryScreenState
     );
   }
 
-  Widget _buildImage(AttachmentImageSource source) {
+  Widget _buildLoadingIndicator(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  Widget _buildImage(
+    AttachmentImageSource source, {
+    int? previewCacheWidth,
+    int? previewCacheHeight,
+    int? cacheWidth,
+    int? cacheHeight,
+  }) {
     final file = source.localFile;
     if (file != null && file.existsSync()) {
       final isSvg = shouldUseSvgRenderer(
@@ -528,8 +581,7 @@ class _AttachmentGalleryScreenState
         return SvgPicture.file(
           file,
           fit: BoxFit.contain,
-          placeholderBuilder: (context) =>
-              const Center(child: CircularProgressIndicator()),
+          placeholderBuilder: (context) => _buildLoadingIndicator(context),
           errorBuilder: (context, error, stackTrace) {
             logImageLoadError(
               scope: 'attachment_gallery_local_svg',
@@ -545,10 +597,20 @@ class _AttachmentGalleryScreenState
           },
         );
       }
-      return Image.file(
-        file,
+      return _AttachmentGalleryProgressiveRaster(
+        lowResImage: ResizeImage.resizeIfNeeded(
+          previewCacheWidth,
+          previewCacheHeight,
+          FileImage(file),
+        ),
+        highResImage: ResizeImage.resizeIfNeeded(
+          cacheWidth,
+          cacheHeight,
+          FileImage(file),
+        ),
         fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
+        loadingBuilder: _buildLoadingIndicator,
+        onLowResError: (error, stackTrace) {
           logImageLoadError(
             scope: 'attachment_gallery_local',
             source: file.path,
@@ -557,9 +619,22 @@ class _AttachmentGalleryScreenState
             extraContext: <String, Object?>{
               'sourceId': source.id,
               'mimeType': source.mimeType,
+              'phase': 'preview',
             },
           );
-          return const Icon(Icons.broken_image, color: Colors.white);
+        },
+        onHighResError: (error, stackTrace) {
+          logImageLoadError(
+            scope: 'attachment_gallery_local',
+            source: file.path,
+            error: error,
+            stackTrace: stackTrace,
+            extraContext: <String, Object?>{
+              'sourceId': source.id,
+              'mimeType': source.mimeType,
+              'phase': 'full',
+            },
+          );
         },
       );
     }
@@ -571,8 +646,7 @@ class _AttachmentGalleryScreenState
           url,
           headers: source.headers,
           fit: BoxFit.contain,
-          placeholderBuilder: (context) =>
-              const Center(child: CircularProgressIndicator()),
+          placeholderBuilder: (context) => _buildLoadingIndicator(context),
           errorBuilder: (context, error, stackTrace) {
             logImageLoadError(
               scope: 'attachment_gallery_network_svg',
@@ -591,25 +665,50 @@ class _AttachmentGalleryScreenState
           },
         );
       }
-      return CachedNetworkImage(
-        imageUrl: url,
-        httpHeaders: source.headers,
+      return _AttachmentGalleryProgressiveRaster(
+        lowResImage: CachedNetworkImageProvider(
+          url,
+          headers: source.headers,
+          maxWidth: previewCacheWidth,
+          maxHeight: previewCacheHeight,
+        ),
+        highResImage: CachedNetworkImageProvider(
+          url,
+          headers: source.headers,
+          maxWidth: cacheWidth,
+          maxHeight: cacheHeight,
+        ),
         fit: BoxFit.contain,
-        placeholder: (context, _) =>
-            const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, _, error) {
+        loadingBuilder: _buildLoadingIndicator,
+        onLowResError: (error, stackTrace) {
           logImageLoadError(
             scope: 'attachment_gallery_network',
             source: url,
             error: error,
+            stackTrace: stackTrace,
             extraContext: <String, Object?>{
               'sourceId': source.id,
               'mimeType': source.mimeType,
               'hasAuthHeader':
                   source.headers?['Authorization']?.trim().isNotEmpty ?? false,
+              'phase': 'preview',
             },
           );
-          return const Icon(Icons.broken_image, color: Colors.white);
+        },
+        onHighResError: (error, stackTrace) {
+          logImageLoadError(
+            scope: 'attachment_gallery_network',
+            source: url,
+            error: error,
+            stackTrace: stackTrace,
+            extraContext: <String, Object?>{
+              'sourceId': source.id,
+              'mimeType': source.mimeType,
+              'hasAuthHeader':
+                  source.headers?['Authorization']?.trim().isNotEmpty ?? false,
+              'phase': 'full',
+            },
+          );
         },
       );
     }
@@ -659,13 +758,55 @@ class _AttachmentGalleryScreenState
 
   Widget _buildImagePage(AttachmentImageSource source) {
     return _wrapGalleryPage(
-      _AttachmentGalleryZoomableImage(
-        minScale: _minScale,
-        maxScale: _maxScale,
-        enableWheelZoom: _isDesktopGallery,
-        onReset: () =>
-            _markSceneGuideSeen(SceneMicroGuideId.attachmentGalleryControls),
-        child: Center(child: _buildImage(source)),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final mediaSize = MediaQuery.sizeOf(context);
+          final viewportWidth =
+              constraints.maxWidth.isFinite && constraints.maxWidth > 0
+              ? constraints.maxWidth
+              : mediaSize.width;
+          final viewportHeight =
+              constraints.maxHeight.isFinite && constraints.maxHeight > 0
+              ? constraints.maxHeight
+              : mediaSize.height;
+          final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+          final cacheWidth = resolveAttachmentGalleryCacheExtent(
+            viewportWidth,
+            devicePixelRatio,
+            isDesktop: _isDesktopGallery,
+          );
+          final cacheHeight = resolveAttachmentGalleryCacheExtent(
+            viewportHeight,
+            devicePixelRatio,
+            isDesktop: _isDesktopGallery,
+          );
+          final previewCacheWidth = resolveAttachmentGalleryPreviewExtent(
+            cacheWidth,
+            isDesktop: _isDesktopGallery,
+          );
+          final previewCacheHeight = resolveAttachmentGalleryPreviewExtent(
+            cacheHeight,
+            isDesktop: _isDesktopGallery,
+          );
+
+          return _AttachmentGalleryZoomableImage(
+            minScale: _minScale,
+            maxScale: _maxScale,
+            enableWheelZoom: _isDesktopGallery,
+            onReset: () => _markSceneGuideSeen(
+              SceneMicroGuideId.attachmentGalleryControls,
+            ),
+            child: Center(
+              child: _buildImage(
+                source,
+                previewCacheWidth: previewCacheWidth,
+                previewCacheHeight: previewCacheHeight,
+                cacheWidth: cacheWidth,
+                cacheHeight: cacheHeight,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -809,6 +950,126 @@ class _AttachmentGalleryScreenState
       autofocus: true,
       onKeyEvent: (_, event) => _handleGalleryKeyEvent(event),
       child: scaffold,
+    );
+  }
+}
+
+class _AttachmentGalleryProgressiveRaster extends StatefulWidget {
+  const _AttachmentGalleryProgressiveRaster({
+    required this.lowResImage,
+    required this.highResImage,
+    required this.fit,
+    required this.loadingBuilder,
+    this.onLowResError,
+    this.onHighResError,
+  });
+
+  final ImageProvider lowResImage;
+  final ImageProvider highResImage;
+  final BoxFit fit;
+  final WidgetBuilder loadingBuilder;
+  final ImageErrorListener? onLowResError;
+  final ImageErrorListener? onHighResError;
+
+  @override
+  State<_AttachmentGalleryProgressiveRaster> createState() =>
+      _AttachmentGalleryProgressiveRasterState();
+}
+
+class _AttachmentGalleryProgressiveRasterState
+    extends State<_AttachmentGalleryProgressiveRaster> {
+  bool _lowResReady = false;
+  bool _highResReady = false;
+  bool _lowResFailed = false;
+  bool _highResAttempted = false;
+
+  void _markLowResReady() {
+    if (!mounted || _lowResReady) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _lowResReady) return;
+      setState(() {
+        _lowResReady = true;
+        _highResAttempted = true;
+      });
+    });
+  }
+
+  void _markHighResReady() {
+    if (!mounted || _highResReady) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _highResReady) return;
+      setState(() => _highResReady = true);
+    });
+  }
+
+  void _markLowResFailed() {
+    if (!mounted || _lowResFailed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _lowResFailed) return;
+      setState(() => _lowResFailed = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shouldProgressivelyLoad = widget.lowResImage != widget.highResImage;
+    final lowResImage = Image(
+      image: widget.lowResImage,
+      fit: widget.fit,
+      filterQuality: FilterQuality.low,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          _markLowResReady();
+        }
+        return child;
+      },
+      errorBuilder: (context, error, stackTrace) {
+        widget.onLowResError?.call(error, stackTrace);
+        _markLowResFailed();
+        return const Icon(Icons.broken_image, color: Colors.white);
+      },
+    );
+
+    if (!shouldProgressivelyLoad) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          if (!_lowResReady && !_lowResFailed) widget.loadingBuilder(context),
+          lowResImage,
+        ],
+      );
+    }
+
+    final highResImage = Image(
+      image: widget.highResImage,
+      fit: widget.fit,
+      filterQuality: FilterQuality.medium,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          _markHighResReady();
+        }
+        return AnimatedOpacity(
+          opacity: _highResReady ? 1 : 0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          child: child,
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        widget.onHighResError?.call(error, stackTrace);
+        return const SizedBox.shrink();
+      },
+    );
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (!_lowResReady && !_lowResFailed) widget.loadingBuilder(context),
+        if (!_lowResFailed) lowResImage,
+        if (_highResAttempted) highResImage,
+      ],
     );
   }
 }
