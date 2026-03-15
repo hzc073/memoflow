@@ -287,8 +287,11 @@ CREATE TABLE IF NOT EXISTS recycle_bin_items (
             await _ensureAiTables(db);
           }
           if (oldVersion < 15) {
-            await db.execute(
-              'ALTER TABLE ai_analysis_tasks ADD COLUMN include_public INTEGER NOT NULL DEFAULT 1;',
+            await _ensureColumnExists(
+              db,
+              table: 'ai_analysis_tasks',
+              column: 'include_public',
+              definition: 'include_public INTEGER NOT NULL DEFAULT 1',
             );
           }
         },
@@ -2557,6 +2560,31 @@ CREATE TABLE IF NOT EXISTS memos_fts (
   static String _quoteIdentifier(String identifier) {
     final escaped = identifier.replaceAll('"', '""');
     return '"$escaped"';
+  }
+
+  static Future<bool> _tableHasColumn(
+    Database db,
+    String table,
+    String column,
+  ) async {
+    final rows = await db.rawQuery(
+      'PRAGMA table_info(${_quoteIdentifier(table)});',
+    );
+    return rows.any((row) => row['name'] == column);
+  }
+
+  static Future<void> _ensureColumnExists(
+    Database db, {
+    required String table,
+    required String column,
+    required String definition,
+  }) async {
+    if (await _tableHasColumn(db, table, column)) {
+      return;
+    }
+    await db.execute(
+      'ALTER TABLE ${_quoteIdentifier(table)} ADD COLUMN $definition;',
+    );
   }
 
   static Future<void> _ensureAiTables(Database db) async {
