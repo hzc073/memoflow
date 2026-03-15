@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,8 +7,11 @@ import 'package:memos_flutter_app/data/ai/ai_analysis_models.dart';
 import 'package:memos_flutter_app/data/ai/ai_analysis_repository.dart';
 import 'package:memos_flutter_app/data/ai/ai_analysis_service.dart';
 import 'package:memos_flutter_app/data/ai/ai_task_runtime.dart';
+import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/repositories/ai_settings_repository.dart';
+
+import '../../test_support.dart';
 
 class _FakeAiAnalysisRepository implements AiAnalysisRepository {
   _FakeAiAnalysisRepository(this._memoRows);
@@ -150,7 +154,58 @@ class _FailingEmbeddingRuntime extends AiTaskRuntime {
   }
 }
 
+class _ChatOnlyRuntime extends AiTaskRuntime {
+  _ChatOnlyRuntime() : super(registry: AiProviderRegistry.defaults());
+
+  int chatCalls = 0;
+  int embedCalls = 0;
+
+  @override
+  Future<AiChatCompletionResult> chatCompletion({
+    required AiSettings settings,
+    required AiTaskRouteId routeId,
+    required List<AiChatMessage> messages,
+    String? systemPrompt,
+    double? temperature,
+    int? maxOutputTokens,
+  }) async {
+    chatCalls += 1;
+    return AiChatCompletionResult(
+      text: jsonEncode(<String, Object?>{
+        'schema_version': 2,
+        'analysis_type': 'emotion_map',
+        'summary':
+            'Across this stretch of notes, you sound like someone carrying a steady amount of pressure while still trying to make room for recovery. The pattern is not chaos as much as repetition: stress rises, you notice it, and then you try to restore balance with small deliberate actions.',
+        'sections': <Map<String, Object?>>[
+          <String, Object?>{
+            'section_key': 'main_thread',
+            'title': 'pressure and recovery loop',
+            'body':
+                'The strongest thread is the way pressure keeps returning in practical, ordinary forms, while you keep responding with equally practical attempts to settle yourself again. The notes do not read like one dramatic collapse. They read like repeated friction, followed by repeated acts of repair: walking, slowing down, naming what feels heavy, and trying to regain a sense of footing. That rhythm matters because it shows strain, but it also shows persistence and self-observation instead of numbness.',
+            'evidence_keys': <String>['e1'],
+          },
+        ],
+        'follow_up_suggestions': <String>[
+          'Keep noticing which small routines reliably help you recover.',
+        ],
+      }),
+      raw: null,
+    );
+  }
+
+  @override
+  Future<List<double>> embed({
+    required AiSettings settings,
+    required String input,
+  }) async {
+    embedCalls += 1;
+    throw StateError('Embedding should not be called in chat-only mode.');
+  }
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('looksLikeGeneratedAiSummaryMemo detects saved letter memos', () {
     expect(
       looksLikeGeneratedAiSummaryMemo(
@@ -294,6 +349,95 @@ void main() {
         ),
       );
       expect(runtime.embedCalls, 5);
+    },
+  );
+
+  test(
+    'generateEmotionMap falls back to direct reading without embedding',
+    () async {
+      final support = await initializeTestSupport();
+      final db = AppDatabase(
+        dbName:
+            'ai_analysis_direct_test_${DateTime.now().microsecondsSinceEpoch}.db',
+      );
+      final repository = AiAnalysisRepository(db);
+      final runtime = _ChatOnlyRuntime();
+      final now = DateTime.utc(2026, 3, 11);
+      final timestamp = now.millisecondsSinceEpoch ~/ 1000;
+
+      addTearDown(() async {
+        await db.close();
+        await support.dispose();
+      });
+
+      await db.upsertMemo(
+        uid: 'memo_direct_1',
+        content:
+            'Felt pulled in too many directions today, but a long walk helped me slow down and hear myself think again. I still felt the pressure, yet it no longer owned the whole evening.',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: timestamp,
+        updateTimeSec: timestamp,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 0,
+      );
+
+      const generationService = AiServiceInstance(
+        serviceId: 'svc_chat',
+        templateId: aiTemplateCustomOpenAi,
+        adapterKind: AiProviderAdapterKind.openAiCompatible,
+        displayName: 'Chat Service',
+        enabled: true,
+        baseUrl: 'https://example.com/v1',
+        apiKey: 'test-key',
+        customHeaders: <String, String>{},
+        models: <AiModelEntry>[
+          AiModelEntry(
+            modelId: 'mdl_chat',
+            displayName: 'Chat Model',
+            modelKey: 'chat-model',
+            capabilities: <AiCapability>[AiCapability.chat],
+            source: AiModelSource.manual,
+            enabled: true,
+          ),
+        ],
+        lastValidatedAt: null,
+        lastValidationStatus: AiValidationStatus.unknown,
+        lastValidationMessage: null,
+      );
+
+      final settings = AiSettings.defaultsFor(AppLanguage.en).copyWith(
+        services: const <AiServiceInstance>[generationService],
+        taskRouteBindings: const <AiTaskRouteBinding>[
+          AiTaskRouteBinding(
+            routeId: AiTaskRouteId.analysisReport,
+            serviceId: 'svc_chat',
+            modelId: 'mdl_chat',
+            capability: AiCapability.chat,
+          ),
+        ],
+      );
+
+      final service = AiAnalysisService(
+        repository: repository,
+        runtime: runtime,
+      );
+      final report = await service.generateEmotionMap(
+        language: AppLanguage.en,
+        settings: settings,
+        range: DateTimeRange(start: now, end: now),
+        includePrivate: true,
+        promptTemplate: 'Focus on recurring pressure and recovery.',
+      );
+
+      expect(report.summary, isNotEmpty);
+      expect(report.sections, isNotEmpty);
+      expect(runtime.chatCalls, 1);
+      expect(runtime.embedCalls, 0);
     },
   );
 }

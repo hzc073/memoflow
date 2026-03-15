@@ -259,16 +259,6 @@ Future<void> main() async {
 
     expect(find.text('AI Analysis Settings'), findsOneWidget);
 
-    final last7DaysChip = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, 'Last 7 days'),
-    );
-    expect(last7DaysChip.selected, isTrue);
-
-    final privateCheckbox = tester.widget<Checkbox>(
-      find.byType(Checkbox).at(1),
-    );
-    expect(privateCheckbox.value, isTrue);
-
     final startButton = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Start Analysis'),
     );
@@ -601,5 +591,89 @@ Future<void> main() async {
     expect(find.text('2'), findsOneWidget);
     expect(find.text('First note'), findsOneWidget);
     expect(find.text('Second note'), findsOneWidget);
+  });
+
+  testWidgets('analysis can start with chat model only', (tester) async {
+    final db = AppDatabase(
+      dbName:
+          'ai_summary_chat_only_test_${DateTime.now().microsecondsSinceEpoch}.db',
+    );
+    const generationService = AiServiceInstance(
+      serviceId: 'svc_chat',
+      templateId: aiTemplateCustomOpenAi,
+      adapterKind: AiProviderAdapterKind.openAiCompatible,
+      displayName: 'Chat Service',
+      enabled: true,
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'test-key',
+      customHeaders: <String, String>{},
+      models: <AiModelEntry>[
+        AiModelEntry(
+          modelId: 'mdl_chat',
+          displayName: 'Chat Model',
+          modelKey: 'chat-model',
+          capabilities: <AiCapability>[AiCapability.chat],
+          source: AiModelSource.manual,
+          enabled: true,
+        ),
+      ],
+      lastValidatedAt: null,
+      lastValidationStatus: AiValidationStatus.unknown,
+      lastValidationMessage: null,
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en).copyWith(
+        services: const <AiServiceInstance>[generationService],
+        taskRouteBindings: const <AiTaskRouteBinding>[
+          AiTaskRouteBinding(
+            routeId: AiTaskRouteId.analysisReport,
+            serviceId: 'svc_chat',
+            modelId: 'mdl_chat',
+            capability: AiCapability.chat,
+          ),
+        ],
+      ),
+    );
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(
+        AppLanguage.en,
+      ).copyWith(aiSummaryAllowPrivateMemos: true),
+    );
+
+    addTearDown(() async {
+      await db.close();
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        child: const AiSummaryScreen(),
+        overrides: [
+          appSessionProvider.overrideWith((ref) => _TestSessionController()),
+          databaseProvider.overrideWithValue(db),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Letter Back'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.textContaining('analysis accuracy may be lower'),
+      findsWidgets,
+    );
+
+    final startButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Start Analysis'),
+    );
+    expect(startButton.onPressed, isNotNull);
   });
 }

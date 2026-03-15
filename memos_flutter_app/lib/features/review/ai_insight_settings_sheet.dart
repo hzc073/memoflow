@@ -116,7 +116,7 @@ class _AiInsightSettingsSheetState
   }
 
   bool _hasRequiredAiConfig(AiSettings settings) {
-    return _hasGenerationConfig(settings) && _hasEmbeddingConfig(settings);
+    return _hasGenerationConfig(settings);
   }
 
   Future<DateTimeRange?> _pickCustomRange() {
@@ -224,10 +224,24 @@ class _AiInsightSettingsSheetState
         _promptTemplate.trim().isNotEmpty;
   }
 
-  String _aiConfigTitle(bool isZh) {
+  String _aiConfigTitle({
+    required bool isZh,
+    required bool hasGeneration,
+    required bool hasEmbedding,
+  }) {
+    if (!hasGeneration && !hasEmbedding) {
+      return isZh
+          ? 'AI \u8fd8\u6ca1\u6709\u914d\u7f6e'
+          : 'AI is not configured yet';
+    }
+    if (!hasGeneration) {
+      return isZh
+          ? '\u8fd8\u7f3a\u804a\u5929\u6a21\u578b\u914d\u7f6e'
+          : 'Chat model setup is missing';
+    }
     return isZh
-        ? 'AI \u8bbe\u7f6e\u8fd8\u6ca1\u914d\u597d'
-        : 'AI settings are incomplete';
+        ? '\u672a\u914d\u7f6e\u5411\u91cf\u6a21\u578b'
+        : 'Embedding model is optional but recommended';
   }
 
   String _aiConfigDescription({
@@ -237,17 +251,17 @@ class _AiInsightSettingsSheetState
   }) {
     if (!hasGeneration && !hasEmbedding) {
       return isZh
-          ? '\u8bf7\u5148\u8865\u5168\u751f\u6210\u6a21\u578b\u548c embedding \u8bbe\u7f6e\uff0c\u518d\u5f00\u59cb\u5206\u6790\u3002'
-          : 'Set up the generation model and embedding model before starting analysis.';
+          ? '\u8bf7\u5148\u914d\u7f6e chat \u6a21\u578b\u3002\u914d\u7f6e\u597d chat \u540e\u5373\u53ef\u5f00\u59cb AI \u603b\u7ed3\uff0c\u4e4b\u540e\u518d\u8865\u5145\u5411\u91cf\u6a21\u578b\u53ef\u4ee5\u63d0\u5347\u5206\u6790\u51c6\u786e\u5ea6\u3002'
+          : 'Configure a chat model first. You can start AI summaries once chat is ready, and add an embedding model later for better analysis accuracy.';
     }
     if (!hasGeneration) {
       return isZh
-          ? '\u8bf7\u5148\u8865\u5168\u751f\u6210\u6a21\u578b\u914d\u7f6e\uff0c\u5305\u62ec API URL\u3001API Key \u548c\u6a21\u578b\u3002'
-          : 'Finish the generation model setup, including API URL, API key, and model.';
+          ? '\u5f53\u524d\u8fd8\u7f3a chat \u6a21\u578b\uff0c\u6682\u65f6\u8fd8\u4e0d\u80fd\u5f00\u59cb AI \u603b\u7ed3\u3002'
+          : 'A chat model is still missing, so AI summaries cannot start yet.';
     }
     return isZh
-        ? '\u8bf7\u5148\u914d\u7f6e embedding \u670d\u52a1\u548c\u6a21\u578b\uff0c\u7136\u540e\u518d\u5f00\u59cb\u5206\u6790\u3002'
-        : 'Configure the embedding service and model before starting analysis.';
+        ? '\u5f53\u524d\u5df2\u914d\u7f6e chat \u6a21\u578b\uff0c\u53ef\u4ee5\u5f00\u59cb AI \u603b\u7ed3\uff1b\u4f46\u672a\u914d\u7f6e\u5411\u91cf\u6a21\u578b\uff0cAI \u5206\u6790\u51c6\u786e\u5ea6\u4f1a\u964d\u4f4e\u3002'
+        : 'Chat is configured, so AI summaries can start now. Without an embedding model, analysis accuracy may be lower.';
   }
 
   String _promptSectionTitle(bool isZh) {
@@ -286,7 +300,6 @@ class _AiInsightSettingsSheetState
     final minHeight = mediaQuery.size.height * 0.5;
     final hasGeneration = _hasGenerationConfig(settings);
     final hasEmbedding = _hasEmbeddingConfig(settings);
-    final hasRequiredAiConfig = _hasRequiredAiConfig(settings);
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
 
@@ -515,7 +528,7 @@ class _AiInsightSettingsSheetState
                             ),
                           ),
                         ),
-                        if (!hasRequiredAiConfig) ...[
+                        if (!hasGeneration || !hasEmbedding) ...[
                           const SizedBox(height: 16),
                           Divider(color: border),
                           const SizedBox(height: 16),
@@ -540,7 +553,11 @@ class _AiInsightSettingsSheetState
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        _aiConfigTitle(isZh),
+                                        _aiConfigTitle(
+                                          isZh: isZh,
+                                          hasGeneration: hasGeneration,
+                                          hasEmbedding: hasEmbedding,
+                                        ),
                                         style: TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.w700,

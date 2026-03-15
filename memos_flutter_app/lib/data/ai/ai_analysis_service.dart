@@ -194,26 +194,18 @@ class AiAnalysisService {
     final effectiveSettings = _currentSettings(settings);
     final generationProfile = _resolveGenerationProfile(effectiveSettings);
     final embeddingProfile = _resolveEmbeddingProfile(effectiveSettings);
+    final hasEmbeddingConfig =
+        embeddingProfile != null &&
+        embeddingProfile.baseUrl.trim().isNotEmpty &&
+        embeddingProfile.model.trim().isNotEmpty;
     final embeddingFailureGuard = _EmbeddingFailureGuard(language: language);
     if (generationProfile == null ||
         generationProfile.baseUrl.trim().isEmpty ||
         generationProfile.model.trim().isEmpty) {
       throw StateError(
-        trByLanguage(
+        _generationConfigurationError(
           language: language,
-          zh: '请先配置可用的生成模型。',
-          en: 'Please configure a generation model first.',
-        ),
-      );
-    }
-    if (embeddingProfile == null ||
-        embeddingProfile.baseUrl.trim().isEmpty ||
-        embeddingProfile.model.trim().isEmpty) {
-      throw StateError(
-        trByLanguage(
-          language: language,
-          zh: '请先配置 embedding provider 和 model。',
-          en: 'Please configure an embedding provider and model first.',
+          hasEmbeddingConfig: hasEmbeddingConfig,
         ),
       );
     }
@@ -221,14 +213,16 @@ class AiAnalysisService {
     final startTimeSec = _rangeStart(range);
     final endTimeSecExclusive = _rangeEndExclusive(range);
     reportProgress(0.18);
-    await _ensureIndexesForRange(
-      language: language,
-      settings: effectiveSettings,
-      profile: embeddingProfile,
-      startTimeSec: startTimeSec,
-      endTimeSecExclusive: endTimeSecExclusive,
-      failureGuard: embeddingFailureGuard,
-    );
+    if (hasEmbeddingConfig) {
+      await _ensureIndexesForRange(
+        language: language,
+        settings: effectiveSettings,
+        profile: embeddingProfile,
+        startTimeSec: startTimeSec,
+        endTimeSecExclusive: endTimeSecExclusive,
+        failureGuard: embeddingFailureGuard,
+      );
+    }
     reportProgress(0.34);
 
     final taskUid = generateUid();
@@ -243,7 +237,9 @@ class AiAnalysisService {
       includeProtected: includeProtected,
       promptTemplate: promptTemplate.trim(),
       generationProfileKey: generationProfile.profileKey,
-      embeddingProfileKey: embeddingProfile.profileKey,
+      embeddingProfileKey: hasEmbeddingConfig
+          ? embeddingProfile.profileKey
+          : '',
       retrievalProfile: <String, dynamic>{
         'candidate_limit': _candidateChunkLimit,
         'top_per_intent': _topChunksPerIntent,
@@ -253,7 +249,9 @@ class AiAnalysisService {
         'max_thread_support_chunks': _maxThreadSupportChunks,
         'max_chunks_per_memo_per_thread': _maxChunksPerMemoPerThread,
         'min_distinct_memos_per_thread': _minDistinctMemosPerThread,
-        'threaded_retrieval': true,
+        'threaded_retrieval': hasEmbeddingConfig,
+        'retrieval_mode': hasEmbeddingConfig ? 'embedding' : 'direct',
+        'degraded_without_embedding': !hasEmbeddingConfig,
         'include_public': includePublic,
         'include_private': includePrivate,
         'include_protected': includeProtected,
@@ -270,17 +268,26 @@ class AiAnalysisService {
         taskId,
         status: AiTaskStatus.retrieving,
       );
-      final retrieval = await _retrieveEmotionMapEvidence(
-        language: language,
-        settings: effectiveSettings,
-        profile: embeddingProfile,
-        startTimeSec: startTimeSec,
-        endTimeSecExclusive: endTimeSecExclusive,
-        includePublic: includePublic,
-        includePrivate: includePrivate,
-        includeProtected: includeProtected,
-        failureGuard: embeddingFailureGuard,
-      );
+      final retrieval = hasEmbeddingConfig
+          ? await _retrieveEmotionMapEvidence(
+              language: language,
+              settings: effectiveSettings,
+              profile: embeddingProfile,
+              startTimeSec: startTimeSec,
+              endTimeSecExclusive: endTimeSecExclusive,
+              includePublic: includePublic,
+              includePrivate: includePrivate,
+              includeProtected: includeProtected,
+              failureGuard: embeddingFailureGuard,
+            )
+          : await _buildDirectEmotionMapEvidence(
+              language: language,
+              startTimeSec: startTimeSec,
+              endTimeSecExclusive: endTimeSecExclusive,
+              includePublic: includePublic,
+              includePrivate: includePrivate,
+              includeProtected: includeProtected,
+            );
       reportProgress(0.68);
       if (retrieval.candidates.isEmpty) {
         throw StateError(
@@ -334,6 +341,24 @@ class AiAnalysisService {
       );
       rethrow;
     }
+  }
+
+  String _generationConfigurationError({
+    required AppLanguage language,
+    required bool hasEmbeddingConfig,
+  }) {
+    if (!hasEmbeddingConfig) {
+      return trByLanguage(
+        language: language,
+        zh: 'AI 还没有配置，请先配置可用的聊天模型。',
+        en: 'AI is not configured yet. Please configure a working chat model first.',
+      );
+    }
+    return trByLanguage(
+      language: language,
+      zh: '请先配置可用的聊天模型。',
+      en: 'Please configure a generation model first.',
+    );
   }
 
   Future<void> _ensureIndexesForRange({
@@ -569,6 +594,7 @@ class AiAnalysisService {
         .toList(growable: false);
     if (candidates.isEmpty) {
       return const _RetrievalBundle(
+        mode: 'embedding',
         candidates: <AiEvidenceCandidate>[],
         threads: <_RetrievalThreadBundle>[],
       );
@@ -672,7 +698,124 @@ class AiAnalysisService {
       }
     }
 
-    return _RetrievalBundle(candidates: collected, threads: threads);
+    return _RetrievalBundle(
+      mode: 'embedding',
+      candidates: collected,
+      threads: threads,
+    );
+  }
+
+  Future<_RetrievalBundle> _buildDirectEmotionMapEvidence({
+    required AppLanguage language,
+    required int startTimeSec,
+    required int endTimeSecExclusive,
+    required bool includePublic,
+    required bool includePrivate,
+    required bool includeProtected,
+  }) async {
+    final rows = await _repository.listMemoRowsForAi(
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+    );
+    final filteredRows =
+        rows
+            .where(
+              (row) => _memoRowAllowed(
+                row,
+                includePublic: includePublic,
+                includePrivate: includePrivate,
+                includeProtected: includeProtected,
+              ),
+            )
+            .toList(growable: false)
+          ..sort(
+            (left, right) =>
+                _memoSortTimestamp(right).compareTo(_memoSortTimestamp(left)),
+          );
+
+    final chunkRows =
+        <({String memoUid, List<AiChunkDraft> chunks, List<int> chunkIds})>[];
+    for (final row in filteredRows) {
+      final memoUid = ((row['uid'] as String?) ?? '').trim();
+      if (memoUid.isEmpty) {
+        continue;
+      }
+      final chunks = _chunkMemo(row);
+      if (chunks.isEmpty) {
+        continue;
+      }
+      final chunkIds = await _repository.insertActiveChunks(
+        memoUid: memoUid,
+        chunks: chunks,
+      );
+      if (chunkIds.isEmpty) {
+        continue;
+      }
+      chunkRows.add((memoUid: memoUid, chunks: chunks, chunkIds: chunkIds));
+    }
+
+    final candidates = <AiEvidenceCandidate>[];
+    var evidenceCounter = 0;
+
+    for (
+      var round = 0;
+      round < _maxChunksPerMemo && candidates.length < _maxMergedChunks;
+      round++
+    ) {
+      for (var memoIndex = 0; memoIndex < chunkRows.length; memoIndex++) {
+        if (candidates.length >= _maxMergedChunks) {
+          break;
+        }
+        final chunkRow = chunkRows[memoIndex];
+        if (chunkRow.chunks.length <= round) {
+          continue;
+        }
+        final chunk = chunkRow.chunks[round];
+        evidenceCounter += 1;
+        candidates.add(
+          AiEvidenceCandidate(
+            evidenceKey: 'e$evidenceCounter',
+            sectionKey: 'main_thread',
+            threadKey: 'main_thread',
+            threadHint: _directRetrievalThreadHint(language),
+            sourceThemeKey: 'direct_reading',
+            memoUid: chunkRow.memoUid,
+            chunkId: chunkRow.chunkIds[round],
+            quoteText: chunk.content,
+            charStart: chunk.charStart,
+            charEnd: chunk.charEnd,
+            relevanceScore: _directRetrievalScore(
+              memoIndex: memoIndex,
+              round: round,
+              contentLength: chunk.content.length,
+            ),
+            memoCreateTime: chunk.memoCreateTime,
+            memoVisibility: chunk.memoVisibility,
+          ),
+        );
+      }
+    }
+
+    if (candidates.isEmpty) {
+      return const _RetrievalBundle(
+        mode: 'direct',
+        candidates: <AiEvidenceCandidate>[],
+        threads: <_RetrievalThreadBundle>[],
+      );
+    }
+
+    return _RetrievalBundle(
+      mode: 'direct',
+      candidates: candidates,
+      threads: <_RetrievalThreadBundle>[
+        _RetrievalThreadBundle(
+          threadKey: 'main_thread',
+          sourceThemeKey: 'direct_reading',
+          evidences: candidates,
+          strength: 1.0,
+        ),
+      ],
+    );
   }
 
   Future<AiStructuredAnalysisResult> _generateEmotionMapResult({
@@ -1341,12 +1484,17 @@ class AiAnalysisService {
     final payload = <String, Object?>{
       'task': 'emotion_map_letter',
       'write_language': localeText,
+      'retrieval_mode': retrieval.mode,
       'date_range': {
         'start': range.start.toIso8601String(),
         'end': range.end.toIso8601String(),
       },
       'user_profile': settings.userProfile.trim(),
       'custom_prompt_template': promptTemplate.trim(),
+      if (retrieval.mode == 'direct')
+        'retrieval_note': prefersEnglishFor(language)
+            ? 'No embedding model is configured for this run. The evidence pack was selected directly from memo content in the chosen range, so stay conservative about hidden patterns and lean on what is clearly visible in the notes.'
+            : '本次未配置向量模型，证据片段是直接从所选时间范围内的笔记内容中挑选出来的。请更保守地判断隐含模式，尽量依据笔记里清晰可见的内容来写。',
       'writing_goal': prefersEnglishFor(language)
           ? 'Write a restrained letter-like reply for this stretch of time, not an analysis report.'
           : '请把结果写成一封写给这段时间的回信，而不是分析报告。',
@@ -1448,6 +1596,33 @@ class AiAnalysisService {
       }
     }
     return buffer.toString();
+  }
+
+  String _directRetrievalThreadHint(AppLanguage language) {
+    return trByLanguage(
+      language: language,
+      zh: '直接阅读模式：当前没有向量检索，这些片段是从所选时间范围中按内容与时间顺序挑选出来的。',
+      en: 'Direct reading mode: no embedding retrieval was available, so these fragments were selected directly from the chosen range.',
+    );
+  }
+
+  double _directRetrievalScore({
+    required int memoIndex,
+    required int round,
+    required int contentLength,
+  }) {
+    final recencyScore = math.max(0.12, 1.0 - (memoIndex * 0.08));
+    final densityBonus = math.min(0.28, contentLength / 1000);
+    final roundPenalty = round * 0.05;
+    return math.max(0.1, recencyScore + densityBonus - roundPenalty);
+  }
+
+  int _memoSortTimestamp(Map<String, dynamic> row) {
+    final updateTime = (row['update_time'] as int?) ?? 0;
+    if (updateTime > 0) {
+      return updateTime;
+    }
+    return (row['create_time'] as int?) ?? 0;
   }
 
   List<_IntentQuery> _emotionMapIntents(AppLanguage language) {
@@ -1884,8 +2059,13 @@ class _ScoredChunk {
 }
 
 class _RetrievalBundle {
-  const _RetrievalBundle({required this.candidates, required this.threads});
+  const _RetrievalBundle({
+    required this.mode,
+    required this.candidates,
+    required this.threads,
+  });
 
+  final String mode;
   final List<AiEvidenceCandidate> candidates;
   final List<_RetrievalThreadBundle> threads;
 }

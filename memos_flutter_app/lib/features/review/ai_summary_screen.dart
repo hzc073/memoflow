@@ -23,13 +23,11 @@ import '../../data/ai/ai_analysis_models.dart';
 import '../../data/ai/ai_provider_models.dart';
 import '../../data/ai/ai_route_config.dart';
 import '../../data/ai/ai_settings_models.dart';
-import '../../data/ai/ai_summary_service.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/memos/create_memo_outbox_payload.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
-import '../memos/memo_markdown.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../memos/recycle_bin_screen.dart';
@@ -71,9 +69,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   var _requestId = 0;
   var _selectedInsightId = AiInsightId.emotionMap;
   String? _selectedInsightTitleOverride;
-  AiSummaryResult? _summary;
   AiSavedAnalysisReport? _analysisReport;
-  var _insightExpanded = false;
   var _referencesExpanded = false;
   var _analysisProgress = 0.0;
   DateTimeRange? _reportRangeOverride;
@@ -129,7 +125,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
     setState(() {
       _view = _AiSummaryView.input;
-      _insightExpanded = false;
       _referencesExpanded = false;
       _reportRangeOverride = null;
     });
@@ -257,11 +252,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     if (!mounted || selection == null) return;
     setState(() {
       _analysisReport = selection.report;
-      _summary = null;
       _view = _AiSummaryView.report;
       _isLoading = false;
       _analysisProgress = 0.0;
-      _insightExpanded = false;
       _referencesExpanded = false;
       _selectedInsightId = selection.insightId;
       _selectedInsightTitleOverride = selection.titleOverride?.trim();
@@ -282,23 +275,19 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       routeId: AiTaskRouteId.analysisReport,
     );
     final hasEmbeddingConfig = hasConfiguredEmbeddingRoute(settings);
-    if (!hasEmbeddingConfig) {
-      showTopToast(
-        context,
-        isZh
-            ? '\u8bf7\u5148\u914d\u7f6e embedding \u6a21\u578b\u3002'
-            : 'Please configure an embedding model first.',
-      );
-      return;
-    }
     if (!hasGenerationConfig) {
       showTopToast(
         context,
-        isZh
-            ? '\u8bf7\u5148\u914d\u7f6e\u53ef\u7528\u7684\u751f\u6210\u6a21\u578b\u3002'
-            : 'Please configure a generation model first.',
+        _aiConfigPrimaryMessage(
+          isZh: isZh,
+          hasGenerationConfig: hasGenerationConfig,
+          hasEmbeddingConfig: hasEmbeddingConfig,
+        ),
       );
       return;
+    }
+    if (!hasEmbeddingConfig) {
+      showTopToast(context, _embeddingDegradedMessage(isZh: isZh));
     }
 
     final requestId = ++_requestId;
@@ -333,11 +322,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       if (!mounted || !_isLoading || requestId != _requestId) return;
       setState(() {
         _analysisReport = analysisResult;
-        _summary = null;
         _view = _AiSummaryView.report;
         _isLoading = false;
         _analysisProgress = 0.0;
-        _insightExpanded = false;
         _referencesExpanded = false;
       });
     } catch (e) {
@@ -414,35 +401,25 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     });
   }
 
-  String _buildSummaryText({
-    required AiSummaryResult summary,
-    required bool forMemo,
+  String _aiConfigPrimaryMessage({
+    required bool isZh,
+    required bool hasGenerationConfig,
+    required bool hasEmbeddingConfig,
   }) {
-    final title = context.t.strings.legacy.msg_ai_summary_report;
-    final header = forMemo ? '# $title' : title;
-    final insights = summary.insights.isNotEmpty
-        ? summary.insights
-        : [context.t.strings.legacy.msg_no_summary_yet];
-    final moodTrend = summary.moodTrend.isNotEmpty
-        ? summary.moodTrend
-        : context.t.strings.legacy.msg_no_mood_trend;
-    final keywordText = summary.keywords.isNotEmpty
-        ? summary.keywords.map(_normalizeKeyword).join(' ')
-        : context.t.strings.legacy.msg_no_keywords;
-
-    final buffer = StringBuffer();
-    buffer.writeln(header);
-    buffer.writeln('${context.t.strings.legacy.msg_range}: ${_rangeLabel()}');
-    buffer.writeln('');
-    buffer.writeln(context.t.strings.legacy.msg_key_insights);
-    for (final insight in insights) {
-      buffer.writeln('- $insight');
+    if (!hasGenerationConfig && !hasEmbeddingConfig) {
+      return isZh
+          ? 'AI \u8fd8\u6ca1\u6709\u914d\u7f6e\uff0c\u8bf7\u5148\u914d\u7f6e chat \u6a21\u578b\u3002'
+          : 'AI is not configured yet. Please configure a chat model first.';
     }
-    buffer.writeln('');
-    buffer.writeln('${context.t.strings.legacy.msg_mood_trend}: $moodTrend');
-    buffer.writeln('');
-    buffer.writeln('${context.t.strings.legacy.msg_keywords}: $keywordText');
-    return buffer.toString().trim();
+    return isZh
+        ? '\u8bf7\u5148\u914d\u7f6e\u53ef\u7528\u7684 chat \u6a21\u578b\u3002'
+        : 'Please configure a working chat model first.';
+  }
+
+  String _embeddingDegradedMessage({required bool isZh}) {
+    return isZh
+        ? '\u5f53\u524d\u672a\u914d\u7f6e\u5411\u91cf\u6a21\u578b\uff0c\u4ecd\u53ef\u4ee5\u751f\u6210 AI \u603b\u7ed3\uff0c\u4f46\u5206\u6790\u51c6\u786e\u5ea6\u4f1a\u964d\u4f4e\u3002'
+        : 'No embedding model is configured. AI summaries can still run, but analysis accuracy may be lower.';
   }
 
   String _buildStructuredReportText({
@@ -493,14 +470,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
   Future<void> _shareReport() async {
     final report = _analysisReport;
-    final summary = _summary;
-    if (summary == null && report == null) {
+    if (report == null) {
       showTopToast(context, context.t.strings.legacy.msg_no_summary_share);
       return;
     }
-    final text = report != null
-        ? _buildStructuredReportText(report: report, forMemo: false)
-        : _buildSummaryText(summary: summary!, forMemo: false);
+    final text = _buildStructuredReportText(report: report, forMemo: false);
     try {
       await SharePlus.instance.share(
         ShareParams(
@@ -520,8 +494,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
   Future<void> _sharePoster() async {
     final report = _analysisReport;
-    final summary = _summary;
-    if (summary == null && report == null) {
+    if (report == null) {
       showTopToast(context, context.t.strings.legacy.msg_no_summary_share);
       return;
     }
@@ -561,9 +534,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
-          text: report != null
-              ? _buildStructuredReportText(report: report, forMemo: false)
-              : _buildSummaryText(summary: summary!, forMemo: false),
+          text: _buildStructuredReportText(report: report, forMemo: false),
           subject: context.t.strings.legacy.msg_ai_summary_report,
         ),
       );
@@ -579,15 +550,12 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
   Future<void> _saveAsMemo() async {
     final report = _analysisReport;
-    final summary = _summary;
-    if (summary == null && report == null) {
+    if (report == null) {
       showTopToast(context, context.t.strings.legacy.msg_no_summary_save);
       return;
     }
 
-    final content = report != null
-        ? _buildStructuredReportText(report: report, forMemo: true)
-        : _buildSummaryText(summary: summary!, forMemo: true);
+    final content = _buildStructuredReportText(report: report, forMemo: true);
     final uid = generateUid();
     final now = DateTime.now();
     final tags = extractTags(content);
@@ -647,48 +615,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     return _reportRangeOverride ?? resolveAiInsightRange(_range, _customRange);
   }
 
-  String _rangeLabel() {
-    return formatAiInsightRangeLabel(_effectiveRange());
-  }
-
-  String _reportTitle() {
-    final range = _effectiveRange();
-    final days = range.end.difference(range.start).inDays + 1;
-    if (_range == AiInsightRange.last30Days || days > 7 && days <= 31) {
-      return context.t.strings.legacy.msg_month;
-    }
-    if (_range == AiInsightRange.last7Days || days == 7) {
-      return context.t.strings.legacy.msg_week;
-    }
-    return context.t.strings.legacy.msg_period_review;
-  }
-
   String _reportRangeLabel() {
     return formatAiInsightReportRangeLabel(context, _effectiveRange());
-  }
-
-  String _buildInsightMarkdown(AiSummaryResult summary) {
-    final insights = summary.insights.isNotEmpty
-        ? summary.insights
-        : [context.t.strings.legacy.msg_no_summary_yet];
-    final moodTrend = summary.moodTrend.isNotEmpty
-        ? summary.moodTrend
-        : context.t.strings.legacy.msg_no_mood_trend;
-    final buffer = StringBuffer();
-    buffer.writeln('### ${context.t.strings.legacy.msg_key_insights}');
-    buffer.writeln('');
-    buffer.writeln('> ${context.t.strings.legacy.msg_intro}: $moodTrend');
-    buffer.writeln('');
-    for (var i = 0; i < insights.length; i++) {
-      final text = insights[i].trim();
-      if (text.isEmpty) continue;
-      if (i == 0) {
-        buffer.writeln('- **$text**');
-      } else {
-        buffer.writeln('- $text');
-      }
-    }
-    return buffer.toString().trim();
   }
 
   PreferredSizeWidget _buildAppBar({
@@ -793,7 +721,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             border: border,
             textMain: textMain,
             textMuted: textMuted,
-            summary: _summary ?? AiSummaryResult.empty,
             report: _analysisReport,
           )
         else
@@ -949,6 +876,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                   if (!hasGenerationConfig || !hasEmbeddingConfig) ...[
                     const SizedBox(height: 18),
                     _AiSettingsBanner(
+                      hasGenerationConfig: hasGenerationConfig,
+                      hasEmbeddingConfig: hasEmbeddingConfig,
                       textMain: textMain,
                       textMuted: textMuted,
                       borderColor: border,
@@ -973,103 +902,18 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color border,
     required Color textMain,
     required Color textMuted,
-    required AiSummaryResult summary,
     required AiSavedAnalysisReport? report,
   }) {
-    if (report != null) {
-      return _buildLetterReportBody(
-        bg: bg,
-        card: card,
-        border: border,
-        textMain: textMain,
-        textMuted: textMuted,
-        report: report,
-      );
+    if (report == null) {
+      return const SizedBox.shrink();
     }
-
-    final width = MediaQuery.sizeOf(context).width;
-    final horizontalPadding = width < 720 ? 20.0 : 28.0;
-    final markdown = _buildInsightMarkdown(summary);
-    final shouldCollapse = markdown.length > 320;
-    final showCollapsed = shouldCollapse && !_insightExpanded;
-    final displayedMarkdown = showCollapsed
-        ? '${markdown.substring(0, 320).trim()}...'
-        : markdown;
-
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 132),
-      children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: width < 980 ? width : 860),
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                24,
-                horizontalPadding,
-                24,
-              ),
-              child: RepaintBoundary(
-                key: _reportBoundaryKey,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                  decoration: BoxDecoration(
-                    color: card,
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _reportTitle(),
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: textMain,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _reportRangeLabel(),
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.6,
-                          color: textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      MemoMarkdown(data: displayedMarkdown),
-                      if (shouldCollapse) ...[
-                        const SizedBox(height: 8),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _insightExpanded = !_insightExpanded;
-                            });
-                          },
-                          child: Text(
-                            _insightExpanded
-                                ? context.t.strings.legacy.msg_collapse
-                                : context.t.strings.legacy.msg_expand,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+    return _buildLetterReportBody(
+      bg: bg,
+      card: card,
+      border: border,
+      textMain: textMain,
+      textMuted: textMuted,
+      report: report,
     );
   }
 
@@ -1145,13 +989,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         ),
       ),
     );
-  }
-
-  String _normalizeKeyword(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return trimmed;
-    if (trimmed.startsWith('#')) return trimmed;
-    return '#$trimmed';
   }
 
   String _analysisProgressLabel(double progress) {
@@ -2119,6 +1956,8 @@ class _AiCustomInsightCard extends StatelessWidget {
 
 class _AiSettingsBanner extends StatelessWidget {
   const _AiSettingsBanner({
+    required this.hasGenerationConfig,
+    required this.hasEmbeddingConfig,
     required this.textMain,
     required this.textMuted,
     required this.borderColor,
@@ -2126,6 +1965,8 @@ class _AiSettingsBanner extends StatelessWidget {
     required this.onTap,
   });
 
+  final bool hasGenerationConfig;
+  final bool hasEmbeddingConfig;
   final Color textMain;
   final Color textMuted;
   final Color borderColor;
@@ -2136,6 +1977,8 @@ class _AiSettingsBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
+    final title = _title(isZh);
+    final description = _description(isZh);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -2164,9 +2007,7 @@ class _AiSettingsBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isZh
-                      ? 'AI \u8bbe\u7f6e\u8fd8\u6ca1\u914d\u597d'
-                      : 'AI settings are incomplete',
+                  title,
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -2175,9 +2016,7 @@ class _AiSettingsBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  isZh
-                      ? '\u53ef\u4ee5\u5148\u8df3\u8f6c\u53bb AI \u8bbe\u7f6e\uff0c\u8865\u5168\u751f\u6210\u548c embedding \u914d\u7f6e\u3002'
-                      : 'Open AI settings to finish the generation and embedding setup.',
+                  description,
                   style: TextStyle(fontSize: 13, height: 1.5, color: textMuted),
                 ),
               ],
@@ -2197,5 +2036,37 @@ class _AiSettingsBanner extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _title(bool isZh) {
+    if (!hasGenerationConfig && !hasEmbeddingConfig) {
+      return isZh
+          ? 'AI \u8fd8\u6ca1\u6709\u914d\u7f6e'
+          : 'AI is not configured yet';
+    }
+    if (!hasGenerationConfig) {
+      return isZh
+          ? '\u8fd8\u7f3a chat \u6a21\u578b\u914d\u7f6e'
+          : 'Chat model setup is missing';
+    }
+    return isZh
+        ? '\u672a\u914d\u7f6e\u5411\u91cf\u6a21\u578b'
+        : 'Embedding model is optional but recommended';
+  }
+
+  String _description(bool isZh) {
+    if (!hasGenerationConfig && !hasEmbeddingConfig) {
+      return isZh
+          ? '\u8bf7\u5148\u914d\u7f6e chat \u6a21\u578b\u3002\u914d\u597d chat \u540e\u5373\u53ef\u5f00\u59cb AI \u603b\u7ed3\uff0c\u8865\u5145\u5411\u91cf\u6a21\u578b\u53ef\u4ee5\u63d0\u5347\u5206\u6790\u51c6\u786e\u5ea6\u3002'
+          : 'Configure a chat model first. You can start AI summaries once chat is ready, and add an embedding model later for better analysis accuracy.';
+    }
+    if (!hasGenerationConfig) {
+      return isZh
+          ? '\u5f53\u524d\u8fd8\u7f3a chat \u6a21\u578b\uff0c\u6682\u65f6\u8fd8\u4e0d\u80fd\u5f00\u59cb AI \u603b\u7ed3\u3002'
+          : 'A chat model is still missing, so AI summaries cannot start yet.';
+    }
+    return isZh
+        ? '\u5f53\u524d\u5df2\u914d\u7f6e chat \u6a21\u578b\uff0c\u53ef\u4ee5\u5f00\u59cb AI \u603b\u7ed3\uff1b\u4f46\u672a\u914d\u7f6e\u5411\u91cf\u6a21\u578b\uff0cAI \u5206\u6790\u51c6\u786e\u5ea6\u4f1a\u964d\u4f4e\u3002'
+        : 'Chat is configured, so AI summaries can start now. Without an embedding model, analysis accuracy may be lower.';
   }
 }
