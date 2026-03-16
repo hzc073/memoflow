@@ -12,6 +12,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/image_error_logger.dart';
+import '../../core/log_sanitizer.dart';
 import '../../core/tags.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/tags/tag_color_lookup.dart';
@@ -444,7 +445,9 @@ class MemoMarkdown extends StatelessWidget {
         },
       );
       assert(() {
-        debugPrint('MemoMarkdown image failed: $url error=$error');
+        final safeUrl = LogSanitizer.redactWithFingerprint(url, kind: 'source');
+        final safeError = LogSanitizer.sanitizeText(error.toString());
+        debugPrint('MemoMarkdown image failed: $safeUrl error=$safeError');
         return true;
       }());
     }

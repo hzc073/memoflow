@@ -15,6 +15,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import 'debug_ephemeral_storage.dart';
 import '../data/logs/log_manager.dart';
+import 'log_sanitizer.dart';
 
 const int _blankSpreadThreshold = 24;
 const double _blankStdDevThreshold = 6.0;
@@ -23,6 +24,28 @@ const double _brightnessWeight = 0.1;
 const double _darkMeanThreshold = 35.0;
 const double _darkPenalty = 0.6;
 const double _preferBrightThreshold = 50.0;
+
+Map<String, Object?> _remoteVideoLogContext(
+  String url, {
+  bool? hasHeaders,
+  int? bytes,
+}) {
+  final context = <String, Object?>{
+    'sourceKind': 'remote',
+    'sourceFingerprint': LogSanitizer.redactWithFingerprint(
+      url,
+      kind: 'source',
+    ),
+  };
+  if (hasHeaders != null) {
+    context['hasHeaders'] = hasHeaders;
+  }
+  if (bytes != null) {
+    context['bytes'] = bytes;
+  }
+  return context;
+}
+
 const Duration _pendingPollInterval = Duration(milliseconds: 250);
 const Duration _pendingMaxWait = Duration(seconds: 35);
 const Duration _mediaKitOpenTimeout = Duration(seconds: 12);
@@ -391,7 +414,11 @@ class VideoThumbnailCache {
       context: {
         'key': key,
         'hasLocal': localFile != null,
-        'videoUrl': videoUrl ?? '',
+        if ((videoUrl ?? '').trim().isNotEmpty)
+          'sourceFingerprint': LogSanitizer.redactWithFingerprint(
+            videoUrl!,
+            kind: 'source',
+          ),
       },
     );
 
@@ -406,7 +433,11 @@ class VideoThumbnailCache {
         context: {
           'key': key,
           'hasLocal': localFile != null,
-          'videoUrl': videoUrl ?? '',
+          if ((videoUrl ?? '').trim().isNotEmpty)
+            'sourceFingerprint': LogSanitizer.redactWithFingerprint(
+              videoUrl!,
+              kind: 'source',
+            ),
         },
       );
       return null;
@@ -500,10 +531,10 @@ class VideoThumbnailCache {
       }
       LogManager.instance.warn(
         'Video thumbnail download failed, fallback to direct',
-        context: {
-          'videoUrl': url,
-          'hasHeaders': headers != null && headers.isNotEmpty,
-        },
+        context: _remoteVideoLogContext(
+          url,
+          hasHeaders: headers != null && headers.isNotEmpty,
+        ),
       );
       return _tryThumbnailData(source: url, headers: headers);
     }
@@ -530,7 +561,7 @@ class VideoThumbnailCache {
 
     LogManager.instance.warn(
       'Video thumbnail fallback to direct after file attempt',
-      context: {'videoUrl': url},
+      context: _remoteVideoLogContext(url),
     );
     return _tryThumbnailData(source: url, headers: headers);
   }
@@ -942,7 +973,7 @@ class VideoThumbnailCache {
       final fileBytes = await _safeFileLength(file);
       LogManager.instance.debug(
         'Video thumbnail download ok',
-        context: {'videoUrl': url, 'bytes': fileBytes},
+        context: _remoteVideoLogContext(url, bytes: fileBytes),
       );
       return file;
     } catch (e, stackTrace) {
@@ -950,7 +981,7 @@ class VideoThumbnailCache {
         'Video thumbnail download failed',
         error: e,
         stackTrace: stackTrace,
-        context: {'videoUrl': url, 'hasHeaders': headers.isNotEmpty},
+        context: _remoteVideoLogContext(url, hasHeaders: headers.isNotEmpty),
       );
       return null;
     }

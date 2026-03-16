@@ -914,10 +914,14 @@ GROUP BY type, state;
     return '   Pagination: pageSize=$pageSize, pageToken=$pageToken, nextPageToken=$nextToken, memosCount=$memosCount';
   }
 
-  String _formatToken(String? value) {
+  static String formatPaginationTokenForLog(String? value) {
     if (value == null) return '-';
     if (value.isEmpty) return '""';
-    return value;
+    return LogSanitizer.redactOpaque(value);
+  }
+
+  String _formatToken(String? value) {
+    return formatPaginationTokenForLog(value);
   }
 
   static const Map<int, String> _reasonPhrases = {

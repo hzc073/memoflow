@@ -58,7 +58,9 @@ class _VaultSecurityStatusScreenState
     if (!mounted) return;
     setState(() => _loading = false);
     if (kDebugMode) {
-      debugPrint('Vault status load failed: $error');
+      debugPrint(
+        'Vault status load failed: ${LogSanitizer.sanitizeText(error.toString())}',
+      );
     }
     final message =
         error is SyncError

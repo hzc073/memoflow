@@ -1519,7 +1519,7 @@ class _ExportWriter {
       } catch (error) {
         logEvent?.call(
           'Export cleanup failed',
-          detail: prevDir.path,
+          detail: LogSanitizer.redactPathLike(prevDir.path),
           error: error,
         );
       }
@@ -1531,7 +1531,7 @@ class _ExportWriter {
       } catch (error) {
         logEvent?.call(
           'Export staging cleanup failed',
-          detail: stagingRoot.path,
+          detail: LogSanitizer.redactPathLike(stagingRoot.path),
           error: error,
         );
       }

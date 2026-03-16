@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:flutter/painting.dart';
 
 import '../data/logs/log_manager.dart';
+import 'log_sanitizer.dart';
 
 const Duration _imageErrorThrottle = Duration(seconds: 20);
 const int _maxImageErrorKeys = 240;
@@ -19,20 +20,28 @@ void logImageLoadError({
 }) {
   final normalizedSource = source.trim();
   final statusCode = _extractStatusCode(error);
-  final key = '$scope|$normalizedSource|${error.runtimeType}|${statusCode ?? ''}';
+  final key =
+      '$scope|$normalizedSource|${error.runtimeType}|${statusCode ?? ''}';
   if (!_shouldLogImageError(key)) return;
 
   final errorText = error.toString();
   final uri = Uri.tryParse(normalizedSource);
+  final path = uri?.path.trim() ?? '';
   final context = <String, Object?>{
     'scope': scope,
     'url': normalizedSource,
     'errorType': error.runtimeType.toString(),
-    'errorText': _truncate(errorText, 280),
+    'errorText': LogSanitizer.sanitizeText(_truncate(errorText, 280)),
     'hasScheme': uri?.hasScheme ?? false,
     'scheme': uri?.scheme,
     'host': uri?.host,
-    'path': uri?.path,
+    'hasPath': path.isNotEmpty,
+    'pathDepth': path.isEmpty
+        ? 0
+        : uri!.pathSegments
+              .where((segment) => segment.trim().isNotEmpty)
+              .length,
+    'pathFingerprint': path.isEmpty ? '' : LogSanitizer.redactPathLike(path),
     'isSvg': _looksLikeSvg(normalizedSource, errorText),
     'isFileApi': _looksLikeFileApi(uri),
     'possibleCause': _inferCause(
@@ -57,11 +66,7 @@ void logImageLoadError({
     context.addAll(extraContext);
   }
 
-  LogManager.instance.warn(
-    'Image load failed',
-    error: error,
-    context: context,
-  );
+  LogManager.instance.warn('Image load failed', error: error, context: context);
 }
 
 bool _shouldLogImageError(String key) {

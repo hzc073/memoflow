@@ -274,17 +274,17 @@ class LogBundleExporter {
     return true;
   }
 
-  String _sanitizeTextLine(String raw, int maxLength) {
+  static String sanitizeTextLineForExport(String raw, {int? maxLength}) {
     var sanitized = LogSanitizer.sanitizeText(raw);
     sanitized = sanitized.replaceAll('\n', r'\n').trimRight();
-    return _truncateField(sanitized, maxLength);
+    return _truncateFieldStatic(sanitized, maxLength ?? maxLogLineChars);
   }
 
-  String _sanitizeJsonLine(
-    String raw,
-    int maxLength,
-    void Function(DateTime?) onTimestamp,
-  ) {
+  static String sanitizeJsonLineForExport(
+    String raw, {
+    int? maxLength,
+    void Function(DateTime?)? onTimestamp,
+  }) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return '';
     try {
@@ -292,18 +292,41 @@ class LogBundleExporter {
       if (decoded is Map) {
         final timeValue = decoded['time'];
         if (timeValue is String) {
-          onTimestamp(DateTime.tryParse(timeValue));
+          onTimestamp?.call(DateTime.tryParse(timeValue));
         }
       }
       final sanitized = LogSanitizer.sanitizeJson(decoded);
-      final text = _encodeJson(sanitized);
-      return _truncateField(text, maxLength);
+      final text = _encodeJsonStatic(sanitized);
+      return _truncateFieldStatic(text, maxLength ?? maxJsonLineChars);
     } catch (_) {
-      return _sanitizeTextLine(trimmed, maxLength);
+      return sanitizeTextLineForExport(
+        trimmed,
+        maxLength: maxLength ?? maxJsonLineChars,
+      );
     }
   }
 
-  String _truncateField(String value, int maxLength) {
+  String _sanitizeTextLine(String raw, int maxLength) {
+    return sanitizeTextLineForExport(raw, maxLength: maxLength);
+  }
+
+  String _sanitizeJsonLine(
+    String raw,
+    int maxLength,
+    void Function(DateTime?) onTimestamp,
+  ) {
+    return sanitizeJsonLineForExport(
+      raw,
+      maxLength: maxLength,
+      onTimestamp: onTimestamp,
+    );
+  }
+
+  String _encodeJson(Object? value) {
+    return _encodeJsonStatic(value);
+  }
+
+  static String _truncateFieldStatic(String value, int maxLength) {
     if (value.length <= maxLength) return value;
     final marker =
         '...(truncated to $maxLength chars, original ${value.length})';
@@ -312,7 +335,7 @@ class LogBundleExporter {
     return '${value.substring(0, available)}$marker';
   }
 
-  String _encodeJson(Object? value) {
+  static String _encodeJsonStatic(Object? value) {
     try {
       return jsonEncode(value);
     } catch (_) {

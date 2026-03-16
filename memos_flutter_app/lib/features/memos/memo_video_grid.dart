@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/log_sanitizer.dart';
 import '../../core/url.dart';
 import '../../core/video_thumbnail_cache.dart';
 import '../../data/logs/log_manager.dart';
@@ -36,6 +37,14 @@ class MemoVideoEntry {
 String memoVideoThumbnailWidgetKey(MemoVideoEntry entry) {
   final source = (entry.localFile?.path ?? entry.videoUrl ?? '').trim();
   return '${entry.id}|${entry.size}|$source';
+}
+
+String _memoVideoEntryFingerprint(String raw) {
+  return LogSanitizer.redactWithFingerprint(raw, kind: 'entry');
+}
+
+String _memoVideoPathFingerprint(String raw) {
+  return LogSanitizer.redactPathLike(raw);
 }
 
 List<MemoVideoEntry> collectMemoVideoEntries({
@@ -329,8 +338,9 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         _scheduleRetry(entry, token);
       }
       assert(() {
+        final entryFp = _memoVideoEntryFingerprint(_entryKey);
         debugPrint(
-          'Video thumbnail widget result | {entry: $_entryKey, hasBytes: false, bytes: 0, hasFile: ${_file != null}}',
+          'Video thumbnail widget result | {id: ${entry.id}, entryFingerprint: $entryFp, hasBytes: false, bytes: 0, hasFile: ${_file != null}}',
         );
         return true;
       }());
@@ -340,13 +350,18 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
         'Video thumbnail load failed',
         error: e,
         stackTrace: stackTrace,
-        context: {'entry': _entryKey},
+        context: {
+          'id': entry.id,
+          'entryFingerprint': _memoVideoEntryFingerprint(_entryKey),
+        },
       );
       setState(() => _loading = false);
       _scheduleRetry(entry, token);
       assert(() {
+        final entryFp = _memoVideoEntryFingerprint(_entryKey);
+        final safeError = LogSanitizer.sanitizeText(e.toString());
         debugPrint(
-          'Video thumbnail widget result | {entry: $_entryKey, error: $e}',
+          'Video thumbnail widget result | {id: ${entry.id}, entryFingerprint: $entryFp, error: $safeError}',
         );
         return true;
       }());
@@ -369,8 +384,9 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
           _previewRevision++;
         });
         assert(() {
+          final entryFp = _memoVideoEntryFingerprint(_entryKey);
           debugPrint(
-            'Video thumbnail widget bytes ready | {entry: $_entryKey, bytes: ${bytes.length}}',
+            'Video thumbnail widget bytes ready | {id: ${entry.id}, entryFingerprint: $entryFp, bytes: ${bytes.length}}',
           );
           return true;
         }());
@@ -454,7 +470,10 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
             'Video thumbnail file decode failed',
             error: error,
             stackTrace: stackTrace,
-            context: {'id': entry.id, 'path': file.path},
+            context: {
+              'id': entry.id,
+              'pathFingerprint': _memoVideoPathFingerprint(file.path),
+            },
           );
           return placeholder(icon: Icons.broken_image_outlined);
         },
@@ -471,7 +490,13 @@ class _AttachmentVideoThumbnailState extends State<AttachmentVideoThumbnail> {
             'Video thumbnail network decode failed',
             error: error,
             stackTrace: stackTrace,
-            context: {'id': entry.id, 'url': thumbnailUrl},
+            context: {
+              'id': entry.id,
+              'sourceFingerprint': LogSanitizer.redactWithFingerprint(
+                thumbnailUrl,
+                kind: 'source',
+              ),
+            },
           );
           return placeholder(icon: Icons.broken_image_outlined);
         },

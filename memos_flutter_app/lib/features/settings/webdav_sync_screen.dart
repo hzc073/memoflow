@@ -16,6 +16,7 @@ import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
 import '../../application/sync/webdav_backup_service.dart';
 import '../../core/app_localization.dart';
+import '../../core/log_sanitizer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';

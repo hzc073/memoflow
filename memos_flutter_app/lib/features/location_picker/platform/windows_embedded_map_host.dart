@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_windows/webview_windows.dart';
 
+import '../../../core/log_sanitizer.dart';
 import '../../../data/logs/log_manager.dart';
 import '../../../data/location/location_provider_bundle.dart';
 import '../../../data/location/models/canonical_coordinate.dart';
@@ -53,7 +54,10 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
 
   Future<void> _setup() async {
     try {
-      _logInfo('setup_start', context: {'provider': widget.bundle.provider.name});
+      _logInfo(
+        'setup_start',
+        context: {'provider': widget.bundle.provider.name},
+      );
       _logDebug('webview_initialize_start');
       await _webViewController.initialize();
       _logDebug('webview_initialize_done');
@@ -67,27 +71,32 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
         _diagnosticBootstrapScript,
       );
       _logDebug('diagnostic_script_done');
-      _messageSubscription = _webViewController.webMessage.listen((event) {
-        if (event is Map) {
-          _emitDecoded(Map<String, dynamic>.from(event));
-          return;
-        }
-        if (event is String) {
-          try {
-            final decoded = jsonDecode(event);
-            if (decoded is Map) {
-              _emitDecoded(Map<String, dynamic>.from(decoded));
-            }
-          } catch (_) {}
-        }
-      }, onError: (Object error, StackTrace stackTrace) {
-        _logWarn(
-          'bridge_message_error',
-          error: error,
-          stackTrace: stackTrace,
-        );
-      });
-      _loadingStateSubscription = _webViewController.loadingState.listen((state) {
+      _messageSubscription = _webViewController.webMessage.listen(
+        (event) {
+          if (event is Map) {
+            _emitDecoded(Map<String, dynamic>.from(event));
+            return;
+          }
+          if (event is String) {
+            try {
+              final decoded = jsonDecode(event);
+              if (decoded is Map) {
+                _emitDecoded(Map<String, dynamic>.from(decoded));
+              }
+            } catch (_) {}
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          _logWarn(
+            'bridge_message_error',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        },
+      );
+      _loadingStateSubscription = _webViewController.loadingState.listen((
+        state,
+      ) {
         _logDebug('loading_state', context: {'state': state.name});
         if (state == LoadingState.navigationCompleted) {
           _loaded = true;
@@ -116,7 +125,14 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     } on PlatformException catch (error) {
       _logWarn(
         'setup_platform_exception',
-        context: {'code': error.code, 'message': error.message},
+        context: {
+          'code': error.code,
+          if ((error.message ?? '').trim().isNotEmpty)
+            'messageRedacted': LogSanitizer.redactSemanticText(
+              error.message!,
+              kind: 'message',
+            ),
+        },
         error: error,
       );
       widget.controller.emit(
@@ -128,7 +144,12 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     } catch (error, stackTrace) {
       _logWarn(
         'setup_unexpected_exception',
-        context: {'error': error.toString()},
+        context: {
+          'errorRedacted': LogSanitizer.redactSemanticText(
+            error.toString(),
+            kind: 'message',
+          ),
+        },
         error: error,
         stackTrace: stackTrace,
       );
@@ -148,7 +169,9 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     unawaited(_loadingStateSubscription?.cancel());
     unawaited(_loadErrorSubscription?.cancel());
     if (_mappedFolderPath != null) {
-      unawaited(_webViewController.removeVirtualHostNameMapping(_virtualHostName));
+      unawaited(
+        _webViewController.removeVirtualHostNameMapping(_virtualHostName),
+      );
     }
     unawaited(_webViewController.dispose());
     super.dispose();
@@ -175,10 +198,7 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
       _logDebug('prepare_mapped_html_done', context: {'url': pageUrl});
       _logInfo(
         'initialize_host',
-        context: {
-          'provider': widget.bundle.provider.name,
-          'url': pageUrl,
-        },
+        context: {'provider': widget.bundle.provider.name, 'url': pageUrl},
       );
       _logDebug('load_url_start');
       await _webViewController.loadUrl(pageUrl);
@@ -186,7 +206,14 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     } on PlatformException catch (error) {
       _logWarn(
         'initialize_host_platform_exception',
-        context: {'code': error.code, 'message': error.message},
+        context: {
+          'code': error.code,
+          if ((error.message ?? '').trim().isNotEmpty)
+            'messageRedacted': LogSanitizer.redactSemanticText(
+              error.message!,
+              kind: 'message',
+            ),
+        },
         error: error,
       );
       widget.controller.emit(
@@ -198,7 +225,12 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     } catch (error, stackTrace) {
       _logWarn(
         'initialize_host_unexpected_exception',
-        context: {'error': error.toString()},
+        context: {
+          'errorRedacted': LogSanitizer.redactSemanticText(
+            error.toString(),
+            kind: 'message',
+          ),
+        },
         error: error,
         stackTrace: stackTrace,
       );
@@ -282,7 +314,9 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     }
 
     final cacheBust = DateTime.now().microsecondsSinceEpoch.toString();
-    return Uri.https(_virtualHostName, '/$fileName', {'v': cacheBust}).toString();
+    return Uri.https(_virtualHostName, '/$fileName', {
+      'v': cacheBust,
+    }).toString();
   }
 
   void _emitDecoded(Map<String, dynamic> payload) {
@@ -290,7 +324,12 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
     if (type == 'console') {
       _logDebug(
         'js_console',
-        context: {'message': payload['message']?.toString() ?? ''},
+        context: {
+          'messageRedacted': LogSanitizer.redactSemanticText(
+            payload['message']?.toString() ?? '',
+            kind: 'message',
+          ),
+        },
       );
       return;
     }
@@ -341,7 +380,12 @@ class _WindowsEmbeddedMapHostState extends State<WindowsEmbeddedMapHost> {
       case 'error':
         _logWarn(
           'map_error',
-          context: {'message': payload['message']?.toString() ?? ''},
+          context: {
+            'messageRedacted': LogSanitizer.redactSemanticText(
+              payload['message']?.toString() ?? '',
+              kind: 'message',
+            ),
+          },
         );
         widget.controller.emit(
           EmbeddedMapEvent(

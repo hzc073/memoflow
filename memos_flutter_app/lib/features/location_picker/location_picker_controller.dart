@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/log_sanitizer.dart';
 import '../../data/location/location_provider_bundle.dart';
 import '../../data/location/device_location_service.dart';
 import '../../data/location/models/canonical_coordinate.dart';
@@ -443,7 +444,12 @@ class LocationPickerController extends ChangeNotifier {
         'refresh_center_success',
         context: {
           'requestId': requestId,
-          'reverseGeocodeLabel': _state.reverseGeocodeLabel,
+          'reverseGeocodeFingerprint': _state.reverseGeocodeLabel.trim().isEmpty
+              ? ''
+              : LogSanitizer.redactSemanticText(
+                  _state.reverseGeocodeLabel,
+                  kind: 'location',
+                ),
           'nearbyCount': _state.nearbyCandidates.length,
         },
       );

@@ -81,6 +81,32 @@ class LogSanitizer {
     return '$scheme$host$port$path$queryPart$fragment';
   }
 
+  static String fingerprint(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return '';
+    return _hashText(s);
+  }
+
+  static String redactWithFingerprint(String raw, {required String kind}) {
+    final s = raw.trim();
+    if (s.isEmpty) return s;
+    final normalizedKind = _normalizeKind(kind);
+    return '<${normalizedKind}_redacted:${fingerprint(s)}>';
+  }
+
+  static String redactPathLike(String raw) {
+    return redactWithFingerprint(raw, kind: 'path');
+  }
+
+  static String redactOpaque(String raw, {String kind = 'opaque'}) {
+    return redactWithFingerprint(raw, kind: kind);
+  }
+
+  static String redactSemanticText(String raw, {required String kind}) {
+    final normalized = kind.trim().isEmpty ? 'text' : kind.trim();
+    return redactWithFingerprint(raw, kind: normalized);
+  }
+
   static String sanitizeText(String raw) {
     var s = raw;
     s = s.replaceAllMapped(_bearerRegex, (m) {
@@ -91,6 +117,30 @@ class LogSanitizer {
       final key = m.group(1) ?? '';
       final value = m.group(2) ?? '';
       return '$key=${maskToken(value)}';
+    });
+    s = s.replaceAllMapped(_workspaceKeyRegex, (m) {
+      final value = m.group(0) ?? '';
+      return redactOpaque(value);
+    });
+    s = s.replaceAllMapped(_windowsPathRegex, (m) {
+      final value = m.group(0) ?? '';
+      return redactPathLike(value);
+    });
+    s = s.replaceAllMapped(_uncPathRegex, (m) {
+      final value = m.group(0) ?? '';
+      return redactPathLike(value);
+    });
+    s = s.replaceAllMapped(_fileUriRegex, (m) {
+      final value = m.group(0) ?? '';
+      return redactPathLike(value);
+    });
+    s = s.replaceAllMapped(_debugPathPrefixRegex, (m) {
+      final value = m.group(0) ?? '';
+      return redactPathLike(value);
+    });
+    s = s.replaceAllMapped(_coordinatePairRegex, (m) {
+      final value = m.group(0) ?? '';
+      return redactSemanticText(value, kind: 'location');
     });
     s = s.replaceAllMapped(_urlRegex, (m) => maskUrl(m.group(0) ?? ''));
     return s;
@@ -154,21 +204,44 @@ class LogSanitizer {
 
   static Object? _sanitizeByKey(String key, Object? value) {
     final lower = key.trim().toLowerCase();
+    final normalized = _normalizeKey(key);
     if (value == null) return null;
+
+    if (_isSessionKey(normalized) && value is! Map && value is! List) {
+      return redactOpaque(value.toString());
+    }
+    if (_isPaginationTokenKey(normalized) && value is! Map && value is! List) {
+      return redactOpaque(value.toString());
+    }
+    if (_isCoordinatePairKey(normalized) && value is! Map && value is! List) {
+      return redactSemanticText(value.toString(), kind: 'location');
+    }
+    if (_isCoordinateKey(normalized) && value is! Map && value is! List) {
+      return redactSemanticText(value.toString(), kind: 'coord');
+    }
+    if (_isLocationNameKey(normalized) && value is! Map && value is! List) {
+      return redactSemanticText(
+        value.toString(),
+        kind: _semanticKindForKey(normalized),
+      );
+    }
+    if (_isContentKey(normalized)) {
+      return _redactContent(value);
+    }
+    if (_isPathKey(normalized) && value is! Map && value is! List) {
+      return _sanitizePathKeyValue(normalized, value.toString());
+    }
+    if (_isSourceKey(normalized) && value is String) {
+      return _sanitizeSourceValue(value);
+    }
+    if (_isEntryKey(normalized) && value is String) {
+      return _sanitizeEntryValue(value);
+    }
+    if (_isFileKey(normalized) && value is String) {
+      return _sanitizeFileValue(value);
+    }
     if (_isSensitiveKey(lower)) {
       return maskToken(value.toString());
-    }
-    if (_isCoordinatePairKey(lower) && value is! Map && value is! List) {
-      return '<location_redacted>';
-    }
-    if (_isCoordinateKey(lower)) {
-      return '<coord_redacted>';
-    }
-    if (_isLocationNameKey(lower)) {
-      return '<location_name_redacted>';
-    }
-    if (_isContentKey(lower)) {
-      return _redactContent(value);
     }
     if (_isUrlKey(lower)) {
       return maskUrl(value.toString());
@@ -176,7 +249,7 @@ class LogSanitizer {
     if (_isUserKey(lower) && value is! Map && value is! List) {
       return maskUserLabel(value.toString());
     }
-    if (lower == 'name' && value is String) {
+    if (normalized == 'name' && value is String) {
       final v = value.trim();
       if (v.startsWith('users/') || v.contains('@')) {
         return maskUserLabel(v);
@@ -282,11 +355,11 @@ class LogSanitizer {
   }
 
   static bool _isCoordinateKey(String key) {
-    return key == 'latitude' ||
-        key == 'longitude' ||
-        key == 'lat' ||
+    return key == 'lat' ||
         key == 'lng' ||
-        key == 'lon';
+        key == 'lon' ||
+        key.endsWith('latitude') ||
+        key.endsWith('longitude');
   }
 
   static bool _isCoordinatePairKey(String key) {
@@ -299,9 +372,14 @@ class LogSanitizer {
 
   static bool _isLocationNameKey(String key) {
     return key == 'placeholder' ||
-        key == 'location_name' ||
+        key == 'initialplaceholder' ||
         key == 'locationname' ||
-        key == 'poiname';
+        key == 'poiname' ||
+        key == 'query' ||
+        key == 'title' ||
+        key == 'subtitle' ||
+        key == 'city' ||
+        key == 'reversegeocodelabel';
   }
 
   static bool _isUserKey(String key) {
@@ -322,27 +400,54 @@ class LogSanitizer {
         key.contains('avatar');
   }
 
+  static bool _isSessionKey(String key) {
+    return key == 'sessionkey' ||
+        key == 'currentkey' ||
+        key == 'previouskey' ||
+        key == 'nextkey' ||
+        key == 'pendingworkspacekey' ||
+        key == 'locationkey';
+  }
+
+  static bool _isPaginationTokenKey(String key) {
+    return key == 'pagetoken' || key == 'nextpagetoken';
+  }
+
+  static bool _isPathKey(String key) {
+    return key == 'path' ||
+        key == 'filepath' ||
+        key == 'rootpath' ||
+        key == 'treeuri' ||
+        key == 'filename' ||
+        key == 'file';
+  }
+
+  static bool _isSourceKey(String key) {
+    return key == 'source';
+  }
+
+  static bool _isEntryKey(String key) {
+    return key == 'entry';
+  }
+
+  static bool _isFileKey(String key) {
+    return key == 'file';
+  }
+
   static String _sanitizeQuery(Map<String, List<String>> params) {
     final pairs = <String>[];
     for (final entry in params.entries) {
       final key = entry.key;
-      final lower = key.toLowerCase();
       final values = entry.value;
       if (values.isEmpty) {
         pairs.add(Uri.encodeQueryComponent(key));
         continue;
       }
       for (final value in values) {
-        String sanitized = value;
-        if (_isSensitiveKey(lower)) {
-          sanitized = maskToken(value);
-        } else if (_isCoordinatePairKey(lower)) {
-          sanitized = '<location_redacted>';
-        } else if (_isCoordinateKey(lower)) {
-          sanitized = '<coord_redacted>';
-        } else if (_isLocationNameKey(lower)) {
-          sanitized = '<location_name_redacted>';
-        }
+        final sanitizedValue = _sanitizeByKey(key, value);
+        final sanitized = sanitizedValue is String
+            ? sanitizedValue
+            : stringify(sanitizedValue, maxLength: 200);
         pairs.add(
           '${Uri.encodeQueryComponent(key)}=${Uri.encodeQueryComponent(sanitized)}',
         );
@@ -378,6 +483,124 @@ class LogSanitizer {
     final seed = '$lat|$lng|$name';
     if (seed.replaceAll('|', '').isEmpty) return '';
     return _hashText(seed);
+  }
+
+  static String _sanitizePathKeyValue(String key, String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return s;
+    if (key == 'filename' || key == 'file') {
+      return _sanitizeFileValue(s);
+    }
+    if (_looksLikePathLikeValue(s) || _looksLikeFilenameValue(s)) {
+      return redactPathLike(s);
+    }
+    return sanitizeText(s);
+  }
+
+  static String _sanitizeFileValue(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return s;
+    if (_looksLikePathLikeValue(s)) {
+      return redactPathLike(s);
+    }
+    if (_looksLikeFilenameValue(s)) {
+      return redactWithFingerprint(s, kind: 'file');
+    }
+    return sanitizeText(s);
+  }
+
+  static String _sanitizeSourceValue(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return s;
+    if (_looksLikePathLikeValue(s) || _looksLikeUrlLikeValue(s)) {
+      return redactWithFingerprint(s, kind: 'source');
+    }
+    if (_looksLikeSensitiveCompositeValue(s)) {
+      return redactWithFingerprint(s, kind: 'source');
+    }
+    return sanitizeText(s);
+  }
+
+  static String _sanitizeEntryValue(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return s;
+    if (_looksLikeSensitiveCompositeValue(s) || _looksLikePathLikeValue(s)) {
+      return redactWithFingerprint(s, kind: 'entry');
+    }
+    return sanitizeText(s);
+  }
+
+  static bool _looksLikeSensitiveCompositeValue(String value) {
+    final parts = value
+        .split('|')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (parts.length < 2) return false;
+    return parts.any(_looksLikePathLikeValue) ||
+        parts.any(_looksLikeUrlLikeValue) ||
+        parts.any(_looksLikeWorkspaceKeyText);
+  }
+
+  static bool _looksLikeWorkspaceKeyText(String value) {
+    final s = value.trim();
+    if (!s.contains('|')) return false;
+    return _workspaceKeyRegex.hasMatch(s);
+  }
+
+  static bool _looksLikeUrlLikeValue(String value) {
+    final s = value.trim();
+    if (s.isEmpty) return false;
+    if (_fileUriRegex.hasMatch(s)) return true;
+    final uri = Uri.tryParse(s);
+    return uri != null && uri.scheme.isNotEmpty && uri.host.isNotEmpty;
+  }
+
+  static bool _looksLikePathLikeValue(String value) {
+    final s = value.trim();
+    if (s.isEmpty) return false;
+    return _windowsPathRegex.hasMatch(s) ||
+        _uncPathRegex.hasMatch(s) ||
+        _fileUriRegex.hasMatch(s) ||
+        _debugPathPrefixRegex.hasMatch(s) ||
+        s.startsWith('/');
+  }
+
+  static bool _looksLikeFilenameValue(String value) {
+    final s = value.trim();
+    if (s.isEmpty) return false;
+    if (s.contains('/') || s.contains('\\')) return false;
+    return _filenameRegex.hasMatch(s);
+  }
+
+  static String _semanticKindForKey(String key) {
+    switch (key) {
+      case 'query':
+        return 'query';
+      case 'title':
+        return 'title';
+      case 'subtitle':
+        return 'subtitle';
+      case 'city':
+        return 'city';
+      case 'reversegeocodelabel':
+        return 'location';
+      default:
+        return 'text';
+    }
+  }
+
+  static String _normalizeKey(String key) {
+    return key.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  static String _normalizeKind(String kind) {
+    final normalized = kind.trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      '_',
+    );
+    if (normalized.isEmpty) return 'text';
+    return normalized;
   }
 
   static String _hashText(String raw) {
@@ -426,6 +649,30 @@ class LogSanitizer {
     r'(token|access_token|refresh_token|api[_-]?key|apikey|personalaccesstoken|personal_access_token|pat|auth|signature|sig|key|password|secret)=([^\s&]+)',
     caseSensitive: false,
   );
+  static final RegExp _workspaceKeyRegex = RegExp(
+    r'(?:https?:\/\/[^\s|]+|(?:localhost|[A-Za-z0-9.-]+\.[A-Za-z]{2,}|[A-Za-z0-9.-]+:\d+)(?:\/[^\s|]*)?)\|[^\s|]+',
+    caseSensitive: false,
+  );
+  static final RegExp _windowsPathRegex = RegExp(
+    r'[A-Za-z]:\\[^\s<>:"|?*]+(?:\\[^\s<>:"|?*]+)*',
+  );
+  static final RegExp _uncPathRegex = RegExp(
+    r'\\\\[^\s\\/:*?"<>|]+(?:\\[^\s\\/:*?"<>|]+)+',
+  );
+  static final RegExp _fileUriRegex = RegExp(
+    r'(?:file|content):\/\/[^\s)]+',
+    caseSensitive: false,
+  );
+  static final RegExp _debugPathPrefixRegex = RegExp(
+    r'(?:tree|path):[^\s)]+',
+    caseSensitive: false,
+  );
+  static final RegExp _coordinatePairRegex = RegExp(
+    r'(?<!\d)-?\d{1,3}\.\d{4,}\s*,\s*-?\d{1,3}\.\d{4,}(?!\d)',
+  );
   static final RegExp _urlRegex = RegExp(r'https?://[^\s)]+');
   static final RegExp _base64Regex = RegExp(r'^[A-Za-z0-9+/=]+$');
+  static final RegExp _filenameRegex = RegExp(
+    r'^[^\\/\r\n]+\.[A-Za-z0-9]{1,10}$',
+  );
 }
