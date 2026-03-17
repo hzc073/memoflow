@@ -1809,6 +1809,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.32.0"
+  socks5_proxy:
+    dependency: "direct main"
+    description:
+      name: socks5_proxy
+      sha256: "80fa31a9ebfc0dc8de7b0e568c8d8927b65558ef2c7591cbee5afac814fb8f74"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.1"
   source_span:
     dependency: transitive
     description:

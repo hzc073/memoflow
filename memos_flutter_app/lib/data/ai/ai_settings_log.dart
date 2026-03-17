@@ -1,6 +1,7 @@
 import '../../core/log_sanitizer.dart';
 import 'ai_provider_models.dart';
 import 'ai_provider_templates.dart';
+import 'ai_settings_models.dart';
 
 Map<String, Object?> buildAiServiceLogContext(
   AiServiceInstance service, {
@@ -22,6 +23,7 @@ Map<String, Object?> buildAiServiceLogContext(
     'template_name': resolvedTemplate?.displayName,
     'adapter_kind': service.adapterKind.name,
     'enabled': service.enabled,
+    'uses_shared_proxy': service.usesSharedProxy,
     'base_url': LogSanitizer.maskUrl(service.baseUrl),
     'credentials_present': service.apiKey.trim().isNotEmpty,
     'header_count': headers.length,
@@ -42,5 +44,17 @@ Map<String, Object?> buildAiServiceLogContext(
       'endpoint': LogSanitizer.maskUrl(endpoint),
     if (reusedExistingService != null)
       'reused_existing_service': reusedExistingService,
+  };
+}
+
+Map<String, Object?> buildAiProxySettingsLogContext(AiProxySettings settings) {
+  return <String, Object?>{
+    'proxy_protocol': settings.protocol.name,
+    'proxy_host': LogSanitizer.maskHost(settings.host),
+    'proxy_port': settings.port,
+    'proxy_auth_present':
+        settings.username.trim().isNotEmpty || settings.password.trim().isNotEmpty,
+    'bypass_local_addresses': settings.bypassLocalAddresses,
+    'proxy_configured': settings.isConfigured,
   };
 }

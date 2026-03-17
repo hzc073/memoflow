@@ -416,7 +416,10 @@ class _AiServiceModelPanelState extends ConsumerState<_AiServiceModelPanel> {
     try {
       final registry = ref.read(aiProviderRegistryProvider);
       final adapter = registry.adapterFor(service.adapterKind);
-      final discovered = await adapter.listModels(service);
+      final discovered = await adapter.listModels(
+        service,
+        proxySettings: ref.read(aiSettingsProvider).proxySettings,
+      );
       final filteredDiscovered = _filterDiscoveredModelsForService(
         service,
         discovered,

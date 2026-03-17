@@ -66,6 +66,19 @@ void main() {
     expect(settings.insightPromptTemplates, isEmpty);
   });
 
+  test('AiSettings.fromJson falls back to default proxy settings', () {
+    final settings = AiSettings.fromJson(<String, dynamic>{
+      'apiUrl': 'https://example.com',
+      'apiKey': 'test-key',
+      'model': 'gpt-4o-mini',
+      'prompt': 'Base prompt',
+    });
+
+    expect(settings.proxySettings.protocol, AiProxyProtocol.http);
+    expect(settings.proxySettings.isConfigured, isFalse);
+    expect(settings.proxySettings.bypassLocalAddresses, isTrue);
+  });
+
   test('AiSettingsRepository round-trips insight prompt templates', () async {
     final storage = _MemorySecureStorage();
     final repository = AiSettingsRepository(storage, accountKey: 'user-1');
@@ -140,6 +153,7 @@ void main() {
           adapterKind: AiProviderAdapterKind.openAiCompatible,
           displayName: 'OpenAI Main',
           enabled: true,
+          usesSharedProxy: true,
           baseUrl: 'https://api.openai.com',
           apiKey: 'sk-test',
           customHeaders: <String, String>{'x-test': '1'},
@@ -158,6 +172,14 @@ void main() {
           lastValidationMessage: null,
         ),
       ],
+      proxySettings: const AiProxySettings(
+        protocol: AiProxyProtocol.socks5,
+        host: 'proxy.example.com',
+        port: 1080,
+        username: 'demo',
+        password: 'secret',
+        bypassLocalAddresses: false,
+      ),
       taskRouteBindings: const <AiTaskRouteBinding>[
         AiTaskRouteBinding(
           routeId: AiTaskRouteId.summary,
@@ -175,9 +197,66 @@ void main() {
     expect(decoded['schemaVersion'], AiSettings.currentSchemaVersion);
     expect(decoded['services'], isA<List<dynamic>>());
     expect(decoded['taskRouteBindings'], isA<List<dynamic>>());
+    expect(decoded['proxySettings'], isA<Map<String, dynamic>>());
+    expect(
+      decoded['proxySettings'],
+      containsPair('protocol', AiProxyProtocol.socks5.name),
+    );
+    expect(
+      (decoded['services'] as List<dynamic>).single,
+      containsPair('usesSharedProxy', true),
+    );
 
     final restored = await repository.read(language: AppLanguage.en);
     expect(restored.services.single.displayName, 'OpenAI Main');
+    expect(restored.services.single.usesSharedProxy, isTrue);
     expect(restored.taskRouteBindings.single.routeId, AiTaskRouteId.summary);
+    expect(restored.proxySettings.protocol, AiProxyProtocol.socks5);
+    expect(restored.proxySettings.host, 'proxy.example.com');
+    expect(restored.proxySettings.port, 1080);
+    expect(restored.proxySettings.username, 'demo');
+    expect(restored.proxySettings.password, 'secret');
+    expect(restored.proxySettings.bypassLocalAddresses, isFalse);
+  });
+
+  test('AiSettingsRepository migrates missing proxy fields with defaults', () async {
+    final storage = _MemorySecureStorage();
+    final repository = AiSettingsRepository(storage, accountKey: 'user-legacy');
+    final legacyJson = AiSettings.defaultsFor(AppLanguage.en).copyWith(
+      services: const <AiServiceInstance>[
+        AiServiceInstance(
+          serviceId: 'svc_legacy',
+          templateId: aiTemplateOpenAi,
+          adapterKind: AiProviderAdapterKind.openAiCompatible,
+          displayName: 'Legacy Service',
+          enabled: true,
+          baseUrl: 'https://api.openai.com',
+          apiKey: 'sk-test',
+          customHeaders: <String, String>{},
+          models: <AiModelEntry>[],
+          lastValidatedAt: null,
+          lastValidationStatus: AiValidationStatus.unknown,
+          lastValidationMessage: null,
+        ),
+      ],
+    ).toJson();
+    legacyJson['schemaVersion'] = 3;
+    legacyJson.remove('proxySettings');
+    final legacyServices = (legacyJson['services'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    legacyServices.single.remove('usesSharedProxy');
+
+    await storage.write(
+      key: 'ai_settings_v2_user-legacy',
+      value: jsonEncode(legacyJson),
+    );
+
+    final restored = await repository.read(language: AppLanguage.en);
+
+    expect(restored.schemaVersion, AiSettings.currentSchemaVersion);
+    expect(restored.proxySettings.protocol, AiProxyProtocol.http);
+    expect(restored.proxySettings.isConfigured, isFalse);
+    expect(restored.proxySettings.bypassLocalAddresses, isTrue);
+    expect(restored.services.single.usesSharedProxy, isFalse);
   });
 }

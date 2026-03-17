@@ -30,6 +30,7 @@ class AiSettingsMigration {
       selectedEmbeddingProfileKey: shadows.selectedEmbeddingProfileKey,
       prompt: source.prompt,
       userProfile: source.userProfile,
+      proxySettings: _normalizeProxySettings(source.proxySettings),
       quickPrompts: List<AiQuickPrompt>.unmodifiable(source.quickPrompts),
       analysisPromptTemplates: Map<String, String>.unmodifiable(
         source.analysisPromptTemplates,
@@ -439,6 +440,18 @@ class AiSettingsMigration {
       AiProviderAdapterKind.anthropic => AiProviderKind.anthropicCompatible,
       _ => AiProviderKind.openAiCompatible,
     };
+  }
+
+  static AiProxySettings _normalizeProxySettings(AiProxySettings settings) {
+    final normalizedPort = settings.port > 0 && settings.port <= 65535
+        ? settings.port
+        : 0;
+    return settings.copyWith(
+      host: settings.host.trim(),
+      port: normalizedPort,
+      username: settings.username.trim(),
+      password: settings.password.trim(),
+    );
   }
 }
 

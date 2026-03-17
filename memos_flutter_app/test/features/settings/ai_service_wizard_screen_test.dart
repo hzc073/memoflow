@@ -157,4 +157,54 @@ void main() {
     expect(find.text('VoyageAI'), findsOneWidget);
     expect(find.text('Cerebras'), findsOneWidget);
   });
+
+  testWidgets(
+    'AiServiceWizardScreen shows proxy warning and opens proxy settings',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1120, 2800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final prefsRepository = _MemoryAppPreferencesRepository(
+        AppPreferences.defaultsForLanguage(AppLanguage.en),
+      );
+      final aiRepository = _MemoryAiSettingsRepository(
+        AiSettings.defaultsFor(AppLanguage.en),
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          prefsRepository: prefsRepository,
+          aiRepository: aiRepository,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(find.text('OpenAI').first);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Next').last);
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Next').last,
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Use shared proxy'), findsOneWidget);
+      await tester.tap(find.widgetWithText(SwitchListTile, 'Use shared proxy'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'This service has proxy enabled, but shared proxy settings are incomplete.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Open proxy settings'), findsOneWidget);
+
+      await tester.tap(find.text('Open proxy settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Proxy Settings'), findsOneWidget);
+    },
+  );
 }

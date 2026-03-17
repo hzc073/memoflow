@@ -502,6 +502,20 @@ class AiSettingsController extends StateNotifier<AiSettings> {
     );
   }
 
+  Future<void> setProxySettings(
+    AiProxySettings next, {
+    bool triggerSync = true,
+  }) async {
+    await setAll(
+      state.copyWith(proxySettings: next),
+      triggerSync: triggerSync,
+    );
+    LogManager.instance.info(
+      'AI settings proxy updated',
+      context: buildAiProxySettingsLogContext(next),
+    );
+  }
+
   Future<void> recordServiceValidation(
     String serviceId,
     AiValidationStatus status, {

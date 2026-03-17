@@ -6,8 +6,8 @@ import 'package:memos_flutter_app/data/ai/ai_provider_templates.dart';
 void main() {
   final service = _service();
 
-  test('short profile keeps validation and discovery requests snappy', () {
-    final dio = buildAiProviderDio(
+  test('short profile keeps validation and discovery requests snappy', () async {
+    final dio = await buildAiProviderDio(
       service,
       profile: AiProviderRequestTimeoutProfile.short,
     );
@@ -17,8 +17,8 @@ void main() {
     expect(dio.options.sendTimeout, const Duration(seconds: 20));
   });
 
-  test('embedding profile uses a moderate timeout', () {
-    final dio = buildAiProviderDio(
+  test('embedding profile uses a moderate timeout', () async {
+    final dio = await buildAiProviderDio(
       service,
       profile: AiProviderRequestTimeoutProfile.embedding,
     );
@@ -29,8 +29,8 @@ void main() {
 
   test(
     'chat completion profile follows Cherry Studio style longer timeout',
-    () {
-      final dio = buildAiProviderDio(
+    () async {
+      final dio = await buildAiProviderDio(
         service,
         profile: AiProviderRequestTimeoutProfile.chatCompletion,
       );

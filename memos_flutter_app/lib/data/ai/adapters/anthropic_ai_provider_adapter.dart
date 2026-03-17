@@ -9,7 +9,9 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
 
   @override
   Future<AiServiceValidationResult> validateConfig(
-    AiServiceInstance service,
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }
   ) async {
     final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
     if (baseUrl.isEmpty) {
@@ -20,12 +22,13 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
     }
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(service, proxySettings: proxySettings);
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'validate_config',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       requestHeaders: headers,
     );
     try {
@@ -41,6 +44,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
           operation: 'validate_config',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: 'Connection succeeded.',
@@ -57,6 +61,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         requestHeaders: headers,
         statusCode: statusCode,
         responseMessage: message,
@@ -73,6 +78,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         requestHeaders: headers,
         error: error,
         stackTrace: stackTrace,
@@ -86,17 +92,21 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) async {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) async {
     final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
     if (baseUrl.isEmpty) return const <AiDiscoveredModel>[];
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(service, proxySettings: proxySettings);
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'list_models',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       requestHeaders: headers,
     );
     var failureLogged = false;
@@ -115,6 +125,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: message,
@@ -129,6 +140,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           discoveredCount: 0,
@@ -158,6 +170,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
         operation: 'list_models',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         requestHeaders: headers,
         statusCode: statusCode,
         discoveredCount: models.length,
@@ -171,6 +184,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           error: error,
           stackTrace: stackTrace,

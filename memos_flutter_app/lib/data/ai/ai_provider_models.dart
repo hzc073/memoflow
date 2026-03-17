@@ -299,6 +299,7 @@ class AiServiceInstance {
     required this.adapterKind,
     required this.displayName,
     required this.enabled,
+    this.usesSharedProxy = false,
     required this.baseUrl,
     required this.apiKey,
     required this.customHeaders,
@@ -313,6 +314,7 @@ class AiServiceInstance {
   final AiProviderAdapterKind adapterKind;
   final String displayName;
   final bool enabled;
+  final bool usesSharedProxy;
   final String baseUrl;
   final String apiKey;
   final Map<String, String> customHeaders;
@@ -339,6 +341,7 @@ class AiServiceInstance {
     AiProviderAdapterKind? adapterKind,
     String? displayName,
     bool? enabled,
+    bool? usesSharedProxy,
     String? baseUrl,
     String? apiKey,
     Map<String, String>? customHeaders,
@@ -353,6 +356,7 @@ class AiServiceInstance {
       adapterKind: adapterKind ?? this.adapterKind,
       displayName: displayName ?? this.displayName,
       enabled: enabled ?? this.enabled,
+      usesSharedProxy: usesSharedProxy ?? this.usesSharedProxy,
       baseUrl: baseUrl ?? this.baseUrl,
       apiKey: apiKey ?? this.apiKey,
       customHeaders: customHeaders ?? this.customHeaders,
@@ -374,6 +378,7 @@ class AiServiceInstance {
     'adapterKind': _adapterKindToStorage(adapterKind),
     'displayName': displayName,
     'enabled': enabled,
+    'usesSharedProxy': usesSharedProxy,
     'baseUrl': baseUrl,
     'apiKey': apiKey,
     'customHeaders': customHeaders,
@@ -432,6 +437,7 @@ class AiServiceInstance {
       ),
       displayName: readString('displayName', ''),
       enabled: readBool('enabled', true),
+      usesSharedProxy: readBool('usesSharedProxy', false),
       baseUrl: readString('baseUrl', ''),
       apiKey: readString('apiKey', ''),
       customHeaders: readHeaders(),

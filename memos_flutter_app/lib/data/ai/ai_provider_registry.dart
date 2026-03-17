@@ -49,12 +49,18 @@ class _UnsupportedAiProviderAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) {
     throw UnsupportedError('Adapter $adapterKind is not implemented yet.');
   }
 
   @override
-  Future<AiServiceValidationResult> validateConfig(AiServiceInstance service) {
+  Future<AiServiceValidationResult> validateConfig(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) {
     throw UnsupportedError('Adapter $adapterKind is not implemented yet.');
   }
 }

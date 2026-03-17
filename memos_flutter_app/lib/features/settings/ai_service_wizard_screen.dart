@@ -8,8 +8,10 @@ import '../../data/ai/ai_settings_log.dart';
 import '../../data/logs/log_manager.dart';
 import '../../core/uid.dart';
 import '../../data/repositories/ai_settings_repository.dart';
+import '../../i18n/strings.g.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'ai_provider_logo.dart';
+import 'ai_proxy_settings_screen.dart';
 
 class AiServiceWizardScreen extends ConsumerStatefulWidget {
   const AiServiceWizardScreen({super.key});
@@ -37,6 +39,7 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
   var _useEmbeddingDefault = false;
   var _chat = true;
   var _embedding = false;
+  var _usesSharedProxy = false;
 
   @override
   void initState() {
@@ -67,12 +70,14 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(aiSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
+    final proxyConfigured = settings.proxySettings.isConfigured;
 
     return Scaffold(
       backgroundColor: bg,
@@ -183,6 +188,32 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
                             : 'One header per line, formatted as key:value. Optional; leave empty if unused.',
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: _usesSharedProxy,
+                      onChanged: (value) {
+                        setState(() => _usesSharedProxy = value);
+                      },
+                      title: Text(context.t.strings.aiProxy.useSharedProxy),
+                      subtitle: Text(
+                        context.t.strings.aiProxy.useSharedProxyDescription,
+                      ),
+                    ),
+                    if (_usesSharedProxy && !proxyConfigured) ...[
+                      const SizedBox(height: 12),
+                      _ProxyWarningCard(
+                        message: context.t.strings.aiProxy.incompleteWarning,
+                        actionLabel: context.t.strings.aiProxy.openSettings,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const AiProxySettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -394,7 +425,6 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
     if (modelDrafts == null) {
       return;
     }
-
     final current = ref.read(aiSettingsProvider);
     final mergedHeaders = Map<String, String>.unmodifiable(
       _mergedHeaders(template),
@@ -444,6 +474,7 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
             ? localizedAiProviderTemplateDisplayName(template, isZh: isZh)
             : _nameController.text.trim(),
         enabled: true,
+        usesSharedProxy: _usesSharedProxy,
         baseUrl: _baseUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
         customHeaders: mergedHeaders,
@@ -459,6 +490,7 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
                 : 'Service created with ${modelDrafts.length} models.');
     } else {
       targetService = matchingService.copyWith(
+        usesSharedProxy: _usesSharedProxy,
         models: List<AiModelEntry>.unmodifiable(nextModels),
       );
       toastMessage = switch ((addedCount, updatedCount)) {
@@ -776,6 +808,47 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
       next[key] = value;
     }
     return next;
+  }
+}
+
+class _ProxyWarningCard extends StatelessWidget {
+  const _ProxyWarningCard({
+    required this.message,
+    required this.actionLabel,
+    required this.onTap,
+  });
+
+  final String message;
+  final String actionLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: colorScheme.onSecondaryContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(message),
+                const SizedBox(height: 8),
+                TextButton(onPressed: onTap, child: Text(actionLabel)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -2,7 +2,6 @@ import 'ai_provider_adapter.dart';
 import 'ai_provider_models.dart';
 import 'ai_provider_registry.dart';
 import 'ai_route_resolver.dart';
-import 'ai_settings_models.dart';
 
 class AiTaskRuntime {
   const AiTaskRuntime({required AiProviderRegistry registry})
@@ -52,6 +51,7 @@ class AiTaskRuntime {
         systemPrompt: systemPrompt,
         temperature: temperature,
         maxOutputTokens: maxOutputTokens,
+        proxySettings: settings.proxySettings,
       ),
     );
   }
@@ -70,6 +70,7 @@ class AiTaskRuntime {
         service: route.service,
         model: route.model,
         input: input,
+        proxySettings: settings.proxySettings,
       ),
     );
   }

@@ -1,17 +1,26 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'package:socks5_proxy/socks_client.dart';
 
 import '../../../core/log_sanitizer.dart';
 import '../../logs/log_manager.dart';
 import '../ai_provider_models.dart';
 import '../ai_settings_log.dart';
+import '../ai_settings_models.dart';
 
 enum AiProviderRequestTimeoutProfile { short, embedding, chatCompletion }
 
-Dio buildAiProviderDio(
+const _proxyConfigurationRequiredMessage =
+    '\u8be5\u670d\u52a1\u5df2\u542f\u7528\u4ee3\u7406\uff0c\u4f46 AI \u4ee3\u7406\u8bbe\u7f6e\u5c1a\u672a\u914d\u7f6e\u5b8c\u6574';
+
+Future<Dio> buildAiProviderDio(
   AiServiceInstance service, {
+  AiProxySettings? proxySettings,
   AiProviderRequestTimeoutProfile profile =
       AiProviderRequestTimeoutProfile.short,
-}) {
+}) async {
   final receiveTimeout = switch (profile) {
     AiProviderRequestTimeoutProfile.short => const Duration(seconds: 20),
     AiProviderRequestTimeoutProfile.embedding => const Duration(seconds: 45),
@@ -26,7 +35,8 @@ Dio buildAiProviderDio(
       seconds: 60,
     ),
   };
-  return Dio(
+  final proxyDecision = await _resolveProxyDecision(service, proxySettings);
+  final dio = Dio(
     BaseOptions(
       headers: Map<String, String>.from(service.customHeaders),
       connectTimeout: const Duration(seconds: 10),
@@ -36,6 +46,14 @@ Dio buildAiProviderDio(
       validateStatus: (status) => status != null && status < 500,
     ),
   );
+  dio.httpClientAdapter = IOHttpClientAdapter(
+    createHttpClient: () {
+      final client = HttpClient();
+      _configureProxy(client, proxyDecision);
+      return client;
+    },
+  );
+  return dio;
 }
 
 String normalizeBaseUrl(String baseUrl) {
@@ -64,6 +82,7 @@ Stopwatch logAiProviderRequestStarted(
   required String operation,
   required String method,
   required String endpoint,
+  AiProxySettings? proxySettings,
   Map<String, Object?>? queryParameters,
   Map<String, String>? requestHeaders,
 }) {
@@ -75,6 +94,7 @@ Stopwatch logAiProviderRequestStarted(
       operation: operation,
       method: method,
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: requestHeaders,
     ),
@@ -88,6 +108,7 @@ void logAiProviderRequestFinished(
   required String operation,
   required String method,
   required String endpoint,
+  AiProxySettings? proxySettings,
   Map<String, Object?>? queryParameters,
   Map<String, String>? requestHeaders,
   int? statusCode,
@@ -104,6 +125,7 @@ void logAiProviderRequestFinished(
       operation: operation,
       method: method,
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: requestHeaders,
       statusCode: statusCode,
@@ -120,6 +142,7 @@ void logAiProviderRequestFailed(
   required String operation,
   required String method,
   required String endpoint,
+  AiProxySettings? proxySettings,
   Map<String, Object?>? queryParameters,
   Map<String, String>? requestHeaders,
   int? statusCode,
@@ -141,6 +164,7 @@ void logAiProviderRequestFailed(
       operation: operation,
       method: method,
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: requestHeaders,
       statusCode: resolvedStatusCode,
@@ -155,6 +179,7 @@ void logAiProviderRequestUnsupported(
   required String operation,
   required String method,
   required String endpoint,
+  AiProxySettings? proxySettings,
   Map<String, Object?>? queryParameters,
   Map<String, String>? requestHeaders,
   String? reason,
@@ -166,6 +191,7 @@ void logAiProviderRequestUnsupported(
       operation: operation,
       method: method,
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: requestHeaders,
       responseMessage: reason,
@@ -228,6 +254,7 @@ Map<String, Object?> _buildAiProviderRequestLogContext(
   required String operation,
   required String method,
   required String endpoint,
+  AiProxySettings? proxySettings,
   Map<String, Object?>? queryParameters,
   Map<String, String>? requestHeaders,
   int? statusCode,
@@ -235,6 +262,7 @@ Map<String, Object?> _buildAiProviderRequestLogContext(
   int? discoveredCount,
   String? responseMessage,
 }) {
+  final resolvedSettings = proxySettings ?? AiProxySettings.defaults;
   return <String, Object?>{
     ...buildAiServiceLogContext(
       service,
@@ -243,6 +271,11 @@ Map<String, Object?> _buildAiProviderRequestLogContext(
     ),
     'operation': operation,
     'method': method.toUpperCase(),
+    'proxy_mode': describeAiProxyMode(service, proxySettings: proxySettings),
+    if (_shouldLogProxyAddress(service, proxySettings: proxySettings))
+      'proxy_host': LogSanitizer.maskHost(resolvedSettings.host),
+    if (_shouldLogProxyAddress(service, proxySettings: proxySettings))
+      'proxy_port': resolvedSettings.port,
     if (requestHeaders != null) 'request_header_count': requestHeaders.length,
     if (requestHeaders != null && requestHeaders.isNotEmpty)
       'request_headers': LogSanitizer.sanitizeHeaders(requestHeaders),
@@ -254,6 +287,138 @@ Map<String, Object?> _buildAiProviderRequestLogContext(
     if (responseMessage != null && responseMessage.trim().isNotEmpty)
       'response_message': LogSanitizer.sanitizeText(responseMessage.trim()),
   };
+}
+
+String describeAiProxyMode(
+  AiServiceInstance service, {
+  AiProxySettings? proxySettings,
+}) {
+  if (!service.usesSharedProxy) return 'direct';
+  final settings = proxySettings ?? AiProxySettings.defaults;
+  if (!settings.isConfigured) return 'misconfigured';
+  if (settings.bypassLocalAddresses && isLocalOrPrivateBaseUrl(service.baseUrl)) {
+    return 'bypass_local';
+  }
+  return settings.protocol.name;
+}
+
+bool _shouldLogProxyAddress(
+  AiServiceInstance service, {
+  AiProxySettings? proxySettings,
+}) {
+  final mode = describeAiProxyMode(service, proxySettings: proxySettings);
+  return mode == AiProxyProtocol.http.name ||
+      mode == AiProxyProtocol.socks5.name;
+}
+
+Future<_AiProxyDecision> _resolveProxyDecision(
+  AiServiceInstance service,
+  AiProxySettings? proxySettings,
+) async {
+  if (!service.usesSharedProxy) {
+    return const _AiProxyDecision(mode: 'direct');
+  }
+  final settings = proxySettings ?? AiProxySettings.defaults;
+  if (!settings.isConfigured) {
+    throw StateError(_proxyConfigurationRequiredMessage);
+  }
+  if (settings.bypassLocalAddresses && isLocalOrPrivateBaseUrl(service.baseUrl)) {
+    return const _AiProxyDecision(mode: 'bypass_local');
+  }
+  if (settings.protocol == AiProxyProtocol.http) {
+    return _AiProxyDecision(mode: AiProxyProtocol.http.name, settings: settings);
+  }
+  return _AiProxyDecision(
+    mode: AiProxyProtocol.socks5.name,
+    settings: settings,
+    resolvedProxyHost: await _resolveProxyHost(settings.host),
+  );
+}
+
+void _configureProxy(HttpClient client, _AiProxyDecision decision) {
+  final settings = decision.settings;
+  if (settings == null || !settings.isConfigured) {
+    return;
+  }
+  if (decision.mode == AiProxyProtocol.http.name) {
+    client.findProxy = (uri) => 'PROXY ${settings.host}:${settings.port}';
+    if (settings.username.trim().isNotEmpty || settings.password.trim().isNotEmpty) {
+      client.authenticateProxy = (host, port, scheme, realm) async {
+        client.addProxyCredentials(
+          host,
+          port,
+          realm ?? '',
+          HttpClientBasicCredentials(settings.username, settings.password),
+        );
+        return true;
+      };
+    }
+    return;
+  }
+  if (decision.mode == AiProxyProtocol.socks5.name &&
+      decision.resolvedProxyHost != null) {
+    SocksTCPClient.assignToHttpClient(client, <ProxySettings>[
+      ProxySettings(
+        decision.resolvedProxyHost!,
+        settings.port,
+        username: settings.username.trim().isEmpty ? null : settings.username,
+        password: settings.password.trim().isEmpty ? null : settings.password,
+      ),
+    ]);
+  }
+}
+
+Future<InternetAddress> _resolveProxyHost(String host) async {
+  final normalized = host.trim();
+  final parsed = InternetAddress.tryParse(normalized);
+  if (parsed != null) return parsed;
+  final lookedUp = await InternetAddress.lookup(normalized);
+  if (lookedUp.isEmpty) {
+    throw StateError('Unable to resolve proxy host.');
+  }
+  return lookedUp.first;
+}
+
+bool isLocalOrPrivateBaseUrl(String baseUrl) {
+  final trimmed = baseUrl.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed) ?? Uri.tryParse('http://$trimmed');
+  final host = uri?.host.trim().toLowerCase() ?? '';
+  if (host.isEmpty) return false;
+  if (host == 'localhost' || host.endsWith('.local')) return true;
+  final parsed = InternetAddress.tryParse(host);
+  if (parsed == null) return false;
+  if (parsed.isLoopback) return true;
+  final raw = parsed.rawAddress;
+  if (parsed.type == InternetAddressType.IPv4 && raw.length == 4) {
+    final first = raw[0];
+    final second = raw[1];
+    return first == 10 ||
+        (first == 172 && second >= 16 && second <= 31) ||
+        (first == 192 && second == 168) ||
+        (first == 169 && second == 254) ||
+        first == 127;
+  }
+  if (parsed.type == InternetAddressType.IPv6 && raw.length == 16) {
+    final first = raw[0];
+    final second = raw[1];
+    final isUniqueLocal = (first & 0xfe) == 0xfc;
+    final isLinkLocal = first == 0xfe && (second & 0xc0) == 0x80;
+    return isUniqueLocal || isLinkLocal;
+  }
+  return false;
+}
+
+class _AiProxyDecision {
+  const _AiProxyDecision({
+    required this.mode,
+    this.settings,
+    this.resolvedProxyHost,
+  });
+
+  final String mode;
+  final AiProxySettings? settings;
+  final InternetAddress? resolvedProxyHost;
 }
 
 List<AiCapability> inferOpenAiCompatibleCapabilities(String modelKey) {

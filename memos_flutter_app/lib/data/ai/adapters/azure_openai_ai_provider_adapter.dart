@@ -9,7 +9,9 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
 
   @override
   Future<AiServiceValidationResult> validateConfig(
-    AiServiceInstance service,
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }
   ) async {
     final baseUrl = normalizeBaseUrl(service.baseUrl);
     if (baseUrl.isEmpty) {
@@ -23,12 +25,16 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
       'api-version': _apiVersion(service),
     };
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(
+      service,
+      proxySettings: proxySettings,
+    );
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'validate_config',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: headers,
     );
@@ -46,6 +52,7 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
           operation: 'validate_config',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           queryParameters: queryParameters,
           requestHeaders: headers,
           statusCode: statusCode,
@@ -63,6 +70,7 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         queryParameters: queryParameters,
         requestHeaders: headers,
         statusCode: statusCode,
@@ -80,6 +88,7 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         queryParameters: queryParameters,
         requestHeaders: headers,
         error: error,
@@ -94,7 +103,10 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) async {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) async {
     final endpoint = resolveEndpoint(
       normalizeBaseUrl(service.baseUrl),
       'openai/models',
@@ -104,6 +116,7 @@ class AzureOpenAiAiProviderAdapter implements AiProviderAdapter {
       operation: 'list_models',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: <String, Object?>{'api-version': _apiVersion(service)},
       requestHeaders: _requestHeaders(service),
       reason: 'Azure OpenAI model discovery is not available yet.',

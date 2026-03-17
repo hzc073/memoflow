@@ -7,8 +7,10 @@ import '../../data/ai/ai_settings_log.dart';
 import '../../data/logs/log_manager.dart';
 import '../../core/top_toast.dart';
 import '../../data/repositories/ai_settings_repository.dart';
+import '../../i18n/strings.g.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'ai_provider_logo.dart';
+import 'ai_proxy_settings_screen.dart';
 import 'ai_service_model_screen.dart';
 
 class AiServiceDetailScreen extends ConsumerStatefulWidget {
@@ -28,6 +30,7 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
   late final TextEditingController _apiKeyController;
   late final TextEditingController _headersController;
   bool _enabled = true;
+  bool _usesSharedProxy = false;
   bool _obscureApiKey = true;
   bool _isCheckingConnection = false;
 
@@ -45,6 +48,7 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
       text: _encodeHeaders(service?.customHeaders ?? const <String, String>{}),
     );
     _enabled = service?.enabled ?? true;
+    _usesSharedProxy = service?.usesSharedProxy ?? false;
   }
 
   @override
@@ -90,6 +94,7 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
         .where((binding) => binding.serviceId == widget.serviceId)
         .map((binding) => _routeLabel(binding.routeId, isZh))
         .toList(growable: false);
+    final proxyConfigured = settings.proxySettings.isConfigured;
 
     return Scaffold(
       backgroundColor: bg,
@@ -289,6 +294,31 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                     onChanged: (value) => setState(() => _enabled = value),
                     title: Text(isZh ? '启用服务' : 'Enable Service'),
                   ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _usesSharedProxy,
+                    onChanged: (value) {
+                      setState(() => _usesSharedProxy = value);
+                    },
+                    title: Text(context.t.strings.aiProxy.useSharedProxy),
+                    subtitle: Text(
+                      context.t.strings.aiProxy.useSharedProxyDescription,
+                    ),
+                  ),
+                  if (_usesSharedProxy && !proxyConfigured) ...[
+                    const SizedBox(height: 8),
+                    _ProxyWarningCard(
+                      message: context.t.strings.aiProxy.incompleteWarning,
+                      actionLabel: context.t.strings.aiProxy.openSettings,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AiProxySettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                   if (template?.docsUrl.trim().isNotEmpty ?? false) ...[
                     const SizedBox(height: 4),
                     Align(
@@ -421,6 +451,7 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
     return current.copyWith(
       displayName: displayName,
       enabled: _enabled,
+      usesSharedProxy: _usesSharedProxy,
       baseUrl: _baseUrlController.text.trim(),
       apiKey: _apiKeyController.text.trim(),
       customHeaders: Map<String, String>.unmodifiable(mergedHeaders),
@@ -449,7 +480,10 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
     try {
       final registry = ref.read(aiProviderRegistryProvider);
       final adapter = registry.adapterFor(draft.adapterKind);
-      final result = await adapter.validateConfig(draft);
+      final result = await adapter.validateConfig(
+        draft,
+        proxySettings: ref.read(aiSettingsProvider).proxySettings,
+      );
       await ref
           .read(aiSettingsProvider.notifier)
           .upsertService(
@@ -633,6 +667,47 @@ class _SectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
       ),
       child: child,
+    );
+  }
+}
+
+class _ProxyWarningCard extends StatelessWidget {
+  const _ProxyWarningCard({
+    required this.message,
+    required this.actionLabel,
+    required this.onTap,
+  });
+
+  final String message;
+  final String actionLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: colorScheme.onSecondaryContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(message),
+                const SizedBox(height: 8),
+                TextButton(onPressed: onTap, child: Text(actionLabel)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

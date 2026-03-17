@@ -9,7 +9,9 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
 
   @override
   Future<AiServiceValidationResult> validateConfig(
-    AiServiceInstance service,
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }
   ) async {
     final baseUrl = _baseUrl(service.baseUrl);
     if (baseUrl.isEmpty) {
@@ -21,12 +23,13 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final queryParameters = _queryParameters(service);
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(service, proxySettings: proxySettings);
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'validate_config',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: headers,
     );
@@ -44,6 +47,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
           operation: 'validate_config',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           queryParameters: queryParameters,
           requestHeaders: headers,
           statusCode: statusCode,
@@ -61,6 +65,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         queryParameters: queryParameters,
         requestHeaders: headers,
         statusCode: statusCode,
@@ -78,6 +83,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         queryParameters: queryParameters,
         requestHeaders: headers,
         error: error,
@@ -92,18 +98,22 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) async {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) async {
     final baseUrl = _baseUrl(service.baseUrl);
     if (baseUrl.isEmpty) return const <AiDiscoveredModel>[];
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final queryParameters = _queryParameters(service);
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(service, proxySettings: proxySettings);
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'list_models',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       queryParameters: queryParameters,
       requestHeaders: headers,
     );
@@ -124,6 +134,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           queryParameters: queryParameters,
           requestHeaders: headers,
           statusCode: statusCode,
@@ -139,6 +150,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           queryParameters: queryParameters,
           requestHeaders: headers,
           statusCode: statusCode,
@@ -182,6 +194,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
         operation: 'list_models',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         queryParameters: queryParameters,
         requestHeaders: headers,
         statusCode: statusCode,
@@ -196,6 +209,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           queryParameters: queryParameters,
           requestHeaders: headers,
           error: error,

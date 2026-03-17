@@ -7,7 +7,9 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
 
   @override
   Future<AiServiceValidationResult> validateConfig(
-    AiServiceInstance service,
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }
   ) async {
     final baseUrl = normalizeBaseUrl(service.baseUrl);
     if (baseUrl.isEmpty) {
@@ -17,12 +19,13 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
       );
     }
     final endpoint = resolveEndpoint(baseUrl, 'api/tags');
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(service, proxySettings: proxySettings);
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'validate_config',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
     );
     try {
       final response = await dio.get<Object?>(endpoint);
@@ -34,6 +37,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
           operation: 'validate_config',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           statusCode: statusCode,
           responseMessage: 'Connection succeeded.',
         );
@@ -49,6 +53,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         statusCode: statusCode,
         responseMessage: message,
       );
@@ -64,6 +69,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         error: error,
         stackTrace: stackTrace,
         responseMessage: message,
@@ -76,16 +82,20 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) async {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) async {
     final baseUrl = normalizeBaseUrl(service.baseUrl);
     if (baseUrl.isEmpty) return const <AiDiscoveredModel>[];
     final endpoint = resolveEndpoint(baseUrl, 'api/tags');
-    final dio = buildAiProviderDio(service);
+    final dio = await buildAiProviderDio(service, proxySettings: proxySettings);
     final stopwatch = logAiProviderRequestStarted(
       service,
       operation: 'list_models',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
     );
     var failureLogged = false;
     try {
@@ -100,6 +110,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           statusCode: statusCode,
           responseMessage: message,
         );
@@ -113,6 +124,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           statusCode: statusCode,
           discoveredCount: 0,
           responseMessage: 'No model list returned.',
@@ -141,6 +153,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
         operation: 'list_models',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         statusCode: statusCode,
         discoveredCount: models.length,
       );
@@ -153,6 +166,7 @@ class OllamaAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           error: error,
           stackTrace: stackTrace,
           responseMessage: extractErrorMessage(error),

@@ -9,7 +9,9 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
 
   @override
   Future<AiServiceValidationResult> validateConfig(
-    AiServiceInstance service,
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }
   ) async {
     final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
     if (baseUrl.isEmpty) {
@@ -21,8 +23,9 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
 
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(
+    final dio = await buildAiProviderDio(
       service,
+      proxySettings: proxySettings,
       profile: AiProviderRequestTimeoutProfile.short,
     );
     final stopwatch = logAiProviderRequestStarted(
@@ -30,6 +33,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       operation: 'validate_config',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       requestHeaders: headers,
     );
     try {
@@ -45,6 +49,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'validate_config',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: 'Connection succeeded.',
@@ -61,6 +66,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         requestHeaders: headers,
         statusCode: statusCode,
         responseMessage: message,
@@ -77,6 +83,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
         operation: 'validate_config',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         requestHeaders: headers,
         error: error,
         stackTrace: stackTrace,
@@ -90,13 +97,17 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) async {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) async {
     final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
     if (baseUrl.isEmpty) return const <AiDiscoveredModel>[];
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final headers = _requestHeaders(service);
-    final dio = buildAiProviderDio(
+    final dio = await buildAiProviderDio(
       service,
+      proxySettings: proxySettings,
       profile: AiProviderRequestTimeoutProfile.short,
     );
     final stopwatch = logAiProviderRequestStarted(
@@ -104,6 +115,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       operation: 'list_models',
       method: 'GET',
       endpoint: endpoint,
+      proxySettings: proxySettings,
       requestHeaders: headers,
     );
     var failureLogged = false;
@@ -122,6 +134,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: message,
@@ -136,6 +149,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           discoveredCount: 0,
@@ -170,6 +184,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
         operation: 'list_models',
         method: 'GET',
         endpoint: endpoint,
+        proxySettings: proxySettings,
         requestHeaders: headers,
         statusCode: statusCode,
         discoveredCount: models.length,
@@ -183,6 +198,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'list_models',
           method: 'GET',
           endpoint: endpoint,
+          proxySettings: proxySettings,
           requestHeaders: headers,
           error: error,
           stackTrace: stackTrace,
@@ -206,8 +222,9 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       ..._requestHeaders(request.service),
       'Content-Type': 'application/json',
     };
-    final dio = buildAiProviderDio(
+    final dio = await buildAiProviderDio(
       request.service,
+      proxySettings: request.proxySettings,
       profile: AiProviderRequestTimeoutProfile.chatCompletion,
     );
     final stopwatch = logAiProviderRequestStarted(
@@ -215,6 +232,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       operation: 'chat_completion',
       method: 'POST',
       endpoint: endpoint,
+      proxySettings: request.proxySettings,
       requestHeaders: headers,
     );
     var failureLogged = false;
@@ -253,6 +271,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'chat_completion',
           method: 'POST',
           endpoint: endpoint,
+          proxySettings: request.proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: message,
@@ -270,6 +289,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'chat_completion',
           method: 'POST',
           endpoint: endpoint,
+          proxySettings: request.proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: message,
@@ -283,6 +303,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
         operation: 'chat_completion',
         method: 'POST',
         endpoint: endpoint,
+        proxySettings: request.proxySettings,
         requestHeaders: headers,
         statusCode: statusCode,
       );
@@ -295,6 +316,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'chat_completion',
           method: 'POST',
           endpoint: endpoint,
+          proxySettings: request.proxySettings,
           requestHeaders: headers,
           error: error,
           stackTrace: stackTrace,
@@ -320,8 +342,9 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       ..._requestHeaders(request.service),
       'Content-Type': 'application/json',
     };
-    final dio = buildAiProviderDio(
+    final dio = await buildAiProviderDio(
       request.service,
+      proxySettings: request.proxySettings,
       profile: AiProviderRequestTimeoutProfile.embedding,
     );
     final stopwatch = logAiProviderRequestStarted(
@@ -329,6 +352,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       operation: 'embed',
       method: 'POST',
       endpoint: endpoint,
+      proxySettings: request.proxySettings,
       requestHeaders: headers,
     );
     var failureLogged = false;
@@ -351,6 +375,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'embed',
           method: 'POST',
           endpoint: endpoint,
+          proxySettings: request.proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: message,
@@ -368,6 +393,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'embed',
           method: 'POST',
           endpoint: endpoint,
+          proxySettings: request.proxySettings,
           requestHeaders: headers,
           statusCode: statusCode,
           responseMessage: message,
@@ -381,6 +407,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
         operation: 'embed',
         method: 'POST',
         endpoint: endpoint,
+        proxySettings: request.proxySettings,
         requestHeaders: headers,
         statusCode: statusCode,
       );
@@ -393,6 +420,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           operation: 'embed',
           method: 'POST',
           endpoint: endpoint,
+          proxySettings: request.proxySettings,
           requestHeaders: headers,
           error: error,
           stackTrace: stackTrace,

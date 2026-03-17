@@ -6,6 +6,8 @@ enum AiBackendKind { remoteApi, localApi }
 
 enum AiProviderKind { openAiCompatible, anthropicCompatible }
 
+enum AiProxyProtocol { http, socks5 }
+
 String _backendKindToStorage(AiBackendKind value) => switch (value) {
   AiBackendKind.remoteApi => 'remote_api',
   AiBackendKind.localApi => 'local_api',
@@ -27,6 +29,18 @@ AiProviderKind _providerKindFromStorage(String value) {
   return switch (value.trim().toLowerCase()) {
     'anthropic_compatible' => AiProviderKind.anthropicCompatible,
     _ => AiProviderKind.openAiCompatible,
+  };
+}
+
+String _proxyProtocolToStorage(AiProxyProtocol value) => switch (value) {
+  AiProxyProtocol.http => 'http',
+  AiProxyProtocol.socks5 => 'socks5',
+};
+
+AiProxyProtocol _proxyProtocolFromStorage(String value) {
+  return switch (value.trim().toLowerCase()) {
+    'socks5' => AiProxyProtocol.socks5,
+    _ => AiProxyProtocol.http,
   };
 }
 
@@ -84,6 +98,94 @@ AiProviderAdapterKind inferAdapterKind({
     return AiProviderAdapterKind.ollama;
   }
   return AiProviderAdapterKind.openAiCompatible;
+}
+
+class AiProxySettings {
+  const AiProxySettings({
+    this.protocol = AiProxyProtocol.http,
+    this.host = '',
+    this.port = 0,
+    this.username = '',
+    this.password = '',
+    this.bypassLocalAddresses = true,
+  });
+
+  static const defaults = AiProxySettings();
+
+  final AiProxyProtocol protocol;
+  final String host;
+  final int port;
+  final String username;
+  final String password;
+  final bool bypassLocalAddresses;
+
+  bool get isEmpty =>
+      host.trim().isEmpty &&
+      port <= 0 &&
+      username.trim().isEmpty &&
+      password.trim().isEmpty;
+
+  bool get isConfigured => host.trim().isNotEmpty && port > 0 && port <= 65535;
+
+  AiProxySettings copyWith({
+    AiProxyProtocol? protocol,
+    String? host,
+    int? port,
+    String? username,
+    String? password,
+    bool? bypassLocalAddresses,
+  }) {
+    return AiProxySettings(
+      protocol: protocol ?? this.protocol,
+      host: host ?? this.host,
+      port: port ?? this.port,
+      username: username ?? this.username,
+      password: password ?? this.password,
+      bypassLocalAddresses:
+          bypassLocalAddresses ?? this.bypassLocalAddresses,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'protocol': _proxyProtocolToStorage(protocol),
+    'host': host,
+    'port': port,
+    'username': username,
+    'password': password,
+    'bypassLocalAddresses': bypassLocalAddresses,
+  };
+
+  factory AiProxySettings.fromJson(Map<String, dynamic> json) {
+    String readString(String key, String fallback) {
+      final raw = json[key];
+      if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+      return fallback;
+    }
+
+    int readInt(String key, int fallback) {
+      final raw = json[key];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim()) ?? fallback;
+      return fallback;
+    }
+
+    bool readBool(String key, bool fallback) {
+      final raw = json[key];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      return fallback;
+    }
+
+    return AiProxySettings(
+      protocol: _proxyProtocolFromStorage(readString('protocol', 'http')),
+      host: readString('host', ''),
+      port: readInt('port', 0),
+      username: readString('username', ''),
+      password: readString('password', ''),
+      bypassLocalAddresses: readBool('bypassLocalAddresses', true),
+    );
+  }
 }
 
 class AiQuickPrompt {
@@ -423,7 +525,7 @@ class AiEmbeddingProfile {
 }
 
 class AiSettings {
-  static const int currentSchemaVersion = 3;
+  static const int currentSchemaVersion = 4;
 
   static const defaultModelOptions = <String>[
     'deepseek-chat',
@@ -448,6 +550,7 @@ class AiSettings {
         key: 'legacy.ai_summary.default_prompt',
       ),
       userProfile: '',
+      proxySettings: AiProxySettings.defaults,
       quickPrompts: const <AiQuickPrompt>[],
       analysisPromptTemplates: const <String, String>{},
     );
@@ -465,6 +568,7 @@ class AiSettings {
     required this.selectedEmbeddingProfileKey,
     required this.prompt,
     required this.userProfile,
+    this.proxySettings = AiProxySettings.defaults,
     required this.quickPrompts,
     required this.analysisPromptTemplates,
     this.customInsightTemplate = const AiCustomInsightTemplate(),
@@ -479,6 +583,7 @@ class AiSettings {
   final String? selectedEmbeddingProfileKey;
   final String prompt;
   final String userProfile;
+  final AiProxySettings proxySettings;
   final List<AiQuickPrompt> quickPrompts;
   final Map<String, String> analysisPromptTemplates;
   final AiCustomInsightTemplate customInsightTemplate;
@@ -528,6 +633,7 @@ class AiSettings {
     Object? selectedEmbeddingProfileKey = _unset,
     String? prompt,
     String? userProfile,
+    AiProxySettings? proxySettings,
     List<AiQuickPrompt>? quickPrompts,
     Map<String, String>? analysisPromptTemplates,
     Map<String, String>? insightPromptTemplates,
@@ -623,6 +729,7 @@ class AiSettings {
       selectedEmbeddingProfileKey: resolvedSelectedEmbeddingKey,
       prompt: prompt ?? this.prompt,
       userProfile: userProfile ?? this.userProfile,
+      proxySettings: proxySettings ?? this.proxySettings,
       quickPrompts: quickPrompts ?? this.quickPrompts,
       analysisPromptTemplates:
           analysisPromptTemplates ??
@@ -651,6 +758,7 @@ class AiSettings {
     'selectedEmbeddingProfileKey': selectedEmbeddingProfileKey,
     'prompt': prompt,
     'userProfile': userProfile,
+    'proxySettings': proxySettings.toJson(),
     'quickPrompts': quickPrompts.map((p) => p.toJson()).toList(growable: false),
     'analysisPromptTemplates': analysisPromptTemplates,
     'insightPromptTemplates': analysisPromptTemplates,
@@ -714,6 +822,12 @@ class AiSettings {
       final raw = json['customInsightTemplate'];
       if (raw is! Map) return const AiCustomInsightTemplate();
       return AiCustomInsightTemplate.fromJson(raw.cast<String, dynamic>());
+    }
+
+    AiProxySettings readProxySettings() {
+      final raw = json['proxySettings'];
+      if (raw is! Map) return AiProxySettings.defaults;
+      return AiProxySettings.fromJson(raw.cast<String, dynamic>());
     }
 
     List<AiGenerationProfile> readGenerationProfiles() {
@@ -827,6 +941,7 @@ class AiSettings {
       userProfile: (json['userProfile'] is String)
           ? (json['userProfile'] as String).trim()
           : AiSettings.defaults.userProfile,
+      proxySettings: readProxySettings(),
       quickPrompts: readQuickPrompts(
         'quickPrompts',
         AiSettings.defaults.quickPrompts,

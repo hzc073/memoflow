@@ -17,6 +17,11 @@ void main() {
       );
 
       final settings = AiSettings.defaultsFor(AppLanguage.zhHans).copyWith(
+        proxySettings: const AiProxySettings(
+          protocol: AiProxyProtocol.http,
+          host: 'proxy.example.com',
+          port: 7890,
+        ),
         services: const <AiServiceInstance>[_service],
         taskRouteBindings: const <AiTaskRouteBinding>[
           AiTaskRouteBinding(
@@ -50,7 +55,9 @@ void main() {
       expect(adapter.lastEmbeddingRequest, isNotNull);
       expect(adapter.lastChatRequest!.service.serviceId, 'svc_main');
       expect(adapter.lastChatRequest!.model.modelId, 'mdl_chat');
+      expect(adapter.lastChatRequest!.proxySettings?.host, 'proxy.example.com');
       expect(adapter.lastEmbeddingRequest!.model.modelId, 'mdl_embed');
+      expect(adapter.lastEmbeddingRequest!.proxySettings?.port, 7890);
     },
   );
 }
@@ -74,13 +81,18 @@ class _FakeAdapter implements AiProviderAdapter {
   }
 
   @override
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service) async {
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }) async {
     return const <AiDiscoveredModel>[];
   }
 
   @override
   Future<AiServiceValidationResult> validateConfig(
-    AiServiceInstance service,
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  }
   ) async {
     return const AiServiceValidationResult(status: AiValidationStatus.success);
   }

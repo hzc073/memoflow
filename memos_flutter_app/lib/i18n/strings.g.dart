@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 6774 (1354 per locale)
+/// Strings: 6914 (1382 per locale)
 ///
-/// Built on 2026-03-17 at 03:26 UTC
+/// Built on 2026-03-17 at 06:41 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -169,6 +169,7 @@ class _StringsStringsEn {
 	late final _StringsStringsSettingsEn settings = _StringsStringsSettingsEn._(_root);
 	late final _StringsStringsLocationPickerEn locationPicker = _StringsStringsLocationPickerEn._(_root);
 	late final _StringsStringsAiInsightEn aiInsight = _StringsStringsAiInsightEn._(_root);
+	late final _StringsStringsAiProxyEn aiProxy = _StringsStringsAiProxyEn._(_root);
 	late final _StringsStringsLegacyEn legacy = _StringsStringsLegacyEn._(_root);
 }
 
@@ -310,6 +311,43 @@ class _StringsStringsAiInsightEn {
 	late final _StringsStringsAiInsightPromptSettingsEn promptSettings = _StringsStringsAiInsightPromptSettingsEn._(_root);
 	late final _StringsStringsAiInsightContentPreviewEn contentPreview = _StringsStringsAiInsightContentPreviewEn._(_root);
 	late final _StringsStringsAiInsightCardsEn cards = _StringsStringsAiInsightCardsEn._(_root);
+}
+
+// Path: strings.aiProxy
+class _StringsStringsAiProxyEn {
+	_StringsStringsAiProxyEn._(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+	String get title => 'Proxy Settings';
+	String get notConfigured => 'Not configured';
+	String statusHttp({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+	String statusSocks5({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+	String get protocol => 'Protocol';
+	String get host => 'Host';
+	String get port => 'Port';
+	String get username => 'Username';
+	String get password => 'Password';
+	String get bypassLocalAddresses => 'Automatically bypass local/private addresses';
+	String get description => 'Only affects AI services that enable the shared proxy. Local models such as Ollama and 127.0.0.1 stay direct by default.';
+	String get useSharedProxy => 'Use shared proxy';
+	String get useSharedProxyDescription => 'This service will use the proxy configured in AI settings.';
+	String get incompleteWarning => 'This service has proxy enabled, but shared proxy settings are incomplete.';
+	String get openSettings => 'Open proxy settings';
+	String get saveSuccess => 'Proxy settings saved.';
+	String get clearSuccess => 'Proxy settings cleared.';
+	String get invalidHost => 'Please enter a proxy host.';
+	String get invalidPort => 'Please enter a valid proxy port between 1 and 65535.';
+	String get incompleteError => '该服务已启用代理，但 AI 代理设置尚未配置完整';
+	String get testSectionTitle => 'Proxy Test';
+	String get testSectionDescription => 'Use the current form values to test whether the proxy can reach a target website.';
+	String get testUrl => 'Test URL';
+	String get testAction => 'Test Connection';
+	String get testing => 'Testing...';
+	String get invalidTestUrl => 'Please enter a valid HTTP or HTTPS URL.';
+	String testSuccess({required Object statusCode, required Object elapsedMs}) => 'Connection successful · HTTP ${statusCode} · ${elapsedMs} ms';
+	String testFailure({required Object message}) => 'Connection failed: ${message}';
 }
 
 // Path: strings.legacy
@@ -2151,6 +2189,7 @@ class _StringsStringsDe extends _StringsStringsEn {
 	@override late final _StringsStringsLoginDe login = _StringsStringsLoginDe._(_root);
 	@override late final _StringsStringsSettingsDe settings = _StringsStringsSettingsDe._(_root);
 	@override late final _StringsStringsLocationPickerDe locationPicker = _StringsStringsLocationPickerDe._(_root);
+	@override late final _StringsStringsAiProxyDe aiProxy = _StringsStringsAiProxyDe._(_root);
 	@override late final _StringsStringsLegacyDe legacy = _StringsStringsLegacyDe._(_root);
 }
 
@@ -2272,6 +2311,43 @@ class _StringsStringsLocationPickerDe extends _StringsStringsLocationPickerEn {
 	@override String get providerMissingBaiduKey => 'Vor der Standortauswahl wird der Baidu AK benötigt.';
 	@override String get providerMissingGoogleKey => 'Vor der Standortauswahl wird der Google Maps API Key benötigt.';
 	@override String get providerUnsupportedPlatform => 'Der eingebettete Kartenwähler ist nur auf Android und Windows verfügbar.';
+}
+
+// Path: strings.aiProxy
+class _StringsStringsAiProxyDe extends _StringsStringsAiProxyEn {
+	_StringsStringsAiProxyDe._(_StringsDe root) : this._root = root, super._(root);
+
+	@override final _StringsDe _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Proxy Settings';
+	@override String get notConfigured => 'Not configured';
+	@override String statusHttp({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+	@override String statusSocks5({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+	@override String get protocol => 'Protocol';
+	@override String get host => 'Host';
+	@override String get port => 'Port';
+	@override String get username => 'Username';
+	@override String get password => 'Password';
+	@override String get bypassLocalAddresses => 'Automatically bypass local/private addresses';
+	@override String get description => 'Only affects AI services that enable the shared proxy. Local models such as Ollama and 127.0.0.1 stay direct by default.';
+	@override String get useSharedProxy => 'Use shared proxy';
+	@override String get useSharedProxyDescription => 'This service will use the proxy configured in AI settings.';
+	@override String get incompleteWarning => 'This service has proxy enabled, but shared proxy settings are incomplete.';
+	@override String get openSettings => 'Open proxy settings';
+	@override String get saveSuccess => 'Proxy settings saved.';
+	@override String get clearSuccess => 'Proxy settings cleared.';
+	@override String get invalidHost => 'Please enter a proxy host.';
+	@override String get invalidPort => 'Please enter a valid proxy port between 1 and 65535.';
+	@override String get incompleteError => '该服务已启用代理，但 AI 代理设置尚未配置完整';
+	@override String get testSectionTitle => 'Proxy Test';
+	@override String get testSectionDescription => 'Use the current form values to test whether the proxy can reach a target website.';
+	@override String get testUrl => 'Test URL';
+	@override String get testAction => 'Test Connection';
+	@override String get testing => 'Testing...';
+	@override String get invalidTestUrl => 'Please enter a valid HTTP or HTTPS URL.';
+	@override String testSuccess({required Object statusCode, required Object elapsedMs}) => 'Connection successful · HTTP ${statusCode} · ${elapsedMs} ms';
+	@override String testFailure({required Object message}) => 'Connection failed: ${message}';
 }
 
 // Path: strings.legacy
@@ -3710,6 +3786,7 @@ class _StringsStringsJa extends _StringsStringsEn {
 	@override late final _StringsStringsLoginJa login = _StringsStringsLoginJa._(_root);
 	@override late final _StringsStringsSettingsJa settings = _StringsStringsSettingsJa._(_root);
 	@override late final _StringsStringsLocationPickerJa locationPicker = _StringsStringsLocationPickerJa._(_root);
+	@override late final _StringsStringsAiProxyJa aiProxy = _StringsStringsAiProxyJa._(_root);
 	@override late final _StringsStringsLegacyJa legacy = _StringsStringsLegacyJa._(_root);
 }
 
@@ -3831,6 +3908,43 @@ class _StringsStringsLocationPickerJa extends _StringsStringsLocationPickerEn {
 	@override String get providerMissingBaiduKey => '位置を選択する前に、Baidu AK の設定が必要です。';
 	@override String get providerMissingGoogleKey => '位置を選択する前に、Google Maps API Key の設定が必要です。';
 	@override String get providerUnsupportedPlatform => '埋め込み地図ピッカーは Android と Windows でのみ利用できます。';
+}
+
+// Path: strings.aiProxy
+class _StringsStringsAiProxyJa extends _StringsStringsAiProxyEn {
+	_StringsStringsAiProxyJa._(_StringsJa root) : this._root = root, super._(root);
+
+	@override final _StringsJa _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Proxy Settings';
+	@override String get notConfigured => 'Not configured';
+	@override String statusHttp({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+	@override String statusSocks5({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+	@override String get protocol => 'Protocol';
+	@override String get host => 'Host';
+	@override String get port => 'Port';
+	@override String get username => 'Username';
+	@override String get password => 'Password';
+	@override String get bypassLocalAddresses => 'Automatically bypass local/private addresses';
+	@override String get description => 'Only affects AI services that enable the shared proxy. Local models such as Ollama and 127.0.0.1 stay direct by default.';
+	@override String get useSharedProxy => 'Use shared proxy';
+	@override String get useSharedProxyDescription => 'This service will use the proxy configured in AI settings.';
+	@override String get incompleteWarning => 'This service has proxy enabled, but shared proxy settings are incomplete.';
+	@override String get openSettings => 'Open proxy settings';
+	@override String get saveSuccess => 'Proxy settings saved.';
+	@override String get clearSuccess => 'Proxy settings cleared.';
+	@override String get invalidHost => 'Please enter a proxy host.';
+	@override String get invalidPort => 'Please enter a valid proxy port between 1 and 65535.';
+	@override String get incompleteError => '该服务已启用代理，但 AI 代理设置尚未配置完整';
+	@override String get testSectionTitle => 'Proxy Test';
+	@override String get testSectionDescription => 'Use the current form values to test whether the proxy can reach a target website.';
+	@override String get testUrl => 'Test URL';
+	@override String get testAction => 'Test Connection';
+	@override String get testing => 'Testing...';
+	@override String get invalidTestUrl => 'Please enter a valid HTTP or HTTPS URL.';
+	@override String testSuccess({required Object statusCode, required Object elapsedMs}) => 'Connection successful · HTTP ${statusCode} · ${elapsedMs} ms';
+	@override String testFailure({required Object message}) => 'Connection failed: ${message}';
 }
 
 // Path: strings.legacy
@@ -5269,6 +5383,7 @@ class _StringsStringsZhHans extends _StringsStringsEn {
 	@override late final _StringsStringsSettingsZhHans settings = _StringsStringsSettingsZhHans._(_root);
 	@override late final _StringsStringsLocationPickerZhHans locationPicker = _StringsStringsLocationPickerZhHans._(_root);
 	@override late final _StringsStringsAiInsightZhHans aiInsight = _StringsStringsAiInsightZhHans._(_root);
+	@override late final _StringsStringsAiProxyZhHans aiProxy = _StringsStringsAiProxyZhHans._(_root);
 	@override late final _StringsStringsLegacyZhHans legacy = _StringsStringsLegacyZhHans._(_root);
 }
 
@@ -5410,6 +5525,43 @@ class _StringsStringsAiInsightZhHans extends _StringsStringsAiInsightEn {
 	@override late final _StringsStringsAiInsightPromptSettingsZhHans promptSettings = _StringsStringsAiInsightPromptSettingsZhHans._(_root);
 	@override late final _StringsStringsAiInsightContentPreviewZhHans contentPreview = _StringsStringsAiInsightContentPreviewZhHans._(_root);
 	@override late final _StringsStringsAiInsightCardsZhHans cards = _StringsStringsAiInsightCardsZhHans._(_root);
+}
+
+// Path: strings.aiProxy
+class _StringsStringsAiProxyZhHans extends _StringsStringsAiProxyEn {
+	_StringsStringsAiProxyZhHans._(_StringsZhHans root) : this._root = root, super._(root);
+
+	@override final _StringsZhHans _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => '代理设置';
+	@override String get notConfigured => '未配置';
+	@override String statusHttp({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+	@override String statusSocks5({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+	@override String get protocol => '协议';
+	@override String get host => '主机';
+	@override String get port => '端口';
+	@override String get username => '用户名';
+	@override String get password => '密码';
+	@override String get bypassLocalAddresses => '自动绕过本地/私网地址';
+	@override String get description => '仅对开启“使用共享代理”的 AI 服务生效。本地模型如 Ollama 和 127.0.0.1 默认直连。';
+	@override String get useSharedProxy => '使用共享代理';
+	@override String get useSharedProxyDescription => '该服务的 AI 请求将使用 AI 设置中的代理配置。';
+	@override String get incompleteWarning => '已为该服务开启代理，但共享代理设置尚未配置完整。';
+	@override String get openSettings => '前往代理设置';
+	@override String get saveSuccess => '代理设置已保存。';
+	@override String get clearSuccess => '代理设置已清空。';
+	@override String get invalidHost => '请输入代理主机。';
+	@override String get invalidPort => '请输入 1 到 65535 之间的有效代理端口。';
+	@override String get incompleteError => '该服务已启用代理，但 AI 代理设置尚未配置完整';
+	@override String get testSectionTitle => '代理测试';
+	@override String get testSectionDescription => '使用当前表单中的代理参数，测试是否能访问目标网站。';
+	@override String get testUrl => '测试地址';
+	@override String get testAction => '开始测试';
+	@override String get testing => '测试中...';
+	@override String get invalidTestUrl => '请输入有效的 HTTP 或 HTTPS 地址。';
+	@override String testSuccess({required Object statusCode, required Object elapsedMs}) => '连接成功 · HTTP ${statusCode} · ${elapsedMs} ms';
+	@override String testFailure({required Object message}) => '连接失败：${message}';
 }
 
 // Path: strings.legacy
@@ -7250,6 +7402,7 @@ class _StringsStringsZhHantTw extends _StringsStringsEn {
 	@override late final _StringsStringsLoginZhHantTw login = _StringsStringsLoginZhHantTw._(_root);
 	@override late final _StringsStringsSettingsZhHantTw settings = _StringsStringsSettingsZhHantTw._(_root);
 	@override late final _StringsStringsLocationPickerZhHantTw locationPicker = _StringsStringsLocationPickerZhHantTw._(_root);
+	@override late final _StringsStringsAiProxyZhHantTw aiProxy = _StringsStringsAiProxyZhHantTw._(_root);
 	@override late final _StringsStringsLegacyZhHantTw legacy = _StringsStringsLegacyZhHantTw._(_root);
 }
 
@@ -7372,6 +7525,43 @@ class _StringsStringsLocationPickerZhHantTw extends _StringsStringsLocationPicke
 	@override String get providerMissingBaiduKey => '選擇位置前需要先設定百度地圖 AK。';
 	@override String get providerMissingGoogleKey => '選擇位置前需要先設定 Google Maps API Key。';
 	@override String get providerUnsupportedPlatform => '嵌入式地圖選點僅支援 Android 和 Windows。';
+}
+
+// Path: strings.aiProxy
+class _StringsStringsAiProxyZhHantTw extends _StringsStringsAiProxyEn {
+	_StringsStringsAiProxyZhHantTw._(_StringsZhHantTw root) : this._root = root, super._(root);
+
+	@override final _StringsZhHantTw _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => '代理設定';
+	@override String get notConfigured => '未設定';
+	@override String statusHttp({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+	@override String statusSocks5({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+	@override String get protocol => '協定';
+	@override String get host => '主機';
+	@override String get port => '連接埠';
+	@override String get username => '使用者名稱';
+	@override String get password => '密碼';
+	@override String get bypassLocalAddresses => '自動略過本機/私有網路位址';
+	@override String get description => '僅會影響已啟用「使用共用代理」的 AI 服務。本地模型如 Ollama 與 127.0.0.1 預設仍會直連。';
+	@override String get useSharedProxy => '使用共用代理';
+	@override String get useSharedProxyDescription => '此服務的 AI 請求會使用 AI 設定中的代理設定。';
+	@override String get incompleteWarning => '此服務已啟用代理，但共用代理設定尚未完整。';
+	@override String get openSettings => '前往代理設定';
+	@override String get saveSuccess => '代理設定已儲存。';
+	@override String get clearSuccess => '代理設定已清除。';
+	@override String get invalidHost => '請輸入代理主機。';
+	@override String get invalidPort => '請輸入 1 到 65535 之間的有效代理連接埠。';
+	@override String get incompleteError => '該服務已啟用代理，但 AI 代理設定尚未完整';
+	@override String get testSectionTitle => '代理測試';
+	@override String get testSectionDescription => '使用目前表單中的代理參數，測試是否可以連線至目標網站。';
+	@override String get testUrl => '測試 URL';
+	@override String get testAction => '開始測試';
+	@override String get testing => '測試中...';
+	@override String get invalidTestUrl => '請輸入有效的 HTTP 或 HTTPS URL。';
+	@override String testSuccess({required Object statusCode, required Object elapsedMs}) => '連線成功 · HTTP ${statusCode} · ${elapsedMs} ms';
+	@override String testFailure({required Object message}) => '連線失敗：${message}';
 }
 
 // Path: strings.legacy
@@ -9192,6 +9382,34 @@ extension on Translations {
 			case 'strings.aiInsight.cards.actionExtraction.description': return 'Turn reflections into concrete next actions you can try, test, or follow up on.';
 			case 'strings.aiInsight.cards.longTermTrajectory.title': return 'Long-term Trajectory';
 			case 'strings.aiInsight.cards.longTermTrajectory.description': return 'Look across time and identify meaningful shifts, recurring cycles, and long-term change.';
+			case 'strings.aiProxy.title': return 'Proxy Settings';
+			case 'strings.aiProxy.notConfigured': return 'Not configured';
+			case 'strings.aiProxy.statusHttp': return ({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+			case 'strings.aiProxy.statusSocks5': return ({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+			case 'strings.aiProxy.protocol': return 'Protocol';
+			case 'strings.aiProxy.host': return 'Host';
+			case 'strings.aiProxy.port': return 'Port';
+			case 'strings.aiProxy.username': return 'Username';
+			case 'strings.aiProxy.password': return 'Password';
+			case 'strings.aiProxy.bypassLocalAddresses': return 'Automatically bypass local/private addresses';
+			case 'strings.aiProxy.description': return 'Only affects AI services that enable the shared proxy. Local models such as Ollama and 127.0.0.1 stay direct by default.';
+			case 'strings.aiProxy.useSharedProxy': return 'Use shared proxy';
+			case 'strings.aiProxy.useSharedProxyDescription': return 'This service will use the proxy configured in AI settings.';
+			case 'strings.aiProxy.incompleteWarning': return 'This service has proxy enabled, but shared proxy settings are incomplete.';
+			case 'strings.aiProxy.openSettings': return 'Open proxy settings';
+			case 'strings.aiProxy.saveSuccess': return 'Proxy settings saved.';
+			case 'strings.aiProxy.clearSuccess': return 'Proxy settings cleared.';
+			case 'strings.aiProxy.invalidHost': return 'Please enter a proxy host.';
+			case 'strings.aiProxy.invalidPort': return 'Please enter a valid proxy port between 1 and 65535.';
+			case 'strings.aiProxy.incompleteError': return '该服务已启用代理，但 AI 代理设置尚未配置完整';
+			case 'strings.aiProxy.testSectionTitle': return 'Proxy Test';
+			case 'strings.aiProxy.testSectionDescription': return 'Use the current form values to test whether the proxy can reach a target website.';
+			case 'strings.aiProxy.testUrl': return 'Test URL';
+			case 'strings.aiProxy.testAction': return 'Test Connection';
+			case 'strings.aiProxy.testing': return 'Testing...';
+			case 'strings.aiProxy.invalidTestUrl': return 'Please enter a valid HTTP or HTTPS URL.';
+			case 'strings.aiProxy.testSuccess': return ({required Object statusCode, required Object elapsedMs}) => 'Connection successful · HTTP ${statusCode} · ${elapsedMs} ms';
+			case 'strings.aiProxy.testFailure': return ({required Object message}) => 'Connection failed: ${message}';
 			case 'strings.legacy.msg_memos_backend_docs': return 'Memos Backend Docs';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return 'Remember the moment, feel the warmth of life.\\nTake a quick review every day.';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return 'Are you sure you want to delete this shortcut?';
@@ -10625,6 +10843,34 @@ extension on _StringsDe {
 			case 'strings.locationPicker.providerMissingBaiduKey': return 'Vor der Standortauswahl wird der Baidu AK benötigt.';
 			case 'strings.locationPicker.providerMissingGoogleKey': return 'Vor der Standortauswahl wird der Google Maps API Key benötigt.';
 			case 'strings.locationPicker.providerUnsupportedPlatform': return 'Der eingebettete Kartenwähler ist nur auf Android und Windows verfügbar.';
+			case 'strings.aiProxy.title': return 'Proxy Settings';
+			case 'strings.aiProxy.notConfigured': return 'Not configured';
+			case 'strings.aiProxy.statusHttp': return ({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+			case 'strings.aiProxy.statusSocks5': return ({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+			case 'strings.aiProxy.protocol': return 'Protocol';
+			case 'strings.aiProxy.host': return 'Host';
+			case 'strings.aiProxy.port': return 'Port';
+			case 'strings.aiProxy.username': return 'Username';
+			case 'strings.aiProxy.password': return 'Password';
+			case 'strings.aiProxy.bypassLocalAddresses': return 'Automatically bypass local/private addresses';
+			case 'strings.aiProxy.description': return 'Only affects AI services that enable the shared proxy. Local models such as Ollama and 127.0.0.1 stay direct by default.';
+			case 'strings.aiProxy.useSharedProxy': return 'Use shared proxy';
+			case 'strings.aiProxy.useSharedProxyDescription': return 'This service will use the proxy configured in AI settings.';
+			case 'strings.aiProxy.incompleteWarning': return 'This service has proxy enabled, but shared proxy settings are incomplete.';
+			case 'strings.aiProxy.openSettings': return 'Open proxy settings';
+			case 'strings.aiProxy.saveSuccess': return 'Proxy settings saved.';
+			case 'strings.aiProxy.clearSuccess': return 'Proxy settings cleared.';
+			case 'strings.aiProxy.invalidHost': return 'Please enter a proxy host.';
+			case 'strings.aiProxy.invalidPort': return 'Please enter a valid proxy port between 1 and 65535.';
+			case 'strings.aiProxy.incompleteError': return '该服务已启用代理，但 AI 代理设置尚未配置完整';
+			case 'strings.aiProxy.testSectionTitle': return 'Proxy Test';
+			case 'strings.aiProxy.testSectionDescription': return 'Use the current form values to test whether the proxy can reach a target website.';
+			case 'strings.aiProxy.testUrl': return 'Test URL';
+			case 'strings.aiProxy.testAction': return 'Test Connection';
+			case 'strings.aiProxy.testing': return 'Testing...';
+			case 'strings.aiProxy.invalidTestUrl': return 'Please enter a valid HTTP or HTTPS URL.';
+			case 'strings.aiProxy.testSuccess': return ({required Object statusCode, required Object elapsedMs}) => 'Connection successful · HTTP ${statusCode} · ${elapsedMs} ms';
+			case 'strings.aiProxy.testFailure': return ({required Object message}) => 'Connection failed: ${message}';
 			case 'strings.legacy.msg_memos_backend_docs': return 'MemoFlow-Backend-Dokumentation';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return 'Erinnere dich an den Moment und spüre die Wärme des Lebens.\\nMach jeden Tag eine kurze Rückschau.';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return 'Möchten Sie diese Verknüpfung wirklich löschen?';
@@ -11834,6 +12080,34 @@ extension on _StringsJa {
 			case 'strings.locationPicker.providerMissingBaiduKey': return '位置を選択する前に、Baidu AK の設定が必要です。';
 			case 'strings.locationPicker.providerMissingGoogleKey': return '位置を選択する前に、Google Maps API Key の設定が必要です。';
 			case 'strings.locationPicker.providerUnsupportedPlatform': return '埋め込み地図ピッカーは Android と Windows でのみ利用できます。';
+			case 'strings.aiProxy.title': return 'Proxy Settings';
+			case 'strings.aiProxy.notConfigured': return 'Not configured';
+			case 'strings.aiProxy.statusHttp': return ({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+			case 'strings.aiProxy.statusSocks5': return ({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+			case 'strings.aiProxy.protocol': return 'Protocol';
+			case 'strings.aiProxy.host': return 'Host';
+			case 'strings.aiProxy.port': return 'Port';
+			case 'strings.aiProxy.username': return 'Username';
+			case 'strings.aiProxy.password': return 'Password';
+			case 'strings.aiProxy.bypassLocalAddresses': return 'Automatically bypass local/private addresses';
+			case 'strings.aiProxy.description': return 'Only affects AI services that enable the shared proxy. Local models such as Ollama and 127.0.0.1 stay direct by default.';
+			case 'strings.aiProxy.useSharedProxy': return 'Use shared proxy';
+			case 'strings.aiProxy.useSharedProxyDescription': return 'This service will use the proxy configured in AI settings.';
+			case 'strings.aiProxy.incompleteWarning': return 'This service has proxy enabled, but shared proxy settings are incomplete.';
+			case 'strings.aiProxy.openSettings': return 'Open proxy settings';
+			case 'strings.aiProxy.saveSuccess': return 'Proxy settings saved.';
+			case 'strings.aiProxy.clearSuccess': return 'Proxy settings cleared.';
+			case 'strings.aiProxy.invalidHost': return 'Please enter a proxy host.';
+			case 'strings.aiProxy.invalidPort': return 'Please enter a valid proxy port between 1 and 65535.';
+			case 'strings.aiProxy.incompleteError': return '该服务已启用代理，但 AI 代理设置尚未配置完整';
+			case 'strings.aiProxy.testSectionTitle': return 'Proxy Test';
+			case 'strings.aiProxy.testSectionDescription': return 'Use the current form values to test whether the proxy can reach a target website.';
+			case 'strings.aiProxy.testUrl': return 'Test URL';
+			case 'strings.aiProxy.testAction': return 'Test Connection';
+			case 'strings.aiProxy.testing': return 'Testing...';
+			case 'strings.aiProxy.invalidTestUrl': return 'Please enter a valid HTTP or HTTPS URL.';
+			case 'strings.aiProxy.testSuccess': return ({required Object statusCode, required Object elapsedMs}) => 'Connection successful · HTTP ${statusCode} · ${elapsedMs} ms';
+			case 'strings.aiProxy.testFailure': return ({required Object message}) => 'Connection failed: ${message}';
 			case 'strings.legacy.msg_memos_backend_docs': return 'Memos バックエンドドキュメント';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return 'その瞬間を記録し、暮らしのぬくもりを感じましょう。\\n毎日さっと振り返りましょう。';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return 'このショートカットを削除してもよろしいですか？';
@@ -13092,6 +13366,34 @@ extension on _StringsZhHans {
 			case 'strings.aiInsight.cards.actionExtraction.description': return '从记录中提炼出值得尝试的行动，让反思更容易落地。';
 			case 'strings.aiInsight.cards.longTermTrajectory.title': return '长期轨迹';
 			case 'strings.aiInsight.cards.longTermTrajectory.description': return '从更长的时间跨度观察你的变化，识别阶段性趋势与循环。';
+			case 'strings.aiProxy.title': return '代理设置';
+			case 'strings.aiProxy.notConfigured': return '未配置';
+			case 'strings.aiProxy.statusHttp': return ({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+			case 'strings.aiProxy.statusSocks5': return ({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+			case 'strings.aiProxy.protocol': return '协议';
+			case 'strings.aiProxy.host': return '主机';
+			case 'strings.aiProxy.port': return '端口';
+			case 'strings.aiProxy.username': return '用户名';
+			case 'strings.aiProxy.password': return '密码';
+			case 'strings.aiProxy.bypassLocalAddresses': return '自动绕过本地/私网地址';
+			case 'strings.aiProxy.description': return '仅对开启“使用共享代理”的 AI 服务生效。本地模型如 Ollama 和 127.0.0.1 默认直连。';
+			case 'strings.aiProxy.useSharedProxy': return '使用共享代理';
+			case 'strings.aiProxy.useSharedProxyDescription': return '该服务的 AI 请求将使用 AI 设置中的代理配置。';
+			case 'strings.aiProxy.incompleteWarning': return '已为该服务开启代理，但共享代理设置尚未配置完整。';
+			case 'strings.aiProxy.openSettings': return '前往代理设置';
+			case 'strings.aiProxy.saveSuccess': return '代理设置已保存。';
+			case 'strings.aiProxy.clearSuccess': return '代理设置已清空。';
+			case 'strings.aiProxy.invalidHost': return '请输入代理主机。';
+			case 'strings.aiProxy.invalidPort': return '请输入 1 到 65535 之间的有效代理端口。';
+			case 'strings.aiProxy.incompleteError': return '该服务已启用代理，但 AI 代理设置尚未配置完整';
+			case 'strings.aiProxy.testSectionTitle': return '代理测试';
+			case 'strings.aiProxy.testSectionDescription': return '使用当前表单中的代理参数，测试是否能访问目标网站。';
+			case 'strings.aiProxy.testUrl': return '测试地址';
+			case 'strings.aiProxy.testAction': return '开始测试';
+			case 'strings.aiProxy.testing': return '测试中...';
+			case 'strings.aiProxy.invalidTestUrl': return '请输入有效的 HTTP 或 HTTPS 地址。';
+			case 'strings.aiProxy.testSuccess': return ({required Object statusCode, required Object elapsedMs}) => '连接成功 · HTTP ${statusCode} · ${elapsedMs} ms';
+			case 'strings.aiProxy.testFailure': return ({required Object message}) => '连接失败：${message}';
 			case 'strings.legacy.msg_memos_backend_docs': return 'memos后端使用文档';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return '记住这一刻，感受生活的温度。\\n每天来一次随机漫步。';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return '确定要删除该快捷筛选吗？';
@@ -14525,6 +14827,34 @@ extension on _StringsZhHantTw {
 			case 'strings.locationPicker.providerMissingBaiduKey': return '選擇位置前需要先設定百度地圖 AK。';
 			case 'strings.locationPicker.providerMissingGoogleKey': return '選擇位置前需要先設定 Google Maps API Key。';
 			case 'strings.locationPicker.providerUnsupportedPlatform': return '嵌入式地圖選點僅支援 Android 和 Windows。';
+			case 'strings.aiProxy.title': return '代理設定';
+			case 'strings.aiProxy.notConfigured': return '未設定';
+			case 'strings.aiProxy.statusHttp': return ({required Object host, required Object port}) => 'HTTP · ${host}:${port}';
+			case 'strings.aiProxy.statusSocks5': return ({required Object host, required Object port}) => 'SOCKS5 · ${host}:${port}';
+			case 'strings.aiProxy.protocol': return '協定';
+			case 'strings.aiProxy.host': return '主機';
+			case 'strings.aiProxy.port': return '連接埠';
+			case 'strings.aiProxy.username': return '使用者名稱';
+			case 'strings.aiProxy.password': return '密碼';
+			case 'strings.aiProxy.bypassLocalAddresses': return '自動略過本機/私有網路位址';
+			case 'strings.aiProxy.description': return '僅會影響已啟用「使用共用代理」的 AI 服務。本地模型如 Ollama 與 127.0.0.1 預設仍會直連。';
+			case 'strings.aiProxy.useSharedProxy': return '使用共用代理';
+			case 'strings.aiProxy.useSharedProxyDescription': return '此服務的 AI 請求會使用 AI 設定中的代理設定。';
+			case 'strings.aiProxy.incompleteWarning': return '此服務已啟用代理，但共用代理設定尚未完整。';
+			case 'strings.aiProxy.openSettings': return '前往代理設定';
+			case 'strings.aiProxy.saveSuccess': return '代理設定已儲存。';
+			case 'strings.aiProxy.clearSuccess': return '代理設定已清除。';
+			case 'strings.aiProxy.invalidHost': return '請輸入代理主機。';
+			case 'strings.aiProxy.invalidPort': return '請輸入 1 到 65535 之間的有效代理連接埠。';
+			case 'strings.aiProxy.incompleteError': return '該服務已啟用代理，但 AI 代理設定尚未完整';
+			case 'strings.aiProxy.testSectionTitle': return '代理測試';
+			case 'strings.aiProxy.testSectionDescription': return '使用目前表單中的代理參數，測試是否可以連線至目標網站。';
+			case 'strings.aiProxy.testUrl': return '測試 URL';
+			case 'strings.aiProxy.testAction': return '開始測試';
+			case 'strings.aiProxy.testing': return '測試中...';
+			case 'strings.aiProxy.invalidTestUrl': return '請輸入有效的 HTTP 或 HTTPS URL。';
+			case 'strings.aiProxy.testSuccess': return ({required Object statusCode, required Object elapsedMs}) => '連線成功 · HTTP ${statusCode} · ${elapsedMs} ms';
+			case 'strings.aiProxy.testFailure': return ({required Object message}) => '連線失敗：${message}';
 			case 'strings.legacy.msg_memos_backend_docs': return 'memos后端使用文档';
 			case 'strings.legacy.msg_remember_moment_feel_warmth_life_take': return '记住这一刻，感受生活的温度。\\n每天来一次随机漫步。';
 			case 'strings.legacy.msg_sure_want_delete_shortcut': return '确定要删除该快捷筛选吗？';

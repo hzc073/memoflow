@@ -79,6 +79,11 @@ void main() {
     );
     final aiRepository = _MemoryAiSettingsRepository(
       AiSettings.defaultsFor(AppLanguage.en).copyWith(
+        proxySettings: const AiProxySettings(
+          protocol: AiProxyProtocol.http,
+          host: 'proxy.example.com',
+          port: 8080,
+        ),
         services: const <AiServiceInstance>[
           AiServiceInstance(
             serviceId: 'svc_openai',
@@ -160,6 +165,8 @@ void main() {
 
     expect(find.text('AI Service Overview'), findsNothing);
     expect(find.text('OpenAI Main'), findsOneWidget);
+    expect(find.text('Proxy Settings'), findsOneWidget);
+    expect(find.text('HTTP · proxy.example.com:8080'), findsOneWidget);
     expect(find.text('Default Usage'), findsNothing);
     expect(find.text('gpt-4o-mini'), findsWidgets);
     expect(find.text('text-embedding-3-small'), findsOneWidget);
@@ -210,5 +217,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Add Service'), findsOneWidget);
+    expect(find.text('Proxy Settings'), findsOneWidget);
+    expect(find.text('Not configured'), findsOneWidget);
   });
 }

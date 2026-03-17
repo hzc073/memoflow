@@ -8,6 +8,7 @@ import '../../data/repositories/ai_settings_repository.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'ai_provider_logo.dart';
+import 'ai_proxy_settings_screen.dart';
 import 'ai_service_detail_screen.dart';
 import 'ai_service_model_screen.dart';
 import 'ai_service_wizard_screen.dart';
@@ -110,6 +111,21 @@ class AiSettingsScreen extends ConsumerWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const AiUserProfileScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _CardRow(
+                card: card,
+                title: context.t.strings.aiProxy.title,
+                subtitle: _proxySummary(context, settings.proxySettings),
+                textMain: textMain,
+                textMuted: textMuted,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AiProxySettingsScreen(),
                     ),
                   );
                 },
@@ -478,4 +494,19 @@ class _CardRow extends StatelessWidget {
       ),
     );
   }
+}
+
+String _proxySummary(BuildContext context, AiProxySettings settings) {
+  final t = context.t.strings.aiProxy;
+  if (!settings.isConfigured) return t.notConfigured;
+  return switch (settings.protocol) {
+    AiProxyProtocol.http => t.statusHttp(
+      host: settings.host,
+      port: settings.port,
+    ),
+    AiProxyProtocol.socks5 => t.statusSocks5(
+      host: settings.host,
+      port: settings.port,
+    ),
+  };
 }

@@ -1,4 +1,7 @@
 import 'ai_provider_models.dart';
+import 'ai_settings_models.dart';
+
+export 'ai_settings_models.dart';
 
 class AiChatMessage {
   const AiChatMessage({required this.role, required this.content});
@@ -15,6 +18,7 @@ class AiChatCompletionRequest {
     this.systemPrompt,
     this.temperature,
     this.maxOutputTokens,
+    this.proxySettings,
   });
 
   final AiServiceInstance service;
@@ -23,6 +27,7 @@ class AiChatCompletionRequest {
   final String? systemPrompt;
   final double? temperature;
   final int? maxOutputTokens;
+  final AiProxySettings? proxySettings;
 }
 
 class AiChatCompletionResult {
@@ -37,11 +42,13 @@ class AiEmbeddingRequest {
     required this.service,
     required this.model,
     required this.input,
+    this.proxySettings,
   });
 
   final AiServiceInstance service;
   final AiModelEntry model;
   final String input;
+  final AiProxySettings? proxySettings;
 }
 
 class AiDiscoveredModel {
@@ -66,9 +73,15 @@ class AiServiceValidationResult {
 }
 
 abstract class AiProviderAdapter {
-  Future<AiServiceValidationResult> validateConfig(AiServiceInstance service);
+  Future<AiServiceValidationResult> validateConfig(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  });
 
-  Future<List<AiDiscoveredModel>> listModels(AiServiceInstance service);
+  Future<List<AiDiscoveredModel>> listModels(
+    AiServiceInstance service, {
+    AiProxySettings? proxySettings,
+  });
 
   Future<AiChatCompletionResult> chatCompletion(
     AiChatCompletionRequest request,
