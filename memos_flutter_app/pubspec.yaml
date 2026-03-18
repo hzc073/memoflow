@@ -106,6 +106,7 @@ dependencies:
   word_cloud: ^1.0.3
   phosphor_flutter: ^2.1.0
   wechat_assets_picker: 10.1.1
+  image_compress_plus: ^3.0.0
 
 dev_dependencies:
   flutter_test:

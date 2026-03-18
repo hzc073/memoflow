@@ -1,5 +1,18 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+
+if(WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{VCPKG_ROOT})
+  file(TO_CMAKE_PATH "$ENV{VCPKG_ROOT}" VCPKG_ROOT_PATH)
+  set(VCPKG_TOOLCHAIN_FILE "${VCPKG_ROOT_PATH}/scripts/buildsystems/vcpkg.cmake")
+  if(EXISTS "${VCPKG_TOOLCHAIN_FILE}")
+    set(CMAKE_TOOLCHAIN_FILE "${VCPKG_TOOLCHAIN_FILE}" CACHE STRING "")
+  endif()
+endif()
+
+if(WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+  set(VCPKG_TARGET_TRIPLET "x64-windows-static-md" CACHE STRING "")
+endif()
+
 project(MemoFlow LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change

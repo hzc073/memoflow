@@ -1,0 +1,10 @@
+{
+  "name": "memoflow-windows-native-deps",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "libjpeg-turbo",
+    "libpng",
+    "libwebp",
+    "exiv2"
+  ]
+}

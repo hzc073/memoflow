@@ -16,6 +16,7 @@ import '../../data/logs/log_manager.dart';
 import '../../data/models/image_compression_settings.dart';
 import 'dart_image_preprocessor.dart';
 import 'flutter_image_preprocessor.dart';
+import 'image_compress_plus_preprocessor.dart';
 import 'image_preprocessor.dart';
 
 class AttachmentPreprocessRequest {
@@ -75,17 +76,21 @@ typedef AlphaDetector = Future<bool> Function(String path);
 class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
   DefaultAttachmentPreprocessor({
     required ImageCompressionSettingsLoader loadSettings,
+    ImagePreprocessor? windowsPreprocessor,
     ImagePreprocessor? flutterPreprocessor,
     ImagePreprocessor? dartPreprocessor,
     AlphaDetector? alphaDetector,
     LogManager? logManager,
-  })  : _loadSettings = loadSettings,
-        _flutterPreprocessor = flutterPreprocessor ?? FlutterImagePreprocessor(),
-        _dartPreprocessor = dartPreprocessor ?? DartImagePreprocessor(),
-        _alphaDetector = alphaDetector ?? _detectAlphaInIsolate,
-        _logManager = logManager ?? LogManager.instance;
+  }) : _loadSettings = loadSettings,
+       _windowsPreprocessor =
+           windowsPreprocessor ?? ImageCompressPlusPreprocessor(),
+       _flutterPreprocessor = flutterPreprocessor ?? FlutterImagePreprocessor(),
+       _dartPreprocessor = dartPreprocessor ?? DartImagePreprocessor(),
+       _alphaDetector = alphaDetector ?? _detectAlphaInIsolate,
+       _logManager = logManager ?? LogManager.instance;
 
   final ImageCompressionSettingsLoader _loadSettings;
+  final ImagePreprocessor _windowsPreprocessor;
   final ImagePreprocessor _flutterPreprocessor;
   final ImagePreprocessor _dartPreprocessor;
   final AlphaDetector _alphaDetector;
@@ -121,9 +126,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     final isImage = _isImageMimeType(mimeType);
     if (!settings.enabled || !isImage) {
       final hash = isImage ? await _computeSha256(normalizedPath) : null;
-      final dims = isImage
-          ? await _readImageDimensions(normalizedPath)
-          : null;
+      final dims = isImage ? await _readImageDimensions(normalizedPath) : null;
       return AttachmentPreprocessResult(
         filePath: normalizedPath,
         filename: filename,
@@ -147,9 +150,10 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
         engine,
       );
     } on MissingPluginException {
-      if (engine == _flutterPreprocessor && _dartPreprocessor.isAvailable) {
+      if (engine != _dartPreprocessor && _dartPreprocessor.isAvailable) {
         _logManager.warn(
-          'AttachmentPreprocess: flutter_unavailable_fallback_dart',
+          'AttachmentPreprocess: native_unavailable_fallback_dart',
+          context: {'engine': engine.engine},
         );
         return _processWithEngine(
           normalizedRequest,
@@ -164,6 +168,9 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
   }
 
   ImagePreprocessor _selectEngine() {
+    if (_windowsPreprocessor.isAvailable) {
+      return _windowsPreprocessor;
+    }
     if (_flutterPreprocessor.isAvailable) {
       return _flutterPreprocessor;
     }
@@ -177,11 +184,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     ImageCompressionSettings settings,
     ImagePreprocessor engine,
   ) async {
-    final outputFormat = await _resolveOutputFormat(
-      request,
-      settings,
-      engine,
-    );
+    final outputFormat = await _resolveOutputFormat(request, settings, engine);
     final sourceSig = await _computeSourceSig(normalizedPath, originalSize);
     final compressKey = _buildCompressKey(
       sourceSig: sourceSig,
@@ -222,20 +225,18 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     final cacheDir = await _resolveCacheDir();
     final outputExt = _formatExtension(outputFormat);
     final outputPath = p.join(cacheDir.path, '$compressKey.$outputExt');
-    final outputFilename =
-        _replaceExtension(request.filename.trim(), outputExt);
+    final outputFilename = _replaceExtension(
+      request.filename.trim(),
+      outputExt,
+    );
     final outputMimeType = _formatMimeType(outputFormat);
 
     final cached = await _loadCacheEntry(compressKey, cacheDir);
     if (cached != null) {
-      if (cached.status == _CacheStatus.ok &&
-          File(outputPath).existsSync()) {
+      if (cached.status == _CacheStatus.ok && File(outputPath).existsSync()) {
         _logManager.info(
           'AttachmentPreprocess: cache_hit',
-          context: {
-            'engine': engine.engine,
-            'format': outputFormat.name,
-          },
+          context: {'engine': engine.engine, 'format': outputFormat.name},
         );
         final size = cached.size ?? await File(outputPath).length();
         final hash = cached.hash ?? await _computeSha256(outputPath);
@@ -292,10 +293,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
 
     _logManager.debug(
       'AttachmentPreprocess: cache_miss',
-      context: {
-        'engine': engine.engine,
-        'format': outputFormat.name,
-      },
+      context: {'engine': engine.engine, 'format': outputFormat.name},
     );
 
     try {
@@ -337,8 +335,9 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
           'format': outputFormat.name,
           'sourceSize': originalSize,
           'outputSize': size,
-          'ratio':
-              originalSize > 0 ? (size / originalSize).toStringAsFixed(3) : '0',
+          'ratio': originalSize > 0
+              ? (size / originalSize).toStringAsFixed(3)
+              : '0',
         },
       );
       return AttachmentPreprocessResult(
@@ -362,10 +361,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
         'AttachmentPreprocess: fallback',
         error: e,
         stackTrace: st,
-        context: {
-          'engine': engine.engine,
-          'format': outputFormat.name,
-        },
+        context: {'engine': engine.engine, 'format': outputFormat.name},
       );
       final hash = await _computeSha256(normalizedPath);
       final dims = await _readImageDimensions(normalizedPath);
@@ -433,7 +429,9 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
         'AttachmentPreprocess: alpha_detect_result',
         context: {'hasAlpha': hasAlpha},
       );
-      return hasAlpha ? ImageCompressionFormat.webp : ImageCompressionFormat.jpeg;
+      return hasAlpha
+          ? ImageCompressionFormat.webp
+          : ImageCompressionFormat.jpeg;
     }
     return format;
   }
@@ -464,9 +462,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
   }
 
   String _formatMimeType(ImageCompressionFormat format) {
-    return format == ImageCompressionFormat.webp
-        ? 'image/webp'
-        : 'image/jpeg';
+    return format == ImageCompressionFormat.webp ? 'image/webp' : 'image/jpeg';
   }
 
   String _replaceExtension(String filename, String extension) {
@@ -478,10 +474,12 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
   Future<String> _computeSourceSig(String path, int size) async {
     final file = File(path);
     final limit = min(size, 256 * 1024);
-    final bytes = await file.openRead(0, limit).fold<BytesBuilder>(
-      BytesBuilder(),
-      (builder, chunk) => builder..add(chunk),
-    );
+    final bytes = await file
+        .openRead(0, limit)
+        .fold<BytesBuilder>(
+          BytesBuilder(),
+          (builder, chunk) => builder..add(chunk),
+        );
     final digest = sha256.convert(bytes.takeBytes()).toString();
     return '$digest:$size';
   }
@@ -502,7 +500,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     required String engine,
   }) {
     final raw =
-        'v1|$sourceSig|${settings.maxSide}|${settings.quality}|${format.name}|$engine';
+        'v2|$sourceSig|${settings.maxSide}|${settings.quality}|${format.name}|$engine';
     return fnv1a64Hex(raw);
   }
 
@@ -517,10 +515,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     return dir;
   }
 
-  Future<_CacheEntry?> _loadCacheEntry(
-    String key,
-    Directory cacheDir,
-  ) async {
+  Future<_CacheEntry?> _loadCacheEntry(String key, Directory cacheDir) async {
     final file = File(p.join(cacheDir.path, '$key.json'));
     if (!file.existsSync()) return null;
     try {
@@ -571,16 +566,16 @@ class _CacheEntry {
       (width != null && width! > 0) && (height != null && height! > 0);
 
   Map<String, dynamic> toJson() => {
-        'schemaVersion': 1,
-        'status': status.name,
-        'width': width,
-        'height': height,
-        'size': size,
-        'hash': hash,
-        'engine': engine,
-        'format': format,
-        'error': error,
-      };
+    'schemaVersion': 1,
+    'status': status.name,
+    'width': width,
+    'height': height,
+    'size': size,
+    'hash': hash,
+    'engine': engine,
+    'format': format,
+    'error': error,
+  };
 
   factory _CacheEntry.fromJson(Map<String, dynamic> json) {
     int? readInt(String key) {

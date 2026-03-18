@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -338,6 +339,10 @@ class _AttachmentGalleryScreenState
     Uint8List bytes, {
     required String name,
   }) async {
+    if (_isDesktopGallery) {
+      await _saveBytesToDesktop(bytes, suggestedName: name);
+      return;
+    }
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -381,6 +386,10 @@ class _AttachmentGalleryScreenState
   }
 
   Future<void> _saveFileToGallery(File file, {required String name}) async {
+    if (_isDesktopGallery) {
+      await _saveFileToDesktop(file, suggestedName: name);
+      return;
+    }
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -458,6 +467,95 @@ class _AttachmentGalleryScreenState
       tempFile,
       name: p.basenameWithoutExtension(filename),
     );
+  }
+
+  Future<String?> _pickDesktopSavePath({required String suggestedName}) async {
+    return FilePicker.platform.saveFile(
+      dialogTitle: context.t.strings.legacy.msg_file_save_location,
+      fileName: suggestedName,
+    );
+  }
+
+  Future<void> _saveBytesToDesktop(
+    Uint8List bytes, {
+    required String suggestedName,
+  }) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final targetPath =
+          await _pickDesktopSavePath(suggestedName: suggestedName);
+      if (!mounted) return;
+      if (targetPath == null || targetPath.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_select_file_save_location,
+            ),
+          ),
+        );
+        return;
+      }
+      final outFile = File(targetPath);
+      await outFile.parent.create(recursive: true);
+      await outFile.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      showTopToast(
+        context,
+        context.t.strings.legacy.msg_saved(targetPath: outFile.path),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_2(e: e)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveFileToDesktop(
+    File file, {
+    required String suggestedName,
+  }) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final ext = p.extension(file.path);
+      final hasExt = p.extension(suggestedName).isNotEmpty;
+      final fileName = hasExt ? suggestedName : '$suggestedName$ext';
+      final targetPath = await _pickDesktopSavePath(suggestedName: fileName);
+      if (!mounted) return;
+      if (targetPath == null || targetPath.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_select_file_save_location,
+            ),
+          ),
+        );
+        return;
+      }
+      final outFile = File(targetPath);
+      await outFile.parent.create(recursive: true);
+      await file.copy(outFile.path);
+      if (!mounted) return;
+      showTopToast(
+        context,
+        context.t.strings.legacy.msg_saved(targetPath: outFile.path),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_2(e: e)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _editCurrent() async {

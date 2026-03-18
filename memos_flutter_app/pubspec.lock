@@ -1029,6 +1029,78 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.7.2"
+  image_compress_plus:
+    dependency: "direct main"
+    description:
+      name: image_compress_plus
+      sha256: d9cc60ea8a1fff5845b87b57b7002547a0fbd73f5ff6bc5f094860e408f5489c
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.0"
+  image_compress_plus_android:
+    dependency: transitive
+    description:
+      name: image_compress_plus_android
+      sha256: "00e9b56ac19fb8081919fc296c7e9867b4e93e8970c9533a27c11dcacf30c9d5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
+  image_compress_plus_ios:
+    dependency: transitive
+    description:
+      name: image_compress_plus_ios
+      sha256: "2dce51b184b1abc722278a6a948574ab0ee1be3983d7bf0462c2a8dae6da5db7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
+  image_compress_plus_linux:
+    dependency: transitive
+    description:
+      name: image_compress_plus_linux
+      sha256: "8bc5735c83dc560eb041ee81b02ae56b9a8a1b48b39ed5a1342ee6b075ad06e7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
+  image_compress_plus_macos:
+    dependency: transitive
+    description:
+      name: image_compress_plus_macos
+      sha256: "64b9d2fa9f4dc0729737c27fe0c2668a94e2b290c3769fe502f60ba0be707c45"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
+  image_compress_plus_ohos:
+    dependency: transitive
+    description:
+      name: image_compress_plus_ohos
+      sha256: "1d2e44b1a5c3f5a9c3aacdc652df60261bf3ed780cffcd1976bd038a58d34743"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
+  image_compress_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: image_compress_plus_platform_interface
+      sha256: a96473f312d3e447733693e4bdde07ff601c8f13a7ec8992b7ce7d40f043ab8e
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
+  image_compress_plus_web:
+    dependency: transitive
+    description:
+      name: image_compress_plus_web
+      sha256: "06f09bde2018b6e57241eeca2b4f9f4bb1d700771904c625661e9f9dce8658c1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.0"
+  image_compress_plus_windows:
+    dependency: transitive
+    description:
+      name: image_compress_plus_windows
+      sha256: d4f854184b11920ed756dc42d3e5bd0ea82a35606452754804d82896c7aa8dd1
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
   image_editor_plus:
     dependency: "direct main"
     description:

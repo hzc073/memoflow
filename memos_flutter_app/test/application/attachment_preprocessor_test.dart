@@ -1,7 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
@@ -32,8 +31,37 @@ class _FailingPreprocessor implements ImagePreprocessor {
 }
 
 class _CopyingPreprocessor implements ImagePreprocessor {
+  _CopyingPreprocessor({this.name = 'copy', this.available = true});
+
+  final String name;
+  final bool available;
+
   @override
-  String get engine => 'copy';
+  String get engine => name;
+
+  @override
+  bool get supportsWebp => true;
+
+  @override
+  bool get isAvailable => available;
+
+  @override
+  Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
+    final target = File(request.targetPath);
+    await target.parent.create(recursive: true);
+    await File(request.sourcePath).copy(target.path);
+    return ImagePreprocessResult(outputPath: target.path);
+  }
+}
+
+class _MissingPluginPreprocessor implements ImagePreprocessor {
+  _MissingPluginPreprocessor(this.name);
+
+  final String name;
+  int calls = 0;
+
+  @override
+  String get engine => name;
 
   @override
   bool get supportsWebp => true;
@@ -43,10 +71,8 @@ class _CopyingPreprocessor implements ImagePreprocessor {
 
   @override
   Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
-    final target = File(request.targetPath);
-    await target.parent.create(recursive: true);
-    await File(request.sourcePath).copy(target.path);
-    return ImagePreprocessResult(outputPath: target.path);
+    calls += 1;
+    throw MissingPluginException('missing $name');
   }
 }
 
@@ -103,6 +129,14 @@ void main() {
           quality: 80,
           format: ImageCompressionFormat.jpeg,
         ),
+        windowsPreprocessor: _CopyingPreprocessor(
+          name: 'windows',
+          available: false,
+        ),
+        flutterPreprocessor: _CopyingPreprocessor(
+          name: 'flutter',
+          available: false,
+        ),
         dartPreprocessor: DartImagePreprocessor(),
       );
 
@@ -140,6 +174,14 @@ void main() {
           maxSide: 64,
           quality: 80,
           format: ImageCompressionFormat.jpeg,
+        ),
+        windowsPreprocessor: _CopyingPreprocessor(
+          name: 'windows',
+          available: false,
+        ),
+        flutterPreprocessor: _CopyingPreprocessor(
+          name: 'flutter',
+          available: false,
         ),
         dartPreprocessor: failing,
       );
@@ -184,6 +226,10 @@ void main() {
           quality: 80,
           format: ImageCompressionFormat.auto,
         ),
+        windowsPreprocessor: _CopyingPreprocessor(
+          name: 'windows',
+          available: false,
+        ),
         flutterPreprocessor: _CopyingPreprocessor(),
         alphaDetector: (path) async {
           alphaChecks += 1;
@@ -225,6 +271,14 @@ void main() {
           quality: 80,
           format: ImageCompressionFormat.jpeg,
         ),
+        windowsPreprocessor: _CopyingPreprocessor(
+          name: 'windows',
+          available: false,
+        ),
+        flutterPreprocessor: _CopyingPreprocessor(
+          name: 'flutter',
+          available: false,
+        ),
         dartPreprocessor: DartImagePreprocessor(),
       );
 
@@ -238,6 +292,73 @@ void main() {
 
       final expected = await _sha256File(result.filePath);
       expect(result.hash, expected);
+    });
+
+    test('windows preprocessor is preferred when available', () async {
+      final file = await _writeTestImage(
+        support,
+        name: 'sample.png',
+        format: ImageCompressionFormat.auto,
+      );
+      final preprocessor = DefaultAttachmentPreprocessor(
+        loadSettings: () async => ImageCompressionSettings(
+          schemaVersion: 1,
+          enabled: true,
+          maxSide: 64,
+          quality: 80,
+          format: ImageCompressionFormat.jpeg,
+        ),
+        windowsPreprocessor: _CopyingPreprocessor(name: 'windows'),
+        flutterPreprocessor: _CopyingPreprocessor(name: 'flutter'),
+        dartPreprocessor: _CopyingPreprocessor(name: 'dart'),
+      );
+
+      final result = await preprocessor.preprocess(
+        AttachmentPreprocessRequest(
+          filePath: file.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+        ),
+      );
+
+      expect(result.engine, 'windows');
+      expect(result.fallback, isFalse);
+    });
+
+    test('missing native plugin falls back to dart engine', () async {
+      final file = await _writeTestImage(
+        support,
+        name: 'sample.png',
+        format: ImageCompressionFormat.auto,
+      );
+      final missing = _MissingPluginPreprocessor('windows');
+      final preprocessor = DefaultAttachmentPreprocessor(
+        loadSettings: () async => ImageCompressionSettings(
+          schemaVersion: 1,
+          enabled: true,
+          maxSide: 64,
+          quality: 80,
+          format: ImageCompressionFormat.jpeg,
+        ),
+        windowsPreprocessor: missing,
+        flutterPreprocessor: _CopyingPreprocessor(
+          name: 'flutter',
+          available: false,
+        ),
+        dartPreprocessor: _CopyingPreprocessor(name: 'dart'),
+      );
+
+      final result = await preprocessor.preprocess(
+        AttachmentPreprocessRequest(
+          filePath: file.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+        ),
+      );
+
+      expect(missing.calls, 1);
+      expect(result.engine, 'dart');
+      expect(result.fallback, isFalse);
     });
   });
 }
