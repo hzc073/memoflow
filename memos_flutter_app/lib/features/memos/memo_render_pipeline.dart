@@ -46,8 +46,7 @@ class MemoRenderPipeline {
       );
     }
 
-    final normalized = normalizeMemoTagSpacing(filteredData);
-    var sanitized = sanitizeMemoMarkdown(normalized);
+    var sanitized = sanitizeMemoMarkdown(filteredData);
     if (!renderImages) {
       sanitized = stripMarkdownImages(sanitized);
     }

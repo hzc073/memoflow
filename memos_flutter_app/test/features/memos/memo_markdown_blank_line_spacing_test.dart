@@ -22,7 +22,7 @@ void main() {
     expect(rendered, contains('\u200B'));
   });
 
-  testWidgets('keeps markdown block boundaries unchanged for list content', (
+  testWidgets('preserves blank lines after unordered list content', (
     WidgetTester tester,
   ) async {
     const content = '- item\n\nparagraph';
@@ -38,7 +38,26 @@ void main() {
 
     expect(rendered, contains('item'));
     expect(rendered, contains('paragraph'));
-    expect(rendered, isNot(contains('\u200B')));
+    expect(rendered, contains('\u200B'));
+  });
+
+  testWidgets('preserves multiple explicit blank lines between blocks', (
+    WidgetTester tester,
+  ) async {
+    const content = 'line1\n\n\nline2';
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: MemoMarkdown(data: content)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rendered = _collectRenderedText(tester);
+
+    expect(rendered, contains('line1'));
+    expect(rendered, contains('line2'));
+    expect(_countOccurrences(rendered, '\u200B'), greaterThanOrEqualTo(2));
   });
 }
 
@@ -58,4 +77,8 @@ String _collectRenderedText(WidgetTester tester) {
     }
   }
   return buffer.toString();
+}
+
+int _countOccurrences(String value, String pattern) {
+  return RegExp(RegExp.escape(pattern)).allMatches(value).length;
 }

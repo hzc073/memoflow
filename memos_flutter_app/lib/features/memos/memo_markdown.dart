@@ -596,6 +596,11 @@ class MemoMarkdown extends StatelessWidget {
         styles['border-left'] = '3px solid ${_cssColor(quoteBorder)}';
         styles['padding-left'] = '10px';
       }
+      final isBlankLineParagraph =
+          localName == 'p' && element.classes.contains('memo-blank-line');
+      if (isBlankLineParagraph) {
+        styles['margin'] = '0';
+      }
       if (localName == 'p' &&
           element.parent?.classes.contains('task-list-item') == true) {
         styles['display'] = 'inline';
@@ -625,7 +630,7 @@ class MemoMarkdown extends StatelessWidget {
         final isTaskParagraph =
             localName == 'p' &&
             element.parent?.classes.contains('task-list-item') == true;
-        if (!isTaskParagraph) {
+        if (!isTaskParagraph && !isBlankLineParagraph) {
           styles['margin'] = '0 0 $spacingPx 0';
         }
       }

@@ -1,7 +1,3 @@
-final RegExp _tagTokenPattern = RegExp(
-  r'^#(?!#|\s)[\p{L}\p{N}\p{S}_/\-]{1,100}$',
-  unicode: true,
-);
 final RegExp _tagInlinePattern = RegExp(
   r'#(?!#|\s)([\p{L}\p{N}\p{S}_/\-]{1,100})',
   unicode: true,
@@ -10,12 +6,6 @@ final RegExp _markdownImagePattern = RegExp(
   r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)',
 );
 final RegExp _codeFencePattern = RegExp(r'^\s*(```|~~~)');
-final RegExp _unorderedListMarkerPattern = RegExp(r'^[-*+]\s');
-final RegExp _orderedListMarkerPattern = RegExp(r'^\d+[.)]\s');
-final RegExp _horizontalRuleLinePattern = RegExp(
-  r'^(?:-{3,}|\*{3,}|_{3,})\s*$',
-);
-final RegExp _setextHeadingUnderlinePattern = RegExp(r'^(?:=+|-+)\s*$');
 final RegExp _fullHtmlDoctypeLinePattern = RegExp(
   r'^\s*<!doctype\s+html(?:\s[^>]*)?>\s*$',
   caseSensitive: false,
@@ -30,6 +20,8 @@ final RegExp _fullHtmlCloseTagPattern = RegExp(
 );
 
 const String _zeroWidthSpace = '\u200B';
+const String _memoBlankLineHtml =
+    '<p class="memo-blank-line">$_zeroWidthSpace</p>';
 
 String stripMarkdownImages(String text) {
   if (text.trim().isEmpty) return text;
@@ -71,7 +63,7 @@ String sanitizeMemoMarkdown(String text) {
   });
   final protectedHtml = _protectEmbeddedFullHtmlDocuments(stripped);
   final escapedTaskHeadings = _escapeEmptyTaskHeadings(protectedHtml);
-  final preservedBlankLines = _preserveParagraphBlankLines(escapedTaskHeadings);
+  final preservedBlankLines = _preserveExplicitBlankLines(escapedTaskHeadings);
   return _normalizeFencedCodeBlocks(preservedBlankLines);
 }
 
@@ -83,40 +75,12 @@ bool looksLikeFullHtmlDocument(String text) {
   ).hasMatch(trimmed);
 }
 
-String normalizeMemoTagSpacing(String text) {
-  final lines = text.split('\n');
-  var idx = 0;
-  while (idx < lines.length && lines[idx].trim().isEmpty) {
-    idx++;
-  }
-
-  var tagEnd = idx;
-  while (tagEnd < lines.length && _isTagOnlyLine(lines[tagEnd])) {
-    tagEnd++;
-  }
-
-  if (tagEnd == idx) return text;
-
-  var blankEnd = tagEnd;
-  while (blankEnd < lines.length && lines[blankEnd].trim().isEmpty) {
-    blankEnd++;
-  }
-  if (blankEnd == tagEnd || blankEnd >= lines.length) return text;
-
-  final normalized = <String>[
-    ...lines.take(tagEnd),
-    '',
-    ...lines.skip(blankEnd),
-  ];
-  return normalized.join('\n');
-}
-
 String decorateMemoTagsForHtml(String text) {
   final lines = text.split('\n');
   int? firstLine;
   int? lastLine;
   for (var i = 0; i < lines.length; i++) {
-    if (lines[i].trim().isEmpty) continue;
+    if (_isNonContentLine(lines[i])) continue;
     firstLine ??= i;
     lastLine = i;
   }
@@ -130,53 +94,34 @@ String decorateMemoTagsForHtml(String text) {
   return lines.join('\n');
 }
 
-String _preserveParagraphBlankLines(String text) {
+String _preserveExplicitBlankLines(String text) {
   final lines = text.split('\n');
-  if (lines.length < 3) return text;
+  if (lines.isEmpty) return text;
 
+  final output = <String>[];
   var inFence = false;
-  for (var i = 0; i < lines.length; i++) {
-    final line = lines[i];
+  for (final line in lines) {
     if (_codeFencePattern.hasMatch(line.trimLeft())) {
       inFence = !inFence;
+      output.add(line);
       continue;
     }
-    if (inFence || line.trim().isNotEmpty) continue;
-
-    var prev = i - 1;
-    while (prev >= 0 && lines[prev].trim().isEmpty) {
-      prev--;
+    if (!inFence && line.trim().isEmpty) {
+      output
+        ..add('')
+        ..add(_memoBlankLineHtml)
+        ..add('');
+      continue;
     }
-    if (prev < 0) continue;
-
-    var next = i + 1;
-    while (next < lines.length && lines[next].trim().isEmpty) {
-      next++;
-    }
-    if (next >= lines.length) continue;
-
-    if (!_isParagraphLikeTextLine(lines[prev])) continue;
-    if (!_isParagraphLikeTextLine(lines[next])) continue;
-
-    lines[i] = _zeroWidthSpace;
+    output.add(line);
   }
 
-  return lines.join('\n');
+  return output.join('\n');
 }
 
-bool _isParagraphLikeTextLine(String line) {
-  final trimmed = line.trimLeft();
-  if (trimmed.isEmpty) return false;
-  if (trimmed.startsWith('<')) return false;
-  if (trimmed.startsWith('#')) return false;
-  if (trimmed.startsWith('>')) return false;
-  if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) return false;
-  if (trimmed.startsWith('|')) return false;
-  if (_unorderedListMarkerPattern.hasMatch(trimmed)) return false;
-  if (_orderedListMarkerPattern.hasMatch(trimmed)) return false;
-  if (_horizontalRuleLinePattern.hasMatch(trimmed)) return false;
-  if (_setextHeadingUnderlinePattern.hasMatch(trimmed)) return false;
-  return true;
+bool _isNonContentLine(String line) {
+  final trimmed = line.trim();
+  return trimmed.isEmpty || trimmed == _memoBlankLineHtml;
 }
 
 String _protectEmbeddedFullHtmlDocuments(String text) {
@@ -286,16 +231,6 @@ String _normalizeFencedCodeBlocks(String text) {
     }
   }
   return lines.join('\n');
-}
-
-bool _isTagOnlyLine(String line) {
-  final trimmed = line.trim();
-  if (trimmed.isEmpty) return false;
-  final parts = trimmed.split(RegExp(r'\s+'));
-  for (final part in parts) {
-    if (!_tagTokenPattern.hasMatch(part)) return false;
-  }
-  return true;
 }
 
 String _replaceTagsInLine(String line) {

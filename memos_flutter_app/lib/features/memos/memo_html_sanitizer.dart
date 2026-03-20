@@ -60,6 +60,7 @@ const Map<String, Set<String>> _allowedHtmlAttributes = {
 final List<RegExp> _allowedClassPatterns = [
   RegExp(r'^memotag$'),
   RegExp(r'^memohighlight$'),
+  RegExp(r'^memo-blank-line$'),
   RegExp(r'^task-list-item$'),
   RegExp(r'^contains-task-list$'),
   RegExp(r'^language-[\w-]+$'),

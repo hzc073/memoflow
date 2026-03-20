@@ -52,12 +52,15 @@ void main() {
   });
 
   test(
-    'preprocessor preserves paragraph blank lines and normalizes tag spacing',
+    'preprocessor preserves explicit blank lines with html placeholders',
     () {
-      expect(sanitizeMemoMarkdown('Alpha\n\nBeta'), 'Alpha\n\u200B\nBeta');
       expect(
-        normalizeMemoTagSpacing('#tag1 #tag2\n\n\nBody'),
-        '#tag1 #tag2\n\nBody',
+        sanitizeMemoMarkdown('Alpha\n\nBeta'),
+        'Alpha\n\n<p class="memo-blank-line">\u200B</p>\n\nBeta',
+      );
+      expect(
+        sanitizeMemoMarkdown('- item\n\nParagraph'),
+        '- item\n\n<p class="memo-blank-line">\u200B</p>\n\nParagraph',
       );
     },
   );
