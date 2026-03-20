@@ -47,6 +47,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   var _probing = false;
   var _versionMenuExpanded = false;
   var _shownInitialError = false;
+  var _shownHttpsHandshakeHelp = false;
   var _activeLoginOpId = 0;
 
   @override
@@ -175,6 +176,76 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return context.t.strings.login.errors.signInFailedWithMessage(
       message: error.toString(),
     );
+  }
+
+  bool _isLikelyHttpsHandshakeFailure(Object error) {
+    if (error is! DioException) return false;
+
+    if (error.type == DioExceptionType.badCertificate) {
+      return true;
+    }
+
+    if (error.type != DioExceptionType.connectionError &&
+        error.type != DioExceptionType.unknown) {
+      return false;
+    }
+
+    final combined = <String>[
+      error.message ?? '',
+      error.error?.toString() ?? '',
+      _extractServerMessage(error.response?.data),
+    ].join(' | ').toLowerCase();
+
+    if (combined.trim().isEmpty) return false;
+
+    return combined.contains('handshake') ||
+        combined.contains('tls') ||
+        combined.contains('ssl') ||
+        combined.contains('certificate') ||
+        combined.contains('wrong version number') ||
+        combined.contains('record overflow') ||
+        combined.contains('protocol version') ||
+        combined.contains('secure connection');
+  }
+
+  Future<bool> _maybeHandleHttpsHandshakeFailure(int opId, Object error) async {
+    if (!_isLoginOpActive(opId) || !_useHttps || _shownHttpsHandshakeHelp) {
+      return false;
+    }
+    if (!_isLikelyHttpsHandshakeFailure(error)) return false;
+
+    _shownHttpsHandshakeHelp = true;
+    final switchToHttp =
+        await _showDialogIfActive<bool>(
+          opId,
+          builder: (context) => AlertDialog(
+            title: Text(
+              context.t.strings.login.dialogs.httpsHandshakeFailedTitle,
+            ),
+            content: Text(
+              context.t.strings.login.dialogs.httpsHandshakeFailedMessage,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(context.t.strings.common.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(context.t.strings.login.dialogs.switchToHttp),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!_isLoginOpActive(opId)) return true;
+
+    if (switchToHttp) {
+      setState(() => _useHttps = false);
+      _syncBaseUrlDraft();
+      await _connect();
+    }
+    return true;
   }
 
   void _restoreBaseUrlDraft(String draft) {
@@ -314,6 +385,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return true;
     } catch (error) {
       if (!_isLoginOpActive(opId)) return false;
+      final handled = await _maybeHandleHttpsHandshakeFailure(opId, error);
+      if (!_isLoginOpActive(opId)) return false;
+      if (handled) return false;
       _showSnackIfActive(opId, _formatLoginError(error, token: token));
       return false;
     }
@@ -338,6 +412,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return true;
     } catch (error) {
       if (!_isLoginOpActive(opId)) return false;
+      final handled = await _maybeHandleHttpsHandshakeFailure(opId, error);
+      if (!_isLoginOpActive(opId)) return false;
+      if (handled) return false;
       _passwordController.clear();
       _showSnackIfActive(opId, _formatPasswordLoginError(error));
       return false;
@@ -614,6 +691,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       final sessionAsync = ref.read(appSessionProvider);
       if (sessionAsync.hasError) {
+        final handled = await _maybeHandleHttpsHandshakeFailure(
+          opId,
+          sessionAsync.error!,
+        );
+        if (!_isLoginOpActive(opId)) return;
+        if (handled) return;
         _showSnackIfActive(
           opId,
           _formatLoginError(sessionAsync.error!, token: token),
@@ -655,6 +738,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final sessionAsync = ref.read(appSessionProvider);
     if (sessionAsync.hasError) {
+      final handled = await _maybeHandleHttpsHandshakeFailure(
+        opId,
+        sessionAsync.error!,
+      );
+      if (!_isLoginOpActive(opId)) return;
+      if (handled) return;
       _showSnackIfActive(
         opId,
         _formatLoginError(sessionAsync.error!, token: token),
@@ -724,6 +813,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final sessionAsync = ref.read(appSessionProvider);
     if (sessionAsync.hasError) {
+      final handled = await _maybeHandleHttpsHandshakeFailure(
+        opId,
+        sessionAsync.error!,
+      );
+      if (!_isLoginOpActive(opId)) return;
+      if (handled) return;
       _passwordController.clear();
       _showSnackIfActive(opId, _formatPasswordLoginError(sessionAsync.error!));
       return;

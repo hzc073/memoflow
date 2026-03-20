@@ -68,6 +68,9 @@ login:
   dialogs:
     insecureHttpTitle: "Use HTTP?"
     insecureHttpMessage: "HTTP is not secure and may expose your account, password, or token. Continue anyway?"
+    httpsHandshakeFailedTitle: "HTTPS connection failed"
+    httpsHandshakeFailedMessage: "You are currently using HTTPS. If your server only supports HTTP, you can use HTTP and try again. If the server should support HTTPS, check its certificate or reverse proxy configuration."
+    switchToHttp: "Use HTTP and try again"
   compatibility:
     title: "Compatibility Mode"
     description: "Use legacy endpoints (for older Memos servers)"

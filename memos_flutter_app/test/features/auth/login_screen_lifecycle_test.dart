@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,13 +72,21 @@ class _LoginTestHostState extends State<_LoginTestHost> {
 }
 
 class _TestSessionController extends AppSessionController {
-  _TestSessionController({this.passwordCompleter, this.passwordError})
-    : super(
+  _TestSessionController({
+    this.passwordCompleter,
+    this.passwordError,
+    List<Object>? passwordErrors,
+    List<Object>? passwordStateErrors,
+  }) : _passwordErrors = List<Object>.from(passwordErrors ?? const []),
+       _passwordStateErrors = List<Object>.from(passwordStateErrors ?? const []),
+       super(
         const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
       );
 
   final Completer<void>? passwordCompleter;
   final Object? passwordError;
+  final List<Object> _passwordErrors;
+  final List<Object> _passwordStateErrors;
   int addPasswordCalls = 0;
   int addPatCalls = 0;
   Uri? lastPasswordBaseUrl;
@@ -138,6 +147,13 @@ class _TestSessionController extends AppSessionController {
     final completer = passwordCompleter;
     if (completer != null) {
       await completer.future;
+    }
+    if (_passwordErrors.isNotEmpty) {
+      throw _passwordErrors.removeAt(0);
+    }
+    if (_passwordStateErrors.isNotEmpty) {
+      state = AsyncValue.error(_passwordStateErrors.removeAt(0), StackTrace.empty);
+      return;
     }
     if (passwordError != null) {
       throw passwordError!;
@@ -572,5 +588,118 @@ void main() {
 
     expect(find.text('https://'), findsNothing);
     expect(find.text('http://'), findsOneWidget);
+  });
+
+  testWidgets('https handshake failure dialog can switch protocol to http', (
+    tester,
+  ) async {
+    prepareViewport(tester);
+    final observer = _RecordingNavigatorObserver();
+    final sessionController = _TestSessionController(
+      passwordErrors: [
+        DioException(
+          requestOptions: RequestOptions(path: '/api/v1/auth/signin'),
+          type: DioExceptionType.connectionError,
+          message: 'HandshakeException: Connection terminated during handshake',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSessionProvider.overrideWith((ref) => sessionController),
+          loginControllerProvider.overrideWith(
+            (ref) => _FakeLoginController(ref),
+          ),
+        ],
+        child: _LoginTestHost(observer: observer),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final loginContext = tester.element(find.byType(LoginScreen));
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'example.com');
+    await tester.enterText(fields.at(1), 'user');
+    await tester.enterText(fields.at(2), 'secret');
+
+    await tester.tap(connectButtonFinder(loginContext));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(loginContext.t.strings.login.dialogs.httpsHandshakeFailedTitle),
+      findsOneWidget,
+    );
+    expect(
+      find.text(loginContext.t.strings.login.dialogs.switchToHttp),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.text(loginContext.t.strings.login.dialogs.switchToHttp),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('https://'), findsNothing);
+    expect(find.text('http://'), findsOneWidget);
+
+    expect(sessionController.addPasswordCalls, 2);
+    expect(sessionController.lastPasswordBaseUrl?.scheme, 'http');
+    expect(sessionController.lastPasswordBaseUrl?.host, 'example.com');
+  });
+
+  testWidgets('session state handshake failure dialog can switch protocol', (
+    tester,
+  ) async {
+    prepareViewport(tester);
+    final observer = _RecordingNavigatorObserver();
+    final sessionController = _TestSessionController(
+      passwordStateErrors: [
+        DioException(
+          requestOptions: RequestOptions(path: '/api/v1/auth/signin'),
+          type: DioExceptionType.unknown,
+          error: 'HandshakeException: Connection terminated during handshake',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSessionProvider.overrideWith((ref) => sessionController),
+          loginControllerProvider.overrideWith(
+            (ref) => _FakeLoginController(ref),
+          ),
+        ],
+        child: _LoginTestHost(observer: observer),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final loginContext = tester.element(find.byType(LoginScreen));
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'example.com');
+    await tester.enterText(fields.at(1), 'user');
+    await tester.enterText(fields.at(2), 'secret');
+
+    await tester.tap(connectButtonFinder(loginContext));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(loginContext.t.strings.login.dialogs.httpsHandshakeFailedTitle),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.text(loginContext.t.strings.login.dialogs.switchToHttp),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('https://'), findsNothing);
+    expect(find.text('http://'), findsOneWidget);
+    expect(sessionController.addPasswordCalls, 2);
+    expect(sessionController.lastPasswordBaseUrl?.scheme, 'http');
+    expect(sessionController.lastPasswordBaseUrl?.host, 'example.com');
   });
 }

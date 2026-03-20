@@ -68,6 +68,9 @@ login:
   dialogs:
     insecureHttpTitle: "HTTP verwenden?"
     insecureHttpMessage: "HTTP ist nicht sicher und kann dein Konto, Passwort oder Token offenlegen. Trotzdem fortfahren?"
+    httpsHandshakeFailedTitle: "HTTPS-Verbindung fehlgeschlagen"
+    httpsHandshakeFailedMessage: "Du verwendest derzeit HTTPS. Wenn dein Server nur HTTP unterstützt, kannst du es mit HTTP erneut versuchen. Wenn der Server eigentlich HTTPS unterstützen sollte, prüfe das Zertifikat oder die Reverse-Proxy-Konfiguration."
+    switchToHttp: "HTTP verwenden und erneut versuchen"
   compatibility:
     title: "Kompatibilitätsmodus"
     description: "Legacy-Endpunkte verwenden (für ältere Memos-Server)"

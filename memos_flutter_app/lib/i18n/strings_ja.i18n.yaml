@@ -68,6 +68,9 @@ login:
   dialogs:
     insecureHttpTitle: "HTTP を使用しますか？"
     insecureHttpMessage: "HTTP 接続は安全ではなく、アカウント、パスワード、またはトークンが漏洩する可能性があります。それでも続行しますか？"
+    httpsHandshakeFailedTitle: "HTTPS 接続に失敗しました"
+    httpsHandshakeFailedMessage: "現在 HTTPS で接続しています。サーバーが HTTP のみをサポートしている場合は、HTTP でもう一度お試しください。サーバーが本来 HTTPS をサポートしているはずなら、証明書またはリバースプロキシの設定を確認してください。"
+    switchToHttp: "HTTP で再試行"
   compatibility:
     title: "互換モード"
     description: "旧版 Memos 用のレガシーエンドポイントを使用します"

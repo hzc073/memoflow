@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 7555 (1511 per locale)
+/// Strings: 7570 (1514 per locale)
 ///
-/// Built on 2026-03-19 at 14:35 UTC
+/// Built on 2026-03-20 at 02:54 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1640,6 +1640,9 @@ class _StringsStringsLoginDialogsEn {
 	// Translations
 	String get insecureHttpTitle => 'Use HTTP?';
 	String get insecureHttpMessage => 'HTTP is not secure and may expose your account, password, or token. Continue anyway?';
+	String get httpsHandshakeFailedTitle => 'HTTPS connection failed';
+	String get httpsHandshakeFailedMessage => 'You are currently using HTTPS. If your server only supports HTTP, you can use HTTP and try again. If the server should support HTTPS, check its certificate or reverse proxy configuration.';
+	String get switchToHttp => 'Use HTTP and try again';
 }
 
 // Path: strings.login.compatibility
@@ -3669,6 +3672,9 @@ class _StringsStringsLoginDialogsDe extends _StringsStringsLoginDialogsEn {
 	// Translations
 	@override String get insecureHttpTitle => 'HTTP verwenden?';
 	@override String get insecureHttpMessage => 'HTTP ist nicht sicher und kann dein Konto, Passwort oder Token offenlegen. Trotzdem fortfahren?';
+	@override String get httpsHandshakeFailedTitle => 'HTTPS-Verbindung fehlgeschlagen';
+	@override String get httpsHandshakeFailedMessage => 'Du verwendest derzeit HTTPS. Wenn dein Server nur HTTP unterstützt, kannst du es mit HTTP erneut versuchen. Wenn der Server eigentlich HTTPS unterstützen sollte, prüfe das Zertifikat oder die Reverse-Proxy-Konfiguration.';
+	@override String get switchToHttp => 'HTTP verwenden und erneut versuchen';
 }
 
 // Path: strings.login.compatibility
@@ -5698,6 +5704,9 @@ class _StringsStringsLoginDialogsJa extends _StringsStringsLoginDialogsEn {
 	// Translations
 	@override String get insecureHttpTitle => 'HTTP を使用しますか？';
 	@override String get insecureHttpMessage => 'HTTP 接続は安全ではなく、アカウント、パスワード、またはトークンが漏洩する可能性があります。それでも続行しますか？';
+	@override String get httpsHandshakeFailedTitle => 'HTTPS 接続に失敗しました';
+	@override String get httpsHandshakeFailedMessage => '現在 HTTPS で接続しています。サーバーが HTTP のみをサポートしている場合は、HTTP でもう一度お試しください。サーバーが本来 HTTPS をサポートしているはずなら、証明書またはリバースプロキシの設定を確認してください。';
+	@override String get switchToHttp => 'HTTP で再試行';
 }
 
 // Path: strings.login.compatibility
@@ -7727,6 +7736,9 @@ class _StringsStringsLoginDialogsZhHans extends _StringsStringsLoginDialogsEn {
 	// Translations
 	@override String get insecureHttpTitle => '使用 HTTP？';
 	@override String get insecureHttpMessage => 'HTTP 连接不安全，可能会泄露您的账号、密码或 Token，仍要继续吗？';
+	@override String get httpsHandshakeFailedTitle => 'HTTPS 连接失败';
+	@override String get httpsHandshakeFailedMessage => '当前正在使用 HTTPS 连接。如果你的服务器只支持 HTTP，可以使用 HTTP 再试一次。如果服务器本应支持 HTTPS，请检查证书或反向代理配置。';
+	@override String get switchToHttp => '使用 HTTP 再试一次';
 }
 
 // Path: strings.login.compatibility
@@ -9756,6 +9768,9 @@ class _StringsStringsLoginDialogsZhHantTw extends _StringsStringsLoginDialogsEn 
 	// Translations
 	@override String get insecureHttpTitle => '使用 HTTP？';
 	@override String get insecureHttpMessage => 'HTTP 連線並不安全，可能會洩露您的帳號、密碼或 Token，仍要繼續嗎？';
+	@override String get httpsHandshakeFailedTitle => 'HTTPS 連線失敗';
+	@override String get httpsHandshakeFailedMessage => '目前正在使用 HTTPS 連線。如果你的伺服器只支援 HTTP，可以使用 HTTP 再試一次。如果伺服器本來應該支援 HTTPS，請檢查憑證或反向代理設定。';
+	@override String get switchToHttp => '使用 HTTP 再試一次';
 }
 
 // Path: strings.login.compatibility
@@ -10337,6 +10352,9 @@ extension on Translations {
 			case 'strings.login.validation.tokenRequired': return 'Please enter token';
 			case 'strings.login.dialogs.insecureHttpTitle': return 'Use HTTP?';
 			case 'strings.login.dialogs.insecureHttpMessage': return 'HTTP is not secure and may expose your account, password, or token. Continue anyway?';
+			case 'strings.login.dialogs.httpsHandshakeFailedTitle': return 'HTTPS connection failed';
+			case 'strings.login.dialogs.httpsHandshakeFailedMessage': return 'You are currently using HTTPS. If your server only supports HTTP, you can use HTTP and try again. If the server should support HTTPS, check its certificate or reverse proxy configuration.';
+			case 'strings.login.dialogs.switchToHttp': return 'Use HTTP and try again';
 			case 'strings.login.compatibility.title': return 'Compatibility Mode';
 			case 'strings.login.compatibility.description': return 'Use legacy endpoints (for older Memos servers)';
 			case 'strings.login.connect.connecting': return 'Connecting…';
@@ -11856,6 +11874,9 @@ extension on _StringsDe {
 			case 'strings.login.validation.tokenRequired': return 'Bitte Token eingeben';
 			case 'strings.login.dialogs.insecureHttpTitle': return 'HTTP verwenden?';
 			case 'strings.login.dialogs.insecureHttpMessage': return 'HTTP ist nicht sicher und kann dein Konto, Passwort oder Token offenlegen. Trotzdem fortfahren?';
+			case 'strings.login.dialogs.httpsHandshakeFailedTitle': return 'HTTPS-Verbindung fehlgeschlagen';
+			case 'strings.login.dialogs.httpsHandshakeFailedMessage': return 'Du verwendest derzeit HTTPS. Wenn dein Server nur HTTP unterstützt, kannst du es mit HTTP erneut versuchen. Wenn der Server eigentlich HTTPS unterstützen sollte, prüfe das Zertifikat oder die Reverse-Proxy-Konfiguration.';
+			case 'strings.login.dialogs.switchToHttp': return 'HTTP verwenden und erneut versuchen';
 			case 'strings.login.compatibility.title': return 'Kompatibilitätsmodus';
 			case 'strings.login.compatibility.description': return 'Legacy-Endpunkte verwenden (für ältere Memos-Server)';
 			case 'strings.login.connect.connecting': return 'Verbindung wird hergestellt…';
@@ -13375,6 +13396,9 @@ extension on _StringsJa {
 			case 'strings.login.validation.tokenRequired': return 'トークンを入力してください';
 			case 'strings.login.dialogs.insecureHttpTitle': return 'HTTP を使用しますか？';
 			case 'strings.login.dialogs.insecureHttpMessage': return 'HTTP 接続は安全ではなく、アカウント、パスワード、またはトークンが漏洩する可能性があります。それでも続行しますか？';
+			case 'strings.login.dialogs.httpsHandshakeFailedTitle': return 'HTTPS 接続に失敗しました';
+			case 'strings.login.dialogs.httpsHandshakeFailedMessage': return '現在 HTTPS で接続しています。サーバーが HTTP のみをサポートしている場合は、HTTP でもう一度お試しください。サーバーが本来 HTTPS をサポートしているはずなら、証明書またはリバースプロキシの設定を確認してください。';
+			case 'strings.login.dialogs.switchToHttp': return 'HTTP で再試行';
 			case 'strings.login.compatibility.title': return '互換モード';
 			case 'strings.login.compatibility.description': return '旧版 Memos 用のレガシーエンドポイントを使用します';
 			case 'strings.login.connect.connecting': return '接続中…';
@@ -14894,6 +14918,9 @@ extension on _StringsZhHans {
 			case 'strings.login.validation.tokenRequired': return '请输入 Token';
 			case 'strings.login.dialogs.insecureHttpTitle': return '使用 HTTP？';
 			case 'strings.login.dialogs.insecureHttpMessage': return 'HTTP 连接不安全，可能会泄露您的账号、密码或 Token，仍要继续吗？';
+			case 'strings.login.dialogs.httpsHandshakeFailedTitle': return 'HTTPS 连接失败';
+			case 'strings.login.dialogs.httpsHandshakeFailedMessage': return '当前正在使用 HTTPS 连接。如果你的服务器只支持 HTTP，可以使用 HTTP 再试一次。如果服务器本应支持 HTTPS，请检查证书或反向代理配置。';
+			case 'strings.login.dialogs.switchToHttp': return '使用 HTTP 再试一次';
 			case 'strings.login.compatibility.title': return '兼容模式';
 			case 'strings.login.compatibility.description': return '使用旧版接口（适配旧版 Memos）';
 			case 'strings.login.connect.connecting': return '连接中…';
@@ -16413,6 +16440,9 @@ extension on _StringsZhHantTw {
 			case 'strings.login.validation.tokenRequired': return '請輸入 Token';
 			case 'strings.login.dialogs.insecureHttpTitle': return '使用 HTTP？';
 			case 'strings.login.dialogs.insecureHttpMessage': return 'HTTP 連線並不安全，可能會洩露您的帳號、密碼或 Token，仍要繼續嗎？';
+			case 'strings.login.dialogs.httpsHandshakeFailedTitle': return 'HTTPS 連線失敗';
+			case 'strings.login.dialogs.httpsHandshakeFailedMessage': return '目前正在使用 HTTPS 連線。如果你的伺服器只支援 HTTP，可以使用 HTTP 再試一次。如果伺服器本來應該支援 HTTPS，請檢查憑證或反向代理設定。';
+			case 'strings.login.dialogs.switchToHttp': return '使用 HTTP 再試一次';
 			case 'strings.login.compatibility.title': return '相容模式';
 			case 'strings.login.compatibility.description': return '使用舊版端點（適配舊版 Memos）';
 			case 'strings.login.connect.connecting': return '連線中…';
