@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
 import '../../i18n/strings.g.dart';
+import 'gallery_attachment_picker_constants.dart';
 
 @immutable
 class OriginalToggleGalleryAssetPickResult {
@@ -360,6 +361,7 @@ pickGalleryAssetsWithOriginalToggle(
           initialPermission: permissionState,
           pickerTheme: AssetPicker.themeData(themeColor),
           locale: Localizations.maybeLocaleOf(context),
+          previewThumbnailSize: memoGalleryPreviewThumbnailSize,
           specialPickerType: SpecialPickerType.noPreview,
         ),
       );

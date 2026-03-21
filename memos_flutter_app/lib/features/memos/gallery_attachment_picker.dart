@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
+import 'gallery_attachment_picker_constants.dart';
 import 'gallery_attachment_original_picker.dart';
 
 @immutable
@@ -97,6 +98,7 @@ Future<GalleryAttachmentPickResult?> pickGalleryAttachments(
         requestType: RequestType.common,
         maxAssets: maxAssets,
         themeColor: themeColor,
+        previewThumbnailSize: memoGalleryPreviewThumbnailSize,
       ),
     );
   }
