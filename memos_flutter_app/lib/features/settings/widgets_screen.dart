@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
@@ -10,6 +11,9 @@ class WidgetsScreen extends StatelessWidget {
   const WidgetsScreen({super.key, this.showBackButton = true});
 
   final bool showBackButton;
+
+  static final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
 
   @override
   Widget build(BuildContext context) {
@@ -79,14 +83,23 @@ class WidgetsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Center(
-            child: Text(
-              'MemoFlow 鐠?v1.0.18',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-                color: textMuted.withValues(alpha: 0.75),
-              ),
+            child: FutureBuilder<PackageInfo>(
+              future: WidgetsScreen._packageInfoFuture,
+              builder: (context, snapshot) {
+                final version = snapshot.data?.version.trim() ?? '';
+                final label = version.isEmpty
+                    ? 'MemoFlow'
+                    : 'MemoFlow | v$version';
+                return Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: textMuted.withValues(alpha: 0.75),
+                  ),
+                );
+              },
             ),
           ),
         ],

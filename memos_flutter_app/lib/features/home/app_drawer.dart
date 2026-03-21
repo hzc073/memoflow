@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
@@ -72,6 +73,9 @@ class AppDrawer extends ConsumerStatefulWidget {
   final VoidCallback? onOpenNotifications;
   final bool embedded;
   final String? selectedTagPath;
+
+  static final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
 
   @override
   ConsumerState<AppDrawer> createState() => _AppDrawerState();
@@ -196,7 +200,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     final showScanAction =
         kIsWeb || defaultTargetPlatform != TargetPlatform.windows;
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
-    const versionLabel = 'V1.0.18';
 
     final content = SafeArea(
       child: Column(
@@ -673,15 +676,22 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
-            child: Text(
-              '$versionLabel | $versionDate',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: textMuted.withValues(alpha: 0.9),
-                letterSpacing: 0.2,
-              ),
+            child: FutureBuilder<PackageInfo>(
+              future: AppDrawer._packageInfoFuture,
+              builder: (context, snapshot) {
+                final version = snapshot.data?.version.trim() ?? '';
+                final versionLabel = version.isEmpty ? 'Version' : 'V$version';
+                return Text(
+                  '$versionLabel | $versionDate',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: textMuted.withValues(alpha: 0.9),
+                    letterSpacing: 0.2,
+                  ),
+                );
+              },
             ),
           ),
           Padding(

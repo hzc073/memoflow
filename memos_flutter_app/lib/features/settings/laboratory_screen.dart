@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
@@ -17,6 +18,9 @@ class LaboratoryScreen extends ConsumerStatefulWidget {
   const LaboratoryScreen({super.key, this.showBackButton = true});
 
   final bool showBackButton;
+
+  static final Future<PackageInfo> _packageInfoFuture =
+      PackageInfo.fromPlatform();
 
   @override
   ConsumerState<LaboratoryScreen> createState() => _LaboratoryScreenState();
@@ -383,16 +387,22 @@ class _LaboratoryScreenState extends ConsumerState<LaboratoryScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        'VERSION 1.0.18',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: MemoFlowPalette.primary.withValues(
-                            alpha: isDark ? 0.55 : 0.7,
-                          ),
-                        ),
+                      FutureBuilder<PackageInfo>(
+                        future: LaboratoryScreen._packageInfoFuture,
+                        builder: (context, snapshot) {
+                          final version = snapshot.data?.version.trim() ?? '';
+                          return Text(
+                            version.isEmpty ? 'VERSION' : 'VERSION $version',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                              color: MemoFlowPalette.primary.withValues(
+                                alpha: isDark ? 0.55 : 0.7,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
