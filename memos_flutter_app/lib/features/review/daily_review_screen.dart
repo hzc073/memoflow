@@ -38,6 +38,7 @@ import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
+import '../memos/memo_location_line.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memo_video_grid.dart';
 import '../memos/memos_list_screen.dart';
@@ -2071,6 +2072,10 @@ class _RandomWalkCard extends StatelessWidget {
         : MemoFlowPalette.audioSurfaceLight;
     final maxGridHeight = MediaQuery.of(context).size.height * 0.4;
     final resolvedAudioTap = hasAudio ? onAudioTap : null;
+    final location = memo.location;
+    final hasLocation =
+        location != null &&
+        location.displayText(fractionDigits: 6).trim().isNotEmpty;
 
     String formatDuration(Duration value) {
       final totalSeconds = value.inSeconds;
@@ -2192,6 +2197,14 @@ class _RandomWalkCard extends StatelessWidget {
                                 color: textMuted.withValues(alpha: 0.72),
                               ),
                             ),
+                            if (hasLocation) ...[
+                              const SizedBox(height: 6),
+                              MemoLocationLine(
+                                location: location,
+                                textColor: textMuted.withValues(alpha: 0.82),
+                                fontSize: 12,
+                              ),
+                            ],
                           ],
                         ),
                       ),
