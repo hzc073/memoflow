@@ -96,6 +96,22 @@ AiEmbeddingStatus aiEmbeddingStatusFromStorage(String value) {
   };
 }
 
+Float32List? decodeFloat32VectorBlob(Object? rawBlob) {
+  if (rawBlob is! Uint8List || rawBlob.isEmpty) {
+    return null;
+  }
+  if (rawBlob.lengthInBytes % Float32List.bytesPerElement != 0) {
+    return null;
+  }
+  final blob = rawBlob.offsetInBytes % Float32List.bytesPerElement == 0
+      ? rawBlob
+      : Uint8List.fromList(rawBlob);
+  return blob.buffer.asFloat32List(
+    blob.offsetInBytes,
+    blob.lengthInBytes ~/ Float32List.bytesPerElement,
+  );
+}
+
 class AiChunkDraft {
   const AiChunkDraft({
     required this.chunkIndex,
@@ -194,14 +210,6 @@ class AiEmbeddingRecord {
   final String? errorText;
 
   factory AiEmbeddingRecord.fromRow(Map<String, dynamic> row) {
-    final blob = row['vector_blob'];
-    Float32List? vector;
-    if (blob is Uint8List && blob.isNotEmpty) {
-      vector = blob.buffer.asFloat32List(
-        blob.offsetInBytes,
-        blob.lengthInBytes ~/ 4,
-      );
-    }
     return AiEmbeddingRecord(
       id: (row['id'] as int?) ?? 0,
       chunkId: (row['chunk_id'] as int?) ?? 0,
@@ -211,7 +219,7 @@ class AiEmbeddingRecord {
       status: aiEmbeddingStatusFromStorage(
         (row['status'] as String?) ?? 'failed',
       ),
-      vector: vector,
+      vector: decodeFloat32VectorBlob(row['vector_blob']),
       errorText: row['error_text'] as String?,
     );
   }

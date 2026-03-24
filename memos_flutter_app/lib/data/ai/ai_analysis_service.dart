@@ -1855,14 +1855,6 @@ class AiAnalysisService {
   }
 
   _CandidateChunk _candidateChunkFromRow(Map<String, dynamic> row) {
-    final blob = row['vector_blob'];
-    Float32List? vector;
-    if (blob is Uint8List && blob.isNotEmpty) {
-      vector = blob.buffer.asFloat32List(
-        blob.offsetInBytes,
-        blob.lengthInBytes ~/ 4,
-      );
-    }
     return _CandidateChunk(
       chunkId: (row['id'] as int?) ?? 0,
       memoUid: (row['memo_uid'] as String?) ?? '',
@@ -1874,7 +1866,7 @@ class AiAnalysisService {
       embeddingStatus: aiEmbeddingStatusFromStorage(
         (row['embedding_status'] as String?) ?? 'pending',
       ),
-      vector: vector,
+      vector: decodeFloat32VectorBlob(row['vector_blob']),
     );
   }
 
