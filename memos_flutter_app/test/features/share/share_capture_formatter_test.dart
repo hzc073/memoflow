@@ -28,11 +28,14 @@ void main() {
       expect(text, startsWith('# Article Title'));
       expect(text, contains('[Article Title](https://example.com/posts/42)'));
       expect(text, contains('> Short summary'));
-      expect(text, contains('href="https://example.com/about"'));
-      expect(text, contains('src="https://example.com/cover.png"'));
+      expect(text, contains('## Body'));
+      expect(text, contains('[About](https://example.com/about)'));
+      expect(text, contains('![](https://example.com/cover.png)'));
       expect(text, contains(buildThirdPartyShareMemoMarker()));
       expect(text.toLowerCase(), isNot(contains('<html')));
       expect(text.toLowerCase(), isNot(contains('<body')));
+      expect(text.toLowerCase(), isNot(contains('<p')));
+      expect(text.toLowerCase(), isNot(contains('<span')));
     });
 
     test('omits excerpt block when excerpt is absent', () {
@@ -85,9 +88,10 @@ void main() {
 
       final text = buildShareCaptureMemoText(result: result, payload: payload);
 
-      expect(text, contains('<p>First paragraph.</p>'));
-      expect(text, contains('<p>Second paragraph.</p>'));
-      expect(text, contains('<p>Third paragraph.</p>'));
+      expect(
+        text,
+        contains('First paragraph.\n\nSecond paragraph.\n\nThird paragraph.'),
+      );
     });
 
     test('keeps allowed local file image urls in sanitized fragment', () {
@@ -117,7 +121,29 @@ void main() {
         contentHtmlOverride: '<p>Hello</p><img src="$localUrl">',
       );
 
-      expect(request.text, contains('src="$localUrl"'));
+      expect(request.text, contains('![]($localUrl)'));
+    });
+
+    test('converts nested span paragraph and list html into markdown', () {
+      const payload = SharePayload(
+        type: SharePayloadType.text,
+        text: 'https://example.com/posts/42',
+      );
+      final result = ShareCaptureResult.success(
+        finalUrl: Uri.parse('https://example.com/posts/42'),
+        articleTitle: 'Article Title',
+        contentHtml:
+            '<div><p><span>Hello </span><strong><span>World</span></strong></p><ul><li><p>Item 1</p></li><li><span>Item 2</span></li></ul></div>',
+      );
+
+      final text = buildShareCaptureMemoText(result: result, payload: payload);
+
+      expect(text, contains('Hello **World**'));
+      expect(text, contains('- Item 1'));
+      expect(text, contains('- Item 2'));
+      expect(text.toLowerCase(), isNot(contains('<span')));
+      expect(text.toLowerCase(), isNot(contains('<p')));
+      expect(text.toLowerCase(), isNot(contains('<li')));
     });
   });
 }
