@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/core/pointer_double_tap_listener.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/attachment.dart';
@@ -60,6 +61,38 @@ void main() {
       memoDetailMarkdownCacheKey(memoA, renderImages: false),
       isNot(equals(memoDetailMarkdownCacheKey(memoB, renderImages: false))),
     );
+  });
+
+  testWidgets('detail body enables double tap edit for normal memos', (
+    tester,
+  ) async {
+    final memo = _buildMemo();
+
+    await tester.pumpWidget(_buildTestApp(memo: memo));
+    await tester.tap(find.byKey(const ValueKey('open-detail')));
+    await tester.pumpAndSettle();
+
+    final listener = tester.widget<PointerDoubleTapListener>(
+      find.byKey(const ValueKey('memo-detail-edit-hit-area')),
+    );
+
+    expect(listener.onDoubleTap, isNotNull);
+  });
+
+  testWidgets('detail body disables double tap edit for archived memos', (
+    tester,
+  ) async {
+    final memo = _buildMemo(state: 'ARCHIVED');
+
+    await tester.pumpWidget(_buildTestApp(memo: memo));
+    await tester.tap(find.byKey(const ValueKey('open-detail')));
+    await tester.pumpAndSettle();
+
+    final listener = tester.widget<PointerDoubleTapListener>(
+      find.byKey(const ValueKey('memo-detail-edit-hit-area')),
+    );
+
+    expect(listener.onDoubleTap, isNull);
   });
 }
 
@@ -123,6 +156,7 @@ class _DetailRouteLauncher extends StatelessWidget {
 LocalMemo _buildMemo({
   String uid = 'memo-1',
   String content = 'memo body',
+  String state = 'NORMAL',
   List<Attachment> attachments = const <Attachment>[],
 }) {
   final now = DateTime(2024, 1, 2, 3, 4, 5);
@@ -132,7 +166,7 @@ LocalMemo _buildMemo({
     contentFingerprint: computeContentFingerprint(content),
     visibility: 'PRIVATE',
     pinned: false,
-    state: 'NORMAL',
+    state: state,
     createTime: now,
     updateTime: now,
     tags: const <String>[],

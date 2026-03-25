@@ -15,6 +15,7 @@ import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
 import '../../core/location_launcher.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/pointer_double_tap_listener.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
 import '../../core/tags.dart';
@@ -687,6 +688,12 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
     final isArchived = memo.state == 'ARCHIVED';
     final canEditAttachments = !widget.readOnly && !isArchived;
+    final onDoubleTapEdit = widget.readOnly || isArchived
+        ? null
+        : () {
+            maybeHaptic();
+            unawaited(_edit());
+          };
     final deferredContentKey = _buildDeferredContentKey(
       memo: memo,
       baseUrl: baseUrl,
@@ -777,120 +784,125 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final displayTime = memo.createTime.millisecondsSinceEpoch > 0
         ? memo.createTime
         : memo.updateTime;
-    final header = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _dateFmt.format(displayTime),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        if (memo.location != null) ...[
-          const SizedBox(height: 6),
-          MemoLocationLine(
-            location: memo.location!,
-            textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            onTap: () => openMemoLocation(
-              context,
-              memo.location!,
-              memoUid: memo.uid,
-              provider: ref.read(locationSettingsProvider).provider,
+    final header = PointerDoubleTapListener(
+      key: const ValueKey('memo-detail-edit-hit-area'),
+      behavior: HitTestBehavior.translucent,
+      onDoubleTap: onDoubleTapEdit,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _dateFmt.format(displayTime),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            fontSize: 12,
           ),
-        ],
-        const SizedBox(height: 8),
-        contentWidget,
-        const SizedBox(height: 12),
-        if (mediaEntries.isNotEmpty) ...[
-          MemoMediaGrid(
-            entries: mediaEntries,
-            columns: 3,
-            maxCount: 9,
-            maxHeight: MediaQuery.of(context).size.height * 0.4,
-            preserveSquareTilesWhenHeightLimited: Platform.isWindows,
-            borderColor: borderColor.withValues(alpha: 0.65),
-            backgroundColor: imageBg,
-            textColor: textMain,
-            radius: 12,
-            spacing: 8,
-            onReplace: allowImageEdit ? _replaceMemoAttachment : null,
-            enableDownload: true,
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (memoErrorText != null && memoErrorText.trim().isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(
+          if (memo.location != null) ...[
+            const SizedBox(height: 6),
+            MemoLocationLine(
+              location: memo.location!,
+              textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              onTap: () => openMemoLocation(
                 context,
-              ).colorScheme.errorContainer.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
+                memo.location!,
+                memoUid: memo.uid,
+                provider: ref.read(locationSettingsProvider).provider,
+              ),
+              fontSize: 12,
+            ),
+          ],
+          const SizedBox(height: 8),
+          contentWidget,
+          const SizedBox(height: 12),
+          if (mediaEntries.isNotEmpty) ...[
+            MemoMediaGrid(
+              entries: mediaEntries,
+              columns: 3,
+              maxCount: 9,
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+              preserveSquareTilesWhenHeightLimited: Platform.isWindows,
+              borderColor: borderColor.withValues(alpha: 0.65),
+              backgroundColor: imageBg,
+              textColor: textMain,
+              radius: 12,
+              spacing: 8,
+              onReplace: allowImageEdit ? _replaceMemoAttachment : null,
+              enableDownload: true,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (memoErrorText != null && memoErrorText.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
                 color: Theme.of(
                   context,
-                ).colorScheme.error.withValues(alpha: 0.22),
+                ).colorScheme.errorContainer.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.error.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    memoErrorText,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: () {
+                          maybeHaptic();
+                          unawaited(
+                            ref
+                                .read(syncCoordinatorProvider.notifier)
+                                .requestSync(
+                                  const SyncRequest(
+                                    kind: SyncRequestKind.memos,
+                                    reason: SyncRequestReason.manual,
+                                  ),
+                                ),
+                          );
+                          showTopToast(
+                            context,
+                            context.t.strings.legacy.msg_retry_started,
+                          );
+                        },
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: Text(context.t.strings.legacy.msg_retry_sync),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: () async {
+                          maybeHaptic();
+                          await Clipboard.setData(
+                            ClipboardData(text: memoErrorText),
+                          );
+                          if (!context.mounted) return;
+                          showTopToast(
+                            context,
+                            context.t.strings.legacy.msg_error_copied,
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 18),
+                        label: Text(context.t.strings.legacy.msg_copy),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SelectableText(
-                  memoErrorText,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: () {
-                        maybeHaptic();
-                        unawaited(
-                          ref
-                              .read(syncCoordinatorProvider.notifier)
-                              .requestSync(
-                                const SyncRequest(
-                                  kind: SyncRequestKind.memos,
-                                  reason: SyncRequestReason.manual,
-                                ),
-                              ),
-                        );
-                        showTopToast(
-                          context,
-                          context.t.strings.legacy.msg_retry_started,
-                        );
-                      },
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: Text(context.t.strings.legacy.msg_retry_sync),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      onPressed: () async {
-                        maybeHaptic();
-                        await Clipboard.setData(
-                          ClipboardData(text: memoErrorText),
-                        );
-                        if (!context.mounted) return;
-                        showTopToast(
-                          context,
-                          context.t.strings.legacy.msg_error_copied,
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 18),
-                      label: Text(context.t.strings.legacy.msg_copy),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
 
     return Scaffold(
