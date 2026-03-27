@@ -103,6 +103,24 @@ typedef WebDavClientFactory = WebDavClient Function({
   void Function(DebugLogEntry entry)? logWriter,
 });
 
+class WebDavConnectionTestResult {
+  const WebDavConnectionTestResult._({
+    required this.success,
+    this.cleanupFailed = false,
+    this.error,
+  });
+
+  const WebDavConnectionTestResult.success({bool cleanupFailed = false})
+    : this._(success: true, cleanupFailed: cleanupFailed);
+
+  const WebDavConnectionTestResult.failure(SyncError error)
+    : this._(success: false, error: error);
+
+  final bool success;
+  final bool cleanupFailed;
+  final SyncError? error;
+}
+
 class WebDavSyncService {
   WebDavSyncService({
     required WebDavSyncStateRepository syncStateRepository,
@@ -248,6 +266,92 @@ class WebDavSyncService {
     }
   }
 
+  Future<WebDavConnectionTestResult> testConnection({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    if (!_canTestConnection(settings)) {
+      return const WebDavConnectionTestResult.failure(
+        SyncError(
+          code: SyncErrorCode.invalidConfig,
+          retryable: false,
+          presentationKey: 'legacy.webdav.not_configured',
+        ),
+      );
+    }
+
+    final baseUrl = Uri.tryParse(settings.serverUrl.trim());
+    if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
+      return const WebDavConnectionTestResult.failure(
+        SyncError(
+          code: SyncErrorCode.invalidConfig,
+          retryable: false,
+          presentationKey: 'legacy.msg_invalid_webdav_server_url',
+          presentationParams: <String, String>{'prefix': 'Bad state: '},
+        ),
+      );
+    }
+
+    final normalizedAccountKey = accountKey?.trim() ?? '';
+    final resolvedAccountKey = normalizedAccountKey.isNotEmpty
+        ? normalizedAccountKey
+        : await _resolveDeviceId();
+    final accountId = fnv1a64Hex(
+      resolvedAccountKey.trim().isEmpty
+          ? 'webdav_connection_probe'
+          : resolvedAccountKey,
+    );
+    final rootPath = normalizeWebDavRootPath(settings.rootPath);
+    final client = _clientFactory(
+      baseUrl: baseUrl,
+      settings: settings,
+      logWriter: _logWriter,
+    );
+    _logEvent('Connection test started');
+    try {
+      await _ensureCollections(client, baseUrl, rootPath, accountId);
+      final probeName =
+          '.connection_test_${DateTime.now().microsecondsSinceEpoch}.tmp';
+      final probeUri = _fileUri(baseUrl, rootPath, accountId, probeName);
+      final putResponse = await client.put(probeUri, body: const <int>[]);
+      if (putResponse.statusCode < 200 || putResponse.statusCode >= 300) {
+        final error = _httpError(
+          statusCode: putResponse.statusCode,
+          message: 'WebDAV put failed (HTTP ${putResponse.statusCode})',
+        );
+        _logEvent('Connection test failed', error: error);
+        return WebDavConnectionTestResult.failure(error);
+      }
+
+      var cleanupFailed = false;
+      try {
+        final deleteResponse = await client.delete(probeUri);
+        cleanupFailed =
+            deleteResponse.statusCode != 404 &&
+            (deleteResponse.statusCode < 200 || deleteResponse.statusCode >= 300);
+      } catch (_) {
+        cleanupFailed = true;
+      }
+
+      _logEvent(
+        'Connection test completed',
+        detail: cleanupFailed ? 'cleanup_failed' : 'ok',
+      );
+      return WebDavConnectionTestResult.success(
+        cleanupFailed: cleanupFailed,
+      );
+    } on SyncError catch (error) {
+      _logEvent('Connection test failed', error: error);
+      return WebDavConnectionTestResult.failure(error);
+    } catch (error) {
+      final mapped = _mapUnexpectedError(error);
+      _logEvent('Connection test failed', error: mapped);
+      return WebDavConnectionTestResult.failure(mapped);
+    } finally {
+      await client.close();
+    }
+  }
+
   Future<WebDavSyncMeta?> fetchRemoteMeta({
     required WebDavSettings settings,
     required String? accountKey,
@@ -361,6 +465,17 @@ class WebDavSyncService {
     return true;
   }
 
+  bool _canTestConnection(WebDavSettings settings) {
+    if (settings.serverUrl.trim().isEmpty) return false;
+    if (settings.username.trim().isEmpty && settings.password.trim().isNotEmpty) {
+      return false;
+    }
+    if (settings.username.trim().isNotEmpty && settings.password.trim().isEmpty) {
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _ensureCollections(
     WebDavClient client,
     Uri baseUrl,
@@ -412,7 +527,10 @@ class WebDavSyncService {
     final entries = <String, Map<String, dynamic>>{
       useVault ? _webDavPreferencesEncFile : _webDavPreferencesFile:
           preferencesPayload,
-      useVault ? _webDavAiEncFile : _webDavAiFile: snapshot.aiSettings.toJson(),
+      useVault
+              ? _webDavAiEncFile
+              : _webDavAiFile:
+          snapshot.aiSettings.toWebDavJson(),
       useVault ? _webDavReminderEncFile : _webDavReminderFile:
           snapshot.reminderSettings.toJson(),
       useVault ? _webDavImageBedEncFile : _webDavImageBedFile:
@@ -441,7 +559,7 @@ class WebDavSyncService {
       if (useVault) {
         final stableHash = _hashCanonicalJson(json);
         final encrypted = await _vaultService.encryptJsonPayload(
-          masterKey: vaultContext!.masterKey,
+          masterKey: vaultContext.masterKey,
           info: 'sync:$name',
           payload: json,
         );
@@ -590,16 +708,16 @@ class WebDavSyncService {
         continue;
       }
       if (localChanged && remoteChanged) {
-        if (remoteHash != null && remoteHash != localHash) {
+        if (remoteHash != localHash) {
           conflicts.add(name);
         }
         continue;
       }
-      if (localChanged && remoteHash != null && remoteHash != localHash) {
+      if (localChanged && remoteHash != localHash) {
         uploads.add(name);
         continue;
       }
-      if (remoteChanged && remoteHash != null && remoteHash != localHash) {
+      if (remoteChanged && remoteHash != localHash) {
         downloads.add(name);
       }
     }
@@ -895,12 +1013,17 @@ class WebDavSyncService {
     final code = switch (statusCode) {
       401 => SyncErrorCode.authFailed,
       403 => SyncErrorCode.permission,
+      408 || 425 || 429 => SyncErrorCode.server,
       >= 500 => SyncErrorCode.server,
       _ => SyncErrorCode.unknown,
     };
     return SyncError(
       code: code,
-      retryable: statusCode >= 500,
+      retryable:
+          statusCode == 408 ||
+          statusCode == 425 ||
+          statusCode == 429 ||
+          statusCode >= 500,
       message: 'Bad state: $message',
       httpStatus: statusCode,
     );

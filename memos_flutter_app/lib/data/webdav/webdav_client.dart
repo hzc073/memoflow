@@ -25,6 +25,9 @@ class WebDavResponse {
 }
 
 class WebDavClient {
+  static const int _maxRetries = 3;
+  static const Duration _defaultWriteCooldown = Duration(milliseconds: 180);
+
   WebDavClient({
     required this.baseUrl,
     required this.username,
@@ -32,7 +35,13 @@ class WebDavClient {
     required this.authMode,
     required this.ignoreBadCert,
     this.logWriter,
+    Duration writeCooldown = _defaultWriteCooldown,
+    Future<void> Function(Duration delay)? delayRunner,
+    Random? retryRandom,
   }) {
+    _writeCooldown = writeCooldown;
+    _delayRunner = delayRunner ?? Future<void>.delayed;
+    _retryRandom = retryRandom ?? Random.secure();
     if (ignoreBadCert) {
       _client.badCertificateCallback = (_, _, _) => true;
     }
@@ -44,9 +53,13 @@ class WebDavClient {
   final WebDavAuthMode authMode;
   final bool ignoreBadCert;
   final void Function(DebugLogEntry entry)? logWriter;
+  late final Duration _writeCooldown;
+  late final Future<void> Function(Duration delay) _delayRunner;
+  late final Random _retryRandom;
 
   final HttpClient _client = HttpClient();
   _DigestAuthState? _digestState;
+  DateTime? _nextWriteAllowedAt;
 
   Future<void> close() async {
     _client.close(force: true);
@@ -82,14 +95,35 @@ class WebDavClient {
     Map<String, String>? headers,
     List<int>? body,
   }) async {
-    final response = await _sendOnce(method, url, headers: headers, body: body);
-    if (response.statusCode != 401 || authMode != WebDavAuthMode.digest) {
-      return response;
+    var forceDigest = false;
+    var retries = 0;
+    while (true) {
+      await _waitForWriteCooldown(method);
+      final response = await _sendOnce(
+        method,
+        url,
+        headers: headers,
+        body: body,
+        forceDigest: forceDigest,
+      );
+      if (response.statusCode == 401 && authMode == WebDavAuthMode.digest) {
+        final challenge = _parseDigestChallenge(
+          response.headers['www-authenticate'],
+        );
+        if (challenge != null && !forceDigest) {
+          _digestState = challenge;
+          forceDigest = true;
+          continue;
+        }
+      }
+      if (!_shouldRetry(method, response.statusCode) ||
+          retries >= _maxRetries) {
+        return response;
+      }
+      retries += 1;
+      await _delayRunner(_resolveRetryDelay(response, retries));
+      forceDigest = authMode == WebDavAuthMode.digest && _digestState != null;
     }
-    final challenge = _parseDigestChallenge(response.headers['www-authenticate']);
-    if (challenge == null) return response;
-    _digestState = challenge;
-    return _sendOnce(method, url, headers: headers, body: body, forceDigest: true);
   }
 
   Future<WebDavResponse> _sendOnce(
@@ -106,16 +140,23 @@ class WebDavClient {
       if (headers != null) {
         headers.forEach(request.headers.set);
       }
-      final authHeader = _buildAuthHeader(method, url, forceDigest: forceDigest);
+      final authHeader = _buildAuthHeader(
+        method,
+        url,
+        forceDigest: forceDigest,
+      );
       if (authHeader != null) {
         request.headers.set(HttpHeaders.authorizationHeader, authHeader);
       }
       if (body != null) {
+        request.contentLength = body.length;
         request.add(body);
       }
       final response = await request.close();
-      final bytes =
-          await response.fold<List<int>>(<int>[], (p, e) => p..addAll(e));
+      final bytes = await response.fold<List<int>>(
+        <int>[],
+        (p, e) => p..addAll(e),
+      );
       final responseHeaders = <String, String>{};
       response.headers.forEach((name, values) {
         if (values.isNotEmpty) {
@@ -142,6 +183,87 @@ class WebDavClient {
         error: e,
       );
       rethrow;
+    } finally {
+      _scheduleWriteCooldown(method);
+    }
+  }
+
+  bool _shouldRetry(String method, int statusCode) {
+    if (!_isRetryableMethod(method)) return false;
+    if (statusCode == 408 || statusCode == 425 || statusCode == 429) {
+      return true;
+    }
+    return statusCode >= 500;
+  }
+
+  bool _isRetryableMethod(String method) {
+    switch (method.toUpperCase()) {
+      case 'GET':
+      case 'HEAD':
+      case 'PUT':
+      case 'DELETE':
+      case 'MKCOL':
+        return true;
+    }
+    return false;
+  }
+
+  bool _isWriteMethod(String method) {
+    switch (method.toUpperCase()) {
+      case 'PUT':
+      case 'DELETE':
+      case 'MKCOL':
+        return true;
+    }
+    return false;
+  }
+
+  Future<void> _waitForWriteCooldown(String method) async {
+    if (!_isWriteMethod(method)) return;
+    if (_writeCooldown <= Duration.zero) return;
+    final allowedAt = _nextWriteAllowedAt;
+    if (allowedAt == null) return;
+    final remaining = allowedAt.difference(DateTime.now());
+    if (remaining <= Duration.zero) return;
+    await _delayRunner(remaining);
+  }
+
+  void _scheduleWriteCooldown(String method) {
+    if (!_isWriteMethod(method)) return;
+    if (_writeCooldown <= Duration.zero) return;
+    _nextWriteAllowedAt = DateTime.now().add(_writeCooldown);
+  }
+
+  Duration _resolveRetryDelay(WebDavResponse response, int retries) {
+    final retryAfter = _parseRetryAfter(response.headers['retry-after']);
+    if (retryAfter != null) {
+      return retryAfter;
+    }
+    final attempt = retries <= 0 ? 1 : retries;
+    final exponentialMs = min(1000 * (1 << (attempt - 1)), 8000);
+    final jitterCapMs = min(exponentialMs ~/ 4, 250);
+    final jitterMs = jitterCapMs <= 0
+        ? 0
+        : _retryRandom.nextInt(jitterCapMs + 1);
+    return Duration(milliseconds: exponentialMs + jitterMs);
+  }
+
+  Duration? _parseRetryAfter(String? raw) {
+    final trimmed = raw?.trim() ?? '';
+    if (trimmed.isEmpty) return null;
+    final seconds = int.tryParse(trimmed);
+    if (seconds != null) {
+      return Duration(seconds: seconds < 0 ? 0 : seconds);
+    }
+    try {
+      final retryAt = HttpDate.parse(trimmed).toUtc();
+      final now = DateTime.now().toUtc();
+      if (!retryAt.isAfter(now)) {
+        return Duration.zero;
+      }
+      return retryAt.difference(now);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -175,7 +297,11 @@ class WebDavClient {
     );
   }
 
-  String? _buildAuthHeader(String method, Uri url, {required bool forceDigest}) {
+  String? _buildAuthHeader(
+    String method,
+    Uri url, {
+    required bool forceDigest,
+  }) {
     if (authMode == WebDavAuthMode.basic) {
       if (username.isEmpty && password.isEmpty) return null;
       final credentials = base64Encode(utf8.encode('$username:$password'));
@@ -201,7 +327,9 @@ class WebDavClient {
         : _md5('$ha1:$resolved.nonce:$ha2');
 
     final buffer = StringBuffer('Digest ');
-    buffer.write('username="$username", realm="$resolved.realm", nonce="$resolved.nonce", uri="$uri", ');
+    buffer.write(
+      'username="$username", realm="$resolved.realm", nonce="$resolved.nonce", uri="$uri", ',
+    );
     buffer.write('response="$response"');
     if (resolved.opaque.isNotEmpty) {
       buffer.write(', opaque="$resolved.opaque"');

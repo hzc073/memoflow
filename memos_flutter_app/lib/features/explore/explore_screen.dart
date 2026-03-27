@@ -441,8 +441,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       );
       if (!mounted ||
           requestId != _requestId ||
-          _activeAccountKey != accountKey)
+          _activeAccountKey != accountKey) {
         return;
+      }
       setState(() {
         if (reset) {
           _memos = result.memos;
@@ -458,8 +459,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     } catch (e) {
       if (!mounted ||
           requestId != _requestId ||
-          _activeAccountKey != accountKey)
+          _activeAccountKey != accountKey) {
         return;
+      }
       setState(() {
         if (reset) {
           _error = e.toString();
@@ -558,8 +560,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('data:')) return trimmed;
     final lower = trimmed.toLowerCase();
-    if (lower.startsWith('http://') || lower.startsWith('https://'))
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
       return trimmed;
+    }
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);
   }
@@ -1937,7 +1940,6 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
 
   void _showQuickMenu(BuildContext anchorContext) {
     final overlay = Overlay.of(context, rootOverlay: true);
-    if (overlay == null) return;
     final renderBox = anchorContext.findRenderObject();
     if (renderBox is! RenderBox || !renderBox.hasSize) return;
     final offset = renderBox.localToGlobal(Offset.zero);

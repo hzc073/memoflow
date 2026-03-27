@@ -64,9 +64,19 @@ class FakeWebDavSyncService implements WebDavSyncService {
   }) async {
     return null;
   }
+
+  @override
+  Future<WebDavConnectionTestResult> testConnection({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    return const WebDavConnectionTestResult.success();
+  }
 }
 
 class FakeWebDavBackupService implements WebDavBackupService {
+  int callCount = 0;
+
   @override
   Future<WebDavBackupResult> backupNow({
     required WebDavSettings settings,
@@ -78,6 +88,7 @@ class FakeWebDavBackupService implements WebDavBackupService {
     String? attachmentAuthHeader,
     WebDavBackupExportIssueHandler? onExportIssue,
   }) async {
+    callCount += 1;
     return const WebDavBackupSuccess();
   }
 
@@ -252,7 +263,7 @@ class FakeWebDavSettingsRepository implements WebDavSettingsRepository {
 
 class FakeWebDavSettingsController extends StateNotifier<WebDavSettings>
     implements WebDavSettingsController {
-  FakeWebDavSettingsController(WebDavSettings settings) : super(settings);
+  FakeWebDavSettingsController(super.settings);
 
   @override
   void setEnabled(bool value) => state = state.copyWith(enabled: value);
@@ -430,7 +441,7 @@ class FakeAppSessionController extends AppSessionController {
 }
 
 class RecordingSyncCoordinator extends SyncCoordinator {
-  RecordingSyncCoordinator(SyncDependencies deps) : super(deps);
+  RecordingSyncCoordinator(super.deps);
 
   Map<String, bool>? lastWebDavResolutions;
 
@@ -442,7 +453,7 @@ class RecordingSyncCoordinator extends SyncCoordinator {
 }
 
 void main() {
-  testWidgets('webdav sync conflict flow uses coordinator resolution', (
+  testWidgets('top-right action runs manual sync and resolves conflicts', (
     WidgetTester tester,
   ) async {
     LocaleSettings.setLocale(AppLocale.en);
@@ -455,12 +466,107 @@ void main() {
       const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
     );
     final db = AppDatabase(dbName: 'webdav_conflict_flow_test.db');
+    const localLibrary = LocalLibrary(
+      key: 'local',
+      name: 'Local',
+      rootPath: 'c:\\tmp',
+    );
 
     final settings = WebDavSettings.defaults.copyWith(
       enabled: true,
       serverUrl: 'https://example.com',
       username: 'user',
       password: 'pass',
+      backupEncryptionMode: WebDavBackupEncryptionMode.plain,
+    );
+    final settingsController = FakeWebDavSettingsController(settings);
+    final progressTracker = WebDavBackupProgressTracker();
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: ProviderScope(
+          overrides: [
+            webDavSettingsProvider.overrideWith((ref) => settingsController),
+            webDavSettingsRepositoryProvider.overrideWithValue(
+              FakeWebDavSettingsRepository(settings),
+            ),
+            webDavBackupPasswordRepositoryProvider.overrideWithValue(
+              FakeWebDavBackupPasswordRepository(),
+            ),
+            webDavBackupProgressTrackerProvider.overrideWith(
+              (ref) => progressTracker,
+            ),
+            webDavBackupStateRepositoryProvider.overrideWithValue(
+              backupStateRepo,
+            ),
+            currentLocalLibraryProvider.overrideWithValue(localLibrary),
+            appSessionProvider.overrideWith((ref) => sessionController),
+            syncCoordinatorProvider.overrideWith((ref) {
+              coordinator = RecordingSyncCoordinator(
+                SyncDependencies(
+                  webDavSyncService: webDavSyncService,
+                  webDavBackupService: webDavBackupService,
+                  webDavBackupStateRepository: backupStateRepo,
+                  readWebDavSettings: () => settingsController.state,
+                  readCurrentAccountKey: () =>
+                      sessionController.state.valueOrNull?.currentKey,
+                  readCurrentAccount: () =>
+                      sessionController.state.valueOrNull?.currentAccount,
+                  readCurrentLocalLibrary: () => localLibrary,
+                  readDatabase: () => db,
+                  runMemosSync: () async => const MemoSyncSuccess(),
+                ),
+              );
+              return coordinator!;
+            }),
+          ],
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: const WebDavSyncScreen(),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(t.strings.legacy.msg_sync));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings backup conflicts'), findsOneWidget);
+
+    await tester.tap(find.text(t.strings.legacy.msg_apply));
+    await tester.pumpAndSettle();
+
+    expect(webDavBackupService.callCount, 0);
+    expect(webDavSyncService.callCount, 2);
+    expect(coordinator?.lastWebDavResolutions, {'preferences.json': true});
+    expect(settingsController.state.autoSyncAllowed, isTrue);
+
+    await db.close();
+  });
+
+  testWidgets('plain backup shows encrypted-only security hint', (
+    WidgetTester tester,
+  ) async {
+    LocaleSettings.setLocale(AppLocale.en);
+    final webDavSyncService = FakeWebDavSyncService(const <String>[]);
+    final webDavBackupService = FakeWebDavBackupService();
+    RecordingSyncCoordinator? coordinator;
+    final backupStateRepo = FakeWebDavBackupStateRepository();
+    final sessionController = FakeAppSessionController(
+      const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
+    );
+    final db = AppDatabase(dbName: 'webdav_plain_hint_test.db');
+
+    final settings = WebDavSettings.defaults.copyWith(
+      enabled: true,
+      serverUrl: 'https://example.com',
+      username: 'user',
+      password: 'pass',
+      backupSchedule: WebDavBackupSchedule.manual,
+      backupEncryptionMode: WebDavBackupEncryptionMode.plain,
     );
     final settingsController = FakeWebDavSettingsController(settings);
     final progressTracker = WebDavBackupProgressTracker();
@@ -514,20 +620,100 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.sync));
-    await tester.pumpAndSettle();
 
-    expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(find.text(t.strings.legacy.msg_use_remote));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(t.strings.legacy.msg_apply));
-    await tester.pumpAndSettle();
-
-    expect(
-      coordinator?.lastWebDavResolutions,
-      equals(const {'preferences.json': false}),
-    );
+    expect(find.text('Config sync only'), findsNothing);
+    expect(find.text('Available for encrypted backup only'), findsOneWidget);
 
     await db.close();
   });
+
+  testWidgets(
+    'connection screen shows test connection action and success message',
+    (WidgetTester tester) async {
+      LocaleSettings.setLocale(AppLocale.en);
+      final webDavSyncService = FakeWebDavSyncService(const <String>[]);
+      final webDavBackupService = FakeWebDavBackupService();
+      RecordingSyncCoordinator? coordinator;
+      final backupStateRepo = FakeWebDavBackupStateRepository();
+      final sessionController = FakeAppSessionController(
+        const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
+      );
+      final db = AppDatabase(dbName: 'webdav_connection_button_test.db');
+
+      final settings = WebDavSettings.defaults.copyWith(
+        enabled: true,
+        serverUrl: 'https://example.com',
+        username: 'user',
+        password: 'pass',
+      );
+      final settingsController = FakeWebDavSettingsController(settings);
+      final progressTracker = WebDavBackupProgressTracker();
+
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: ProviderScope(
+            overrides: [
+              webDavSettingsProvider.overrideWith((ref) => settingsController),
+              webDavSettingsRepositoryProvider.overrideWithValue(
+                FakeWebDavSettingsRepository(settings),
+              ),
+              webDavBackupPasswordRepositoryProvider.overrideWithValue(
+                FakeWebDavBackupPasswordRepository(),
+              ),
+              webDavBackupProgressTrackerProvider.overrideWith(
+                (ref) => progressTracker,
+              ),
+              webDavBackupStateRepositoryProvider.overrideWithValue(
+                backupStateRepo,
+              ),
+              currentLocalLibraryProvider.overrideWithValue(null),
+              appSessionProvider.overrideWith((ref) => sessionController),
+              syncCoordinatorProvider.overrideWith((ref) {
+                coordinator = RecordingSyncCoordinator(
+                  SyncDependencies(
+                    webDavSyncService: webDavSyncService,
+                    webDavBackupService: webDavBackupService,
+                    webDavBackupStateRepository: backupStateRepo,
+                    readWebDavSettings: () => settingsController.state,
+                    readCurrentAccountKey: () =>
+                        sessionController.state.valueOrNull?.currentKey,
+                    readCurrentAccount: () =>
+                        sessionController.state.valueOrNull?.currentAccount,
+                    readCurrentLocalLibrary: () => null,
+                    readDatabase: () => db,
+                    runMemosSync: () async => const MemoSyncSuccess(),
+                  ),
+                );
+                return coordinator!;
+              }),
+            ],
+            child: MaterialApp(
+              locale: AppLocale.en.flutterLocale,
+              supportedLocales: AppLocaleUtils.supportedLocales,
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              home: const WebDavSyncScreen(),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(t.strings.legacy.msg_server_connection));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Test connection'), findsOneWidget);
+      await tester.tap(find.text('Test connection'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Connection test passed. WebDAV is reachable and writable.'),
+        findsWidgets,
+      );
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      await db.close();
+    },
+  );
 }

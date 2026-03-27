@@ -139,8 +139,9 @@ String _normalizeLegacyReactionType(String reactionType) {
   if (trimmed == 'HEART' || trimmed == 'THUMBS_UP') return trimmed;
   if (trimmed == '\u{2764}\u{FE0F}' ||
       trimmed == '\u{2764}' ||
-      trimmed == '\u{2665}')
+      trimmed == '\u{2665}') {
     return 'HEART';
+  }
   if (trimmed == '\u{1F44D}') return 'THUMBS_UP';
   return 'HEART';
 }
@@ -367,8 +368,9 @@ DateTime _readLegacyTime(dynamic value) {
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   }
   final seconds = _readInt(value);
-  if (seconds <= 0)
+  if (seconds <= 0) {
     return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  }
   return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
 }
 

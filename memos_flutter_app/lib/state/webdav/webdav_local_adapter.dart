@@ -21,25 +21,27 @@ import '../tags/tag_repository.dart';
 import 'webdav_settings_provider.dart';
 
 class RiverpodWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
-  RiverpodWebDavSyncLocalAdapter(this._ref);
+  RiverpodWebDavSyncLocalAdapter(this._container);
 
-  final Ref _ref;
+  final ProviderContainer _container;
 
   @override
   Future<WebDavSyncLocalSnapshot> readSnapshot() async {
-    final prefs = _ref.read(appPreferencesProvider);
-    final ai = await _ref
+    final prefs = _container.read(appPreferencesProvider);
+    final ai = await _container
         .read(aiSettingsRepositoryProvider)
         .read(language: prefs.language);
-    final reminder = _ref.read(reminderSettingsProvider);
-    final imageBed = _ref.read(imageBedSettingsProvider);
-    final imageCompression = _ref.read(imageCompressionSettingsProvider);
-    final location = _ref.read(locationSettingsProvider);
-    final template = _ref.read(memoTemplateSettingsProvider);
-    final lockRepo = _ref.read(appLockRepositoryProvider);
+    final reminder = _container.read(reminderSettingsProvider);
+    final imageBed = _container.read(imageBedSettingsProvider);
+    final imageCompression = _container.read(imageCompressionSettingsProvider);
+    final location = _container.read(locationSettingsProvider);
+    final template = _container.read(memoTemplateSettingsProvider);
+    final lockRepo = _container.read(appLockRepositoryProvider);
     final lockSnapshot = await lockRepo.readSnapshot();
-    final draft = _ref.read(noteDraftProvider).valueOrNull ?? '';
-    final tagsSnapshot = await _ref.read(tagRepositoryProvider).readSnapshot();
+    final draft = _container.read(noteDraftProvider).valueOrNull ?? '';
+    final tagsSnapshot = await _container
+        .read(tagRepositoryProvider)
+        .readSnapshot();
     return WebDavSyncLocalSnapshot(
       preferences: prefs,
       aiSettings: ai,
@@ -56,28 +58,28 @@ class RiverpodWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
 
   @override
   Future<void> applyPreferences(AppPreferences preferences) async {
-    await _ref
+    await _container
         .read(appPreferencesProvider.notifier)
         .setAll(preferences, triggerSync: false);
   }
 
   @override
   Future<void> applyAiSettings(AiSettings settings) async {
-    await _ref
+    await _container
         .read(aiSettingsProvider.notifier)
         .setAll(settings, triggerSync: false);
   }
 
   @override
   Future<void> applyReminderSettings(ReminderSettings settings) async {
-    await _ref
+    await _container
         .read(reminderSettingsProvider.notifier)
         .setAll(settings, triggerSync: false);
   }
 
   @override
   Future<void> applyImageBedSettings(ImageBedSettings settings) async {
-    await _ref
+    await _container
         .read(imageBedSettingsProvider.notifier)
         .setAll(settings, triggerSync: false);
   }
@@ -86,46 +88,46 @@ class RiverpodWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
   Future<void> applyImageCompressionSettings(
     ImageCompressionSettings settings,
   ) async {
-    await _ref
+    await _container
         .read(imageCompressionSettingsProvider.notifier)
         .setAll(settings, triggerSync: false);
   }
 
   @override
   Future<void> applyLocationSettings(LocationSettings settings) async {
-    await _ref
+    await _container
         .read(locationSettingsProvider.notifier)
         .setAll(settings, triggerSync: false);
   }
 
   @override
   Future<void> applyTemplateSettings(MemoTemplateSettings settings) async {
-    await _ref
+    await _container
         .read(memoTemplateSettingsProvider.notifier)
         .setAll(settings, triggerSync: false);
   }
 
   @override
   Future<void> applyAppLockSnapshot(AppLockSnapshot snapshot) async {
-    await _ref
+    await _container
         .read(appLockProvider.notifier)
         .setSnapshot(snapshot, triggerSync: false);
   }
 
   @override
   Future<void> applyNoteDraft(String text) async {
-    await _ref
+    await _container
         .read(noteDraftProvider.notifier)
         .setDraft(text, triggerSync: false);
   }
 
   @override
   Future<void> applyTags(TagSnapshot snapshot) async {
-    await _ref.read(tagRepositoryProvider).applySnapshot(snapshot);
+    await _container.read(tagRepositoryProvider).applySnapshot(snapshot);
   }
 
   @override
   Future<void> applyWebDavSettings(WebDavSettings settings) async {
-    _ref.read(webDavSettingsProvider.notifier).setAll(settings);
+    _container.read(webDavSettingsProvider.notifier).setAll(settings);
   }
 }

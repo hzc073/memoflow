@@ -145,6 +145,9 @@ class _FakeWebDavClient implements WebDavClient {
     this.ignoreBadCert = false,
     this.logWriter,
     Map<String, WebDavResponse>? responsesByName,
+    this.putResponse,
+    this.mkcolResponse,
+    this.deleteResponse,
   }) : _responsesByName = responsesByName ?? <String, WebDavResponse>{};
 
   @override
@@ -166,9 +169,13 @@ class _FakeWebDavClient implements WebDavClient {
   final void Function(DebugLogEntry entry)? logWriter;
 
   final Map<String, WebDavResponse> _responsesByName;
+  final WebDavResponse? putResponse;
+  final WebDavResponse? mkcolResponse;
+  final WebDavResponse? deleteResponse;
   final List<_PutCall> putCalls = <_PutCall>[];
   final List<Uri> mkcolCalls = <Uri>[];
   final List<String> getCalls = <String>[];
+  final List<Uri> deleteCalls = <Uri>[];
 
   @override
   Future<void> close() async {}
@@ -193,18 +200,22 @@ class _FakeWebDavClient implements WebDavClient {
     List<int>? body,
   }) async {
     putCalls.add(_PutCall(url, body));
-    return WebDavResponse(statusCode: 200, headers: const {}, bytes: const []);
+    return putResponse ??
+        WebDavResponse(statusCode: 200, headers: const {}, bytes: const []);
   }
 
   @override
   Future<WebDavResponse> mkcol(Uri url, {Map<String, String>? headers}) async {
     mkcolCalls.add(url);
-    return WebDavResponse(statusCode: 201, headers: const {}, bytes: const []);
+    return mkcolResponse ??
+        WebDavResponse(statusCode: 201, headers: const {}, bytes: const []);
   }
 
   @override
   Future<WebDavResponse> delete(Uri url, {Map<String, String>? headers}) async {
-    return WebDavResponse(statusCode: 200, headers: const {}, bytes: const []);
+    deleteCalls.add(url);
+    return deleteResponse ??
+        WebDavResponse(statusCode: 200, headers: const {}, bytes: const []);
   }
 }
 
@@ -319,7 +330,6 @@ void main() {
 
   test('applies conflict resolutions and writes sync state', () async {
     final snapshot = _defaultSnapshot();
-    final localHash = _preferencesHash(snapshot.preferences);
     final stateRepo = FakeWebDavSyncStateRepository(
       WebDavSyncState(
         lastSyncAt: '2024-01-01T00:00:00Z',
@@ -382,7 +392,15 @@ void main() {
       contains(_metaFile),
     );
     expect(stateRepo.lastWritten, isNotNull);
-    expect(stateRepo.lastWritten!.files[_preferencesFile]!.hash, localHash);
+    final preferencesPut = fakeClient.putCalls.firstWhere(
+      (call) => call.uri.pathSegments.last == _preferencesFile,
+    );
+    final uploadedPreferences =
+        jsonDecode(utf8.decode(preferencesPut.body!)) as Map<String, dynamic>;
+    expect(
+      stateRepo.lastWritten!.files[_preferencesFile]!.hash,
+      _jsonHash(uploadedPreferences),
+    );
   });
 
   test('uploads when remote meta is missing and local unchanged', () async {
@@ -394,7 +412,7 @@ void main() {
         size: 10,
       ),
       _aiFile: WebDavFileMeta(
-        hash: _jsonHash(snapshot.aiSettings.toJson()),
+        hash: _jsonHash(snapshot.aiSettings.toWebDavJson()),
         updatedAt: '2024-01-01T00:00:00Z',
         size: 10,
       ),
@@ -471,5 +489,118 @@ void main() {
       fakeClient.putCalls.map((c) => c.uri.pathSegments.last),
       contains(_metaFile),
     );
+  });
+
+  test('testConnection succeeds when WebDAV path is writable', () async {
+    final fakeClient = _FakeWebDavClient(baseUrl: Uri.parse('https://example.com'));
+    final service = WebDavSyncService(
+      syncStateRepository: FakeWebDavSyncStateRepository(WebDavSyncState.empty),
+      deviceIdRepository: FakeWebDavDeviceIdRepository('device-1'),
+      localAdapter: FakeWebDavSyncLocalAdapter(_defaultSnapshot()),
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
+      clientFactory:
+          ({
+            required Uri baseUrl,
+            required WebDavSettings settings,
+            void Function(DebugLogEntry entry)? logWriter,
+          }) => fakeClient,
+    );
+
+    final result = await service.testConnection(
+      settings: _validSettings(),
+      accountKey: 'account',
+    );
+
+    expect(result.success, isTrue);
+    expect(result.cleanupFailed, isFalse);
+    expect(result.error, isNull);
+    expect(fakeClient.putCalls, hasLength(1));
+    expect(fakeClient.deleteCalls, hasLength(1));
+  });
+
+  test('testConnection reports cleanup warning when probe cleanup fails', () async {
+    final fakeClient = _FakeWebDavClient(
+      baseUrl: Uri.parse('https://example.com'),
+      deleteResponse: WebDavResponse(
+        statusCode: 500,
+        headers: const {},
+        bytes: const [],
+      ),
+    );
+    final service = WebDavSyncService(
+      syncStateRepository: FakeWebDavSyncStateRepository(WebDavSyncState.empty),
+      deviceIdRepository: FakeWebDavDeviceIdRepository('device-1'),
+      localAdapter: FakeWebDavSyncLocalAdapter(_defaultSnapshot()),
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
+      clientFactory:
+          ({
+            required Uri baseUrl,
+            required WebDavSettings settings,
+            void Function(DebugLogEntry entry)? logWriter,
+          }) => fakeClient,
+    );
+
+    final result = await service.testConnection(
+      settings: _validSettings(),
+      accountKey: 'account',
+    );
+
+    expect(result.success, isTrue);
+    expect(result.cleanupFailed, isTrue);
+    expect(result.error, isNull);
+  });
+
+  test('sync uploads AI settings without legacy insight alias', () async {
+    final snapshot = _defaultSnapshot();
+    final stateRepo = FakeWebDavSyncStateRepository(WebDavSyncState.empty);
+    final deviceRepo = FakeWebDavDeviceIdRepository('device-1');
+    final localAdapter = FakeWebDavSyncLocalAdapter(
+      WebDavSyncLocalSnapshot(
+        preferences: snapshot.preferences,
+        aiSettings: snapshot.aiSettings.copyWith(
+          analysisPromptTemplates: const <String, String>{
+            'emotion_map': 'Summarize emotional patterns.',
+          },
+        ),
+        reminderSettings: snapshot.reminderSettings,
+        imageBedSettings: snapshot.imageBedSettings,
+        imageCompressionSettings: snapshot.imageCompressionSettings,
+        locationSettings: snapshot.locationSettings,
+        templateSettings: snapshot.templateSettings,
+        appLockSnapshot: snapshot.appLockSnapshot,
+        noteDraft: snapshot.noteDraft,
+        tagsSnapshot: snapshot.tagsSnapshot,
+      ),
+    );
+    final fakeClient = _FakeWebDavClient(baseUrl: Uri.parse('https://example.com'));
+
+    final service = WebDavSyncService(
+      syncStateRepository: stateRepo,
+      deviceIdRepository: deviceRepo,
+      localAdapter: localAdapter,
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
+      clientFactory:
+          ({
+            required Uri baseUrl,
+            required WebDavSettings settings,
+            void Function(DebugLogEntry entry)? logWriter,
+          }) => fakeClient,
+    );
+
+    final result = await service.syncNow(
+      settings: _validSettings(),
+      accountKey: 'account',
+    );
+
+    expect(result, isA<WebDavSyncSuccess>());
+    final aiPut = fakeClient.putCalls.firstWhere(
+      (call) => call.uri.pathSegments.last == _aiFile,
+    );
+    final encoded = jsonDecode(utf8.decode(aiPut.body!)) as Map<String, dynamic>;
+    expect(encoded['analysisPromptTemplates'], isNotEmpty);
+    expect(encoded.containsKey('insightPromptTemplates'), isFalse);
   });
 }

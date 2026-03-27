@@ -27,8 +27,9 @@ import '../webdav/webdav_vault_provider.dart';
 
 final syncCoordinatorProvider =
     StateNotifierProvider<SyncCoordinator, SyncCoordinatorState>((ref) {
+      final container = ref.container;
       final attachmentStore = LocalAttachmentStore();
-      final localAdapter = RiverpodWebDavSyncLocalAdapter(ref);
+      final localAdapter = RiverpodWebDavSyncLocalAdapter(container);
       final webDavSyncService = WebDavSyncService(
         syncStateRepository: ref.watch(webDavSyncStateRepositoryProvider),
         deviceIdRepository: ref.watch(webDavDeviceIdRepositoryProvider),
@@ -38,10 +39,10 @@ final syncCoordinatorProvider =
           webDavVaultPasswordRepositoryProvider,
         ),
         logWriter: (entry) =>
-            unawaited(ref.read(webDavLogStoreProvider).add(entry)),
+            unawaited(container.read(webDavLogStoreProvider).add(entry)),
       );
       final webDavBackupService = WebDavBackupService(
-        readDatabase: () => ref.read(databaseProvider),
+        readDatabase: () => container.read(databaseProvider),
         attachmentStore: attachmentStore,
         stateRepository: ref.watch(webDavBackupStateRepositoryProvider),
         passwordRepository: ref.watch(webDavBackupPasswordRepositoryProvider),
@@ -52,7 +53,7 @@ final syncCoordinatorProvider =
         configAdapter: localAdapter,
         progressTracker: ref.watch(webDavBackupProgressTrackerProvider),
         logWriter: (entry) =>
-            unawaited(ref.read(webDavLogStoreProvider).add(entry)),
+            unawaited(container.read(webDavLogStoreProvider).add(entry)),
       );
       final deps = SyncDependencies(
         webDavSyncService: webDavSyncService,
@@ -60,13 +61,17 @@ final syncCoordinatorProvider =
         webDavBackupStateRepository: ref.watch(
           webDavBackupStateRepositoryProvider,
         ),
-        readWebDavSettings: () => ref.read(webDavSettingsProvider),
-        readCurrentAccountKey: () => ref.read(webDavAccountKeyProvider),
+        readWebDavSettings: () => container.read(webDavSettingsProvider),
+        readCurrentAccountKey: () => container.read(webDavAccountKeyProvider),
         readCurrentAccount: () =>
-            ref.read(appSessionProvider).valueOrNull?.currentAccount,
-        readCurrentLocalLibrary: () => ref.read(currentLocalLibraryProvider),
-        readDatabase: () => ref.read(databaseProvider),
-        runMemosSync: () => ref.read(syncControllerProvider.notifier).syncNow(),
+            container.read(appSessionProvider).valueOrNull?.currentAccount,
+        readCurrentLocalLibrary: () =>
+            container.read(currentLocalLibraryProvider),
+        readDatabase: () => container.read(databaseProvider),
+        runMemosSync: () =>
+            container.read(syncControllerProvider.notifier).syncNow(),
+        logWriter: (entry) =>
+            unawaited(container.read(webDavLogStoreProvider).add(entry)),
       );
       return SyncCoordinator(deps);
     });

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../i18n/strings.g.dart';

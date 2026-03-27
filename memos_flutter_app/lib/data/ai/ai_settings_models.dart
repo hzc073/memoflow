@@ -765,6 +765,30 @@ class AiSettings {
     'customInsightTemplate': customInsightTemplate.toJson(),
   };
 
+  Map<String, dynamic> toWebDavJson() => {
+    'schemaVersion': schemaVersion,
+    'services': services
+        .map((service) => service.toJson())
+        .toList(growable: false),
+    'taskRouteBindings': taskRouteBindings
+        .map((binding) => binding.toJson())
+        .toList(growable: false),
+    'generationProfiles': generationProfiles
+        .map((p) => p.toJson())
+        .toList(growable: false),
+    'selectedGenerationProfileKey': selectedGenerationProfileKey,
+    'embeddingProfiles': embeddingProfiles
+        .map((p) => p.toJson())
+        .toList(growable: false),
+    'selectedEmbeddingProfileKey': selectedEmbeddingProfileKey,
+    'prompt': prompt,
+    'userProfile': userProfile,
+    'proxySettings': proxySettings.toJson(),
+    'quickPrompts': quickPrompts.map((p) => p.toJson()).toList(growable: false),
+    'analysisPromptTemplates': analysisPromptTemplates,
+    'customInsightTemplate': customInsightTemplate.toJson(),
+  };
+
   factory AiSettings.fromJson(Map<String, dynamic> json) {
     String readString(String key, String fallback) {
       final raw = json[key];

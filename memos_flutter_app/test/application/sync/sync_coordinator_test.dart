@@ -12,6 +12,7 @@ import 'package:memos_flutter_app/application/sync/sync_types.dart';
 import 'package:memos_flutter_app/application/sync/webdav_backup_service.dart';
 import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
+import 'package:memos_flutter_app/data/logs/debug_log_store.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
@@ -93,16 +94,26 @@ class FakeWebDavSyncService implements WebDavSyncService {
   }) async {
     return null;
   }
+
+  @override
+  Future<WebDavConnectionTestResult> testConnection({
+    required WebDavSettings settings,
+    required String? accountKey,
+  }) async {
+    return const WebDavConnectionTestResult.success();
+  }
 }
 
 class FakeWebDavBackupService implements WebDavBackupService {
   FakeWebDavBackupService(
     this.calls, {
     this.result = const WebDavBackupSuccess(),
-  });
+    Completer<WebDavBackupResult>? wait,
+  }) : _wait = wait;
 
   final List<String> calls;
   WebDavBackupResult result;
+  final Completer<WebDavBackupResult>? _wait;
   int callCount = 0;
   String? lastPassword;
   WebDavBackupExportIssueHandler? lastIssueHandler;
@@ -122,6 +133,8 @@ class FakeWebDavBackupService implements WebDavBackupService {
     calls.add('webdavBackup');
     lastPassword = password;
     lastIssueHandler = onExportIssue;
+    final waiter = _wait;
+    if (waiter != null) return waiter.future;
     return result;
   }
 
@@ -390,6 +403,7 @@ ProviderContainer _buildContainer({
   required FakeWebDavSyncService webDavSyncService,
   required FakeWebDavBackupService webDavBackupService,
   WebDavSettings? webDavSettings,
+  List<DebugLogEntry>? webDavLogs,
 }) {
   final session = FakeAppSessionController(
     const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
@@ -427,6 +441,7 @@ ProviderContainer _buildContainer({
             readCurrentLocalLibrary: () => localLibrary,
             readDatabase: () => db,
             runMemosSync: syncController.syncNow,
+            logWriter: webDavLogs?.add,
           ),
         ),
       ),
@@ -585,6 +600,178 @@ void main() {
 
       container.dispose();
     });
+  });
+
+  test('logs why settings sync does not queue memo backup', () async {
+    final logs = <DebugLogEntry>[];
+    final coordinator = SyncCoordinator(
+      SyncDependencies(
+        webDavSyncService: FakeWebDavSyncService(<String>[]),
+        webDavBackupService: FakeWebDavBackupService(<String>[]),
+        webDavBackupStateRepository: FakeWebDavBackupStateRepository(),
+        readWebDavSettings: () => WebDavSettings.defaults.copyWith(
+          enabled: true,
+          autoSyncAllowed: true,
+          backupEnabled: true,
+          serverUrl: 'https://example.com',
+          username: 'user',
+          password: 'pass',
+          backupSchedule: WebDavBackupSchedule.manual,
+        ),
+        readCurrentAccountKey: () => 'account-1',
+        readCurrentAccount: () => null,
+        readCurrentLocalLibrary: () => const LocalLibrary(
+          key: 'local',
+          name: 'Local',
+          rootPath: 'c:\\tmp',
+        ),
+        readDatabase: () => FakeAppDatabase(retryableCount: 0),
+        runMemosSync: () async => const MemoSyncSuccess(),
+        logWriter: logs.add,
+      ),
+    );
+
+    final result = await coordinator.requestSync(
+      const SyncRequest(
+        kind: SyncRequestKind.webDavSync,
+        reason: SyncRequestReason.settings,
+      ),
+    );
+
+    expect(result, isA<SyncRunQueued>());
+    final target = logs
+        .where((entry) => entry.label == 'Backup not queued')
+        .toList();
+    expect(target, hasLength(1));
+    expect(target.single.detail, contains('settings_sync_only'));
+    expect(target.single.detail, contains('schedule=manual'));
+  });
+
+  test('logs manual schedule when auto backup is skipped', () {
+    fakeAsync((async) {
+      final logs = <DebugLogEntry>[];
+      final calls = <String>[];
+      final syncController = FakeSyncController();
+      final db = FakeAppDatabase(retryableCount: 0);
+      final container = _buildContainer(
+        syncController: syncController,
+        db: db,
+        webDavSyncService: FakeWebDavSyncService(calls),
+        webDavBackupService: FakeWebDavBackupService(calls),
+        webDavSettings: WebDavSettings.defaults.copyWith(
+          enabled: true,
+          autoSyncAllowed: true,
+          backupEnabled: true,
+          serverUrl: 'https://example.com',
+          username: 'user',
+          password: 'pass',
+          backupSchedule: WebDavBackupSchedule.manual,
+        ),
+        webDavLogs: logs,
+      );
+
+      unawaited(
+        container
+            .read(syncCoordinatorProvider.notifier)
+            .requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.all,
+                reason: SyncRequestReason.auto,
+              ),
+            ),
+      );
+      async.flushMicrotasks();
+
+      expect(
+        logs.any(
+          (entry) =>
+              entry.label == 'Backup not queued' &&
+              entry.detail == 'schedule=manual reason=auto',
+        ),
+        isTrue,
+      );
+
+      container.dispose();
+    });
+  });
+
+  test('logs manual webdav sync request lifecycle', () async {
+    final logs = <DebugLogEntry>[];
+    final coordinator = SyncCoordinator(
+      SyncDependencies(
+        webDavSyncService: FakeWebDavSyncService(<String>[]),
+        webDavBackupService: FakeWebDavBackupService(<String>[]),
+        webDavBackupStateRepository: FakeWebDavBackupStateRepository(),
+        readWebDavSettings: () => WebDavSettings.defaults.copyWith(
+          enabled: true,
+          serverUrl: 'https://example.com',
+          username: 'user',
+          password: 'pass',
+        ),
+        readCurrentAccountKey: () => 'account-1',
+        readCurrentAccount: () => null,
+        readCurrentLocalLibrary: () => const LocalLibrary(
+          key: 'local',
+          name: 'Local',
+          rootPath: 'c:\\tmp',
+        ),
+        readDatabase: () => FakeAppDatabase(retryableCount: 0),
+        runMemosSync: () async => const MemoSyncSuccess(),
+        logWriter: logs.add,
+      ),
+    );
+
+    final result = await coordinator.requestSync(
+      const SyncRequest(
+        kind: SyncRequestKind.webDavSync,
+        reason: SyncRequestReason.manual,
+      ),
+    );
+
+    expect(result, isA<SyncRunStarted>());
+    expect(logs.map((entry) => entry.label), contains('Request received'));
+    expect(logs.map((entry) => entry.label), contains('Request queued'));
+    expect(
+      logs.map((entry) => entry.label),
+      contains('Coordinator sync started'),
+    );
+    expect(
+      logs.map((entry) => entry.label),
+      contains('Coordinator sync completed'),
+    );
+  });
+
+  test('ignores backup completion after coordinator dispose', () async {
+    final calls = <String>[];
+    final backupCompleter = Completer<WebDavBackupResult>();
+    final container = _buildContainer(
+      syncController: FakeSyncController(),
+      db: FakeAppDatabase(retryableCount: 0),
+      webDavSyncService: FakeWebDavSyncService(calls),
+      webDavBackupService: FakeWebDavBackupService(
+        calls,
+        wait: backupCompleter,
+      ),
+    );
+
+    final future = container
+        .read(syncCoordinatorProvider.notifier)
+        .requestSync(
+          const SyncRequest(
+            kind: SyncRequestKind.webDavBackup,
+            reason: SyncRequestReason.manual,
+          ),
+        );
+
+    await Future<void>.delayed(Duration.zero);
+    container.dispose();
+    backupCompleter.complete(
+      WebDavBackupFailure(
+        const SyncError(code: SyncErrorCode.server, retryable: true),
+      ),
+    );
+
+    expect(await future, isA<SyncRunSkipped>());
   });
 
   test('skips memos sync when context is not ready', () async {

@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../core/webdav_url.dart';
+import '../../data/logs/debug_log_store.dart';
 import '../../data/models/webdav_settings.dart';
 import '../../data/repositories/webdav_settings_repository.dart';
 import '../system/session_provider.dart';
 import 'webdav_device_id_provider.dart';
+import 'webdav_log_provider.dart';
 
 final webDavSettingsRepositoryProvider = Provider<WebDavSettingsRepository>((
   ref,
@@ -45,11 +47,42 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
     state = next;
     unawaited(_repo.write(next));
     if (!requestSync) return;
+    _logSettingsSyncBehavior(next);
     unawaited(
-      _ref.read(syncCoordinatorProvider.notifier).requestSync(
+      _ref
+          .read(syncCoordinatorProvider.notifier)
+          .requestSync(
             const SyncRequest(
               kind: SyncRequestKind.webDavSync,
               reason: SyncRequestReason.settings,
+            ),
+          ),
+    );
+  }
+
+  void _logSettingsSyncBehavior(WebDavSettings next) {
+    if (!next.enabled || next.serverUrl.trim().isEmpty) return;
+    final detailParts = <String>['settings_sync_only'];
+    if (!next.backupEnabled) {
+      detailParts.add('backup_disabled');
+    }
+    if (next.backupSchedule == WebDavBackupSchedule.manual) {
+      detailParts.add('schedule=manual');
+    } else {
+      detailParts.add('not_due');
+    }
+    if (!next.backupContentMemos) {
+      detailParts.add('memos_disabled');
+    }
+    unawaited(
+      _ref
+          .read(webDavLogStoreProvider)
+          .add(
+            DebugLogEntry(
+              timestamp: DateTime.now(),
+              category: 'webdav',
+              label: 'Backup not queued',
+              detail: detailParts.join(' '),
             ),
           ),
     );
@@ -93,11 +126,21 @@ class WebDavSettingsController extends StateNotifier<WebDavSettings> {
   void setBackupEnabled(bool value) =>
       _setAndPersist(state.copyWith(backupEnabled: value));
 
-  void setBackupConfigScope(WebDavBackupConfigScope scope) =>
-      _setAndPersist(state.copyWith(backupConfigScope: scope));
+  void setBackupConfigScope(WebDavBackupConfigScope scope) => _setAndPersist(
+    state.copyWith(
+      backupConfigScope: scope,
+      backupEnabled:
+          scope != WebDavBackupConfigScope.none || state.backupContentMemos,
+    ),
+  );
 
-  void setBackupContentMemos(bool value) =>
-      _setAndPersist(state.copyWith(backupContentMemos: value));
+  void setBackupContentMemos(bool value) => _setAndPersist(
+    state.copyWith(
+      backupContentMemos: value,
+      backupEnabled:
+          value || state.backupConfigScope != WebDavBackupConfigScope.none,
+    ),
+  );
 
   void setBackupEncryptionMode(WebDavBackupEncryptionMode mode) =>
       _setAndPersist(state.copyWith(backupEncryptionMode: mode));

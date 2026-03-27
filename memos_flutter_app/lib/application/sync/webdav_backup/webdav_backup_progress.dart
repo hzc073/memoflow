@@ -1,6 +1,7 @@
 part of '../webdav_backup_service.dart';
 
 mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
+  @override
   void _logEvent(String label, {String? detail, Object? error}) {
     final writer = _logWriter;
     if (writer == null) return;
@@ -17,10 +18,12 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   void _startProgress(WebDavBackupProgressOperation operation) {
     _progressTracker?.start(operation: operation);
   }
 
+  @override
   void _updateProgress({
     WebDavBackupProgressStage? stage,
     int? completed,
@@ -37,16 +40,19 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<void> _waitIfPaused() async {
     final tracker = _progressTracker;
     if (tracker == null) return;
     await tracker.waitIfPaused();
   }
 
+  @override
   void _finishProgress() {
     _progressTracker?.finish();
   }
 
+  @override
   Future<void> _setWakelockEnabled(bool enabled) async {
     if (kIsWeb) return;
     try {
@@ -58,6 +64,7 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     } catch (_) {}
   }
 
+  @override
   WebDavBackupProgressItemGroup _progressItemGroupForPath(String rawPath) {
     final path = rawPath.trim();
     if (path.isEmpty) return WebDavBackupProgressItemGroup.other;
@@ -78,6 +85,7 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     return WebDavBackupProgressItemGroup.other;
   }
 
+  @override
   Duration _scheduleDuration(WebDavBackupSchedule schedule) {
     return switch (schedule) {
       WebDavBackupSchedule.daily => const Duration(days: 1),
@@ -88,6 +96,7 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     };
   }
 
+  @override
   DateTime _addMonths(DateTime date, int months) {
     final monthIndex = date.month - 1 + months;
     final year = date.year + monthIndex ~/ 12;
@@ -106,6 +115,7 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   bool _isBackupDue(DateTime? last, WebDavBackupSchedule schedule) {
     if (schedule == WebDavBackupSchedule.manual) return false;
     if (schedule == WebDavBackupSchedule.onOpen) return true;
@@ -119,6 +129,7 @@ mixin _WebDavBackupProgressMixin on _WebDavBackupServiceBase {
     return diff >= _scheduleDuration(schedule);
   }
 
+  @override
   DateTime? _parseIso(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     return DateTime.tryParse(raw);

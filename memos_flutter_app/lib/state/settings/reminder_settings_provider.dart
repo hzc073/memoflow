@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
-import '../../core/app_localization.dart';
 import '../../data/models/reminder_settings.dart';
 import 'preferences_provider.dart';
 import '../system/session_provider.dart';

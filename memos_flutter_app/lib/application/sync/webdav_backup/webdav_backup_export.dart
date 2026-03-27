@@ -42,7 +42,11 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
       DateTime? uploadSuccessAt;
       var plainExportCompleted = false;
       if (!settings.isBackupEnabled) {
-        _logEvent('Backup skipped', detail: 'disabled ($triggerLabel)');
+        _logEvent(
+          'Backup skipped',
+          detail:
+              'disabled ($triggerLabel) enabled=${settings.enabled} backupEnabled=${settings.backupEnabled} memos=${settings.backupContentMemos} config=${settings.backupConfigScope.name}',
+        );
         return WebDavBackupSkipped(
           reason: _keyedError(
             'legacy.webdav.backup_disabled',
@@ -123,7 +127,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
           }
           if (exportedMemos > 0) {
             final memoFiles = await LocalLibraryFileSystem(
-              snapshotLibrary!,
+              snapshotLibrary,
             ).listMemos();
             if (memoFiles.isEmpty) {
               return WebDavBackupFailure(
@@ -202,9 +206,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
                 lastExportSuccessAt:
                     exportSuccessAt?.toUtc().toIso8601String() ??
                     previousState.lastExportSuccessAt,
-                lastUploadSuccessAt:
-                    uploadSuccessAt?.toUtc().toIso8601String() ??
-                    previousState.lastUploadSuccessAt,
+                lastUploadSuccessAt: uploadSuccessAt.toUtc().toIso8601String(),
               ),
             );
             _updateProgress(
@@ -308,7 +310,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
           await _waitIfPaused();
           _updateProgress(
             stage: WebDavBackupProgressStage.writingManifest,
-            currentPath: '${_backupSnapshotsDir}/${snapshot.id}.enc',
+            currentPath: '$_backupSnapshotsDir/${snapshot.id}.enc',
             itemGroup: WebDavBackupProgressItemGroup.manifest,
           );
           await _uploadSnapshot(
@@ -371,9 +373,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
               lastExportSuccessAt:
                   exportSuccessAt?.toUtc().toIso8601String() ??
                   previousState.lastExportSuccessAt,
-              lastUploadSuccessAt:
-                  uploadSuccessAt?.toUtc().toIso8601String() ??
-                  previousState.lastUploadSuccessAt,
+              lastUploadSuccessAt: uploadSuccessAt.toUtc().toIso8601String(),
             ),
           );
           if (useVault) {
@@ -414,6 +414,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     });
   }
 
+  @override
   Future<LocalLibrary?> _resolveBackupLibrary(
     WebDavSettings settings,
     LocalLibrary? activeLocalLibrary,
@@ -560,6 +561,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return WebDavExportCleanupStatus.cleaned;
   }
 
+  @override
   Future<int> _exportLocalLibraryForBackup(
     LocalLibrary localLibrary, {
     bool pruneToCurrentData = false,
@@ -731,6 +733,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return memoCount;
   }
 
+  @override
   Future<WebDavBackupExportResolution> _resolveExportIssue({
     required WebDavBackupExportIssue issue,
     required WebDavBackupExportIssueHandler? issueHandler,
@@ -768,6 +771,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return resolution;
   }
 
+  @override
   String _formatExportIssueMessage(WebDavBackupExportIssue issue) {
     final kindLabel = switch (issue.kind) {
       WebDavBackupExportIssueKind.memo => 'memo',
@@ -781,6 +785,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return '$kindLabel[$target] failed: $errorText';
   }
 
+  @override
   String _dedupeAttachmentFilename(String filename, Set<String> used) {
     if (!used.contains(filename)) return filename;
     final dot = filename.lastIndexOf('.');
@@ -795,6 +800,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<void> _exportAttachmentForBackup({
     required LocalLibraryFileSystem fileSystem,
     required LocalAttachmentStore attachmentStore,
@@ -855,6 +861,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<String?> _resolveAttachmentSourcePath({
     required LocalAttachmentStore attachmentStore,
     required String memoUid,
@@ -881,6 +888,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   String? _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment) {
     final link = attachment.externalLink.trim();
     if (link.isNotEmpty &&
@@ -895,6 +903,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return joinBaseUrl(baseUrl, 'file/${attachment.name}/$filename');
   }
 
+  @override
   Future<void> _pruneMirrorLibraryFiles({
     required LocalLibraryFileSystem fileSystem,
     required Set<String> targetMemoUids,
@@ -952,6 +961,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   String? _parseMemoUidFromFileName(String fileName) {
     final trimmed = fileName.trim();
     if (trimmed.isEmpty) return null;
@@ -969,6 +979,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return null;
   }
 
+  @override
   Future<void> _backupPlain({
     required WebDavSettings settings,
     required WebDavClient client,
@@ -1144,6 +1155,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   String _parentDirectory(String relativePath) {
     final normalized = relativePath.replaceAll('\\', '/').trim();
     final idx = normalized.lastIndexOf('/');
@@ -1151,6 +1163,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return normalized.substring(0, idx);
   }
 
+  @override
   Future<Uint8List> _readLocalEntryBytes(
     LocalLibraryFileSystem? fileSystem,
     LocalLibraryFileEntry? entry,
@@ -1173,6 +1186,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return builder.toBytes();
   }
 
+  @override
   Future<_PlainBackupIndex?> _loadPlainIndex(
     WebDavClient client,
     Uri baseUrl,
@@ -1188,6 +1202,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return _PlainBackupIndex.fromJson(decoded);
   }
 
+  @override
   Map<String, dynamic> _buildPlainBackupIndexPayload(
     List<_PlainBackupFileUpload> uploads,
     DateTime now,
@@ -1207,6 +1222,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     };
   }
 
+  @override
   Future<WebDavExportSignature?> _readExportSignature(
     LocalLibraryFileSystem fileSystem,
     String filename,
@@ -1230,6 +1246,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return null;
   }
 
+  @override
   Future<void> _writeExportSignature(
     LocalLibraryFileSystem fileSystem,
     String filename,
@@ -1238,6 +1255,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     await fileSystem.writeText(filename, jsonEncode(signature.toJson()));
   }
 
+  @override
   WebDavExportSignature _buildExportSignature({
     required WebDavExportMode mode,
     required String accountIdHash,
@@ -1259,6 +1277,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   DateTime _resolveExportLastSuccessAt({
     required DateTime exportAt,
     required DateTime? uploadAt,
@@ -1268,6 +1287,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return exportAt;
   }
 
+  @override
   Future<bool> _detectPlainExport(LocalLibraryFileSystem fileSystem) async {
     final hasIndex =
         await fileSystem.fileExists('index.md') ||
@@ -1283,6 +1303,7 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     return hasAttachments;
   }
 
+  @override
   Future<void> _deletePlainExportFiles(
     LocalLibraryFileSystem fileSystem,
   ) async {

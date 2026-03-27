@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
-import '../../data/models/app_preferences.dart';
 import '../system/database_provider.dart';
 import '../system/local_library_provider.dart';
 import '../settings/preferences_provider.dart';

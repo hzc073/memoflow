@@ -1,4 +1,5 @@
 import '../../data/db/app_database.dart';
+import '../../data/logs/debug_log_store.dart';
 import '../../data/models/account.dart';
 import '../../data/models/local_library.dart';
 import '../../data/models/webdav_settings.dart';
@@ -18,6 +19,7 @@ class SyncDependencies {
     required this.readCurrentLocalLibrary,
     required this.readDatabase,
     required this.runMemosSync,
+    this.logWriter,
   });
 
   final WebDavSyncService webDavSyncService;
@@ -29,4 +31,5 @@ class SyncDependencies {
   final LocalLibrary? Function() readCurrentLocalLibrary;
   final AppDatabase Function() readDatabase;
   final Future<MemoSyncResult> Function() runMemosSync;
+  final void Function(DebugLogEntry entry)? logWriter;
 }

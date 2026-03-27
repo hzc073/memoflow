@@ -632,12 +632,17 @@ class WebDavVaultService {
     final code = switch (statusCode) {
       401 => SyncErrorCode.authFailed,
       403 => SyncErrorCode.permission,
+      408 || 425 || 429 => SyncErrorCode.server,
       >= 500 => SyncErrorCode.server,
       _ => SyncErrorCode.unknown,
     };
     return SyncError(
       code: code,
-      retryable: statusCode >= 500,
+      retryable:
+          statusCode == 408 ||
+          statusCode == 425 ||
+          statusCode == 429 ||
+          statusCode >= 500,
       message: 'Bad state: WebDAV $method failed (HTTP $statusCode)',
       httpStatus: statusCode,
     );

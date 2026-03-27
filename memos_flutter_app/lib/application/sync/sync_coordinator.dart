@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/logs/debug_log_store.dart';
 import '../../data/local_library/local_attachment_store.dart';
 import '../../data/local_library/local_library_fs.dart';
 import '../../data/models/webdav_export_status.dart';
@@ -83,6 +84,7 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
   final SyncDependencies _deps;
   final WebDavSyncService _webDavSyncService;
   final WebDavBackupService _webDavBackupService;
+  void Function(DebugLogEntry entry)? get _logWriter => _deps.logWriter;
 
   final Map<SyncRequestKind, SyncRequest> _pendingRequests = {};
   SyncRequestKind? _activeKind;
@@ -115,10 +117,20 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     message: 'context_not_ready',
   );
 
+  bool _updateStateIfMounted(
+    SyncCoordinatorState Function(SyncCoordinatorState current) updater,
+  ) {
+    if (!mounted) return false;
+    state = updater(state);
+    return true;
+  }
+
   Future<void> _loadBackupState() async {
     final snapshot = await _deps.webDavBackupStateRepository.read();
+    if (!mounted) return;
     final parsed = _parseIso(snapshot.lastBackupAt);
     if (parsed == null) return;
+    if (!mounted) return;
     state = state.copyWith(webDavLastBackupAt: parsed);
   }
 
@@ -165,39 +177,47 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
   SyncRunSkipped _skipContextNotReady(SyncRequestKind kind) {
     switch (kind) {
       case SyncRequestKind.memos:
-        state = state.copyWith(
-          memos: state.memos.copyWith(
-            running: false,
-            lastError: _contextNotReadyError,
+        _updateStateIfMounted(
+          (current) => current.copyWith(
+            memos: current.memos.copyWith(
+              running: false,
+              lastError: _contextNotReadyError,
+            ),
           ),
         );
         break;
       case SyncRequestKind.webDavSync:
-        state = state.copyWith(
-          webDavSync: state.webDavSync.copyWith(
-            running: false,
-            lastError: _contextNotReadyError,
-            hasPendingConflict: false,
+        _updateStateIfMounted(
+          (current) => current.copyWith(
+            webDavSync: current.webDavSync.copyWith(
+              running: false,
+              lastError: _contextNotReadyError,
+              hasPendingConflict: false,
+            ),
+            pendingWebDavConflicts: const <String>[],
           ),
-          pendingWebDavConflicts: const <String>[],
         );
         break;
       case SyncRequestKind.webDavBackup:
-        state = state.copyWith(
-          webDavBackup: state.webDavBackup.copyWith(
-            running: false,
-            lastError: _contextNotReadyError,
+        _updateStateIfMounted(
+          (current) => current.copyWith(
+            webDavBackup: current.webDavBackup.copyWith(
+              running: false,
+              lastError: _contextNotReadyError,
+            ),
           ),
         );
         break;
       case SyncRequestKind.localScan:
-        state = state.copyWith(
-          localScan: state.localScan.copyWith(
-            running: false,
-            lastError: _contextNotReadyError,
-            hasPendingConflict: false,
+        _updateStateIfMounted(
+          (current) => current.copyWith(
+            localScan: current.localScan.copyWith(
+              running: false,
+              lastError: _contextNotReadyError,
+              hasPendingConflict: false,
+            ),
+            pendingLocalScanConflicts: const <LocalScanConflict>[],
           ),
-          pendingLocalScanConflicts: const <LocalScanConflict>[],
         );
         break;
       case SyncRequestKind.all:
@@ -226,12 +246,31 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
   }
 
   Future<SyncRunResult> requestSync(SyncRequest request) async {
+    if (request.kind == SyncRequestKind.webDavSync ||
+        request.kind == SyncRequestKind.webDavBackup) {
+      _writeWebDavLog(
+        'Request received',
+        detail: 'kind=${request.kind.name} reason=${request.reason.name}',
+      );
+    }
     if (!_isContextReadyForKind(request.kind)) {
+      if (request.kind == SyncRequestKind.webDavSync ||
+          request.kind == SyncRequestKind.webDavBackup) {
+        _writeWebDavLog(
+          'Request skipped',
+          detail:
+              'kind=${request.kind.name} reason=${request.reason.name} context_not_ready',
+        );
+      }
       return _skipContextNotReady(request.kind);
     }
     if (request.kind == SyncRequestKind.webDavSync &&
         (request.reason == SyncRequestReason.settings ||
             request.reason == SyncRequestReason.auto)) {
+      _writeWebDavLog(
+        'Request scheduled',
+        detail: 'kind=${request.kind.name} reason=${request.reason.name}',
+      );
       _scheduleWebDavAuto(request);
       return const SyncRunQueued();
     }
@@ -251,6 +290,13 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     }
 
     _queueRequest(request);
+    if (request.kind == SyncRequestKind.webDavSync ||
+        request.kind == SyncRequestKind.webDavBackup) {
+      _writeWebDavLog(
+        'Request queued',
+        detail: 'kind=${request.kind.name} reason=${request.reason.name}',
+      );
+    }
     return _processQueue();
   }
 
@@ -281,6 +327,16 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     final settings = _deps.readWebDavSettings();
     final accountKey = _deps.readCurrentAccountKey();
     return _webDavSyncService.cleanDeprecatedRemotePlainFiles(
+      settings: settings,
+      accountKey: accountKey,
+    );
+  }
+
+  Future<WebDavConnectionTestResult> testWebDavConnection({
+    required WebDavSettings settings,
+  }) async {
+    final accountKey = _deps.readCurrentAccountKey();
+    return _webDavSyncService.testConnection(
       settings: settings,
       accountKey: accountKey,
     );
@@ -363,14 +419,52 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     final settings = _deps.readWebDavSettings();
     if (!settings.autoSyncAllowed) return;
     if (!_canSyncWebDav(settings)) return;
+    _logSettingsTriggeredBackupDecision(settings);
     _webDavAutoTimer?.cancel();
     _webDavAutoTimer = Timer(_webDavAutoDelay, () {
+      if (!mounted) return;
       _queueRequest(request);
-      _processQueue();
+      unawaited(_processQueue());
     });
   }
 
+  void _logSettingsTriggeredBackupDecision(WebDavSettings settings) {
+    final detailParts = <String>['settings_sync_only'];
+    if (!settings.isBackupEnabled) {
+      detailParts.add('backup_disabled');
+    } else if (settings.backupSchedule == WebDavBackupSchedule.manual) {
+      detailParts.add('schedule=manual');
+    } else {
+      detailParts.add('schedule=${settings.backupSchedule.name}');
+    }
+    if (settings.backupConfigScope == WebDavBackupConfigScope.none) {
+      detailParts.add('config_disabled');
+    }
+    if (!settings.backupContentMemos) {
+      detailParts.add('memos_disabled');
+    }
+    _writeWebDavLog('Backup not queued', detail: detailParts.join(' '));
+  }
+
+  void _writeWebDavLog(String label, {String? detail, Object? error}) {
+    final writer = _logWriter;
+    if (writer == null) return;
+    writer(
+      DebugLogEntry(
+        timestamp: DateTime.now(),
+        category: 'webdav',
+        label: label,
+        detail: detail,
+        error: error?.toString(),
+      ),
+    );
+  }
+
   Future<SyncRunResult> _processQueue() async {
+    if (!mounted) {
+      _pendingRequests.clear();
+      return const SyncRunSkipped();
+    }
     if (_activeKind != null) {
       return const SyncRunQueued();
     }
@@ -388,8 +482,10 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     } finally {
       _activeKind = null;
       // Schedule retry if queued during run.
-      if (_pendingRequests.isNotEmpty) {
+      if (mounted && _pendingRequests.isNotEmpty) {
         unawaited(_processQueue());
+      } else if (!mounted) {
+        _pendingRequests.clear();
       }
     }
   }
@@ -434,6 +530,9 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
   }
 
   Future<SyncRunResult> _runRequest(SyncRequest request) async {
+    if (!mounted) {
+      return const SyncRunSkipped();
+    }
     if (!_isContextReadyForKind(request.kind)) {
       return _skipContextNotReady(request.kind);
     }
@@ -454,26 +553,45 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
       return const SyncRunSkipped();
     }
     _cancelMemosRetryTimer();
-    state = state.copyWith(
-      memos: state.memos.copyWith(running: true, lastError: null),
-    );
+    if (!_updateStateIfMounted(
+      (current) => current.copyWith(
+        memos: current.memos.copyWith(running: true, lastError: null),
+      ),
+    )) {
+      return const SyncRunSkipped();
+    }
     final result = await _deps.runMemosSync();
+    if (!mounted) {
+      return const SyncRunSkipped();
+    }
     final now = DateTime.now();
     if (result is MemoSyncSuccess) {
-      state = state.copyWith(
-        memos: state.memos.copyWith(
-          running: false,
-          lastSuccessAt: now,
-          lastError: null,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          memos: current.memos.copyWith(
+            running: false,
+            lastSuccessAt: now,
+            lastError: null,
+          ),
         ),
       );
     } else if (result is MemoSyncFailure) {
-      state = state.copyWith(
-        memos: state.memos.copyWith(running: false, lastError: result.error),
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          memos: current.memos.copyWith(
+            running: false,
+            lastError: result.error,
+          ),
+        ),
       );
     } else if (result is MemoSyncSkipped) {
-      state = state.copyWith(
-        memos: state.memos.copyWith(running: false, lastError: result.reason),
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          memos: current.memos.copyWith(
+            running: false,
+            lastError: result.reason,
+          ),
+        ),
       );
     }
 
@@ -495,6 +613,7 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     }
     final db = _deps.readDatabase();
     final retryable = await db.countOutboxRetryable();
+    if (!mounted) return;
     final hasPendingOutbox = retryable > 0;
     final syncFailed = result is MemoSyncFailure;
     if (!hasPendingOutbox && !syncFailed) {
@@ -504,6 +623,7 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     if (_memosRetryTimer?.isActive ?? false) return;
     final delay = _consumeMemosRetryDelay();
     _memosRetryTimer = Timer(delay, () {
+      if (!mounted) return;
       _memosRetryTimer = null;
       _queueRequest(
         const SyncRequest(
@@ -511,7 +631,7 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
           reason: SyncRequestReason.auto,
         ),
       );
-      _processQueue();
+      unawaited(_processQueue());
     });
   }
 
@@ -554,13 +674,22 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     final conflictResolutions = _pendingWebDavConflictResolutions;
     _pendingWebDavConflictResolutions = null;
 
-    state = state.copyWith(
-      webDavSync: state.webDavSync.copyWith(
-        running: true,
-        lastError: null,
-        hasPendingConflict: false,
+    if (!_updateStateIfMounted(
+      (current) => current.copyWith(
+        webDavSync: current.webDavSync.copyWith(
+          running: true,
+          lastError: null,
+          hasPendingConflict: false,
+        ),
+        pendingWebDavConflicts: const <String>[],
       ),
-      pendingWebDavConflicts: const <String>[],
+    )) {
+      return const SyncRunSkipped();
+    }
+
+    _writeWebDavLog(
+      'Coordinator sync started',
+      detail: 'reason=${request.reason.name}',
     );
 
     final result = await _webDavSyncService.syncNow(
@@ -568,39 +697,62 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
       accountKey: accountKey,
       conflictResolutions: conflictResolutions,
     );
+    if (!mounted) {
+      return const SyncRunSkipped();
+    }
 
     final now = DateTime.now();
     if (result is WebDavSyncSuccess) {
-      state = state.copyWith(
-        webDavSync: state.webDavSync.copyWith(
-          running: false,
-          lastSuccessAt: now,
-          lastError: null,
-          hasPendingConflict: false,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavSync: current.webDavSync.copyWith(
+            running: false,
+            lastSuccessAt: now,
+            lastError: null,
+            hasPendingConflict: false,
+          ),
+          pendingWebDavConflicts: const <String>[],
         ),
-        pendingWebDavConflicts: const <String>[],
+      );
+      _writeWebDavLog(
+        'Coordinator sync completed',
+        detail: 'reason=${request.reason.name}',
       );
       return const SyncRunStarted();
     }
     if (result is WebDavSyncSkipped) {
-      state = state.copyWith(
-        webDavSync: state.webDavSync.copyWith(
-          running: false,
-          lastError: result.reason,
-          hasPendingConflict: false,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavSync: current.webDavSync.copyWith(
+            running: false,
+            lastError: result.reason,
+            hasPendingConflict: false,
+          ),
+          pendingWebDavConflicts: const <String>[],
         ),
-        pendingWebDavConflicts: const <String>[],
+      );
+      _writeWebDavLog(
+        'Coordinator sync skipped',
+        detail: 'reason=${request.reason.name}',
+        error: result.reason,
       );
       return SyncRunSkipped(reason: result.reason);
     }
     if (result is WebDavSyncFailure) {
-      state = state.copyWith(
-        webDavSync: state.webDavSync.copyWith(
-          running: false,
-          lastError: result.error,
-          hasPendingConflict: false,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavSync: current.webDavSync.copyWith(
+            running: false,
+            lastError: result.error,
+            hasPendingConflict: false,
+          ),
+          pendingWebDavConflicts: const <String>[],
         ),
-        pendingWebDavConflicts: const <String>[],
+      );
+      _writeWebDavLog(
+        'Coordinator sync failed',
+        detail: 'reason=${request.reason.name}',
+        error: result.error,
       );
       return SyncRunFailure(result.error);
     }
@@ -612,13 +764,20 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
               retryable: false,
               presentationKey: 'legacy.msg_conflicts_detected_run_manual_sync',
             );
-      state = state.copyWith(
-        webDavSync: state.webDavSync.copyWith(
-          running: false,
-          lastError: error,
-          hasPendingConflict: true,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavSync: current.webDavSync.copyWith(
+            running: false,
+            lastError: error,
+            hasPendingConflict: true,
+          ),
+          pendingWebDavConflicts: result.conflicts,
         ),
-        pendingWebDavConflicts: result.conflicts,
+      );
+      _writeWebDavLog(
+        'Coordinator sync conflict',
+        detail:
+            'reason=${request.reason.name} conflicts=${result.conflicts.length}',
       );
       return SyncRunConflict(result.conflicts);
     }
@@ -639,9 +798,21 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     _pendingWebDavBackupPassword = null;
     _pendingWebDavBackupIssueHandler = null;
 
-    state = state.copyWith(
-      webDavBackup: state.webDavBackup.copyWith(running: true, lastError: null),
-      webDavRestoring: false,
+    if (!_updateStateIfMounted(
+      (current) => current.copyWith(
+        webDavBackup: current.webDavBackup.copyWith(
+          running: true,
+          lastError: null,
+        ),
+        webDavRestoring: false,
+      ),
+    )) {
+      return const SyncRunSkipped();
+    }
+
+    _writeWebDavLog(
+      'Coordinator backup started',
+      detail: 'reason=${request.reason.name}',
     );
 
     final result = await _webDavBackupService.backupNow(
@@ -654,16 +825,25 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
       attachmentAuthHeader: token.isEmpty ? null : 'Bearer $token',
       onExportIssue: resolvedIssueHandler,
     );
+    if (!mounted) {
+      return const SyncRunSkipped();
+    }
 
     final now = DateTime.now();
     if (result is WebDavBackupSuccess) {
-      state = state.copyWith(
-        webDavBackup: state.webDavBackup.copyWith(
-          running: false,
-          lastSuccessAt: now,
-          lastError: null,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavBackup: current.webDavBackup.copyWith(
+            running: false,
+            lastSuccessAt: now,
+            lastError: null,
+          ),
+          webDavLastBackupAt: now,
         ),
-        webDavLastBackupAt: now,
+      );
+      _writeWebDavLog(
+        'Coordinator backup completed',
+        detail: 'reason=${request.reason.name}',
       );
       return const SyncRunStarted();
     }
@@ -673,29 +853,50 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
         retryable: false,
         presentationKey: 'legacy.webdav.backup_password_missing',
       );
-      state = state.copyWith(
-        webDavBackup: state.webDavBackup.copyWith(
-          running: false,
-          lastError: error,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavBackup: current.webDavBackup.copyWith(
+            running: false,
+            lastError: error,
+          ),
         ),
+      );
+      _writeWebDavLog(
+        'Coordinator backup missing password',
+        detail: 'reason=${request.reason.name}',
+        error: error,
       );
       return SyncRunFailure(error);
     }
     if (result is WebDavBackupSkipped) {
-      state = state.copyWith(
-        webDavBackup: state.webDavBackup.copyWith(
-          running: false,
-          lastError: result.reason,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavBackup: current.webDavBackup.copyWith(
+            running: false,
+            lastError: result.reason,
+          ),
         ),
+      );
+      _writeWebDavLog(
+        'Coordinator backup skipped',
+        detail: 'reason=${request.reason.name}',
+        error: result.reason,
       );
       return SyncRunSkipped(reason: result.reason);
     }
     if (result is WebDavBackupFailure) {
-      state = state.copyWith(
-        webDavBackup: state.webDavBackup.copyWith(
-          running: false,
-          lastError: result.error,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          webDavBackup: current.webDavBackup.copyWith(
+            running: false,
+            lastError: result.error,
+          ),
         ),
+      );
+      _writeWebDavLog(
+        'Coordinator backup failed',
+        detail: 'reason=${request.reason.name}',
+        error: result.error,
       );
       return SyncRunFailure(result.error);
     }
@@ -715,48 +916,61 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
     final conflictResolutions = _pendingLocalScanResolutions;
     _pendingLocalScanResolutions = null;
 
-    state = state.copyWith(
-      localScan: state.localScan.copyWith(
-        running: true,
-        lastError: null,
-        hasPendingConflict: false,
+    if (!_updateStateIfMounted(
+      (current) => current.copyWith(
+        localScan: current.localScan.copyWith(
+          running: true,
+          lastError: null,
+          hasPendingConflict: false,
+        ),
+        pendingLocalScanConflicts: const <LocalScanConflict>[],
       ),
-      pendingLocalScanConflicts: const <LocalScanConflict>[],
-    );
+    )) {
+      return const SyncRunSkipped();
+    }
 
     final result = await scanService.scanAndMerge(
       forceDisk: request.reason != SyncRequestReason.auto,
       conflictDecisions: conflictResolutions,
     );
+    if (!mounted) {
+      return const SyncRunSkipped();
+    }
 
     final now = DateTime.now();
     if (result is LocalScanSuccess) {
-      state = state.copyWith(
-        localScan: state.localScan.copyWith(
-          running: false,
-          lastSuccessAt: now,
-          lastError: null,
-          hasPendingConflict: false,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          localScan: current.localScan.copyWith(
+            running: false,
+            lastSuccessAt: now,
+            lastError: null,
+            hasPendingConflict: false,
+          ),
+          pendingLocalScanConflicts: const <LocalScanConflict>[],
         ),
-        pendingLocalScanConflicts: const <LocalScanConflict>[],
       );
       return const SyncRunStarted();
     }
     if (result is LocalScanConflictResult) {
-      state = state.copyWith(
-        localScan: state.localScan.copyWith(
-          running: false,
-          hasPendingConflict: true,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          localScan: current.localScan.copyWith(
+            running: false,
+            hasPendingConflict: true,
+          ),
+          pendingLocalScanConflicts: result.conflicts,
         ),
-        pendingLocalScanConflicts: result.conflicts,
       );
       return const SyncRunQueued();
     }
     if (result is LocalScanFailure) {
-      state = state.copyWith(
-        localScan: state.localScan.copyWith(
-          running: false,
-          lastError: result.error,
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          localScan: current.localScan.copyWith(
+            running: false,
+            lastError: result.error,
+          ),
         ),
       );
       return SyncRunFailure(result.error);
@@ -767,16 +981,47 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
   void _queueBackupIfDue({required SyncRequestReason reason}) {
     final settings = _deps.readWebDavSettings();
     if (reason != SyncRequestReason.manual && !settings.autoSyncAllowed) {
+      _writeWebDavLog(
+        'Backup not queued',
+        detail: 'auto_sync_disallowed reason=${reason.name}',
+      );
       return;
     }
-    if (!settings.isBackupEnabled) return;
-    if (settings.backupSchedule == WebDavBackupSchedule.manual) return;
+    if (!settings.isBackupEnabled) {
+      _writeWebDavLog(
+        'Backup not queued',
+        detail: 'backup_disabled reason=${reason.name}',
+      );
+      return;
+    }
+    if (settings.backupSchedule == WebDavBackupSchedule.manual) {
+      _writeWebDavLog(
+        'Backup not queued',
+        detail: 'schedule=manual reason=${reason.name}',
+      );
+      return;
+    }
     if (settings.backupConfigScope == WebDavBackupConfigScope.none &&
         !settings.backupContentMemos) {
+      _writeWebDavLog(
+        'Backup not queued',
+        detail: 'content_empty reason=${reason.name}',
+      );
       return;
     }
     final lastAt = state.webDavLastBackupAt;
-    if (!_isBackupDue(lastAt, settings.backupSchedule)) return;
+    if (!_isBackupDue(lastAt, settings.backupSchedule)) {
+      _writeWebDavLog(
+        'Backup not queued',
+        detail:
+            'not_due schedule=${settings.backupSchedule.name} reason=${reason.name}',
+      );
+      return;
+    }
+    _writeWebDavLog(
+      'Backup queued',
+      detail: 'schedule=${settings.backupSchedule.name} reason=${reason.name}',
+    );
     _queueRequest(
       SyncRequest(kind: SyncRequestKind.webDavBackup, reason: reason),
     );

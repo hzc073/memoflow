@@ -1,6 +1,7 @@
 part of '../webdav_backup_service.dart';
 
 mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
+  @override
   Map<String, dynamic> _buildBackupSettingsSnapshotPayload(
     WebDavSettings settings, {
     required String exportedAt,
@@ -11,6 +12,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Map<String, dynamic> _wrapConfigPayload({
     required String exportedAt,
     required Object? data,
@@ -22,14 +24,17 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     };
   }
 
+  @override
   Uint8List _encodeJsonBytes(Object payload) {
     return Uint8List.fromList(utf8.encode(jsonEncode(payload)));
   }
 
+  @override
   String _resolveBackupMode({required bool usesServerMode}) {
     return usesServerMode ? 'server' : 'local';
   }
 
+  @override
   String _formatExportPathLabel(LocalLibrary library, String prefix) {
     final base = library.locationLabel.trim();
     final normalized = prefix.replaceAll('\\', '/').trim();
@@ -38,6 +43,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return '$base/$normalized';
   }
 
+  @override
   String _prefixExportPath(String prefix, String relativePath) {
     final normalizedPrefix = prefix.replaceAll('\\', '/').trim();
     final normalizedPath = relativePath.replaceAll('\\', '/').trim();
@@ -46,6 +52,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return '$normalizedPrefix/$normalizedPath';
   }
 
+  @override
   Set<WebDavBackupConfigType> _resolveBackupConfigTypes({
     required WebDavBackupConfigScope scope,
     required WebDavBackupEncryptionMode encryptionMode,
@@ -60,6 +67,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
         : _safeBackupConfigTypes;
   }
 
+  @override
   WebDavBackupConfigType? _configTypeForPath(String path) {
     final normalized = path.replaceAll('\\', '/').toLowerCase();
     if (normalized == _backupPreferencesSnapshotPath) {
@@ -98,6 +106,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return null;
   }
 
+  @override
   Future<List<_BackupConfigFile>> _buildConfigFiles({
     required WebDavSettings settings,
     required WebDavBackupConfigScope scope,
@@ -113,7 +122,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
       (type) => type != WebDavBackupConfigType.webdavSettings,
     );
     if (needsLocalSnapshot && _configAdapter != null) {
-      snapshot = await _configAdapter!.readSnapshot();
+      snapshot = await _configAdapter.readSnapshot();
     }
 
     final files = <_BackupConfigFile>[];
@@ -134,7 +143,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     if (types.contains(WebDavBackupConfigType.aiSettings) && snapshot != null) {
       final payload = _wrapConfigPayload(
         exportedAt: exportedAt,
-        data: snapshot.aiSettings.toJson(),
+        data: snapshot.aiSettings.toWebDavJson(),
       );
       files.add(
         _BackupConfigFile(
@@ -270,6 +279,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return files;
   }
 
+  @override
   WebDavBackupConfigBundle _parseConfigBundle(
     Map<WebDavBackupConfigType, Uint8List> configBytes,
   ) {
@@ -450,6 +460,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Object? _decodeJsonValue(Uint8List bytes) {
     try {
       return jsonDecode(utf8.decode(bytes, allowMalformed: true));
@@ -458,6 +469,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   bool _isValidConfigEnvelope(Map<String, dynamic> envelope) {
     int readInt(String key) {
       final raw = envelope[key];
@@ -474,6 +486,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
         exportedAt.trim().isNotEmpty;
   }
 
+  @override
   Map<String, dynamic>? _extractLegacyWebDavSettings(
     Map<String, dynamic> envelope,
   ) {
@@ -513,6 +526,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return settings.isEmpty ? null : settings;
   }
 
+  @override
   Set<WebDavBackupConfigType> _availableConfigTypes(
     WebDavBackupConfigBundle bundle,
   ) {
@@ -553,6 +567,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return types;
   }
 
+  @override
   Future<void> _applyConfigBundle({
     required WebDavBackupConfigBundle bundle,
     WebDavBackupConfigDecisionHandler? decisionHandler,
@@ -580,67 +595,67 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
           case WebDavBackupConfigType.preferences:
             final prefs = bundle.preferences;
             if (prefs != null) {
-              await _configAdapter!.applyPreferences(prefs);
+              await _configAdapter.applyPreferences(prefs);
             }
             break;
           case WebDavBackupConfigType.aiSettings:
             final ai = bundle.aiSettings;
             if (ai != null) {
-              await _configAdapter!.applyAiSettings(ai);
+              await _configAdapter.applyAiSettings(ai);
             }
             break;
           case WebDavBackupConfigType.reminderSettings:
             final reminder = bundle.reminderSettings;
             if (reminder != null) {
-              await _configAdapter!.applyReminderSettings(reminder);
+              await _configAdapter.applyReminderSettings(reminder);
             }
             break;
           case WebDavBackupConfigType.imageBedSettings:
             final imageBed = bundle.imageBedSettings;
             if (imageBed != null) {
-              await _configAdapter!.applyImageBedSettings(imageBed);
+              await _configAdapter.applyImageBedSettings(imageBed);
             }
             break;
           case WebDavBackupConfigType.imageCompressionSettings:
             final settings = bundle.imageCompressionSettings;
             if (settings != null) {
-              await _configAdapter!.applyImageCompressionSettings(settings);
+              await _configAdapter.applyImageCompressionSettings(settings);
             }
             break;
           case WebDavBackupConfigType.locationSettings:
             final location = bundle.locationSettings;
             if (location != null) {
-              await _configAdapter!.applyLocationSettings(location);
+              await _configAdapter.applyLocationSettings(location);
             }
             break;
           case WebDavBackupConfigType.templateSettings:
             final template = bundle.templateSettings;
             if (template != null) {
-              await _configAdapter!.applyTemplateSettings(template);
+              await _configAdapter.applyTemplateSettings(template);
             }
             break;
           case WebDavBackupConfigType.appLock:
             final lockSnapshot = bundle.appLockSnapshot;
             if (lockSnapshot != null) {
-              await _configAdapter!.applyAppLockSnapshot(lockSnapshot);
+              await _configAdapter.applyAppLockSnapshot(lockSnapshot);
             }
             break;
           case WebDavBackupConfigType.noteDraft:
             final draft = bundle.noteDraft;
             if (draft != null) {
-              await _configAdapter!.applyNoteDraft(draft);
+              await _configAdapter.applyNoteDraft(draft);
             }
             break;
           case WebDavBackupConfigType.tags:
             final snapshot = bundle.tagsSnapshot;
             if (snapshot != null) {
-              await _configAdapter!.applyTags(snapshot);
+              await _configAdapter.applyTags(snapshot);
             }
             break;
           case WebDavBackupConfigType.webdavSettings:
             final webDavSettings = bundle.webDavSettings;
             if (webDavSettings != null) {
-              await _configAdapter!.applyWebDavSettings(webDavSettings);
+              await _configAdapter.applyWebDavSettings(webDavSettings);
             }
             break;
         }
@@ -846,6 +861,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   int _countMemosInSnapshot(WebDavBackupSnapshot snapshot) {
     var count = 0;
     for (final entry in snapshot.files) {
@@ -856,6 +872,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  @override
   int _countMemosInEntries(Iterable<WebDavBackupFileEntry> entries) {
     var count = 0;
     for (final entry in entries) {
@@ -866,6 +883,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  @override
   int _countAttachmentsInEntries(Iterable<WebDavBackupFileEntry> entries) {
     var count = 0;
     for (final entry in entries) {
@@ -876,10 +894,12 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  @override
   bool _snapshotHasMemos(WebDavBackupSnapshot snapshot) {
     return _countMemosInSnapshot(snapshot) > 0;
   }
 
+  @override
   int _countMemosInPlainIndex(_PlainBackupIndex index) {
     var count = 0;
     for (final entry in index.files) {
@@ -890,6 +910,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  @override
   int _countMemosInUploads(Iterable<_PlainBackupFileUpload> uploads) {
     var count = 0;
     for (final entry in uploads) {
@@ -900,6 +921,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  @override
   int _countAttachmentsInUploads(Iterable<_PlainBackupFileUpload> uploads) {
     var count = 0;
     for (final entry in uploads) {
@@ -910,21 +932,25 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  @override
   bool _plainIndexHasMemos(_PlainBackupIndex index) {
     return _countMemosInPlainIndex(index) > 0;
   }
 
+  @override
   bool _isMemoPath(String rawPath) {
     final path = rawPath.trim().toLowerCase();
     return path.startsWith('memos/') &&
         (path.endsWith('.md') || path.endsWith('.md.txt'));
   }
 
+  @override
   bool _isAttachmentPath(String rawPath) {
     final path = rawPath.trim().toLowerCase();
     return path.startsWith('attachments/');
   }
 
+  @override
   Future<_SnapshotBuildResult> _buildSnapshot({
     required LocalLibrary? localLibrary,
     required bool includeMemos,
@@ -1144,6 +1170,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   WebDavBackupIndex _applySnapshotToIndex(
     WebDavBackupIndex index,
     WebDavBackupSnapshot snapshot,
@@ -1191,6 +1218,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   WebDavBackupIndex _buildExportIndexFromSnapshot({
     required WebDavBackupSnapshot snapshot,
     required Map<String, int> objectSizes,
@@ -1227,6 +1255,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   bool _assertExportMirrorIntegritySync({
     required LocalLibrary exportLibrary,
     required WebDavBackupIndex exportIndex,
@@ -1253,6 +1282,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return true;
   }
 
+  @override
   Future<WebDavBackupIndex> _applyRetention({
     required WebDavClient client,
     required Uri baseUrl,
@@ -1315,6 +1345,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<void> _uploadSnapshot(
     WebDavClient client,
     Uri baseUrl,
@@ -1332,6 +1363,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<void> _saveIndex(
     WebDavClient client,
     Uri baseUrl,
@@ -1345,6 +1377,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     await _putBytes(client, _indexUri(baseUrl, rootPath, accountId), bytes);
   }
 
+  @override
   Future<WebDavBackupIndex> _loadIndex(
     WebDavClient client,
     Uri baseUrl,
@@ -1365,6 +1398,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return WebDavBackupIndex.empty;
   }
 
+  @override
   Future<WebDavBackupSnapshot> _loadSnapshot({
     required WebDavClient client,
     required Uri baseUrl,
@@ -1394,6 +1428,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<Uint8List> _readSnapshotFileBytes({
     required WebDavBackupFileEntry entry,
     required WebDavClient client,
@@ -1422,6 +1457,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return builder.toBytes();
   }
 
+  @override
   String _buildSnapshotId(DateTime now) {
     String two(int v) => v.toString().padLeft(2, '0');
     final utc = now.toUtc();

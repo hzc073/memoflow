@@ -12,6 +12,7 @@ import '../../application/sync/sync_error.dart';
 import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
 import '../../application/sync/webdav_backup_service.dart';
+import '../../application/sync/webdav_sync_service.dart';
 import '../../core/app_localization.dart';
 import '../../core/log_sanitizer.dart';
 import '../../core/memoflow_palette.dart';
@@ -1027,6 +1028,10 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   Future<void> _backupNow() async {
     final coordinator = ref.read(syncCoordinatorProvider.notifier);
     final settingsNotifier = ref.read(webDavSettingsProvider.notifier);
+    if (_backupConfigScope != WebDavBackupConfigScope.none ||
+        _backupContentMemos) {
+      settingsNotifier.setBackupEnabled(true);
+    }
     if (_backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
       settingsNotifier.setAutoSyncAllowed(true);
       await coordinator.requestWebDavBackup(
@@ -1649,12 +1654,33 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<void> _openVaultSecurityStatus() async {
+    if (_backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u5b89\u5168\u72b6\u6001\u68c0\u67e5\u4ec5\u9002\u7528\u4e8e\u52a0\u5bc6\u5907\u4efd\u3002',
+              en: 'Vault security status is available for encrypted backup only.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
     if (!_vaultEnabled) {
-      final enabled = await _setupVaultPasswordFlow();
-      if (!mounted || !enabled) return;
-      setState(() => _vaultEnabled = true);
-      ref.read(webDavSettingsProvider.notifier).setVaultEnabled(true);
-      _refreshBackupPasswordStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u8bf7\u5148\u5728\u5907\u4efd\u7b56\u7565\u8bbe\u7f6e\u4e2d\u542f\u7528\u5e76\u8bbe\u7f6e Vault \u5bc6\u7801\u3002',
+              en: 'Enable and set a Vault password in Backup strategy settings first.',
+            ),
+          ),
+        ),
+      );
+      return;
     }
     if (!mounted) return;
     await Navigator.of(context).push(
@@ -1908,6 +1934,16 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         ? context.t.strings.legacy.msg_disabled
         : '${_backupScheduleLabel(_backupSchedule)} \u00b7 $retentionValue';
     final backupBusy = backupStatus.running || _backupRestoring;
+    final vaultSecurityDisabled =
+        _backupEncryptionMode == WebDavBackupEncryptionMode.plain;
+    final vaultSecuritySubtitle = vaultSecurityDisabled
+        ? context.tr(
+            zh: '\u4ec5\u9002\u7528\u4e8e\u52a0\u5bc6\u5907\u4efd',
+            en: 'Available for encrypted backup only',
+          )
+        : _vaultEnabled
+        ? context.tr(zh: '\u5df2\u542f\u7528', en: 'Enabled')
+        : context.tr(zh: '\u672a\u542f\u7528', en: 'Not enabled');
 
     return Scaffold(
       backgroundColor: bg,
@@ -1925,7 +1961,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         centerTitle: false,
         actions: [
           IconButton(
-            tooltip: context.t.strings.legacy.msg_backup_settings,
+            tooltip: context.t.strings.legacy.msg_sync,
             onPressed: (!_enabled || syncStatus.running) ? null : _syncNow,
             icon: syncStatus.running
                 ? const SizedBox.square(
@@ -1959,11 +1995,10 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                 textMain: textMain,
                 textMuted: textMuted,
                 label: context.t.strings.legacy.msg_enable_webdav_sync,
-                description: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_keep_data_consistent_across_devices,
+                description: context.tr(
+                  zh: '\u8bbe\u7f6e\u66f4\u6539\u4f1a\u540c\u6b65 WebDAV \u914d\u7f6e\uff1b\u7b14\u8bb0\u4e0e\u9644\u4ef6\u9700\u8981\u5355\u72ec\u5907\u4efd\u3002',
+                  en: 'Setting changes sync WebDAV configuration. Memos and attachments are backed up separately.',
+                ),
                 value: _enabled,
                 onChanged: _setEnabled,
               ),
@@ -1987,11 +2022,9 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               _NavCard(
                 card: card,
                 title: context.tr(zh: '安全状态检查', en: 'Vault security status'),
-                subtitle: _vaultEnabled
-                    ? context.tr(zh: '已启用', en: 'Enabled')
-                    : context.tr(zh: '未启用', en: 'Not enabled'),
+                subtitle: vaultSecuritySubtitle,
                 icon: Icons.lock_outline,
-                onTap: _openVaultSecurityStatus,
+                onTap: vaultSecurityDisabled ? null : _openVaultSecurityStatus,
               ),
               const SizedBox(height: 12),
               _NavCard(
@@ -2409,13 +2442,15 @@ class _NavCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final titleStyle = Theme.of(
-      context,
-    ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700);
+    final enabled = onTap != null;
+    final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: enabled ? null : Theme.of(context).disabledColor,
+    );
     final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
       color: Theme.of(
         context,
-      ).textTheme.bodySmall?.color?.withValues(alpha: 0.65),
+      ).textTheme.bodySmall?.color?.withValues(alpha: enabled ? 0.65 : 0.45),
     );
     return Material(
       color: Colors.transparent,
@@ -2425,7 +2460,9 @@ class _NavCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: card,
+            color: enabled
+                ? card
+                : card.withValues(alpha: isDark ? 0.75 : 0.92),
             borderRadius: BorderRadius.circular(20),
             boxShadow: isDark
                 ? null
@@ -2444,11 +2481,15 @@ class _NavCard extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.12),
+                  color: Theme.of(context).colorScheme.primary.withValues(
+                    alpha: enabled ? 0.12 : 0.06,
+                  ),
                 ),
-                child: Icon(icon, size: 18),
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: enabled ? null : Theme.of(context).disabledColor,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -2465,7 +2506,9 @@ class _NavCard extends StatelessWidget {
               Icon(
                 Icons.chevron_right,
                 size: 18,
-                color: Theme.of(context).textTheme.bodySmall?.color,
+                color: enabled
+                    ? Theme.of(context).textTheme.bodySmall?.color
+                    : Theme.of(context).disabledColor,
               ),
             ],
           ),
@@ -2868,7 +2911,7 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _WebDavConnectionScreen extends StatefulWidget {
+class _WebDavConnectionScreen extends ConsumerStatefulWidget {
   const _WebDavConnectionScreen({
     required this.serverUrlController,
     required this.usernameController,
@@ -2902,14 +2945,17 @@ class _WebDavConnectionScreen extends StatefulWidget {
   final VoidCallback onRootPathEditingComplete;
 
   @override
-  State<_WebDavConnectionScreen> createState() =>
+  ConsumerState<_WebDavConnectionScreen> createState() =>
       _WebDavConnectionScreenState();
 }
 
-class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
+class _WebDavConnectionScreenState
+    extends ConsumerState<_WebDavConnectionScreen> {
   late WebDavAuthMode _authMode;
   late bool _ignoreTlsErrors;
   bool _obscurePassword = true;
+  bool _testingConnection = false;
+  WebDavConnectionTestResult? _lastConnectionTestResult;
 
   @override
   void initState() {
@@ -2958,14 +3004,72 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
       ),
     );
     if (selected == null) return;
-    setState(() => _authMode = selected);
+    setState(() {
+      _authMode = selected;
+      _lastConnectionTestResult = null;
+    });
     widget.onAuthModeChanged(selected);
+  }
+
+  WebDavSettings _draftSettings() {
+    final current = ref.read(webDavSettingsProvider);
+    return current.copyWith(
+      serverUrl: normalizeWebDavBaseUrl(widget.serverUrlController.text),
+      username: widget.usernameController.text.trim(),
+      password: widget.passwordController.text,
+      rootPath: normalizeWebDavRootPath(widget.rootPathController.text),
+      authMode: _authMode,
+      ignoreTlsErrors: _ignoreTlsErrors,
+    );
+  }
+
+  String? _connectionTestMessage(BuildContext context) {
+    final result = _lastConnectionTestResult;
+    if (result == null) return null;
+    if (result.success) {
+      return result.cleanupFailed
+          ? context.tr(
+              zh: '\u8fde\u63a5\u53ef\u7528\uff0c\u4f46\u6d4b\u8bd5\u6587\u4ef6\u6e05\u7406\u5931\u8d25\u3002',
+              en: 'Connection works, but cleanup of the probe file failed.',
+            )
+          : context.tr(
+              zh: '\u8fde\u63a5\u6d4b\u8bd5\u901a\u8fc7\uff0cWebDAV \u53ef\u7528\u3002',
+              en: 'Connection test passed. WebDAV is reachable and writable.',
+            );
+    }
+    final error = result.error;
+    if (error == null) return null;
+    return presentSyncError(language: context.appLanguage, error: error);
+  }
+
+  Future<void> _testConnection() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _testingConnection = true;
+      _lastConnectionTestResult = null;
+    });
+    final result = await ref
+        .read(syncCoordinatorProvider.notifier)
+        .testWebDavConnection(settings: _draftSettings());
+    if (!mounted) return;
+    setState(() {
+      _testingConnection = false;
+      _lastConnectionTestResult = result;
+    });
+    final message = _connectionTestMessage(context);
+    if (message == null || message.trim().isEmpty) return;
+    if (result.success && !result.cleanupFailed) {
+      showTopToast(context, message);
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isCompact = MediaQuery.sizeOf(context).width < 600;
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
@@ -2979,6 +3083,15 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
         : Colors.black.withValues(alpha: 0.06);
     final serverUrl = widget.serverUrlController.text.trim();
     final isHttp = serverUrl.startsWith('http://');
+    final hasCredentialMismatch =
+        widget.usernameController.text.trim().isEmpty !=
+        widget.passwordController.text.trim().isEmpty;
+    final canTestConnection = serverUrl.isNotEmpty && !hasCredentialMismatch;
+    final connectionTestMessage = _connectionTestMessage(context);
+    final connectionTestSucceeded = _lastConnectionTestResult?.success ?? false;
+    final connectionTestHasWarning =
+        (_lastConnectionTestResult?.cleanupFailed ?? false) &&
+        connectionTestSucceeded;
 
     return Scaffold(
       backgroundColor: bg,
@@ -3021,17 +3134,79 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 onChanged: (value) {
                   widget.onServerUrlChanged(value);
                   if (!mounted) return;
-                  setState(() {});
+                  setState(() => _lastConnectionTestResult = null);
                 },
                 onEditingComplete: widget.onServerUrlEditingComplete,
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Row(
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: (!canTestConnection || _testingConnection)
+                          ? null
+                          : _testConnection,
+                      icon: _testingConnection
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.network_check_rounded),
+                      label: Text(
+                        context.tr(
+                          zh: '\u6d4b\u8bd5\u8fde\u63a5',
+                          en: 'Test connection',
+                        ),
+                      ),
+                    ),
+                    if (hasCredentialMismatch) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          context.tr(
+                            zh: '\u8bf7\u540c\u65f6\u586b\u5199\u7528\u6237\u540d\u548c\u5bc6\u7801\uff0c\u6216\u5747\u7559\u7a7a\u3002',
+                            en: 'Enter both username and password, or leave both empty.',
+                          ),
+                          style: TextStyle(fontSize: 12, color: textMuted),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (connectionTestMessage != null) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Text(
+                    connectionTestMessage,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: connectionTestSucceeded
+                          ? (connectionTestHasWarning
+                                ? (isDark
+                                      ? const Color(0xFFFFCC80)
+                                      : const Color(0xFF9A5A00))
+                                : (isDark
+                                      ? const Color(0xFFA5D6A7)
+                                      : const Color(0xFF2E7D32)))
+                          : (isDark
+                                ? const Color(0xFFEF9A9A)
+                                : const Color(0xFFC62828)),
+                    ),
+                  ),
+                ),
+              ],
               _InputRow(
                 label: context.t.strings.legacy.msg_username,
                 hint: context.t.strings.legacy.msg_enter_username,
                 controller: widget.usernameController,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: widget.onUsernameChanged,
+                onChanged: (value) {
+                  widget.onUsernameChanged(value);
+                  setState(() => _lastConnectionTestResult = null);
+                },
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -3048,7 +3223,10 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 subtitle: TextField(
                   controller: widget.passwordController,
                   obscureText: _obscurePassword,
-                  onChanged: widget.onPasswordChanged,
+                  onChanged: (value) {
+                    widget.onPasswordChanged(value);
+                    setState(() => _lastConnectionTestResult = null);
+                  },
                   style: TextStyle(
                     color: textMain,
                     fontWeight: FontWeight.w500,
@@ -3129,7 +3307,10 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 value: _ignoreTlsErrors,
                 textMain: textMain,
                 onChanged: (v) {
-                  setState(() => _ignoreTlsErrors = v);
+                  setState(() {
+                    _ignoreTlsErrors = v;
+                    _lastConnectionTestResult = null;
+                  });
                   widget.onIgnoreTlsChanged(v);
                 },
               ),
@@ -3139,7 +3320,10 @@ class _WebDavConnectionScreenState extends State<_WebDavConnectionScreen> {
                 controller: widget.rootPathController,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: widget.onRootPathChanged,
+                onChanged: (value) {
+                  widget.onRootPathChanged(value);
+                  setState(() => _lastConnectionTestResult = null);
+                },
                 onEditingComplete: widget.onRootPathEditingComplete,
               ),
             ],
@@ -3494,10 +3678,22 @@ class _WebDavBackupSettingsScreenState
     };
   }
 
+  bool _shouldHideBackupError(SyncError? error) {
+    if (error == null) return true;
+    final settings = ref.read(webDavSettingsProvider);
+    if (error.presentationKey == 'legacy.webdav.backup_disabled' &&
+        settings.isBackupEnabled) {
+      return true;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final backupStatus = ref.watch(syncCoordinatorProvider).webDavBackup;
-    final backupErrorText = backupStatus.lastError == null
+    final backupErrorText = _shouldHideBackupError(backupStatus.lastError)
+        ? null
+        : backupStatus.lastError == null
         ? null
         : presentSyncError(
             language: context.appLanguage,
@@ -3543,53 +3739,6 @@ class _WebDavBackupSettingsScreenState
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            if (widget.usesServerMode) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF4A2F00).withValues(alpha: 0.45)
-                      : const Color(0xFFFFF3D9),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isDark
-                        ? const Color(0xFFFFC36A).withValues(alpha: 0.6)
-                        : const Color(0xFFE8A23D),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      size: 18,
-                      color: isDark
-                          ? const Color(0xFFFFC36A)
-                          : const Color(0xFF9A5A00),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        context.tr(
-                          zh: '服务端模式下，WebDAV 备份会先在应用私有目录生成 Markdown（.md）文件和附件镜像，再上传到 WebDAV。',
-                          en: 'In server mode, WebDAV backup first generates local Markdown (.md) files and attachment mirrors inside app-private storage, then uploads them.',
-                        ),
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: isDark
-                              ? const Color(0xFFFFE0B2)
-                              : const Color(0xFF6A3D00),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
             Text(
               context.tr(zh: '备份内容', en: 'Backup content'),
               style: TextStyle(

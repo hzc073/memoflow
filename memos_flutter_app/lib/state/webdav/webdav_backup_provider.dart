@@ -48,16 +48,17 @@ final webDavBackupPasswordRepositoryProvider =
     });
 
 final webDavBackupServiceProvider = Provider<WebDavBackupService>((ref) {
+  final container = ref.container;
   return WebDavBackupService(
-    readDatabase: () => ref.read(databaseProvider),
+    readDatabase: () => container.read(databaseProvider),
     attachmentStore: LocalAttachmentStore(),
     stateRepository: ref.watch(webDavBackupStateRepositoryProvider),
     passwordRepository: ref.watch(webDavBackupPasswordRepositoryProvider),
     vaultService: ref.watch(webDavVaultServiceProvider),
     vaultPasswordRepository: ref.watch(webDavVaultPasswordRepositoryProvider),
-    configAdapter: RiverpodWebDavSyncLocalAdapter(ref),
+    configAdapter: RiverpodWebDavSyncLocalAdapter(container),
     progressTracker: ref.watch(webDavBackupProgressTrackerProvider),
     logWriter: (entry) =>
-        unawaited(ref.read(webDavLogStoreProvider).add(entry)),
+        unawaited(container.read(webDavLogStoreProvider).add(entry)),
   );
 });

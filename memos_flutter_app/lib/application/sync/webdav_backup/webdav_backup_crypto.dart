@@ -116,6 +116,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<WebDavBackupConfig> _loadOrCreateConfig(
     WebDavClient client,
     Uri baseUrl,
@@ -252,6 +253,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return groups.join('-');
   }
 
+  @override
   Future<SecretKey> _resolveMasterKey(
     String password,
     WebDavBackupConfig config,
@@ -281,6 +283,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<SecretKey> _resolveMasterKeyWithRecoveryCode(
     String recoveryCode,
     WebDavBackupConfig config,
@@ -324,6 +327,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<SecretKey> _deriveKeyFromPassword(
     String password,
     WebDavBackupKdf kdf,
@@ -340,6 +344,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<SecretKey> _deriveSubKey(SecretKey masterKey, String info) async {
     final hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
     return hkdf.deriveKey(
@@ -349,10 +354,12 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<SecretKey> _deriveObjectKey(SecretKey masterKey, String objectHash) {
     return _deriveSubKey(masterKey, 'object:$objectHash');
   }
 
+  @override
   Future<Uint8List> _encryptBytes(SecretKey key, List<int> plain) async {
     final box = await _cipher.encrypt(
       plain,
@@ -376,6 +383,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return bytes;
   }
 
+  @override
   Future<Uint8List> _decryptBytes(SecretKey key, List<int> combined) async {
     if (combined.length < _nonceLength + _macLength) {
       throw _keyedError(
@@ -394,6 +402,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return Uint8List.fromList(plain);
   }
 
+  @override
   Future<Uint8List> _encryptJson(
     SecretKey key,
     Map<String, dynamic> json,
@@ -402,11 +411,13 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return _encryptBytes(key, utf8.encode(encoded));
   }
 
+  @override
   Future<dynamic> _decryptJson(SecretKey key, List<int> data) async {
     final plain = await _decryptBytes(key, data);
     return jsonDecode(utf8.decode(plain, allowMalformed: true));
   }
 
+  @override
   Uint8List _randomBytes(int length) {
     final out = Uint8List(length);
     for (var i = 0; i < length; i++) {
@@ -415,16 +426,19 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return out;
   }
 
+  @override
   Future<String?> _resolvePassword(String? override) async {
     if (override != null && override.trim().isNotEmpty) return override;
     return _passwordRepository.read();
   }
 
+  @override
   Future<String?> _resolveVaultPassword(String? override) async {
     if (override != null && override.trim().isNotEmpty) return override;
     return _vaultPasswordRepository.read();
   }
 
+  @override
   Future<SecretKey> _resolveMasterKeyFromLegacy({
     required WebDavClient client,
     required Uri baseUrl,
@@ -442,6 +456,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return _resolveMasterKey(password, config);
   }
 
+  @override
   Future<SecretKey> _resolveVaultMasterKey({
     required WebDavSettings settings,
     required String accountKey,
@@ -460,6 +475,7 @@ mixin _WebDavBackupCryptoMixin on _WebDavBackupServiceBase {
     return _vaultService.resolveMasterKey(password, config);
   }
 
+  @override
   Future<void> _decryptObject({
     required WebDavClient client,
     required Uri baseUrl,

@@ -714,10 +714,12 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
     if (listMatch == null) return null;
     final values = _parseQuotedValues(listMatch.group(1) ?? '');
     final normalized = values.map((e) => e.toUpperCase()).toSet();
-    if (normalized.length == 1 && normalized.contains('PUBLIC'))
+    if (normalized.length == 1 && normalized.contains('PUBLIC')) {
       return _VisibilityMode.public;
-    if (normalized.length == 1 && normalized.contains('PRIVATE'))
+    }
+    if (normalized.length == 1 && normalized.contains('PRIVATE')) {
       return _VisibilityMode.private;
+    }
     return null;
   }
 

@@ -171,8 +171,6 @@ abstract class _WebDavBackupServiceBase {
   SyncError _keyedError(
     String key, {
     SyncErrorCode code,
-    bool retryable,
-    Map<String, String>? params,
   });
   SyncError _httpError({
     required int statusCode,
@@ -284,7 +282,6 @@ abstract class _WebDavBackupServiceBase {
     required String snapshotId,
     required String exportedAt,
     required String backupMode,
-    _ExportWriter? exportWriter,
   });
   WebDavBackupIndex _applySnapshotToIndex(
     WebDavBackupIndex index,
@@ -358,12 +355,7 @@ abstract class _WebDavBackupServiceBase {
     String? accountId,
   );
   Future<int> _exportLocalLibraryForBackup(
-    LocalLibrary localLibrary, {
-    bool pruneToCurrentData,
-    Uri? attachmentBaseUrl,
-    String? attachmentAuthHeader,
-    WebDavBackupExportIssueHandler? issueHandler,
-  });
+    LocalLibrary localLibrary);
   Future<void> _exportAttachmentForBackup({
     required LocalLibraryFileSystem fileSystem,
     required LocalAttachmentStore attachmentStore,
@@ -430,7 +422,6 @@ abstract class _WebDavBackupServiceBase {
     required WebDavExportFormat exportFormat,
     required String vaultKeyId,
     required DateTime lastSuccessAt,
-    String? createdAt,
   });
   DateTime _resolveExportLastSuccessAt({
     required DateTime exportAt,
@@ -495,19 +486,31 @@ class WebDavBackupService extends _WebDavBackupServiceBase
        _logWriter = logWriter;
 
   final AppDatabase Function() _readDatabase;
+  @override
   final LocalAttachmentStore _attachmentStore;
+  @override
   final WebDavBackupStateRepository _stateRepository;
+  @override
   final WebDavBackupPasswordRepository _passwordRepository;
+  @override
   final WebDavVaultService _vaultService;
+  @override
   final WebDavVaultPasswordRepository _vaultPasswordRepository;
+  @override
   final WebDavSyncLocalAdapter? _configAdapter;
+  @override
   final WebDavBackupProgressTracker? _progressTracker;
+  @override
   final LocalLibraryScanService Function(LocalLibrary library)?
   _scanServiceFactory;
+  @override
   final WebDavBackupClientFactory _clientFactory;
+  @override
   final void Function(DebugLogEntry entry)? _logWriter;
 
+  @override
   final _cipher = AesGcm.with256bits();
+  @override
   final _random = Random.secure();
   AppDatabase? _boundDatabase;
 

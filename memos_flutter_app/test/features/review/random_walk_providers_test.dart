@@ -9,7 +9,6 @@ import 'package:memos_flutter_app/data/ai/ai_analysis_models.dart';
 import 'package:memos_flutter_app/data/ai/ai_analysis_repository.dart';
 import 'package:memos_flutter_app/data/api/memos_api.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
-import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/features/review/random_walk_models.dart';
 import 'package:memos_flutter_app/features/review/random_walk_providers.dart';

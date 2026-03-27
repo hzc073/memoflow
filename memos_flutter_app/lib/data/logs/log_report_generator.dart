@@ -436,11 +436,13 @@ class LogReportGenerator {
     if (version.isNotEmpty) parts.add('version=$version');
     final mode = profile.mode.trim();
     if (mode.isNotEmpty) parts.add('mode=$mode');
-    if (instanceUrl.isNotEmpty)
+    if (instanceUrl.isNotEmpty) {
       parts.add('instanceUrl=${LogSanitizer.maskUrl(instanceUrl)}');
+    }
     final owner = profile.owner.trim();
-    if (owner.isNotEmpty)
+    if (owner.isNotEmpty) {
       parts.add('owner=${LogSanitizer.maskUserLabel(owner)}');
+    }
 
     if (parts.isEmpty) return 'Server: $label';
     return 'Server: $label (${parts.join(', ')})';
@@ -665,10 +667,12 @@ GROUP BY type, state;
     final parts = <String>[];
     if (memoUid.isNotEmpty) parts.add('memo=$memoUid');
     if (uid.isNotEmpty) parts.add('uid=$uid');
-    if (filename.isNotEmpty)
+    if (filename.isNotEmpty) {
       parts.add('file=${LogSanitizer.sanitizeText(filename)}');
-    if (mimeType.isNotEmpty)
+    }
+    if (mimeType.isNotEmpty) {
       parts.add('mime=${LogSanitizer.sanitizeText(mimeType)}');
+    }
     if (size != null && size > 0) parts.add('size=${_formatBytes(size)}');
     return parts.join(', ');
   }

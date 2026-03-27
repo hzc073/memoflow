@@ -924,6 +924,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<void> _restoreFile({
     required WebDavBackupFileEntry entry,
     required LocalLibraryFileSystem fileSystem,
@@ -966,6 +967,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
     await writeFuture;
   }
 
+  @override
   Future<void> _restoreFileToPath({
     required WebDavBackupFileEntry entry,
     required String targetPath,
@@ -1009,6 +1011,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
     await writeFuture;
   }
 
+  @override
   LocalLibraryScanService? _scanServiceFor(LocalLibrary library) {
     final factory = _scanServiceFactory;
     if (factory != null) return factory(library);

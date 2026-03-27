@@ -1,6 +1,7 @@
 part of '../webdav_backup_service.dart';
 
 mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
+  @override
   Future<void> _putJson(
     WebDavClient client,
     Uri uri,
@@ -10,6 +11,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     await _putBytes(client, uri, encoded);
   }
 
+  @override
   Future<void> _putBytes(WebDavClient client, Uri uri, List<int> bytes) async {
     final res = await client.put(uri, body: bytes);
     if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -21,6 +23,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<Uint8List?> _getBytes(WebDavClient client, Uri uri) async {
     final res = await client.get(uri);
     if (res.statusCode == 404) return null;
@@ -34,6 +37,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     return Uint8List.fromList(res.bytes);
   }
 
+  @override
   Future<void> _delete(WebDavClient client, Uri uri) async {
     final res = await client.delete(uri);
     if (res.statusCode == 404) return;
@@ -46,6 +50,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Uri _configUri(Uri baseUrl, String rootPath, String accountId) {
     return joinWebDavUri(
       baseUrl: baseUrl,
@@ -54,6 +59,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Uri _indexUri(Uri baseUrl, String rootPath, String accountId) {
     return joinWebDavUri(
       baseUrl: baseUrl,
@@ -62,6 +68,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Uri _objectUri(Uri baseUrl, String rootPath, String accountId, String hash) {
     return joinWebDavUri(
       baseUrl: baseUrl,
@@ -70,6 +77,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Uri _snapshotUri(
     Uri baseUrl,
     String rootPath,
@@ -86,18 +94,22 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   String _backupBase(String accountId, String relative) {
     return 'accounts/$accountId/$_backupDir/$_backupVersion/$relative';
   }
 
+  @override
   String _backupBaseDir(String accountId) {
     return 'accounts/$accountId/$_backupDir/$_backupVersion';
   }
 
+  @override
   String _plainBase(String accountId, String relative) {
     return _backupBase(accountId, relative);
   }
 
+  @override
   Uri _plainIndexUri(Uri baseUrl, String rootPath, String accountId) {
     return joinWebDavUri(
       baseUrl: baseUrl,
@@ -106,6 +118,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Uri _plainFileUri(
     Uri baseUrl,
     String rootPath,
@@ -119,6 +132,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<void> _ensureBackupCollections(
     WebDavClient client,
     Uri baseUrl,
@@ -143,6 +157,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     ]);
   }
 
+  @override
   Future<void> _ensureCollectionPath(
     WebDavClient client,
     Uri baseUrl,
@@ -168,6 +183,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   List<String> _splitPath(String path) {
     final trimmed = path.trim();
     if (trimmed.isEmpty) return const [];
@@ -177,6 +193,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
         .toList(growable: false);
   }
 
+  @override
   WebDavClient _buildClient(WebDavSettings settings, Uri baseUrl) {
     return _clientFactory(
       baseUrl: baseUrl,
@@ -185,6 +202,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Uri _parseBaseUrl(String raw) {
     final baseUrl = Uri.tryParse(raw.trim());
     if (baseUrl == null || !baseUrl.hasScheme || !baseUrl.hasAuthority) {
@@ -196,6 +214,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     return baseUrl;
   }
 
+  @override
   Stream<Uint8List> _chunkStream(Stream<Uint8List> input) async* {
     final buffer = <int>[];
     await for (final data in input) {
@@ -211,6 +230,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     }
   }
 
+  @override
   Future<WebDavBackupConfig?> _loadConfig(
     WebDavClient client,
     Uri baseUrl,
@@ -240,6 +260,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   Future<void> _saveConfig(
     WebDavClient client,
     Uri baseUrl,
@@ -254,6 +275,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   String _guessMimeType(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.md')) return 'text/markdown';
@@ -267,6 +289,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     return 'application/octet-stream';
   }
 
+  @override
   SyncError _keyedError(
     String key, {
     SyncErrorCode code = SyncErrorCode.unknown,
@@ -281,6 +304,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   SyncError _httpError({
     required int statusCode,
     required String method,
@@ -290,12 +314,17 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
       401 => SyncErrorCode.authFailed,
       403 => SyncErrorCode.permission,
       409 => SyncErrorCode.conflict,
+      408 || 425 || 429 => SyncErrorCode.server,
       >= 500 => SyncErrorCode.server,
       _ => SyncErrorCode.unknown,
     };
     return SyncError(
       code: code,
-      retryable: statusCode >= 500,
+      retryable:
+          statusCode == 408 ||
+          statusCode == 425 ||
+          statusCode == 429 ||
+          statusCode >= 500,
       message: 'Bad state: WebDAV $method failed (HTTP $statusCode)',
       httpStatus: statusCode,
       requestMethod: method,
@@ -303,6 +332,7 @@ mixin _WebDavBackupIoMixin on _WebDavBackupServiceBase {
     );
   }
 
+  @override
   SyncError _mapUnexpectedError(Object error) {
     if (error is SyncError) return error;
     if (error is SocketException ||

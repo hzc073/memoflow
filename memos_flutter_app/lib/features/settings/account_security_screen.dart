@@ -74,7 +74,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         ? currentLocalLibrary.locationLabel
         : currentAccount?.baseUrl.toString() ?? "";
 
-    Future<Map<String, bool>> _resolveLocalScanConflicts(
+    Future<Map<String, bool>> resolveLocalScanConflicts(
       BuildContext context,
       List<LocalScanConflict> conflicts,
     ) async {
@@ -116,11 +116,11 @@ class AccountSecurityScreen extends ConsumerWidget {
       return decisions;
     }
 
-    String _formatLocalScanError(BuildContext context, SyncError error) {
+    String formatLocalScanError(BuildContext context, SyncError error) {
       return presentSyncError(language: context.appLanguage, error: error);
     }
 
-    Future<void> _maybeScanLocalLibrary() async {
+    Future<void> maybeScanLocalLibrary() async {
       if (!context.mounted) return;
       await WidgetsBinding.instance.endOfFrame;
       if (!context.mounted) return;
@@ -155,7 +155,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       try {
         var result = await scanner.scanAndMerge(forceDisk: false);
         while (result is LocalScanConflictResult) {
-          final decisions = await _resolveLocalScanConflicts(
+          final decisions = await resolveLocalScanConflicts(
             context,
             result.conflicts,
           );
@@ -174,7 +174,7 @@ class AccountSecurityScreen extends ConsumerWidget {
               SnackBar(
                 content: Text(
                   context.t.strings.legacy.msg_scan_failed(
-                    e: _formatLocalScanError(context, error),
+                    e: formatLocalScanError(context, error),
                   ),
                 ),
               ),
@@ -193,7 +193,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       }
     }
 
-    Future<void> _addLocalLibrary() async {
+    Future<void> addLocalLibrary() async {
       final result = await LocalModeSetupScreen.show(
         context,
         title: context.t.strings.legacy.msg_add_local_library,
@@ -231,7 +231,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       showTopToast(context, context.t.strings.legacy.msg_local_library_added);
     }
 
-    Future<void> _removeLocalLibrary(LocalLibrary library) async {
+    Future<void> removeLocalLibrary(LocalLibrary library) async {
       final confirmed =
           await showDialog<bool>(
             context: context,
@@ -457,7 +457,7 @@ class AccountSecurityScreen extends ConsumerWidget {
                     textMuted: textMuted,
                     onTap: () async {
                       haptic();
-                      await _addLocalLibrary();
+                      await addLocalLibrary();
                     },
                   ),
                   _SettingRow(
@@ -557,11 +557,11 @@ class AccountSecurityScreen extends ConsumerWidget {
                           if (!context.mounted) return;
                           await WidgetsBinding.instance.endOfFrame;
                           if (!context.mounted) return;
-                          await _maybeScanLocalLibrary();
+                          await maybeScanLocalLibrary();
                         },
                         onDelete: () async {
                           haptic();
-                          await _removeLocalLibrary(l);
+                          await removeLocalLibrary(l);
                         },
                       ),
                   ],

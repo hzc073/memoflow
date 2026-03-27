@@ -387,26 +387,16 @@ abstract class _MemosApiBase {
 class MemosApi extends _MemosApiBase
     with _MemosApiAuth, _MemosApiNotifications, _MemosApiResources, _MemosApiMemos {
   MemosApi._(
-    Dio dio, {
-    bool useLegacyApi = false,
-    bool strictRouteLock = false,
-    String? strictServerVersion,
-    InstanceProfile? instanceProfile,
-    NetworkLogStore? logStore,
-    NetworkLogBuffer? logBuffer,
-    BreadcrumbStore? breadcrumbStore,
-    LogManager? logManager,
-  }) : super._(
-          dio,
-          useLegacyApi: useLegacyApi,
-          strictRouteLock: strictRouteLock,
-          strictServerVersion: strictServerVersion,
-          instanceProfile: instanceProfile,
-          logStore: logStore,
-          logBuffer: logBuffer,
-          breadcrumbStore: breadcrumbStore,
-          logManager: logManager,
-        );
+    super.dio, {
+    super.useLegacyApi,
+    super.strictRouteLock,
+    super.strictServerVersion,
+    super.instanceProfile,
+    super.logStore,
+    super.logBuffer,
+    super.breadcrumbStore,
+    super.logManager,
+  }) : super._();
 
   factory MemosApi.unauthenticated(
     Uri baseUrl, {

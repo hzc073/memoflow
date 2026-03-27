@@ -94,6 +94,7 @@ class DebugLogStore {
     this.maxEntries = 2000,
     this.maxFileBytes = 10 * 1024 * 1024,
     this.fileName = 'debug_logs.jsonl',
+    this.echoToConsole = false,
     bool? enabled,
   }) : enabled = enabled ?? kDebugMode;
 
@@ -106,6 +107,7 @@ class DebugLogStore {
   final int maxEntries;
   final int maxFileBytes;
   final String fileName;
+  final bool echoToConsole;
   bool enabled;
 
   int _appendCount = 0;
@@ -119,6 +121,9 @@ class DebugLogStore {
     if (!enabled) return;
     try {
       final sanitizedEntry = _sanitizeEntry(entry);
+      if (echoToConsole && kDebugMode) {
+        debugPrint(_formatConsoleLine(sanitizedEntry));
+      }
       final file = await _resolveFile();
       final line = jsonEncode(sanitizedEntry.toJson());
       await file.writeAsString('$line\n', mode: FileMode.append, flush: false);
@@ -127,6 +132,32 @@ class DebugLogStore {
         await _compactIfNeeded(file);
       }
     } catch (_) {}
+  }
+
+  String _formatConsoleLine(DebugLogEntry entry) {
+    final parts = <String>['[${entry.category}] ${entry.label}'];
+    final detail = entry.detail?.trim() ?? '';
+    if (detail.isNotEmpty) {
+      parts.add(detail);
+    }
+    final methodUrl = [
+      entry.method?.trim(),
+      entry.url?.trim(),
+    ].whereType<String>().where((value) => value.isNotEmpty).join(' ');
+    if (methodUrl.isNotEmpty) {
+      parts.add(methodUrl);
+    }
+    if (entry.status != null) {
+      parts.add('HTTP ${entry.status}');
+    }
+    if (entry.durationMs != null) {
+      parts.add('${entry.durationMs}ms');
+    }
+    final error = entry.error?.trim() ?? '';
+    if (error.isNotEmpty) {
+      parts.add('error=$error');
+    }
+    return parts.join(' | ');
   }
 
   Future<List<DebugLogEntry>> list({int limit = 200}) async {

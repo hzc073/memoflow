@@ -882,8 +882,9 @@ class _NotificationMemoCommentTileState
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return '';
     if (trimmed.startsWith('data:')) return trimmed;
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
+    }
     if (baseUrl == null) return trimmed;
     return joinBaseUrl(baseUrl, trimmed);
   }
