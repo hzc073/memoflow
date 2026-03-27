@@ -1587,3 +1587,12 @@ legacy:
   msg_windows_related_settings: Windows関連の設定
   msg_write_current_thought: 考えていることを書き留めてください...
   msg_yearly_character_trend: 年間キャラクタートレンド
+
+  msg_advanced_search: "Advanced search"
+  msg_location_contains: "Location contains"
+  msg_document: "Document"
+  msg_other: "Other"
+  msg_attachment_name_contains: "Attachment name contains"
+  msg_attachment_type: "Attachment type"
+  msg_linked_memos: "Linked memos"
+  msg_clear_all_filters: "Clear all filters"

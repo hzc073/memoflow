@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/attachments/attachment_preprocessor.dart';
@@ -45,6 +47,7 @@ import '../system/session_provider.dart';
 import '../sync/sync_controller_base.dart';
 
 part 'memos_query_models.part.dart';
+part 'memos_advanced_search.part.dart';
 part 'memos_api_provider.part.dart';
 part 'memos_search_providers.part.dart';
 part 'memos_shortcut_filter_parser.part.dart';

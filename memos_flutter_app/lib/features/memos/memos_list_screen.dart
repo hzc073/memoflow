@@ -97,6 +97,7 @@ import 'memo_versions_screen.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'memo_location_line.dart';
+import 'advanced_search_sheet.dart';
 import 'compose_toolbar_shared.dart';
 import 'gallery_attachment_picker.dart';
 import 'link_memo_sheet.dart';
@@ -120,6 +121,16 @@ final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
 enum _MemoSyncStatus { none, pending, failed }
 
 enum _MemoSortOption { createAsc, createDesc, updateAsc, updateDesc }
+
+enum _AdvancedSearchChipKind {
+  createdDateRange,
+  hasLocation,
+  locationContains,
+  hasAttachments,
+  attachmentNameContains,
+  attachmentType,
+  hasRelations,
+}
 
 _MemoSyncStatus _resolveMemoSyncStatus(
   LocalMemo memo,
@@ -352,6 +363,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   static const Duration _scrollToTopTick = Duration(milliseconds: 16);
   static const double _scrollToTopTickSeconds = 0.016;
   final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
+  final _dayDateFmt = DateFormat('yyyy-MM-dd');
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _inlineComposeController = TextEditingController();
@@ -374,6 +386,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   var _openedDrawerOnStart = false;
   String? _selectedShortcutId;
   QuickSearchKind? _selectedQuickSearchKind;
+  var _advancedSearchFilters = AdvancedSearchFilters.empty;
   String? _activeTagFilter;
   SceneMicroGuideId? _presentedListGuideId;
   var _sortOption = _MemoSortOption.createDesc;
@@ -612,6 +625,59 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   void _selectTagFilter(String? tag) {
     setState(() => _activeTagFilter = _normalizeTag(tag));
+  }
+
+  bool get _hasAdvancedSearchFilters => !_advancedSearchFilters.isEmpty;
+
+  void _setAdvancedSearchFilters(AdvancedSearchFilters filters) {
+    setState(() => _advancedSearchFilters = filters.normalized());
+  }
+
+  void _clearAdvancedSearchFilters() {
+    if (!_hasAdvancedSearchFilters) return;
+    setState(() => _advancedSearchFilters = AdvancedSearchFilters.empty);
+  }
+
+  void _removeSingleAdvancedFilter(_AdvancedSearchChipKind kind) {
+    final next = switch (kind) {
+      _AdvancedSearchChipKind.createdDateRange =>
+        _advancedSearchFilters.copyWith(createdDateRange: null),
+      _AdvancedSearchChipKind.hasLocation => _advancedSearchFilters.copyWith(
+        hasLocation: SearchToggleFilter.any,
+      ),
+      _AdvancedSearchChipKind.locationContains =>
+        _advancedSearchFilters.copyWith(locationContains: ''),
+      _AdvancedSearchChipKind.hasAttachments => _advancedSearchFilters.copyWith(
+        hasAttachments: SearchToggleFilter.any,
+      ),
+      _AdvancedSearchChipKind.attachmentNameContains =>
+        _advancedSearchFilters.copyWith(attachmentNameContains: ''),
+      _AdvancedSearchChipKind.attachmentType => _advancedSearchFilters.copyWith(
+        attachmentType: null,
+      ),
+      _AdvancedSearchChipKind.hasRelations => _advancedSearchFilters.copyWith(
+        hasRelations: SearchToggleFilter.any,
+      ),
+    };
+    _setAdvancedSearchFilters(next);
+  }
+
+  Future<void> _openAdvancedSearchSheet() async {
+    final result = await AdvancedSearchSheet.show(
+      context,
+      initial: _advancedSearchFilters,
+      showCreatedDateFilter: widget.dayFilter == null,
+    );
+    if (!mounted || result == null) return;
+    _setAdvancedSearchFilters(result);
+  }
+
+  String _localizedToggleFilterLabel(SearchToggleFilter value) {
+    return switch (value) {
+      SearchToggleFilter.any => context.t.strings.legacy.msg_any,
+      SearchToggleFilter.yes => context.t.strings.legacy.msg_yes,
+      SearchToggleFilter.no => context.t.strings.legacy.msg_no,
+    };
   }
 
   bool _isTouchPullLoadPlatform() {
@@ -1389,9 +1455,28 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     BuildContext context, {
     required bool isDark,
     required bool autofocus,
+    required bool hasAdvancedFilters,
+    required VoidCallback onOpenAdvancedFilters,
     String? hintText,
   }) {
     final hasQuery = _searchController.text.trim().isNotEmpty;
+    final suffixIconWidth = hasQuery ? 72.0 : 40.0;
+    Widget buildSearchActionButton({
+      required String tooltip,
+      required VoidCallback onPressed,
+      required Widget icon,
+    }) {
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        splashRadius: 18,
+        icon: icon,
+      );
+    }
+
     return Container(
       key: const ValueKey('search'),
       height: 36,
@@ -1415,16 +1500,37 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           border: InputBorder.none,
           isDense: true,
           prefixIcon: const Icon(Icons.search, size: 18),
-          suffixIcon: hasQuery
-              ? IconButton(
-                  tooltip: context.t.strings.legacy.msg_clear,
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.close, size: 16),
-                )
-              : null,
+          suffixIconConstraints: BoxConstraints(
+            minWidth: suffixIconWidth,
+            minHeight: 36,
+          ),
+          suffixIcon: SizedBox(
+            width: suffixIconWidth,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                buildSearchActionButton(
+                  tooltip: context.t.strings.legacy.msg_advanced_search,
+                  onPressed: onOpenAdvancedFilters,
+                  icon: Icon(
+                    Icons.filter_alt_outlined,
+                    size: 18,
+                    color: hasAdvancedFilters ? MemoFlowPalette.primary : null,
+                  ),
+                ),
+                if (hasQuery)
+                  buildSearchActionButton(
+                    tooltip: context.t.strings.legacy.msg_clear,
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.close, size: 16),
+                  ),
+              ],
+            ),
+          ),
         ),
         onChanged: (_) => setState(() {}),
         onSubmitted: _submitSearch,
@@ -2226,6 +2332,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                               context,
                               isDark: isDark,
                               autofocus: false,
+                              hasAdvancedFilters: _hasAdvancedSearchFilters,
+                              onOpenAdvancedFilters: _openAdvancedSearchSheet,
                               hintText:
                                   context.t.strings.legacy.msg_quick_search,
                             )
@@ -2696,6 +2804,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     setState(() {
       _windowsHeaderSearchExpanded = false;
       _selectedQuickSearchKind = null;
+      if (clearQuery) {
+        _advancedSearchFilters = AdvancedSearchFilters.empty;
+      }
     });
   }
 
@@ -2715,6 +2826,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _searching = false;
       _windowsHeaderSearchExpanded = false;
       _selectedQuickSearchKind = null;
+      _advancedSearchFilters = AdvancedSearchFilters.empty;
     });
   }
 
@@ -2742,6 +2854,140 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         _selectedQuickSearchKind = kind;
       }
     });
+  }
+
+  List<({String label, _AdvancedSearchChipKind kind})>
+  _buildActiveAdvancedSearchChipData(BuildContext context) {
+    final filters = _advancedSearchFilters.normalized();
+    if (filters.isEmpty) {
+      return const <({String label, _AdvancedSearchChipKind kind})>[];
+    }
+
+    final chips = <({String label, _AdvancedSearchChipKind kind})>[];
+    final createdDateRange = filters.createdDateRange;
+    if (createdDateRange != null) {
+      chips.add((
+        label:
+            '${context.t.strings.legacy.msg_date_range_2}: ${_dayDateFmt.format(createdDateRange.start)} - ${_dayDateFmt.format(createdDateRange.end)}',
+        kind: _AdvancedSearchChipKind.createdDateRange,
+      ));
+    }
+    if (filters.hasLocation != SearchToggleFilter.any &&
+        (filters.hasLocation == SearchToggleFilter.no ||
+            filters.locationContains.isEmpty)) {
+      chips.add((
+        label:
+            '${context.t.strings.legacy.msg_location_2}: ${_localizedToggleFilterLabel(filters.hasLocation)}',
+        kind: _AdvancedSearchChipKind.hasLocation,
+      ));
+    }
+    if (filters.locationContains.isNotEmpty) {
+      chips.add((
+        label:
+            '${context.t.strings.legacy.msg_location_contains}: ${filters.locationContains}',
+        kind: _AdvancedSearchChipKind.locationContains,
+      ));
+    }
+    if (filters.hasAttachments != SearchToggleFilter.any &&
+        (filters.hasAttachments == SearchToggleFilter.no ||
+            (filters.attachmentNameContains.isEmpty &&
+                filters.attachmentType == null))) {
+      chips.add((
+        label:
+            '${context.t.strings.legacy.msg_attachments}: ${_localizedToggleFilterLabel(filters.hasAttachments)}',
+        kind: _AdvancedSearchChipKind.hasAttachments,
+      ));
+    }
+    if (filters.attachmentNameContains.isNotEmpty) {
+      chips.add((
+        label:
+            '${context.t.strings.legacy.msg_attachment_name_contains}: ${filters.attachmentNameContains}',
+        kind: _AdvancedSearchChipKind.attachmentNameContains,
+      ));
+    }
+    if (filters.attachmentType != null) {
+      final typeLabel = switch (filters.attachmentType!) {
+        AdvancedAttachmentType.image => context.t.strings.legacy.msg_image,
+        AdvancedAttachmentType.audio => context.t.strings.legacy.msg_audio,
+        AdvancedAttachmentType.document =>
+          context.t.strings.legacy.msg_document,
+        AdvancedAttachmentType.other => context.t.strings.legacy.msg_other,
+      };
+      chips.add((
+        label: '${context.t.strings.legacy.msg_attachment_type}: $typeLabel',
+        kind: _AdvancedSearchChipKind.attachmentType,
+      ));
+    }
+    if (filters.hasRelations != SearchToggleFilter.any) {
+      chips.add((
+        label:
+            '${context.t.strings.legacy.msg_linked_memos}: ${_localizedToggleFilterLabel(filters.hasRelations)}',
+        kind: _AdvancedSearchChipKind.hasRelations,
+      ));
+    }
+
+    return chips;
+  }
+
+  Widget _buildActiveAdvancedFilterSliver(BuildContext context) {
+    final chips = _buildActiveAdvancedSearchChipData(context);
+    if (chips.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.62);
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  context.t.strings.legacy.msg_advanced_search,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: _clearAdvancedSearchFilters,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    context.t.strings.legacy.msg_clear_all_filters,
+                    style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final chip in chips)
+                  _FilterTagChip(
+                    label: chip.label,
+                    onClear: () => _removeSingleAdvancedFilter(chip.kind),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Shortcut? _findShortcutById(List<Shortcut> shortcuts) {
@@ -5913,6 +6159,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
     final selectedQuickSearchKind = _selectedQuickSearchKind;
     final resolvedTag = _activeTagFilter;
+    final advancedFilters = _advancedSearchFilters.normalized();
     final useQuickSearch =
         !useShortcutFilter && selectedQuickSearchKind != null;
     final useRemoteSearch =
@@ -5926,13 +6173,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             tag: resolvedTag,
             startTimeSec: startTimeSec,
             endTimeSecExclusive: endTimeSecExclusive,
+            advancedFilters: advancedFilters,
             pageSize: _pageSize,
           );
     final queryKey =
         '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
         '${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|${useShortcutFilter ? 1 : 0}|'
         '${selectedQuickSearchKind?.name ?? ''}|${useQuickSearch ? 1 : 0}|'
-        '${useRemoteSearch ? 1 : 0}';
+        '${useRemoteSearch ? 1 : 0}|${advancedFilters.signature}';
     if (_paginationKey != queryKey) {
       final previousVisibleCount = _currentResultCount;
       if (previousVisibleCount > 0 && _paginationKey.isNotEmpty) {
@@ -5966,6 +6214,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       shortcutFilter: shortcutFilter,
       startTimeSec: startTimeSec,
       endTimeSecExclusive: endTimeSecExclusive,
+      advancedFilters: advancedFilters,
       pageSize: _pageSize,
     );
     final memosAsync = useShortcutFilter
@@ -5980,6 +6229,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               tag: resolvedTag,
               startTimeSec: startTimeSec,
               endTimeSecExclusive: endTimeSecExclusive,
+              advancedFilters: advancedFilters,
               pageSize: _pageSize,
             )),
           )
@@ -5990,6 +6240,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               tag: resolvedTag,
               startTimeSec: startTimeSec,
               endTimeSecExclusive: endTimeSecExclusive,
+              advancedFilters: advancedFilters,
               pageSize: _pageSize,
             )),
           );
@@ -6023,7 +6274,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         )
         .join(',');
     final showSearchLanding =
-        _searching && searchQuery.trim().isEmpty && !useQuickSearch;
+        _searching &&
+        searchQuery.trim().isEmpty &&
+        !useQuickSearch &&
+        advancedFilters.isEmpty;
     final memosValue = memosAsync.valueOrNull;
     final memosLoading = memosAsync.isLoading;
     final memosError = memosAsync.whenOrNull(error: (e, _) => e);
@@ -6093,7 +6347,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
           '${useShortcutFilter ? 1 : 0}|${selectedQuickSearchKind?.name ?? ''}|'
           '${useQuickSearch ? 1 : 0}|${startTimeSec ?? ''}|${endTimeSecExclusive ?? ''}|'
-          '${enableHomeSort ? _sortOption.name : 'default'}|$tagPresentationSignature';
+          '${enableHomeSort ? _sortOption.name : 'default'}|$tagPresentationSignature|'
+          '${advancedFilters.signature}';
       _syncAnimatedMemos(sortedMemos, listSignature);
     }
     final visibleMemos = _animatedMemos;
@@ -6427,6 +6682,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                                         context,
                                         isDark: isDark,
                                         autofocus: true,
+                                        hasAdvancedFilters:
+                                            _hasAdvancedSearchFilters,
+                                        onOpenAdvancedFilters:
+                                            _openAdvancedSearchSheet,
                                       )
                                     : _buildHeaderTitleWidget(
                                         context,
@@ -6664,6 +6923,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                               tagColors: tagColorLookup,
                             ),
                           ),
+                        if (_hasAdvancedSearchFilters)
+                          _buildActiveAdvancedFilterSliver(context),
                         if (memosLoading && visibleMemos.isNotEmpty)
                           const SliverToBoxAdapter(
                             child: Padding(

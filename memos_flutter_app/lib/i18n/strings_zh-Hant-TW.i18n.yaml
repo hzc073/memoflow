@@ -1577,3 +1577,12 @@ legacy:
     default_prompt: "你是一位極簡主義的筆記助手，擅長提煉核心觀點並以優雅的格式排版。在回覆時，請保持專業、溫和且簡潔的語氣。盡量使用列表和簡短的段落。"
   msg_gallery_mobile_only: 相簿功能僅支援移動端。
   msg_random_review_source_scope: "筆記來源"
+
+  msg_advanced_search: "\u9032\u968e\u641c\u5c0b"
+  msg_location_contains: "\u5b9a\u4f4d\u6587\u5b57\u5305\u542b"
+  msg_document: "\u6587\u4ef6"
+  msg_other: "\u5176\u4ed6"
+  msg_attachment_name_contains: "\u9644\u4ef6\u540d\u7a31\u5305\u542b"
+  msg_attachment_type: "\u9644\u4ef6\u985e\u578b"
+  msg_linked_memos: "\u96d9\u93c8"
+  msg_clear_all_filters: "\u6e05\u9664\u6240\u6709\u7be9\u9078"

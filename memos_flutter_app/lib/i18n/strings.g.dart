@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 7695 (1539 per locale)
+/// Strings: 7735 (1547 per locale)
 ///
-/// Built on 2026-03-23 at 09:26 UTC
+/// Built on 2026-03-27 at 15:02 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -480,6 +480,7 @@ class _StringsStringsLegacyEn {
 	String msg_failed_load({required Object error}) => 'Failed to load: ${error}';
 	String get msg_default_visibility => 'Default visibility';
 	String get msg_filter => 'Filter';
+	String get msg_advanced_search => 'Advanced search';
 	String get msg_imported_memos => 'Imported memos';
 	String get msg_token_created => 'Token created';
 	String get msg_server_response_timeout_try => 'Server response timeout. Try again.';
@@ -1241,6 +1242,7 @@ class _StringsStringsLegacyEn {
 	String get msg_use_relative_path => 'Use a relative path';
 	String get msg_total => 'Total';
 	String get msg_location_2 => 'Location';
+	String get msg_location_contains => 'Location contains';
 	String get msg_show_location_metadata_memos_not_configured => 'Show location metadata on memos. If not configured, coordinates will be shown instead.';
 	String get msg_api_url => 'API URL';
 	String get msg_parsing_progress => 'Parsing progress';
@@ -1542,6 +1544,12 @@ class _StringsStringsLegacyEn {
 	String get msg_image => 'Image';
 	String get msg_video => 'Video';
 	String get msg_audio => 'Audio';
+	String get msg_document => 'Document';
+	String get msg_other => 'Other';
+	String get msg_attachment_name_contains => 'Attachment name contains';
+	String get msg_attachment_type => 'Attachment type';
+	String get msg_linked_memos => 'Linked memos';
+	String get msg_clear_all_filters => 'Clear all filters';
 	String get msg_file => 'File';
 	String get msg_vs_last_month_same_memo_count => 'Same memo count as last month';
 	String get msg_vs_last_month_increase_memo_count => 'More memos than last month';
@@ -3668,6 +3676,14 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_windows_related_settings => 'Windows-bezogene Einstellungen';
 	@override String get msg_write_current_thought => 'Schreiben Sie auf, was Sie denken ...';
 	@override String get msg_yearly_character_trend => 'Jährlicher Charaktertrend';
+	@override String get msg_advanced_search => 'Advanced search';
+	@override String get msg_location_contains => 'Location contains';
+	@override String get msg_document => 'Document';
+	@override String get msg_other => 'Other';
+	@override String get msg_attachment_name_contains => 'Attachment name contains';
+	@override String get msg_attachment_type => 'Attachment type';
+	@override String get msg_linked_memos => 'Linked memos';
+	@override String get msg_clear_all_filters => 'Clear all filters';
 }
 
 // Path: strings.login.mode
@@ -5713,6 +5729,14 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_windows_related_settings => 'Windows関連の設定';
 	@override String get msg_write_current_thought => '考えていることを書き留めてください...';
 	@override String get msg_yearly_character_trend => '年間キャラクタートレンド';
+	@override String get msg_advanced_search => 'Advanced search';
+	@override String get msg_location_contains => 'Location contains';
+	@override String get msg_document => 'Document';
+	@override String get msg_other => 'Other';
+	@override String get msg_attachment_name_contains => 'Attachment name contains';
+	@override String get msg_attachment_type => 'Attachment type';
+	@override String get msg_linked_memos => 'Linked memos';
+	@override String get msg_clear_all_filters => 'Clear all filters';
 }
 
 // Path: strings.login.mode
@@ -7759,6 +7783,14 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override late final _StringsStringsLegacyAppDrawerZhHans app_drawer = _StringsStringsLegacyAppDrawerZhHans._(_root);
 	@override late final _StringsStringsLegacyAiSummaryZhHans ai_summary = _StringsStringsLegacyAiSummaryZhHans._(_root);
 	@override String get msg_random_review_source_scope => '笔记来源';
+	@override String get msg_advanced_search => '高级搜索';
+	@override String get msg_location_contains => '定位文本包含';
+	@override String get msg_document => '文档';
+	@override String get msg_other => '其他';
+	@override String get msg_attachment_name_contains => '附件名称包含';
+	@override String get msg_attachment_type => '附件类型';
+	@override String get msg_linked_memos => '双链';
+	@override String get msg_clear_all_filters => '清除所有筛选';
 }
 
 // Path: strings.shareClip
@@ -9843,6 +9875,14 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override late final _StringsStringsLegacyAiSummaryZhHantTw ai_summary = _StringsStringsLegacyAiSummaryZhHantTw._(_root);
 	@override String get msg_gallery_mobile_only => '相簿功能僅支援移動端。';
 	@override String get msg_random_review_source_scope => '筆記來源';
+	@override String get msg_advanced_search => '進階搜尋';
+	@override String get msg_location_contains => '定位文字包含';
+	@override String get msg_document => '文件';
+	@override String get msg_other => '其他';
+	@override String get msg_attachment_name_contains => '附件名稱包含';
+	@override String get msg_attachment_type => '附件類型';
+	@override String get msg_linked_memos => '雙鏈';
+	@override String get msg_clear_all_filters => '清除所有篩選';
 }
 
 // Path: strings.login.mode
@@ -10799,6 +10839,7 @@ extension on Translations {
 			case 'strings.legacy.msg_failed_load': return ({required Object error}) => 'Failed to load: ${error}';
 			case 'strings.legacy.msg_default_visibility': return 'Default visibility';
 			case 'strings.legacy.msg_filter': return 'Filter';
+			case 'strings.legacy.msg_advanced_search': return 'Advanced search';
 			case 'strings.legacy.msg_imported_memos': return 'Imported memos';
 			case 'strings.legacy.msg_token_created': return 'Token created';
 			case 'strings.legacy.msg_server_response_timeout_try': return 'Server response timeout. Try again.';
@@ -11560,6 +11601,7 @@ extension on Translations {
 			case 'strings.legacy.msg_use_relative_path': return 'Use a relative path';
 			case 'strings.legacy.msg_total': return 'Total';
 			case 'strings.legacy.msg_location_2': return 'Location';
+			case 'strings.legacy.msg_location_contains': return 'Location contains';
 			case 'strings.legacy.msg_show_location_metadata_memos_not_configured': return 'Show location metadata on memos. If not configured, coordinates will be shown instead.';
 			case 'strings.legacy.msg_api_url': return 'API URL';
 			case 'strings.legacy.msg_parsing_progress': return 'Parsing progress';
@@ -11908,6 +11950,12 @@ extension on Translations {
 			case 'strings.legacy.msg_image': return 'Image';
 			case 'strings.legacy.msg_video': return 'Video';
 			case 'strings.legacy.msg_audio': return 'Audio';
+			case 'strings.legacy.msg_document': return 'Document';
+			case 'strings.legacy.msg_other': return 'Other';
+			case 'strings.legacy.msg_attachment_name_contains': return 'Attachment name contains';
+			case 'strings.legacy.msg_attachment_type': return 'Attachment type';
+			case 'strings.legacy.msg_linked_memos': return 'Linked memos';
+			case 'strings.legacy.msg_clear_all_filters': return 'Clear all filters';
 			case 'strings.legacy.msg_file': return 'File';
 			case 'strings.legacy.msg_vs_last_month_same_memo_count': return 'Same memo count as last month';
 			case 'strings.legacy.msg_vs_last_month_increase_memo_count': return 'More memos than last month';
@@ -13528,6 +13576,14 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_windows_related_settings': return 'Windows-bezogene Einstellungen';
 			case 'strings.legacy.msg_write_current_thought': return 'Schreiben Sie auf, was Sie denken ...';
 			case 'strings.legacy.msg_yearly_character_trend': return 'Jährlicher Charaktertrend';
+			case 'strings.legacy.msg_advanced_search': return 'Advanced search';
+			case 'strings.legacy.msg_location_contains': return 'Location contains';
+			case 'strings.legacy.msg_document': return 'Document';
+			case 'strings.legacy.msg_other': return 'Other';
+			case 'strings.legacy.msg_attachment_name_contains': return 'Attachment name contains';
+			case 'strings.legacy.msg_attachment_type': return 'Attachment type';
+			case 'strings.legacy.msg_linked_memos': return 'Linked memos';
+			case 'strings.legacy.msg_clear_all_filters': return 'Clear all filters';
 			default: return null;
 		}
 	}
@@ -15063,6 +15119,14 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_windows_related_settings': return 'Windows関連の設定';
 			case 'strings.legacy.msg_write_current_thought': return '考えていることを書き留めてください...';
 			case 'strings.legacy.msg_yearly_character_trend': return '年間キャラクタートレンド';
+			case 'strings.legacy.msg_advanced_search': return 'Advanced search';
+			case 'strings.legacy.msg_location_contains': return 'Location contains';
+			case 'strings.legacy.msg_document': return 'Document';
+			case 'strings.legacy.msg_other': return 'Other';
+			case 'strings.legacy.msg_attachment_name_contains': return 'Attachment name contains';
+			case 'strings.legacy.msg_attachment_type': return 'Attachment type';
+			case 'strings.legacy.msg_linked_memos': return 'Linked memos';
+			case 'strings.legacy.msg_clear_all_filters': return 'Clear all filters';
 			default: return null;
 		}
 	}
@@ -16598,6 +16662,14 @@ extension on _StringsZhHans {
 			case 'strings.legacy.ai_summary.error_missing_content': return 'AI 响应内容缺失';
 			case 'strings.legacy.ai_summary.default_prompt': return '你是一位极简主义的笔记助手，擅长提炼核心观点并以优雅的格式排版。在回复时，请保持专业、温和且简洁的语气。尽量使用列表和简短的段落。';
 			case 'strings.legacy.msg_random_review_source_scope': return '笔记来源';
+			case 'strings.legacy.msg_advanced_search': return '高级搜索';
+			case 'strings.legacy.msg_location_contains': return '定位文本包含';
+			case 'strings.legacy.msg_document': return '文档';
+			case 'strings.legacy.msg_other': return '其他';
+			case 'strings.legacy.msg_attachment_name_contains': return '附件名称包含';
+			case 'strings.legacy.msg_attachment_type': return '附件类型';
+			case 'strings.legacy.msg_linked_memos': return '双链';
+			case 'strings.legacy.msg_clear_all_filters': return '清除所有筛选';
 			case 'strings.shareClip.videoDetected': return '已识别为视频内容';
 			case 'strings.shareClip.linkOnlyLabel': return '仅保存链接';
 			case 'strings.shareClip.originalLinkLabel': return '原始链接';
@@ -18163,6 +18235,14 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.ai_summary.default_prompt': return '你是一位極簡主義的筆記助手，擅長提煉核心觀點並以優雅的格式排版。在回覆時，請保持專業、溫和且簡潔的語氣。盡量使用列表和簡短的段落。';
 			case 'strings.legacy.msg_gallery_mobile_only': return '相簿功能僅支援移動端。';
 			case 'strings.legacy.msg_random_review_source_scope': return '筆記來源';
+			case 'strings.legacy.msg_advanced_search': return '進階搜尋';
+			case 'strings.legacy.msg_location_contains': return '定位文字包含';
+			case 'strings.legacy.msg_document': return '文件';
+			case 'strings.legacy.msg_other': return '其他';
+			case 'strings.legacy.msg_attachment_name_contains': return '附件名稱包含';
+			case 'strings.legacy.msg_attachment_type': return '附件類型';
+			case 'strings.legacy.msg_linked_memos': return '雙鏈';
+			case 'strings.legacy.msg_clear_all_filters': return '清除所有篩選';
 			default: return null;
 		}
 	}

@@ -6,6 +6,7 @@ typedef MemosQuery = ({
   String? tag,
   int? startTimeSec,
   int? endTimeSecExclusive,
+  AdvancedSearchFilters advancedFilters,
   int pageSize,
 });
 
@@ -16,6 +17,7 @@ typedef ShortcutMemosQuery = ({
   String shortcutFilter,
   int? startTimeSec,
   int? endTimeSecExclusive,
+  AdvancedSearchFilters advancedFilters,
   int pageSize,
 });
 
@@ -63,5 +65,6 @@ typedef QuickSearchMemosQuery = ({
   String? tag,
   int? startTimeSec,
   int? endTimeSecExclusive,
+  AdvancedSearchFilters advancedFilters,
   int pageSize,
 });

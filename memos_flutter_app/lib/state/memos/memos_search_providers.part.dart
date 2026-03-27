@@ -7,6 +7,8 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
   final db = ref.watch(databaseProvider);
   final search = query.searchQuery.trim();
   final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+  final advancedFilters = query.advancedFilters.normalized();
+  final localCandidateLimit = advancedFilters.isEmpty ? pageSize : null;
   return db
       .watchMemos(
         searchQuery: search.isEmpty ? null : search,
@@ -14,9 +16,15 @@ final memosStreamProvider = StreamProvider.family<List<LocalMemo>, MemosQuery>((
         tag: query.tag,
         startTimeSec: query.startTimeSec,
         endTimeSecExclusive: query.endTimeSecExclusive,
-        limit: pageSize,
+        limit: localCandidateLimit,
       )
-      .map((rows) => rows.map(LocalMemo.fromDb).toList(growable: false));
+      .map(
+        (rows) => _applyAdvancedFiltersToRows(
+          rows,
+          advancedFilters,
+          pageSize: pageSize,
+        ),
+      );
 });
 
 final remoteSearchMemosProvider =
@@ -26,16 +34,22 @@ final remoteSearchMemosProvider =
       final normalizedSearch = query.searchQuery.trim();
       final normalizedTag = _normalizeTagInput(query.tag);
       final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+      final advancedFilters = query.advancedFilters.normalized();
       if (account == null) {
+        final localCandidateLimit = advancedFilters.isEmpty ? pageSize : null;
         await for (final rows in db.watchMemos(
           searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
           state: query.state,
           tag: normalizedTag.isEmpty ? null : normalizedTag,
           startTimeSec: query.startTimeSec,
           endTimeSecExclusive: query.endTimeSecExclusive,
-          limit: pageSize,
+          limit: localCandidateLimit,
         )) {
-          yield rows.map(LocalMemo.fromDb).toList(growable: false);
+          yield _applyAdvancedFiltersToRows(
+            rows,
+            advancedFilters,
+            pageSize: pageSize,
+          );
         }
         return;
       }
@@ -248,19 +262,27 @@ final remoteSearchMemosProvider =
             }
 
             final uid = memo.uid.trim();
+            LocalMemo localMemo;
             if (uid.isNotEmpty) {
               final row = await db.getMemoByUid(uid);
               if (row != null) {
-                results.add(LocalMemo.fromDb(row));
+                localMemo = LocalMemo.fromDb(row);
                 dbHitCount += 1;
               } else {
-                results.add(_localMemoFromRemote(memo));
+                localMemo = _localMemoFromRemote(memo);
                 dbMissCount += 1;
               }
             } else {
-              results.add(_localMemoFromRemote(memo));
+              localMemo = _localMemoFromRemote(memo);
               dbMissCount += 1;
             }
+
+            if (!advancedFilters.matches(localMemo)) {
+              filteredOutCount += 1;
+              continue;
+            }
+
+            results.add(localMemo);
 
             if (results.length >= targetCount) {
               break;
@@ -312,9 +334,13 @@ final remoteSearchMemosProvider =
           tag: normalizedTag.isEmpty ? null : normalizedTag,
           startTimeSec: query.startTimeSec,
           endTimeSecExclusive: query.endTimeSecExclusive,
-          limit: pageSize,
+          limit: advancedFilters.isEmpty ? pageSize : null,
         );
-        seed = rows.map(LocalMemo.fromDb).toList(growable: false);
+        seed = _applyAdvancedFiltersToRows(
+          rows,
+          advancedFilters,
+          pageSize: pageSize,
+        );
         logManager.info(
           'Search local fallback completed',
           context: {'traceId': traceId, 'resultCount': seed.length},
@@ -324,8 +350,12 @@ final remoteSearchMemosProvider =
 
       await for (final _ in db.changes) {
         final refreshed = await _refreshRemoteSeedWithLocal(seed: seed, db: db);
-        seed = refreshed;
-        yield refreshed;
+        seed = _applyAdvancedFiltersToMemos(
+          refreshed,
+          advancedFilters,
+          pageSize: pageSize,
+        );
+        yield seed;
       }
     });
 
@@ -339,6 +369,7 @@ final shortcutMemosProvider =
       final search = query.searchQuery.trim();
       final normalizedTag = _normalizeTagInput(query.tag);
       final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+      final advancedFilters = query.advancedFilters.normalized();
       const int? localCandidateLimit = null;
       if (account == null) {
         await for (final rows in db.watchMemos(
@@ -349,8 +380,11 @@ final shortcutMemosProvider =
           endTimeSecExclusive: query.endTimeSecExclusive,
           limit: localCandidateLimit,
         )) {
-          final memos = rows.map(LocalMemo.fromDb).toList(growable: false);
-          yield _applyShortcutPageLimit(memos, pageSize);
+          yield _applyAdvancedFiltersToRows(
+            rows,
+            advancedFilters,
+            pageSize: pageSize,
+          );
         }
         return;
       }
@@ -369,7 +403,11 @@ final shortcutMemosProvider =
           final predicate =
               _buildShortcutPredicate(query.shortcutFilter) ?? initialPredicate;
           final filtered = _filterShortcutMemosFromRows(rows, predicate);
-          yield _applyShortcutPageLimit(filtered, pageSize);
+          yield _applyAdvancedFiltersToMemos(
+            filtered,
+            advancedFilters,
+            pageSize: pageSize,
+          );
         }
         return;
       }
@@ -401,16 +439,26 @@ final shortcutMemosProvider =
         final results = <LocalMemo>[];
         for (final memo in memos) {
           final uid = memo.uid.trim();
-          if (uid.isEmpty) continue;
-          final row = await db.getMemoByUid(uid);
-          if (row != null) {
-            results.add(LocalMemo.fromDb(row));
+          LocalMemo localMemo;
+          if (uid.isNotEmpty) {
+            final row = await db.getMemoByUid(uid);
+            if (row != null) {
+              localMemo = LocalMemo.fromDb(row);
+            } else {
+              localMemo = _localMemoFromRemote(memo);
+            }
           } else {
-            results.add(_localMemoFromRemote(memo));
+            localMemo = _localMemoFromRemote(memo);
           }
+          if (!advancedFilters.matches(localMemo)) continue;
+          results.add(localMemo);
         }
 
-        seed = _sortShortcutMemos(results);
+        seed = _applyAdvancedFiltersToMemos(
+          _sortShortcutMemos(results),
+          advancedFilters,
+          pageSize: pageSize,
+        );
       } on DioException catch (e) {
         if (_shouldFallbackShortcutFilter(e)) {
           final local = await _tryListShortcutMemosLocally(
@@ -421,10 +469,15 @@ final shortcutMemosProvider =
             shortcutFilter: query.shortcutFilter,
             startTimeSec: query.startTimeSec,
             endTimeSecExclusive: query.endTimeSecExclusive,
+            advancedFilters: advancedFilters,
             candidateLimit: localCandidateLimit,
           );
           if (local != null) {
-            seed = _applyShortcutPageLimit(local, pageSize);
+            seed = _applyAdvancedFiltersToMemos(
+              local,
+              advancedFilters,
+              pageSize: pageSize,
+            );
           } else {
             rethrow;
           }
@@ -436,7 +489,16 @@ final shortcutMemosProvider =
       yield seed;
 
       await for (final _ in db.changes) {
-        yield await _refreshShortcutSeedWithLocal(seed: seed, db: db);
+        final refreshed = await _refreshShortcutSeedWithLocal(
+          seed: seed,
+          db: db,
+        );
+        seed = _applyAdvancedFiltersToMemos(
+          refreshed,
+          advancedFilters,
+          pageSize: pageSize,
+        );
+        yield seed;
       }
     });
 
@@ -449,6 +511,7 @@ final quickSearchMemosProvider =
       final search = query.searchQuery.trim();
       final normalizedTag = _normalizeTagInput(query.tag);
       final pageSize = query.pageSize > 0 ? query.pageSize : 200;
+      final advancedFilters = query.advancedFilters.normalized();
       const int? localCandidateLimit = null;
 
       await for (final rows in db.watchMemos(
@@ -464,9 +527,49 @@ final quickSearchMemosProvider =
           nowLocal: DateTime.now(),
         );
         final filtered = _filterShortcutMemosFromRows(rows, predicate);
-        yield _applyShortcutPageLimit(filtered, pageSize);
+        yield _applyAdvancedFiltersToMemos(
+          filtered,
+          advancedFilters,
+          pageSize: pageSize,
+        );
       }
     });
+
+List<LocalMemo> _applyAdvancedFiltersToRows(
+  Iterable<Map<String, dynamic>> rows,
+  AdvancedSearchFilters advancedFilters, {
+  required int pageSize,
+}) {
+  return _applyAdvancedFiltersToMemos(
+    rows.map(LocalMemo.fromDb),
+    advancedFilters,
+    pageSize: pageSize,
+  );
+}
+
+List<LocalMemo> _applyAdvancedFiltersToMemos(
+  Iterable<LocalMemo> memos,
+  AdvancedSearchFilters advancedFilters, {
+  required int pageSize,
+}) {
+  final normalizedFilters = advancedFilters.normalized();
+  if (normalizedFilters.isEmpty) {
+    if (pageSize > 0) {
+      return memos.take(pageSize).toList(growable: false);
+    }
+    return memos.toList(growable: false);
+  }
+
+  final filtered = <LocalMemo>[];
+  for (final memo in memos) {
+    if (!normalizedFilters.matches(memo)) continue;
+    filtered.add(memo);
+    if (pageSize > 0 && filtered.length >= pageSize) {
+      break;
+    }
+  }
+  return filtered;
+}
 
 String? _buildShortcutFilter({
   required int? creatorId,
@@ -640,6 +743,7 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
   required String state,
   required String? tag,
   required String shortcutFilter,
+  required AdvancedSearchFilters advancedFilters,
   int? startTimeSec,
   int? endTimeSecExclusive,
   required int? candidateLimit,
@@ -662,12 +766,11 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
       .map(LocalMemo.fromDb)
       .where(predicate)
       .toList(growable: true);
-  return _sortShortcutMemos(memos);
-}
-
-List<LocalMemo> _applyShortcutPageLimit(List<LocalMemo> memos, int pageSize) {
-  if (pageSize <= 0 || memos.length <= pageSize) return memos;
-  return memos.take(pageSize).toList(growable: false);
+  return _applyAdvancedFiltersToMemos(
+    _sortShortcutMemos(memos),
+    advancedFilters,
+    pageSize: 0,
+  );
 }
 
 typedef _MemoPredicate = bool Function(LocalMemo memo);

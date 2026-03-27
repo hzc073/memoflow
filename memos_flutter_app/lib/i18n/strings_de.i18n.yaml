@@ -1587,3 +1587,12 @@ legacy:
   msg_windows_related_settings: Windows-bezogene Einstellungen
   msg_write_current_thought: Schreiben Sie auf, was Sie denken ...
   msg_yearly_character_trend: Jährlicher Charaktertrend
+
+  msg_advanced_search: "Advanced search"
+  msg_location_contains: "Location contains"
+  msg_document: "Document"
+  msg_other: "Other"
+  msg_attachment_name_contains: "Attachment name contains"
+  msg_attachment_type: "Attachment type"
+  msg_linked_memos: "Linked memos"
+  msg_clear_all_filters: "Clear all filters"
