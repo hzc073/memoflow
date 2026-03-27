@@ -94,19 +94,19 @@ extension _StartupCoordinatorDecision on StartupCoordinator {
     final reason = switch (action) {
       _StartupAction.share =>
         _evaluateShareBlockReason(
-          prefsLoaded: snapshot.prefsLoaded,
-          hasAccount: snapshot.hasAccount,
-          hasNavigator: snapshot.navigatorReady,
-          hasContext: snapshot.contextReady,
-        ) ??
-        'unknown',
+              prefsLoaded: snapshot.prefsLoaded,
+              hasAccount: snapshot.hasAccount,
+              hasNavigator: snapshot.navigatorReady,
+              hasContext: snapshot.contextReady,
+            ) ??
+            'unknown',
       _StartupAction.widget =>
         _evaluateWidgetBlockReason(
-          hasWorkspace: snapshot.hasWorkspace,
-          hasNavigator: snapshot.navigatorReady,
-          hasContext: snapshot.contextReady,
-        ) ??
-        'unknown',
+              hasWorkspace: snapshot.hasWorkspace,
+              hasNavigator: snapshot.navigatorReady,
+              hasContext: snapshot.contextReady,
+            ) ??
+            'unknown',
       _ => 'unknown',
     };
     return _StartupBlockEvaluation(
@@ -244,13 +244,21 @@ extension _StartupCoordinatorDecision on StartupCoordinator {
     return true;
   }
 
-  void _handlePrefsLaunchAction(AppPreferences prefs) {
-    switch (prefs.launchAction) {
+  void _handlePrefsLaunchAction(_StartupSnapshot snapshot) {
+    switch (snapshot.prefs.launchAction) {
       case LaunchAction.dailyReview:
         _appNavigator.openDailyReview();
         break;
+      case LaunchAction.explore:
+        if (!snapshot.hasAccount) break;
+        _appNavigator.openExplore();
+        break;
       case LaunchAction.quickInput:
-        unawaited(openQuickInput(autoFocus: prefs.quickInputAutoFocus));
+        unawaited(
+          openQuickInput(
+            autoFocus: AppPreferences.defaults.quickInputAutoFocus,
+          ),
+        );
         break;
       case LaunchAction.none:
       case LaunchAction.sync:
@@ -292,7 +300,7 @@ extension _StartupCoordinatorDecision on StartupCoordinator {
                 ),
         );
       case _StartupAction.launchAction:
-        _handlePrefsLaunchAction(snapshot.prefs);
+        _handlePrefsLaunchAction(snapshot);
         return const _StartupExecutionResult(handled: true);
       case _StartupAction.none:
         return const _StartupExecutionResult(handled: true);
@@ -421,7 +429,8 @@ extension _StartupCoordinatorDecision on StartupCoordinator {
           retryCount: _startupRetryCount,
         ),
       );
-      if (selection.action == _StartupAction.share && block.reason == 'no_account') {
+      if (selection.action == _StartupAction.share &&
+          block.reason == 'no_account') {
         _clearStartupShareLaunchUi();
         _setShareFlowActive(false);
       }

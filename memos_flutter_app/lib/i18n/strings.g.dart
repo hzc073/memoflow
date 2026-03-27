@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 7735 (1547 per locale)
+/// Strings: 7740 (1548 per locale)
 ///
-/// Built on 2026-03-27 at 15:02 UTC
+/// Built on 2026-03-27 at 15:36 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1752,6 +1752,7 @@ class _StringsStringsSettingsPreferencesEn {
 	String get showEngagementInAllMemoDetails => 'Show likes and comments in all memo details';
 	String get launchAction => 'Launch Action';
 	String get quickInputKeyboard => 'Auto-open keyboard for Quick Input';
+	String get confirmExitOnBack => 'Confirm on Exit';
 	late final _StringsStringsSettingsPreferencesEditorToolbarEn editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarEn._(_root);
 	String get appearance => 'Appearance';
 	String get themeColor => 'Theme Color';
@@ -3805,6 +3806,7 @@ class _StringsStringsSettingsPreferencesDe extends _StringsStringsSettingsPrefer
 	@override String get showEngagementInAllMemoDetails => 'Likes und Kommentare in allen Memo-Details anzeigen';
 	@override String get launchAction => 'Aktion beim Start';
 	@override String get quickInputKeyboard => 'Tastatur bei Schnellnotiz automatisch öffnen';
+	@override String get confirmExitOnBack => 'Beenden bestätigen';
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarDe editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarDe._(_root);
 	@override String get appearance => 'Darstellung';
 	@override String get themeColor => 'Themenfarbe';
@@ -5858,6 +5860,7 @@ class _StringsStringsSettingsPreferencesJa extends _StringsStringsSettingsPrefer
 	@override String get showEngagementInAllMemoDetails => 'すべてのメモ詳細でいいねとコメントを表示';
 	@override String get launchAction => '起動時の動作';
 	@override String get quickInputKeyboard => 'クイック入力で自動的にキーボードを開く';
+	@override String get confirmExitOnBack => '終了時に確認する';
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarJa editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarJa._(_root);
 	@override String get appearance => '外観';
 	@override String get themeColor => 'テーマカラー';
@@ -7951,6 +7954,7 @@ class _StringsStringsSettingsPreferencesZhHans extends _StringsStringsSettingsPr
 	@override String get showEngagementInAllMemoDetails => '在全部笔记详情中显示点赞和评论';
 	@override String get launchAction => '启动动作';
 	@override String get quickInputKeyboard => '快速记录时唤醒键盘';
+	@override String get confirmExitOnBack => '退出时确认';
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarZhHans editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarZhHans._(_root);
 	@override String get appearance => '外观';
 	@override String get themeColor => '主题色';
@@ -10004,6 +10008,7 @@ class _StringsStringsSettingsPreferencesZhHantTw extends _StringsStringsSettings
 	@override String get showEngagementInAllMemoDetails => '在全部筆記詳情中顯示按讚和評論';
 	@override String get launchAction => '啟動動作';
 	@override String get quickInputKeyboard => '快速記錄時自動開啟鍵盤';
+	@override String get confirmExitOnBack => '退出時確認';
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarZhHantTw editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarZhHantTw._(_root);
 	@override String get appearance => '外觀';
 	@override String get themeColor => '主題色';
@@ -10565,6 +10570,7 @@ extension on Translations {
 			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Show likes and comments in all memo details';
 			case 'strings.settings.preferences.launchAction': return 'Launch Action';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Auto-open keyboard for Quick Input';
+			case 'strings.settings.preferences.confirmExitOnBack': return 'Confirm on Exit';
 			case 'strings.settings.preferences.editorToolbar.title': return 'Customize Editor Toolbar';
 			case 'strings.settings.preferences.editorToolbar.description': return 'Long press tools to reorder them, or move tools between the toolbox and toolbar.';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'Live Preview';
@@ -12138,6 +12144,7 @@ extension on _StringsDe {
 			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Likes und Kommentare in allen Memo-Details anzeigen';
 			case 'strings.settings.preferences.launchAction': return 'Aktion beim Start';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Tastatur bei Schnellnotiz automatisch öffnen';
+			case 'strings.settings.preferences.confirmExitOnBack': return 'Beenden bestätigen';
 			case 'strings.settings.preferences.editorToolbar.title': return 'Editor-Symbolleiste anpassen';
 			case 'strings.settings.preferences.editorToolbar.description': return 'Ziehen Sie Buttons, um sie neu anzuordnen oder zwischen oberer und unterer Reihe zu verschieben.';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'Per Drag sortieren';
@@ -13681,6 +13688,7 @@ extension on _StringsJa {
 			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'すべてのメモ詳細でいいねとコメントを表示';
 			case 'strings.settings.preferences.launchAction': return '起動時の動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'クイック入力で自動的にキーボードを開く';
+			case 'strings.settings.preferences.confirmExitOnBack': return '終了時に確認する';
 			case 'strings.settings.preferences.editorToolbar.title': return 'エディターツールバーをカスタマイズ';
 			case 'strings.settings.preferences.editorToolbar.description': return 'ボタンをドラッグして並べ替えたり、上段と下段の間で移動できます。';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'ドラッグで並べ替え';
@@ -15224,6 +15232,7 @@ extension on _StringsZhHans {
 			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在全部笔记详情中显示点赞和评论';
 			case 'strings.settings.preferences.launchAction': return '启动动作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速记录时唤醒键盘';
+			case 'strings.settings.preferences.confirmExitOnBack': return '退出时确认';
 			case 'strings.settings.preferences.editorToolbar.title': return '自定义编辑器工具栏';
 			case 'strings.settings.preferences.editorToolbar.description': return '拖动按钮可以重新排序，或在上排和下排之间移动。';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return '拖动排序';
@@ -16797,6 +16806,7 @@ extension on _StringsZhHantTw {
 			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在全部筆記詳情中顯示按讚和評論';
 			case 'strings.settings.preferences.launchAction': return '啟動動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速記錄時自動開啟鍵盤';
+			case 'strings.settings.preferences.confirmExitOnBack': return '退出時確認';
 			case 'strings.settings.preferences.editorToolbar.title': return '自訂編輯器工具列';
 			case 'strings.settings.preferences.editorToolbar.description': return '拖曳按鈕即可重新排序，或在上排與下排之間移動。';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return '拖曳排序';

@@ -69,5 +69,28 @@ void main() {
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
       expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 0);
     });
+
+    testWidgets('local library startup does not open explore launch action', (
+      tester,
+    ) async {
+      final bootstrapAdapter = FakeBootstrapAdapter(
+        preferences: AppPreferences.defaults.copyWith(
+          launchAction: LaunchAction.explore,
+        ),
+        preferencesLoaded: true,
+        localLibrary: buildTestLocalLibrary(),
+      );
+      final harness = await pumpStartupCoordinatorHarness(
+        tester,
+        bootstrapAdapter: bootstrapAdapter,
+      );
+
+      harness.coordinator.onPrefsLoaded();
+      await tester.pump();
+      await tester.pump();
+
+      expect(harness.navigatorKey.currentState?.canPop(), isFalse);
+      expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
+    });
   });
 }

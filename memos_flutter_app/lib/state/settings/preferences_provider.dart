@@ -212,6 +212,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
       _setAndPersist(state.copyWith(autoSyncOnStartAndResume: v));
   void setQuickInputAutoFocus(bool v) =>
       _setAndPersist(state.copyWith(quickInputAutoFocus: v));
+  void setConfirmExitOnBack(bool v) =>
+      _setAndPersist(state.copyWith(confirmExitOnBack: v));
   void setHapticsEnabled(bool v) =>
       _setAndPersist(state.copyWith(hapticsEnabled: v));
   void setUseLegacyApi(bool v) =>

@@ -40,6 +40,39 @@ void main() {
     expect(find.byType(MemoToolbarSettingsScreen), findsOneWidget);
   });
 
+  testWidgets('hides quick-input keyboard toggle and shows exit confirmation', (
+    tester,
+  ) async {
+    final container = _createContainer(includeSession: true);
+    addTearDown(container.dispose);
+
+    await _pumpPreferencesScreen(tester, container: container);
+
+    expect(find.text('Auto-open keyboard for Quick Input'), findsNothing);
+    expect(find.text('Confirm on Exit'), findsOneWidget);
+  });
+
+  testWidgets('launch action opens centered dialog and supports Explore', (
+    tester,
+  ) async {
+    final container = _createContainer(includeSession: true);
+    addTearDown(container.dispose);
+
+    await _pumpPreferencesScreen(tester, container: container);
+
+    final launchAction = find.text('Launch Action').first;
+    await tester.scrollUntilVisible(
+      launchAction,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(launchAction);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SimpleDialog), findsOneWidget);
+    expect(find.text('Explore'), findsOneWidget);
+  });
+
   testWidgets(
     'removes from toolbar, restores from toolbox, and resets defaults',
     (tester) async {

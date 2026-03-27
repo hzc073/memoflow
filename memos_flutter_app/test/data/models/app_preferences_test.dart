@@ -6,6 +6,10 @@ void main() {
     expect(AppPreferences.defaults.thirdPartyShareEnabled, isFalse);
   });
 
+  test('confirms exit on back by default', () {
+    expect(AppPreferences.defaults.confirmExitOnBack, isTrue);
+  });
+
   test('ignores legacy supporter crown field when reading preferences', () {
     final json = <String, dynamic>{
       ...AppPreferences.defaultsForLanguage(AppLanguage.en).toJson(),

@@ -101,6 +101,7 @@ settings:
     showEngagementInAllMemoDetails: "在全部笔记详情中显示点赞和评论"
     launchAction: "启动动作"
     quickInputKeyboard: "快速记录时唤醒键盘"
+    confirmExitOnBack: "\u9000\u51fa\u65f6\u786e\u8ba4"
     editorToolbar:
       title: "自定义编辑器工具栏"
       description: "拖动按钮可以重新排序，或在上排和下排之间移动。"

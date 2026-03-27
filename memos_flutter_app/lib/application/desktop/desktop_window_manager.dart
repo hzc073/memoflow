@@ -478,8 +478,9 @@ class DesktopWindowManager {
       await _quickInputController.handleHotKey();
       return;
     }
-    final prefs = _bootstrapAdapter.readPreferences(_ref);
-    unawaited(_openQuickInput(autoFocus: prefs.quickInputAutoFocus));
+    unawaited(
+      _openQuickInput(autoFocus: AppPreferences.defaults.quickInputAutoFocus),
+    );
   }
 
   BuildContext? _resolveDesktopUiContext() {

@@ -47,8 +47,11 @@ extension _StartupCoordinatorWidget on StartupCoordinator {
         unawaited(_openWidgetMemoDetail(memoUid));
         break;
       case HomeWidgetType.quickInput:
-        final prefs = _bootstrapAdapter.readPreferences(_ref);
-        unawaited(openQuickInput(autoFocus: prefs.quickInputAutoFocus));
+        unawaited(
+          openQuickInput(
+            autoFocus: AppPreferences.defaults.quickInputAutoFocus,
+          ),
+        );
         break;
       case HomeWidgetType.calendar:
         final epochSec = payload.dayEpochSec;
@@ -78,7 +81,9 @@ extension _StartupCoordinatorWidget on StartupCoordinator {
   }
 
   Future<void> _openWidgetMemoDetail(String memoUid) async {
-    final row = await _bootstrapAdapter.readDatabase(_ref).getMemoByUid(memoUid);
+    final row = await _bootstrapAdapter
+        .readDatabase(_ref)
+        .getMemoByUid(memoUid);
     if (!_isMounted()) return;
     if (row == null) {
       _appNavigator.openDailyReview();

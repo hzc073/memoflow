@@ -101,6 +101,7 @@ settings:
     showEngagementInAllMemoDetails: "すべてのメモ詳細でいいねとコメントを表示"
     launchAction: "起動時の動作"
     quickInputKeyboard: "クイック入力で自動的にキーボードを開く"
+    confirmExitOnBack: "終了時に確認する"
     editorToolbar:
       title: "エディターツールバーをカスタマイズ"
       description: "ボタンをドラッグして並べ替えたり、上段と下段の間で移動できます。"

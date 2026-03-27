@@ -62,6 +62,7 @@ enum LaunchAction {
   none('legacy.launch_action.none'),
   sync('legacy.launch_action.sync'),
   quickInput('legacy.launch_action.quick_input'),
+  explore('legacy.msg_explore'),
   dailyReview('legacy.launch_action.daily_review');
 
   const LaunchAction(this.labelKey);
@@ -91,6 +92,7 @@ class AppPreferences {
     launchAction: LaunchAction.none,
     autoSyncOnStartAndResume: true,
     quickInputAutoFocus: true,
+    confirmExitOnBack: true,
     hapticsEnabled: true,
     useLegacyApi: true,
     networkLoggingEnabled: true,
@@ -139,6 +141,7 @@ class AppPreferences {
     required this.launchAction,
     required this.autoSyncOnStartAndResume,
     required this.quickInputAutoFocus,
+    required this.confirmExitOnBack,
     required this.hapticsEnabled,
     required this.useLegacyApi,
     required this.networkLoggingEnabled,
@@ -178,6 +181,7 @@ class AppPreferences {
   final LaunchAction launchAction;
   final bool autoSyncOnStartAndResume;
   final bool quickInputAutoFocus;
+  final bool confirmExitOnBack;
   final bool hapticsEnabled;
   final bool useLegacyApi;
   final bool networkLoggingEnabled;
@@ -234,6 +238,7 @@ class AppPreferences {
     'launchAction': launchAction.name,
     'autoSyncOnStartAndResume': autoSyncOnStartAndResume,
     'quickInputAutoFocus': quickInputAutoFocus,
+    'confirmExitOnBack': confirmExitOnBack,
     'hapticsEnabled': hapticsEnabled,
     'useLegacyApi': useLegacyApi,
     'networkLoggingEnabled': networkLoggingEnabled,
@@ -537,6 +542,10 @@ class AppPreferences {
         'quickInputAutoFocus',
         AppPreferences.defaults.quickInputAutoFocus,
       ),
+      confirmExitOnBack: parseBool(
+        'confirmExitOnBack',
+        AppPreferences.defaults.confirmExitOnBack,
+      ),
       hapticsEnabled: parseBool(
         'hapticsEnabled',
         AppPreferences.defaults.hapticsEnabled,
@@ -611,6 +620,7 @@ class AppPreferences {
     LaunchAction? launchAction,
     bool? autoSyncOnStartAndResume,
     bool? quickInputAutoFocus,
+    bool? confirmExitOnBack,
     bool? hapticsEnabled,
     bool? useLegacyApi,
     bool? networkLoggingEnabled,
@@ -659,6 +669,7 @@ class AppPreferences {
       autoSyncOnStartAndResume:
           autoSyncOnStartAndResume ?? this.autoSyncOnStartAndResume,
       quickInputAutoFocus: quickInputAutoFocus ?? this.quickInputAutoFocus,
+      confirmExitOnBack: confirmExitOnBack ?? this.confirmExitOnBack,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       useLegacyApi: useLegacyApi ?? this.useLegacyApi,
       networkLoggingEnabled:

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/explore/explore_screen.dart';
 import '../../features/memos/memos_list_screen.dart';
 import '../../features/review/daily_review_screen.dart';
 
@@ -31,6 +32,14 @@ class AppNavigator {
     if (navigator == null) return;
     navigator.push(
       MaterialPageRoute<void>(builder: (_) => const DailyReviewScreen()),
+    );
+  }
+
+  void openExplore() {
+    final navigator = _navigator;
+    if (navigator == null) return;
+    navigator.push(
+      MaterialPageRoute<void>(builder: (_) => const ExploreScreen()),
     );
   }
 

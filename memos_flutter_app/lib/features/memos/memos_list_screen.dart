@@ -3140,6 +3140,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       return true;
     }
 
+    if (!ref.read(appPreferencesProvider).confirmExitOnBack) {
+      _lastBackPressedAt = null;
+      dismissTopToast();
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      return true;
+    }
+
     final now = DateTime.now();
     if (_lastBackPressedAt == null ||
         now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {

@@ -63,6 +63,46 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _selectEnumDialog<T>({
+    required BuildContext context,
+    required String title,
+    required List<T> values,
+    required String Function(T v) label,
+    required T selected,
+    required ValueChanged<T> onSelect,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: Text(title),
+          children: values
+              .map((v) {
+                final isSelected = v == selected;
+                return SimpleDialogOption(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onSelect(v);
+                  },
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(label(v))),
+                    ],
+                  ),
+                );
+              })
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+
   Future<void> _selectFont({
     required BuildContext context,
     required WidgetRef ref,
@@ -352,7 +392,7 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                     icon: Icons.expand_more,
                     textMain: textMain,
                     textMuted: textMuted,
-                    onTap: () => _selectEnum<LaunchAction>(
+                    onTap: () => _selectEnumDialog<LaunchAction>(
                       context: context,
                       title:
                           context.t.strings.settings.preferences.launchAction,
@@ -372,12 +412,12 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                         .strings
                         .settings
                         .preferences
-                        .quickInputKeyboard,
-                    value: prefs.quickInputAutoFocus,
+                        .confirmExitOnBack,
+                    value: prefs.confirmExitOnBack,
                     textMain: textMain,
                     onChanged: (v) => ref
                         .read(appPreferencesProvider.notifier)
-                        .setQuickInputAutoFocus(v),
+                        .setConfirmExitOnBack(v),
                   ),
                   _SelectRow(
                     rowKey: const ValueKey('preferences-editor-toolbar-entry'),

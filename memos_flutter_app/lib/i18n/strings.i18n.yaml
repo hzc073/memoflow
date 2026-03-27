@@ -101,6 +101,7 @@ settings:
     showEngagementInAllMemoDetails: "Show likes and comments in all memo details"
     launchAction: "Launch Action"
     quickInputKeyboard: "Auto-open keyboard for Quick Input"
+    confirmExitOnBack: "Confirm on Exit"
     editorToolbar:
       title: "Customize Editor Toolbar"
       description: "Long press tools to reorder them, or move tools between the toolbox and toolbar."

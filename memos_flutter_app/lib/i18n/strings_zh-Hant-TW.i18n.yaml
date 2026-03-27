@@ -101,6 +101,7 @@ settings:
     showEngagementInAllMemoDetails: "在全部筆記詳情中顯示按讚和評論"
     launchAction: "啟動動作"
     quickInputKeyboard: "快速記錄時自動開啟鍵盤"
+    confirmExitOnBack: "\u9000\u51fa\u6642\u78ba\u8a8d"
     editorToolbar:
       title: "自訂編輯器工具列"
       description: "拖曳按鈕即可重新排序，或在上排與下排之間移動。"

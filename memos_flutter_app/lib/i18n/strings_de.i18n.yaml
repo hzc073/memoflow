@@ -101,6 +101,7 @@ settings:
     showEngagementInAllMemoDetails: "Likes und Kommentare in allen Memo-Details anzeigen"
     launchAction: "Aktion beim Start"
     quickInputKeyboard: "Tastatur bei Schnellnotiz automatisch öffnen"
+    confirmExitOnBack: "Beenden bestätigen"
     editorToolbar:
       title: "Editor-Symbolleiste anpassen"
       description: "Ziehen Sie Buttons, um sie neu anzuordnen oder zwischen oberer und unterer Reihe zu verschieben."
