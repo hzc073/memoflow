@@ -37,12 +37,10 @@ import '../tags/tags_screen.dart';
 import '../sync/sync_queue_screen.dart';
 import '../../i18n/strings.g.dart';
 
-enum _AttachmentKind { image, video, audio, file }
-
 class _AttachmentSection {
   const _AttachmentSection({required this.kind, required this.entries});
 
-  final _AttachmentKind kind;
+  final AttachmentCategory kind;
   final List<ResourceEntry> entries;
 }
 
@@ -57,7 +55,7 @@ class ResourcesScreen extends ConsumerStatefulWidget {
 }
 
 class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
-  final Set<_AttachmentKind> _collapsedKinds = <_AttachmentKind>{};
+  final Set<AttachmentCategory> _collapsedKinds = <AttachmentCategory>{};
 
   File? _localAttachmentFile(Attachment attachment) {
     final raw = attachment.externalLink.trim();
@@ -218,9 +216,9 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
     required bool rebaseAbsoluteFileUrlForV024,
     required bool attachAuthForSameOriginAbsolute,
   }) {
-    final isImage = attachment.type.startsWith('image/');
-    final isAudio = attachment.type.startsWith('audio');
-    final isVideo = attachment.type.startsWith('video');
+    final isImage = attachment.isImage;
+    final isAudio = attachment.isAudio;
+    final isVideo = attachment.isVideo;
     final localFile = _localAttachmentFile(attachment);
 
     if (isImage) {
@@ -383,19 +381,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }
 
   String _displayName(Attachment attachment) {
-    final filename = attachment.filename.trim();
-    if (filename.isNotEmpty) return filename;
-    final uid = attachment.uid.trim();
-    if (uid.isNotEmpty) return uid;
-    return attachment.name;
+    return attachment.displayName;
   }
 
-  _AttachmentKind _classifyAttachment(Attachment attachment) {
-    final type = attachment.type.trim().toLowerCase();
-    if (type.startsWith('image/')) return _AttachmentKind.image;
-    if (type.startsWith('video/')) return _AttachmentKind.video;
-    if (type.startsWith('audio/')) return _AttachmentKind.audio;
-    return _AttachmentKind.file;
+  AttachmentCategory _classifyAttachment(Attachment attachment) {
+    return attachment.searchCategory;
   }
 
   int _compareEntries(ResourceEntry a, ResourceEntry b) {
@@ -413,15 +403,15 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }
 
   List<_AttachmentSection> _groupEntries(List<ResourceEntry> entries) {
-    final grouped = <_AttachmentKind, List<ResourceEntry>>{
-      for (final kind in _AttachmentKind.values) kind: <ResourceEntry>[],
+    final grouped = <AttachmentCategory, List<ResourceEntry>>{
+      for (final kind in AttachmentCategory.values) kind: <ResourceEntry>[],
     };
     for (final entry in entries) {
       grouped[_classifyAttachment(entry.attachment)]!.add(entry);
     }
 
     final sections = <_AttachmentSection>[];
-    for (final kind in _AttachmentKind.values) {
+    for (final kind in AttachmentCategory.values) {
       final items = grouped[kind]!;
       items.sort(_compareEntries);
       if (items.isEmpty) continue;
@@ -430,21 +420,21 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
     return sections;
   }
 
-  String _kindLabel(BuildContext context, _AttachmentKind kind) {
+  String _kindLabel(BuildContext context, AttachmentCategory kind) {
     return switch (kind) {
-      _AttachmentKind.image => context.t.strings.legacy.msg_image,
-      _AttachmentKind.video => context.t.strings.legacy.msg_video,
-      _AttachmentKind.audio => context.t.strings.legacy.msg_audio,
-      _AttachmentKind.file => context.t.strings.legacy.msg_file,
+      AttachmentCategory.image => context.t.strings.legacy.msg_image,
+      AttachmentCategory.audio => context.t.strings.legacy.msg_audio,
+      AttachmentCategory.document => context.t.strings.legacy.msg_document,
+      AttachmentCategory.other => context.t.strings.legacy.msg_other,
     };
   }
 
-  IconData _kindIcon(_AttachmentKind kind) {
+  IconData _kindIcon(AttachmentCategory kind) {
     return switch (kind) {
-      _AttachmentKind.image => Icons.image_outlined,
-      _AttachmentKind.video => Icons.videocam_outlined,
-      _AttachmentKind.audio => Icons.graphic_eq_rounded,
-      _AttachmentKind.file => Icons.insert_drive_file_outlined,
+      AttachmentCategory.image => Icons.image_outlined,
+      AttachmentCategory.audio => Icons.graphic_eq_rounded,
+      AttachmentCategory.document => Icons.description_outlined,
+      AttachmentCategory.other => Icons.category_outlined,
     };
   }
 
@@ -474,11 +464,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
     );
   }
 
-  bool _isSectionCollapsed(_AttachmentKind kind) {
+  bool _isSectionCollapsed(AttachmentCategory kind) {
     return _collapsedKinds.contains(kind);
   }
 
-  void _toggleSection(_AttachmentKind kind) {
+  void _toggleSection(AttachmentCategory kind) {
     setState(() {
       if (!_collapsedKinds.add(kind)) {
         _collapsedKinds.remove(kind);
@@ -532,13 +522,14 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   Widget _buildCardPreview(
     BuildContext context, {
     required Attachment attachment,
-    required _AttachmentKind kind,
+    required AttachmentCategory kind,
     required File? localFile,
     required String? thumbnailUrl,
     required String? authHeader,
     required MemoVideoEntry? videoEntry,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isVideo = attachment.isVideo;
     final placeholder = Container(
       color: colorScheme.surfaceContainerHighest,
       alignment: Alignment.center,
@@ -547,7 +538,7 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
         children: [
           Icon(_kindIcon(kind), size: 34, color: colorScheme.onSurfaceVariant),
           const SizedBox(height: 8),
-          if (kind == _AttachmentKind.file)
+          if (!attachment.isImage && !attachment.isAudio && !isVideo)
             Text(
               _fileBadgeLabel(context, attachment),
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -561,22 +552,23 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
     );
 
     final Widget child = switch (kind) {
-      _AttachmentKind.image when localFile != null => Image.file(
+      AttachmentCategory.image when localFile != null => Image.file(
         localFile,
         fit: BoxFit.cover,
       ),
-      _AttachmentKind.image when thumbnailUrl != null => CachedNetworkImage(
+      AttachmentCategory.image when thumbnailUrl != null => CachedNetworkImage(
         imageUrl: thumbnailUrl,
         httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
         fit: BoxFit.cover,
         errorWidget: (context, url, error) => placeholder,
         placeholder: (context, url) => placeholder,
       ),
-      _AttachmentKind.video when videoEntry != null => AttachmentVideoThumbnail(
-        entry: videoEntry,
-        borderRadius: 12,
-        showPlayIcon: true,
-      ),
+      AttachmentCategory.other when isVideo && videoEntry != null =>
+        AttachmentVideoThumbnail(
+          entry: videoEntry,
+          borderRadius: 12,
+          showPlayIcon: true,
+        ),
       _ => placeholder,
     };
 
@@ -597,6 +589,7 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }) {
     final attachment = entry.attachment;
     final kind = _classifyAttachment(attachment);
+    final isVideo = attachment.isVideo;
     final displayName = _displayName(attachment);
     final localFile = _localAttachmentFile(attachment);
     final thumbnailUrl = _resolveRemoteUrl(
@@ -605,7 +598,7 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
       thumbnail: true,
     );
     final remoteUrl = _resolveRemoteUrl(baseUrl, attachment, thumbnail: false);
-    final videoEntry = kind == _AttachmentKind.video
+    final videoEntry = isVideo
         ? memoVideoEntryFromAttachment(
             attachment,
             baseUrl,
@@ -623,13 +616,17 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
         ResourcesScreen.debugRouteRequestOverride != null;
     final canPreview =
         switch (kind) {
-          _AttachmentKind.image ||
-          _AttachmentKind.audio => localFile != null || remoteUrl != null,
-          _AttachmentKind.video =>
-            localFile != null || remoteUrl != null || hasVideoSource,
-          _AttachmentKind.file => false,
+          AttachmentCategory.image ||
+          AttachmentCategory.audio => localFile != null || remoteUrl != null,
+          AttachmentCategory.document => false,
+          AttachmentCategory.other =>
+            isVideo &&
+                (localFile != null || remoteUrl != null || hasVideoSource),
         } ||
-        (hasDebugRouteOverride && kind != _AttachmentKind.file);
+        (hasDebugRouteOverride &&
+            (kind == AttachmentCategory.image ||
+                kind == AttachmentCategory.audio ||
+                isVideo));
     final canDownload = localFile != null || remoteUrl != null;
     final colorScheme = Theme.of(context).colorScheme;
     final actionStyle = IconButton.styleFrom(
@@ -651,7 +648,7 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
         key: ValueKey('resources-card-tap-${entry.memoUid}-${attachment.uid}'),
         borderRadius: BorderRadius.circular(14),
         onTap: () {
-          if (canPreview && kind != _AttachmentKind.file) {
+          if (canPreview) {
             _openPreview(
               context,
               attachment,

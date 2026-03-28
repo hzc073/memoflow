@@ -240,108 +240,18 @@ bool _sameDateRange(DateTimeRange? a, DateTimeRange? b) {
 }
 
 String _advancedSearchAttachmentDisplayName(Attachment attachment) {
-  final filename = attachment.filename.trim();
-  if (filename.isNotEmpty) return filename;
-  final uid = attachment.uid.trim();
-  if (uid.isNotEmpty) return uid;
-  return attachment.name.trim();
+  return attachment.displayName;
 }
 
 bool _advancedSearchAttachmentMatchesType(
   Attachment attachment,
   AdvancedAttachmentType type,
 ) {
+  final category = attachment.searchCategory;
   return switch (type) {
-    AdvancedAttachmentType.image => _isImageAttachment(attachment),
-    AdvancedAttachmentType.audio => _isAudioAttachment(attachment),
-    AdvancedAttachmentType.document => _isDocumentAttachment(attachment),
-    AdvancedAttachmentType.other =>
-      !_isImageAttachment(attachment) &&
-          !_isAudioAttachment(attachment) &&
-          !_isDocumentAttachment(attachment),
+    AdvancedAttachmentType.image => category == AttachmentCategory.image,
+    AdvancedAttachmentType.audio => category == AttachmentCategory.audio,
+    AdvancedAttachmentType.document => category == AttachmentCategory.document,
+    AdvancedAttachmentType.other => category == AttachmentCategory.other,
   };
-}
-
-bool _isImageAttachment(Attachment attachment) {
-  final type = attachment.type.trim().toLowerCase();
-  if (type.startsWith('image/')) return true;
-
-  final filename = attachment.filename.trim().toLowerCase();
-  if (filename.isEmpty) return false;
-  const imageExtensions = <String>[
-    '.avif',
-    '.bmp',
-    '.gif',
-    '.heic',
-    '.jpeg',
-    '.jpg',
-    '.png',
-    '.svg',
-    '.webp',
-  ];
-  for (final ext in imageExtensions) {
-    if (filename.endsWith(ext)) return true;
-  }
-  return false;
-}
-
-bool _isDocumentAttachment(Attachment attachment) {
-  final type = attachment.type.trim().toLowerCase();
-  const documentMimeTypes = <String>{
-    'application/pdf',
-    'pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'application/rtf',
-    'text/rtf',
-    'text/plain',
-    'text/markdown',
-    'text/csv',
-    'text/tab-separated-values',
-    'application/csv',
-    'application/xml',
-    'text/xml',
-    'application/vnd.oasis.opendocument.text',
-    'application/vnd.oasis.opendocument.spreadsheet',
-    'application/vnd.oasis.opendocument.presentation',
-    'application/ofd',
-    'application/vnd.ofd',
-    'application/x-ofd',
-  };
-  if (documentMimeTypes.contains(type)) return true;
-
-  final filename = attachment.filename.trim().toLowerCase();
-  if (filename.isEmpty) return false;
-
-  const documentExtensions = <String>[
-    '.pdf',
-    '.doc',
-    '.docx',
-    '.xls',
-    '.xlsx',
-    '.ppt',
-    '.pptx',
-    '.rtf',
-    '.txt',
-    '.md',
-    '.markdown',
-    '.csv',
-    '.tsv',
-    '.odt',
-    '.ods',
-    '.odp',
-    '.pages',
-    '.numbers',
-    '.key',
-    '.xml',
-    '.ofd',
-  ];
-  for (final ext in documentExtensions) {
-    if (filename.endsWith(ext)) return true;
-  }
-  return false;
 }

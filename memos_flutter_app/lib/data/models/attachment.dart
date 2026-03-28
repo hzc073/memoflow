@@ -1,3 +1,5 @@
+enum AttachmentCategory { image, audio, document, other }
+
 class Attachment {
   const Attachment({
     required this.name,
@@ -20,8 +22,12 @@ class Attachment {
   final String? hash;
 
   String get uid {
-    if (name.startsWith('attachments/')) return name.substring('attachments/'.length);
-    if (name.startsWith('resources/')) return name.substring('resources/'.length);
+    if (name.startsWith('attachments/')) {
+      return name.substring('attachments/'.length);
+    }
+    if (name.startsWith('resources/')) {
+      return name.substring('resources/'.length);
+    }
     return name;
   }
 
@@ -71,5 +77,134 @@ class Attachment {
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v) ?? 0;
     return 0;
+  }
+}
+
+extension AttachmentTypeClassification on Attachment {
+  String get displayName {
+    final trimmedFilename = filename.trim();
+    if (trimmedFilename.isNotEmpty) return trimmedFilename;
+
+    final trimmedUid = uid.trim();
+    if (trimmedUid.isNotEmpty) return trimmedUid;
+    return name.trim();
+  }
+
+  AttachmentCategory get searchCategory {
+    if (isImage) return AttachmentCategory.image;
+    if (isAudio) return AttachmentCategory.audio;
+    if (isDocument) return AttachmentCategory.document;
+    return AttachmentCategory.other;
+  }
+
+  bool get isImage {
+    if (_normalizedType.startsWith('image/')) return true;
+    return _matchesExtension(const <String>[
+      '.avif',
+      '.bmp',
+      '.gif',
+      '.heic',
+      '.jpeg',
+      '.jpg',
+      '.png',
+      '.svg',
+      '.webp',
+    ]);
+  }
+
+  bool get isAudio {
+    if (_normalizedType.startsWith('audio/')) return true;
+    if (_normalizedType == 'audio') return true;
+    return _matchesExtension(const <String>[
+      '.aac',
+      '.amr',
+      '.flac',
+      '.m4a',
+      '.mp3',
+      '.ogg',
+      '.opus',
+      '.wav',
+      '.wma',
+    ]);
+  }
+
+  bool get isDocument {
+    const documentMimeTypes = <String>{
+      'application/pdf',
+      'pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/rtf',
+      'text/rtf',
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'text/tab-separated-values',
+      'application/csv',
+      'application/xml',
+      'text/xml',
+      'application/vnd.oasis.opendocument.text',
+      'application/vnd.oasis.opendocument.spreadsheet',
+      'application/vnd.oasis.opendocument.presentation',
+      'application/ofd',
+      'application/vnd.ofd',
+      'application/x-ofd',
+    };
+    if (documentMimeTypes.contains(_normalizedType)) return true;
+    return _matchesExtension(const <String>[
+      '.pdf',
+      '.doc',
+      '.docx',
+      '.xls',
+      '.xlsx',
+      '.ppt',
+      '.pptx',
+      '.rtf',
+      '.txt',
+      '.md',
+      '.markdown',
+      '.csv',
+      '.tsv',
+      '.odt',
+      '.ods',
+      '.odp',
+      '.pages',
+      '.numbers',
+      '.key',
+      '.xml',
+      '.ofd',
+    ]);
+  }
+
+  bool get isVideo {
+    if (_normalizedType.startsWith('video/')) return true;
+    if (_normalizedType == 'video') return true;
+    return _matchesExtension(const <String>[
+      '.3gp',
+      '.avi',
+      '.m4v',
+      '.mkv',
+      '.mov',
+      '.mp4',
+      '.mpeg',
+      '.mpg',
+      '.webm',
+    ]);
+  }
+
+  String get _normalizedType => type.trim().toLowerCase();
+
+  String get _normalizedFilename => filename.trim().toLowerCase();
+
+  bool _matchesExtension(List<String> extensions) {
+    if (_normalizedFilename.isEmpty) return false;
+    for (final ext in extensions) {
+      if (_normalizedFilename.endsWith(ext)) return true;
+    }
+    return false;
   }
 }

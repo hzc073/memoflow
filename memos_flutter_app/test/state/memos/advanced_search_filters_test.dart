@@ -182,6 +182,17 @@ void main() {
           ),
         ],
       );
+      final videoMemo = _memo(
+        attachments: const [
+          Attachment(
+            name: 'attachments/video',
+            filename: 'clip.mp4',
+            type: 'video/mp4',
+            size: 1,
+            externalLink: '',
+          ),
+        ],
+      );
 
       expect(
         const AdvancedSearchFilters(
@@ -223,6 +234,12 @@ void main() {
         const AdvancedSearchFilters(
           attachmentType: AdvancedAttachmentType.other,
         ).matches(otherMemo),
+        isTrue,
+      );
+      expect(
+        const AdvancedSearchFilters(
+          attachmentType: AdvancedAttachmentType.other,
+        ).matches(videoMemo),
         isTrue,
       );
     });

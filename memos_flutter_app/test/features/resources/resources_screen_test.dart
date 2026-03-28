@@ -49,142 +49,155 @@ void main() {
     await deleteTestDatabase(dbName);
   });
 
-  testWidgets('groups attachments by type and supports collapsing sections', (
-    tester,
-  ) async {
-    final entries = <ResourceEntry>[
-      _entry(
-        memoUid: 'memo-image-new',
-        updateTime: DateTime(2024, 1, 10, 9),
-        attachment: _attachment('image-new', 'image-new.png', 'image/png'),
-      ),
-      _entry(
-        memoUid: 'memo-image-old',
-        updateTime: DateTime(2024, 1, 1, 9),
-        attachment: _attachment('image-old', 'image-old.png', 'image/png'),
-      ),
-      _entry(
-        memoUid: 'memo-video',
-        updateTime: DateTime(2024, 1, 9, 9),
-        attachment: _attachment('video-1', 'video-1.mp4', 'video/mp4'),
-      ),
-      _entry(
-        memoUid: 'memo-audio',
-        updateTime: DateTime(2024, 1, 8, 9),
-        attachment: _attachment('audio-1', 'audio-1.mp3', 'audio/mpeg'),
-      ),
-      _entry(
-        memoUid: 'memo-file',
-        updateTime: DateTime(2024, 1, 7, 9),
-        attachment: _attachment('file-1', 'file-1.pdf', 'application/pdf'),
-      ),
-    ];
+  testWidgets(
+    'groups attachments by advanced search types and supports collapsing sections',
+    (tester) async {
+      final entries = <ResourceEntry>[
+        _entry(
+          memoUid: 'memo-image-new',
+          updateTime: DateTime(2024, 1, 10, 9),
+          attachment: _attachment('image-new', 'image-new.png', 'image/png'),
+        ),
+        _entry(
+          memoUid: 'memo-image-old',
+          updateTime: DateTime(2024, 1, 1, 9),
+          attachment: _attachment('image-old', 'image-old.png', 'image/png'),
+        ),
+        _entry(
+          memoUid: 'memo-video',
+          updateTime: DateTime(2024, 1, 9, 9),
+          attachment: _attachment('video-1', 'video-1.mp4', 'video/mp4'),
+        ),
+        _entry(
+          memoUid: 'memo-audio',
+          updateTime: DateTime(2024, 1, 8, 9),
+          attachment: _attachment('audio-1', 'audio-1.mp3', 'audio/mpeg'),
+        ),
+        _entry(
+          memoUid: 'memo-file',
+          updateTime: DateTime(2024, 1, 7, 9),
+          attachment: _attachment('file-1', 'file-1.pdf', 'application/pdf'),
+        ),
+      ];
 
-    await tester.pumpWidget(
-      _buildTestApp(database: database, resourceEntries: entries),
-    );
-    await _settle(tester);
+      await tester.pumpWidget(
+        _buildTestApp(database: database, resourceEntries: entries),
+      );
+      await _settle(tester);
 
-    final imageHeader = find.byKey(
-      const ValueKey('resources-section-title-image'),
-    );
-    final videoHeader = find.byKey(
-      const ValueKey('resources-section-title-video'),
-    );
-    final audioHeader = find.byKey(
-      const ValueKey('resources-section-title-audio'),
-    );
-    final fileHeader = find.byKey(
-      const ValueKey('resources-section-title-file'),
-    );
+      final imageHeader = find.byKey(
+        const ValueKey('resources-section-title-image'),
+      );
+      final audioHeader = find.byKey(
+        const ValueKey('resources-section-title-audio'),
+      );
+      final documentHeader = find.byKey(
+        const ValueKey('resources-section-title-document'),
+      );
+      final otherHeader = find.byKey(
+        const ValueKey('resources-section-title-other'),
+      );
 
-    expect(imageHeader, findsOneWidget);
-    expect(videoHeader, findsOneWidget);
-    expect(find.byKey(const ValueKey('resources-sort-button')), findsNothing);
+      expect(imageHeader, findsOneWidget);
+      expect(audioHeader, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('resources-section-title-video')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('resources-sort-button')), findsNothing);
 
-    expect(
-      tester.getTopLeft(imageHeader).dy,
-      lessThan(tester.getTopLeft(videoHeader).dy),
-    );
+      expect(
+        tester.getTopLeft(imageHeader).dy,
+        lessThan(tester.getTopLeft(audioHeader).dy),
+      );
 
-    _expectVisualBefore(
-      tester,
-      find.text('image-new.png'),
-      find.text('image-old.png'),
-    );
+      _expectVisualBefore(
+        tester,
+        find.text('image-new.png'),
+        find.text('image-old.png'),
+      );
 
-    await tester.tap(imageHeader);
-    await _settle(tester);
+      await tester.tap(imageHeader);
+      await _settle(tester);
 
-    expect(find.text('image-new.png'), findsNothing);
-    expect(find.text('image-old.png'), findsNothing);
+      expect(find.text('image-new.png'), findsNothing);
+      expect(find.text('image-old.png'), findsNothing);
 
-    await tester.tap(imageHeader);
-    await _settle(tester);
+      await tester.tap(imageHeader);
+      await _settle(tester);
 
-    expect(find.text('image-new.png'), findsOneWidget);
-    expect(find.text('image-old.png'), findsOneWidget);
+      expect(find.text('image-new.png'), findsOneWidget);
+      expect(find.text('image-old.png'), findsOneWidget);
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
-    await _settle(tester);
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -1200));
+      await _settle(tester);
 
-    expect(audioHeader, findsOneWidget);
-    expect(fileHeader, findsOneWidget);
+      expect(documentHeader, findsOneWidget);
+      expect(otherHeader, findsOneWidget);
 
-    await _disposeTree(tester);
-  });
+      await _disposeTree(tester);
+    },
+  );
 
-  testWidgets('media card tap opens preview while file card opens memo', (
-    tester,
-  ) async {
-    final requestedRoutes = <String>[];
-    ResourcesScreen.debugRouteRequestOverride = requestedRoutes.add;
+  testWidgets(
+    'video card under other opens preview while document card opens memo',
+    (tester) async {
+      final requestedRoutes = <String>[];
+      ResourcesScreen.debugRouteRequestOverride = requestedRoutes.add;
 
-    await tester.pumpWidget(
-      _buildTestApp(
-        database: database,
-        resourceEntries: [
-          _entry(
-            memoUid: 'memo-image',
-            updateTime: DateTime(2024, 1, 10, 9),
-            attachment: _attachment(
-              'preview-image',
-              'preview-image.png',
-              'image/png',
+      await tester.pumpWidget(
+        _buildTestApp(
+          database: database,
+          resourceEntries: [
+            _entry(
+              memoUid: 'memo-video',
+              updateTime: DateTime(2024, 1, 10, 9),
+              attachment: _attachment(
+                'preview-video',
+                'preview-video.mp4',
+                'video/mp4',
+              ),
             ),
-          ),
-          _entry(
-            memoUid: 'memo-file',
-            updateTime: DateTime(2024, 1, 9, 9),
-            attachment: _attachment(
-              'preview-file',
-              'preview-file.pdf',
-              'application/pdf',
+            _entry(
+              memoUid: 'memo-document',
+              updateTime: DateTime(2024, 1, 9, 9),
+              attachment: _attachment(
+                'preview-document',
+                'preview-document.pdf',
+                'application/pdf',
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-    await _settle(tester);
+          ],
+        ),
+      );
+      await _settle(tester);
 
-    await _invokeCardTap(
-      tester,
-      find.byKey(const ValueKey('resources-card-tap-memo-image-preview-image')),
-    );
-    await _settle(tester);
+      await _invokeCardTap(
+        tester,
+        find.byKey(
+          const ValueKey('resources-card-tap-memo-video-preview-video'),
+        ),
+      );
+      await _settle(tester);
 
-    expect(requestedRoutes, ['resources/image-preview']);
+      expect(requestedRoutes, ['resources/video-preview']);
 
-    await _invokeCardTap(
-      tester,
-      find.byKey(const ValueKey('resources-card-tap-memo-file-preview-file')),
-    );
-    await _settle(tester);
+      await _invokeCardTap(
+        tester,
+        find.byKey(
+          const ValueKey('resources-card-tap-memo-document-preview-document'),
+        ),
+      );
+      await _settle(tester);
 
-    expect(requestedRoutes, ['resources/image-preview', 'resources/open-memo']);
+      expect(requestedRoutes, [
+        'resources/video-preview',
+        'resources/open-memo',
+      ]);
 
-    await _disposeTree(tester);
-  });
+      await _disposeTree(tester);
+    },
+  );
 
   testWidgets('open memo action opens source memo for any attachment', (
     tester,
