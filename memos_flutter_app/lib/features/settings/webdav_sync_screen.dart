@@ -2756,6 +2756,7 @@ class _InputRow extends StatelessWidget {
     this.keyboardType,
     this.obscureText = false,
     this.onEditingComplete,
+    this.suffixIcon,
   });
 
   final String label;
@@ -2767,6 +2768,7 @@ class _InputRow extends StatelessWidget {
   final TextInputType? keyboardType;
   final bool obscureText;
   final VoidCallback? onEditingComplete;
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -2790,6 +2792,10 @@ class _InputRow extends StatelessWidget {
             fontSize: 12,
           ),
           border: InputBorder.none,
+          suffixIcon: suffixIcon,
+          suffixIconConstraints: suffixIcon == null
+              ? null
+              : const BoxConstraints(minWidth: 40, minHeight: 40),
         ),
       ),
     );
@@ -2955,7 +2961,6 @@ class _WebDavConnectionScreenState
   late bool _ignoreTlsErrors;
   bool _obscurePassword = true;
   bool _testingConnection = false;
-  WebDavConnectionTestResult? _lastConnectionTestResult;
 
   @override
   void initState() {
@@ -3006,7 +3011,6 @@ class _WebDavConnectionScreenState
     if (selected == null) return;
     setState(() {
       _authMode = selected;
-      _lastConnectionTestResult = null;
     });
     widget.onAuthModeChanged(selected);
   }
@@ -3023,9 +3027,10 @@ class _WebDavConnectionScreenState
     );
   }
 
-  String? _connectionTestMessage(BuildContext context) {
-    final result = _lastConnectionTestResult;
-    if (result == null) return null;
+  String? _connectionTestMessage(
+    BuildContext context,
+    WebDavConnectionTestResult result,
+  ) {
     if (result.success) {
       return result.cleanupFailed
           ? context.tr(
@@ -3046,7 +3051,6 @@ class _WebDavConnectionScreenState
     FocusScope.of(context).unfocus();
     setState(() {
       _testingConnection = true;
-      _lastConnectionTestResult = null;
     });
     final result = await ref
         .read(syncCoordinatorProvider.notifier)
@@ -3054,17 +3058,15 @@ class _WebDavConnectionScreenState
     if (!mounted) return;
     setState(() {
       _testingConnection = false;
-      _lastConnectionTestResult = result;
     });
-    final message = _connectionTestMessage(context);
+    final message = _connectionTestMessage(context, result);
     if (message == null || message.trim().isEmpty) return;
-    if (result.success && !result.cleanupFailed) {
-      showTopToast(context, message);
-      return;
+    final shown = showTopToast(context, message);
+    if (!shown) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -3087,11 +3089,6 @@ class _WebDavConnectionScreenState
         widget.usernameController.text.trim().isEmpty !=
         widget.passwordController.text.trim().isEmpty;
     final canTestConnection = serverUrl.isNotEmpty && !hasCredentialMismatch;
-    final connectionTestMessage = _connectionTestMessage(context);
-    final connectionTestSucceeded = _lastConnectionTestResult?.success ?? false;
-    final connectionTestHasWarning =
-        (_lastConnectionTestResult?.cleanupFailed ?? false) &&
-        connectionTestSucceeded;
 
     return Scaffold(
       backgroundColor: bg,
@@ -3131,69 +3128,33 @@ class _WebDavConnectionScreenState
                 textMain: textMain,
                 textMuted: textMuted,
                 keyboardType: TextInputType.url,
-                onChanged: (value) {
-                  widget.onServerUrlChanged(value);
-                  if (!mounted) return;
-                  setState(() => _lastConnectionTestResult = null);
-                },
+                onChanged: widget.onServerUrlChanged,
                 onEditingComplete: widget.onServerUrlEditingComplete,
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: Row(
-                  children: [
-                    FilledButton.tonalIcon(
-                      onPressed: (!canTestConnection || _testingConnection)
-                          ? null
-                          : _testConnection,
-                      icon: _testingConnection
-                          ? const SizedBox.square(
-                              dimension: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.network_check_rounded),
-                      label: Text(
-                        context.tr(
-                          zh: '\u6d4b\u8bd5\u8fde\u63a5',
-                          en: 'Test connection',
-                        ),
-                      ),
-                    ),
-                    if (hasCredentialMismatch) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          context.tr(
-                            zh: '\u8bf7\u540c\u65f6\u586b\u5199\u7528\u6237\u540d\u548c\u5bc6\u7801\uff0c\u6216\u5747\u7559\u7a7a\u3002',
-                            en: 'Enter both username and password, or leave both empty.',
-                          ),
-                          style: TextStyle(fontSize: 12, color: textMuted),
-                        ),
-                      ),
-                    ],
-                  ],
+                suffixIcon: IconButton(
+                  tooltip: context.tr(
+                    zh: '\u6d4b\u8bd5\u8fde\u63a5',
+                    en: 'Test connection',
+                  ),
+                  onPressed: (!canTestConnection || _testingConnection)
+                      ? null
+                      : _testConnection,
+                  icon: _testingConnection
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.network_check_rounded, size: 20),
                 ),
               ),
-              if (connectionTestMessage != null) ...[
+              if (hasCredentialMismatch) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                   child: Text(
-                    connectionTestMessage,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.35,
-                      color: connectionTestSucceeded
-                          ? (connectionTestHasWarning
-                                ? (isDark
-                                      ? const Color(0xFFFFCC80)
-                                      : const Color(0xFF9A5A00))
-                                : (isDark
-                                      ? const Color(0xFFA5D6A7)
-                                      : const Color(0xFF2E7D32)))
-                          : (isDark
-                                ? const Color(0xFFEF9A9A)
-                                : const Color(0xFFC62828)),
+                    context.tr(
+                      zh: '\u8bf7\u540c\u65f6\u586b\u5199\u7528\u6237\u540d\u548c\u5bc6\u7801\uff0c\u6216\u5747\u7559\u7a7a\u3002',
+                      en: 'Enter both username and password, or leave both empty.',
                     ),
+                    style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                 ),
               ],
@@ -3203,10 +3164,7 @@ class _WebDavConnectionScreenState
                 controller: widget.usernameController,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: (value) {
-                  widget.onUsernameChanged(value);
-                  setState(() => _lastConnectionTestResult = null);
-                },
+                onChanged: widget.onUsernameChanged,
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -3223,10 +3181,7 @@ class _WebDavConnectionScreenState
                 subtitle: TextField(
                   controller: widget.passwordController,
                   obscureText: _obscurePassword,
-                  onChanged: (value) {
-                    widget.onPasswordChanged(value);
-                    setState(() => _lastConnectionTestResult = null);
-                  },
+                  onChanged: widget.onPasswordChanged,
                   style: TextStyle(
                     color: textMain,
                     fontWeight: FontWeight.w500,
@@ -3307,10 +3262,7 @@ class _WebDavConnectionScreenState
                 value: _ignoreTlsErrors,
                 textMain: textMain,
                 onChanged: (v) {
-                  setState(() {
-                    _ignoreTlsErrors = v;
-                    _lastConnectionTestResult = null;
-                  });
+                  setState(() => _ignoreTlsErrors = v);
                   widget.onIgnoreTlsChanged(v);
                 },
               ),
@@ -3320,10 +3272,7 @@ class _WebDavConnectionScreenState
                 controller: widget.rootPathController,
                 textMain: textMain,
                 textMuted: textMuted,
-                onChanged: (value) {
-                  widget.onRootPathChanged(value);
-                  setState(() => _lastConnectionTestResult = null);
-                },
+                onChanged: widget.onRootPathChanged,
                 onEditingComplete: widget.onRootPathEditingComplete,
               ),
             ],
