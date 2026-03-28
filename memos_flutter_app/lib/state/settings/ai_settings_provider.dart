@@ -43,16 +43,19 @@ class AiSettingsController extends StateNotifier<AiSettings> {
   int _localRevision = 0;
 
   Future<void> reloadFromStorage() async {
+    if (!mounted) return;
     _localRevision += 1;
     await _load();
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final revisionAtStart = _localRevision;
     try {
       final loaded = await _repo.read(
         language: _ref.read(appPreferencesProvider).language,
       );
+      if (!mounted) return;
       if (_localRevision != revisionAtStart) {
         LogManager.instance.info(
           'AI settings load skipped because newer local changes exist',
@@ -70,6 +73,7 @@ class AiSettingsController extends StateNotifier<AiSettings> {
         },
       );
     } catch (error, stackTrace) {
+      if (!mounted) return;
       LogManager.instance.error(
         'AI settings load failed',
         error: error,
@@ -506,10 +510,7 @@ class AiSettingsController extends StateNotifier<AiSettings> {
     AiProxySettings next, {
     bool triggerSync = true,
   }) async {
-    await setAll(
-      state.copyWith(proxySettings: next),
-      triggerSync: triggerSync,
-    );
+    await setAll(state.copyWith(proxySettings: next), triggerSync: triggerSync);
     LogManager.instance.info(
       'AI settings proxy updated',
       context: buildAiProxySettingsLogContext(next),

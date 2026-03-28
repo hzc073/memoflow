@@ -210,4 +210,46 @@ END;
       expect(ftsRows.single['tags'], 'legacy broken');
     },
   );
+
+  test('closing one wrapper does not invalidate another wrapper', () async {
+    final dbName = uniqueDbName('app_database_independent_handles');
+
+    addTearDown(() async {
+      await AppDatabase.deleteDatabaseFile(dbName: dbName);
+    });
+
+    final first = AppDatabase(dbName: dbName);
+    final second = AppDatabase(dbName: dbName);
+
+    addTearDown(() async {
+      await first.close();
+      await second.close();
+    });
+
+    await first.upsertMemo(
+      uid: 'memo-shared-handle',
+      content: 'content from first handle',
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTimeSec: 1735689600,
+      updateTimeSec: 1735689600,
+      tags: const <String>[],
+      attachments: const <Map<String, Object?>>[],
+      relationCount: 0,
+      location: null,
+      syncState: 0,
+      lastError: null,
+    );
+
+    expect(await second.getMemoByUid('memo-shared-handle'), isNotNull);
+
+    await first.close();
+
+    final row = await second.getMemoByUid('memo-shared-handle');
+    expect(row, isNotNull);
+    expect(row?['content'], 'content from first handle');
+
+    await second.countOutboxPending();
+  });
 }

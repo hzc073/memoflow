@@ -17,7 +17,7 @@ import '../../state/settings/preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../../state/memos/stats_providers.dart';
 import '../../state/tags/tag_color_lookup.dart';
-import '../settings/memoflow_bridge_screen.dart';
+import '../settings/quick_qr_action.dart';
 import '../tags/tag_edit_sheet.dart';
 import '../../i18n/strings.g.dart';
 
@@ -36,12 +36,7 @@ enum AppDrawerDestination {
   about,
 }
 
-enum _DrawerTagFilter {
-  all,
-  frequent,
-  recent,
-  pinned,
-}
+enum _DrawerTagFilter { all, frequent, recent, pinned }
 
 final _pendingOutboxCountProvider = StreamProvider<int>((ref) async* {
   final db = ref.watch(databaseProvider);
@@ -95,8 +90,9 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
           final byCount = b.count.compareTo(a.count);
           if (byCount != 0) return byCount;
           if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-          final byRecent =
-              (b.lastUsedTimeSec ?? 0).compareTo(a.lastUsedTimeSec ?? 0);
+          final byRecent = (b.lastUsedTimeSec ?? 0).compareTo(
+            a.lastUsedTimeSec ?? 0,
+          );
           if (byRecent != 0) return byRecent;
           return a.tag.compareTo(b.tag);
         });
@@ -104,8 +100,9 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       case _DrawerTagFilter.recent:
         final sorted = items.toList(growable: false);
         sorted.sort((a, b) {
-          final byRecent =
-              (b.lastUsedTimeSec ?? 0).compareTo(a.lastUsedTimeSec ?? 0);
+          final byRecent = (b.lastUsedTimeSec ?? 0).compareTo(
+            a.lastUsedTimeSec ?? 0,
+          );
           if (byRecent != 0) return byRecent;
           final byCount = b.count.compareTo(a.count);
           if (byCount != 0) return byCount;
@@ -229,7 +226,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                           _TopActionIconButton(
                             tooltip: context.t.strings.legacy.msg_scan,
                             onPressed: () async {
-                              await startMemoFlowQuickQrPair(
+                              await startUniversalQuickQrAction(
                                 context: context,
                                 ref: ref,
                               );
@@ -536,10 +533,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                           value: _DrawerTagFilter.frequent,
                           checked: _tagFilter == _DrawerTagFilter.frequent,
                           child: Text(
-                            _tagFilterLabel(
-                              context,
-                              _DrawerTagFilter.frequent,
-                            ),
+                            _tagFilterLabel(context, _DrawerTagFilter.frequent),
                           ),
                         ),
                         CheckedPopupMenuItem<_DrawerTagFilter>(
@@ -557,7 +551,11 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                           ),
                         ),
                       ],
-                      icon: Icon(_tagFilterIcon(_tagFilter), color: textMuted, size: 20),
+                      icon: Icon(
+                        _tagFilterIcon(_tagFilter),
+                        color: textMuted,
+                        size: 20,
+                      ),
                     ),
                   ],
                 ),
@@ -574,9 +572,9 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                       );
                     }
                     const previewLimit = 6;
-                    final preview = visibleTags.take(previewLimit).toList(
-                      growable: false,
-                    );
+                    final preview = visibleTags
+                        .take(previewLimit)
+                        .toList(growable: false);
                     final remainingCount = visibleTags.length - preview.length;
                     return LayoutBuilder(
                       builder: (context, constraints) {

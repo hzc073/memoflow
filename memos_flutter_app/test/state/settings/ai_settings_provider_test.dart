@@ -404,4 +404,33 @@ void main() {
       expect(state.model, 'qwen3-max');
     },
   );
+
+  test(
+    'AiSettingsController ignores pending async load after dispose',
+    () async {
+      final aiRepository = _DelayedAiSettingsRepository(
+        AiSettings.defaultsFor(AppLanguage.en),
+      );
+      final prefsRepository = _MemoryAppPreferencesRepository(
+        AppPreferences.defaultsForLanguage(AppLanguage.en),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+          aiSettingsProvider.overrideWith(
+            (ref) => AiSettingsController(ref, aiRepository),
+          ),
+        ],
+      );
+
+      container.read(aiSettingsProvider);
+      container.dispose();
+      aiRepository.release();
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(true, isTrue);
+    },
+  );
 }

@@ -36,6 +36,13 @@ class AppDatabase {
     Future<Database> open() {
       return openDatabase(
         path,
+        // Keep each AppDatabase wrapper on its own SQLite connection.
+        // On desktop we can have multiple Flutter engines/provider containers
+        // (for example the main app and a settings subwindow) opening the same
+        // DB path at once. With sqflite's shared single-instance connection,
+        // disposing one wrapper can close the other wrapper's live handle and
+        // surface "bad parameter or other API misuse" on the next query.
+        singleInstance: false,
         version: _dbVersion,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON;');
@@ -512,7 +519,7 @@ CREATE TABLE IF NOT EXISTS memo_inline_image_sources (
     return counts;
   }
 
-  Future<_ResolvedTag?> resolveTagPath(DatabaseExecutor txn, String rawTag) {
+  Future<ResolvedTag?> resolveTagPath(DatabaseExecutor txn, String rawTag) {
     return _resolveTagPath(txn, rawTag);
   }
 
@@ -2432,7 +2439,7 @@ CREATE TABLE IF NOT EXISTS memo_tags (
     );
   }
 
-  static Future<_ResolvedTag?> _resolveTagPath(
+  static Future<ResolvedTag?> _resolveTagPath(
     DatabaseExecutor txn,
     String rawTag,
   ) async {
@@ -2450,7 +2457,7 @@ CREATE TABLE IF NOT EXISTS memo_tags (
       final row = directRows.first;
       final id = _readInt(row['id']) ?? 0;
       final path = row['path'] as String? ?? normalized;
-      if (id > 0) return _ResolvedTag(id: id, path: path);
+      if (id > 0) return ResolvedTag(id: id, path: path);
     }
 
     final aliasRows = await txn.query(
@@ -2473,7 +2480,7 @@ CREATE TABLE IF NOT EXISTS memo_tags (
         if (tagRows.isNotEmpty) {
           final row = tagRows.first;
           final path = row['path'] as String? ?? normalized;
-          return _ResolvedTag(id: tagId, path: path);
+          return ResolvedTag(id: tagId, path: path);
         }
       }
     }
@@ -2536,7 +2543,7 @@ CREATE TABLE IF NOT EXISTS memo_tags (
     }
 
     if (parentId == null || path.isEmpty) return null;
-    return _ResolvedTag(id: parentId, path: path);
+    return ResolvedTag(id: parentId, path: path);
   }
 
   static Future<void> _updateMemoTagsMapping(
@@ -3229,8 +3236,8 @@ class _MemoSnapshot {
   final List<String> tags;
 }
 
-class _ResolvedTag {
-  const _ResolvedTag({required this.id, required this.path});
+class ResolvedTag {
+  const ResolvedTag({required this.id, required this.path});
 
   final int id;
   final String path;

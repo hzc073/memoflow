@@ -248,7 +248,9 @@ class DesktopWindowManager {
       case desktopMainReloadAiSettingsMethod:
         final log = _bootstrapAdapter.readLogManager(_ref);
         try {
+          if (!_isMounted()) return false;
           await _ref.read(aiSettingsProvider.notifier).reloadFromStorage();
+          if (!_isMounted()) return false;
           log.info('Desktop AI settings reload handled');
           return true;
         } catch (error, stackTrace) {

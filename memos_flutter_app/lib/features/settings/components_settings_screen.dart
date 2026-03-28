@@ -11,7 +11,6 @@ import '../../core/memoflow_palette.dart';
 import '../../state/settings/image_bed_settings_provider.dart';
 import '../../state/settings/image_compression_settings_provider.dart';
 import '../../state/settings/location_settings_provider.dart';
-import '../../state/settings/memoflow_bridge_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import '../../state/settings/preferences_provider.dart';
 import '../../state/system/reminder_scheduler.dart';
@@ -21,7 +20,6 @@ import '../reminders/reminder_settings_screen.dart';
 import 'image_bed_settings_screen.dart';
 import 'image_compression_settings_screen.dart';
 import 'location_settings_screen.dart';
-import 'memoflow_bridge_screen.dart';
 import 'template_settings_screen.dart';
 import 'webdav_sync_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -40,7 +38,6 @@ class ComponentsSettingsScreen extends ConsumerWidget {
       imageCompressionSettingsProvider,
     );
     final locationSettings = ref.watch(locationSettingsProvider);
-    final bridgeSettings = ref.watch(memoFlowBridgeSettingsProvider);
     final templateSettings = ref.watch(memoTemplateSettingsProvider);
     final webDavSettings = ref.watch(webDavSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -231,23 +228,6 @@ class ComponentsSettingsScreen extends ConsumerWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const WebDavSyncScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_bridge_component_title,
-                description: context.t.strings.legacy.msg_bridge_component_desc,
-                value: bridgeSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) => ref
-                    .read(memoFlowBridgeSettingsProvider.notifier)
-                    .setEnabled(v),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const MemoFlowBridgeScreen(),
                   ),
                 ),
               ),

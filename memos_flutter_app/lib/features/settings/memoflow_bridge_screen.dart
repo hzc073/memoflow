@@ -17,34 +17,25 @@ import '../../state/settings/memoflow_bridge_settings_provider.dart';
 import '../../state/settings/preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 
-bool _supportsBridgeQrScannerOnCurrentPlatform() {
+bool supportsMemoFlowQrScannerOnCurrentPlatform() {
   return Platform.isAndroid || Platform.isIOS;
 }
 
-void _showBridgeQrUnsupportedNotice(BuildContext context) {
+void showMemoFlowQrUnsupportedNotice(BuildContext context) {
   showTopToast(
     context,
     context.t.strings.legacy.msg_qr_scan_not_supported_pair_manually,
   );
 }
 
-Future<void> startMemoFlowQuickQrPair({
+Future<void> pairMemoFlowBridgeFromQrRaw({
   required BuildContext context,
   required WidgetRef ref,
+  required String raw,
 }) async {
-  if (!_supportsBridgeQrScannerOnCurrentPlatform()) {
-    _showBridgeQrUnsupportedNotice(context);
-    return;
-  }
   final tr = context.t.strings.legacy;
-  final raw = await Navigator.of(context, rootNavigator: true).push<String>(
-    MaterialPageRoute<String>(builder: (_) => const MemoFlowPairQrScanScreen()),
-  );
-  if (raw == null || raw.trim().isEmpty) return;
-
-  final payload = _PairingPayload.tryParse(raw);
+  final payload = MemoFlowBridgePairingPayload.tryParse(raw);
   if (payload == null) {
-    if (!context.mounted) return;
     showTopToast(context, tr.msg_bridge_qr_invalid);
     return;
   }
@@ -95,6 +86,28 @@ Future<void> startMemoFlowQuickQrPair({
     if (!context.mounted) return;
     showTopToast(context, tr.msg_bridge_pair_failed(e: e));
   }
+}
+
+Future<void> startMemoFlowQuickQrPair({
+  required BuildContext context,
+  required WidgetRef ref,
+}) async {
+  if (!supportsMemoFlowQrScannerOnCurrentPlatform()) {
+    showMemoFlowQrUnsupportedNotice(context);
+    return;
+  }
+  final tr = context.t.strings.legacy;
+  final raw = await Navigator.of(context, rootNavigator: true).push<String>(
+    MaterialPageRoute<String>(
+      builder: (_) => MemoFlowPairQrScanScreen(
+        titleText: tr.msg_bridge_scan_title,
+        hintText: tr.msg_bridge_scan_hint,
+      ),
+    ),
+  );
+  if (raw == null || raw.trim().isEmpty) return;
+  if (!context.mounted) return;
+  await pairMemoFlowBridgeFromQrRaw(context: context, ref: ref, raw: raw);
 }
 
 Future<String> _resolveMemoFlowDeviceName() async {
@@ -263,18 +276,21 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
 
   Future<void> _scanQrAndPair() async {
     FocusScope.of(context).unfocus();
-    if (!_supportsBridgeQrScannerOnCurrentPlatform()) {
-      _showBridgeQrUnsupportedNotice(context);
+    if (!supportsMemoFlowQrScannerOnCurrentPlatform()) {
+      showMemoFlowQrUnsupportedNotice(context);
       return;
     }
     final raw = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
-        builder: (_) => const MemoFlowPairQrScanScreen(),
+        builder: (_) => MemoFlowPairQrScanScreen(
+          titleText: context.t.strings.legacy.msg_bridge_scan_title,
+          hintText: context.t.strings.legacy.msg_bridge_scan_hint,
+        ),
       ),
     );
     if (!mounted || raw == null || raw.trim().isEmpty) return;
 
-    final payload = _PairingPayload.tryParse(raw);
+    final payload = MemoFlowBridgePairingPayload.tryParse(raw);
     final tr = context.t.strings.legacy;
     if (payload == null) {
       showTopToast(context, tr.msg_bridge_qr_invalid);
@@ -771,7 +787,10 @@ class _SectionCard extends StatelessWidget {
 }
 
 class MemoFlowPairQrScanScreen extends StatefulWidget {
-  const MemoFlowPairQrScanScreen({super.key});
+  const MemoFlowPairQrScanScreen({super.key, this.titleText, this.hintText});
+
+  final String? titleText;
+  final String? hintText;
 
   @override
   State<MemoFlowPairQrScanScreen> createState() =>
@@ -781,7 +800,7 @@ class MemoFlowPairQrScanScreen extends StatefulWidget {
 class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
   MobileScannerController? _controller;
   bool _handled = false;
-  bool get _supportsScanner => _supportsBridgeQrScannerOnCurrentPlatform();
+  bool get _supportsScanner => supportsMemoFlowQrScannerOnCurrentPlatform();
 
   @override
   void initState() {
@@ -817,9 +836,11 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
   @override
   Widget build(BuildContext context) {
     final tr = context.t.strings.legacy;
+    final titleText = widget.titleText ?? tr.msg_bridge_scan_title;
+    final hintText = widget.hintText ?? tr.msg_bridge_scan_hint;
     if (!_supportsScanner) {
       return Scaffold(
-        appBar: AppBar(title: Text(tr.msg_bridge_scan_title)),
+        appBar: AppBar(title: Text(titleText)),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -829,7 +850,11 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
                 const Icon(Icons.qr_code_scanner, size: 40),
                 const SizedBox(height: 12),
                 Text(
-                  context.t.strings.legacy.msg_qr_scan_not_supported_use_manual_pairing,
+                  context
+                      .t
+                      .strings
+                      .legacy
+                      .msg_qr_scan_not_supported_use_manual_pairing,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
@@ -845,7 +870,7 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr.msg_bridge_scan_title)),
+      appBar: AppBar(title: Text(titleText)),
       body: Stack(
         children: [
           MobileScanner(controller: _controller!, onDetect: _onDetect),
@@ -860,7 +885,7 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                tr.msg_bridge_scan_hint,
+                hintText,
                 style: const TextStyle(color: Colors.white),
                 textAlign: TextAlign.center,
               ),
@@ -872,10 +897,10 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
   }
 }
 
-class _PairingPayload {
+class MemoFlowBridgePairingPayload {
   static const _defaultPort = 3000;
 
-  const _PairingPayload({
+  const MemoFlowBridgePairingPayload({
     required this.host,
     required this.port,
     required this.pairCode,
@@ -889,7 +914,7 @@ class _PairingPayload {
   final String serverName;
   final String apiVersion;
 
-  static _PairingPayload? tryParse(String raw) {
+  static MemoFlowBridgePairingPayload? tryParse(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
 
@@ -905,7 +930,7 @@ class _PairingPayload {
             fallback: _defaultPort,
           );
           if (host.isEmpty || pairCode.isEmpty) return null;
-          return _PairingPayload(
+          return MemoFlowBridgePairingPayload(
             host: host,
             port: port,
             pairCode: pairCode,
@@ -930,7 +955,7 @@ class _PairingPayload {
       final host = (query['host'] ?? '').trim();
       final pairCode = (query['pairCode'] ?? query['code'] ?? '').trim();
       if (host.isEmpty || pairCode.isEmpty) return null;
-      return _PairingPayload(
+      return MemoFlowBridgePairingPayload(
         host: host,
         port: _readPort(query['port'] ?? '', fallback: _defaultPort),
         pairCode: pairCode,
@@ -943,7 +968,7 @@ class _PairingPayload {
       final host = uri.host.trim();
       final pairCode = (query['pairCode'] ?? query['code'] ?? '').trim();
       if (host.isEmpty || pairCode.isEmpty) return null;
-      return _PairingPayload(
+      return MemoFlowBridgePairingPayload(
         host: host,
         port: uri.hasPort ? uri.port : _defaultPort,
         pairCode: pairCode,
