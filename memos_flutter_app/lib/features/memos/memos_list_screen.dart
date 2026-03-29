@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -12,7 +11,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../state/sync/sync_coordinator_provider.dart';
@@ -39,13 +37,10 @@ import '../../core/url.dart';
 import '../../state/memos/memos_list_providers.dart';
 import '../../state/memos/memos_list_load_more_controller.dart';
 import '../../state/memos/memo_composer_controller.dart';
-import '../../state/memos/memo_composer_state.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
-import '../../data/models/memo.dart';
-import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../data/models/shortcut.dart';
 import '../../data/repositories/scene_micro_guide_repository.dart';
@@ -76,7 +71,6 @@ import '../resources/resources_screen.dart';
 import '../review/ai_summary_screen.dart';
 import '../review/daily_review_screen.dart';
 import '../settings/desktop_shortcuts_overview_screen.dart';
-import '../location_picker/show_location_picker.dart';
 import '../settings/password_lock_screen.dart';
 import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
@@ -85,7 +79,6 @@ import '../stats/stats_screen.dart';
 import '../tags/tags_screen.dart';
 import '../tags/tag_edit_sheet.dart';
 import '../voice/voice_record_screen.dart';
-import 'attachment_gallery_screen.dart';
 import '../desktop/quick_input/desktop_quick_input_dialog.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
@@ -94,13 +87,10 @@ import 'memo_versions_screen.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
 import 'advanced_search_sheet.dart';
-import 'compose_toolbar_shared.dart';
-import 'gallery_attachment_picker.dart';
-import 'link_memo_sheet.dart';
+import 'memos_list_inline_compose_coordinator.dart';
 import 'recycle_bin_screen.dart';
 import 'memo_video_grid.dart';
 import 'note_input_sheet.dart';
-import 'windows_camera_capture_screen.dart';
 import 'widgets/floating_collapse_button.dart';
 import 'widgets/memos_list_floating_actions.dart';
 import 'widgets/memos_list_inline_compose_card.dart';
@@ -260,20 +250,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   bool _desktopQuickInputSubmitting = false;
   bool _inlineComposeBusy = false;
   bool _inlineComposeDraftApplied = false;
-  String _inlineVisibility = 'PRIVATE';
-  bool _inlineVisibilityTouched = false;
-  final _inlineImagePicker = ImagePicker();
-  final _inlineTemplateRenderer = MemoTemplateRenderer();
-  MemoLocation? _inlineLocation;
-  bool _inlineLocating = false;
+  late final MemosListInlineComposeCoordinator _inlineComposeCoordinator;
   Timer? _inlineComposeDraftTimer;
   ProviderSubscription<AsyncValue<String>>? _inlineDraftSubscription;
   TextEditingController get _inlineComposeController =>
       _inlineComposer.textController;
-  List<MemoComposerPendingAttachment> get _inlinePendingAttachments =>
-      _inlineComposer.pendingAttachments;
-  List<MemoComposerLinkedMemo> get _inlineLinkedMemos =>
-      _inlineComposer.linkedMemos;
   bool get _inlineCanUndo => _inlineComposer.canUndo;
   bool get _inlineCanRedo => _inlineComposer.canRedo;
   int get _pageSize => _loadMoreController.pageSize;
@@ -305,6 +286,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     super.initState();
     _activeTagFilter = _normalizeTag(widget.tag);
     _inlineComposer = MemoComposerController();
+    _inlineComposeCoordinator = MemosListInlineComposeCoordinator(
+      ref: ref,
+      composer: _inlineComposer,
+      templateRenderer: MemoTemplateRenderer(),
+      imagePicker: ImagePicker(),
+    );
+    _inlineComposeCoordinator.addListener(_handleInlineComposeCoordinatorChanged);
     _scrollController.addListener(_handleScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _handleScroll());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -423,6 +411,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _inlineDraftSubscription?.close();
     _inlineComposeController.removeListener(_handleInlineComposeChanged);
     _inlineComposeController.removeListener(_scheduleInlineComposeDraftSave);
+    _inlineComposeCoordinator.removeListener(
+      _handleInlineComposeCoordinatorChanged,
+    );
+    _inlineComposeCoordinator.dispose();
     _inlineComposer.dispose();
     _inlineComposeFocusNode.removeListener(_handleInlineComposeFocusChanged);
     _inlineComposeFocusNode.dispose();
@@ -445,6 +437,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final normalized = normalizeTagPath(raw ?? '');
     if (normalized.isEmpty) return null;
     return normalized;
+  }
+
+  void _handleInlineComposeCoordinatorChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _selectTagFilter(String? tag) {
@@ -1418,7 +1416,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       final now = DateTime.now();
       final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
       final uid = generateUid();
-      final visibility = _resolveInlineComposeVisibility();
+      final visibility = _inlineComposeCoordinator.resolveDefaultVisibility();
       final tags = extractTags(content);
 
       await ref
@@ -1599,14 +1597,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   void _toggleInlineOrderedList() {
     _inlineComposer.toggleOrderedList();
-  }
-
-  void _toggleInlineTaskList() {
-    _inlineComposer.toggleTaskList();
-  }
-
-  void _insertInlineCodeBlock() {
-    _inlineComposer.insertCodeBlock();
   }
 
   Future<void> _cutInlineParagraphs() async {
@@ -3101,30 +3091,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     return ref.read(tagStatsProvider).valueOrNull ?? const <TagStat>[];
   }
 
-  String _resolveInlineComposeVisibility() {
-    final settings = ref.read(userGeneralSettingProvider).valueOrNull;
-    final value = (settings?.memoVisibility ?? '').trim().toUpperCase();
-    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
-      return value;
-    }
-    return 'PRIVATE';
-  }
-
-  String _normalizedInlineVisibility(String raw) {
-    final value = raw.trim().toUpperCase();
-    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
-      return value;
-    }
-    return 'PRIVATE';
-  }
-
-  String _currentInlineVisibility() {
-    if (_inlineVisibilityTouched) {
-      return _normalizedInlineVisibility(_inlineVisibility);
-    }
-    return _resolveInlineComposeVisibility();
-  }
-
   (String label, IconData icon, Color color) _resolveInlineVisibilityStyle(
     BuildContext context,
     String raw,
@@ -3151,13 +3117,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
   }
 
-  void _replaceInlineComposeText(String text) {
-    _inlineComposer.replaceText(
-      text,
-      clearHistory: false,
-    );
-  }
-
   void _undoInlineCompose() {
     if (!_inlineCanUndo || _inlineComposeBusy) return;
     _inlineComposer.undo();
@@ -3176,674 +3135,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   void _toggleInlineUnderline() {
     _inlineComposer.toggleUnderline();
-  }
-
-  Future<void> _openWindowsCameraSettings() async {
-    if (!Platform.isWindows) return;
-    try {
-      await Process.start('cmd', <String>[
-        '/c',
-        'start',
-        '',
-        'ms-settings:privacy-webcam',
-      ]);
-    } catch (_) {}
-  }
-
-  bool _isWindowsCameraPermissionError(Object error) {
-    if (!Platform.isWindows) return false;
-    final message = error.toString().toLowerCase();
-    return message.contains('permission') ||
-        message.contains('access denied') ||
-        message.contains('cameraaccessdenied') ||
-        message.contains('privacy');
-  }
-
-  bool _isWindowsNoCameraError(Object error) {
-    if (!Platform.isWindows) return false;
-    final message = error.toString().toLowerCase();
-    return message.contains('no camera') ||
-        message.contains('no available camera') ||
-        message.contains('no device') ||
-        message.contains('camera_not_found') ||
-        message.contains('camera not found') ||
-        message.contains('capture device') ||
-        message.contains('cameradelegate') ||
-        message.contains('no capture devices') ||
-        message.contains('unavailable');
-  }
-
-  Future<void> _requestInlineLocation() async {
-    if (_inlineComposeBusy || _inlineLocating) return;
-    final next = await showLocationPickerSheetOrDialog(
-      context: context,
-      ref: ref,
-      initialLocation: _inlineLocation,
-    );
-    if (!mounted || next == null) return;
-    setState(() => _inlineLocation = next);
-    showTopToast(
-      context,
-      context.t.strings.legacy.msg_location_updated(
-        next_displayText_fractionDigits_6: next.displayText(fractionDigits: 6),
-      ),
-      duration: const Duration(seconds: 2),
-    );
-  }
-
-  Future<void> _captureInlinePhoto() async {
-    if (_inlineComposeBusy) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final navigator = Navigator.of(context);
-      final photo = Platform.isWindows
-          ? await WindowsCameraCaptureScreen.captureWithNavigator(navigator)
-          : await _inlineImagePicker.pickImage(source: ImageSource.camera);
-      if (!mounted || photo == null) return;
-      final path = photo.path.trim();
-      if (path.isEmpty) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_camera_file_missing),
-          ),
-        );
-        return;
-      }
-      final file = File(path);
-      if (!file.existsSync()) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_camera_file_missing),
-          ),
-        );
-        return;
-      }
-      final size = await file.length();
-      if (!mounted) return;
-      final filename = path.split(Platform.pathSeparator).last;
-      final mimeType = _guessInlineAttachmentMimeType(filename);
-      _inlineComposer.addPendingAttachments([
-        MemoComposerPendingAttachment(
-          uid: generateUid(),
-          filePath: path,
-          filename: filename,
-          mimeType: mimeType,
-          size: size,
-        ),
-      ]);
-      setState(() {});
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_added_photo_attachment,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      if (_isWindowsNoCameraError(error)) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_no_camera_detected),
-          ),
-        );
-        return;
-      }
-      if (_isWindowsCameraPermissionError(error)) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t.strings.legacy.msg_camera_permission_denied_windows,
-            ),
-            action: SnackBarAction(
-              label: context.t.strings.legacy.msg_settings,
-              onPressed: () {
-                unawaited(_openWindowsCameraSettings());
-              },
-            ),
-          ),
-        );
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_camera_failed(error: error),
-          ),
-        ),
-      );
-    }
-  }
-
-  Set<String> get _inlineLinkedMemoNames =>
-      _inlineComposer.linkedMemoNames;
-
-  void _addInlineLinkedMemo(Memo memo) {
-    final name = memo.name.trim();
-    if (name.isEmpty) return;
-    if (_inlineComposer.linkedMemos.any((item) => item.name == name)) return;
-    final raw = memo.content.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final label = raw.isNotEmpty
-        ? _truncateInlineLabel(raw)
-        : _truncateInlineLabel(
-            name.startsWith('memos/') ? name.substring('memos/'.length) : name,
-          );
-    _inlineComposer.addLinkedMemo(
-      MemoComposerLinkedMemo(name: name, label: label),
-    );
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _removeInlineLinkedMemo(String name) {
-    if (_inlineComposer.removeLinkedMemo(name) && mounted) {
-      setState(() {});
-    }
-  }
-
-  String _truncateInlineLabel(String text, {int maxLength = 24}) {
-    if (text.length <= maxLength) return text;
-    return '${text.substring(0, maxLength - 3)}...';
-  }
-
-  Future<void> _openInlineLinkMemoSheet() async {
-    if (_inlineComposeBusy) return;
-    final selection = await LinkMemoSheet.show(
-      context,
-      existingNames: _inlineLinkedMemoNames,
-    );
-    if (!mounted || selection == null) return;
-    _addInlineLinkedMemo(selection);
-  }
-
-  Future<void> _openInlineTemplateMenuFromKey(
-    GlobalKey key,
-    List<MemoTemplate> templates,
-  ) async {
-    if (_inlineComposeBusy) return;
-    final target = key.currentContext;
-    if (target == null) return;
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final box = target.findRenderObject();
-    if (overlay is! RenderBox || box is! RenderBox) return;
-
-    final rect = Rect.fromPoints(
-      box.localToGlobal(Offset.zero, ancestor: overlay),
-      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-    );
-    await _openInlineTemplateMenu(
-      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
-      templates,
-    );
-  }
-
-  Future<void> _openInlineTemplateMenu(
-    RelativeRect position,
-    List<MemoTemplate> templates,
-  ) async {
-    if (_inlineComposeBusy) return;
-    final items = templates.isEmpty
-        ? <PopupMenuEntry<String>>[
-            PopupMenuItem<String>(
-              enabled: false,
-              child: Text(context.t.strings.legacy.msg_no_templates_yet),
-            ),
-          ]
-        : templates
-              .map(
-                (template) => PopupMenuItem<String>(
-                  value: template.id,
-                  child: Text(template.name),
-                ),
-              )
-              .toList(growable: false);
-
-    final selectedId = await showMenu<String>(
-      context: context,
-      position: position,
-      items: items,
-    );
-    if (!mounted || selectedId == null) return;
-    MemoTemplate? selected;
-    for (final item in templates) {
-      if (item.id == selectedId) {
-        selected = item;
-        break;
-      }
-    }
-    if (selected == null) return;
-    await _applyInlineTemplate(selected);
-  }
-
-  Future<void> _applyInlineTemplate(MemoTemplate template) async {
-    final templateSettings = ref.read(memoTemplateSettingsProvider);
-    final locationSettings = ref.read(locationSettingsProvider);
-    final rendered = await _inlineTemplateRenderer.render(
-      templateContent: template.content,
-      variableSettings: templateSettings.variables,
-      locationSettings: locationSettings,
-    );
-    if (!mounted) return;
-    _replaceInlineComposeText(rendered);
-  }
-
-  Future<void> _openInlineTodoShortcutMenuFromKey(GlobalKey key) async {
-    if (_inlineComposeBusy) return;
-    final target = key.currentContext;
-    if (target == null) return;
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final box = target.findRenderObject();
-    if (overlay is! RenderBox || box is! RenderBox) return;
-
-    final rect = Rect.fromPoints(
-      box.localToGlobal(Offset.zero, ancestor: overlay),
-      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-    );
-    await _openInlineTodoShortcutMenu(
-      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
-    );
-  }
-
-  Future<void> _openInlineTodoShortcutMenu(RelativeRect position) async {
-    if (_inlineComposeBusy) return;
-    final action = await showMenu<MemoComposeTodoShortcutAction>(
-      context: context,
-      position: position,
-      items: [
-        PopupMenuItem(
-          value: MemoComposeTodoShortcutAction.checkbox,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_box_outlined, size: 18),
-              SizedBox(width: 8),
-              Text(context.t.strings.legacy.msg_checkbox),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: MemoComposeTodoShortcutAction.codeBlock,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.code, size: 18),
-              SizedBox(width: 8),
-              Text(context.t.strings.legacy.msg_code_block),
-            ],
-          ),
-        ),
-      ],
-    );
-    if (!mounted || action == null) return;
-
-    switch (action) {
-      case MemoComposeTodoShortcutAction.checkbox:
-        _toggleInlineTaskList();
-        break;
-      case MemoComposeTodoShortcutAction.codeBlock:
-        _insertInlineCodeBlock();
-        break;
-    }
-  }
-
-  Future<void> _openInlineVisibilityMenuFromKey(GlobalKey key) async {
-    if (_inlineComposeBusy) return;
-    final target = key.currentContext;
-    if (target == null) return;
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final box = target.findRenderObject();
-    if (overlay is! RenderBox || box is! RenderBox) return;
-
-    final rect = Rect.fromPoints(
-      box.localToGlobal(Offset.zero, ancestor: overlay),
-      box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-    );
-    await _openInlineVisibilityMenu(
-      RelativeRect.fromRect(rect, Offset.zero & overlay.size),
-    );
-  }
-
-  Future<void> _openInlineVisibilityMenu(RelativeRect position) async {
-    if (_inlineComposeBusy) return;
-    final selection = await showMenu<String>(
-      context: context,
-      position: position,
-      items: [
-        PopupMenuItem(
-          value: 'PRIVATE',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.lock, size: 18),
-              const SizedBox(width: 8),
-              Text(context.t.strings.legacy.msg_private_2),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'PROTECTED',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.verified_user, size: 18),
-              const SizedBox(width: 8),
-              Text(context.t.strings.legacy.msg_protected),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'PUBLIC',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.public, size: 18),
-              const SizedBox(width: 8),
-              Text(context.t.strings.legacy.msg_public),
-            ],
-          ),
-        ),
-      ],
-    );
-    if (!mounted || selection == null) return;
-    setState(() {
-      _inlineVisibility = selection;
-      _inlineVisibilityTouched = true;
-    });
-  }
-
-  String _guessInlineAttachmentMimeType(String filename) {
-    final lower = filename.toLowerCase();
-    final dot = lower.lastIndexOf('.');
-    final ext = dot == -1 ? '' : lower.substring(dot + 1);
-    return switch (ext) {
-      'png' => 'image/png',
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'gif' => 'image/gif',
-      'webp' => 'image/webp',
-      'bmp' => 'image/bmp',
-      'heic' => 'image/heic',
-      'heif' => 'image/heif',
-      'mp3' => 'audio/mpeg',
-      'm4a' => 'audio/mp4',
-      'aac' => 'audio/aac',
-      'wav' => 'audio/wav',
-      'flac' => 'audio/flac',
-      'ogg' => 'audio/ogg',
-      'opus' => 'audio/opus',
-      'mp4' => 'video/mp4',
-      'mov' => 'video/quicktime',
-      'mkv' => 'video/x-matroska',
-      'webm' => 'video/webm',
-      'avi' => 'video/x-msvideo',
-      'pdf' => 'application/pdf',
-      'zip' => 'application/zip',
-      'rar' => 'application/vnd.rar',
-      '7z' => 'application/x-7z-compressed',
-      'txt' => 'text/plain',
-      'md' => 'text/markdown',
-      'json' => 'application/json',
-      'csv' => 'text/csv',
-      'log' => 'text/plain',
-      _ => 'application/octet-stream',
-    };
-  }
-
-  bool _isInlineImageMimeType(String mimeType) {
-    return mimeType.trim().toLowerCase().startsWith('image/');
-  }
-
-  Future<void> _handleInlineGalleryToolbarPressed() async {
-    if (!isMemoGalleryToolbarSupportedPlatform) {
-      showTopToast(context, context.t.strings.legacy.msg_gallery_mobile_only);
-      return;
-    }
-    await _pickGalleryAttachments();
-  }
-
-  Future<void> _pickGalleryAttachments() async {
-    if (_inlineComposeBusy) return;
-    try {
-      final result = await pickGalleryAttachments(context);
-      if (!mounted || result == null) return;
-      if (result.attachments.isEmpty) {
-        final msg = result.skippedCount > 0
-            ? context.t.strings.legacy.msg_files_unavailable_from_picker
-            : context.t.strings.legacy.msg_no_files_selected;
-        showTopToast(context, msg);
-        return;
-      }
-
-      _inlineComposer.addPendingAttachments(
-        result.attachments.map(
-          (attachment) => MemoComposerPendingAttachment(
-            uid: generateUid(),
-            filePath: attachment.filePath,
-            filename: attachment.filename,
-            mimeType: attachment.mimeType,
-            size: attachment.size,
-          ),
-        ),
-      );
-      setState(() {});
-      final skipped = [
-        if (result.skippedCount > 0)
-          context.t.strings.legacy.msg_unavailable_file_count(
-            count: result.skippedCount,
-          ),
-      ];
-      final summary = skipped.isEmpty
-          ? context.t.strings.legacy.msg_added_files(
-              count: result.attachments.length,
-            )
-          : context.t.strings.legacy.msg_added_files_with_skipped(
-              count: result.attachments.length,
-              details: skipped.join(', '),
-            );
-      showTopToast(context, summary);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_file_selection_failed(error: error),
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _pickInlineAttachments() async {
-    if (_inlineComposeBusy) return;
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        allowMultiple: true,
-        type: FileType.any,
-        withReadStream: true,
-      );
-      if (!mounted) return;
-      final files = result?.files ?? const <PlatformFile>[];
-      if (files.isEmpty) return;
-
-      final added = <MemoComposerPendingAttachment>[];
-      var missingPathCount = 0;
-      Directory? tempDir;
-      for (final file in files) {
-        String path = (file.path ?? '').trim();
-        if (path.isEmpty) {
-          final stream = file.readStream;
-          final bytes = file.bytes;
-          if (stream == null && bytes == null) {
-            missingPathCount++;
-            continue;
-          }
-          tempDir ??= await getTemporaryDirectory();
-          final name = file.name.trim().isNotEmpty
-              ? file.name.trim()
-              : 'attachment_${generateUid()}';
-          final tempFile = File(
-            '${tempDir.path}${Platform.pathSeparator}${generateUid()}_$name',
-          );
-          if (bytes != null) {
-            await tempFile.writeAsBytes(bytes, flush: true);
-          } else if (stream != null) {
-            final sink = tempFile.openWrite();
-            await sink.addStream(stream);
-            await sink.close();
-          }
-          path = tempFile.path;
-        }
-
-        if (path.trim().isEmpty) {
-          missingPathCount++;
-          continue;
-        }
-
-        final handle = File(path);
-        if (!handle.existsSync()) {
-          missingPathCount++;
-          continue;
-        }
-        final size = handle.lengthSync();
-        final filename = file.name.trim().isNotEmpty
-            ? file.name.trim()
-            : path.split(Platform.pathSeparator).last;
-        final mimeType = _guessInlineAttachmentMimeType(filename);
-        added.add(
-          MemoComposerPendingAttachment(
-            uid: generateUid(),
-            filePath: path,
-            filename: filename,
-            mimeType: mimeType,
-            size: size,
-          ),
-        );
-      }
-
-      if (!mounted) return;
-      if (added.isEmpty) {
-        final msg = missingPathCount > 0
-            ? context.t.strings.legacy.msg_files_unavailable_from_picker
-            : context.t.strings.legacy.msg_no_files_selected;
-        showTopToast(context, msg);
-        return;
-      }
-
-      _inlineComposer.addPendingAttachments(added);
-      setState(() {});
-      final skipped = [
-        if (missingPathCount > 0)
-          context.t.strings.legacy.msg_unavailable_file_count(
-            count: missingPathCount,
-          ),
-      ];
-      final summary = skipped.isEmpty
-          ? context.t.strings.legacy.msg_added_files(count: added.length)
-          : context.t.strings.legacy.msg_added_files_with_skipped(
-              count: added.length,
-              details: skipped.join(', '),
-            );
-      showTopToast(context, summary);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_file_selection_failed(error: error),
-          ),
-        ),
-      );
-    }
-  }
-
-  void _removeInlinePendingAttachment(String uid) {
-    if (_inlineComposer.removePendingAttachment(uid) && mounted) {
-      setState(() {});
-    }
-  }
-
-  File? _resolveInlinePendingAttachmentFile(
-    MemoComposerPendingAttachment attachment,
-  ) {
-    final path = attachment.filePath.trim();
-    if (path.isEmpty) return null;
-    final file = File(path);
-    if (!file.existsSync()) return null;
-    return file;
-  }
-
-  String _inlinePendingSourceId(String uid) => 'inline-pending:$uid';
-
-  List<
-    ({
-      AttachmentImageSource source,
-      MemoComposerPendingAttachment attachment,
-      File file,
-    })
-  >
-  _inlinePendingImageSources() {
-    final items =
-        <
-          ({
-            AttachmentImageSource source,
-            MemoComposerPendingAttachment attachment,
-            File file,
-          })
-        >[];
-    for (final attachment in _inlinePendingAttachments) {
-      if (!_isInlineImageMimeType(attachment.mimeType)) continue;
-      final file = _resolveInlinePendingAttachmentFile(attachment);
-      if (file == null) continue;
-      items.add((
-        source: AttachmentImageSource(
-          id: _inlinePendingSourceId(attachment.uid),
-          title: attachment.filename,
-          mimeType: attachment.mimeType,
-          localFile: file,
-        ),
-        attachment: attachment,
-        file: file,
-      ));
-    }
-    return items;
-  }
-
-  Future<void> _openInlineAttachmentViewer(
-    MemoComposerPendingAttachment attachment,
-  ) async {
-    final items = _inlinePendingImageSources();
-    if (items.isEmpty) return;
-    final index = items.indexWhere(
-      (item) => item.attachment.uid == attachment.uid,
-    );
-    if (index < 0) return;
-    final sources = items.map((item) => item.source).toList(growable: false);
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AttachmentGalleryScreen(
-          images: sources,
-          initialIndex: index,
-          onReplace: _replaceInlinePendingAttachment,
-          enableDownload: true,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _replaceInlinePendingAttachment(EditedImageResult result) async {
-    final id = result.sourceId;
-    if (!id.startsWith('inline-pending:')) return;
-    final uid = id.substring('inline-pending:'.length);
-    if (!_inlineComposer.replacePendingAttachment(
-      uid,
-      MemoComposerPendingAttachment(
-        uid: uid,
-        filePath: result.filePath,
-        filename: result.filename,
-        mimeType: result.mimeType,
-        size: result.size,
-      ),
-    )) {
-      return;
-    }
-    setState(() {});
   }
 
   Future<void> _openAccountSwitcher() async {
@@ -4259,117 +3550,31 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
-  void _addInlineVoiceAttachment(VoiceRecordResult result) {
-    final messenger = ScaffoldMessenger.of(context);
-    final path = result.filePath.trim();
-    if (path.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_recording_path_missing),
-        ),
-      );
-      return;
-    }
-
-    final file = File(path);
-    if (!file.existsSync()) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_recording_file_not_found_2,
-          ),
-        ),
-      );
-      return;
-    }
-
-    final size = result.size > 0 ? result.size : file.lengthSync();
-    final filename = result.fileName.trim().isNotEmpty
-        ? result.fileName.trim()
-        : path.split(Platform.pathSeparator).last;
-    final mimeType = _guessInlineAttachmentMimeType(filename);
-    _inlineComposer.addPendingAttachments([
-      MemoComposerPendingAttachment(
-        uid: generateUid(),
-        filePath: path,
-        filename: filename,
-        mimeType: mimeType,
-        size: size,
-      ),
-    ]);
-    if (mounted) {
-      setState(() {});
-    }
-    showTopToast(context, context.t.strings.legacy.msg_added_voice_attachment);
-  }
   Future<void> _submitInlineCompose() async {
     if (_inlineComposeBusy || !widget.enableCompose) return;
-    final content = _inlineComposeController.text.trimRight();
-    final relations = _inlineLinkedMemos
-        .map((memo) => memo.toRelationJson())
-        .toList(growable: false);
-    final pendingAttachments = List<MemoComposerPendingAttachment>.from(
-      _inlinePendingAttachments,
+    final draft = await _inlineComposeCoordinator.prepareSubmissionDraft(
+      context,
     );
-    final hasAttachments = pendingAttachments.isNotEmpty;
-    if (content.trim().isEmpty && !hasAttachments) {
-      if (relations.isNotEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              context.t.strings.legacy.msg_enter_content_before_creating_link,
-            ),
-          ),
-        );
-        return;
-      }
-      if (!mounted) return;
-      final result = await Navigator.of(context).push<VoiceRecordResult>(
-        MaterialPageRoute(builder: (_) => const VoiceRecordScreen()),
-      );
-      if (!mounted || result == null) return;
-      _addInlineVoiceAttachment(result);
-      return;
-    }
+    if (!mounted || draft == null) return;
 
     setState(() => _inlineComposeBusy = true);
     try {
       final now = DateTime.now();
       final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
       final uid = generateUid();
-      final tags = extractTags(content);
-      final visibility = _currentInlineVisibility();
-      final attachments = pendingAttachments
-          .map((attachment) {
-            final rawPath = attachment.filePath.trim();
-            final externalLink = rawPath.isEmpty
-                ? ''
-                : rawPath.startsWith('content://')
-                ? rawPath
-                : Uri.file(rawPath).toString();
-            return Attachment(
-              name: 'attachments/${attachment.uid}',
-              filename: attachment.filename,
-              type: attachment.mimeType,
-              size: attachment.size,
-              externalLink: externalLink,
-            ).toJson();
-          })
-          .toList(growable: false);
 
       await ref
           .read(memosListControllerProvider)
           .createInlineComposeMemo(
             uid: uid,
-            content: content,
-            visibility: visibility,
+            content: draft.content,
+            visibility: draft.visibility,
             nowSec: nowSec,
-            tags: tags,
-            attachments: attachments,
-            location: _inlineLocation,
-            relations: relations,
-            pendingAttachments: pendingAttachments,
+            tags: draft.tags,
+            attachments: draft.attachmentsPayload,
+            location: draft.location,
+            relations: draft.relations,
+            pendingAttachments: draft.pendingAttachments,
           );
 
       unawaited(
@@ -4384,14 +3589,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       );
       _inlineComposeDraftTimer?.cancel();
       await ref.read(noteDraftProvider.notifier).clear();
-      _inlineComposer.replaceText('', clearHistory: true);
-      _inlineComposer.clearPendingAttachments();
-      _inlineComposer.clearLinkedMemos();
+      _inlineComposeCoordinator.resetAfterSuccessfulSubmit();
       if (mounted) {
-        setState(() {
-          _inlineLocation = null;
-          _inlineLocating = false;
-        });
         _inlineComposeFocusNode.requestFocus();
       }
     } catch (error, stackTrace) {
@@ -5237,7 +4436,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final toolbarPreferences = ref.watch(
       appPreferencesProvider.select((p) => p.memoToolbarPreferences),
     );
-    final inlineVisibility = _currentInlineVisibility();
+    final inlineVisibility = _inlineComposeCoordinator.currentVisibility();
     final inlineVisibilityStyle = _resolveInlineVisibilityStyle(
       context,
       inlineVisibility,
@@ -5883,10 +5082,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                                 composer: _inlineComposer,
                                 focusNode: _inlineComposeFocusNode,
                                 busy: _inlineComposeBusy,
-                                locating: _inlineLocating,
-                                location: _inlineLocation,
+                                locating: _inlineComposeCoordinator.locating,
+                                location: _inlineComposeCoordinator.location,
                                 visibility: inlineVisibility,
-                                visibilityTouched: _inlineVisibilityTouched,
+                                visibilityTouched:
+                                    _inlineComposeCoordinator.visibilityTouched,
                                 visibilityLabel: inlineVisibilityStyle.$1,
                                 visibilityIcon: inlineVisibilityStyle.$2,
                                 visibilityColor: inlineVisibilityStyle.$3,
@@ -5904,53 +5104,81 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                                   unawaited(_submitInlineCompose());
                                 },
                                 onRemoveAttachment:
-                                    _removeInlinePendingAttachment,
+                                    _inlineComposeCoordinator
+                                        .removePendingAttachment,
                                 onOpenAttachment: (attachment) {
                                   unawaited(
-                                    _openInlineAttachmentViewer(attachment),
+                                    _inlineComposeCoordinator
+                                        .openAttachmentViewer(
+                                          context,
+                                          attachment,
+                                        ),
                                   );
                                 },
-                                onRemoveLinkedMemo: _removeInlineLinkedMemo,
+                                onRemoveLinkedMemo:
+                                    _inlineComposeCoordinator.removeLinkedMemo,
                                 onRequestLocation: () {
-                                  unawaited(_requestInlineLocation());
+                                  unawaited(
+                                    _inlineComposeCoordinator.requestLocation(
+                                      context,
+                                    ),
+                                  );
                                 },
-                                onClearLocation: () {
-                                  setState(() => _inlineLocation = null);
-                                },
+                                onClearLocation:
+                                    _inlineComposeCoordinator.clearLocation,
                                 onOpenTemplateMenu: () {
                                   unawaited(
-                                    _openInlineTemplateMenuFromKey(
-                                      _inlineTemplateMenuKey,
-                                      availableTemplates,
-                                    ),
+                                    _inlineComposeCoordinator
+                                        .openTemplateMenuFromKey(
+                                          context,
+                                          _inlineTemplateMenuKey,
+                                          availableTemplates,
+                                        ),
                                   );
                                 },
                                 onPickGallery: () {
                                   unawaited(
-                                    _handleInlineGalleryToolbarPressed(),
+                                    _inlineComposeCoordinator
+                                        .pickGalleryAttachments(context),
                                   );
                                 },
                                 onPickFile: () {
-                                  unawaited(_pickInlineAttachments());
+                                  unawaited(
+                                    _inlineComposeCoordinator.pickAttachments(
+                                      context,
+                                    ),
+                                  );
                                 },
                                 onOpenLinkMemo: () {
-                                  unawaited(_openInlineLinkMemoSheet());
+                                  unawaited(
+                                    _inlineComposeCoordinator.openLinkMemoSheet(
+                                      context,
+                                    ),
+                                  );
                                 },
                                 onCaptureCamera: () {
-                                  unawaited(_captureInlinePhoto());
+                                  unawaited(
+                                    _inlineComposeCoordinator.capturePhoto(
+                                      context,
+                                    ),
+                                  );
                                 },
                                 onOpenTodoMenu: () {
                                   unawaited(
-                                    _openInlineTodoShortcutMenuFromKey(
-                                      _inlineTodoMenuKey,
-                                    ),
+                                    _inlineComposeCoordinator
+                                        .openTodoShortcutMenuFromKey(
+                                          context,
+                                          _inlineTodoMenuKey,
+                                        ),
                                   );
                                 },
                                 onOpenVisibilityMenu: () {
                                   unawaited(
-                                    _openInlineVisibilityMenuFromKey(
-                                      _inlineVisibilityMenuKey,
-                                    ),
+                                    _inlineComposeCoordinator
+                                        .openVisibilityMenuFromKey(
+                                          context,
+                                          _inlineVisibilityMenuKey,
+                                        ),
                                   );
                                 },
                                 onCutParagraphs: () {
