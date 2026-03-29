@@ -155,6 +155,7 @@ class AccountSecurityScreen extends ConsumerWidget {
       try {
         var result = await scanner.scanAndMerge(forceDisk: false);
         while (result is LocalScanConflictResult) {
+          if (!context.mounted) return;
           final decisions = await resolveLocalScanConflicts(
             context,
             result.conflicts,
@@ -229,6 +230,29 @@ class AccountSecurityScreen extends ConsumerWidget {
       await ref.read(appSessionProvider.notifier).switchWorkspace(key);
       if (!context.mounted) return;
       showTopToast(context, context.t.strings.legacy.msg_local_library_added);
+    }
+
+    Future<void> renameLocalLibrary(LocalLibrary library) async {
+      final result = await LocalModeSetupScreen.show(
+        context,
+        title: context.t.strings.legacy.msg_local_library_name,
+        confirmLabel: context.t.strings.legacy.msg_confirm,
+        cancelLabel: context.t.strings.legacy.msg_cancel_2,
+        initialName: library.name.isNotEmpty
+            ? library.name
+            : context.t.strings.legacy.msg_local_library,
+        subtitle: library.locationLabel,
+        showStorageInfoCard: false,
+      );
+      if (result == null) return;
+      final nextName = result.name.trim();
+      final currentName = library.name.trim();
+      if (nextName.isEmpty || nextName == currentName) return;
+      ref
+          .read(localLibrariesProvider.notifier)
+          .upsert(library.copyWith(name: nextName));
+      if (!context.mounted) return;
+      showTopToast(context, context.t.strings.legacy.msg_saved_2);
     }
 
     Future<void> removeLocalLibrary(LocalLibrary library) async {
@@ -559,6 +583,10 @@ class AccountSecurityScreen extends ConsumerWidget {
                           if (!context.mounted) return;
                           await maybeScanLocalLibrary();
                         },
+                        onEdit: () async {
+                          haptic();
+                          await renameLocalLibrary(l);
+                        },
                         onDelete: () async {
                           haptic();
                           await removeLocalLibrary(l);
@@ -751,6 +779,7 @@ class _AccountRow extends StatelessWidget {
     required this.textMain,
     required this.textMuted,
     required this.onTap,
+    this.onEdit,
     required this.onDelete,
   });
 
@@ -760,6 +789,7 @@ class _AccountRow extends StatelessWidget {
   final Color textMain;
   final Color textMuted;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -797,6 +827,12 @@ class _AccountRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (onEdit != null)
+                IconButton(
+                  tooltip: context.t.strings.legacy.msg_edit,
+                  icon: Icon(Icons.edit_outlined, color: textMuted),
+                  onPressed: onEdit,
+                ),
               IconButton(
                 tooltip: context.t.strings.legacy.msg_remove,
                 icon: Icon(Icons.delete_outline, color: textMuted),

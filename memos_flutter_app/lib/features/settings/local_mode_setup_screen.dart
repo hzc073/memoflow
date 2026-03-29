@@ -19,6 +19,7 @@ class LocalModeSetupScreen extends StatefulWidget {
     required this.cancelLabel,
     required this.initialName,
     this.subtitle,
+    this.showStorageInfoCard = true,
   });
 
   final String title;
@@ -26,6 +27,7 @@ class LocalModeSetupScreen extends StatefulWidget {
   final String cancelLabel;
   final String initialName;
   final String? subtitle;
+  final bool showStorageInfoCard;
 
   static Future<LocalModeSetupResult?> show(
     BuildContext context, {
@@ -34,6 +36,7 @@ class LocalModeSetupScreen extends StatefulWidget {
     required String cancelLabel,
     required String initialName,
     String? subtitle,
+    bool showStorageInfoCard = true,
   }) {
     return Navigator.of(context).push<LocalModeSetupResult>(
       MaterialPageRoute<LocalModeSetupResult>(
@@ -43,6 +46,7 @@ class LocalModeSetupScreen extends StatefulWidget {
           cancelLabel: cancelLabel,
           initialName: initialName,
           subtitle: subtitle,
+          showStorageInfoCard: showStorageInfoCard,
         ),
       ),
     );
@@ -138,22 +142,24 @@ class _LocalModeSetupScreenState extends State<LocalModeSetupScreen> {
             ),
             const SizedBox(height: 12),
           ],
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text(
-                context.tr(
-                  zh: '\u672c\u5730\u6a21\u5f0f\u6570\u636e\u5c06\u9ed8\u8ba4\u4fdd\u5b58\u5728\u5e94\u7528\u5185\u90e8\u6587\u4ef6\u5939\u3002',
-                  en: 'Local mode data is stored in the app\'s private files by default.',
-                ),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  height: 1.4,
+          if (widget.showStorageInfoCard) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Text(
+                  context.tr(
+                    zh: '\u672c\u5730\u6a21\u5f0f\u6570\u636e\u5c06\u9ed8\u8ba4\u4fdd\u5b58\u5728\u5e94\u7528\u5185\u90e8\u6587\u4ef6\u5939\u3002',
+                    en: 'Local mode data is stored in the app\'s private files by default.',
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
