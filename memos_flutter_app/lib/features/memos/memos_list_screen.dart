@@ -430,6 +430,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   double _mobileBottomPullDistance = 0;
   bool _mobileBottomPullArmed = false;
   bool _floatingCollapseScrolling = false;
+  VoiceRecordOverlayDragSession? _voiceOverlayDragSession;
+  Future<void>? _voiceOverlayDragFuture;
   bool _floatingCollapseRecomputeScheduled = false;
   String? _floatingCollapseMemoUid;
   DateTime? _lastDesktopWheelLoadAt;
@@ -3287,6 +3289,53 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   Future<void> _openNoteInput() async {
     if (!widget.enableCompose) return;
     await NoteInputSheet.show(context);
+  }
+
+  Future<void> _openVoiceNoteInput({
+    VoiceRecordOverlayDragSession? dragSession,
+  }) async {
+    if (!widget.enableCompose) return;
+    final result = await VoiceRecordScreen.showOverlay(
+      context,
+      autoStart: true,
+      dragSession: dragSession,
+    );
+    if (!mounted || result == null) return;
+    await NoteInputSheet.show(
+      context,
+      initialText: result.suggestedContent,
+      initialAttachmentPaths: [result.filePath],
+      ignoreDraft: true,
+    );
+  }
+
+  Future<void> _handleVoiceFabLongPressStart(
+    LongPressStartDetails details,
+  ) async {
+    if (!widget.enableCompose || _voiceOverlayDragFuture != null) return;
+    final dragSession = VoiceRecordOverlayDragSession();
+    _voiceOverlayDragSession = dragSession;
+    dragSession.update(Offset.zero);
+    final future = _openVoiceNoteInput(dragSession: dragSession);
+    _voiceOverlayDragFuture = future;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_voiceOverlayDragSession, dragSession)) {
+          _voiceOverlayDragSession = null;
+        }
+        if (identical(_voiceOverlayDragFuture, future)) {
+          _voiceOverlayDragFuture = null;
+        }
+      }),
+    );
+  }
+
+  void _handleVoiceFabLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    _voiceOverlayDragSession?.update(details.offsetFromOrigin);
+  }
+
+  void _handleVoiceFabLongPressEnd(LongPressEndDetails details) {
+    _voiceOverlayDragSession?.endGesture();
   }
 
   void _applyInlineComposeDraft(AsyncValue<String> value) {
@@ -7144,6 +7193,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         floatingActionButton: showComposeFab
             ? _MemoFlowFab(
                 onPressed: _openNoteInput,
+                onLongPressStart: _handleVoiceFabLongPressStart,
+                onLongPressMoveUpdate: _handleVoiceFabLongPressMoveUpdate,
+                onLongPressEnd: _handleVoiceFabLongPressEnd,
                 hapticsEnabled: hapticsEnabled,
               )
             : null,
@@ -9598,9 +9650,19 @@ class _TaskProgressBarState extends State<_TaskProgressBar>
 }
 
 class _MemoFlowFab extends StatefulWidget {
-  const _MemoFlowFab({required this.onPressed, required this.hapticsEnabled});
+  const _MemoFlowFab({
+    required this.onPressed,
+    required this.hapticsEnabled,
+    this.onLongPressStart,
+    this.onLongPressMoveUpdate,
+    this.onLongPressEnd,
+  });
 
   final VoidCallback? onPressed;
+  final Future<void> Function(LongPressStartDetails details)? onLongPressStart;
+  final void Function(LongPressMoveUpdateDetails details)?
+  onLongPressMoveUpdate;
+  final void Function(LongPressEndDetails details)? onLongPressEnd;
   final bool hapticsEnabled;
 
   @override
@@ -9632,6 +9694,17 @@ class _MemoFlowFabState extends State<_MemoFlowFab> {
               setState(() => _pressed = false);
               widget.onPressed?.call();
             },
+      onLongPressStart: widget.onLongPressStart == null
+          ? null
+          : (details) {
+              setState(() => _pressed = false);
+              if (widget.hapticsEnabled) {
+                HapticFeedback.mediumImpact();
+              }
+              unawaited(widget.onLongPressStart!.call(details));
+            },
+      onLongPressMoveUpdate: widget.onLongPressMoveUpdate,
+      onLongPressEnd: widget.onLongPressEnd,
       child: AnimatedScale(
         scale: _pressed ? 0.9 : 1.0,
         duration: const Duration(milliseconds: 160),
