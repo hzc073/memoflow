@@ -10,7 +10,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../state/sync/sync_coordinator_provider.dart';
@@ -33,7 +32,6 @@ import '../../core/tag_colors.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
-import '../../core/url.dart';
 import '../../state/memos/memos_list_providers.dart';
 import '../../state/memos/memos_list_load_more_controller.dart';
 import '../../state/memos/memo_composer_controller.dart';
@@ -81,6 +79,7 @@ import 'memo_editor_screen.dart';
 import 'memo_versions_screen.dart';
 import 'memo_markdown.dart';
 import 'advanced_search_sheet.dart';
+import 'memos_list_audio_playback_coordinator.dart';
 import 'memos_list_inline_compose_coordinator.dart';
 import 'recycle_bin_screen.dart';
 import 'note_input_sheet.dart';
@@ -184,23 +183,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   String _listSignature = '';
   final Set<String> _pendingRemovedUids = <String>{};
   var _showBackToTop = false;
-  final _audioPlayer = AudioPlayer();
-  final _audioPositionNotifier = ValueNotifier(Duration.zero);
-  final _audioDurationNotifier = ValueNotifier<Duration?>(null);
-  StreamSubscription<PlayerState>? _audioStateSub;
-  StreamSubscription<Duration>? _audioPositionSub;
-  StreamSubscription<Duration?>? _audioDurationSub;
-  Timer? _audioProgressTimer;
-  DateTime? _audioProgressStart;
-  Duration _audioProgressBase = Duration.zero;
-  Duration _audioProgressLast = Duration.zero;
-  DateTime? _lastAudioProgressLogAt;
-  Duration _lastAudioProgressLogPosition = Duration.zero;
-  Duration? _lastAudioLoggedDuration;
-  bool _audioDurationMissingLogged = false;
-  String? _playingMemoUid;
-  String? _playingAudioUrl;
-  bool _audioLoading = false;
+  late final MemosListAudioPlaybackCoordinator _audioPlaybackCoordinator;
   DateTime? _lastBackPressedAt;
   bool _autoScanTriggered = false;
   bool _autoScanInFlight = false;
@@ -270,7 +253,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       templateRenderer: MemoTemplateRenderer(),
       imagePicker: ImagePicker(),
     );
+    _audioPlaybackCoordinator = MemosListAudioPlaybackCoordinator(
+      read: ref.read,
+    );
     _inlineComposeCoordinator.addListener(_handleInlineComposeCoordinatorChanged);
+    _audioPlaybackCoordinator.addListener(
+      _handleAudioPlaybackCoordinatorChanged,
+    );
     _scrollController.addListener(_handleScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _handleScroll());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -287,78 +276,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       noteDraftProvider,
       (prev, next) => _applyInlineComposeDraft(next),
     );
-    _audioStateSub = _audioPlayer.playerStateStream.listen((state) {
-      if (!mounted) return;
-      if (state.playing) {
-        _startAudioProgressTimer();
-        if (_audioLoading) {
-          setState(() => _audioLoading = false);
-        }
-      } else {
-        _stopAudioProgressTimer();
-      }
-      if (state.processingState == ProcessingState.completed) {
-        final memoUid = _playingMemoUid;
-        if (memoUid != null) {
-          _logAudioAction(
-            'completed memo=${_shortMemoUid(memoUid)} pos=${_formatDuration(_audioPlayer.position)}',
-            context: {
-              'memo': memoUid,
-              'positionMs': _audioPlayer.position.inMilliseconds,
-            },
-          );
-        }
-        _resetAudioLogState();
-        _stopAudioProgressTimer();
-        unawaited(_audioPlayer.seek(Duration.zero));
-        unawaited(_audioPlayer.pause());
-        _audioPositionNotifier.value = Duration.zero;
-        _audioDurationNotifier.value = null;
-        setState(() {
-          _playingMemoUid = null;
-          _playingAudioUrl = null;
-          _audioLoading = false;
-        });
-        return;
-      }
-      setState(() {});
-    });
-    _audioPositionSub = _audioPlayer.positionStream.listen((position) {
-      if (!mounted || _playingMemoUid == null) return;
-      if (_audioPlayer.playing && position <= _audioProgressLast) {
-        return;
-      }
-      _audioProgressBase = position;
-      _audioProgressLast = position;
-      _audioProgressStart = DateTime.now();
-      _audioPositionNotifier.value = position;
-    });
-    _audioDurationSub = _audioPlayer.durationStream.listen((duration) {
-      if (!mounted || _playingMemoUid == null) return;
-      _audioDurationNotifier.value = duration;
-      if (duration == null || duration <= Duration.zero) {
-        if (!_audioDurationMissingLogged) {
-          _audioDurationMissingLogged = true;
-          _logAudioBreadcrumb(
-            'duration missing memo=${_shortMemoUid(_playingMemoUid!)}',
-            context: {
-              'memo': _playingMemoUid!,
-              'durationMs': duration?.inMilliseconds,
-            },
-          );
-        }
-        return;
-      }
-      if (_lastAudioLoggedDuration == duration) return;
-      _lastAudioLoggedDuration = duration;
-      _logAudioBreadcrumb(
-        'duration memo=${_shortMemoUid(_playingMemoUid!)} dur=${_formatDuration(duration)}',
-        context: {
-          'memo': _playingMemoUid!,
-          'durationMs': duration.inMilliseconds,
-        },
-      );
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _openDrawerIfNeeded());
     if (Platform.isWindows) {
       windowManager.addListener(this);
@@ -392,7 +309,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _inlineComposeCoordinator.removeListener(
       _handleInlineComposeCoordinatorChanged,
     );
+    _audioPlaybackCoordinator.removeListener(
+      _handleAudioPlaybackCoordinatorChanged,
+    );
     _inlineComposeCoordinator.dispose();
+    _audioPlaybackCoordinator.dispose();
     _inlineComposer.dispose();
     _inlineComposeFocusNode.removeListener(_handleInlineComposeFocusChanged);
     _inlineComposeFocusNode.dispose();
@@ -400,13 +321,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _scrollToTopTimer?.cancel();
     _scrollToTopTimer = null;
     _scrollController.dispose();
-    _audioStateSub?.cancel();
-    _audioPositionSub?.cancel();
-    _audioDurationSub?.cancel();
-    _audioProgressTimer?.cancel();
-    _audioPositionNotifier.dispose();
-    _audioDurationNotifier.dispose();
-    _audioPlayer.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -420,6 +334,41 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   void _handleInlineComposeCoordinatorChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  void _handleAudioPlaybackCoordinatorChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _handleMemoAudioTap(LocalMemo memo) async {
+    final result = await _audioPlaybackCoordinator.togglePlayback(memo);
+    if (!mounted) return;
+    switch (result.kind) {
+      case MemosListAudioToggleResultKind.handled:
+        return;
+      case MemosListAudioToggleResultKind.sourceMissing:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_unable_load_audio_source,
+            ),
+          ),
+        );
+        return;
+      case MemosListAudioToggleResultKind.playbackFailed:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_playback_failed(
+                e: result.error ?? '',
+              ),
+            ),
+          ),
+        );
+        return;
     }
   }
 
@@ -2126,66 +2075,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     setState(() => _desktopWindowMaximized = false);
   }
 
-  void _resetAudioLogState() {
-    _lastAudioProgressLogAt = null;
-    _lastAudioProgressLogPosition = Duration.zero;
-    _lastAudioLoggedDuration = null;
-    _audioDurationMissingLogged = false;
-  }
-
-  void _logAudioAction(String message, {Map<String, Object?>? context}) {
-    if (!mounted) return;
-    ref.read(loggerServiceProvider).recordAction('Audio $message');
-    ref.read(logManagerProvider).info('Audio $message', context: context);
-  }
-
-  void _logAudioBreadcrumb(String message, {Map<String, Object?>? context}) {
-    if (!mounted) return;
-    ref.read(loggerServiceProvider).recordBreadcrumb('Audio: $message');
-    ref.read(logManagerProvider).info('Audio $message', context: context);
-  }
-
-  void _logAudioError(String message, Object error, StackTrace stackTrace) {
-    if (!mounted) return;
-    ref.read(loggerServiceProvider).recordError('Audio $message');
-    ref
-        .read(logManagerProvider)
-        .error('Audio $message', error: error, stackTrace: stackTrace);
-  }
-
-  void _maybeLogAudioProgress(Duration position) {
-    final memoUid = _playingMemoUid;
-    if (!mounted || memoUid == null) return;
-    final now = DateTime.now();
-    final lastAt = _lastAudioProgressLogAt;
-    if (lastAt != null && now.difference(lastAt) < const Duration(seconds: 4)) {
-      return;
-    }
-    final lastPos = _lastAudioProgressLogPosition;
-    final duration = _audioDurationNotifier.value;
-    final message = position <= lastPos && lastAt != null
-        ? 'progress stalled memo=${_shortMemoUid(memoUid)} pos=${_formatDuration(position)} dur=${_formatDuration(duration)}'
-        : 'progress memo=${_shortMemoUid(memoUid)} pos=${_formatDuration(position)} dur=${_formatDuration(duration)}';
-    _logAudioBreadcrumb(
-      message,
-      context: {
-        'memo': memoUid,
-        'positionMs': position.inMilliseconds,
-        'durationMs': duration?.inMilliseconds,
-        'playing': _audioPlayer.playing,
-        'state': _audioPlayer.processingState.toString(),
-      },
-    );
-    _lastAudioProgressLogAt = now;
-    _lastAudioProgressLogPosition = position;
-  }
-
-  String _shortMemoUid(String uid) {
-    final trimmed = uid.trim();
-    if (trimmed.isEmpty) return '--';
-    return trimmed.length <= 6 ? trimmed : trimmed.substring(0, 6);
-  }
-
   String _formatDuration(Duration? value) {
     if (value == null) return '--:--';
     final totalSeconds = value.inSeconds;
@@ -2196,249 +2085,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       return '${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
     }
     return '${hh.toString().padLeft(2, '0')}:${mm.toString().padLeft(2, '0')}:${ss.toString().padLeft(2, '0')}';
-  }
-
-  void _startAudioProgressTimer() {
-    if (_audioProgressTimer != null) return;
-    _audioProgressBase = _audioPlayer.position;
-    _audioProgressLast = _audioProgressBase;
-    _audioProgressStart = DateTime.now();
-    _audioProgressTimer = Timer.periodic(const Duration(milliseconds: 200), (
-      _,
-    ) {
-      if (!mounted || _playingMemoUid == null) return;
-      final now = DateTime.now();
-      var position = _audioPlayer.position;
-      if (_audioProgressStart != null && position <= _audioProgressLast) {
-        position = _audioProgressBase + now.difference(_audioProgressStart!);
-      } else {
-        _audioProgressBase = position;
-        _audioProgressStart = now;
-      }
-      _audioProgressLast = position;
-      _audioPositionNotifier.value = position;
-      _maybeLogAudioProgress(position);
-    });
-  }
-
-  void _stopAudioProgressTimer() {
-    _audioProgressTimer?.cancel();
-    _audioProgressTimer = null;
-    _audioProgressStart = null;
-  }
-
-  Future<void> _seekAudioPosition(LocalMemo memo, Duration target) async {
-    if (_playingMemoUid != memo.uid) return;
-    final duration = _audioDurationNotifier.value;
-    if (duration == null || duration <= Duration.zero) return;
-    var clamped = target;
-    if (clamped < Duration.zero) {
-      clamped = Duration.zero;
-    } else if (clamped > duration) {
-      clamped = duration;
-    }
-    await _audioPlayer.seek(clamped);
-    _audioProgressBase = clamped;
-    _audioProgressLast = clamped;
-    _audioProgressStart = DateTime.now();
-    _audioPositionNotifier.value = clamped;
-  }
-
-  String? _localAttachmentPath(Attachment attachment) {
-    final raw = attachment.externalLink.trim();
-    if (!raw.startsWith('file://')) return null;
-    final uri = Uri.tryParse(raw);
-    if (uri == null) return null;
-    final path = uri.toFilePath();
-    if (path.trim().isEmpty) return null;
-    final file = File(path);
-    if (!file.existsSync()) return null;
-    return path;
-  }
-
-  ({String url, String? localPath, Map<String, String>? headers})?
-  _resolveAudioSource(Attachment attachment) {
-    final rawLink = attachment.externalLink.trim();
-    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
-    final baseUrl = account?.baseUrl;
-    final sessionController = ref.read(appSessionProvider.notifier);
-    final serverVersion = account == null
-        ? ''
-        : sessionController.resolveEffectiveServerVersionForAccount(
-            account: account,
-          );
-    final rebaseAbsoluteFileUrlForV024 = isServerVersion024(serverVersion);
-    final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
-    final token = account?.personalAccessToken ?? '';
-    final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
-    if (rawLink.isNotEmpty) {
-      final localPath = _localAttachmentPath(attachment);
-      if (localPath != null) {
-        return (
-          url: Uri.file(localPath).toString(),
-          localPath: localPath,
-          headers: null,
-        );
-      }
-      var resolved = resolveMaybeRelativeUrl(baseUrl, rawLink);
-      if (rebaseAbsoluteFileUrlForV024) {
-        final rebased = rebaseAbsoluteFileUrlToBase(baseUrl, resolved);
-        if (rebased != null && rebased.isNotEmpty) {
-          resolved = rebased;
-        }
-      }
-      final isAbsolute = isAbsoluteUrl(resolved);
-      final canAttachAuth = rebaseAbsoluteFileUrlForV024
-          ? (!isAbsolute || isSameOriginWithBase(baseUrl, resolved))
-          : (!isAbsolute ||
-                (attachAuthForSameOriginAbsolute &&
-                    isSameOriginWithBase(baseUrl, resolved)));
-      final headers = (canAttachAuth && authHeader != null)
-          ? {'Authorization': authHeader}
-          : null;
-      return (url: resolved, localPath: null, headers: headers);
-    }
-    if (baseUrl == null) return null;
-    final name = attachment.name.trim();
-    final filename = attachment.filename.trim();
-    if (name.isEmpty || filename.isEmpty) return null;
-    final url = joinBaseUrl(baseUrl, 'file/$name/$filename');
-    final headers = authHeader == null ? null : {'Authorization': authHeader};
-    return (url: url, localPath: null, headers: headers);
-  }
-
-  Future<void> _toggleAudioPlayback(LocalMemo memo) async {
-    if (_audioLoading) return;
-    final audioAttachments = memo.attachments
-        .where((a) => a.type.startsWith('audio'))
-        .toList(growable: false);
-    if (audioAttachments.isEmpty) return;
-    final attachment = audioAttachments.first;
-    final source = _resolveAudioSource(attachment);
-    if (source == null) {
-      _logAudioBreadcrumb('source missing memo=${_shortMemoUid(memo.uid)}');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_unable_load_audio_source),
-        ),
-      );
-      return;
-    }
-
-    final url = source.url;
-    final sourceLabel = source.localPath != null ? 'local' : 'remote';
-    final sameTarget = _playingMemoUid == memo.uid && _playingAudioUrl == url;
-    if (sameTarget) {
-      if (_audioPlayer.playing) {
-        await _audioPlayer.pause();
-        _stopAudioProgressTimer();
-        _logAudioAction(
-          'pause memo=${_shortMemoUid(memo.uid)} pos=${_formatDuration(_audioPlayer.position)}',
-          context: {
-            'memo': memo.uid,
-            'positionMs': _audioPlayer.position.inMilliseconds,
-            'source': sourceLabel,
-          },
-        );
-      } else {
-        _startAudioProgressTimer();
-        _lastAudioProgressLogAt = null;
-        _logAudioAction(
-          'resume memo=${_shortMemoUid(memo.uid)} pos=${_formatDuration(_audioPlayer.position)}',
-          context: {
-            'memo': memo.uid,
-            'positionMs': _audioPlayer.position.inMilliseconds,
-            'source': sourceLabel,
-          },
-        );
-        await _audioPlayer.play();
-      }
-      _audioPositionNotifier.value = _audioPlayer.position;
-      if (mounted) {
-        setState(() {});
-      }
-      return;
-    }
-
-    _resetAudioLogState();
-    _logAudioAction(
-      'load start memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
-      context: {'memo': memo.uid, 'source': sourceLabel},
-    );
-    setState(() {
-      _audioLoading = true;
-      _playingMemoUid = memo.uid;
-      _playingAudioUrl = url;
-    });
-    _audioPositionNotifier.value = Duration.zero;
-    _audioDurationNotifier.value = null;
-
-    try {
-      await _audioPlayer.stop();
-      Duration? loadedDuration;
-      if (source.localPath != null) {
-        loadedDuration = await _audioPlayer.setFilePath(source.localPath!);
-      } else {
-        loadedDuration = await _audioPlayer.setUrl(
-          url,
-          headers: source.headers,
-        );
-      }
-      final resolvedDuration = loadedDuration ?? _audioPlayer.duration;
-      _audioDurationNotifier.value = resolvedDuration;
-      if (resolvedDuration == null || resolvedDuration <= Duration.zero) {
-        _audioDurationMissingLogged = true;
-        _logAudioBreadcrumb(
-          'duration missing memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
-          context: {
-            'memo': memo.uid,
-            'durationMs': resolvedDuration?.inMilliseconds,
-            'source': sourceLabel,
-          },
-        );
-      } else {
-        _lastAudioLoggedDuration = resolvedDuration;
-        _logAudioBreadcrumb(
-          'duration memo=${_shortMemoUid(memo.uid)} dur=${_formatDuration(resolvedDuration)} source=$sourceLabel',
-          context: {
-            'memo': memo.uid,
-            'durationMs': resolvedDuration.inMilliseconds,
-            'source': sourceLabel,
-          },
-        );
-      }
-      _logAudioAction(
-        'play memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
-        context: {'memo': memo.uid, 'source': sourceLabel},
-      );
-      _startAudioProgressTimer();
-      if (mounted) {
-        setState(() => _audioLoading = false);
-      }
-      await _audioPlayer.play();
-    } catch (e, stackTrace) {
-      _logAudioError(
-        'playback failed memo=${_shortMemoUid(memo.uid)} source=$sourceLabel',
-        e,
-        stackTrace,
-      );
-      if (!mounted) return;
-      setState(() {
-        _audioLoading = false;
-        _playingMemoUid = null;
-        _playingAudioUrl = null;
-      });
-      _stopAudioProgressTimer();
-      _audioPositionNotifier.value = Duration.zero;
-      _audioDurationNotifier.value = null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_playback_failed(e: e)),
-        ),
-      );
-      return;
-    }
   }
 
   void _openDrawerIfNeeded() {
@@ -4115,13 +3761,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       windowsHeaderSearchExpanded: _windowsHeaderSearchExpanded,
       selectedQuickSearchKind: _selectedQuickSearchKind,
       searchQuery: _searchController.text,
-      playingMemoUid: _playingMemoUid,
-      audioPlaying: _audioPlayer.playing,
-      audioLoading: _audioLoading,
-      audioPositionListenable: _audioPositionNotifier,
-      audioDurationListenable: _audioDurationNotifier,
-      onAudioSeek: (pos) => _seekAudioPosition(memo, pos),
-      onAudioTap: () => _toggleAudioPlayback(memo),
+      playingMemoUid: _audioPlaybackCoordinator.playingMemoUid,
+      audioPlaying: _audioPlaybackCoordinator.audioPlaying,
+      audioLoading: _audioPlaybackCoordinator.audioLoading,
+      audioPositionListenable: _audioPlaybackCoordinator.positionListenable,
+      audioDurationListenable: _audioPlaybackCoordinator.durationListenable,
+      onAudioSeek: (pos) => unawaited(_audioPlaybackCoordinator.seek(memo, pos)),
+      onAudioTap: () => unawaited(_handleMemoAudioTap(memo)),
       onSyncStatusTap: (status) =>
           unawaited(_handleMemoSyncStatusTap(status, memo.uid)),
       onToggleTask: (index) {
