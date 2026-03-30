@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -32,7 +30,6 @@ import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../state/memos/memos_list_providers.dart';
-import '../../state/memos/memos_list_load_more_controller.dart';
 import '../../state/memos/memo_composer_controller.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
@@ -80,6 +77,7 @@ import 'advanced_search_sheet.dart';
 import 'memos_list_audio_playback_coordinator.dart';
 import 'memos_list_inline_compose_coordinator.dart';
 import 'memos_list_screen_view_state.dart';
+import 'memos_list_viewport_coordinator.dart';
 import 'recycle_bin_screen.dart';
 import 'note_input_sheet.dart';
 import 'widgets/floating_collapse_button.dart';
@@ -144,13 +142,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   static const int _initialPageSize = 200;
   static const int _pageStep = 200;
   static const int _bootstrapImportThreshold = 50;
-  static const double _mobilePullLoadThreshold = 64;
-  static const Duration _desktopWheelLoadDebounce = Duration(milliseconds: 220);
-  static const double _scrollToTopMinSpeedPxPerSecond = 2600;
-  static const double _scrollToTopMaxSpeedPxPerSecond = 14000;
-  static const double _scrollToTopDistanceSpeedFactor = 90;
-  static const Duration _scrollToTopTick = Duration(milliseconds: 16);
-  static const double _scrollToTopTickSeconds = 0.016;
   final _dayDateFmt = DateFormat('yyyy-MM-dd');
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
@@ -181,29 +172,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   List<LocalMemo> _animatedMemos = [];
   String _listSignature = '';
   final Set<String> _pendingRemovedUids = <String>{};
-  var _showBackToTop = false;
   late final MemosListAudioPlaybackCoordinator _audioPlaybackCoordinator;
+  late final MemosListViewportCoordinator _viewportCoordinator;
   DateTime? _lastBackPressedAt;
   bool _autoScanTriggered = false;
   bool _autoScanInFlight = false;
   bool _bootstrapImportActive = false;
   int _bootstrapImportTotal = 0;
   DateTime? _bootstrapImportStartedAt;
-  final _loadMoreController = MemosListLoadMoreController(
-    initialPageSize: _initialPageSize,
-    pageStep: _pageStep,
-  );
   String? _lastEmptyDiagnosticKey;
   String? _lastLoadingPhaseKey;
-  bool _floatingCollapseScrolling = false;
   VoiceRecordOverlayDragSession? _voiceOverlayDragSession;
   Future<void>? _voiceOverlayDragFuture;
-  bool _floatingCollapseRecomputeScheduled = false;
-  String? _floatingCollapseMemoUid;
-  bool _scrollToTopAnimating = false;
-  Timer? _scrollToTopTimer;
-  double _lastObservedScrollOffset = 0;
-  DateTime? _lastScrollJumpLogAt;
   String? _lastWorkspaceDebugSignature;
   bool _desktopWindowMaximized = false;
   bool _windowsHeaderSearchExpanded = false;
@@ -217,20 +197,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _inlineComposer.textController;
   bool get _inlineCanUndo => _inlineComposer.canUndo;
   bool get _inlineCanRedo => _inlineComposer.canRedo;
-  int get _pageSize => _loadMoreController.pageSize;
-  bool get _reachedEnd => _loadMoreController.reachedEnd;
-  bool get _loadingMore => _loadMoreController.loadingMore;
-  String get _paginationKey => _loadMoreController.paginationKey;
-  int get _lastResultCount => _loadMoreController.lastResultCount;
-  int get _currentResultCount => _loadMoreController.currentResultCount;
-  bool get _currentLoading => _loadMoreController.currentLoading;
-  bool get _currentShowSearchLanding => _loadMoreController.currentShowSearchLanding;
-  double get _mobileBottomPullDistance =>
-      _loadMoreController.mobileBottomPullDistance;
-  bool get _mobileBottomPullArmed => _loadMoreController.mobileBottomPullArmed;
+  int get _pageSize => _viewportCoordinator.pageSize;
+  bool get _reachedEnd => _viewportCoordinator.reachedEnd;
+  bool get _loadingMore => _viewportCoordinator.loadingMore;
+  String get _paginationKey => _viewportCoordinator.paginationKey;
+  int get _lastResultCount => _viewportCoordinator.lastResultCount;
+  int get _currentResultCount => _viewportCoordinator.currentResultCount;
+  bool get _currentLoading => _viewportCoordinator.currentLoading;
+  bool get _currentShowSearchLanding =>
+      _viewportCoordinator.currentShowSearchLanding;
+  bool get _mobileBottomPullArmed => _viewportCoordinator.mobileBottomPullArmed;
   int? get _activeLoadMoreRequestId =>
-      _loadMoreController.activeLoadMoreRequestId;
-  String? get _activeLoadMoreSource => _loadMoreController.activeLoadMoreSource;
+      _viewportCoordinator.activeLoadMoreRequestId;
+  String? get _activeLoadMoreSource =>
+      _viewportCoordinator.activeLoadMoreSource;
+  bool get _showBackToTop => _viewportCoordinator.showBackToTop;
+  bool get _floatingCollapseScrolling =>
+      _viewportCoordinator.floatingCollapseScrolling;
+  String? get _floatingCollapseMemoUid =>
+      _viewportCoordinator.floatingCollapseMemoUid;
+  bool get _scrollToTopAnimating => _viewportCoordinator.scrollToTopAnimating;
 
   @override
   void initState() {
@@ -246,12 +232,21 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _audioPlaybackCoordinator = MemosListAudioPlaybackCoordinator(
       read: ref.read,
     );
-    _inlineComposeCoordinator.addListener(_handleInlineComposeCoordinatorChanged);
+    _viewportCoordinator = MemosListViewportCoordinator(
+      initialPageSize: _initialPageSize,
+      pageStep: _pageStep,
+    );
+    _inlineComposeCoordinator.addListener(
+      _handleInlineComposeCoordinatorChanged,
+    );
     _audioPlaybackCoordinator.addListener(
       _handleAudioPlaybackCoordinatorChanged,
     );
-    _scrollController.addListener(_handleScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _handleScroll());
+    _viewportCoordinator.addListener(_handleViewportCoordinatorChanged);
+    _scrollController.addListener(_handleViewportScrollChanged);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _handleViewportScrollChanged(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final message = widget.toastMessage;
@@ -302,14 +297,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _audioPlaybackCoordinator.removeListener(
       _handleAudioPlaybackCoordinatorChanged,
     );
+    _viewportCoordinator.removeListener(_handleViewportCoordinatorChanged);
     _inlineComposeCoordinator.dispose();
     _audioPlaybackCoordinator.dispose();
+    _viewportCoordinator.dispose();
     _inlineComposer.dispose();
     _inlineComposeFocusNode.removeListener(_handleInlineComposeFocusChanged);
     _inlineComposeFocusNode.dispose();
     _searchFocusNode.dispose();
-    _scrollToTopTimer?.cancel();
-    _scrollToTopTimer = null;
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -328,6 +323,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   void _handleAudioPlaybackCoordinatorChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _handleViewportCoordinatorChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -423,102 +424,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     if (kIsWeb) return false;
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
-  }
-
-  void _resetMobilePullLoadState({bool notify = false}) {
-    if (_mobileBottomPullDistance == 0 && !_mobileBottomPullArmed) return;
-    _loadMoreController.resetTouchPull();
-    if (notify && mounted) {
-      setState(() {});
-      return;
-    }
-  }
-
-  bool _handleLoadMoreScrollNotification(ScrollNotification notification) {
-    if (!_isTouchPullLoadPlatform()) return false;
-    if (notification.metrics.axis != Axis.vertical) return false;
-    if (_scrollToTopAnimating) return false;
-
-    final canArmPullLoad =
-        !_currentShowSearchLanding &&
-        !_currentLoading &&
-        !_loadingMore &&
-        !_reachedEnd;
-    if (!canArmPullLoad) {
-      _resetMobilePullLoadState(notify: false);
-      return false;
-    }
-
-    if (notification is ScrollUpdateNotification &&
-        notification.dragDetails != null) {
-      final nearBottom =
-          notification.metrics.pixels >=
-          (notification.metrics.maxScrollExtent - 1);
-      if (!nearBottom) {
-        _resetMobilePullLoadState(notify: true);
-      }
-    }
-
-    if (notification is OverscrollNotification &&
-        notification.dragDetails != null) {
-      final atBottom =
-          notification.metrics.maxScrollExtent > 0 &&
-          notification.metrics.pixels >=
-              (notification.metrics.maxScrollExtent - 1);
-      if (!atBottom || notification.overscroll <= 0) return false;
-
-      final nextDistance = _mobileBottomPullDistance + notification.overscroll;
-      final previousDistance = _mobileBottomPullDistance;
-      final previousArmed = _mobileBottomPullArmed;
-      _loadMoreController.updateTouchPullDistance(
-        nextDistance,
-        threshold: _mobilePullLoadThreshold,
-      );
-      if (previousDistance != _mobileBottomPullDistance ||
-          previousArmed != _mobileBottomPullArmed) {
-        setState(() {});
-      }
-      return false;
-    }
-
-    if (notification is ScrollEndNotification) {
-      final armed = _loadMoreController.consumeTouchPullArm();
-      if (mounted) {
-        setState(() {});
-      }
-      if (armed) {
-        _loadMoreFromActionWithSource('mobile_pull_release');
-      }
-    }
-    return false;
-  }
-
-  void _handleDesktopPointerSignal(PointerSignalEvent event) {
-    if (_isTouchPullLoadPlatform()) return;
-    if (_scrollToTopAnimating) return;
-    if (event is! PointerScrollEvent) return;
-    if (event.scrollDelta.dy <= 0) return;
-    if (!_scrollController.hasClients) return;
-
-    final metrics = _scrollController.position;
-    if (metrics.maxScrollExtent <= 0) return;
-    final nearBottom =
-        metrics.pixels >=
-        (metrics.maxScrollExtent - metrics.viewportDimension * 0.08);
-    if (!nearBottom) return;
-
-    final now = DateTime.now();
-    if (_loadMoreController.shouldThrottleDesktopWheel(
-      now,
-      _desktopWheelLoadDebounce,
-    )) {
-      return;
-    }
-    _loadMoreFromActionWithSource('desktop_wheel');
-  }
-
-  String _describeLoadMoreBlockReason() {
-    return _loadMoreController.describeBlockReason();
   }
 
   Map<String, Object?> _paginationDebugContext({
@@ -772,39 +677,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         );
   }
 
-  void _handleScroll() {
-    if (!_scrollController.hasClients) return;
-    final metrics = _scrollController.position;
-    final previousOffset = _lastObservedScrollOffset;
-    _lastObservedScrollOffset = metrics.pixels;
-
-    final jumpedToTopUnexpectedly =
-        previousOffset > (metrics.viewportDimension * 0.8) &&
-        metrics.pixels <= 4 &&
-        (previousOffset - metrics.pixels) > (metrics.viewportDimension * 0.8);
-    if (jumpedToTopUnexpectedly) {
-      final now = DateTime.now();
-      final lastAt = _lastScrollJumpLogAt;
-      if (lastAt == null ||
-          now.difference(lastAt) > const Duration(milliseconds: 700)) {
-        _lastScrollJumpLogAt = now;
-        _logPaginationDebug(
-          'scroll_jump_to_top_detected',
-          metrics: metrics,
-          context: {'previousOffset': previousOffset},
-        );
-      }
-    }
-
-    final threshold = metrics.viewportDimension * 2;
-    final shouldShow = metrics.pixels >= threshold;
-    if (shouldShow != _showBackToTop && mounted) {
-      setState(() => _showBackToTop = shouldShow);
-    }
-
-    _scheduleFloatingCollapseRecompute();
-  }
-
   GlobalKey<MemoListCardState> _memoCardKeyFor(String memoUid) {
     return _memoCardKeys.putIfAbsent(memoUid, GlobalKey<MemoListCardState>.new);
   }
@@ -814,19 +686,69 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _memoCardKeys.removeWhere((uid, _) => !keepUids.contains(uid));
   }
 
-  void _scheduleFloatingCollapseRecompute() {
-    if (_floatingCollapseRecomputeScheduled) return;
-    _floatingCollapseRecomputeScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _floatingCollapseRecomputeScheduled = false;
-      if (!mounted) return;
-      _recomputeFloatingCollapseTarget();
-    });
+  MemosListViewportMetrics? _currentViewportMetrics() {
+    if (!_scrollController.hasClients) return null;
+    return _viewportMetricsFromScrollMetrics(_scrollController.position);
   }
 
-  void _recomputeFloatingCollapseTarget() {
+  ScrollMetrics? _currentScrollMetricsForLogging() {
+    if (!_scrollController.hasClients) return null;
+    return _scrollController.position;
+  }
+
+  void _logLoadMoreEffect(
+    MemosListViewportLoadMoreEffect effect, {
+    ScrollMetrics? metrics,
+  }) {
+    switch (effect.kind) {
+      case MemosListViewportLoadMoreEffectKind.none:
+        return;
+      case MemosListViewportLoadMoreEffectKind.triggered:
+        _logPaginationDebug(
+          'load_more_trigger',
+          metrics: metrics,
+          context: {
+            'requestId': effect.requestId,
+            'source': effect.source,
+            'fromPageSize': effect.fromPageSize,
+            'toPageSize': effect.toPageSize,
+          },
+        );
+      case MemosListViewportLoadMoreEffectKind.skipped:
+        _logPaginationDebug(
+          'load_more_skipped',
+          metrics: metrics,
+          context: {'source': effect.source, 'reason': effect.skipReason},
+        );
+    }
+  }
+
+  void _handleViewportScrollChanged() {
+    final metrics = _currentViewportMetrics();
+    if (metrics == null) return;
+    final effect = _viewportCoordinator.handleScroll(metrics);
+    if (effect.jumpedToTopUnexpectedly) {
+      _logPaginationDebug(
+        'scroll_jump_to_top_detected',
+        metrics: _currentScrollMetricsForLogging(),
+        context: {'previousOffset': effect.previousOffset},
+      );
+    }
+    _requestFloatingCollapseRecompute();
+  }
+
+  void _requestFloatingCollapseRecompute() {
+    _viewportCoordinator.requestFloatingCollapseRecompute(
+      schedulePostFrame: (callback) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+      },
+      resolveMemoUid: _resolveFloatingCollapseMemoUid,
+    );
+  }
+
+  String? _resolveFloatingCollapseMemoUid() {
     final viewportRect = globalRectForKey(_floatingCollapseViewportKey);
-    if (viewportRect == null) return;
+    if (viewportRect == null) return null;
 
     MemoFloatingCollapseCandidate? nextCandidate;
     for (final key in _memoCardKeys.values) {
@@ -840,39 +762,72 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       }
     }
 
-    final nextMemoUid = nextCandidate?.memoUid;
-    if (nextMemoUid == _floatingCollapseMemoUid) return;
-    setState(() => _floatingCollapseMemoUid = nextMemoUid);
+    return nextCandidate?.memoUid;
   }
 
-  void _setFloatingCollapseScrolling(bool value) {
-    if (_floatingCollapseScrolling == value || !mounted) return;
-    setState(() => _floatingCollapseScrolling = value);
-  }
-
-  void _handleFloatingCollapseScrollNotification(
+  MemosListViewportScrollEvent? _viewportScrollEventFromNotification(
     ScrollNotification notification,
   ) {
-    if (notification.metrics.axis != Axis.vertical) return;
-
-    if (notification is ScrollStartNotification ||
-        notification is ScrollUpdateNotification ||
-        notification is OverscrollNotification) {
-      _setFloatingCollapseScrolling(true);
-    } else if (notification is UserScrollNotification) {
-      _setFloatingCollapseScrolling(
-        notification.direction != ScrollDirection.idle,
+    final metrics = _viewportMetricsFromScrollMetrics(notification.metrics);
+    if (notification is ScrollStartNotification) {
+      return MemosListViewportScrollEvent(
+        kind: MemosListViewportScrollEventKind.start,
+        metrics: metrics,
+        hasDragDetails: notification.dragDetails != null,
+        overscroll: 0,
+        userDirection: null,
       );
-    } else if (notification is ScrollEndNotification) {
-      _setFloatingCollapseScrolling(false);
     }
-
-    _scheduleFloatingCollapseRecompute();
+    if (notification is ScrollUpdateNotification) {
+      return MemosListViewportScrollEvent(
+        kind: MemosListViewportScrollEventKind.update,
+        metrics: metrics,
+        hasDragDetails: notification.dragDetails != null,
+        overscroll: 0,
+        userDirection: null,
+      );
+    }
+    if (notification is OverscrollNotification) {
+      return MemosListViewportScrollEvent(
+        kind: MemosListViewportScrollEventKind.overscroll,
+        metrics: metrics,
+        hasDragDetails: notification.dragDetails != null,
+        overscroll: notification.overscroll,
+        userDirection: null,
+      );
+    }
+    if (notification is ScrollEndNotification) {
+      return MemosListViewportScrollEvent(
+        kind: MemosListViewportScrollEventKind.end,
+        metrics: metrics,
+        hasDragDetails: false,
+        overscroll: 0,
+        userDirection: null,
+      );
+    }
+    if (notification is UserScrollNotification) {
+      return MemosListViewportScrollEvent(
+        kind: MemosListViewportScrollEventKind.user,
+        metrics: metrics,
+        hasDragDetails: false,
+        overscroll: 0,
+        userDirection: notification.direction,
+      );
+    }
+    return null;
   }
 
-  bool _handleScrollNotification(ScrollNotification notification) {
-    _handleFloatingCollapseScrollNotification(notification);
-    return _handleLoadMoreScrollNotification(notification);
+  bool _handleViewportScrollNotification(ScrollNotification notification) {
+    final event = _viewportScrollEventFromNotification(notification);
+    if (event == null) return false;
+    _viewportCoordinator.handleFloatingCollapseScrollEvent(event);
+    final effect = _viewportCoordinator.handleLoadMoreScrollEvent(
+      event,
+      touchPullEnabled: _isTouchPullLoadPlatform(),
+    );
+    _logLoadMoreEffect(effect, metrics: notification.metrics);
+    _requestFloatingCollapseRecompute();
+    return false;
   }
 
   void _collapseActiveMemoFromFloatingButton() {
@@ -881,59 +836,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final memoState = _memoCardKeys[memoUid]?.currentState;
     if (memoState == null) return;
     memoState.collapseFromFloating();
-    _scheduleFloatingCollapseRecompute();
-  }
-
-  void _triggerLoadMore({required String source}) {
-    final previousPageSize = _pageSize;
-    final requestId = _loadMoreController.beginLoadMore(source: source);
-    _logPaginationDebug(
-      'load_more_trigger',
-      metrics: _scrollController.hasClients ? _scrollController.position : null,
-      context: {
-        'requestId': requestId,
-        'source': source,
-        'fromPageSize': previousPageSize,
-        'toPageSize': _pageSize,
-      },
-    );
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  bool _canLoadMore() {
-    if (_scrollToTopAnimating) return false;
-    return _loadMoreController.canLoadMore();
-  }
-
-  void _loadMoreFromActionWithSource(String source) {
-    if (!_canLoadMore()) {
-      _logPaginationDebug(
-        'load_more_skipped',
-        metrics: _scrollController.hasClients
-            ? _scrollController.position
-            : null,
-        context: {'source': source, 'reason': _describeLoadMoreBlockReason()},
-      );
-      return;
-    }
-    _resetMobilePullLoadState(notify: false);
-    _triggerLoadMore(source: source);
-  }
-
-  void _scrollByPage({required bool down}) {
-    if (!_scrollController.hasClients) return;
-    final metrics = _scrollController.position;
-    final step = metrics.viewportDimension * 0.9;
-    final rawTarget = down ? metrics.pixels + step : metrics.pixels - step;
-    final target = rawTarget.clamp(0.0, metrics.maxScrollExtent);
-    if ((target - metrics.pixels).abs() < 1) return;
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-    );
+    _requestFloatingCollapseRecompute();
   }
 
   bool _handlePageNavigationShortcut({
@@ -941,83 +844,46 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     required String source,
   }) {
     if (_searchFocusNode.hasFocus) return false;
-    _scrollByPage(down: down);
-    if (!down) return true;
-    if (!_scrollController.hasClients) {
-      _loadMoreFromActionWithSource('${source}_no_clients');
-      return true;
-    }
-    final metrics = _scrollController.position;
-    final nearBottom =
-        metrics.maxScrollExtent <= 0 ||
-        metrics.pixels >=
-            (metrics.maxScrollExtent - metrics.viewportDimension * 0.35);
-    if (nearBottom) {
-      _loadMoreFromActionWithSource('${source}_near_bottom');
-    }
+    final effect = _viewportCoordinator.handlePageNavigationShortcut(
+      down: down,
+      searchFocused: false,
+      source: source,
+      scrollAdapter: _ScreenViewportScrollAdapter(_scrollController),
+    );
+    _logLoadMoreEffect(effect, metrics: _currentScrollMetricsForLogging());
     return true;
   }
 
-  void _stopScrollToTopFlow({bool snapToTop = false}) {
-    _scrollToTopTimer?.cancel();
-    _scrollToTopTimer = null;
-    _scrollToTopAnimating = false;
-    if (snapToTop && _scrollController.hasClients) {
-      try {
-        _scrollController.jumpTo(0);
-      } catch (_) {}
-    }
+  void _handleViewportPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final effect = _viewportCoordinator.handleDesktopWheel(
+      deltaY: event.scrollDelta.dy,
+      touchPullEnabled: _isTouchPullLoadPlatform(),
+      metrics: _currentViewportMetrics(),
+    );
+    _logLoadMoreEffect(effect, metrics: _currentScrollMetricsForLogging());
   }
 
-  double _scrollToTopSpeedForDistance(double distanceToTopPx) {
-    final safeDistance = distanceToTopPx.isFinite
-        ? math.max(0.0, distanceToTopPx)
-        : 0.0;
-    final speed =
-        _scrollToTopMinSpeedPxPerSecond +
-        math.sqrt(safeDistance) * _scrollToTopDistanceSpeedFactor;
-    return math.min(speed, _scrollToTopMaxSpeedPxPerSecond);
-  }
-
-  Future<void> _scrollToTop() async {
-    if (!_scrollController.hasClients) return;
-    if (_scrollToTopAnimating) return;
+  Future<void> _handleScrollToTop() async {
+    final adapter = _ScreenViewportScrollAdapter(_scrollController);
+    if (!adapter.hasClients || _scrollToTopAnimating) return;
     _logPaginationDebug(
       'scroll_to_top_action',
-      metrics: _scrollController.position,
+      metrics: _currentScrollMetricsForLogging(),
       context: {'mode': 'distance_dynamic_speed'},
     );
+    await _viewportCoordinator.scrollToTop(adapter);
+  }
 
-    _scrollToTopAnimating = true;
-    _scrollToTopTimer?.cancel();
-    _scrollToTopTimer = Timer.periodic(_scrollToTopTick, (_) {
-      if (!mounted || !_scrollController.hasClients) {
-        _stopScrollToTopFlow();
-        return;
-      }
-      final position = _scrollController.position;
-      final current = position.pixels;
-      if (current <= 0.5) {
-        _stopScrollToTopFlow(snapToTop: true);
-        return;
-      }
-
-      // Dynamic speed based on distance-to-top, but fixed per tick to avoid
-      // large compensation jumps when frames are delayed.
-      final speed = _scrollToTopSpeedForDistance(current);
-      final delta = speed * _scrollToTopTickSeconds;
-      final target = (current - delta).clamp(0.0, position.maxScrollExtent);
-      if ((current - target).abs() < 0.001) return;
-      try {
-        _scrollController.jumpTo(target);
-      } catch (_) {
-        _stopScrollToTopFlow();
-        return;
-      }
-      if (target <= 0.5) {
-        _stopScrollToTopFlow(snapToTop: true);
-      }
-    });
+  MemosListViewportMetrics _viewportMetricsFromScrollMetrics(
+    ScrollMetrics metrics,
+  ) {
+    return MemosListViewportMetrics(
+      pixels: metrics.pixels,
+      maxScrollExtent: metrics.maxScrollExtent,
+      viewportDimension: metrics.viewportDimension,
+      axis: metrics.axis,
+    );
   }
 
   String _sortOptionLabel(BuildContext context, _MemoSortOption option) {
@@ -1297,7 +1163,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _closeSearch();
     }
     if (_shouldUseInlineComposeForCurrentWindow()) {
-      _scrollToTop();
+      unawaited(_handleScrollToTop());
       _inlineComposeFocusNode.requestFocus();
       return;
     }
@@ -3142,6 +3008,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       }
     }
   }
+
   Future<void> _createShortcutFromMenu() async {
     final result = await Navigator.of(context).push<ShortcutEditorResult>(
       MaterialPageRoute<ShortcutEditorResult>(
@@ -3678,7 +3545,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       audioLoading: _audioPlaybackCoordinator.audioLoading,
       audioPositionListenable: _audioPlaybackCoordinator.positionListenable,
       audioDurationListenable: _audioPlaybackCoordinator.durationListenable,
-      onAudioSeek: (pos) => unawaited(_audioPlaybackCoordinator.seek(memo, pos)),
+      onAudioSeek: (pos) =>
+          unawaited(_audioPlaybackCoordinator.seek(memo, pos)),
       onAudioTap: () => unawaited(_handleMemoAudioTap(memo)),
       onSyncStatusTap: (status) =>
           unawaited(_handleMemoSyncStatusTap(status, memo.uid)),
@@ -3721,7 +3589,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           duration: const Duration(milliseconds: 1200),
         );
       },
-      onFloatingStateChanged: _scheduleFloatingCollapseRecompute,
+      onFloatingStateChanged: _requestFloatingCollapseRecompute,
       onAction: (action) async => _handleMemoAction(memo, action),
     );
     if (Platform.isWindows) {
@@ -3790,7 +3658,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final quickSearchQuery = queryState.quickSearchQuery;
     final queryKey = queryState.queryKey;
     final previousQueryKey = _paginationKey;
-    if (_loadMoreController.syncQueryKey(
+    if (_viewportCoordinator.syncQueryKey(
       queryKey,
       previousVisibleCount: _currentResultCount,
     )) {
@@ -3813,14 +3681,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       );
     }
     final memosAsync = switch (queryState.sourceKind) {
-      MemosListMemoSourceKind.shortcut =>
-        ref.watch(shortcutMemosProvider(shortcutQuery!)),
-      MemosListMemoSourceKind.quickSearch =>
-        ref.watch(quickSearchMemosProvider(quickSearchQuery!)),
-      MemosListMemoSourceKind.remoteSearch =>
-        ref.watch(remoteSearchMemosProvider(queryState.baseQuery)),
-      MemosListMemoSourceKind.stream =>
-        ref.watch(memosStreamProvider(queryState.baseQuery)),
+      MemosListMemoSourceKind.shortcut => ref.watch(
+        shortcutMemosProvider(shortcutQuery!),
+      ),
+      MemosListMemoSourceKind.quickSearch => ref.watch(
+        quickSearchMemosProvider(quickSearchQuery!),
+      ),
+      MemosListMemoSourceKind.remoteSearch => ref.watch(
+        remoteSearchMemosProvider(queryState.baseQuery),
+      ),
+      MemosListMemoSourceKind.stream => ref.watch(
+        memosStreamProvider(queryState.baseQuery),
+      ),
     };
     final syncState = ref.watch(syncCoordinatorProvider).memos;
     final syncQueueSnapshot = ref
@@ -3865,7 +3737,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final wasLoadingMore = _loadingMore;
     final requestId = _activeLoadMoreRequestId;
     final requestSource = _activeLoadMoreSource;
-    _loadMoreController.updateSnapshot(
+    _viewportCoordinator.updateSnapshot(
       hasProviderValue: hasProviderValue,
       resultCount: nextResultCount,
       providerLoading: memosLoading,
@@ -3914,7 +3786,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
     final visibleMemos = _animatedMemos;
     _syncMemoCardKeys(visibleMemos);
-    _scheduleFloatingCollapseRecompute();
+    _requestFloatingCollapseRecompute();
     final prefs = ref.watch(appPreferencesProvider);
     final hapticsEnabled = prefs.hapticsEnabled;
     final screenshotModeEnabled = kDebugMode
@@ -4186,9 +4058,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                   }
                 },
                 child: NotificationListener<ScrollNotification>(
-                  onNotification: _handleScrollNotification,
+                  onNotification: _handleViewportScrollNotification,
                   child: Listener(
-                    onPointerSignal: _handleDesktopPointerSignal,
+                    onPointerSignal: _handleViewportPointerSignal,
                     child: CustomScrollView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -4368,14 +4240,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                                               16,
                                               8,
                                             ),
-                                            child: MemosListSearchQuickFilterBar(
-                                              selectedKind:
-                                                  viewState
+                                            child:
+                                                MemosListSearchQuickFilterBar(
+                                                  selectedKind: viewState
                                                       .query
                                                       .selectedQuickSearchKind,
-                                              onSelectKind:
-                                                  _toggleQuickSearchKind,
-                                            ),
+                                                  onSelectKind:
+                                                      _toggleQuickSearchKind,
+                                                ),
                                           ),
                                         ),
                                       ))
@@ -4487,9 +4359,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                                 onSubmit: () {
                                   unawaited(_submitInlineCompose());
                                 },
-                                onRemoveAttachment:
-                                    _inlineComposeCoordinator
-                                        .removePendingAttachment,
+                                onRemoveAttachment: _inlineComposeCoordinator
+                                    .removePendingAttachment,
                                 onOpenAttachment: (attachment) {
                                   unawaited(
                                     _inlineComposeCoordinator
@@ -4733,7 +4604,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                 child: BackToTopButton(
                   visible: _showBackToTop,
                   hapticsEnabled: hapticsEnabled,
-                  onPressed: _scrollToTop,
+                  onPressed: _handleScrollToTop,
                 ),
               ),
               if (_bootstrapImportActive)
@@ -4811,4 +4682,36 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 }
 
+class _ScreenViewportScrollAdapter implements MemosListViewportScrollAdapter {
+  const _ScreenViewportScrollAdapter(this._controller);
 
+  final ScrollController _controller;
+
+  @override
+  bool get hasClients => _controller.hasClients;
+
+  @override
+  MemosListViewportMetrics get metrics {
+    final position = _controller.position;
+    return MemosListViewportMetrics(
+      pixels: position.pixels,
+      maxScrollExtent: position.maxScrollExtent,
+      viewportDimension: position.viewportDimension,
+      axis: position.axis,
+    );
+  }
+
+  @override
+  Future<void> animateTo(
+    double offset, {
+    required Duration duration,
+    required Curve curve,
+  }) {
+    return _controller.animateTo(offset, duration: duration, curve: curve);
+  }
+
+  @override
+  void jumpTo(double offset) {
+    _controller.jumpTo(offset);
+  }
+}
