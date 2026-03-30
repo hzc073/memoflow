@@ -831,6 +831,24 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
       return;
     }
 
+    final contentUri = attachment.externalLink.trim();
+    if (contentUri.startsWith('content://')) {
+      final bytes = await SafStream().readFileBytes(contentUri);
+      if (bytes.isEmpty) {
+        throw SyncError(
+          code: SyncErrorCode.dataCorrupt,
+          retryable: false,
+          message: 'Attachment download failed',
+        );
+      }
+      await fileSystem.writeFileFromChunks(
+        'attachments/$memoUid/$archiveName',
+        Stream<Uint8List>.value(bytes),
+        mimeType: mimeType,
+      );
+      return;
+    }
+
     final url = _resolveAttachmentUrl(baseUrl, attachment);
     if (url == null || url.isEmpty) {
       throw SyncError(
@@ -890,17 +908,9 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
 
   @override
   String? _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment) {
-    final link = attachment.externalLink.trim();
-    if (link.isNotEmpty &&
-        !link.startsWith('file://') &&
-        !link.startsWith('content://')) {
-      final resolved = resolveMaybeRelativeUrl(baseUrl, link);
-      return resolved.trim().isEmpty ? null : resolved;
-    }
-    if (baseUrl == null) return null;
-    final filename = attachment.filename.trim();
-    if (filename.isEmpty) return null;
-    return joinBaseUrl(baseUrl, 'file/${attachment.name}/$filename');
+    final resolved = resolveAttachmentRemoteUrl(baseUrl, attachment);
+    if (resolved == null || resolved.trim().isEmpty) return null;
+    return resolved;
   }
 
   @override

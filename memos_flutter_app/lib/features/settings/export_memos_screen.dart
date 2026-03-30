@@ -9,11 +9,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:saf_stream/saf_stream.dart';
 
+import '../../core/attachment_url.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
-import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../i18n/strings.g.dart';
@@ -137,16 +138,7 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
   }
 
   String? _resolveAttachmentUrl(Uri? baseUrl, Attachment attachment) {
-    final link = attachment.externalLink.trim();
-    if (link.isNotEmpty &&
-        !link.startsWith('file://') &&
-        !link.startsWith('content://')) {
-      return resolveMaybeRelativeUrl(baseUrl, link);
-    }
-    if (baseUrl == null) return null;
-    final filename = attachment.filename.trim();
-    if (filename.isEmpty) return null;
-    return resolveMaybeRelativeUrl(baseUrl, '/o/r/${attachment.uid}/$filename');
+    return resolveAttachmentRemoteUrl(baseUrl, attachment);
   }
 
   Future<List<int>?> _readAttachmentBytes(
@@ -158,6 +150,11 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
     final localFile = _localAttachmentFile(attachment);
     if (localFile != null) {
       return localFile.readAsBytes();
+    }
+
+    final contentUri = attachment.externalLink.trim();
+    if (contentUri.startsWith('content://')) {
+      return SafStream().readFileBytes(contentUri);
     }
 
     final url = _resolveAttachmentUrl(baseUrl, attachment);

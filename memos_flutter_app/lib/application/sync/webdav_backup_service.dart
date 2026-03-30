@@ -10,8 +10,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:saf_stream/saf_stream.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../core/attachment_url.dart';
 import '../../core/hash.dart';
 import '../../core/log_sanitizer.dart';
 import '../../core/url.dart';
@@ -168,10 +170,7 @@ abstract class _WebDavBackupServiceBase {
     WebDavBackupConfig config,
   );
   String _guessMimeType(String path);
-  SyncError _keyedError(
-    String key, {
-    SyncErrorCode code,
-  });
+  SyncError _keyedError(String key, {SyncErrorCode code});
   SyncError _httpError({
     required int statusCode,
     required String method,
@@ -354,8 +353,7 @@ abstract class _WebDavBackupServiceBase {
     LocalLibrary? activeLocalLibrary,
     String? accountId,
   );
-  Future<int> _exportLocalLibraryForBackup(
-    LocalLibrary localLibrary);
+  Future<int> _exportLocalLibraryForBackup(LocalLibrary localLibrary);
   Future<void> _exportAttachmentForBackup({
     required LocalLibraryFileSystem fileSystem,
     required LocalAttachmentStore attachmentStore,
