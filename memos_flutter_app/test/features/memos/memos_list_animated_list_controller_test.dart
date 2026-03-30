@@ -205,6 +205,69 @@ void main() {
     expect(controller.pendingRemovedUids, contains('memo-1'));
     expect(controller.animatedMemos, isEmpty);
   });
+
+  test('syncAnimatedMemos updates state without notifying listeners', () {
+    final controller = MemosListAnimatedListController();
+    addTearDown(controller.dispose);
+    final memo1 = _buildMemo(uid: 'memo-1', content: 'one');
+    final memo2 = _buildMemo(uid: 'memo-2', content: 'two');
+    var notifications = 0;
+    controller.addListener(() => notifications++);
+
+    controller.syncAnimatedMemos(
+      <LocalMemo>[memo1],
+      'sig-a',
+      logEvent: (_, _) {},
+      logVisibleDecrease:
+          ({
+            required beforeLength,
+            required afterLength,
+            required signatureChanged,
+            required listChanged,
+            required fromSignature,
+            required toSignature,
+            required removedSample,
+          }) {},
+      metrics: null,
+      schedulePostFrame: (_) {},
+    );
+    controller.syncAnimatedMemos(
+      <LocalMemo>[memo1, memo2],
+      'sig-a',
+      logEvent: (_, _) {},
+      logVisibleDecrease:
+          ({
+            required beforeLength,
+            required afterLength,
+            required signatureChanged,
+            required listChanged,
+            required fromSignature,
+            required toSignature,
+            required removedSample,
+          }) {},
+      metrics: null,
+      schedulePostFrame: (callback) => callback(),
+    );
+    controller.syncAnimatedMemos(
+      <LocalMemo>[memo2],
+      'sig-b',
+      logEvent: (_, _) {},
+      logVisibleDecrease:
+          ({
+            required beforeLength,
+            required afterLength,
+            required signatureChanged,
+            required listChanged,
+            required fromSignature,
+            required toSignature,
+            required removedSample,
+          }) {},
+      metrics: null,
+      schedulePostFrame: (_) {},
+    );
+
+    expect(notifications, 0);
+  });
 }
 
 LocalMemo _buildMemo({required String uid, String content = 'memo'}) {

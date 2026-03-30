@@ -17,6 +17,7 @@ import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../core/desktop/shortcuts.dart';
 import '../../core/drawer_navigation.dart';
+import '../../core/log_sanitizer.dart';
 import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
@@ -1251,11 +1252,25 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   void _showRefreshScanFailure(Object error) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          context.t.strings.legacy.msg_scan_failed(e: error),
-        ),
+        content: Text(context.t.strings.legacy.msg_scan_failed(e: error)),
       ),
     );
+  }
+
+  Map<String, Object?> _buildQueryTransitionLogContext({
+    required String fromKey,
+    required String toKey,
+  }) {
+    return <String, Object?>{
+      'fromQueryKeyFingerprint': _redactQueryKeyForLogging(fromKey),
+      'toQueryKeyFingerprint': _redactQueryKeyForLogging(toKey),
+    };
+  }
+
+  String _redactQueryKeyForLogging(String queryKey) {
+    final trimmed = queryKey.trim();
+    if (trimmed.isEmpty) return '';
+    return LogSanitizer.redactOpaque(trimmed, kind: 'memos_query_key');
   }
 
   void _removeMemoWithAnimation(LocalMemo memo) {
@@ -1364,17 +1379,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               'Memos pagination: query_changed_reset_results',
               context: <String, Object?>{
                 'visibleCountBeforeReset': previousVisibleCount,
-                'fromKey': previousQueryKey,
-                'toKey': queryKey,
+                ..._buildQueryTransitionLogContext(
+                  fromKey: previousQueryKey,
+                  toKey: queryKey,
+                ),
               },
             );
       }
       _logPaginationDebug(
         'query_key_changed_reset_pagination',
-        context: <String, Object?>{
-          'fromKey': previousQueryKey,
-          'toKey': queryKey,
-        },
+        context: _buildQueryTransitionLogContext(
+          fromKey: previousQueryKey,
+          toKey: queryKey,
+        ),
       );
     }
 
@@ -1580,6 +1597,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       showSearchLanding: _currentShowSearchLanding,
     );
     _diagnostics.maybeLogEmptyViewDiagnostics(
+      debugMode: kDebugMode,
       queryKey: queryKey,
       memosValue: memosValue,
       memosLoading: memosLoading,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memo_relations.dart';
 import '../../core/tags.dart';
+import '../../core/log_sanitizer.dart';
 import '../../data/api/server_api_profile.dart';
 import '../../data/db/app_database.dart';
 import '../../data/models/local_memo.dart';

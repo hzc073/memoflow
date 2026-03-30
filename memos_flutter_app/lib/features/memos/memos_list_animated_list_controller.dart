@@ -125,7 +125,6 @@ class MemosListAnimatedListController extends ChangeNotifier {
           if (metrics != null) 'pixels': metrics.pixels,
         });
       });
-      notifyListeners();
       return;
     }
 
@@ -161,7 +160,6 @@ class MemosListAnimatedListController extends ChangeNotifier {
       _listSignature = signature;
       _animatedMemos = filtered;
       _listKey = GlobalKey<SliverAnimatedListState>();
-      notifyListeners();
       return;
     }
 
@@ -175,7 +173,6 @@ class MemosListAnimatedListController extends ChangeNotifier {
     }
     if (changed) {
       _animatedMemos = next;
-      notifyListeners();
     }
   }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../application/sync/sync_types.dart';
+import '../../core/log_sanitizer.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/models/local_memo.dart';
 import '../../state/memos/memos_providers.dart';
@@ -112,6 +113,7 @@ class MemosListDiagnostics {
   }
 
   void maybeLogEmptyViewDiagnostics({
+    required bool debugMode,
     required String queryKey,
     required List<LocalMemo>? memosValue,
     required bool memosLoading,
@@ -127,11 +129,13 @@ class MemosListDiagnostics {
     required String shortcutFilter,
     required QuickSearchKind? quickSearchKind,
   }) {
+    if (!debugMode) return;
     if (memosValue == null || memosLoading || memosError != null) return;
     if (visibleMemos.isNotEmpty) return;
     final providerCount = memosValue.length;
+    final safeQueryKey = _redactQueryKey(queryKey);
     final diagnosticKey =
-        '$queryKey|provider:$providerCount|animated:${visibleMemos.length}';
+        '$safeQueryKey|provider:$providerCount|animated:${visibleMemos.length}';
     if (_lastEmptyDiagnosticKey == diagnosticKey) return;
     _lastEmptyDiagnosticKey = diagnosticKey;
     unawaited(
@@ -238,7 +242,7 @@ class MemosListDiagnostics {
     );
     final key = [
       phase,
-      queryKey,
+      _redactQueryKey(queryKey),
       memosLoading,
       hasProviderValue,
       providerCount,
@@ -255,7 +259,7 @@ class MemosListDiagnostics {
       useShortcutFilter,
       useQuickSearch,
       useRemoteSearch,
-      shortcutFilter.trim().isNotEmpty ? shortcutFilter.trim() : '-',
+      _redactFilterValue(shortcutFilter.trim(), kind: 'shortcut_filter'),
       quickSearchKind?.name ?? '-',
     ].join('|');
     if (_lastLoadingPhaseKey == key) return;
@@ -265,7 +269,7 @@ class MemosListDiagnostics {
       'Memos loading: phase',
       context: <String, Object?>{
         'phase': phase,
-        'queryKey': queryKey,
+        'queryKeyFingerprint': _redactQueryKey(queryKey),
         'memosLoading': memosLoading,
         'hasProviderValue': hasProviderValue,
         'providerCount': providerCount,
@@ -284,10 +288,15 @@ class MemosListDiagnostics {
         'useShortcutFilter': useShortcutFilter,
         'useQuickSearch': useQuickSearch,
         'useRemoteSearch': useRemoteSearch,
-        if (shortcutFilter.trim().isNotEmpty)
-          'shortcutFilter': shortcutFilter.trim(),
+        ..._buildRedactedTextLogFields(
+          shortcutFilter,
+          kind: 'shortcut_filter',
+          fingerprintKey: 'shortcutFilterFingerprint',
+          lengthKey: 'shortcutFilterLength',
+        ),
         if (quickSearchKind != null) 'quickSearchKind': quickSearchKind.name,
-        if (memosError != null) 'error': memosError.toString(),
+        if (memosError != null)
+          'error': LogSanitizer.sanitizeText(memosError.toString()),
       },
     );
   }
@@ -327,4 +336,28 @@ class MemosListDiagnostics {
       },
     );
   }
+}
+
+String _redactQueryKey(String queryKey) {
+  return _redactFilterValue(queryKey.trim(), kind: 'memos_query_key');
+}
+
+String _redactFilterValue(String value, {required String kind}) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return '';
+  return LogSanitizer.redactSemanticText(trimmed, kind: kind);
+}
+
+Map<String, Object?> _buildRedactedTextLogFields(
+  String value, {
+  required String kind,
+  required String fingerprintKey,
+  required String lengthKey,
+}) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return const <String, Object?>{};
+  return <String, Object?>{
+    fingerprintKey: LogSanitizer.redactSemanticText(trimmed, kind: kind),
+    lengthKey: trimmed.length,
+  };
 }

@@ -22,19 +22,32 @@ class MemosListController {
   }) async {
     try {
       final db = _ref.read(databaseProvider);
-      final allRows = await db.listMemosForExport(includeArchived: true);
-      var dbNormal = 0;
-      var dbArchived = 0;
-      for (final row in allRows) {
-        final state = (row['state'] as String? ?? '').trim().toUpperCase();
-        if (state == 'ARCHIVED') {
-          dbArchived++;
-        } else {
-          dbNormal++;
-        }
+      final sqlite = await db.db;
+      int readCountValue(Object? raw) {
+        return switch (raw) {
+          int value => value,
+          num value => value.toInt(),
+          String value => int.tryParse(value.trim()) ?? 0,
+          _ => 0,
+        };
       }
+
+      final countRows = await sqlite.rawQuery('''
+        SELECT
+          COUNT(*) AS total_count,
+          SUM(CASE WHEN UPPER(COALESCE(state, 'NORMAL')) = 'ARCHIVED' THEN 1 ELSE 0 END) AS archived_count,
+          SUM(CASE WHEN UPPER(COALESCE(state, 'NORMAL')) = 'ARCHIVED' THEN 0 ELSE 1 END) AS normal_count
+        FROM memos
+      ''');
+      final countRow = countRows.isEmpty
+          ? const <String, Object?>{}
+          : countRows.first;
+      final dbTotal = readCountValue(countRow['total_count']);
+      final dbNormal = readCountValue(countRow['normal_count']);
+      final dbArchived = readCountValue(countRow['archived_count']);
       final tag = resolvedTag?.trim();
       final normalizedSearch = searchQuery.trim();
+      final normalizedShortcutFilter = shortcutFilter.trim();
       final previewRows = await db.listMemos(
         searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
         state: state,
@@ -46,21 +59,41 @@ class MemosListController {
       final previewUids = previewRows
           .map((row) => row['uid'])
           .whereType<String>()
+          .map((uid) => LogSanitizer.redactOpaque(uid, kind: 'memo_uid'))
           .toList(growable: false);
       _ref
           .read(logManagerProvider)
           .info(
             'Memos list: empty_view_diagnostic',
             context: <String, Object?>{
-              'queryKey': queryKey,
+              'queryKeyFingerprint': LogSanitizer.redactOpaque(
+                queryKey,
+                kind: 'memos_query_key',
+              ),
               'state': state,
               'providerCount': providerCount,
               'animatedCount': animatedCount,
               'searchLength': normalizedSearch.length,
-              if (tag != null && tag.isNotEmpty) 'tag': tag,
+              if (normalizedSearch.isNotEmpty)
+                'searchQueryFingerprint': LogSanitizer.redactSemanticText(
+                  normalizedSearch,
+                  kind: 'search_query',
+                ),
+              if (tag != null && tag.isNotEmpty) ...<String, Object?>{
+                'tagFingerprint': LogSanitizer.redactSemanticText(
+                  tag,
+                  kind: 'tag',
+                ),
+                'tagLength': tag.length,
+              },
               'useShortcutFilter': useShortcutFilter,
-              if (shortcutFilter.trim().isNotEmpty)
-                'shortcutFilter': shortcutFilter.trim(),
+              if (normalizedShortcutFilter.isNotEmpty) ...<String, Object?>{
+                'shortcutFilterFingerprint': LogSanitizer.redactSemanticText(
+                  normalizedShortcutFilter,
+                  kind: 'shortcut_filter',
+                ),
+                'shortcutFilterLength': normalizedShortcutFilter.length,
+              },
               'useQuickSearch': useQuickSearch,
               if (quickSearchKind != null)
                 'quickSearchKind': quickSearchKind.name,
@@ -68,7 +101,7 @@ class MemosListController {
               if (startTimeSec != null) 'startTimeSec': startTimeSec,
               if (endTimeSecExclusive != null)
                 'endTimeSecExclusive': endTimeSecExclusive,
-              'dbTotal': allRows.length,
+              'dbTotal': dbTotal,
               'dbNormal': dbNormal,
               'dbArchived': dbArchived,
               'dbPreviewCount': previewRows.length,
@@ -82,7 +115,12 @@ class MemosListController {
             'Memos list: empty_view_diagnostic_failed',
             error: e,
             stackTrace: stackTrace,
-            context: <String, Object?>{'queryKey': queryKey},
+            context: <String, Object?>{
+              'queryKeyFingerprint': LogSanitizer.redactOpaque(
+                queryKey,
+                kind: 'memos_query_key',
+              ),
+            },
           );
     }
   }
