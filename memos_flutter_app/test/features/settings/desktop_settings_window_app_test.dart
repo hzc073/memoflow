@@ -339,6 +339,7 @@ void main() {
           LocalLibrary(
             key: 'old-library',
             name: 'Old Library',
+            storageKind: LocalLibraryStorageKind.managedPrivate,
             rootPath: 'C:/old',
           ),
         ],
@@ -386,6 +387,7 @@ void main() {
           LocalLibrary(
             key: 'new-library',
             name: 'New Library',
+            storageKind: LocalLibraryStorageKind.managedPrivate,
             rootPath: 'C:/new',
           ),
         ],
@@ -441,6 +443,7 @@ void main() {
           LocalLibrary(
             key: 'local-workspace',
             name: 'Local Workspace',
+            storageKind: LocalLibraryStorageKind.managedPrivate,
             rootPath: 'C:/workspace',
           ),
         ],

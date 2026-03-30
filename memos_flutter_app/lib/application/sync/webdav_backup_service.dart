@@ -16,7 +16,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/attachment_url.dart';
 import '../../core/hash.dart';
 import '../../core/log_sanitizer.dart';
-import '../../core/url.dart';
 import '../../core/webdav_url.dart';
 import '../../data/db/app_database.dart';
 import '../../data/local_library/local_attachment_store.dart';

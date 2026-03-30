@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/hash.dart';
@@ -12,17 +10,17 @@ String databaseNameForAccountKey(String accountKey) {
 }
 
 final databaseProvider = Provider<AppDatabase>((ref) {
-  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
+  final accountKey = ref.watch(
+    appSessionProvider.select((state) => state.valueOrNull?.currentKey),
+  );
   if (accountKey == null) {
     throw StateError('Not authenticated');
   }
 
   final dbName = databaseNameForAccountKey(accountKey);
-  final db = AppDatabase(dbName: dbName);
-  DatabaseRegistry.register(db);
+  final db = DatabaseRegistry.acquire(dbName);
   ref.onDispose(() {
-    DatabaseRegistry.unregister(db);
-    unawaited(db.close());
+    DatabaseRegistry.release(dbName);
   });
   return db;
 });

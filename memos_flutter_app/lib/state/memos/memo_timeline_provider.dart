@@ -94,13 +94,16 @@ class MemoTimelineService {
     required this.account,
     required this.triggerSync,
     QueuedAttachmentStager? queuedAttachmentStager,
+    Future<void> Function(Duration delay)? waitForRetry,
   }) : _queuedAttachmentStager =
-           queuedAttachmentStager ?? QueuedAttachmentStager();
+           queuedAttachmentStager ?? QueuedAttachmentStager(),
+       _waitForRetry = waitForRetry ?? Future<void>.delayed;
 
   final AppDatabase db;
   final Account? account;
   final Future<void> Function() triggerSync;
   final QueuedAttachmentStager _queuedAttachmentStager;
+  final Future<void> Function(Duration delay) _waitForRetry;
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -114,6 +117,10 @@ class MemoTimelineService {
 
   static const int historyMaxVersions = 10;
   static const Duration recycleRetention = Duration(days: 30);
+  static const int _databaseBusyRetryAttempts = 3;
+  static const Duration _databaseBusyRetryBaseDelay = Duration(
+    milliseconds: 120,
+  );
   static const String _storageRootName = 'memo_timeline_storage';
   static const String _versionsRootName = 'versions';
   static const String _recycleRootName = 'recycle_bin';
@@ -153,14 +160,31 @@ class MemoTimelineService {
       'memo': _memoPayload(memo: memo, attachments: backedAttachments),
     };
 
-    await db.insertMemoVersion(
-      memoUid: memoUid,
-      snapshotTime: now,
-      summary: _memoSummary(memo.content),
-      payloadJson: jsonEncode(payload),
-    );
+    try {
+      await _withDatabaseBusyRetry(() {
+        return db.insertMemoVersion(
+          memoUid: memoUid,
+          snapshotTime: now,
+          summary: _memoSummary(memo.content),
+          payloadJson: jsonEncode(payload),
+        );
+      });
+    } catch (error) {
+      if (_isDatabaseBusyError(error)) {
+        await _deleteVersionStorage(payload);
+        return;
+      }
+      rethrow;
+    }
 
-    await _pruneMemoVersions(memoUid);
+    try {
+      await _withDatabaseBusyRetry(() => _pruneMemoVersions(memoUid));
+    } catch (error) {
+      if (_isDatabaseBusyError(error)) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> restoreMemoVersion(MemoVersion version) async {
@@ -780,6 +804,31 @@ class MemoTimelineService {
     if (dir.existsSync()) {
       await dir.delete(recursive: true);
     }
+  }
+
+  Future<T> _withDatabaseBusyRetry<T>(Future<T> Function() action) async {
+    for (var attempt = 0; attempt < _databaseBusyRetryAttempts; attempt++) {
+      try {
+        return await action();
+      } catch (error) {
+        final shouldRetry =
+            _isDatabaseBusyError(error) &&
+            attempt < _databaseBusyRetryAttempts - 1;
+        if (!shouldRetry) rethrow;
+        final delay = Duration(
+          milliseconds:
+              _databaseBusyRetryBaseDelay.inMilliseconds * (1 << attempt),
+        );
+        await _waitForRetry(delay);
+      }
+    }
+    throw StateError('unreachable');
+  }
+
+  bool _isDatabaseBusyError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('database is locked') ||
+        message.contains('sqlite_busy');
   }
 
   String _buildStorageKey({required String prefix, required String memoUid}) {

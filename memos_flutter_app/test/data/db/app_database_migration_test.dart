@@ -252,4 +252,43 @@ END;
 
     await second.countOutboxPending();
   });
+
+  test('concurrent db getter reuses one opening handle per wrapper', () async {
+    final dbName = uniqueDbName('app_database_single_open_race');
+    final appDb = AppDatabase(dbName: dbName);
+
+    addTearDown(() async {
+      await appDb.close();
+      await AppDatabase.deleteDatabaseFile(dbName: dbName);
+    });
+
+    final results = await Future.wait<Database>(<Future<Database>>[
+      appDb.db,
+      appDb.db,
+      appDb.db,
+      appDb.db,
+    ]);
+
+    final first = results.first;
+    expect(results.every((db) => identical(db, first)), isTrue);
+
+    await appDb.upsertMemo(
+      uid: 'memo-open-race',
+      content: 'opened once',
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTimeSec: 1735689600,
+      updateTimeSec: 1735689600,
+      tags: const <String>[],
+      attachments: const <Map<String, Object?>>[],
+      relationCount: 0,
+      location: null,
+      syncState: 0,
+      lastError: null,
+    );
+
+    final row = await appDb.getMemoByUid('memo-open-race');
+    expect(row?['content'], 'opened once');
+  });
 }

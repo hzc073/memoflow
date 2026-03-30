@@ -25,6 +25,7 @@ class AppDatabase {
   static const int _maintenanceBatchSize = 300;
 
   Database? _db;
+  Future<Database>? _openingDb;
   final _changes = StreamController<void>.broadcast();
 
   Stream<void> get changes => _changes.stream;
@@ -389,14 +390,37 @@ CREATE TABLE IF NOT EXISTS memo_inline_image_sources (
   Future<Database> get db async {
     final existing = _db;
     if (existing != null) return existing;
-    final opened = await _open();
-    _db = opened;
-    return opened;
+    final opening = _openingDb;
+    if (opening != null) return opening;
+
+    final future = _open().then((opened) {
+      _db = opened;
+      return opened;
+    });
+    _openingDb = future;
+    future.whenComplete(() {
+      if (identical(_openingDb, future)) {
+        _openingDb = null;
+      }
+    });
+    return future;
   }
 
   Future<void> close() async {
-    await _db?.close();
+    final existing = _db;
+    if (existing != null) {
+      await existing.close();
+    } else {
+      final opening = _openingDb;
+      if (opening != null) {
+        try {
+          final opened = await opening;
+          await opened.close();
+        } catch (_) {}
+      }
+    }
     _db = null;
+    _openingDb = null;
     if (!_changes.isClosed) {
       await _changes.close();
     }
