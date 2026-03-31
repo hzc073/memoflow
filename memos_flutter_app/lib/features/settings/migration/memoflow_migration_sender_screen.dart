@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../application/sync/migration/memoflow_migration_models.dart';
+import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_sender_controller.dart';
@@ -216,6 +217,10 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
       MemoFlowMigrationConfigType.locationSettings => tr.msg_location,
       MemoFlowMigrationConfigType.imageCompressionSettings =>
         tr.msg_restore_config_item_image_compression,
+      MemoFlowMigrationConfigType.draftBox => context.tr(
+        zh: '草稿箱',
+        en: 'Draft box',
+      ),
       MemoFlowMigrationConfigType.aiSettings => tr.msg_restore_config_item_ai,
       MemoFlowMigrationConfigType.imageBedSettings =>
         tr.msg_restore_config_item_image_bed,

@@ -26,6 +26,7 @@ enum MemoFlowMigrationConfigType {
   templateSettings,
   locationSettings,
   imageCompressionSettings,
+  draftBox,
   aiSettings,
   imageBedSettings,
   appLock,
@@ -58,6 +59,7 @@ const memoFlowMigrationSafeConfigDefaults = <MemoFlowMigrationConfigType>{
   MemoFlowMigrationConfigType.templateSettings,
   MemoFlowMigrationConfigType.locationSettings,
   MemoFlowMigrationConfigType.imageCompressionSettings,
+  MemoFlowMigrationConfigType.draftBox,
 };
 
 const memoFlowMigrationSensitiveConfigDefaults = <MemoFlowMigrationConfigType>{
@@ -125,6 +127,8 @@ class MemoFlowMigrationPackageManifest {
     required this.includeSettings,
     required this.memoCount,
     required this.attachmentCount,
+    this.draftCount = 0,
+    this.draftAttachmentCount = 0,
     required this.totalBytes,
     required this.sha256,
     required this.configTypes,
@@ -140,6 +144,8 @@ class MemoFlowMigrationPackageManifest {
   final bool includeSettings;
   final int memoCount;
   final int attachmentCount;
+  final int draftCount;
+  final int draftAttachmentCount;
   final int totalBytes;
   final String sha256;
   final Set<MemoFlowMigrationConfigType> configTypes;
@@ -157,6 +163,8 @@ class MemoFlowMigrationPackageManifest {
     'includeSettings': includeSettings,
     'memoCount': memoCount,
     'attachmentCount': attachmentCount,
+    'draftCount': draftCount,
+    'draftAttachmentCount': draftAttachmentCount,
     'totalBytes': totalBytes,
     'sha256': sha256,
     'configTypes': configTypes.map((type) => type.name).toList(growable: false),
@@ -173,6 +181,8 @@ class MemoFlowMigrationPackageManifest {
     bool? includeSettings,
     int? memoCount,
     int? attachmentCount,
+    int? draftCount,
+    int? draftAttachmentCount,
     int? totalBytes,
     String? sha256,
     Set<MemoFlowMigrationConfigType>? configTypes,
@@ -188,6 +198,8 @@ class MemoFlowMigrationPackageManifest {
       includeSettings: includeSettings ?? this.includeSettings,
       memoCount: memoCount ?? this.memoCount,
       attachmentCount: attachmentCount ?? this.attachmentCount,
+      draftCount: draftCount ?? this.draftCount,
+      draftAttachmentCount: draftAttachmentCount ?? this.draftAttachmentCount,
       totalBytes: totalBytes ?? this.totalBytes,
       sha256: sha256 ?? this.sha256,
       configTypes: configTypes ?? this.configTypes,
@@ -216,6 +228,8 @@ class MemoFlowMigrationPackageManifest {
       includeSettings: _readBool(json, 'includeSettings'),
       memoCount: _readInt(json, 'memoCount', fallback: 0),
       attachmentCount: _readInt(json, 'attachmentCount', fallback: 0),
+      draftCount: _readInt(json, 'draftCount', fallback: 0),
+      draftAttachmentCount: _readInt(json, 'draftAttachmentCount', fallback: 0),
       totalBytes: _readInt(json, 'totalBytes', fallback: 0),
       sha256: _readString(json, 'sha256'),
       configTypes: configTypes,
@@ -274,6 +288,8 @@ class MemoFlowMigrationProposal {
               includeSettings: false,
               memoCount: 0,
               attachmentCount: 0,
+              draftCount: 0,
+              draftAttachmentCount: 0,
               totalBytes: 0,
               sha256: '',
               configTypes: const <MemoFlowMigrationConfigType>{},
@@ -311,6 +327,8 @@ class MemoFlowMigrationResult {
     required this.receiveMode,
     required this.memoCount,
     required this.attachmentCount,
+    this.draftCount = 0,
+    this.draftAttachmentCount = 0,
     required this.appliedConfigTypes,
     required this.skippedConfigTypes,
     this.workspaceName,
@@ -321,6 +339,8 @@ class MemoFlowMigrationResult {
   final MemoFlowMigrationReceiveMode receiveMode;
   final int memoCount;
   final int attachmentCount;
+  final int draftCount;
+  final int draftAttachmentCount;
   final Set<MemoFlowMigrationConfigType> appliedConfigTypes;
   final Set<MemoFlowMigrationConfigType> skippedConfigTypes;
   final String? workspaceName;
@@ -331,6 +351,8 @@ class MemoFlowMigrationResult {
     'receiveMode': receiveMode.name,
     'memoCount': memoCount,
     'attachmentCount': attachmentCount,
+    'draftCount': draftCount,
+    'draftAttachmentCount': draftAttachmentCount,
     'appliedConfigTypes': appliedConfigTypes
         .map((type) => type.name)
         .toList(growable: false),
@@ -364,6 +386,8 @@ class MemoFlowMigrationResult {
       receiveMode: receiveMode,
       memoCount: _readInt(json, 'memoCount', fallback: 0),
       attachmentCount: _readInt(json, 'attachmentCount', fallback: 0),
+      draftCount: _readInt(json, 'draftCount', fallback: 0),
+      draftAttachmentCount: _readInt(json, 'draftAttachmentCount', fallback: 0),
       appliedConfigTypes: readTypes('appliedConfigTypes'),
       skippedConfigTypes: readTypes('skippedConfigTypes'),
       workspaceName: _readNullableString(json, 'workspaceName'),

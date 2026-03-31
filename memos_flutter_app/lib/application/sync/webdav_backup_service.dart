@@ -46,6 +46,8 @@ import '../../data/repositories/webdav_backup_password_repository.dart';
 import '../../data/repositories/webdav_backup_state_repository.dart';
 import '../../data/repositories/webdav_vault_password_repository.dart';
 import '../../data/webdav/webdav_client.dart';
+import '../attachments/queued_attachment_stager.dart';
+import 'compose_draft_transfer.dart';
 import 'local_library_scan_service.dart';
 import 'sync_error.dart';
 import 'sync_types.dart';
@@ -255,6 +257,7 @@ abstract class _WebDavBackupServiceBase {
   Future<void> _applyConfigBundle({
     required WebDavBackupConfigBundle bundle,
     WebDavBackupConfigDecisionHandler? decisionHandler,
+    Directory? draftAttachmentRootDirectory,
   });
 
   int _countMemosInSnapshot(WebDavBackupSnapshot snapshot);

@@ -6,6 +6,7 @@ import '../../../data/models/location_settings.dart';
 import '../../../data/models/memo_template_settings.dart';
 import '../../../data/models/reminder_settings.dart';
 import '../../../data/models/webdav_settings.dart';
+import '../compose_draft_transfer.dart';
 import '../migration/memoflow_migration_preferences_filter.dart';
 
 class ConfigTransferBundle {
@@ -19,6 +20,7 @@ class ConfigTransferBundle {
     this.templateSettings,
     this.appLockSnapshot,
     this.webDavSettings,
+    this.draftBox,
   });
 
   final AppPreferencesTransferPayload? preferences;
@@ -30,6 +32,7 @@ class ConfigTransferBundle {
   final MemoTemplateSettings? templateSettings;
   final AppLockSnapshot? appLockSnapshot;
   final WebDavSettings? webDavSettings;
+  final ComposeDraftTransferBundle? draftBox;
 
   bool get isEmpty =>
       preferences == null &&
@@ -40,5 +43,6 @@ class ConfigTransferBundle {
       locationSettings == null &&
       templateSettings == null &&
       appLockSnapshot == null &&
-      webDavSettings == null;
+      webDavSettings == null &&
+      draftBox == null;
 }

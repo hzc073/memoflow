@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 
 import '../../../application/sync/migration/memoflow_migration_models.dart';
+import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_state.dart';
@@ -150,6 +151,14 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
                     _InfoRow(
                       label: tr.msg_attachment,
                       value: '${proposal.manifest.attachmentCount}',
+                    ),
+                    _InfoRow(
+                      label: context.tr(zh: '草稿', en: 'Drafts'),
+                      value: '${proposal.manifest.draftCount}',
+                    ),
+                    _InfoRow(
+                      label: context.tr(zh: '草稿附件', en: 'Draft attachments'),
+                      value: '${proposal.manifest.draftAttachmentCount}',
                     ),
                     _InfoRow(
                       label: tr.msg_memoflow_migration_size,
@@ -351,6 +360,10 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
       MemoFlowMigrationConfigType.locationSettings => tr.msg_location,
       MemoFlowMigrationConfigType.imageCompressionSettings =>
         tr.msg_restore_config_item_image_compression,
+      MemoFlowMigrationConfigType.draftBox => context.tr(
+        zh: '草稿箱',
+        en: 'Draft box',
+      ),
       MemoFlowMigrationConfigType.aiSettings => tr.msg_restore_config_item_ai,
       MemoFlowMigrationConfigType.imageBedSettings =>
         tr.msg_restore_config_item_image_bed,

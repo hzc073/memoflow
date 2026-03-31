@@ -57,9 +57,14 @@ void main() {
         MemoToolbarActionId.codeBlock,
         MemoToolbarActionId.inlineMath,
         MemoToolbarActionId.blockMath,
+        MemoToolbarActionId.draftBox,
       ]),
     );
     expect(parsed.hiddenActions, containsAll(kMemoToolbarDefaultHiddenActions));
+    expect(
+      parsed.hiddenActions.contains(MemoToolbarActionId.draftBox),
+      isFalse,
+    );
   });
 
   test(

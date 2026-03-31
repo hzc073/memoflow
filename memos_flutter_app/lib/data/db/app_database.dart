@@ -13,7 +13,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 17;
+  static const _dbVersion = 18;
   static const int outboxStatePending = 0;
   static const int outboxStateRunning = 1;
   static const int outboxStateRetry = 2;
@@ -198,6 +198,24 @@ CREATE TABLE IF NOT EXISTS memo_inline_image_sources (
           await db.execute(
             'CREATE INDEX IF NOT EXISTS idx_memo_inline_image_sources_memo ON memo_inline_image_sources(memo_uid, updated_time DESC);',
           );
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS compose_drafts (
+  uid TEXT NOT NULL PRIMARY KEY,
+  workspace_key TEXT NOT NULL,
+  content TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  relations_json TEXT NOT NULL DEFAULT '[]',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL
+);
+''');
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_compose_drafts_workspace_updated ON compose_drafts(workspace_key, updated_time DESC);',
+          );
 
           await _ensureAiTables(db);
 
@@ -355,6 +373,26 @@ CREATE TABLE IF NOT EXISTS memo_inline_image_sources (
 ''');
             await db.execute(
               'CREATE INDEX IF NOT EXISTS idx_memo_inline_image_sources_memo ON memo_inline_image_sources(memo_uid, updated_time DESC);',
+            );
+          }
+          if (oldVersion < 18) {
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS compose_drafts (
+  uid TEXT NOT NULL PRIMARY KEY,
+  workspace_key TEXT NOT NULL,
+  content TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  relations_json TEXT NOT NULL DEFAULT '[]',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL
+);
+''');
+            await db.execute(
+              'CREATE INDEX IF NOT EXISTS idx_compose_drafts_workspace_updated ON compose_drafts(workspace_key, updated_time DESC);',
             );
           }
         },
@@ -2143,6 +2181,101 @@ WHERE id = ?
       'memo_reminders',
       where: 'memo_uid = ?',
       whereArgs: [memoUid],
+    );
+    _notifyChanged();
+  }
+
+  Future<List<Map<String, dynamic>>> listComposeDraftRows({
+    required String workspaceKey,
+    int? limit,
+  }) async {
+    final db = await this.db;
+    return db.query(
+      'compose_drafts',
+      where: 'workspace_key = ?',
+      whereArgs: [workspaceKey],
+      orderBy: 'updated_time DESC',
+      limit: limit,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getComposeDraftRow({
+    required String uid,
+    String? workspaceKey,
+  }) async {
+    final db = await this.db;
+    final whereParts = <String>['uid = ?'];
+    final whereArgs = <Object?>[uid];
+    final normalizedWorkspaceKey = workspaceKey?.trim();
+    if (normalizedWorkspaceKey != null && normalizedWorkspaceKey.isNotEmpty) {
+      whereParts.add('workspace_key = ?');
+      whereArgs.add(normalizedWorkspaceKey);
+    }
+    final rows = await db.query(
+      'compose_drafts',
+      where: whereParts.join(' AND '),
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<Map<String, dynamic>?> getLatestComposeDraftRow({
+    required String workspaceKey,
+  }) async {
+    final rows = await listComposeDraftRows(
+      workspaceKey: workspaceKey,
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> upsertComposeDraftRow(Map<String, Object?> row) async {
+    final db = await this.db;
+    await db.insert(
+      'compose_drafts',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    _notifyChanged();
+  }
+
+  Future<void> replaceComposeDraftRows({
+    required String workspaceKey,
+    required List<Map<String, Object?>> rows,
+  }) async {
+    final db = await this.db;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'compose_drafts',
+        where: 'workspace_key = ?',
+        whereArgs: [workspaceKey],
+      );
+      for (final row in rows) {
+        await txn.insert(
+          'compose_drafts',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+    _notifyChanged();
+  }
+
+  Future<void> deleteComposeDraft(String uid) async {
+    final db = await this.db;
+    await db.delete('compose_drafts', where: 'uid = ?', whereArgs: [uid]);
+    _notifyChanged();
+  }
+
+  Future<void> deleteComposeDraftsByWorkspace(String workspaceKey) async {
+    final db = await this.db;
+    await db.delete(
+      'compose_drafts',
+      where: 'workspace_key = ?',
+      whereArgs: [workspaceKey],
     );
     _notifyChanged();
   }

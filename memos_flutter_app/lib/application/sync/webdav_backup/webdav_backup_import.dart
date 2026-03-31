@@ -39,6 +39,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
         final accountId = fnv1a64Hex(normalizedAccountKey);
         final rootPath = normalizeWebDavRootPath(settings.rootPath);
         final client = _buildClient(settings, baseUrl);
+        Directory? draftAttachmentRootDirectory;
         try {
           await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
           SecretKey masterKey;
@@ -150,6 +151,35 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
               }
               continue;
             }
+            if (_isDraftAttachmentPath(entry.path)) {
+              final bytes = await _readSnapshotFileBytes(
+                entry: entry,
+                client: client,
+                baseUrl: baseUrl,
+                rootPath: rootPath,
+                accountId: accountId,
+                masterKey: masterKey,
+              );
+              draftAttachmentRootDirectory ??= await Directory.systemTemp
+                  .createTemp('webdav_draft_restore_');
+              final targetFile = File(
+                p.joinAll(<String>[
+                  draftAttachmentRootDirectory.path,
+                  ...p.split(entry.path.replaceAll('\\', '/')),
+                ]),
+              );
+              await targetFile.parent.create(recursive: true);
+              await targetFile.writeAsBytes(bytes, flush: true);
+              restoredCount += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.writing,
+                completed: restoredCount,
+                total: totalCount,
+                currentPath: entry.path,
+                itemGroup: WebDavBackupProgressItemGroup.attachment,
+              );
+              continue;
+            }
             _updateProgress(
               stage: WebDavBackupProgressStage.writing,
               completed: restoredCount,
@@ -205,6 +235,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
             await _applyConfigBundle(
               bundle: bundle,
               decisionHandler: configDecisionHandler,
+              draftAttachmentRootDirectory: draftAttachmentRootDirectory,
             );
           }
 
@@ -215,6 +246,10 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
           );
           return const WebDavRestoreSuccess();
         } finally {
+          if (draftAttachmentRootDirectory != null &&
+              await draftAttachmentRootDirectory.exists()) {
+            await draftAttachmentRootDirectory.delete(recursive: true);
+          }
           await client.close();
         }
       } on SyncError catch (error) {
@@ -267,6 +302,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
         final accountId = fnv1a64Hex(normalizedAccountKey);
         final rootPath = normalizeWebDavRootPath(settings.rootPath);
         final client = _buildClient(settings, baseUrl);
+        Directory? draftAttachmentRootDirectory;
         try {
           await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
           final index = await _loadPlainIndex(
@@ -350,6 +386,38 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
               );
               continue;
             }
+            if (_isDraftAttachmentPath(entry.path)) {
+              final bytes = await _getBytes(
+                client,
+                _plainFileUri(baseUrl, rootPath, accountId, entry.path),
+              );
+              if (bytes == null) {
+                throw SyncError(
+                  code: SyncErrorCode.dataCorrupt,
+                  retryable: false,
+                  message: 'BACKUP_FILE_MISSING',
+                );
+              }
+              draftAttachmentRootDirectory ??= await Directory.systemTemp
+                  .createTemp('webdav_draft_restore_');
+              final targetFile = File(
+                p.joinAll(<String>[
+                  draftAttachmentRootDirectory.path,
+                  ...p.split(entry.path.replaceAll('\\', '/')),
+                ]),
+              );
+              await targetFile.parent.create(recursive: true);
+              await targetFile.writeAsBytes(bytes, flush: true);
+              restoredCount += 1;
+              _updateProgress(
+                stage: WebDavBackupProgressStage.writing,
+                completed: restoredCount,
+                total: totalCount,
+                currentPath: entry.path,
+                itemGroup: WebDavBackupProgressItemGroup.attachment,
+              );
+              continue;
+            }
             _updateProgress(
               stage: WebDavBackupProgressStage.writing,
               completed: restoredCount,
@@ -412,6 +480,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
             await _applyConfigBundle(
               bundle: bundle,
               decisionHandler: configDecisionHandler,
+              draftAttachmentRootDirectory: draftAttachmentRootDirectory,
             );
           }
 
@@ -422,6 +491,10 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
           );
           return const WebDavRestoreSuccess();
         } finally {
+          if (draftAttachmentRootDirectory != null &&
+              await draftAttachmentRootDirectory.exists()) {
+            await draftAttachmentRootDirectory.delete(recursive: true);
+          }
           await client.close();
         }
       } on SyncError catch (error) {
@@ -466,6 +539,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
       final accountId = fnv1a64Hex(normalizedAccountKey);
       final rootPath = normalizeWebDavRootPath(settings.rootPath);
       final client = _buildClient(settings, baseUrl);
+      Directory? draftAttachmentRootDirectory;
       try {
         await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
         SecretKey masterKey;
@@ -628,6 +702,40 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
             );
             continue;
           }
+          if (_isDraftAttachmentPath(entry.path)) {
+            final bytes = await _readSnapshotFileBytes(
+              entry: entry,
+              client: client,
+              baseUrl: baseUrl,
+              rootPath: rootPath,
+              accountId: accountId,
+              masterKey: masterKey,
+            );
+            draftAttachmentRootDirectory ??= await Directory.systemTemp
+                .createTemp('webdav_draft_restore_');
+            final tempFile = File(
+              p.joinAll(<String>[
+                draftAttachmentRootDirectory.path,
+                ...p.split(entry.path.replaceAll('\\', '/')),
+              ]),
+            );
+            await tempFile.parent.create(recursive: true);
+            await tempFile.writeAsBytes(bytes, flush: true);
+            await fileSystem.writeFileFromChunks(
+              targetPath,
+              Stream<Uint8List>.value(bytes),
+              mimeType: _guessMimeType(entry.path),
+            );
+            restoredCount += 1;
+            _updateProgress(
+              stage: WebDavBackupProgressStage.writing,
+              completed: restoredCount,
+              total: totalCount,
+              currentPath: entry.path,
+              itemGroup: WebDavBackupProgressItemGroup.attachment,
+            );
+            continue;
+          }
           try {
             _updateProgress(
               stage: WebDavBackupProgressStage.writing,
@@ -691,6 +799,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
           await _applyConfigBundle(
             bundle: bundle,
             decisionHandler: configDecisionHandler,
+            draftAttachmentRootDirectory: draftAttachmentRootDirectory,
           );
         }
 
@@ -707,6 +816,10 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
           exportPath: _formatExportPathLabel(exportLibrary, exportPrefix),
         );
       } finally {
+        if (draftAttachmentRootDirectory != null &&
+            await draftAttachmentRootDirectory.exists()) {
+          await draftAttachmentRootDirectory.delete(recursive: true);
+        }
         await client.close();
       }
     } on SyncError catch (error) {
@@ -748,6 +861,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
       final accountId = fnv1a64Hex(normalizedAccountKey);
       final rootPath = normalizeWebDavRootPath(settings.rootPath);
       final client = _buildClient(settings, baseUrl);
+      Directory? draftAttachmentRootDirectory;
       try {
         await _ensureBackupCollections(client, baseUrl, rootPath, accountId);
         final index = await _loadPlainIndex(
@@ -864,6 +978,18 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
               itemGroup: WebDavBackupProgressItemGroup.config,
             );
           }
+          if (_isDraftAttachmentPath(entry.path)) {
+            draftAttachmentRootDirectory ??= await Directory.systemTemp
+                .createTemp('webdav_draft_restore_');
+            final tempFile = File(
+              p.joinAll(<String>[
+                draftAttachmentRootDirectory.path,
+                ...p.split(entry.path.replaceAll('\\', '/')),
+              ]),
+            );
+            await tempFile.parent.create(recursive: true);
+            await tempFile.writeAsBytes(bytes, flush: true);
+          }
           await fileSystem.writeFileFromChunks(
             targetPath,
             Stream<Uint8List>.value(Uint8List.fromList(bytes)),
@@ -896,6 +1022,7 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
           await _applyConfigBundle(
             bundle: bundle,
             decisionHandler: configDecisionHandler,
+            draftAttachmentRootDirectory: draftAttachmentRootDirectory,
           );
         }
 
@@ -909,6 +1036,10 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
           exportPath: _formatExportPathLabel(exportLibrary, exportPrefix),
         );
       } finally {
+        if (draftAttachmentRootDirectory != null &&
+            await draftAttachmentRootDirectory.exists()) {
+          await draftAttachmentRootDirectory.delete(recursive: true);
+        }
         await client.close();
       }
     } on SyncError catch (error) {
@@ -1020,5 +1151,10 @@ mixin _WebDavBackupImportMixin on _WebDavBackupServiceBase {
       fileSystem: LocalLibraryFileSystem(library),
       attachmentStore: _attachmentStore,
     );
+  }
+
+  bool _isDraftAttachmentPath(String rawPath) {
+    final path = rawPath.trim().replaceAll('\\', '/').toLowerCase();
+    return path.startsWith('$composeDraftTransferAttachmentsDir/');
   }
 }

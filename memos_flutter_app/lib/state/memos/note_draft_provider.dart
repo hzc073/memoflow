@@ -8,16 +8,23 @@ import '../../application/sync/sync_request.dart';
 import '../system/session_provider.dart';
 
 final noteDraftRepositoryProvider = Provider<NoteDraftRepository>((ref) {
-  final accountKey = ref.watch(appSessionProvider.select((state) => state.valueOrNull?.currentKey));
-  return NoteDraftRepository(ref.watch(secureStorageProvider), accountKey: accountKey);
+  final accountKey = ref.watch(
+    appSessionProvider.select((state) => state.valueOrNull?.currentKey),
+  );
+  return NoteDraftRepository(
+    ref.watch(secureStorageProvider),
+    accountKey: accountKey,
+  );
 });
 
-final noteDraftProvider = StateNotifierProvider<NoteDraftController, AsyncValue<String>>((ref) {
-  return NoteDraftController(ref, ref.watch(noteDraftRepositoryProvider));
-});
+final noteDraftProvider =
+    StateNotifierProvider<NoteDraftController, AsyncValue<String>>((ref) {
+      return NoteDraftController(ref, ref.watch(noteDraftRepositoryProvider));
+    });
 
 class NoteDraftController extends StateNotifier<AsyncValue<String>> {
-  NoteDraftController(this._ref, this._repo) : super(const AsyncValue.loading()) {
+  NoteDraftController(this._ref, this._repo)
+    : super(const AsyncValue.loading()) {
     unawaited(_load());
   }
 
@@ -39,7 +46,9 @@ class NoteDraftController extends StateNotifier<AsyncValue<String>> {
     }
     if (triggerSync) {
       unawaited(
-        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+        _ref
+            .read(syncCoordinatorProvider.notifier)
+            .requestSync(
               const SyncRequest(
                 kind: SyncRequestKind.webDavSync,
                 reason: SyncRequestReason.settings,
@@ -49,22 +58,27 @@ class NoteDraftController extends StateNotifier<AsyncValue<String>> {
     }
   }
 
-  Future<void> clear() async {
+  Future<void> clear({bool triggerSync = true}) async {
     state = const AsyncValue.data('');
     await _repo.clear();
-    unawaited(
-      _ref.read(syncCoordinatorProvider.notifier).requestSync(
-            const SyncRequest(
-              kind: SyncRequestKind.webDavSync,
-              reason: SyncRequestReason.settings,
+    if (triggerSync) {
+      unawaited(
+        _ref
+            .read(syncCoordinatorProvider.notifier)
+            .requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.webDavSync,
+                reason: SyncRequestReason.settings,
+              ),
             ),
-          ),
-    );
+      );
+    }
   }
 }
 
 class NoteDraftRepository {
-  NoteDraftRepository(this._storage, {required String? accountKey}) : _accountKey = accountKey;
+  NoteDraftRepository(this._storage, {required String? accountKey})
+    : _accountKey = accountKey;
 
   static const _kPrefix = 'note_draft_v2_';
   static const _kLegacyKey = 'note_draft_v1';

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/sync/config_transfer/config_transfer_apply_service.dart';
 import '../../application/sync/config_transfer/config_transfer_bundle.dart';
 import '../../application/sync/config_transfer/config_transfer_codec.dart';
+import '../../application/sync/compose_draft_transfer.dart';
 import '../../application/sync/migration/memoflow_device_name_resolver.dart';
 import '../../application/sync/migration/memoflow_migration_client.dart';
 import '../../application/sync/migration/memoflow_migration_import_service.dart';
@@ -14,11 +15,13 @@ import '../../application/sync/migration/memoflow_migration_preferences_filter.d
 import '../../application/sync/migration/memoflow_migration_server.dart';
 import '../../data/db/app_database.dart';
 import '../../data/local_library/local_attachment_store.dart';
+import '../attachments/queued_attachment_stager_provider.dart';
 import '../settings/ai_settings_provider.dart';
 import '../settings/app_lock_provider.dart';
 import '../settings/image_bed_settings_provider.dart';
 import '../settings/image_compression_settings_provider.dart';
 import '../settings/location_settings_provider.dart';
+import '../memos/compose_draft_provider.dart';
 import '../settings/memo_template_settings_provider.dart';
 import '../settings/preferences_provider.dart';
 import '../settings/reminder_settings_provider.dart';
@@ -77,6 +80,11 @@ class RiverpodConfigTransferLocalAdapter implements ConfigTransferLocalAdapter {
       webDavSettings:
           configTypes.contains(MemoFlowMigrationConfigType.webdavSettings)
           ? _ref.read(webDavSettingsProvider)
+          : null,
+      draftBox: configTypes.contains(MemoFlowMigrationConfigType.draftBox)
+          ? ComposeDraftTransferBundle.fromDraftRecords(
+              await _ref.read(composeDraftRepositoryProvider).listDrafts(),
+            )
           : null,
     );
     return bundle;
@@ -193,6 +201,7 @@ final memoFlowMigrationImportServiceProvider =
       return MemoFlowMigrationImportService(
         db: ref.watch(databaseProvider),
         attachmentStore: LocalAttachmentStore(),
+        attachmentStager: ref.watch(queuedAttachmentStagerProvider),
         configApplyService: ConfigTransferApplyService(
           localAdapter: ref.watch(configTransferLocalAdapterProvider),
           preferencesFilter: ref.watch(migrationPreferencesFilterProvider),

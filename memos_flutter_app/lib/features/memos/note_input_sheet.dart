@@ -20,6 +20,7 @@ import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/compose_draft.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
@@ -32,6 +33,7 @@ import '../../state/attachments/queued_attachment_stager_provider.dart';
 import '../../state/settings/image_compression_settings_provider.dart';
 import '../../state/settings/image_bed_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
+import '../../state/memos/compose_draft_provider.dart';
 import '../../state/memos/note_draft_provider.dart';
 import '../../state/settings/preferences_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
@@ -44,7 +46,9 @@ import '../share/share_video_compression_service.dart';
 import '../share/share_video_download_service.dart';
 import 'attachment_gallery_screen.dart';
 import 'attachment_video_screen.dart';
+import 'compose_input_hint.dart';
 import 'compose_toolbar_shared.dart';
+import 'draft_box_screen.dart';
 import 'gallery_attachment_picker.dart';
 import 'memo_video_grid.dart';
 import 'tag_autocomplete.dart';
@@ -190,12 +194,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _editorFieldKey = GlobalKey();
   var _busy = false;
   Timer? _draftTimer;
-  ProviderSubscription<AsyncValue<String>>? _draftSubscription;
-  var _didApplyDraft = false;
   var _didSeedInitialAttachments = false;
   var _didSeedInitialDeferredInlineImages = false;
   var _didSeedInitialDeferredVideos = false;
   List<TagStat> _tagStatsCache = const [];
+  ComposeDraftRepository? _composeDraftRepository;
+  NoteDraftRepository? _noteDraftRepository;
   late final NoteDraftController _noteDraftController;
   late final ShareInlineImageDownloadService _shareInlineImageDownloadService;
   late final ShareVideoDownloadService _shareVideoDownloadService;
@@ -247,6 +251,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   final _imagePicker = ImagePicker();
   final _templateRenderer = MemoTemplateRenderer();
   final _pickedImages = <XFile>[];
+  String? _activeDraftId;
   String _visibility = 'PRIVATE';
   bool _visibilityTouched = false;
   MemoLocation? _location;
@@ -270,28 +275,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       initialSelection: widget.initialSelection,
     );
     _editorFocusNode = FocusNode();
-    if (widget.ignoreDraft ||
-        _controller.text.trim().isNotEmpty ||
-        widget.initialAttachmentPaths.isNotEmpty ||
-        widget.initialAttachmentSeeds.isNotEmpty ||
-        widget.initialDeferredInlineImageAttachments.isNotEmpty ||
-        widget.initialDeferredVideoAttachments.isNotEmpty) {
-      _didApplyDraft = true;
-    }
     _controller.addListener(_handleContentChanged);
     _controller.addListener(_scheduleDraftSave);
-    _applyDraft(ref.read(noteDraftProvider));
     _applyDefaultVisibility(ref.read(userGeneralSettingProvider));
     _loadTagStats();
     unawaited(_seedInitialAttachments());
     unawaited(_seedInitialDeferredInlineImages());
     unawaited(_seedInitialDeferredShareVideos());
-    _draftSubscription = ref.listenManual<AsyncValue<String>>(
-      noteDraftProvider,
-      (prev, next) {
-        _applyDraft(next);
-      },
-    );
     _settingsSubscription = ref.listenManual<AsyncValue<UserGeneralSetting>>(
       userGeneralSettingProvider,
       (prev, next) {
@@ -309,31 +299,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       HardwareKeyboard.instance.removeHandler(_handleDesktopEditorShortcuts);
     }
     _draftTimer?.cancel();
-    _draftSubscription?.close();
     _settingsSubscription?.close();
     _controller.removeListener(_handleContentChanged);
     _controller.removeListener(_scheduleDraftSave);
-    final draftText = _controller.text;
     // Defer provider mutation to avoid updating Riverpod state during unmount.
-    unawaited(
-      Future<void>(
-        () => _noteDraftController.setDraft(draftText, triggerSync: false),
-      ),
-    );
+    unawaited(Future<void>(() => _saveCurrentDraft(triggerSync: false)));
     _composer.dispose();
     _editorFocusNode.dispose();
     super.dispose();
-  }
-
-  void _applyDraft(AsyncValue<String> value) {
-    if (_didApplyDraft) return;
-    final draft = value.valueOrNull;
-    if (draft == null) return;
-    if (_controller.text.trim().isEmpty && draft.trim().isNotEmpty) {
-      _controller.text = draft;
-      _controller.selection = TextSelection.collapsed(offset: draft.length);
-    }
-    _didApplyDraft = true;
   }
 
   void _applyDefaultVisibility(AsyncValue<UserGeneralSetting> value) {
@@ -347,6 +320,138 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       return;
     }
     setState(() => _visibility = visibility);
+  }
+
+  Future<String?> _saveCurrentDraft({bool triggerSync = true}) async {
+    if (widget.ignoreDraft) return null;
+    final snapshot = _buildCurrentDraftSnapshot();
+    final repository = _composeDraftRepository;
+    if (repository == null) return null;
+    final nextDraftId = await repository.saveSnapshot(
+      draftUid: _activeDraftId,
+      snapshot: snapshot,
+    );
+    _activeDraftId = nextDraftId;
+    await _persistLegacyNoteDraft(_controller.text, triggerSync: triggerSync);
+    return nextDraftId;
+  }
+
+  Future<void> _persistLegacyNoteDraft(
+    String text, {
+    required bool triggerSync,
+  }) async {
+    if (mounted) {
+      await _noteDraftController.setDraft(text, triggerSync: triggerSync);
+      return;
+    }
+    final repository = _noteDraftRepository;
+    if (repository == null) return;
+    if (text.trim().isEmpty) {
+      await repository.clear();
+      return;
+    }
+    await repository.write(text);
+  }
+
+  ComposeDraftSnapshot _buildCurrentDraftSnapshot() {
+    return ComposeDraftSnapshot(
+      content: _controller.text,
+      visibility: _normalizedVisibility(),
+      relations: _linkedMemos
+          .map((memo) => memo.toRelationJson())
+          .toList(growable: false),
+      attachments: _pendingAttachments
+          .map(ComposeDraftAttachment.fromPendingAttachment)
+          .toList(growable: false),
+      location: _location,
+    );
+  }
+
+  void _restoreComposeDraft(ComposeDraftRecord draft) {
+    final snapshot = draft.snapshot;
+    final linkedMemos = _linkedMemosFromRelations(snapshot.relations);
+    final pendingAttachments = snapshot.attachments
+        .map((attachment) => attachment.toPendingAttachment())
+        .toList(growable: false);
+    final pickedImages = pendingAttachments
+        .where((attachment) => _isImageMimeType(attachment.mimeType))
+        .map((attachment) => XFile(attachment.filePath))
+        .toList(growable: false);
+    final inlineSourceMap = <String, String>{};
+    for (final attachment in snapshot.attachments) {
+      final sourceUrl = attachment.sourceUrl?.trim();
+      if (!attachment.shareInlineImage ||
+          sourceUrl == null ||
+          sourceUrl.isEmpty) {
+        continue;
+      }
+      final localUrl = shareInlineLocalUrlFromPath(attachment.filePath);
+      if (localUrl.isNotEmpty) {
+        inlineSourceMap[localUrl] = sourceUrl;
+      }
+    }
+
+    _activeDraftId = draft.uid;
+    _visibility = snapshot.visibility.trim().isEmpty
+        ? _resolvedDefaultVisibility()
+        : snapshot.visibility.trim();
+    _visibilityTouched = true;
+    _location = snapshot.location;
+    _thirdPartyShareInlineSourceByLocalUrl
+      ..clear()
+      ..addAll(inlineSourceMap);
+    _pickedImages
+      ..clear()
+      ..addAll(pickedImages);
+    _composer.replaceText(snapshot.content, clearHistory: true);
+    _composer.setLinkedMemos(linkedMemos);
+    _composer.setPendingAttachments(pendingAttachments);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  List<_LinkedMemo> _linkedMemosFromRelations(
+    List<Map<String, dynamic>> relations,
+  ) {
+    final linked = <_LinkedMemo>[];
+    final seenNames = <String>{};
+    for (final relation in relations) {
+      final relatedMemoRaw = relation['relatedMemo'];
+      if (relatedMemoRaw is! Map) continue;
+      final name = (relatedMemoRaw['name'] as String? ?? '').trim();
+      if (name.isEmpty || !seenNames.add(name)) continue;
+      final label = name.startsWith('memos/') ? name.substring(6) : name;
+      linked.add(_LinkedMemo(name: name, label: label));
+    }
+    return linked;
+  }
+
+  void _clearCurrentComposeState() {
+    _activeDraftId = null;
+    _location = null;
+    _visibilityTouched = false;
+    _visibility = _resolvedDefaultVisibility();
+    _thirdPartyShareInlineSourceByLocalUrl.clear();
+    _pickedImages.clear();
+    _deferredInlineImageRequests.clear();
+    _deferredShareVideoTasks.clear();
+    _composer.replaceText('', clearHistory: true);
+    _composer.clearPendingAttachments();
+    _composer.clearLinkedMemos();
+    unawaited(_noteDraftController.clear());
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String _resolvedDefaultVisibility() {
+    final settings = ref.read(userGeneralSettingProvider).valueOrNull;
+    final value = (settings?.memoVisibility ?? '').trim().toUpperCase();
+    if (value == 'PUBLIC' || value == 'PROTECTED' || value == 'PRIVATE') {
+      return value;
+    }
+    return 'PRIVATE';
   }
 
   Future<void> _seedInitialAttachments() async {
@@ -865,13 +970,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     setState(() {
       _composer.addPendingAttachments(staged);
     });
+    _scheduleDraftSave();
   }
 
   void _scheduleDraftSave() {
+    if (widget.ignoreDraft) return;
     _draftTimer?.cancel();
-    final text = _controller.text;
     _draftTimer = Timer(const Duration(milliseconds: 300), () {
-      ref.read(noteDraftProvider.notifier).setDraft(text);
+      unawaited(_saveCurrentDraft());
     });
   }
 
@@ -958,6 +1064,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       _visibility = selection;
       _visibilityTouched = true;
     });
+    _scheduleDraftSave();
   }
 
   String _normalizedVisibility() {
@@ -997,9 +1104,56 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _closeWithDraft() async {
     if (_busy) return;
     _draftTimer?.cancel();
-    await ref.read(noteDraftProvider.notifier).setDraft(_controller.text);
+    await _saveCurrentDraft();
     if (!mounted) return;
     Navigator.of(context).maybePop();
+  }
+
+  bool get _hasDraftBoxBlockingTasks {
+    return _deferredInlineImageRequests.isNotEmpty ||
+        _hasPendingDeferredShareVideoTasks ||
+        _deferredInlineImagePrefetchFuture != null;
+  }
+
+  Future<void> _openDraftBox() async {
+    if (_busy) return;
+    if (_hasDraftBoxBlockingTasks) {
+      showTopToast(
+        context,
+        context.tr(
+          zh: '请等待附件准备完成，或先移除未完成的附件',
+          en: 'Wait for attachments to finish preparing, or remove them first.',
+        ),
+      );
+      return;
+    }
+
+    final currentDraftId = await _saveCurrentDraft();
+    if (!mounted) return;
+    final selectedDraftId = await DraftBoxScreen.show(
+      context,
+      activeDraftId: _activeDraftId,
+    );
+    if (!mounted) return;
+
+    if (selectedDraftId != null && selectedDraftId.trim().isNotEmpty) {
+      final selectedDraft = await ref
+          .read(composeDraftRepositoryProvider)
+          .getByUid(selectedDraftId);
+      if (!mounted || selectedDraft == null) return;
+      _restoreComposeDraft(selectedDraft);
+      return;
+    }
+
+    if (currentDraftId != null && currentDraftId.isNotEmpty) {
+      final existing = await ref
+          .read(composeDraftRepositoryProvider)
+          .getByUidWithoutLegacyImport(currentDraftId);
+      if (!mounted) return;
+      if (existing == null) {
+        _clearCurrentComposeState();
+      }
+    }
   }
 
   void _insertText(String text, {int? caretOffset}) {
@@ -1322,6 +1476,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     );
     if (!mounted || next == null) return;
     setState(() => _location = next);
+    _scheduleDraftSave();
     showTopToast(
       context,
       context.t.strings.legacy.msg_location_updated(
@@ -1329,6 +1484,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       ),
       duration: const Duration(seconds: 2),
     );
+  }
+
+  void _clearLocation() {
+    if (_location == null) return;
+    setState(() => _location = null);
+    _scheduleDraftSave();
   }
 
   Widget _buildComposeToolbar({
@@ -1492,6 +1653,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         enabled: !_busy && !_locating,
         onPressed: () => unawaited(_requestLocation()),
       ),
+      MemoComposeToolbarActionSpec.builtin(
+        id: MemoToolbarActionId.draftBox,
+        enabled: !_busy,
+        onPressed: () => unawaited(_openDraftBox()),
+      ),
       ...preferences.customButtons.map(
         (button) => MemoComposeToolbarActionSpec.custom(
           button: button,
@@ -1606,6 +1772,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             )
             .toList(growable: false),
       );
+      if (!mounted) return;
       final skipped = [
         if (result.skippedCount > 0)
           context.t.strings.legacy.msg_unavailable_file_count(
@@ -1710,6 +1877,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       }
 
       await _addPendingAttachmentsStaged(added);
+      if (!mounted) return;
       final skipped = [
         if (missingPathCount > 0)
           context.t.strings.legacy.msg_unavailable_file_count(
@@ -1775,6 +1943,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         size: size,
       ),
     ]);
+    if (!mounted) return;
     showTopToast(context, context.t.strings.legacy.msg_added_voice_attachment);
   }
 
@@ -1894,6 +2063,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       _composer.removePendingAttachment(uid);
       _pickedImages.removeWhere((x) => x.path == removed.filePath);
     });
+    _scheduleDraftSave();
     unawaited(
       ref
           .read(queuedAttachmentStagerProvider)
@@ -2019,6 +2189,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       }
       _composer.replacePendingAttachment(uid, stagedReplacement);
     });
+    _scheduleDraftSave();
     if (existing.filePath != stagedReplacement.filePath) {
       unawaited(
         ref
@@ -2361,19 +2532,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     setState(() {
       _composer.addLinkedMemo(_LinkedMemo(name: name, label: label));
     });
+    _scheduleDraftSave();
   }
 
   void _removeLinkedMemo(String name) {
     setState(() {
       _composer.removeLinkedMemo(name);
     });
-  }
-
-  void _clearLinkedMemos() {
-    if (_linkedMemos.isEmpty) return;
-    setState(() {
-      _composer.clearLinkedMemos();
-    });
+    _scheduleDraftSave();
   }
 
   String _linkedMemoLabel(Memo memo) {
@@ -2564,13 +2730,27 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
               ),
             ),
       );
+      final submittedDraftId = _activeDraftId;
       _draftTimer?.cancel();
       _composer.replaceText('', clearHistory: true);
-      _clearLinkedMemos();
+      _composer.clearLinkedMemos();
       _composer.clearPendingAttachments();
       _deferredInlineImageRequests.clear();
       _pickedImages.clear();
       await ref.read(noteDraftProvider.notifier).clear();
+      _activeDraftId = null;
+      if (submittedDraftId != null && submittedDraftId.isNotEmpty) {
+        await ref
+            .read(composeDraftRepositoryProvider)
+            .deleteDraft(submittedDraftId);
+      }
+      for (final attachment in pendingUploads) {
+        unawaited(
+          ref
+              .read(queuedAttachmentStagerProvider)
+              .deleteManagedFile(attachment.filePath),
+        );
+      }
 
       if (!mounted) return;
       context.safePop();
@@ -2672,6 +2852,8 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
   @override
   Widget build(BuildContext context) {
+    _composeDraftRepository = ref.watch(composeDraftRepositoryProvider);
+    _noteDraftRepository = ref.watch(noteDraftRepositoryProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sheetColor = isDark
         ? MemoFlowPalette.cardDark
@@ -2708,9 +2890,26 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final toolbarPreferences = ref.watch(
       appPreferencesProvider.select((p) => p.memoToolbarPreferences),
     );
+    final pendingDraftCount = ref.watch(composeDraftCountProvider);
     final availableTemplates = templateSettings.enabled
         ? templateSettings.templates
         : const <MemoTemplate>[];
+    final shouldShowDraftHint = shouldShowComposeDraftHint(
+      enableDraftHint: !widget.ignoreDraft,
+      pendingDraftCount: pendingDraftCount,
+      hasCurrentComposeContent:
+          _controller.text.trim().isNotEmpty ||
+          _pendingAttachments.isNotEmpty ||
+          _linkedMemos.isNotEmpty ||
+          _location != null ||
+          _deferredInlineImageRequests.isNotEmpty ||
+          _deferredShareVideoTasks.isNotEmpty,
+    );
+    final editorHintText = shouldShowDraftHint
+        ? context.t.strings.legacy.msg_draft_box_pending_hint(
+            count: pendingDraftCount,
+          )
+        : context.t.strings.legacy.msg_write_thoughts;
 
     return ClipRect(
       child: BackdropFilter(
@@ -2821,11 +3020,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                                   decoration: InputDecoration(
                                                     isDense: true,
                                                     border: InputBorder.none,
-                                                    hintText: context
-                                                        .t
-                                                        .strings
-                                                        .legacy
-                                                        .msg_write_thoughts,
+                                                    hintText: editorHintText,
                                                     hintStyle: TextStyle(
                                                       color: isDark
                                                           ? const Color(
@@ -2971,11 +3166,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
                                       onPressed: _busy
                                           ? null
                                           : () => unawaited(_requestLocation()),
-                                      onDeleted: _busy
-                                          ? null
-                                          : () => setState(
-                                              () => _location = null,
-                                            ),
+                                      onDeleted: _busy ? null : _clearLocation,
                                     ),
                                   ),
                                 ),

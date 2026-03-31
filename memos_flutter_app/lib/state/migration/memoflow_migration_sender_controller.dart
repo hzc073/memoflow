@@ -122,7 +122,8 @@ class MemoFlowMigrationSenderController
         packageResult: result,
         statusMessage:
             'Package ready: ${result.manifest.memoCount} memos, '
-            '${result.manifest.attachmentCount} attachments.',
+            '${result.manifest.attachmentCount} attachments, '
+            '${result.manifest.draftCount} drafts.',
       );
     } catch (error) {
       state = state.copyWith(

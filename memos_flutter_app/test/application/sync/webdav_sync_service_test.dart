@@ -8,6 +8,7 @@ import 'package:memos_flutter_app/application/sync/sync_types.dart';
 import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/application/sync/webdav_vault_service.dart';
 import 'package:memos_flutter_app/data/logs/debug_log_store.dart';
+import 'package:memos_flutter_app/data/models/compose_draft.dart';
 import 'package:memos_flutter_app/data/models/image_compression_settings.dart';
 import 'package:memos_flutter_app/data/models/image_bed_settings.dart';
 import 'package:memos_flutter_app/data/models/location_settings.dart';
@@ -91,6 +92,9 @@ class FakeWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
   final WebDavSyncLocalSnapshot snapshot;
 
   @override
+  String? get currentWorkspaceKey => 'test-workspace';
+
+  @override
   Future<WebDavSyncLocalSnapshot> readSnapshot() async => snapshot;
 
   @override
@@ -121,6 +125,14 @@ class FakeWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
 
   @override
   Future<void> applyNoteDraft(String text) async {}
+
+  @override
+  Future<List<ComposeDraftRecord>> readComposeDrafts() async {
+    return const <ComposeDraftRecord>[];
+  }
+
+  @override
+  Future<void> replaceComposeDrafts(List<ComposeDraftRecord> drafts) async {}
 
   @override
   Future<void> applyTags(TagSnapshot snapshot) async {}
@@ -492,7 +504,9 @@ void main() {
   });
 
   test('testConnection succeeds when WebDAV path is writable', () async {
-    final fakeClient = _FakeWebDavClient(baseUrl: Uri.parse('https://example.com'));
+    final fakeClient = _FakeWebDavClient(
+      baseUrl: Uri.parse('https://example.com'),
+    );
     final service = WebDavSyncService(
       syncStateRepository: FakeWebDavSyncStateRepository(WebDavSyncState.empty),
       deviceIdRepository: FakeWebDavDeviceIdRepository('device-1'),
@@ -519,38 +533,43 @@ void main() {
     expect(fakeClient.deleteCalls, hasLength(1));
   });
 
-  test('testConnection reports cleanup warning when probe cleanup fails', () async {
-    final fakeClient = _FakeWebDavClient(
-      baseUrl: Uri.parse('https://example.com'),
-      deleteResponse: WebDavResponse(
-        statusCode: 500,
-        headers: const {},
-        bytes: const [],
-      ),
-    );
-    final service = WebDavSyncService(
-      syncStateRepository: FakeWebDavSyncStateRepository(WebDavSyncState.empty),
-      deviceIdRepository: FakeWebDavDeviceIdRepository('device-1'),
-      localAdapter: FakeWebDavSyncLocalAdapter(_defaultSnapshot()),
-      vaultService: WebDavVaultService(),
-      vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
-      clientFactory:
-          ({
-            required Uri baseUrl,
-            required WebDavSettings settings,
-            void Function(DebugLogEntry entry)? logWriter,
-          }) => fakeClient,
-    );
+  test(
+    'testConnection reports cleanup warning when probe cleanup fails',
+    () async {
+      final fakeClient = _FakeWebDavClient(
+        baseUrl: Uri.parse('https://example.com'),
+        deleteResponse: WebDavResponse(
+          statusCode: 500,
+          headers: const {},
+          bytes: const [],
+        ),
+      );
+      final service = WebDavSyncService(
+        syncStateRepository: FakeWebDavSyncStateRepository(
+          WebDavSyncState.empty,
+        ),
+        deviceIdRepository: FakeWebDavDeviceIdRepository('device-1'),
+        localAdapter: FakeWebDavSyncLocalAdapter(_defaultSnapshot()),
+        vaultService: WebDavVaultService(),
+        vaultPasswordRepository: FakeWebDavVaultPasswordRepository(),
+        clientFactory:
+            ({
+              required Uri baseUrl,
+              required WebDavSettings settings,
+              void Function(DebugLogEntry entry)? logWriter,
+            }) => fakeClient,
+      );
 
-    final result = await service.testConnection(
-      settings: _validSettings(),
-      accountKey: 'account',
-    );
+      final result = await service.testConnection(
+        settings: _validSettings(),
+        accountKey: 'account',
+      );
 
-    expect(result.success, isTrue);
-    expect(result.cleanupFailed, isTrue);
-    expect(result.error, isNull);
-  });
+      expect(result.success, isTrue);
+      expect(result.cleanupFailed, isTrue);
+      expect(result.error, isNull);
+    },
+  );
 
   test('sync uploads AI settings without legacy insight alias', () async {
     final snapshot = _defaultSnapshot();
@@ -574,7 +593,9 @@ void main() {
         tagsSnapshot: snapshot.tagsSnapshot,
       ),
     );
-    final fakeClient = _FakeWebDavClient(baseUrl: Uri.parse('https://example.com'));
+    final fakeClient = _FakeWebDavClient(
+      baseUrl: Uri.parse('https://example.com'),
+    );
 
     final service = WebDavSyncService(
       syncStateRepository: stateRepo,
@@ -599,7 +620,8 @@ void main() {
     final aiPut = fakeClient.putCalls.firstWhere(
       (call) => call.uri.pathSegments.last == _aiFile,
     );
-    final encoded = jsonDecode(utf8.decode(aiPut.body!)) as Map<String, dynamic>;
+    final encoded =
+        jsonDecode(utf8.decode(aiPut.body!)) as Map<String, dynamic>;
     expect(encoded['analysisPromptTemplates'], isNotEmpty);
     expect(encoded.containsKey('insightPromptTemplates'), isFalse);
   });

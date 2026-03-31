@@ -6,10 +6,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     WebDavSettings settings, {
     required String exportedAt,
   }) {
-    return _wrapConfigPayload(
-      exportedAt: exportedAt,
-      data: settings.toJson(),
-    );
+    return _wrapConfigPayload(exportedAt: exportedAt, data: settings.toJson());
   }
 
   @override
@@ -17,11 +14,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     required String exportedAt,
     required Object? data,
   }) {
-    return {
-      'schemaVersion': 1,
-      'exportedAt': exportedAt,
-      'data': data,
-    };
+    return {'schemaVersion': 1, 'exportedAt': exportedAt, 'data': data};
   }
 
   @override
@@ -96,6 +89,9 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     }
     if (normalized == _backupNoteDraftSnapshotPath) {
       return WebDavBackupConfigType.noteDraft;
+    }
+    if (normalized == _backupDraftBoxSnapshotPath) {
+      return WebDavBackupConfigType.draftBox;
     }
     if (normalized == _backupTagsSnapshotPath) {
       return WebDavBackupConfigType.tags;
@@ -236,18 +232,43 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
         ),
       );
     }
-    if (types.contains(WebDavBackupConfigType.noteDraft) && snapshot != null) {
+    if (types.contains(WebDavBackupConfigType.draftBox) &&
+        _configAdapter != null) {
+      final drafts = await _configAdapter.readComposeDrafts();
+      final bundle = ComposeDraftTransferBundle.fromDraftRecords(drafts);
       final payload = _wrapConfigPayload(
         exportedAt: exportedAt,
-        data: {'text': snapshot.noteDraft},
+        data: bundle.toJson(),
       );
       files.add(
         _BackupConfigFile(
-          type: WebDavBackupConfigType.noteDraft,
-          path: _backupNoteDraftSnapshotPath,
+          type: WebDavBackupConfigType.draftBox,
+          path: _backupDraftBoxSnapshotPath,
           bytes: _encodeJsonBytes(payload),
         ),
       );
+      for (final draft in bundle.drafts) {
+        for (final attachment in draft.attachments) {
+          final sourcePath = attachment.sourceFilePath?.trim() ?? '';
+          if (sourcePath.isEmpty) {
+            throw const FormatException('Draft attachment source path missing');
+          }
+          final file = File(sourcePath);
+          if (!await file.exists()) {
+            throw FileSystemException(
+              'Draft attachment file not found',
+              sourcePath,
+            );
+          }
+          files.add(
+            _BackupConfigFile(
+              type: WebDavBackupConfigType.draftBox,
+              path: attachment.path,
+              bytes: Uint8List.fromList(await file.readAsBytes()),
+            ),
+          );
+        }
+      }
     }
     if (types.contains(WebDavBackupConfigType.tags) && snapshot != null) {
       final payload = _wrapConfigPayload(
@@ -292,6 +313,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     MemoTemplateSettings? templateSettings;
     AppLockSnapshot? appLockSnapshot;
     String? noteDraft;
+    ComposeDraftTransferBundle? draftBox;
     TagSnapshot? tagsSnapshot;
     WebDavSettings? webDavSettings;
 
@@ -352,8 +374,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
       }
     }
 
-    final imageBedBytes =
-        configBytes[WebDavBackupConfigType.imageBedSettings];
+    final imageBedBytes = configBytes[WebDavBackupConfigType.imageBedSettings];
     if (imageBedBytes != null) {
       final envelope = readEnvelope(imageBedBytes);
       final data = envelope == null ? null : readConfigData(envelope);
@@ -374,8 +395,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
       }
     }
 
-    final locationBytes =
-        configBytes[WebDavBackupConfigType.locationSettings];
+    final locationBytes = configBytes[WebDavBackupConfigType.locationSettings];
     if (locationBytes != null) {
       final envelope = readEnvelope(locationBytes);
       final data = envelope == null ? null : readConfigData(envelope);
@@ -384,8 +404,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
       }
     }
 
-    final templateBytes =
-        configBytes[WebDavBackupConfigType.templateSettings];
+    final templateBytes = configBytes[WebDavBackupConfigType.templateSettings];
     if (templateBytes != null) {
       final envelope = readEnvelope(templateBytes);
       final data = envelope == null ? null : readConfigData(envelope);
@@ -417,6 +436,17 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
       }
     }
 
+    final draftBoxBytes = configBytes[WebDavBackupConfigType.draftBox];
+    if (draftBoxBytes != null) {
+      final envelope = readEnvelope(draftBoxBytes);
+      final data = envelope == null ? null : readConfigData(envelope);
+      if (data != null) {
+        draftBox = safeParse(() => ComposeDraftTransferBundle.fromJson(data));
+      }
+    } else if (noteDraft != null && noteDraft.trim().isNotEmpty) {
+      draftBox = ComposeDraftTransferBundle.fromLegacyNoteDraft(noteDraft);
+    }
+
     final tagsBytes = configBytes[WebDavBackupConfigType.tags];
     if (tagsBytes != null) {
       final envelope = readEnvelope(tagsBytes);
@@ -429,18 +459,17 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     final webDavBytes = configBytes[WebDavBackupConfigType.webdavSettings];
     if (webDavBytes != null) {
       final envelope = readEnvelope(webDavBytes);
-        if (envelope != null && _isValidConfigEnvelope(envelope)) {
-          final data = envelope['data'];
-          Map<String, dynamic>? settingsJson;
-          if (data is Map) {
-            settingsJson = data.cast<String, dynamic>();
-          } else {
-            settingsJson = _extractLegacyWebDavSettings(envelope);
-          }
+      if (envelope != null && _isValidConfigEnvelope(envelope)) {
+        final data = envelope['data'];
+        Map<String, dynamic>? settingsJson;
+        if (data is Map) {
+          settingsJson = data.cast<String, dynamic>();
+        } else {
+          settingsJson = _extractLegacyWebDavSettings(envelope);
+        }
         if (settingsJson != null) {
           final resolved = settingsJson;
-          webDavSettings =
-              safeParse(() => WebDavSettings.fromJson(resolved));
+          webDavSettings = safeParse(() => WebDavSettings.fromJson(resolved));
         }
       }
     }
@@ -455,6 +484,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
       templateSettings: templateSettings,
       appLockSnapshot: appLockSnapshot,
       noteDraft: noteDraft,
+      draftBox: draftBox,
       tagsSnapshot: tagsSnapshot,
       webDavSettings: webDavSettings,
     );
@@ -558,6 +588,9 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     if (bundle.noteDraft != null) {
       types.add(WebDavBackupConfigType.noteDraft);
     }
+    if (bundle.draftBox != null) {
+      types.add(WebDavBackupConfigType.draftBox);
+    }
     if (bundle.tagsSnapshot != null) {
       types.add(WebDavBackupConfigType.tags);
     }
@@ -571,6 +604,7 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
   Future<void> _applyConfigBundle({
     required WebDavBackupConfigBundle bundle,
     WebDavBackupConfigDecisionHandler? decisionHandler,
+    Directory? draftAttachmentRootDirectory,
   }) async {
     if (_configAdapter == null || bundle.isEmpty) return;
     final available = _availableConfigTypes(bundle);
@@ -644,6 +678,27 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
             final draft = bundle.noteDraft;
             if (draft != null) {
               await _configAdapter.applyNoteDraft(draft);
+            }
+            break;
+          case WebDavBackupConfigType.draftBox:
+            final draftBox = bundle.draftBox;
+            if (draftBox != null) {
+              final workspaceKey =
+                  _configAdapter.currentWorkspaceKey ?? 'default';
+              final drafts = await materializeComposeDraftTransferBundle(
+                bundle: draftBox,
+                rootDirectory: draftAttachmentRootDirectory,
+                workspaceKey: workspaceKey,
+                attachmentStager: QueuedAttachmentStager(),
+              );
+              final draftsToApply = draftBox.mergeWithExistingOnRestore
+                  ? mergeComposeDraftRecords(
+                      existing: await _configAdapter.readComposeDrafts(),
+                      incoming: drafts,
+                      workspaceKey: workspaceKey,
+                    )
+                  : drafts;
+              await _configAdapter.replaceComposeDrafts(draftsToApply);
             }
             break;
           case WebDavBackupConfigType.tags:
@@ -894,6 +949,16 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     return count;
   }
 
+  int _countDraftAttachmentsInEntries(Iterable<WebDavBackupFileEntry> entries) {
+    var count = 0;
+    for (final entry in entries) {
+      if (_isDraftAttachmentPath(entry.path)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   @override
   bool _snapshotHasMemos(WebDavBackupSnapshot snapshot) {
     return _countMemosInSnapshot(snapshot) > 0;
@@ -948,6 +1013,31 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
   bool _isAttachmentPath(String rawPath) {
     final path = rawPath.trim().toLowerCase();
     return path.startsWith('attachments/');
+  }
+
+  bool _isDraftAttachmentPath(String rawPath) {
+    final path = rawPath.trim().replaceAll('\\', '/').toLowerCase();
+    return path.startsWith('$composeDraftTransferAttachmentsDir/');
+  }
+
+  int _countDraftsInConfigFiles(Iterable<_BackupConfigFile> files) {
+    for (final file in files) {
+      if (file.path != _backupDraftBoxSnapshotPath) continue;
+      final decoded = _decodeJsonValue(file.bytes);
+      if (decoded is! Map) return 0;
+      final envelope = decoded.cast<String, dynamic>();
+      final data = envelope['data'];
+      if (data is Map<String, dynamic>) {
+        return ComposeDraftTransferBundle.fromJson(data).draftCount;
+      }
+      if (data is Map) {
+        return ComposeDraftTransferBundle.fromJson(
+          data.cast<String, dynamic>(),
+        ).draftCount;
+      }
+      return 0;
+    }
+    return 0;
   }
 
   @override
@@ -1108,15 +1198,16 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
 
     final memoCount = _countMemosInEntries(files);
     final attachmentCount = _countAttachmentsInEntries(files);
-    final totalSize = files.fold<int>(
-      0,
-      (sum, entry) => sum + entry.size,
-    );
+    final draftCount = _countDraftsInConfigFiles(configFiles);
+    final draftAttachmentCount = _countDraftAttachmentsInEntries(files);
+    final totalSize = files.fold<int>(0, (sum, entry) => sum + entry.size);
     final manifest = WebDavBackupManifest(
       schemaVersion: 1,
       exportedAt: exportedAt,
       memoCount: memoCount,
       attachmentCount: attachmentCount,
+      draftCount: draftCount,
+      draftAttachmentCount: draftAttachmentCount,
       totalSize: totalSize,
       backupMode: backupMode,
       encrypted: true,
@@ -1463,5 +1554,4 @@ mixin _WebDavBackupManifestMixin on _WebDavBackupServiceBase {
     final utc = now.toUtc();
     return '${utc.year}${two(utc.month)}${two(utc.day)}_${two(utc.hour)}${two(utc.minute)}${two(utc.second)}';
   }
-
 }

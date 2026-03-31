@@ -16,6 +16,7 @@ enum WebDavBackupConfigType {
   templateSettings,
   appLock,
   noteDraft,
+  draftBox,
   tags,
   webdavSettings,
 }
@@ -31,6 +32,7 @@ class WebDavBackupConfigBundle {
     this.templateSettings,
     this.appLockSnapshot,
     this.noteDraft,
+    this.draftBox,
     this.tagsSnapshot,
     this.webDavSettings,
   });
@@ -44,6 +46,7 @@ class WebDavBackupConfigBundle {
   final MemoTemplateSettings? templateSettings;
   final AppLockSnapshot? appLockSnapshot;
   final String? noteDraft;
+  final ComposeDraftTransferBundle? draftBox;
   final TagSnapshot? tagsSnapshot;
   final WebDavSettings? webDavSettings;
 
@@ -57,6 +60,7 @@ class WebDavBackupConfigBundle {
       templateSettings == null &&
       appLockSnapshot == null &&
       noteDraft == null &&
+      draftBox == null &&
       tagsSnapshot == null &&
       webDavSettings == null;
 }
@@ -84,6 +88,7 @@ const _autoRestoreConfigTypes = <WebDavBackupConfigType>{
   WebDavBackupConfigType.templateSettings,
   WebDavBackupConfigType.locationSettings,
   WebDavBackupConfigType.imageCompressionSettings,
+  WebDavBackupConfigType.draftBox,
   WebDavBackupConfigType.tags,
 };
 
@@ -104,6 +109,7 @@ const _safeBackupConfigTypes = <WebDavBackupConfigType>{
   WebDavBackupConfigType.templateSettings,
   WebDavBackupConfigType.locationSettings,
   WebDavBackupConfigType.imageCompressionSettings,
+  WebDavBackupConfigType.draftBox,
   WebDavBackupConfigType.tags,
 };
 
@@ -117,6 +123,7 @@ const _fullBackupConfigTypes = <WebDavBackupConfigType>{
   WebDavBackupConfigType.imageCompressionSettings,
   WebDavBackupConfigType.appLock,
   WebDavBackupConfigType.noteDraft,
+  WebDavBackupConfigType.draftBox,
   WebDavBackupConfigType.aiSettings,
   WebDavBackupConfigType.tags,
 };
@@ -139,6 +146,7 @@ const _backupLocationSnapshotPath = 'config/location_settings.json';
 const _backupTemplateSnapshotPath = 'config/template_settings.json';
 const _backupAppLockSnapshotPath = 'config/app_lock.json';
 const _backupNoteDraftSnapshotPath = 'config/note_draft.json';
+const _backupDraftBoxSnapshotPath = composeDraftTransferConfigPath;
 const _backupTagsSnapshotPath = 'config/tags.json';
 const _backupManifestFile = 'manifest.json';
 const _plainBackupIndexFile = 'index.json';
@@ -178,11 +186,12 @@ typedef WebDavBackupExportIssueHandler =
       WebDavBackupExportIssue issue,
     );
 
-typedef WebDavBackupClientFactory = WebDavClient Function({
-  required Uri baseUrl,
-  required WebDavSettings settings,
-  void Function(DebugLogEntry entry)? logWriter,
-});
+typedef WebDavBackupClientFactory =
+    WebDavClient Function({
+      required Uri baseUrl,
+      required WebDavSettings settings,
+      void Function(DebugLogEntry entry)? logWriter,
+    });
 
 class _SnapshotBuildResult {
   const _SnapshotBuildResult({
@@ -208,9 +217,7 @@ class _PlainBackupIndex {
     final files = <_PlainBackupFile>[];
     for (final item in filesRaw) {
       if (item is Map) {
-        final entry = _PlainBackupFile.fromJson(
-          item.cast<String, dynamic>(),
-        );
+        final entry = _PlainBackupFile.fromJson(item.cast<String, dynamic>());
         if (entry != null) {
           files.add(entry);
         }

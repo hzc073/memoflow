@@ -58,58 +58,59 @@ void main() {
     expect(submitCount, 1);
   });
 
-  testWidgets('renders attachment and linked memo chips with delete callbacks', (
-    tester,
-  ) async {
-    final composer = MemoComposerController();
-    final focusNode = FocusNode();
-    String? removedAttachmentUid;
-    String? removedLinkedMemoName;
-    addTearDown(() {
-      focusNode.dispose();
-      composer.dispose();
-    });
+  testWidgets(
+    'renders attachment and linked memo chips with delete callbacks',
+    (tester) async {
+      final composer = MemoComposerController();
+      final focusNode = FocusNode();
+      String? removedAttachmentUid;
+      String? removedLinkedMemoName;
+      addTearDown(() {
+        focusNode.dispose();
+        composer.dispose();
+      });
 
-    composer.addPendingAttachments([
-      const MemoComposerPendingAttachment(
-        uid: 'att-1',
-        filePath: 'Z:/does-not-exist.png',
-        filename: 'photo.png',
-        mimeType: 'image/png',
-        size: 42,
-      ),
-    ]);
-    composer.addLinkedMemo(
-      const MemoComposerLinkedMemo(name: 'memo-1', label: 'Memo 1'),
-    );
+      composer.addPendingAttachments([
+        const MemoComposerPendingAttachment(
+          uid: 'att-1',
+          filePath: 'Z:/does-not-exist.png',
+          filename: 'photo.png',
+          mimeType: 'image/png',
+          size: 42,
+        ),
+      ]);
+      composer.addLinkedMemo(
+        const MemoComposerLinkedMemo(name: 'memo-1', label: 'Memo 1'),
+      );
 
-    await tester.pumpWidget(
-      _InlineComposeCardHarness(
-        composer: composer,
-        focusNode: focusNode,
-        onRemoveAttachment: (uid) => removedAttachmentUid = uid,
-        onRemoveLinkedMemo: (name) => removedLinkedMemoName = name,
-      ),
-    );
+      await tester.pumpWidget(
+        _InlineComposeCardHarness(
+          composer: composer,
+          focusNode: focusNode,
+          onRemoveAttachment: (uid) => removedAttachmentUid = uid,
+          onRemoveLinkedMemo: (name) => removedLinkedMemoName = name,
+        ),
+      );
 
-    expect(
-      find.byKey(const ValueKey<String>('inline-attachment-att-1')),
-      findsOneWidget,
-    );
-    expect(find.text('Memo 1'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('inline-attachment-att-1')),
+        findsOneWidget,
+      );
+      expect(find.text('Memo 1'), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('inline-attachment-remove-att-1')),
-    );
-    await tester.pump();
-    expect(removedAttachmentUid, 'att-1');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('inline-attachment-remove-att-1')),
+      );
+      await tester.pump();
+      expect(removedAttachmentUid, 'att-1');
 
-    final chip = find.byKey(
-      const ValueKey<String>('inline-linked-memo-memo-1'),
-    );
-    tester.widget<InputChip>(chip).onDeleted!.call();
-    expect(removedLinkedMemoName, 'memo-1');
-  });
+      final chip = find.byKey(
+        const ValueKey<String>('inline-linked-memo-memo-1'),
+      );
+      tester.widget<InputChip>(chip).onDeleted!.call();
+      expect(removedLinkedMemoName, 'memo-1');
+    },
+  );
 
   testWidgets('shows tag autocomplete and selects highlighted suggestion', (
     tester,
@@ -168,6 +169,90 @@ void main() {
     await tester.pump();
     expect(composer.textController.text, '#world ');
   });
+
+  testWidgets('shows draft-box hint for blank composer when drafts exist', (
+    tester,
+  ) async {
+    final composer = MemoComposerController();
+    final focusNode = FocusNode();
+    addTearDown(() {
+      focusNode.dispose();
+      composer.dispose();
+    });
+
+    await tester.pumpWidget(
+      _InlineComposeCardHarness(
+        composer: composer,
+        focusNode: focusNode,
+        pendingDraftCount: 3,
+      ),
+    );
+
+    expect(
+      find.text('Draft Box has unfinished drafts (3). Tap Draft Box to view.'),
+      findsOneWidget,
+    );
+    expect(find.text('Write down your thoughts...'), findsNothing);
+  });
+
+  testWidgets('keeps default hint when current composer has attachments', (
+    tester,
+  ) async {
+    final composer = MemoComposerController();
+    final focusNode = FocusNode();
+    addTearDown(() {
+      focusNode.dispose();
+      composer.dispose();
+    });
+
+    composer.addPendingAttachments([
+      const MemoComposerPendingAttachment(
+        uid: 'att-1',
+        filePath: 'Z:/does-not-exist.png',
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        size: 42,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      _InlineComposeCardHarness(
+        composer: composer,
+        focusNode: focusNode,
+        pendingDraftCount: 3,
+      ),
+    );
+
+    expect(find.text('Write down your thoughts...'), findsOneWidget);
+    expect(
+      find.text('Draft Box has unfinished drafts (3). Tap Draft Box to view.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('does not show draft-box hint when composer already has text', (
+    tester,
+  ) async {
+    final composer = MemoComposerController(initialText: 'hello');
+    final focusNode = FocusNode();
+    addTearDown(() {
+      focusNode.dispose();
+      composer.dispose();
+    });
+
+    await tester.pumpWidget(
+      _InlineComposeCardHarness(
+        composer: composer,
+        focusNode: focusNode,
+        pendingDraftCount: 3,
+      ),
+    );
+
+    expect(
+      find.text('Draft Box has unfinished drafts (3). Tap Draft Box to view.'),
+      findsNothing,
+    );
+  });
 }
 
 class _InlineComposeCardHarness extends StatefulWidget {
@@ -175,6 +260,7 @@ class _InlineComposeCardHarness extends StatefulWidget {
     required this.composer,
     required this.focusNode,
     this.busy = false,
+    this.pendingDraftCount = 0,
     this.tagStats = const <TagStat>[],
     this.onSubmit,
     this.onRemoveAttachment,
@@ -184,6 +270,7 @@ class _InlineComposeCardHarness extends StatefulWidget {
   final MemoComposerController composer;
   final FocusNode focusNode;
   final bool busy;
+  final int pendingDraftCount;
   final List<TagStat> tagStats;
   final VoidCallback? onSubmit;
   final ValueChanged<String>? onRemoveAttachment;
@@ -247,6 +334,7 @@ class _InlineComposeCardHarnessState extends State<_InlineComposeCardHarness> {
               child: MemosListInlineComposeCard(
                 composer: widget.composer,
                 focusNode: widget.focusNode,
+                pendingDraftCount: widget.pendingDraftCount,
                 busy: widget.busy,
                 locating: false,
                 location: null,
@@ -266,11 +354,9 @@ class _InlineComposeCardHarnessState extends State<_InlineComposeCardHarness> {
                 todoMenuKey: GlobalKey(),
                 visibilityMenuKey: GlobalKey(),
                 onSubmit: widget.onSubmit ?? () {},
-                onRemoveAttachment:
-                    widget.onRemoveAttachment ?? (_) {},
+                onRemoveAttachment: widget.onRemoveAttachment ?? (_) {},
                 onOpenAttachment: (_) {},
-                onRemoveLinkedMemo:
-                    widget.onRemoveLinkedMemo ?? (_) {},
+                onRemoveLinkedMemo: widget.onRemoveLinkedMemo ?? (_) {},
                 onRequestLocation: () {},
                 onClearLocation: () {},
                 onOpenTemplateMenu: () {},
@@ -278,6 +364,7 @@ class _InlineComposeCardHarnessState extends State<_InlineComposeCardHarness> {
                 onPickFile: () {},
                 onOpenLinkMemo: () {},
                 onCaptureCamera: () {},
+                onOpenDraftBox: () {},
                 onOpenTodoMenu: () {},
                 onOpenVisibilityMenu: () {},
                 onCutParagraphs: () {},

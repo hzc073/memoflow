@@ -17,6 +17,7 @@ import '../../../state/memos/memos_providers.dart';
 import '../../../state/memos/memos_list_providers.dart';
 import '../../../state/tags/tag_color_lookup.dart';
 import '../memo_detail_screen.dart';
+import '../memo_card_preview.dart';
 import '../memo_hero_flight.dart';
 import '../memo_image_grid.dart';
 import '../memo_location_line.dart';
@@ -26,88 +27,7 @@ import 'audio_row.dart';
 import 'floating_collapse_button.dart';
 import '../../../i18n/strings.g.dart';
 
-const _maxPreviewLines = 6;
-const _maxPreviewRunes = 220;
-
-typedef _PreviewResult = ({String text, bool truncated});
-
 enum MemoSyncStatus { none, pending, failed }
-
-final RegExp _markdownLinkPattern = RegExp(r'\[([^\]]*)\]\(([^)]+)\)');
-final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
-
-int _compactRuneCount(String text) {
-  if (text.isEmpty) return 0;
-  final compact = text.replaceAll(_whitespaceCollapsePattern, '');
-  return compact.runes.length;
-}
-
-bool _isWhitespaceRune(int rune) {
-  switch (rune) {
-    case 0x09:
-    case 0x0A:
-    case 0x0B:
-    case 0x0C:
-    case 0x0D:
-    case 0x20:
-      return true;
-    default:
-      return String.fromCharCode(rune).trim().isEmpty;
-  }
-}
-
-int _cutIndexByCompactRunes(String text, int maxCompactRunes) {
-  if (text.isEmpty || maxCompactRunes <= 0) return 0;
-  var count = 0;
-  final iterator = RuneIterator(text);
-  while (iterator.moveNext()) {
-    final rune = iterator.current;
-    if (!_isWhitespaceRune(rune)) {
-      count++;
-      if (count >= maxCompactRunes) {
-        return iterator.rawIndex + iterator.currentSize;
-      }
-    }
-  }
-  return text.length;
-}
-
-String _truncatePreviewText(String text, int maxCompactRunes) {
-  var count = 0;
-  var index = 0;
-
-  for (final match in _markdownLinkPattern.allMatches(text)) {
-    final prefix = text.substring(index, match.start);
-    final prefixCount = _compactRuneCount(prefix);
-    if (count + prefixCount >= maxCompactRunes) {
-      final remaining = maxCompactRunes - count;
-      final cutOffset = _cutIndexByCompactRunes(prefix, remaining);
-      return text.substring(0, index + cutOffset);
-    }
-    count += prefixCount;
-
-    final label = match.group(1) ?? '';
-    final labelCount = _compactRuneCount(label);
-    if (count + labelCount >= maxCompactRunes) {
-      if (count >= maxCompactRunes) {
-        return text.substring(0, match.start);
-      }
-      return text.substring(0, match.end);
-    }
-    count += labelCount;
-    index = match.end;
-  }
-
-  final tail = text.substring(index);
-  final tailCount = _compactRuneCount(tail);
-  if (count + tailCount >= maxCompactRunes) {
-    final remaining = maxCompactRunes - count;
-    final cutOffset = _cutIndexByCompactRunes(tail, remaining);
-    return text.substring(0, index + cutOffset);
-  }
-
-  return text;
-}
 
 class _LruCache<K, V> {
   _LruCache({required int capacity}) : _capacity = capacity;
@@ -147,7 +67,7 @@ class _MemoRenderCacheEntry {
   });
 
   final String previewText;
-  final _PreviewResult preview;
+  final MemoCardPreviewResult preview;
   final TaskStats taskStats;
 }
 
@@ -172,35 +92,6 @@ void invalidateMemoRenderCacheForUid(String memoUid) {
   final trimmed = memoUid.trim();
   if (trimmed.isEmpty) return;
   _memoRenderCache.removeWhere((key) => key.startsWith('$trimmed|'));
-}
-
-_PreviewResult _truncatePreview(
-  String text, {
-  required bool collapseLongContent,
-}) {
-  if (!collapseLongContent) {
-    return (text: text, truncated: false);
-  }
-
-  var result = text;
-  var truncated = false;
-  final lines = result.split('\n');
-  if (lines.length > _maxPreviewLines) {
-    result = lines.take(_maxPreviewLines).join('\n');
-    truncated = true;
-  }
-
-  final truncatedText = _truncatePreviewText(result, _maxPreviewRunes);
-  if (truncatedText != result) {
-    result = truncatedText;
-    truncated = true;
-  }
-
-  if (truncated) {
-    result = result.trimRight();
-    result = result.endsWith('...') ? result : '$result...';
-  }
-  return (text: result, truncated: truncated);
 }
 
 enum MemoCardAction {
@@ -338,37 +229,6 @@ class MemoListCardState extends State<MemoListCard> {
     );
   }
 
-  static String _previewText(
-    String content, {
-    required bool collapseReferences,
-    required AppLanguage language,
-  }) {
-    final trimmed = stripTaskListToggleHint(content).trim();
-    if (!collapseReferences) return trimmed;
-
-    final lines = trimmed.split('\n');
-    final keep = <String>[];
-    var quoteLines = 0;
-    for (final line in lines) {
-      if (line.trimLeft().startsWith('>')) {
-        quoteLines++;
-        continue;
-      }
-      keep.add(line);
-    }
-
-    final main = keep.join('\n').trim();
-    if (quoteLines == 0) return main;
-    if (main.isEmpty) {
-      final cleaned = lines
-          .map((l) => l.replaceFirst(RegExp(r'^\\s*>\\s?'), ''))
-          .join('\n')
-          .trim();
-      return cleaned.isEmpty ? trimmed : cleaned;
-    }
-    return '$main\n\n${trByLanguageKey(language: language, key: 'legacy.msg_quoted_lines', params: {'quoteLines': quoteLines})}';
-  }
-
   @override
   void didUpdateWidget(covariant MemoListCard oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -490,14 +350,17 @@ class MemoListCardState extends State<MemoListCard> {
     final cached = _memoRenderCache.get(cacheKey);
     final previewText =
         cached?.previewText ??
-        _previewText(
+        buildMemoCardPreviewText(
           memo.content,
           collapseReferences: false,
           language: language,
         );
     final preview =
         cached?.preview ??
-        _truncatePreview(previewText, collapseLongContent: collapseLongContent);
+        truncateMemoCardPreview(
+          previewText,
+          collapseLongContent: collapseLongContent,
+        );
     final taskStats =
         cached?.taskStats ??
         countTaskStats(memo.content, skipQuotedLines: collapseReferences);
@@ -1632,4 +1495,3 @@ class TaskProgressBarState extends State<TaskProgressBar>
     );
   }
 }
-

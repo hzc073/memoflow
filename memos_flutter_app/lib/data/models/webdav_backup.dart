@@ -167,6 +167,8 @@ class WebDavBackupManifest {
     required this.exportedAt,
     required this.memoCount,
     required this.attachmentCount,
+    this.draftCount = 0,
+    this.draftAttachmentCount = 0,
     required this.totalSize,
     required this.backupMode,
     required this.encrypted,
@@ -176,6 +178,8 @@ class WebDavBackupManifest {
   final String exportedAt;
   final int memoCount;
   final int attachmentCount;
+  final int draftCount;
+  final int draftAttachmentCount;
   final int totalSize;
   final String backupMode;
   final bool encrypted;
@@ -185,6 +189,8 @@ class WebDavBackupManifest {
     'exportedAt': exportedAt,
     'memoCount': memoCount,
     'attachmentCount': attachmentCount,
+    'draftCount': draftCount,
+    'draftAttachmentCount': draftAttachmentCount,
     'totalSize': totalSize,
     'backupMode': backupMode,
     'encrypted': encrypted,
@@ -219,12 +225,20 @@ class WebDavBackupManifest {
     final schemaVersion = readInt('schemaVersion');
     final memoCount = readInt('memoCount');
     final attachmentCount = readInt('attachmentCount');
+    final draftCount = json.containsKey('draftCount')
+        ? readInt('draftCount')
+        : 0;
+    final draftAttachmentCount = json.containsKey('draftAttachmentCount')
+        ? readInt('draftAttachmentCount')
+        : 0;
     final totalSize = readInt('totalSize');
     final exportedAt = readString('exportedAt');
     final backupMode = readString('backupMode');
     if (schemaVersion < 1 ||
         memoCount < 0 ||
         attachmentCount < 0 ||
+        draftCount < 0 ||
+        draftAttachmentCount < 0 ||
         totalSize < 0 ||
         exportedAt.trim().isEmpty ||
         backupMode.trim().isEmpty) {
@@ -235,6 +249,8 @@ class WebDavBackupManifest {
       exportedAt: exportedAt,
       memoCount: memoCount,
       attachmentCount: attachmentCount,
+      draftCount: draftCount,
+      draftAttachmentCount: draftAttachmentCount,
       totalSize: totalSize,
       backupMode: backupMode,
       encrypted: readBool('encrypted'),

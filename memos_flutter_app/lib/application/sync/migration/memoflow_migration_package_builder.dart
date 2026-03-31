@@ -48,6 +48,8 @@ class MemoFlowMigrationPackageBuilder {
 
     var memoCount = 0;
     var attachmentCount = 0;
+    var draftCount = 0;
+    var draftAttachmentCount = 0;
 
     if (includeMemos) {
       final memoEntries = await fileSystem.listMemos();
@@ -72,6 +74,8 @@ class MemoFlowMigrationPackageBuilder {
     if (configTypes.isNotEmpty) {
       final bundle = await readConfigBundle(configTypes);
       final files = codec.encode(bundle, configTypes: configTypes);
+      draftCount = bundle.draftBox?.draftCount ?? 0;
+      draftAttachmentCount = bundle.draftBox?.draftAttachmentCount ?? 0;
       for (final entry in files.entries) {
         final target = File(p.join(stagingDir.path, entry.key));
         await target.parent.create(recursive: true);
@@ -90,6 +94,8 @@ class MemoFlowMigrationPackageBuilder {
       includeSettings: configTypes.isNotEmpty,
       memoCount: memoCount,
       attachmentCount: attachmentCount,
+      draftCount: draftCount,
+      draftAttachmentCount: draftAttachmentCount,
       totalBytes: 0,
       sha256: '',
       configTypes: configTypes,
@@ -107,7 +113,10 @@ class MemoFlowMigrationPackageBuilder {
       ),
     );
     final archive = Archive();
-    await for (final entity in stagingDir.list(recursive: true, followLinks: false)) {
+    await for (final entity in stagingDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is! File) continue;
       final relativePath = p
           .relative(entity.path, from: stagingDir.path)

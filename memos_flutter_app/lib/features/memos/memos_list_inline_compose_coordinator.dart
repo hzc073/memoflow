@@ -16,11 +16,13 @@ import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../i18n/strings.g.dart';
+import '../../state/attachments/queued_attachment_stager_provider.dart';
 import '../../state/memos/memo_composer_controller.dart';
 import '../../state/memos/memo_composer_state.dart';
 import '../../state/settings/location_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import '../../state/settings/user_settings_provider.dart';
+import '../../state/system/session_provider.dart';
 import '../location_picker/show_location_picker.dart';
 import '../voice/voice_record_screen.dart';
 import 'attachment_gallery_screen.dart';
@@ -52,11 +54,7 @@ typedef InlineComposeAttachmentViewer =
     );
 typedef InlineComposeWindowsCapture = Future<XFile?> Function();
 typedef InlineComposeToastPresenter =
-    void Function(
-      BuildContext context,
-      String message, {
-      Duration duration,
-    });
+    void Function(BuildContext context, String message, {Duration duration});
 typedef InlineComposeSnackBarPresenter =
     void Function(BuildContext context, SnackBar snackBar);
 
@@ -369,6 +367,84 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
     composer.removeLinkedMemo(name);
   }
 
+  Future<MemoComposerPendingAttachment> _stagePendingAttachment(
+    MemoComposerPendingAttachment attachment,
+  ) async {
+    final workspaceKey =
+        _ref.read(appSessionProvider).valueOrNull?.currentKey ?? 'default';
+    final staged = await _ref
+        .read(queuedAttachmentStagerProvider)
+        .stageDraftAttachment(
+          uid: attachment.uid,
+          filePath: attachment.filePath,
+          filename: attachment.filename,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          scopeKey: workspaceKey,
+        );
+    return attachment.copyWith(
+      filePath: staged.filePath,
+      filename: staged.filename,
+      mimeType: staged.mimeType,
+      size: staged.size,
+    );
+  }
+
+  Future<List<MemoComposerPendingAttachment>> _stagePendingAttachments(
+    Iterable<MemoComposerPendingAttachment> attachments,
+  ) async {
+    final staged = <MemoComposerPendingAttachment>[];
+    for (final attachment in attachments) {
+      staged.add(await _stagePendingAttachment(attachment));
+    }
+    return staged;
+  }
+
+  Future<void> _addPendingAttachmentsStaged(
+    Iterable<MemoComposerPendingAttachment> attachments,
+  ) async {
+    final staged = await _stagePendingAttachments(attachments);
+    if (staged.isEmpty) return;
+    composer.addPendingAttachments(staged);
+  }
+
+  void restoreDraftState({
+    required String visibility,
+    required MemoLocation? location,
+  }) {
+    final nextVisibility = normalizeVisibility(visibility);
+    final changed =
+        _visibility != nextVisibility ||
+        !_visibilityTouched ||
+        _location?.placeholder != location?.placeholder ||
+        _location?.latitude != location?.latitude ||
+        _location?.longitude != location?.longitude ||
+        _locating;
+    _visibility = nextVisibility;
+    _visibilityTouched = true;
+    _location = location;
+    _locating = false;
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  void resetDraftStateToDefault() {
+    final nextVisibility = resolveDefaultVisibility();
+    final changed =
+        _visibility != nextVisibility ||
+        _visibilityTouched ||
+        _location != null ||
+        _locating;
+    _visibility = nextVisibility;
+    _visibilityTouched = false;
+    _location = null;
+    _locating = false;
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   Future<void> pickGalleryAttachments(BuildContext context) async {
     if (pickGalleryOverride == null &&
         !gallery_picker.isMemoGalleryToolbarSupportedPlatform) {
@@ -389,7 +465,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
         return;
       }
 
-      composer.addPendingAttachments(
+      await _addPendingAttachmentsStaged(
         result.attachments
             .map(
               (attachment) => MemoComposerPendingAttachment(
@@ -509,7 +585,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
         return;
       }
 
-      composer.addPendingAttachments(added);
+      await _addPendingAttachmentsStaged(added);
       final skipped = [
         if (missingPathCount > 0)
           context.t.strings.legacy.msg_unavailable_file_count(
@@ -541,8 +617,8 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       final navigator = Navigator.of(context);
       final photo = Platform.isWindows
           ? await (captureWindowsPhotoOverride != null
-              ? captureWindowsPhotoOverride!()
-              : WindowsCameraCaptureScreen.captureWithNavigator(navigator))
+                ? captureWindowsPhotoOverride!()
+                : WindowsCameraCaptureScreen.captureWithNavigator(navigator))
           : await _imagePicker.pickImage(source: ImageSource.camera);
       if (!context.mounted || photo == null) return;
       final path = photo.path.trim();
@@ -569,7 +645,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       if (!context.mounted) return;
       final filename = path.split(Platform.pathSeparator).last;
       final mimeType = gallery_picker.guessLocalAttachmentMimeType(filename);
-      composer.addPendingAttachments([
+      await _addPendingAttachmentsStaged([
         MemoComposerPendingAttachment(
           uid: generateUid(),
           filePath: path,
@@ -578,10 +654,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
           size: size,
         ),
       ]);
-      _showToast(
-        context,
-        context.t.strings.legacy.msg_added_photo_attachment,
-      );
+      _showToast(context, context.t.strings.legacy.msg_added_photo_attachment);
     } catch (error) {
       if (!context.mounted) return;
       if (_isWindowsNoCameraError(error)) {
@@ -622,7 +695,17 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
   }
 
   void removePendingAttachment(String uid) {
+    final existing = composer.pendingAttachments
+        .where((attachment) => attachment.uid == uid)
+        .firstOrNull;
     composer.removePendingAttachment(uid);
+    if (existing != null) {
+      unawaited(
+        _ref
+            .read(queuedAttachmentStagerProvider)
+            .deleteManagedFile(existing.filePath),
+      );
+    }
   }
 
   Future<void> openAttachmentViewer(
@@ -661,8 +744,10 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
     final sourceId = result.sourceId;
     if (!sourceId.startsWith('inline-pending:')) return;
     final uid = sourceId.substring('inline-pending:'.length);
-    composer.replacePendingAttachment(
-      uid,
+    final existing = composer.pendingAttachments
+        .where((attachment) => attachment.uid == uid)
+        .firstOrNull;
+    final staged = await _stagePendingAttachment(
       MemoComposerPendingAttachment(
         uid: uid,
         filePath: result.filePath,
@@ -671,9 +756,20 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
         size: result.size,
       ),
     );
+    composer.replacePendingAttachment(uid, staged);
+    if (existing != null && existing.filePath != staged.filePath) {
+      unawaited(
+        _ref
+            .read(queuedAttachmentStagerProvider)
+            .deleteManagedFile(existing.filePath),
+      );
+    }
   }
 
-  void addVoiceAttachment(BuildContext context, VoiceRecordResult result) {
+  Future<void> addVoiceAttachment(
+    BuildContext context,
+    VoiceRecordResult result,
+  ) async {
     final path = result.filePath.trim();
     if (path.isEmpty) {
       _showSnackBar(
@@ -703,15 +799,15 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
         ? result.fileName.trim()
         : path.split(Platform.pathSeparator).last;
     final mimeType = gallery_picker.guessLocalAttachmentMimeType(filename);
-    composer.addPendingAttachments([
+    await _addPendingAttachmentsStaged([
       MemoComposerPendingAttachment(
         uid: generateUid(),
         filePath: path,
         filename: filename,
         mimeType: mimeType,
         size: size,
-        ),
-      ]);
+      ),
+    ]);
     _showToast(context, context.t.strings.legacy.msg_added_voice_attachment);
   }
 
@@ -732,11 +828,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
           context,
           SnackBar(
             content: Text(
-              context
-                  .t
-                  .strings
-                  .legacy
-                  .msg_enter_content_before_creating_link,
+              context.t.strings.legacy.msg_enter_content_before_creating_link,
             ),
           ),
         );
@@ -749,7 +841,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
               MaterialPageRoute(builder: (_) => const VoiceRecordScreen()),
             ));
       if (!context.mounted || result == null) return null;
-      addVoiceAttachment(context, result);
+      await addVoiceAttachment(context, result);
       return null;
     }
 
@@ -816,7 +908,9 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
     return mimeType.trim().toLowerCase().startsWith('image/');
   }
 
-  File? _resolvePendingAttachmentFile(MemoComposerPendingAttachment attachment) {
+  File? _resolvePendingAttachmentFile(
+    MemoComposerPendingAttachment attachment,
+  ) {
     final path = attachment.filePath.trim();
     if (path.isEmpty) return null;
     final file = File(path);
@@ -826,13 +920,17 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
 
   String _pendingSourceId(String uid) => 'inline-pending:$uid';
 
-  List<({AttachmentImageSource source, MemoComposerPendingAttachment attachment})>
+  List<
+    ({AttachmentImageSource source, MemoComposerPendingAttachment attachment})
+  >
   _pendingImageSources() {
     final items =
-        <({
-          AttachmentImageSource source,
-          MemoComposerPendingAttachment attachment,
-        })>[];
+        <
+          ({
+            AttachmentImageSource source,
+            MemoComposerPendingAttachment attachment,
+          })
+        >[];
     for (final attachment in composer.pendingAttachments) {
       if (!_isImageMimeType(attachment.mimeType)) continue;
       final file = _resolvePendingAttachmentFile(attachment);

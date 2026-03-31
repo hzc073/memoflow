@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/app_localization.dart';
 import '../../data/models/memo_toolbar_preferences.dart';
 import '../../i18n/strings.g.dart';
 import 'memo_toolbar_custom_icon_catalog.dart';
@@ -99,6 +100,7 @@ extension MemoToolbarActionPresentationX on MemoToolbarActionId {
       MemoToolbarActionId.link => Icons.alternate_email_rounded,
       MemoToolbarActionId.camera => Icons.photo_camera_outlined,
       MemoToolbarActionId.location => Icons.place_outlined,
+      MemoToolbarActionId.draftBox => Icons.inventory_2_outlined,
     };
   }
 
@@ -135,6 +137,7 @@ extension MemoToolbarActionPresentationX on MemoToolbarActionId {
       MemoToolbarActionId.link => legacy.msg_link,
       MemoToolbarActionId.camera => legacy.msg_capture_photo,
       MemoToolbarActionId.location => legacy.msg_location_2,
+      MemoToolbarActionId.draftBox => context.tr(zh: '草稿箱', en: 'Draft Box'),
     };
   }
 }

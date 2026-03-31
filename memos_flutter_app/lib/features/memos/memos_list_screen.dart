@@ -22,10 +22,14 @@ import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
+import '../../data/models/compose_draft.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/shortcut.dart';
 import '../../data/repositories/scene_micro_guide_repository.dart';
+import '../../state/attachments/queued_attachment_stager_provider.dart';
 import '../../state/memos/memo_composer_controller.dart';
+import '../../state/memos/memo_composer_state.dart';
+import '../../state/memos/compose_draft_provider.dart';
 import '../../state/memos/memos_list_providers.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/memos/note_draft_provider.dart';
@@ -51,6 +55,7 @@ import '../stats/stats_screen.dart';
 import '../tags/tag_edit_sheet.dart';
 import '../voice/voice_record_screen.dart';
 import 'advanced_search_sheet.dart';
+import 'draft_box_screen.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_markdown.dart';
@@ -148,10 +153,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   late final MemosListAnimatedListController _animatedListController;
   late final MemosListDiagnostics _diagnostics;
 
+  Timer? _inlineComposeDraftTimer;
+  String? _inlineComposeActiveDraftId;
+  bool _suppressInlineComposeDraftSave = false;
   SceneMicroGuideId? _presentedListGuideId;
   bool _openedDrawerOnStart = false;
   VoiceRecordOverlayDragSession? _voiceOverlayDragSession;
   Future<void>? _voiceOverlayDragFuture;
+  ComposeDraftRepository? _composeDraftRepository;
+  NoteDraftController? _noteDraftController;
+  NoteDraftRepository? _noteDraftRepository;
+  String _inlineComposeDefaultVisibility = 'PRIVATE';
 
   TextEditingController get _searchController =>
       _headerController.searchController;
@@ -414,7 +426,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       ),
     );
 
-    _inlineComposeCoordinator.addListener(_handleCoordinatorChanged);
+    _inlineComposeCoordinator.addListener(
+      _handleInlineComposeCoordinatorChanged,
+    );
     _audioPlaybackCoordinator.addListener(_handleCoordinatorChanged);
     _mutationCoordinator.addListener(_handleCoordinatorChanged);
     _viewportCoordinator.addListener(_handleCoordinatorChanged);
@@ -423,10 +437,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _localLibraryCoordinator.addListener(_handleCoordinatorChanged);
     _routeDelegate.addListener(_handleCoordinatorChanged);
     _animatedListController.addListener(_handleCoordinatorChanged);
+    _inlineComposer.addListener(_handleInlineComposeStateChanged);
     _scrollController.addListener(_handleViewportScrollChanged);
     _inlineComposer.textController.addListener(_handleInlineComposeChanged);
     _inlineComposeFocusNode.addListener(_handleInlineComposeFocusChanged);
-    _inlineComposeUiController.attachDraftSync();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleViewportScrollChanged();
@@ -461,10 +475,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     if (isDesktopShortcutEnabled()) {
       HardwareKeyboard.instance.removeHandler(_handleDesktopShortcuts);
     }
+    _inlineComposeDraftTimer?.cancel();
     _scrollController.removeListener(_handleViewportScrollChanged);
+    _inlineComposer.removeListener(_handleInlineComposeStateChanged);
     _inlineComposer.textController.removeListener(_handleInlineComposeChanged);
     _inlineComposeFocusNode.removeListener(_handleInlineComposeFocusChanged);
-    _inlineComposeCoordinator.removeListener(_handleCoordinatorChanged);
+    _inlineComposeCoordinator.removeListener(
+      _handleInlineComposeCoordinatorChanged,
+    );
     _audioPlaybackCoordinator.removeListener(_handleCoordinatorChanged);
     _mutationCoordinator.removeListener(_handleCoordinatorChanged);
     _viewportCoordinator.removeListener(_handleCoordinatorChanged);
@@ -474,6 +492,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _routeDelegate.removeListener(_handleCoordinatorChanged);
     _animatedListController.removeListener(_handleCoordinatorChanged);
     _voiceOverlayDragSession?.dispose();
+    unawaited(_saveInlineComposeDraft(triggerSync: false));
     _inlineComposeCoordinator.dispose();
     _audioPlaybackCoordinator.dispose();
     _mutationCoordinator.dispose();
@@ -493,6 +512,135 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _handleInlineComposeCoordinatorChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+    _scheduleInlineComposeDraftSave();
+  }
+
+  void _handleInlineComposeStateChanged() {
+    if (_suppressInlineComposeDraftSave) return;
+    _scheduleInlineComposeDraftSave();
+  }
+
+  void _scheduleInlineComposeDraftSave() {
+    if (_suppressInlineComposeDraftSave) return;
+    _inlineComposeDraftTimer?.cancel();
+    _inlineComposeDraftTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(_saveInlineComposeDraft());
+    });
+  }
+
+  Future<String?> _saveInlineComposeDraft({bool triggerSync = true}) async {
+    final repository = _composeDraftRepository;
+    final noteDraftController = _noteDraftController;
+    final noteDraftRepository = _noteDraftRepository;
+    if (repository == null || noteDraftController == null) {
+      return null;
+    }
+    final snapshot = ComposeDraftSnapshot(
+      content: _inlineComposer.textController.text,
+      visibility: _inlineComposeCoordinator.visibilityTouched
+          ? _inlineComposeCoordinator.visibility
+          : _inlineComposeDefaultVisibility,
+      relations: _inlineComposer.linkedMemos
+          .map((memo) => memo.toRelationJson())
+          .toList(growable: false),
+      attachments: _inlineComposer.pendingAttachments
+          .map(ComposeDraftAttachment.fromPendingAttachment)
+          .toList(growable: false),
+      location: _inlineComposeCoordinator.location,
+    );
+    final nextDraftId = await repository.saveSnapshot(
+      draftUid: _inlineComposeActiveDraftId,
+      snapshot: snapshot,
+    );
+    _inlineComposeActiveDraftId = nextDraftId;
+    await _persistLegacyInlineComposeDraft(
+      _inlineComposer.textController.text,
+      noteDraftController: noteDraftController,
+      noteDraftRepository: noteDraftRepository,
+      triggerSync: triggerSync,
+    );
+    return nextDraftId;
+  }
+
+  Future<void> _persistLegacyInlineComposeDraft(
+    String text, {
+    required NoteDraftController noteDraftController,
+    required NoteDraftRepository? noteDraftRepository,
+    required bool triggerSync,
+  }) async {
+    if (mounted) {
+      await noteDraftController.setDraft(text, triggerSync: triggerSync);
+      return;
+    }
+    final repository = noteDraftRepository;
+    if (repository == null) return;
+    if (text.trim().isEmpty) {
+      await repository.clear();
+      return;
+    }
+    await repository.write(text);
+  }
+
+  void _restoreInlineComposeDraft(ComposeDraftRecord draft) {
+    _inlineComposeDraftTimer?.cancel();
+    _suppressInlineComposeDraftSave = true;
+    _inlineComposeActiveDraftId = draft.uid;
+    _inlineComposeCoordinator.restoreDraftState(
+      visibility: draft.snapshot.visibility,
+      location: draft.snapshot.location,
+    );
+    _inlineComposer.replaceText(draft.snapshot.content, clearHistory: true);
+    _inlineComposer.setLinkedMemos(
+      _inlineLinkedMemosFromRelations(draft.snapshot.relations),
+    );
+    _inlineComposer.setPendingAttachments(
+      draft.snapshot.attachments
+          .map((attachment) => attachment.toPendingAttachment())
+          .toList(growable: false),
+    );
+    _suppressInlineComposeDraftSave = false;
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _clearInlineComposeState() {
+    _inlineComposeDraftTimer?.cancel();
+    _suppressInlineComposeDraftSave = true;
+    _inlineComposeActiveDraftId = null;
+    _inlineComposeCoordinator.resetAfterSuccessfulSubmit();
+    _inlineComposeCoordinator.resetDraftStateToDefault();
+    _suppressInlineComposeDraftSave = false;
+    unawaited(ref.read(noteDraftProvider.notifier).clear());
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  List<MemoComposerLinkedMemo> _inlineLinkedMemosFromRelations(
+    List<Map<String, dynamic>> relations,
+  ) {
+    final linked = <MemoComposerLinkedMemo>[];
+    final seenNames = <String>{};
+    for (final relation in relations) {
+      final relatedMemoRaw = relation['relatedMemo'];
+      if (relatedMemoRaw is! Map) continue;
+      final name = (relatedMemoRaw['name'] as String? ?? '').trim();
+      if (name.isEmpty || !seenNames.add(name)) continue;
+      linked.add(
+        MemoComposerLinkedMemo(
+          name: name,
+          label: name.startsWith('memos/') ? name.substring(6) : name,
+        ),
+      );
+    }
+    return linked;
   }
 
   MemosListScreen _buildHomeScreen({String? toastMessage}) {
@@ -986,9 +1134,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     if (!mounted) return;
     switch (result.kind) {
       case MemosListMutationResultKind.handled:
+        final submittedDraftId = _inlineComposeActiveDraftId;
         _inlineComposeUiController.cancelDraftSave();
+        _inlineComposeDraftTimer?.cancel();
+        _suppressInlineComposeDraftSave = true;
         await ref.read(noteDraftProvider.notifier).clear();
         _inlineComposeCoordinator.resetAfterSuccessfulSubmit();
+        _inlineComposeActiveDraftId = null;
+        if (submittedDraftId != null && submittedDraftId.isNotEmpty) {
+          await ref
+              .read(composeDraftRepositoryProvider)
+              .deleteDraft(submittedDraftId);
+        }
+        for (final attachment in draft.pendingAttachments) {
+          unawaited(
+            ref
+                .read(queuedAttachmentStagerProvider)
+                .deleteManagedFile(attachment.filePath),
+          );
+        }
+        _suppressInlineComposeDraftSave = false;
         if (mounted) {
           _inlineComposeFocusNode.requestFocus();
         }
@@ -1006,6 +1171,37 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           ),
         );
         return;
+    }
+  }
+
+  Future<void> _openInlineComposeDraftBox() async {
+    if (!widget.enableCompose || _inlineComposeBusy) return;
+    final currentDraftId = await _saveInlineComposeDraft();
+    if (!mounted) return;
+    final selectedDraftId = await DraftBoxScreen.show(
+      context,
+      activeDraftId: _inlineComposeActiveDraftId,
+    );
+    if (!mounted) return;
+
+    if (selectedDraftId != null && selectedDraftId.trim().isNotEmpty) {
+      final selectedDraft = await ref
+          .read(composeDraftRepositoryProvider)
+          .getByUid(selectedDraftId);
+      if (!mounted || selectedDraft == null) return;
+      _restoreInlineComposeDraft(selectedDraft);
+      _inlineComposeFocusNode.requestFocus();
+      return;
+    }
+
+    if (currentDraftId != null && currentDraftId.isNotEmpty) {
+      final existing = await ref
+          .read(composeDraftRepositoryProvider)
+          .getByUidWithoutLegacyImport(currentDraftId);
+      if (!mounted) return;
+      if (existing == null) {
+        _clearInlineComposeState();
+      }
     }
   }
 
@@ -1332,6 +1528,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   @override
   Widget build(BuildContext context) {
+    _composeDraftRepository = ref.watch(composeDraftRepositoryProvider);
+    _noteDraftController = ref.watch(noteDraftProvider.notifier);
+    _noteDraftRepository = ref.watch(noteDraftRepositoryProvider);
+    final userSettings = ref.watch(userGeneralSettingProvider).valueOrNull;
+    _inlineComposeDefaultVisibility = _inlineComposeCoordinator
+        .normalizeVisibility(userSettings?.memoVisibility ?? 'PRIVATE');
     final searchQuery = _searchController.text;
     final filterDay = widget.dayFilter;
     final shortcutsAsync = ref.watch(shortcutsProvider);
@@ -1765,6 +1967,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         ? MemosListInlineComposeCard(
             composer: _inlineComposer,
             focusNode: _inlineComposeFocusNode,
+            pendingDraftCount: ref.watch(composeDraftCountProvider),
             busy: _inlineComposeBusy,
             locating: _inlineComposeCoordinator.locating,
             location: _inlineComposeCoordinator.location,
@@ -1812,6 +2015,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                 unawaited(_inlineComposeCoordinator.openLinkMemoSheet(context)),
             onCaptureCamera: () =>
                 unawaited(_inlineComposeCoordinator.capturePhoto(context)),
+            onOpenDraftBox: () => unawaited(_openInlineComposeDraftBox()),
             onOpenTodoMenu: () => unawaited(
               _inlineComposeCoordinator.openTodoShortcutMenuFromKey(
                 context,

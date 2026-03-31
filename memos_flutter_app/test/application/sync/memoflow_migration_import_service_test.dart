@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:memos_flutter_app/application/attachments/queued_attachment_stager.dart';
 import 'package:memos_flutter_app/application/sync/config_transfer/config_transfer_apply_service.dart';
 import 'package:memos_flutter_app/application/sync/config_transfer/config_transfer_bundle.dart';
 import 'package:memos_flutter_app/application/sync/config_transfer/config_transfer_codec.dart';
@@ -91,6 +92,7 @@ void main() {
       final service = MemoFlowMigrationImportService(
         db: currentDb,
         attachmentStore: LocalAttachmentStore(),
+        attachmentStager: QueuedAttachmentStager(),
         configApplyService: _RecordingConfigApplyService(events),
         codec: const ConfigTransferCodec(),
         createWorkspaceDatabase: (workspaceKey) {
@@ -173,6 +175,7 @@ void main() {
       final service = MemoFlowMigrationImportService(
         db: currentDb,
         attachmentStore: LocalAttachmentStore(),
+        attachmentStager: QueuedAttachmentStager(),
         configApplyService: _RecordingConfigApplyService(<String>[]),
         codec: const ConfigTransferCodec(),
         createWorkspaceDatabase: (workspaceKey) {
@@ -232,6 +235,7 @@ void main() {
       final service = MemoFlowMigrationImportService(
         db: currentDb,
         attachmentStore: LocalAttachmentStore(),
+        attachmentStager: QueuedAttachmentStager(),
         configApplyService: _RecordingConfigApplyService(events),
         codec: const ConfigTransferCodec(),
         createWorkspaceDatabase: (workspaceKey) {
@@ -306,6 +310,7 @@ void main() {
         final service = MemoFlowMigrationImportService(
           db: currentDb,
           attachmentStore: LocalAttachmentStore(),
+          attachmentStager: QueuedAttachmentStager(),
           configApplyService: _ThrowingConfigApplyService(),
           codec: const ConfigTransferCodec(),
           createWorkspaceDatabase: (workspaceKey) {
@@ -362,6 +367,7 @@ void main() {
         final service = MemoFlowMigrationImportService(
           db: currentDb,
           attachmentStore: LocalAttachmentStore(),
+          attachmentStager: QueuedAttachmentStager(),
           configApplyService: _RecordingConfigApplyService(<String>[]),
           codec: const ConfigTransferCodec(),
           createWorkspaceDatabase: (workspaceKey) {

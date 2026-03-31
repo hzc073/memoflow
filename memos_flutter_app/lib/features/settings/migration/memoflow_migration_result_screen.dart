@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../application/sync/migration/memoflow_migration_models.dart';
+import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
 
 class MemoFlowMigrationResultScreen extends StatelessWidget {
@@ -48,6 +49,14 @@ class MemoFlowMigrationResultScreen extends StatelessWidget {
                     value: '${result.attachmentCount}',
                   ),
                   _InfoRow(
+                    label: context.tr(zh: '草稿', en: 'Drafts'),
+                    value: '${result.draftCount}',
+                  ),
+                  _InfoRow(
+                    label: context.tr(zh: '草稿附件', en: 'Draft attachments'),
+                    value: '${result.draftAttachmentCount}',
+                  ),
+                  _InfoRow(
                     label: tr.msg_memoflow_migration_receive_mode,
                     value:
                         result.receiveMode ==
@@ -91,6 +100,10 @@ class MemoFlowMigrationResultScreen extends StatelessWidget {
       MemoFlowMigrationConfigType.locationSettings => tr.msg_location,
       MemoFlowMigrationConfigType.imageCompressionSettings =>
         tr.msg_restore_config_item_image_compression,
+      MemoFlowMigrationConfigType.draftBox => context.tr(
+        zh: '草稿箱',
+        en: 'Draft box',
+      ),
       MemoFlowMigrationConfigType.aiSettings => tr.msg_restore_config_item_ai,
       MemoFlowMigrationConfigType.imageBedSettings =>
         tr.msg_restore_config_item_image_bed,

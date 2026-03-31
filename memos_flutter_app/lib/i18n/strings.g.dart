@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 7896 (1579 per locale)
+/// Strings: 7920 (1584 per locale)
 ///
-/// Built on 2026-03-28 at 06:15 UTC
+/// Built on 2026-03-31 at 11:11 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1185,6 +1185,14 @@ class _StringsStringsLegacyEn {
 	String get msg_include_error_details => 'Include error details';
 	String get msg_write_comment => 'Write a comment...';
 	String get msg_write_thoughts => 'Write down your thoughts...';
+	String get msg_draft_box_title => 'Draft Box';
+	String get msg_draft_box_empty_desc => 'There are no saved drafts yet.';
+	String msg_draft_box_pending_hint({required Object count}) => 'Draft Box has unfinished drafts (${count}). Tap Draft Box to view.';
+	String get msg_empty_draft => 'Empty draft';
+	String get msg_editing => 'Editing';
+	String get msg_delete_draft => 'Delete draft';
+	String get msg_delete_draft_confirm => 'Delete this draft?';
+	String get msg_draft_deleted => 'Draft deleted';
 	String get msg_local_2 => 'Local';
 	String get msg_expired => 'Expired';
 	String get msg_fixed_2 => 'Fixed';
@@ -7442,6 +7450,14 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_include_error_details => '包含错误详情';
 	@override String get msg_write_comment => '写下评论...';
 	@override String get msg_write_thoughts => '写下你的想法...';
+	@override String get msg_draft_box_title => '草稿箱';
+	@override String get msg_draft_box_empty_desc => '当前还没有可恢复的草稿。';
+	@override String msg_draft_box_pending_hint({required Object count}) => '草稿箱中有未完成草稿（${count}），点击草稿箱查看';
+	@override String get msg_empty_draft => '空白草稿';
+	@override String get msg_editing => '编辑中';
+	@override String get msg_delete_draft => '删除草稿';
+	@override String get msg_delete_draft_confirm => '确定删除这条草稿吗？';
+	@override String get msg_draft_deleted => '草稿已删除';
 	@override String get msg_local_2 => '本地';
 	@override String get msg_expired => '已过期';
 	@override String get msg_fixed_2 => '修复';
@@ -9586,6 +9602,14 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_include_error_details => '包含错误详情';
 	@override String get msg_write_comment => '写下评论...';
 	@override String get msg_write_thoughts => '写下你的想法...';
+	@override String get msg_draft_box_title => '草稿箱';
+	@override String get msg_draft_box_empty_desc => '當前還沒有可恢復的草稿。';
+	@override String msg_draft_box_pending_hint({required Object count}) => '草稿箱中有未完成草稿（${count}），点击草稿箱查看';
+	@override String get msg_empty_draft => '空白草稿';
+	@override String get msg_editing => '編輯中';
+	@override String get msg_delete_draft => '刪除草稿';
+	@override String get msg_delete_draft_confirm => '確定刪除這條草稿嗎？';
+	@override String get msg_draft_deleted => '草稿已刪除';
 	@override String get msg_local_2 => '本地';
 	@override String get msg_expired => '已过期';
 	@override String get msg_fixed_2 => '修复';
@@ -11706,6 +11730,14 @@ extension on Translations {
 			case 'strings.legacy.msg_include_error_details': return 'Include error details';
 			case 'strings.legacy.msg_write_comment': return 'Write a comment...';
 			case 'strings.legacy.msg_write_thoughts': return 'Write down your thoughts...';
+			case 'strings.legacy.msg_draft_box_title': return 'Draft Box';
+			case 'strings.legacy.msg_draft_box_empty_desc': return 'There are no saved drafts yet.';
+			case 'strings.legacy.msg_draft_box_pending_hint': return ({required Object count}) => 'Draft Box has unfinished drafts (${count}). Tap Draft Box to view.';
+			case 'strings.legacy.msg_empty_draft': return 'Empty draft';
+			case 'strings.legacy.msg_editing': return 'Editing';
+			case 'strings.legacy.msg_delete_draft': return 'Delete draft';
+			case 'strings.legacy.msg_delete_draft_confirm': return 'Delete this draft?';
+			case 'strings.legacy.msg_draft_deleted': return 'Draft deleted';
 			case 'strings.legacy.msg_local_2': return 'Local';
 			case 'strings.legacy.msg_expired': return 'Expired';
 			case 'strings.legacy.msg_fixed_2': return 'Fixed';
@@ -16423,6 +16455,14 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_include_error_details': return '包含错误详情';
 			case 'strings.legacy.msg_write_comment': return '写下评论...';
 			case 'strings.legacy.msg_write_thoughts': return '写下你的想法...';
+			case 'strings.legacy.msg_draft_box_title': return '草稿箱';
+			case 'strings.legacy.msg_draft_box_empty_desc': return '当前还没有可恢复的草稿。';
+			case 'strings.legacy.msg_draft_box_pending_hint': return ({required Object count}) => '草稿箱中有未完成草稿（${count}），点击草稿箱查看';
+			case 'strings.legacy.msg_empty_draft': return '空白草稿';
+			case 'strings.legacy.msg_editing': return '编辑中';
+			case 'strings.legacy.msg_delete_draft': return '删除草稿';
+			case 'strings.legacy.msg_delete_draft_confirm': return '确定删除这条草稿吗？';
+			case 'strings.legacy.msg_draft_deleted': return '草稿已删除';
 			case 'strings.legacy.msg_local_2': return '本地';
 			case 'strings.legacy.msg_expired': return '已过期';
 			case 'strings.legacy.msg_fixed_2': return '修复';
@@ -18048,6 +18088,14 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_include_error_details': return '包含错误详情';
 			case 'strings.legacy.msg_write_comment': return '写下评论...';
 			case 'strings.legacy.msg_write_thoughts': return '写下你的想法...';
+			case 'strings.legacy.msg_draft_box_title': return '草稿箱';
+			case 'strings.legacy.msg_draft_box_empty_desc': return '當前還沒有可恢復的草稿。';
+			case 'strings.legacy.msg_draft_box_pending_hint': return ({required Object count}) => '草稿箱中有未完成草稿（${count}），点击草稿箱查看';
+			case 'strings.legacy.msg_empty_draft': return '空白草稿';
+			case 'strings.legacy.msg_editing': return '編輯中';
+			case 'strings.legacy.msg_delete_draft': return '刪除草稿';
+			case 'strings.legacy.msg_delete_draft_confirm': return '確定刪除這條草稿嗎？';
+			case 'strings.legacy.msg_draft_deleted': return '草稿已刪除';
 			case 'strings.legacy.msg_local_2': return '本地';
 			case 'strings.legacy.msg_expired': return '已过期';
 			case 'strings.legacy.msg_fixed_2': return '修复';

@@ -1129,12 +1129,16 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
 
     final memoCount = _countMemosInUploads(uploads);
     final attachmentCount = _countAttachmentsInUploads(uploads);
+    final draftCount = _countDraftsInUploads(uploads);
+    final draftAttachmentCount = _countDraftAttachmentsInUploads(uploads);
     final totalSize = uploads.fold<int>(0, (sum, entry) => sum + entry.size);
     final manifest = WebDavBackupManifest(
       schemaVersion: 1,
       exportedAt: exportedAt,
       memoCount: memoCount,
       attachmentCount: attachmentCount,
+      draftCount: draftCount,
+      draftAttachmentCount: draftAttachmentCount,
       totalSize: totalSize,
       backupMode: backupMode,
       encrypted: false,
@@ -1325,6 +1329,45 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
     await fileSystem.deleteDirRelative('memos');
     await fileSystem.deleteDirRelative('attachments');
     await fileSystem.deleteRelativeFile(_exportPlainSignatureFile);
+  }
+
+  int _countDraftAttachmentsInUploads(
+    Iterable<_PlainBackupFileUpload> uploads,
+  ) {
+    var count = 0;
+    for (final entry in uploads) {
+      if (_isDraftAttachmentPath(entry.path)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  int _countDraftsInUploads(Iterable<_PlainBackupFileUpload> uploads) {
+    for (final upload in uploads) {
+      if (upload.path != _backupDraftBoxSnapshotPath) continue;
+      final bytes = upload.bytes;
+      if (bytes == null) return 0;
+      final decoded = _decodeJsonValue(bytes);
+      if (decoded is! Map) return 0;
+      final envelope = decoded.cast<String, dynamic>();
+      final data = envelope['data'];
+      if (data is Map<String, dynamic>) {
+        return ComposeDraftTransferBundle.fromJson(data).draftCount;
+      }
+      if (data is Map) {
+        return ComposeDraftTransferBundle.fromJson(
+          data.cast<String, dynamic>(),
+        ).draftCount;
+      }
+      return 0;
+    }
+    return 0;
+  }
+
+  bool _isDraftAttachmentPath(String rawPath) {
+    final path = rawPath.trim().replaceAll('\\', '/').toLowerCase();
+    return path.startsWith('$composeDraftTransferAttachmentsDir/');
   }
 }
 

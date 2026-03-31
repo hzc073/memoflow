@@ -32,6 +32,7 @@ enum MemoToolbarActionId {
   link,
   camera,
   location,
+  draftBox,
 }
 
 const kMemoToolbarDefaultCustomIconKey = 'hammer';
@@ -285,6 +286,7 @@ const kMemoToolbarDefaultBottomRow = <MemoToolbarActionId>[
   MemoToolbarActionId.gallery,
   MemoToolbarActionId.link,
   MemoToolbarActionId.camera,
+  MemoToolbarActionId.draftBox,
   MemoToolbarActionId.location,
 ];
 
@@ -326,6 +328,7 @@ extension MemoToolbarActionIdX on MemoToolbarActionId {
       MemoToolbarActionId.todo ||
       MemoToolbarActionId.link ||
       MemoToolbarActionId.camera ||
+      MemoToolbarActionId.draftBox ||
       MemoToolbarActionId.location => MemoToolbarRow.bottom,
     };
   }

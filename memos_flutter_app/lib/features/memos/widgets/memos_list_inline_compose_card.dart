@@ -11,6 +11,7 @@ import '../../../state/memos/memo_composer_state.dart';
 import '../../../state/tags/tag_color_lookup.dart';
 import '../../../state/memos/memos_providers.dart';
 import '../compose_toolbar_shared.dart';
+import '../compose_input_hint.dart';
 import '../memo_video_grid.dart';
 import '../tag_autocomplete.dart';
 import '../../../i18n/strings.g.dart';
@@ -20,6 +21,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
     super.key,
     required this.composer,
     required this.focusNode,
+    required this.pendingDraftCount,
     required this.busy,
     required this.locating,
     required this.location,
@@ -49,6 +51,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
     required this.onPickFile,
     required this.onOpenLinkMemo,
     required this.onCaptureCamera,
+    required this.onOpenDraftBox,
     required this.onOpenTodoMenu,
     required this.onOpenVisibilityMenu,
     required this.onCutParagraphs,
@@ -56,6 +59,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
 
   final MemoComposerController composer;
   final FocusNode focusNode;
+  final int pendingDraftCount;
   final bool busy;
   final bool locating;
   final MemoLocation? location;
@@ -85,6 +89,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
   final VoidCallback onPickFile;
   final VoidCallback onOpenLinkMemo;
   final VoidCallback onCaptureCamera;
+  final VoidCallback onOpenDraftBox;
   final VoidCallback onOpenTodoMenu;
   final VoidCallback onOpenVisibilityMenu;
   final VoidCallback onCutParagraphs;
@@ -222,6 +227,20 @@ class MemosListInlineComposeCard extends StatelessWidget {
                     height: 1.35,
                     color: textColor,
                   );
+                  final shouldShowDraftHint = shouldShowComposeDraftHint(
+                    enableDraftHint: true,
+                    pendingDraftCount: pendingDraftCount,
+                    hasCurrentComposeContent:
+                        value.text.trim().isNotEmpty ||
+                        composer.pendingAttachments.isNotEmpty ||
+                        composer.linkedMemos.isNotEmpty ||
+                        location != null,
+                  );
+                  final hintText = shouldShowDraftHint
+                      ? context.t.strings.legacy.msg_draft_box_pending_hint(
+                          count: pendingDraftCount,
+                        )
+                      : context.t.strings.legacy.msg_write_thoughts;
                   final inlineActiveTagQuery = focusNode.hasFocus
                       ? detectActiveTagQuery(value)
                       : null;
@@ -244,8 +263,8 @@ class MemosListInlineComposeCard extends StatelessWidget {
                         key: editorFieldKey,
                         child: Focus(
                           canRequestFocus: false,
-                          onKeyEvent: (node, event) => composer
-                              .handleTagAutocompleteKeyEvent(
+                          onKeyEvent: (node, event) =>
+                              composer.handleTagAutocompleteKeyEvent(
                                 event,
                                 tagStats: tagStats,
                                 hasFocus: focusNode.hasFocus,
@@ -268,8 +287,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
                             decoration: InputDecoration(
                               isDense: true,
                               border: InputBorder.none,
-                              hintText:
-                                  context.t.strings.legacy.msg_write_thoughts,
+                              hintText: hintText,
                               hintStyle: TextStyle(color: hintColor),
                             ),
                           ),
@@ -328,6 +346,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
                       onOpenTodoMenu: onOpenTodoMenu,
                       onOpenLinkMemo: onOpenLinkMemo,
                       onCaptureCamera: onCaptureCamera,
+                      onOpenDraftBox: onOpenDraftBox,
                       onRequestLocation: onRequestLocation,
                       onOpenVisibilityMenu: onOpenVisibilityMenu,
                       onCutParagraphs: onCutParagraphs,
@@ -362,7 +381,9 @@ class MemosListInlineComposeCard extends StatelessWidget {
                                       ),
                                     )
                                   : AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 160),
+                                      duration: const Duration(
+                                        milliseconds: 160,
+                                      ),
                                       transitionBuilder: (child, animation) {
                                         return ScaleTransition(
                                           scale: animation,
@@ -418,6 +439,7 @@ class _InlineComposeToolbar extends StatelessWidget {
     required this.onOpenTodoMenu,
     required this.onOpenLinkMemo,
     required this.onCaptureCamera,
+    required this.onOpenDraftBox,
     required this.onRequestLocation,
     required this.onOpenVisibilityMenu,
     required this.onCutParagraphs,
@@ -445,6 +467,7 @@ class _InlineComposeToolbar extends StatelessWidget {
   final VoidCallback onOpenTodoMenu;
   final VoidCallback onOpenLinkMemo;
   final VoidCallback onCaptureCamera;
+  final VoidCallback onOpenDraftBox;
   final VoidCallback onRequestLocation;
   final VoidCallback onOpenVisibilityMenu;
   final VoidCallback onCutParagraphs;
@@ -601,6 +624,11 @@ class _InlineComposeToolbar extends StatelessWidget {
         icon: locating ? Icons.my_location : null,
         enabled: !busy && !locating,
         onPressed: onRequestLocation,
+      ),
+      MemoComposeToolbarActionSpec.builtin(
+        id: MemoToolbarActionId.draftBox,
+        enabled: !busy,
+        onPressed: onOpenDraftBox,
       ),
       ...preferences.customButtons.map(
         (button) => MemoComposeToolbarActionSpec.custom(

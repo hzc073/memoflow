@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
 import '../memoflow_bridge_screen.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
@@ -80,6 +81,13 @@ class _MemoFlowMigrationSendMethodScreenState
                         memoCount: packageResult.manifest.memoCount,
                         attachmentCount: packageResult.manifest.attachmentCount,
                         size: _formatBytes(packageResult.manifest.totalBytes),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      context.tr(
+                        zh: '草稿 ${packageResult.manifest.draftCount} 条，草稿附件 ${packageResult.manifest.draftAttachmentCount} 个',
+                        en: 'Drafts ${packageResult.manifest.draftCount}, draft attachments ${packageResult.manifest.draftAttachmentCount}',
                       ),
                     ),
                     const SizedBox(height: 12),

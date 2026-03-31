@@ -11,16 +11,20 @@ import '../../../data/local_library/local_attachment_store.dart';
 import '../../../data/local_library/local_library_fs.dart';
 import '../../../data/local_library/local_library_paths.dart';
 import '../../../data/models/local_library.dart';
+import '../../attachments/queued_attachment_stager.dart';
+import '../compose_draft_transfer.dart';
 import '../config_transfer/config_transfer_apply_service.dart';
 import '../config_transfer/config_transfer_codec.dart';
 import '../local_library_scan_service.dart';
 import '../sync_types.dart';
 import 'memoflow_migration_models.dart';
+import '../../../state/memos/compose_draft_provider.dart';
 
 class MemoFlowMigrationImportService {
   MemoFlowMigrationImportService({
     required this.db,
     required this.attachmentStore,
+    required this.attachmentStager,
     required this.configApplyService,
     required this.codec,
     required this.createWorkspaceDatabase,
@@ -33,6 +37,7 @@ class MemoFlowMigrationImportService {
 
   final AppDatabase db;
   final LocalAttachmentStore attachmentStore;
+  final QueuedAttachmentStager attachmentStager;
   final ConfigTransferApplyService configApplyService;
   final ConfigTransferCodec codec;
   final AppDatabase Function(String workspaceKey) createWorkspaceDatabase;
@@ -93,15 +98,64 @@ class MemoFlowMigrationImportService {
             onProgress: onProgress,
           );
           workspaceName = active.name;
+          workspaceKey = active.key;
         }
+      } else {
+        final active = currentLibrary();
+        workspaceName = active?.name;
+        workspaceKey = active?.key;
       }
 
       final bundle = await codec.decodeFromDirectory(payloadDir);
       onProgress?.call(MemoFlowMigrationTransferStage.applyingConfig);
-      final applied = await configApplyService.applyBundle(
-        bundle,
-        allowedTypes: allowedConfigTypes,
+      final applied = <MemoFlowMigrationConfigType>{};
+      final configAllowedTypes = allowedConfigTypes.difference(
+        const <MemoFlowMigrationConfigType>{
+          MemoFlowMigrationConfigType.draftBox,
+        },
       );
+      applied.addAll(
+        await configApplyService.applyBundle(
+          bundle,
+          allowedTypes: configAllowedTypes,
+        ),
+      );
+      final targetWorkspaceKey = workspaceKey?.trim();
+      if (allowedConfigTypes.contains(MemoFlowMigrationConfigType.draftBox) &&
+          bundle.draftBox != null &&
+          targetWorkspaceKey != null &&
+          targetWorkspaceKey.isNotEmpty) {
+        final targetDb = importedLibrary != null
+            ? createWorkspaceDatabase(targetWorkspaceKey)
+            : db;
+        try {
+          final materializedDrafts =
+              await materializeComposeDraftTransferBundle(
+                bundle: bundle.draftBox!,
+                rootDirectory: payloadDir,
+                workspaceKey: targetWorkspaceKey,
+                attachmentStager: attachmentStager,
+              );
+          final repository = ComposeDraftRepository(
+            database: targetDb,
+            workspaceKey: targetWorkspaceKey,
+            attachmentStager: attachmentStager,
+          );
+          final draftsToApply = bundle.draftBox!.mergeWithExistingOnRestore
+              ? mergeComposeDraftRecords(
+                  existing: await repository.listDrafts(),
+                  incoming: materializedDrafts,
+                  workspaceKey: targetWorkspaceKey,
+                )
+              : materializedDrafts;
+          await repository.replaceAllDrafts(draftsToApply);
+          applied.add(MemoFlowMigrationConfigType.draftBox);
+        } finally {
+          if (importedLibrary != null) {
+            await targetDb.close();
+          }
+        }
+      }
       final skipped = proposal.manifest.configTypes.difference(applied);
 
       if (importedLibrary != null) {
@@ -117,6 +171,8 @@ class MemoFlowMigrationImportService {
         receiveMode: receiveMode,
         memoCount: proposal.manifest.memoCount,
         attachmentCount: proposal.manifest.attachmentCount,
+        draftCount: proposal.manifest.draftCount,
+        draftAttachmentCount: proposal.manifest.draftAttachmentCount,
         appliedConfigTypes: applied,
         skippedConfigTypes: skipped,
         workspaceName: workspaceName,

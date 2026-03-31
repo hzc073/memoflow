@@ -11,6 +11,7 @@ import '../../../data/models/location_settings.dart';
 import '../../../data/models/memo_template_settings.dart';
 import '../../../data/models/reminder_settings.dart';
 import '../../../data/models/webdav_settings.dart';
+import '../compose_draft_transfer.dart';
 import '../migration/memoflow_migration_models.dart';
 import '../migration/memoflow_migration_preferences_filter.dart';
 import 'config_transfer_bundle.dart';
@@ -26,6 +27,8 @@ class ConfigTransferCodec {
   static const imageBedSettingsPath = 'config/image_bed.json';
   static const appLockPath = 'config/app_lock.json';
   static const webDavSettingsPath = 'config/webdav_settings.json';
+  static const draftBoxPath = composeDraftTransferConfigPath;
+  static const legacyNoteDraftPath = 'config/note_draft.json';
 
   const ConfigTransferCodec();
 
@@ -70,6 +73,31 @@ class ConfigTransferCodec {
         case MemoFlowMigrationConfigType.webdavSettings:
           final value = bundle.webDavSettings;
           if (value != null) writeFile(webDavSettingsPath, value.toJson());
+        case MemoFlowMigrationConfigType.draftBox:
+          final value = bundle.draftBox;
+          if (value != null) {
+            writeFile(draftBoxPath, value.toJson());
+            for (final draft in value.drafts) {
+              for (final attachment in draft.attachments) {
+                final sourceFilePath = attachment.sourceFilePath?.trim() ?? '';
+                if (sourceFilePath.isEmpty) {
+                  throw const FormatException(
+                    'Draft attachment source path missing',
+                  );
+                }
+                final file = File(sourceFilePath);
+                if (!file.existsSync()) {
+                  throw FileSystemException(
+                    'Draft attachment file not found',
+                    sourceFilePath,
+                  );
+                }
+                files[attachment.path] = Uint8List.fromList(
+                  file.readAsBytesSync(),
+                );
+              }
+            }
+          }
       }
     }
 
@@ -95,6 +123,16 @@ class ConfigTransferCodec {
     final templateJson = await readJson(templateSettingsPath);
     final appLockJson = await readJson(appLockPath);
     final webDavJson = await readJson(webDavSettingsPath);
+    final draftBoxJson = await readJson(draftBoxPath);
+    final legacyNoteDraftJson = await readJson(legacyNoteDraftPath);
+
+    String? legacyNoteDraftText() {
+      final raw = legacyNoteDraftJson;
+      if (raw == null) return null;
+      final text = raw['text'];
+      if (text is String && text.trim().isNotEmpty) return text;
+      return null;
+    }
 
     return ConfigTransferBundle(
       preferences: preferencesJson == null
@@ -125,6 +163,13 @@ class ConfigTransferCodec {
       webDavSettings: webDavJson == null
           ? null
           : WebDavSettings.fromJson(webDavJson),
+      draftBox: draftBoxJson == null
+          ? (() {
+              final legacyText = legacyNoteDraftText();
+              if (legacyText == null) return null;
+              return ComposeDraftTransferBundle.fromLegacyNoteDraft(legacyText);
+            })()
+          : ComposeDraftTransferBundle.fromJson(draftBoxJson),
     );
   }
 }

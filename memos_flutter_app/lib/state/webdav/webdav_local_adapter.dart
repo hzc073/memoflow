@@ -5,9 +5,11 @@ import '../../data/models/image_compression_settings.dart';
 import '../../data/models/image_bed_settings.dart';
 import '../../data/models/location_settings.dart';
 import '../../data/models/memo_template_settings.dart';
+import '../../data/models/compose_draft.dart';
 import '../../data/models/tag_snapshot.dart';
 import '../../data/models/webdav_settings.dart';
 import '../../data/repositories/ai_settings_repository.dart';
+import '../memos/compose_draft_provider.dart';
 import '../settings/ai_settings_provider.dart';
 import '../settings/app_lock_provider.dart';
 import '../settings/image_bed_settings_provider.dart';
@@ -17,6 +19,7 @@ import '../settings/memo_template_settings_provider.dart';
 import '../memos/note_draft_provider.dart';
 import '../settings/preferences_provider.dart';
 import '../settings/reminder_settings_provider.dart';
+import '../system/session_provider.dart';
 import '../tags/tag_repository.dart';
 import 'webdav_settings_provider.dart';
 
@@ -24,6 +27,10 @@ class RiverpodWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
   RiverpodWebDavSyncLocalAdapter(this._container);
 
   final ProviderContainer _container;
+
+  @override
+  String? get currentWorkspaceKey =>
+      _container.read(appSessionProvider).valueOrNull?.currentKey;
 
   @override
   Future<WebDavSyncLocalSnapshot> readSnapshot() async {
@@ -119,6 +126,27 @@ class RiverpodWebDavSyncLocalAdapter implements WebDavSyncLocalAdapter {
     await _container
         .read(noteDraftProvider.notifier)
         .setDraft(text, triggerSync: false);
+  }
+
+  @override
+  Future<List<ComposeDraftRecord>> readComposeDrafts() {
+    return _container.read(composeDraftRepositoryProvider).listDrafts();
+  }
+
+  @override
+  Future<void> replaceComposeDrafts(List<ComposeDraftRecord> drafts) async {
+    final repository = _container.read(composeDraftRepositoryProvider);
+    await repository.replaceAllDrafts(drafts);
+    final latestDraft = await repository.latestDraft();
+    final noteDraftController = _container.read(noteDraftProvider.notifier);
+    if (latestDraft == null) {
+      await noteDraftController.clear(triggerSync: false);
+      return;
+    }
+    await noteDraftController.setDraft(
+      latestDraft.snapshot.content,
+      triggerSync: false,
+    );
   }
 
   @override
