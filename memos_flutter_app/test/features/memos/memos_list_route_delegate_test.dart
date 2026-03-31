@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_route_delegate.dart';
+import 'package:memos_flutter_app/features/voice/voice_record_screen.dart';
 
 void main() {
   testWidgets('openSettings uses desktop settings window when supported', (
@@ -25,26 +26,27 @@ void main() {
     expect(fallbackOpenCount, 0);
   });
 
-  testWidgets('openSettings falls back when desktop settings window unsupported', (
-    tester,
-  ) async {
-    final harness = await _pumpRouteDelegateHarness(tester);
-    final desktopAdapter = _FakeRouteDesktopAdapter(
-      openSettingsWindowIfSupportedResult: false,
-    );
-    var fallbackOpenCount = 0;
-    final delegate = harness.buildDelegate(
-      desktopAdapter: desktopAdapter,
-      openSettingsFallback: (_) async {
-        fallbackOpenCount++;
-      },
-    );
+  testWidgets(
+    'openSettings falls back when desktop settings window unsupported',
+    (tester) async {
+      final harness = await _pumpRouteDelegateHarness(tester);
+      final desktopAdapter = _FakeRouteDesktopAdapter(
+        openSettingsWindowIfSupportedResult: false,
+      );
+      var fallbackOpenCount = 0;
+      final delegate = harness.buildDelegate(
+        desktopAdapter: desktopAdapter,
+        openSettingsFallback: (_) async {
+          fallbackOpenCount++;
+        },
+      );
 
-    await delegate.openSettings();
+      await delegate.openSettings();
 
-    expect(desktopAdapter.openSettingsWindowIfSupportedCount, 1);
-    expect(fallbackOpenCount, 1);
-  });
+      expect(desktopAdapter.openSettingsWindowIfSupportedCount, 1);
+      expect(fallbackOpenCount, 1);
+    },
+  );
 
   testWidgets('toggleMemoFlowVisibility uses tray branch when supported', (
     tester,
@@ -64,24 +66,25 @@ void main() {
     expect(desktopAdapter.hideWindowCount, 0);
   });
 
-  testWidgets('toggleMemoFlowVisibility uses window branch when tray unsupported', (
-    tester,
-  ) async {
-    final harness = await _pumpRouteDelegateHarness(tester);
-    final desktopAdapter = _FakeRouteDesktopAdapter(
-      desktopShortcutsEnabled: true,
-      traySupported: false,
-      supportsTaskbarVisibilityToggle: true,
-      isWindowVisibleResult: false,
-    );
-    final delegate = harness.buildDelegate(desktopAdapter: desktopAdapter);
+  testWidgets(
+    'toggleMemoFlowVisibility uses window branch when tray unsupported',
+    (tester) async {
+      final harness = await _pumpRouteDelegateHarness(tester);
+      final desktopAdapter = _FakeRouteDesktopAdapter(
+        desktopShortcutsEnabled: true,
+        traySupported: false,
+        supportsTaskbarVisibilityToggle: true,
+        isWindowVisibleResult: false,
+      );
+      final delegate = harness.buildDelegate(desktopAdapter: desktopAdapter);
 
-    await delegate.toggleMemoFlowVisibilityFromShortcut();
+      await delegate.toggleMemoFlowVisibilityFromShortcut();
 
-    expect(desktopAdapter.setSkipTaskbarValues, <bool>[false]);
-    expect(desktopAdapter.showWindowCount, 1);
-    expect(desktopAdapter.focusWindowCount, 1);
-  });
+      expect(desktopAdapter.setSkipTaskbarValues, <bool>[false]);
+      expect(desktopAdapter.showWindowCount, 1);
+      expect(desktopAdapter.focusWindowCount, 1);
+    },
+  );
 
   testWidgets('syncDesktopWindowState updates maximized flag through adapter', (
     tester,
@@ -102,6 +105,58 @@ void main() {
 
     expect(delegate.desktopWindowMaximized, isTrue);
     expect(notifyCount, 1);
+  });
+
+  testWidgets('openVoiceNoteInput uses quick fab mode and forwards result', (
+    tester,
+  ) async {
+    final harness = await _pumpRouteDelegateHarness(tester);
+    final dragSession = VoiceRecordOverlayDragSession();
+    VoiceRecordMode? capturedMode;
+    VoiceRecordOverlayDragSession? capturedSession;
+    String? capturedInitialText;
+    List<String> capturedAttachmentPaths = const <String>[];
+    bool? capturedIgnoreDraft;
+    final delegate = harness.buildDelegate(
+      showVoiceRecordOverlay:
+          (
+            context, {
+            bool autoStart = true,
+            VoiceRecordOverlayDragSession? dragSession,
+            VoiceRecordMode mode = VoiceRecordMode.standard,
+          }) async {
+            capturedMode = mode;
+            capturedSession = dragSession;
+            return Future<VoiceRecordResult?>.value(
+              const VoiceRecordResult(
+                filePath: '/tmp/voice.m4a',
+                fileName: 'voice.m4a',
+                size: 12,
+                duration: Duration(seconds: 3),
+                suggestedContent: 'Voice memo',
+              ),
+            );
+          },
+      showNoteInputSheet:
+          (
+            context, {
+            String? initialText,
+            List<String> initialAttachmentPaths = const <String>[],
+            bool ignoreDraft = false,
+          }) async {
+            capturedInitialText = initialText;
+            capturedAttachmentPaths = initialAttachmentPaths;
+            capturedIgnoreDraft = ignoreDraft;
+          },
+    );
+
+    await delegate.openVoiceNoteInput(origin: dragSession);
+
+    expect(capturedMode, VoiceRecordMode.quickFabCompose);
+    expect(capturedSession, same(dragSession));
+    expect(capturedInitialText, isNull);
+    expect(capturedAttachmentPaths, <String>['/tmp/voice.m4a']);
+    expect(capturedIgnoreDraft, isTrue);
   });
 }
 
@@ -141,6 +196,8 @@ class _RouteDelegateHarness {
   MemosListRouteDelegate buildDelegate({
     MemosListRouteDesktopAdapter? desktopAdapter,
     MemosListRouteSettingsFallbackOpener? openSettingsFallback,
+    MemosListRouteNoteInputPresenter? showNoteInputSheet,
+    MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
   }) {
     return MemosListRouteDelegate(
       contextResolver: contextResolver,
@@ -167,6 +224,8 @@ class _RouteDelegateHarness {
       markSceneGuideSeen: (_) {},
       desktopAdapter: desktopAdapter,
       openSettingsFallback: openSettingsFallback,
+      showNoteInputSheet: showNoteInputSheet,
+      showVoiceRecordOverlay: showVoiceRecordOverlay,
     );
   }
 }

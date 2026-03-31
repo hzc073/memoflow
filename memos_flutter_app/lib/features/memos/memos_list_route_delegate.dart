@@ -43,13 +43,23 @@ import '../../i18n/strings.g.dart';
 
 typedef MemosListRouteRead = T Function<T>(ProviderListenable<T> provider);
 typedef MemosListRouteToastPresenter =
-    bool Function(
-      BuildContext context,
-      String message, {
-      Duration duration,
-    });
+    bool Function(BuildContext context, String message, {Duration duration});
 typedef MemosListRouteSettingsFallbackOpener =
     Future<void> Function(BuildContext context);
+typedef MemosListRouteNoteInputPresenter =
+    Future<void> Function(
+      BuildContext context, {
+      String? initialText,
+      List<String> initialAttachmentPaths,
+      bool ignoreDraft,
+    });
+typedef MemosListRouteVoiceRecordOverlayPresenter =
+    Future<VoiceRecordResult?> Function(
+      BuildContext context, {
+      bool autoStart,
+      VoiceRecordOverlayDragSession? dragSession,
+      VoiceRecordMode mode,
+    });
 
 abstract interface class MemosListRouteDesktopAdapter {
   bool get desktopShortcutsEnabled;
@@ -92,7 +102,9 @@ class DefaultMemosListRouteDesktopAdapter
 
   @override
   bool openSettingsWindowIfSupported({required BuildContext feedbackContext}) {
-    return openDesktopSettingsWindowIfSupported(feedbackContext: feedbackContext);
+    return openDesktopSettingsWindowIfSupported(
+      feedbackContext: feedbackContext,
+    );
   }
 
   @override
@@ -161,6 +173,8 @@ class MemosListRouteDelegate extends ChangeNotifier {
     MemosListRouteDesktopAdapter? desktopAdapter,
     MemosListRouteToastPresenter? showToast,
     MemosListRouteSettingsFallbackOpener? openSettingsFallback,
+    MemosListRouteNoteInputPresenter? showNoteInputSheet,
+    MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
   }) : _contextResolver = contextResolver,
        _read = read,
        _scaffoldKey = scaffoldKey,
@@ -188,7 +202,10 @@ class MemosListRouteDelegate extends ChangeNotifier {
            desktopAdapter ?? const DefaultMemosListRouteDesktopAdapter(),
        _showToast = showToast ?? _defaultShowToast,
        _openSettingsFallback =
-           openSettingsFallback ?? _defaultOpenSettingsFallback;
+           openSettingsFallback ?? _defaultOpenSettingsFallback,
+       _showNoteInputSheet = showNoteInputSheet ?? _defaultShowNoteInputSheet,
+       _showVoiceRecordOverlay =
+           showVoiceRecordOverlay ?? _defaultShowVoiceRecordOverlay;
 
   final BuildContext Function() _contextResolver;
   final MemosListRouteRead _read;
@@ -215,6 +232,8 @@ class MemosListRouteDelegate extends ChangeNotifier {
   final MemosListRouteDesktopAdapter _desktopAdapter;
   final MemosListRouteToastPresenter _showToast;
   final MemosListRouteSettingsFallbackOpener _openSettingsFallback;
+  final MemosListRouteNoteInputPresenter _showNoteInputSheet;
+  final MemosListRouteVoiceRecordOverlayPresenter _showVoiceRecordOverlay;
 
   final GlobalKey titleAnchorKey = GlobalKey();
 
@@ -336,7 +355,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<void> openNoteInput() async {
     if (!_enableCompose()) return;
-    await NoteInputSheet.show(_context);
+    await _showNoteInputSheet(_context);
   }
 
   Future<void> openVoiceNoteInput({
@@ -344,15 +363,15 @@ class MemosListRouteDelegate extends ChangeNotifier {
   }) async {
     if (!_enableCompose()) return;
     final context = _context;
-    final result = await VoiceRecordScreen.showOverlay(
+    final result = await _showVoiceRecordOverlay(
       context,
       autoStart: true,
       dragSession: origin,
+      mode: VoiceRecordMode.quickFabCompose,
     );
     if (!context.mounted || result == null) return;
-    await NoteInputSheet.show(
+    await _showNoteInputSheet(
       context,
-      initialText: result.suggestedContent,
       initialAttachmentPaths: [result.filePath],
       ignoreDraft: true,
     );
@@ -695,7 +714,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<void> openSettings() async {
     final context = _context;
-    if (_desktopAdapter.openSettingsWindowIfSupported(feedbackContext: context)) {
+    if (_desktopAdapter.openSettingsWindowIfSupported(
+      feedbackContext: context,
+    )) {
       return;
     }
     await _openSettingsFallback(context);
@@ -764,5 +785,33 @@ class MemosListRouteDelegate extends ChangeNotifier {
     return Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+  }
+
+  static Future<void> _defaultShowNoteInputSheet(
+    BuildContext context, {
+    String? initialText,
+    List<String> initialAttachmentPaths = const [],
+    bool ignoreDraft = false,
+  }) {
+    return NoteInputSheet.show(
+      context,
+      initialText: initialText,
+      initialAttachmentPaths: initialAttachmentPaths,
+      ignoreDraft: ignoreDraft,
+    );
+  }
+
+  static Future<VoiceRecordResult?> _defaultShowVoiceRecordOverlay(
+    BuildContext context, {
+    bool autoStart = true,
+    VoiceRecordOverlayDragSession? dragSession,
+    VoiceRecordMode mode = VoiceRecordMode.standard,
+  }) {
+    return VoiceRecordScreen.showOverlay(
+      context,
+      autoStart: autoStart,
+      dragSession: dragSession,
+      mode: mode,
+    );
   }
 }

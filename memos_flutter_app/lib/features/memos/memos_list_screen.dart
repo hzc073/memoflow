@@ -94,6 +94,8 @@ class MemosListScreen extends ConsumerStatefulWidget {
     this.showFilterTagChip = false,
     this.showTagFilters = false,
     this.toastMessage,
+    this.showNoteInputSheet,
+    this.showVoiceRecordOverlay,
   });
 
   final String title;
@@ -109,6 +111,8 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final bool showFilterTagChip;
   final bool showTagFilters;
   final String? toastMessage;
+  final MemosListRouteNoteInputPresenter? showNoteInputSheet;
+  final MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay;
 
   @override
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
@@ -270,6 +274,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       selectShortcutId: (shortcutId) =>
           _headerController.selectShortcut(shortcutId),
       markSceneGuideSeen: _markSceneGuideSeen,
+      showNoteInputSheet: widget.showNoteInputSheet,
+      showVoiceRecordOverlay: widget.showVoiceRecordOverlay,
     );
     _memoActionDelegate = MemosListMemoActionDelegate(
       contextResolver: () => context,
@@ -562,11 +568,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
   }
 
-  bool _isTouchPullLoadPlatform() {
+  bool _isMobileNativePlatform() {
     if (kIsWeb) return false;
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
   }
+
+  bool _isTouchPullLoadPlatform() => _isMobileNativePlatform();
 
   void _logPaginationDebug(
     String event, {
@@ -1843,12 +1851,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       startedAt: _localLibraryCoordinator.bootstrapImportStartedAt,
       formatDuration: _formatDuration,
     );
+    final enableVoiceFabLongPress = _isMobileNativePlatform();
     final floatingActionButton = viewState.layout.showComposeFab
         ? MemoFlowFab(
             onPressed: _routeDelegate.openNoteInput,
-            onLongPressStart: _handleVoiceFabLongPressStart,
-            onLongPressMoveUpdate: _handleVoiceFabLongPressMoveUpdate,
-            onLongPressEnd: _handleVoiceFabLongPressEnd,
+            onLongPressStart: enableVoiceFabLongPress
+                ? _handleVoiceFabLongPressStart
+                : null,
+            onLongPressMoveUpdate: enableVoiceFabLongPress
+                ? _handleVoiceFabLongPressMoveUpdate
+                : null,
+            onLongPressEnd: enableVoiceFabLongPress
+                ? _handleVoiceFabLongPressEnd
+                : null,
             hapticsEnabled: hapticsEnabled,
           )
         : null;

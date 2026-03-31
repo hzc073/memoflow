@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -35,7 +38,10 @@ import 'package:memos_flutter_app/data/repositories/memo_template_settings_repos
 import 'package:memos_flutter_app/data/repositories/scene_micro_guide_repository.dart';
 import 'package:memos_flutter_app/data/repositories/webdav_backup_state_repository.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_screen.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_route_delegate.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_memo_card.dart';
+import 'package:memos_flutter_app/features/voice/voice_record_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_list_providers.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -123,6 +129,105 @@ void main() {
       await tester.pump();
     },
   );
+
+  testWidgets(
+    'mobile FAB tap opens note input and long press opens quick voice',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      final memosController = StreamController<List<LocalMemo>>.broadcast();
+      addTearDown(memosController.close);
+      final voiceOverlayCompleter = Completer<VoiceRecordResult?>();
+      var noteInputOpenCount = 0;
+      var voiceOverlayOpenCount = 0;
+      VoiceRecordMode? capturedMode;
+      VoiceRecordOverlayDragSession? capturedDragSession;
+
+      await tester.pumpWidget(
+        _buildHarness(
+          memosStream: memosController.stream,
+          screenSize: const Size(390, 844),
+          enableCompose: true,
+          showNoteInputSheet:
+              (
+                context, {
+                String? initialText,
+                List<String> initialAttachmentPaths = const <String>[],
+                bool ignoreDraft = false,
+              }) async {
+                noteInputOpenCount++;
+              },
+          showVoiceRecordOverlay:
+              (
+                context, {
+                bool autoStart = true,
+                VoiceRecordOverlayDragSession? dragSession,
+                VoiceRecordMode mode = VoiceRecordMode.standard,
+              }) {
+                voiceOverlayOpenCount++;
+                capturedMode = mode;
+                capturedDragSession = dragSession;
+                return voiceOverlayCompleter.future;
+              },
+        ),
+      );
+      memosController.add(<LocalMemo>[
+        _buildMemo(uid: 'memo-1', content: 'Memo'),
+      ]);
+      await _pumpScreenFrames(tester);
+
+      final fabFinder = find.byType(MemoFlowFab);
+      expect(fabFinder, findsOneWidget);
+
+      await tester.tap(fabFinder);
+      await tester.pump();
+      expect(noteInputOpenCount, 1);
+      expect(voiceOverlayOpenCount, 0);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(fabFinder),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+
+      expect(voiceOverlayOpenCount, 1);
+      expect(capturedMode, VoiceRecordMode.quickFabCompose);
+      expect(capturedDragSession, isNotNull);
+      expect(noteInputOpenCount, 1);
+
+      await gesture.moveBy(const Offset(84, -36));
+      await tester.pump();
+      expect(capturedDragSession!.offset, const Offset(84, -36));
+
+      await gesture.up();
+      await tester.pump();
+      expect(capturedDragSession!.gestureEndSequence, 1);
+
+      voiceOverlayCompleter.complete(null);
+      await _pumpScreenFrames(tester);
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
+  testWidgets('desktop layout does not show mobile compose FAB', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(memosStream: memosController.stream, enableCompose: true),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'Memo'),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    expect(find.byType(MemoFlowFab), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
 }
 
 Future<void> _pumpScreenFrames(WidgetTester tester) async {
@@ -132,7 +237,13 @@ Future<void> _pumpScreenFrames(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 32));
 }
 
-Widget _buildHarness({required Stream<List<LocalMemo>> memosStream}) {
+Widget _buildHarness({
+  required Stream<List<LocalMemo>> memosStream,
+  Size screenSize = const Size(1280, 1800),
+  bool enableCompose = false,
+  MemosListRouteNoteInputPresenter? showNoteInputSheet,
+  MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
+}) {
   return ProviderScope(
     overrides: [
       secureStorageProvider.overrideWithValue(_MemorySecureStorage()),
@@ -177,16 +288,18 @@ Widget _buildHarness({required Stream<List<LocalMemo>> memosStream}) {
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: const MediaQuery(
-          data: MediaQueryData(size: Size(1280, 1800)),
+        home: MediaQuery(
+          data: MediaQueryData(size: screenSize),
           child: MemosListScreen(
             title: 'Memos',
             state: 'NORMAL',
             showDrawer: false,
-            enableCompose: false,
+            enableCompose: enableCompose,
             enableSearch: false,
             enableTitleMenu: false,
             showPillActions: false,
+            showNoteInputSheet: showNoteInputSheet,
+            showVoiceRecordOverlay: showVoiceRecordOverlay,
           ),
         ),
       ),

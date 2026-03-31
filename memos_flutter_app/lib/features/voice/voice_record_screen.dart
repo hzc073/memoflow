@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -34,7 +35,70 @@ class VoiceRecordResult {
 
 enum VoiceRecordPresentation { page, overlay }
 
+enum VoiceRecordMode { standard, quickFabCompose }
+
 enum _VoiceRecordQuickAction { none, discard, lock, draft }
+
+abstract interface class VoiceRecordRecorder {
+  Future<bool> hasPermission();
+  Future<bool> hasInputDevice();
+  Future<void> start({required String path});
+  Future<String?> stop();
+  Future<void> cancel();
+  Stream<Amplitude> onAmplitudeChanged(Duration interval);
+  void dispose();
+}
+
+class AudioRecorderVoiceRecordRecorder implements VoiceRecordRecorder {
+  AudioRecorderVoiceRecordRecorder() : _delegate = AudioRecorder();
+
+  final AudioRecorder _delegate;
+
+  @override
+  Future<bool> hasPermission() => _delegate.hasPermission();
+
+  @override
+  Future<bool> hasInputDevice() async {
+    try {
+      final devices = await _delegate.listInputDevices();
+      return devices.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> start({required String path}) {
+    return _delegate.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        bitRate: 32000,
+        sampleRate: 16000,
+      ),
+      path: path,
+    );
+  }
+
+  @override
+  Future<String?> stop() => _delegate.stop();
+
+  @override
+  Future<void> cancel() => _delegate.cancel();
+
+  @override
+  Stream<Amplitude> onAmplitudeChanged(Duration interval) {
+    return _delegate.onAmplitudeChanged(interval);
+  }
+
+  @override
+  void dispose() {
+    _delegate.dispose();
+  }
+}
+
+typedef VoiceRecordDocumentsDirectoryResolver = Future<Directory> Function();
+typedef VoiceRecordNowProvider = DateTime Function();
+typedef VoiceRecordCompletionHandler = void Function(VoiceRecordResult? result);
 
 class VoiceRecordOverlayDragSession extends ChangeNotifier {
   Offset _offset = Offset.zero;
@@ -61,17 +125,57 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
     this.presentation = VoiceRecordPresentation.page,
     this.autoStart = false,
     this.dragSession,
+    this.mode = VoiceRecordMode.standard,
+    this.recorder,
+    this.documentsDirectoryResolver,
+    this.nowProvider,
+    this.onComplete,
   });
 
   final VoiceRecordPresentation presentation;
   final bool autoStart;
   final VoiceRecordOverlayDragSession? dragSession;
+  final VoiceRecordMode mode;
+  final VoiceRecordRecorder? recorder;
+  final VoiceRecordDocumentsDirectoryResolver? documentsDirectoryResolver;
+  final VoiceRecordNowProvider? nowProvider;
+  final VoiceRecordCompletionHandler? onComplete;
 
   static Future<VoiceRecordResult?> showOverlay(
     BuildContext context, {
     bool autoStart = true,
     VoiceRecordOverlayDragSession? dragSession,
+    VoiceRecordMode mode = VoiceRecordMode.standard,
   }) {
+    if (mode == VoiceRecordMode.quickFabCompose) {
+      final overlay = Overlay.maybeOf(context, rootOverlay: true);
+      if (overlay != null) {
+        final completer = Completer<VoiceRecordResult?>();
+        late final OverlayEntry entry;
+        var completed = false;
+
+        void complete(VoiceRecordResult? result) {
+          if (completed) return;
+          completed = true;
+          entry.remove();
+          completer.complete(result);
+        }
+
+        entry = OverlayEntry(
+          builder: (overlayContext) => Positioned.fill(
+            child: VoiceRecordScreen(
+              presentation: VoiceRecordPresentation.overlay,
+              autoStart: autoStart,
+              dragSession: dragSession,
+              mode: mode,
+              onComplete: complete,
+            ),
+          ),
+        );
+        overlay.insert(entry);
+        return completer.future;
+      }
+    }
     return showGeneralDialog<VoiceRecordResult>(
       context: context,
       barrierDismissible: false,
@@ -83,6 +187,7 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
             presentation: VoiceRecordPresentation.overlay,
             autoStart: autoStart,
             dragSession: dragSession,
+            mode: mode,
           ),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
@@ -110,7 +215,18 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   static const _maxDuration = Duration(minutes: 60);
   static const double _silenceGate = 0.08;
   static const double _voiceActivityGate = 0.18;
-  static const int _maxVisualizerBars = 21;
+  static const int _visualizerHistoryLength = 64;
+  static const Duration _standardAmplitudeInterval = Duration(
+    milliseconds: 120,
+  );
+  static const Duration _quickAmplitudeInterval = Duration(milliseconds: 50);
+  static const double _quickWaveformMaxAmplitudeFactor = 0.44;
+  static const double _quickNoiseFloorDb = -42.0;
+  static const double _quickVoiceActivityGate = 0.24;
+  static const double _quickSilenceGate = 0.12;
+  static const double _quickAmplitudeGamma = 0.65;
+  static const double _quickSmoothingRetain = 0.45;
+  static const double _quickPeakDecay = 0.88;
   static const double _defaultHorizontalQuickActionThreshold = 72.0;
   static const double _defaultVerticalQuickActionThreshold = 68.0;
   static const double _compactHorizontalQuickActionThreshold = 56.0;
@@ -119,8 +235,12 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   static const double _compactSideActionCenterX = 118.0;
   static const double _compactSideActionCenterY = -72.0;
   static const double _compactTopActionCenterY = -142.0;
+  static const double _compactQuickDiscardActivationX = 54.0;
+  static const double _compactQuickLockActivationX = 54.0;
+  static const double _compactQuickDiscardMaxY = 28.0;
 
-  final _recorder = AudioRecorder();
+  late final VoiceRecordRecorder _recorder =
+      widget.recorder ?? AudioRecorderVoiceRecordRecorder();
   final _filenameFmt = DateFormat('yyyyMMdd_HHmmss');
   final _stopwatch = Stopwatch();
 
@@ -138,7 +258,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   double _ampPeak = 0.0;
   bool _voiceActive = false;
   final List<double> _visualizerSamples = List<double>.filled(
-    _maxVisualizerBars,
+    _visualizerHistoryLength,
     0.0,
   );
   int _visualizerCursor = 0;
@@ -148,6 +268,20 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   Offset _dragOffset = Offset.zero;
   _VoiceRecordQuickAction _dragPreviewAction = _VoiceRecordQuickAction.none;
   int _handledExternalGestureEndSequence = 0;
+
+  bool get _isQuickFabComposeMode =>
+      widget.mode == VoiceRecordMode.quickFabCompose;
+  bool get _supportsDraftQuickAction => !_isQuickFabComposeMode;
+
+  void _finish([VoiceRecordResult? result]) {
+    final onComplete = widget.onComplete;
+    if (onComplete != null) {
+      onComplete(result);
+      return;
+    }
+    if (!mounted) return;
+    context.safePop(result);
+  }
 
   @override
   void initState() {
@@ -272,6 +406,15 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     return _visualizerSamples[idx];
   }
 
+  List<double> _visualizerHistory() {
+    final totalCount = _visualizerSamples.length;
+    return List<double>.generate(
+      totalCount,
+      (index) => _visualizerSampleAt(index, totalCount),
+      growable: false,
+    );
+  }
+
   Future<void> _closeScreen() async {
     if (_processing) return;
     if (_recording) {
@@ -288,8 +431,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         }
       } catch (_) {}
     }
-    if (!mounted) return;
-    context.safePop();
+    _finish();
   }
 
   Future<void> _start() async {
@@ -308,29 +450,29 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     }
 
     if (isDesktopTargetPlatform()) {
-      try {
-        final devices = await _recorder.listInputDevices();
-        if (devices.isEmpty) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                context.t.strings.legacy.msg_no_recording_input_device_found,
-              ),
+      final hasInputDevice = await _recorder.hasInputDevice();
+      if (!hasInputDevice) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.t.strings.legacy.msg_no_recording_input_device_found,
             ),
-          );
-          return;
-        }
-      } catch (_) {}
+          ),
+        );
+        return;
+      }
     }
 
-    final dir = await resolveAppDocumentsDirectory();
+    final dir =
+        await (widget.documentsDirectoryResolver ??
+            resolveAppDocumentsDirectory)();
     final recordingsDir = Directory(p.join(dir.path, 'recordings'));
     if (!recordingsDir.existsSync()) {
       recordingsDir.createSync(recursive: true);
     }
 
-    final now = DateTime.now();
+    final now = (widget.nowProvider ?? DateTime.now)();
     final fileName = 'voice_${_filenameFmt.format(now)}.m4a';
     final filePath = p.join(recordingsDir.path, fileName);
 
@@ -344,14 +486,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     });
 
     try {
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 32000,
-          sampleRate: 16000,
-        ),
-        path: filePath,
-      );
+      await _recorder.start(path: filePath);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -393,6 +528,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   }
 
   Future<void> _stopForConfirm() async {
+    await _stopRecording(autoComplete: false);
+  }
+
+  Future<void> _stopRecording({required bool autoComplete}) async {
     if (!_recording || _processing) return;
     setState(() => _processing = true);
     _ticker?.cancel();
@@ -423,10 +562,28 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       _fileName = p.basename(stoppedPath);
     }
 
+    final nextElapsed = elapsed;
+    if (autoComplete) {
+      setState(() {
+        _recording = false;
+        _paused = false;
+        _elapsed = nextElapsed;
+        _ampLevel = 0.0;
+        _ampPeak = 0.0;
+        _voiceActive = false;
+        _awaitingConfirm = false;
+        _gestureLocked = false;
+        _dragOffset = Offset.zero;
+        _dragPreviewAction = _VoiceRecordQuickAction.none;
+      });
+      await _completeAndPopRecording();
+      return;
+    }
+
     setState(() {
       _recording = false;
       _paused = false;
-      _elapsed = elapsed;
+      _elapsed = nextElapsed;
       _ampLevel = 0.0;
       _ampPeak = 0.0;
       _voiceActive = false;
@@ -441,7 +598,24 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   Future<void> _saveRecording() async {
     if (_processing || !_awaitingConfirm) return;
     setState(() => _processing = true);
+    await _completeAndPopRecording();
+  }
 
+  Future<void> _completeAndPopRecording() async {
+    final result = _buildRecordingResult();
+    if (result == null) return;
+    if (!mounted) return;
+    setState(() {
+      _awaitingConfirm = false;
+      _processing = false;
+      _gestureLocked = false;
+      _dragOffset = Offset.zero;
+      _dragPreviewAction = _VoiceRecordQuickAction.none;
+    });
+    _finish(result);
+  }
+
+  VoiceRecordResult? _buildRecordingResult() {
     final filePath = _filePath;
     final fileName = _fileName;
     if (filePath == null || fileName == null) {
@@ -453,7 +627,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         );
       }
       _resetToIdle();
-      return;
+      return null;
     }
 
     final file = File(filePath);
@@ -468,38 +642,33 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         );
       }
       _resetToIdle();
-      return;
+      return null;
     }
 
     try {
       final size = file.lengthSync();
       final language = ref.read(appPreferencesProvider).language;
-
       final content = trByLanguageKey(
         language: language,
         key: 'legacy.msg_voice_memo',
       );
-
-      if (!mounted) return;
-      setState(() {
-        _awaitingConfirm = false;
-        _processing = false;
-      });
-      context.safePop(
-        VoiceRecordResult(
-          filePath: filePath,
-          fileName: fileName,
-          size: size,
-          duration: _elapsed,
-          suggestedContent: content,
-        ),
+      return VoiceRecordResult(
+        filePath: filePath,
+        fileName: fileName,
+        size: size,
+        duration: _elapsed,
+        suggestedContent: content,
       );
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _processing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_send_failed(e: e))),
-      );
+      if (mounted) {
+        setState(() => _processing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.t.strings.legacy.msg_send_failed(e: e)),
+          ),
+        );
+      }
+      return null;
     }
   }
 
@@ -522,18 +691,45 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     return ((clamped - minDb) / (maxDb - minDb)).clamp(0.0, 1.0);
   }
 
+  double _normalizeQuickDbfs(double dbfs) {
+    if (dbfs.isNaN || dbfs.isInfinite) return 0.0;
+    const maxDb = 0.0;
+    final clamped = dbfs.clamp(_quickNoiseFloorDb, maxDb);
+    final normalized =
+        ((clamped - _quickNoiseFloorDb) / (maxDb - _quickNoiseFloorDb)).clamp(
+          0.0,
+          1.0,
+        );
+    return math.pow(normalized, _quickAmplitudeGamma).toDouble();
+  }
+
   void _startMeter() {
     _amplitudeSub?.cancel();
     _amplitudeSub = _recorder
-        .onAmplitudeChanged(const Duration(milliseconds: 120))
+        .onAmplitudeChanged(
+          _isQuickFabComposeMode
+              ? _quickAmplitudeInterval
+              : _standardAmplitudeInterval,
+        )
         .listen((amp) {
           if (!_recording || _paused) return;
-          final level = _normalizeDbfs(amp.current);
-          final gated = level < _voiceActivityGate ? 0.0 : level;
-          final smoothed = _ampLevel * 0.7 + gated * 0.3;
-          final peak = math.max(_ampPeak * 0.92, smoothed);
-          final nextLevel = smoothed < _silenceGate ? 0.0 : smoothed;
-          final nextPeak = peak < _silenceGate ? 0.0 : peak;
+          final quickMode = _isQuickFabComposeMode;
+          final level = quickMode
+              ? _normalizeQuickDbfs(amp.current)
+              : _normalizeDbfs(amp.current);
+          final voiceGate = quickMode
+              ? _quickVoiceActivityGate
+              : _voiceActivityGate;
+          final silenceGate = quickMode ? _quickSilenceGate : _silenceGate;
+          final smoothingRetain = quickMode ? _quickSmoothingRetain : 0.7;
+          final smoothingIncoming = 1.0 - smoothingRetain;
+          final peakDecay = quickMode ? _quickPeakDecay : 0.92;
+          final gated = level < voiceGate ? 0.0 : level;
+          final smoothed =
+              _ampLevel * smoothingRetain + gated * smoothingIncoming;
+          final peak = math.max(_ampPeak * peakDecay, smoothed);
+          final nextLevel = smoothed < silenceGate ? 0.0 : smoothed;
+          final nextPeak = peak < silenceGate ? 0.0 : peak;
           final hasVoice = nextLevel > 0.0;
           final visualLevel = hasVoice ? nextLevel : 0.0;
           final visualPeak = hasVoice ? nextPeak : 0.0;
@@ -560,7 +756,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   Future<void> _saveAndReturn() async {
     if (_processing) return;
     if (_recording) {
-      await _stopForConfirm();
+      await _stopRecording(autoComplete: _isQuickFabComposeMode);
     }
     if (_awaitingConfirm) {
       await _saveRecording();
@@ -614,6 +810,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         await _saveAndReturn();
         break;
       case _VoiceRecordQuickAction.none:
+        if (_isQuickFabComposeMode && _recording && !_gestureLocked) {
+          await _stopRecording(autoComplete: true);
+        }
         break;
     }
   }
@@ -634,13 +833,24 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     final dx = offset.dx;
     final dy = offset.dy;
     final horizontalDominant = dx.abs() > dy.abs();
+    if (_isQuickFabComposeMode) {
+      if (dx <= -horizontalThreshold && horizontalDominant) {
+        return _VoiceRecordQuickAction.discard;
+      }
+      if (dx >= horizontalThreshold && horizontalDominant) {
+        return _VoiceRecordQuickAction.lock;
+      }
+      return _VoiceRecordQuickAction.none;
+    }
     if (dy <= -verticalThreshold && !horizontalDominant) {
       return _VoiceRecordQuickAction.lock;
     }
     if (dx <= -horizontalThreshold && horizontalDominant) {
       return _VoiceRecordQuickAction.discard;
     }
-    if (dx >= horizontalThreshold && horizontalDominant) {
+    if (_supportsDraftQuickAction &&
+        dx >= horizontalThreshold &&
+        horizontalDominant) {
       return _VoiceRecordQuickAction.draft;
     }
     return _VoiceRecordQuickAction.none;
@@ -680,35 +890,64 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     final secondaryPanel = isDark
         ? Colors.white.withValues(alpha: 0.055)
         : Colors.white.withValues(alpha: 0.74);
-    final headerLabel = _awaitingConfirm
-        ? context.tr(zh: '\u5F55\u97F3\u5B8C\u6210', en: 'Ready to save')
-        : (_recording
-              ? context.tr(zh: '\u5F55\u97F3\u4E2D', en: 'Recording')
-              : context.t.strings.legacy.msg_voice_memos);
+    final headerLabel = _isQuickFabComposeMode
+        ? switch ((_gestureLocked, _dragPreviewAction, _recording)) {
+            (_, _, false) => context.t.strings.legacy.msg_voice_memos,
+            (false, _VoiceRecordQuickAction.discard, true) => context.tr(
+              zh: '\u677E\u5F00\u653E\u5F03\u5F55\u97F3',
+              en: 'Release to discard recording',
+            ),
+            (false, _VoiceRecordQuickAction.lock, true) => context.tr(
+              zh: '\u677E\u5F00\u9501\u5B9A\u81EA\u52A8\u5F55\u97F3',
+              en: 'Release to lock recording',
+            ),
+            (_, _, true) => context.tr(
+              zh: '\u5F55\u97F3\u4E2D',
+              en: 'Recording',
+            ),
+          }
+        : switch ((_gestureLocked, _dragPreviewAction)) {
+            (true, _) => context.tr(zh: '\u5DF2\u9501\u5B9A', en: 'Locked'),
+            (false, _VoiceRecordQuickAction.lock) => context.tr(
+              zh: '\u5DF2\u9501\u5B9A',
+              en: 'Locked',
+            ),
+            (false, _VoiceRecordQuickAction.discard) => context.tr(
+              zh: '\u677E\u624B\u653E\u5F03',
+              en: 'Release to discard',
+            ),
+            (false, _VoiceRecordQuickAction.draft) => context.tr(
+              zh: '\u677E\u624B\u8F6C\u8349\u7A3F',
+              en: 'Release to draft',
+            ),
+            _ when _awaitingConfirm => context.tr(
+              zh: '\u5F55\u97F3\u5B8C\u6210',
+              en: 'Ready to save',
+            ),
+            _ when _recording => context.tr(
+              zh: '\u5F55\u97F3\u4E2D',
+              en: 'Recording',
+            ),
+            _ => context.t.strings.legacy.msg_voice_memos,
+          };
     final lockHint = _gestureLocked
         ? context.tr(
             zh: '\u5DF2\u9501\u5B9A\uFF0C\u70B9\u51FB\u9EA6\u514B\u98CE\u7ED3\u675F',
             en: 'Locked - tap mic to finish',
           )
+        : _isQuickFabComposeMode
+        ? context.tr(zh: '\u53F3\u6ED1\u9501\u5B9A', en: 'Slide right to lock')
         : context.tr(zh: '\u4E0A\u6ED1\u9501\u5B9A', en: 'Slide up to lock');
     final discardHint = context.tr(
       zh: '\u5DE6\u6ED1\u653E\u5F03',
       en: 'Slide left to discard',
     );
-    final draftHint = context.tr(
-      zh: '\u53F3\u6ED1\u8F6C\u8349\u7A3F',
-      en: 'Slide right to draft',
-    );
-    final compactGestureHint = _gestureLocked
-        ? context.tr(
-            zh: '\u5DF2\u9501\u5B9A\uFF0C\u70B9\u51FB\u9EA6\u514B\u98CE\u7ED3\u675F',
-            en: 'Locked - tap mic to finish',
-          )
+    final draftHint = _isQuickFabComposeMode
+        ? context.tr(zh: '\u677E\u624B\u5B8C\u6210', en: 'Release to finish')
         : context.tr(
-            zh: '\u5DE6\u6ED1\u653E\u5F03 \u00B7 \u4E0A\u6ED1\u9501\u5B9A \u00B7 \u53F3\u6ED1\u8F6C\u8349\u7A3F',
-            en: 'Left discard - Up lock - Right draft',
+            zh: '\u53F3\u6ED1\u8F6C\u8349\u7A3F',
+            en: 'Slide right to draft',
           );
-
     if (useCompactOverlay) {
       return PopScope(
         canPop: false,
@@ -728,7 +967,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
           recActive: recActive,
           elapsedText: elapsedText,
           headerLabel: headerLabel,
-          compactGestureHint: compactGestureHint,
           size: size,
         ),
       );
@@ -971,7 +1209,11 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                                   MainAxisAlignment.center,
                                               children: [
                                                 Icon(
-                                                  Icons.arrow_upward_rounded,
+                                                  _isQuickFabComposeMode
+                                                      ? Icons
+                                                            .arrow_forward_rounded
+                                                      : Icons
+                                                            .arrow_upward_rounded,
                                                   size: 16,
                                                   color: MemoFlowPalette.primary
                                                       .withValues(alpha: 0.85),
@@ -1003,7 +1245,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                 ),
                                 const SizedBox(height: 10),
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     _buildQuickActionButton(
                                       icon: Icons.chevron_left_rounded,
@@ -1014,36 +1255,56 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                       onTap: () => unawaited(_closeScreen()),
                                       foreground: MemoFlowPalette.primary,
                                     ),
-                                    const SizedBox(width: 18),
-                                    _buildQuickActionButton(
-                                      icon: _gestureLocked
-                                          ? Icons.lock_rounded
-                                          : Icons.lock_open_rounded,
-                                      active:
-                                          _dragPreviewAction ==
-                                              _VoiceRecordQuickAction.lock ||
-                                          _gestureLocked,
-                                      enabled:
-                                          _recording &&
-                                          !_awaitingConfirm &&
-                                          !_processing,
-                                      onTap: _toggleGestureLock,
-                                      foreground: MemoFlowPalette.primary,
-                                    ),
-                                    const SizedBox(width: 18),
-                                    _buildQuickActionButton(
-                                      icon: Icons.notes_rounded,
-                                      active:
-                                          _dragPreviewAction ==
-                                          _VoiceRecordQuickAction.draft,
-                                      enabled:
-                                          !_processing &&
-                                          (_recording || _awaitingConfirm),
-                                      onTap: () => unawaited(_saveAndReturn()),
-                                      foreground: _awaitingConfirm
-                                          ? MemoFlowPalette.primary
-                                          : textMain.withValues(alpha: 0.8),
-                                    ),
+                                    if (_supportsDraftQuickAction) ...[
+                                      const SizedBox(width: 18),
+                                      _buildQuickActionButton(
+                                        icon: _gestureLocked
+                                            ? Icons.lock_rounded
+                                            : Icons.lock_open_rounded,
+                                        active:
+                                            _dragPreviewAction ==
+                                                _VoiceRecordQuickAction.lock ||
+                                            _gestureLocked,
+                                        enabled:
+                                            _recording &&
+                                            !_awaitingConfirm &&
+                                            !_processing,
+                                        onTap: _toggleGestureLock,
+                                        foreground: MemoFlowPalette.primary,
+                                      ),
+                                      const SizedBox(width: 18),
+                                      _buildQuickActionButton(
+                                        icon: Icons.notes_rounded,
+                                        active:
+                                            _dragPreviewAction ==
+                                            _VoiceRecordQuickAction.draft,
+                                        enabled:
+                                            !_processing &&
+                                            (_recording || _awaitingConfirm),
+                                        onTap: () =>
+                                            unawaited(_saveAndReturn()),
+                                        foreground: _awaitingConfirm
+                                            ? MemoFlowPalette.primary
+                                            : textMain.withValues(alpha: 0.8),
+                                      ),
+                                    ] else ...[
+                                      const Spacer(),
+                                      _buildQuickActionButton(
+                                        icon: _gestureLocked
+                                            ? Icons.lock_rounded
+                                            : Icons.lock_open_rounded,
+                                        active:
+                                            _dragPreviewAction ==
+                                                _VoiceRecordQuickAction.lock ||
+                                            _gestureLocked,
+                                        enabled:
+                                            _recording &&
+                                            !_awaitingConfirm &&
+                                            !_processing,
+                                        onTap: _toggleGestureLock,
+                                        foreground: MemoFlowPalette.primary,
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 18),
@@ -1066,7 +1327,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                     Expanded(
                                       child: Text(
                                         draftHint,
-                                        textAlign: TextAlign.right,
+                                        textAlign: _supportsDraftQuickAction
+                                            ? TextAlign.right
+                                            : TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
@@ -1118,6 +1381,12 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     _VoiceRecordQuickAction action, {
     required bool compact,
   }) {
+    if (action == _VoiceRecordQuickAction.draft && !_supportsDraftQuickAction) {
+      return 0.0;
+    }
+    if (compact && _isQuickFabComposeMode) {
+      return _dragPreviewAction == action ? 1.0 : 0.0;
+    }
     final horizontalThreshold = compact
         ? _compactHorizontalQuickActionThreshold
         : _defaultHorizontalQuickActionThreshold;
@@ -1139,6 +1408,17 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
 
   _VoiceRecordQuickAction _resolveCompactOverlayQuickAction(Offset offset) {
     final translatedOffset = _compactOverlayBaseButtonOffset(offset);
+    if (_isQuickFabComposeMode) {
+      if (translatedOffset.dx <= -_compactQuickDiscardActivationX &&
+          translatedOffset.dy <= _compactQuickDiscardMaxY) {
+        return _VoiceRecordQuickAction.discard;
+      }
+      if (translatedOffset.dx >= _compactQuickLockActivationX &&
+          translatedOffset.dy <= _compactQuickDiscardMaxY) {
+        return _VoiceRecordQuickAction.lock;
+      }
+      return _VoiceRecordQuickAction.none;
+    }
     final hitRadius = (_compactActionZoneDiameter / 2) + 8;
     final candidates = <(_VoiceRecordQuickAction, Offset)>[
       (
@@ -1146,11 +1426,13 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         const Offset(-_compactSideActionCenterX, _compactSideActionCenterY),
       ),
       (_VoiceRecordQuickAction.lock, const Offset(0, _compactTopActionCenterY)),
-      (
+    ];
+    if (_supportsDraftQuickAction) {
+      candidates.add((
         _VoiceRecordQuickAction.draft,
         const Offset(_compactSideActionCenterX, _compactSideActionCenterY),
-      ),
-    ];
+      ));
+    }
 
     _VoiceRecordQuickAction matchedAction = _VoiceRecordQuickAction.none;
     double matchedDistance = double.infinity;
@@ -1198,6 +1480,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       case _VoiceRecordQuickAction.discard:
         return baseOffset + Offset(-12 * actionProgress, -2 * actionProgress);
       case _VoiceRecordQuickAction.lock:
+        if (_isQuickFabComposeMode) {
+          return baseOffset + Offset(12 * actionProgress, -2 * actionProgress);
+        }
         return baseOffset + Offset(0, -14 * actionProgress);
       case _VoiceRecordQuickAction.draft:
         return baseOffset + Offset(12 * actionProgress, -2 * actionProgress);
@@ -1218,7 +1503,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     required bool recActive,
     required String elapsedText,
     required String headerLabel,
-    required String compactGestureHint,
     required Size size,
   }) {
     final panelWidth = math.min(size.width - 12, 420.0).toDouble();
@@ -1239,7 +1523,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     final dragOffset = _dragTranslationForPrimaryButton(compact: true);
     final dragEmphasis = math.max(
       discardProgress,
-      math.max(lockProgress, draftProgress),
+      math.max(lockProgress, _supportsDraftQuickAction ? draftProgress : 0.0),
     );
     return Material(
       color: Colors.transparent,
@@ -1421,16 +1705,6 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                       ),
                                     ),
                                   ),
-                                  SizedBox(height: sectionGap),
-                                  Text(
-                                    compactGestureHint,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: textMuted,
-                                    ),
-                                  ),
                                   SizedBox(height: bottomReserve),
                                 ],
                               ),
@@ -1488,7 +1762,8 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                         ),
                       ),
                       Positioned(
-                        bottom: 108,
+                        right: _isQuickFabComposeMode ? 30 : null,
+                        bottom: _isQuickFabComposeMode ? 38 : 108,
                         child: _buildOverlayQuickActionZone(
                           icon: _gestureLocked
                               ? Icons.lock_rounded
@@ -1503,29 +1778,33 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                           progress: lockProgress,
                           width: _compactActionZoneDiameter,
                           height: _compactActionZoneDiameter,
-                          translation: Offset(0, -lockProgress * 14),
+                          translation: _isQuickFabComposeMode
+                              ? Offset(lockProgress * 12, -lockProgress * 2)
+                              : Offset(0, -lockProgress * 14),
                         ),
                       ),
-                      Positioned(
-                        right: 30,
-                        bottom: 38,
-                        child: _buildOverlayQuickActionZone(
-                          icon: Icons.notes_rounded,
-                          active:
-                              _dragPreviewAction ==
-                              _VoiceRecordQuickAction.draft,
-                          enabled:
-                              !_processing && (_recording || _awaitingConfirm),
-                          onTap: () => unawaited(_saveAndReturn()),
-                          progress: draftProgress,
-                          width: _compactActionZoneDiameter,
-                          height: _compactActionZoneDiameter,
-                          translation: Offset(
-                            draftProgress * 12,
-                            -draftProgress * 2,
+                      if (_supportsDraftQuickAction)
+                        Positioned(
+                          right: 30,
+                          bottom: 38,
+                          child: _buildOverlayQuickActionZone(
+                            icon: Icons.notes_rounded,
+                            active:
+                                _dragPreviewAction ==
+                                _VoiceRecordQuickAction.draft,
+                            enabled:
+                                !_processing &&
+                                (_recording || _awaitingConfirm),
+                            onTap: () => unawaited(_saveAndReturn()),
+                            progress: draftProgress,
+                            width: _compactActionZoneDiameter,
+                            height: _compactActionZoneDiameter,
+                            translation: Offset(
+                              draftProgress * 12,
+                              -draftProgress * 2,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1579,13 +1858,22 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       opacity: enabled ? 1.0 : 0.6,
       duration: const Duration(milliseconds: 120),
       child: GestureDetector(
+        key: const ValueKey('voice_record_primary_button'),
         onTap: enabled
             ? () {
                 if (showConfirm) {
                   unawaited(_saveAndReturn());
                   return;
                 }
-                unawaited(showStop ? _stopForConfirm() : _start());
+                if (showStop) {
+                  unawaited(
+                    _isQuickFabComposeMode
+                        ? _saveAndReturn()
+                        : _stopForConfirm(),
+                  );
+                  return;
+                }
+                unawaited(_start());
               }
             : null,
         onPanUpdate: enabled ? _handleRecordPanUpdate : null,
@@ -1814,6 +2102,35 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     required double peak,
     required bool showVoiceBars,
   }) {
+    if (_isQuickFabComposeMode) {
+      final waveformColor = const Color(0xFF22C55E);
+      final baselineColor = isDark
+          ? Colors.white.withValues(alpha: 0.16)
+          : MemoFlowPalette.textLight.withValues(alpha: 0.14);
+      final samples = _visualizerHistory();
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : 260.0;
+          final height = constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : 70.0;
+          return CustomPaint(
+            key: const ValueKey('voice_record_quick_waveform'),
+            size: Size(width, height),
+            painter: _QuickOscilloscopePainter(
+              samples: samples,
+              lineColor: waveformColor,
+              baselineColor: baselineColor,
+              silenceGate: _silenceGate,
+              maxAmplitudeFactor: _quickWaveformMaxAmplitudeFactor,
+            ),
+          );
+        },
+      );
+    }
+
     final leftBars = isDark
         ? const [32.0, 48.0, 80.0, 56.0, 112.0]
         : const [24.0, 48.0, 80.0, 32.0, 56.0, 128.0, 40.0, 64.0];
@@ -1956,9 +2273,12 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       ),
     );
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [showVoiceBars ? buildVoiceBars() : buildIdleDashes(), line],
+    return KeyedSubtree(
+      key: const ValueKey('voice_record_standard_waveform'),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [showVoiceBars ? buildVoiceBars() : buildIdleDashes(), line],
+      ),
     );
   }
 
@@ -1972,4 +2292,138 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
       ),
     );
   }
+}
+
+class _QuickOscilloscopePainter extends CustomPainter {
+  const _QuickOscilloscopePainter({
+    required this.samples,
+    required this.lineColor,
+    required this.baselineColor,
+    required this.silenceGate,
+    required this.maxAmplitudeFactor,
+  });
+
+  final List<double> samples;
+  final Color lineColor;
+  final Color baselineColor;
+  final double silenceGate;
+  final double maxAmplitudeFactor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+
+    final baselineY = size.height / 2;
+    final baselinePaint = Paint()
+      ..color = baselineColor
+      ..strokeWidth = 1.0
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(0, baselineY),
+      Offset(size.width, baselineY),
+      baselinePaint,
+    );
+
+    if (samples.isEmpty) return;
+
+    final path = _buildWavePath(
+      samples: samples,
+      size: size,
+      silenceGate: silenceGate,
+      maxAmplitudeFactor: maxAmplitudeFactor,
+    );
+
+    final glowPaint = Paint()
+      ..color = lineColor.withValues(alpha: 0.18)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final linePaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _QuickOscilloscopePainter oldDelegate) {
+    return !listEquals(oldDelegate.samples, samples) ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.baselineColor != baselineColor ||
+        oldDelegate.silenceGate != silenceGate ||
+        oldDelegate.maxAmplitudeFactor != maxAmplitudeFactor;
+  }
+}
+
+Path _buildWavePath({
+  required List<double> samples,
+  required Size size,
+  required double silenceGate,
+  required double maxAmplitudeFactor,
+}) {
+  final points = _buildOscilloscopePoints(
+    samples: samples,
+    size: size,
+    silenceGate: silenceGate,
+    maxAmplitudeFactor: maxAmplitudeFactor,
+  );
+  final path = Path();
+  if (points.isEmpty) {
+    return path;
+  }
+  if (points.length == 1) {
+    path.moveTo(points.first.dx, points.first.dy);
+    return path;
+  }
+
+  path.moveTo(points.first.dx, points.first.dy);
+  for (var i = 1; i < points.length - 1; i++) {
+    final current = points[i];
+    final next = points[i + 1];
+    final midPoint = Offset(
+      (current.dx + next.dx) / 2,
+      (current.dy + next.dy) / 2,
+    );
+    path.quadraticBezierTo(current.dx, current.dy, midPoint.dx, midPoint.dy);
+  }
+  path.lineTo(points.last.dx, points.last.dy);
+  return path;
+}
+
+List<Offset> _buildOscilloscopePoints({
+  required List<double> samples,
+  required Size size,
+  required double silenceGate,
+  required double maxAmplitudeFactor,
+}) {
+  if (samples.isEmpty || size.isEmpty) {
+    return const <Offset>[];
+  }
+
+  final baselineY = size.height / 2;
+  final maxAmplitude = size.height * maxAmplitudeFactor;
+  final dxStep = samples.length == 1 ? 0.0 : size.width / (samples.length - 1);
+
+  double smoothedSampleAt(int index) {
+    final prev = samples[index == 0 ? index : index - 1];
+    final current = samples[index];
+    final next = samples[index == samples.length - 1 ? index : index + 1];
+    final averaged = (prev + current * 2 + next) / 4;
+    if (averaged < silenceGate) {
+      return 0.0;
+    }
+    return Curves.easeOut.transform(averaged.clamp(0.0, 1.0));
+  }
+
+  return List<Offset>.generate(samples.length, (index) {
+    final sample = smoothedSampleAt(index);
+    final direction = index.isEven ? -1.0 : 1.0;
+    final y = baselineY + direction * maxAmplitude * sample;
+    return Offset(dxStep * index, y);
+  }, growable: false);
 }
