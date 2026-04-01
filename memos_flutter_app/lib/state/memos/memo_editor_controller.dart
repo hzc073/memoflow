@@ -153,19 +153,27 @@ class MemoEditorController {
         attachmentPayloads: attachmentPayloads,
       );
     } else {
-      await db.enqueueOutbox(
-        type: 'update_memo',
-        payload: {
-          'uid': uid,
-          'content': content,
-          'visibility': visibility,
-          'pinned': pinned,
-          if (locationChanged) 'location': location?.toJson(),
-          if (includeRelations) 'relations': relations,
-          if (shouldSyncAttachments) 'sync_attachments': true,
-          if (hasPendingAttachments) 'has_pending_attachments': true,
-        },
+      final allowed = await guardMemoContentForCurrentSyncTarget(
+        read: _ref.read,
+        db: db,
+        memoUid: uid,
+        content: content,
       );
+      if (allowed) {
+        await db.enqueueOutbox(
+          type: 'update_memo',
+          payload: {
+            'uid': uid,
+            'content': content,
+            'visibility': visibility,
+            'pinned': pinned,
+            if (locationChanged) 'location': location?.toJson(),
+            if (includeRelations) 'relations': relations,
+            if (shouldSyncAttachments) 'sync_attachments': true,
+            if (hasPendingAttachments) 'has_pending_attachments': true,
+          },
+        );
+      }
     }
 
     if (existing != null) {

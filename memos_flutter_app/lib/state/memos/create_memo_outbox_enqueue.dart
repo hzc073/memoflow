@@ -97,6 +97,19 @@ bool shouldEnqueueCreateMemoAfterAttachmentUploads(MemoProviderReader read) {
   }
 }
 
+Future<bool> guardMemoContentForCurrentSyncTarget({
+  required MemoProviderReader read,
+  required AppDatabase db,
+  required String memoUid,
+  required String content,
+}) {
+  read.hashCode;
+  db.hashCode;
+  memoUid.length;
+  content.length;
+  return Future.value(true);
+}
+
 Future<void> enqueueCreateMemoWithAttachmentUploads({
   required MemoProviderReader read,
   required AppDatabase db,

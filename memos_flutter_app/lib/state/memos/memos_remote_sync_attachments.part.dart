@@ -440,15 +440,23 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       attachments: attachments,
     );
     if (enqueueUpdate) {
-      await db.enqueueOutbox(
-        type: 'update_memo',
-        payload: {
-          'uid': memo.uid,
-          'content': updatedContent,
-          'visibility': memo.visibility,
-          'pinned': memo.pinned,
-        },
+      final allowed = await guardMemoContentForRemoteSync(
+        db: db,
+        enabled: true,
+        memoUid: memo.uid,
+        content: updatedContent,
       );
+      if (allowed) {
+        await db.enqueueOutbox(
+          type: 'update_memo',
+          payload: {
+            'uid': memo.uid,
+            'content': updatedContent,
+            'visibility': memo.visibility,
+            'pinned': memo.pinned,
+          },
+        );
+      }
     }
   }
 
@@ -530,15 +538,23 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       lastError: null,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': updatedContent,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-      },
+    final allowed = await guardMemoContentForRemoteSync(
+      db: db,
+      enabled: true,
+      memoUid: memo.uid,
+      content: updatedContent,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': updatedContent,
+          'visibility': memo.visibility,
+          'pinned': memo.pinned,
+        },
+      );
+    }
   }
 
   String _appendImageMarkdown(String content, String url) {

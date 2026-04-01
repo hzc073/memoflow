@@ -25,13 +25,14 @@ import '../../data/models/attachment.dart';
 import '../../data/models/local_library.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/user.dart';
+import '../../state/memos/memo_sync_constraints.dart';
 import '../../state/system/database_provider.dart';
+import '../../state/system/session_provider.dart';
 import '../../state/memos/memo_timeline_provider.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/review/ai_analysis_provider.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../state/system/local_library_provider.dart';
-import '../../state/system/session_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
@@ -662,14 +663,23 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       lastError: null,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': updated,
-        'visibility': memo.visibility,
-      },
+    final allowed = await guardMemoContentForRemoteSync(
+      db: db,
+      enabled:
+          ref.read(appSessionProvider).valueOrNull?.currentAccount != null,
+      memoUid: memo.uid,
+      content: updated,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': updated,
+          'visibility': memo.visibility,
+        },
+      );
+    }
   }
 
   Future<void> _openAiHistoryEntry(AiSavedAnalysisHistoryEntry entry) async {

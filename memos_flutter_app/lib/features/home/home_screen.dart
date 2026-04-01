@@ -8,10 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
+import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
+import '../../state/memos/memo_sync_constraints.dart';
 import '../../state/system/home_loading_overlay_provider.dart';
 import '../../state/system/logging_provider.dart';
 import '../../state/memos/memos_providers.dart';
@@ -43,6 +46,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _syncFinished = false;
   bool _syncSucceeded = false;
   String? _lastOverlayPhaseKey;
+  int? _lastAttentionToastOutboxId;
 
   @override
   void initState() {
@@ -157,6 +161,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     SyncFlowStatus? previous,
     SyncFlowStatus next,
   ) {
+    _maybeShowAttentionToast(previous, next);
     _logOverlayLifecycle(
       'sync_state_changed',
       context: _overlayContext(
@@ -180,6 +185,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     _completeSyncTracking(success: next.lastError == null);
+  }
+
+  void _maybeShowAttentionToast(
+    SyncFlowStatus? previous,
+    SyncFlowStatus next,
+  ) {
+    if (!mounted) return;
+    if (previous?.running != true || next.running) return;
+    final attention = next.attention;
+    if (attention == null || attention.failureCode != 'content_too_long') {
+      return;
+    }
+    if (_lastAttentionToastOutboxId == attention.outboxId) {
+      return;
+    }
+    final maxChars = tryParseRemoteMemoLengthLimit(attention.message ?? '');
+    final message = maxChars != null
+        ? context.tr(
+            zh:
+                '\u670d\u52a1\u5668\u5f53\u524d\u9650\u5236\u4e3a $maxChars \u4e2a\u5b57\u7b26\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5',
+            en:
+                'Server limit is $maxChars characters. Increase the server memo length limit and retry.',
+          )
+        : context.tr(
+            zh:
+                '\u670d\u52a1\u5668\u9650\u5236\u4e86\u5355\u6761\u7b14\u8bb0\u957f\u5ea6\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5',
+            en:
+                'This server limits memo length. Increase the server memo length limit and retry.',
+          );
+    if (showTopToast(context, message)) {
+      _lastAttentionToastOutboxId = attention.outboxId;
+    }
   }
 
   void _completeSyncTracking({required bool success}) {

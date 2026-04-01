@@ -8,6 +8,7 @@ import '../../data/models/reaction.dart';
 import '../../data/models/user.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import '../system/database_provider.dart';
+import 'create_memo_outbox_enqueue.dart';
 import 'memo_delete_service.dart';
 import 'memo_timeline_provider.dart';
 import 'memos_providers.dart';
@@ -91,15 +92,23 @@ class MemoDetailController {
       lastError: null,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': content,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-      },
+    final allowed = await guardMemoContentForCurrentSyncTarget(
+      read: _ref.read,
+      db: db,
+      memoUid: memo.uid,
+      content: content,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': content,
+          'visibility': memo.visibility,
+          'pinned': memo.pinned,
+        },
+      );
+    }
   }
 
   Future<void> replaceMemoAttachment({
@@ -169,26 +178,34 @@ class MemoDetailController {
       lastError: null,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': memo.content,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-        'sync_attachments': true,
-        'has_pending_attachments': true,
-      },
+    final allowed = await guardMemoContentForCurrentSyncTarget(
+      read: _ref.read,
+      db: db,
+      memoUid: memo.uid,
+      content: memo.content,
     );
-    await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
-    final oldName = oldAttachment.name.isNotEmpty
-        ? oldAttachment.name
-        : oldAttachment.uid;
-    if (oldName.isNotEmpty) {
+    if (allowed) {
       await db.enqueueOutbox(
-        type: 'delete_attachment',
-        payload: {'attachment_name': oldName, 'memo_uid': memo.uid},
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': memo.content,
+          'visibility': memo.visibility,
+          'pinned': memo.pinned,
+          'sync_attachments': true,
+          'has_pending_attachments': true,
+        },
       );
+      await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
+      final oldName = oldAttachment.name.isNotEmpty
+          ? oldAttachment.name
+          : oldAttachment.uid;
+      if (oldName.isNotEmpty) {
+        await db.enqueueOutbox(
+          type: 'delete_attachment',
+          payload: {'attachment_name': oldName, 'memo_uid': memo.uid},
+        );
+      }
     }
   }
 

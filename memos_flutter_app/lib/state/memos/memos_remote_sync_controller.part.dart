@@ -130,14 +130,18 @@ class RemoteSyncController extends SyncControllerBase {
       syncQueueProgressTracker.markSyncFinished();
       return const MemoSyncSkipped();
     }
-    var outboxBlocked = false;
+    var outboxResult = const _OutboxProcessResult(
+      blocked: false,
+      hasQuarantined: false,
+    );
+    SyncAttentionInfo? latestAttention;
     final next = await AsyncValue.guard(() async {
       await api.ensureServerHintsLoaded();
       if (_isDisposed) {
         _logSyncAbortDisposed(runId: runId, stage: 'after_ensure_server_hints');
         return;
       }
-      outboxBlocked = await _processOutbox();
+      outboxResult = await _processOutbox();
       if (_isDisposed) {
         _logSyncAbortDisposed(runId: runId, stage: 'after_process_outbox');
         return;
@@ -170,6 +174,11 @@ class RemoteSyncController extends SyncControllerBase {
         allowPrivateVisibilityPrune: allowPrivateVisibilityPrune,
       );
     });
+    if (!next.hasError && !outboxResult.blocked && outboxResult.hasQuarantined) {
+      latestAttention = _buildSyncAttentionInfo(
+        await db.getLatestOutboxAttention(),
+      );
+    }
     if (_isDisposed) {
       _logSyncAbortDisposed(runId: runId, stage: 'after_guard_before_commit');
       syncQueueProgressTracker.markSyncFinished();
@@ -188,17 +197,21 @@ class RemoteSyncController extends SyncControllerBase {
         context: <String, Object?>{
           'controllerId': _controllerId,
           'runId': runId,
-          'outboxBlocked': outboxBlocked,
+          'outboxBlocked': outboxResult.blocked,
+          'hasQuarantinedOutbox': outboxResult.hasQuarantined,
         },
       );
     } else {
       syncStatusTracker.markSyncSuccess();
       LogManager.instance.info(
-        'RemoteSync: sync_success',
+        outboxResult.hasQuarantined
+            ? 'RemoteSync: sync_success_with_attention'
+            : 'RemoteSync: sync_success',
         context: <String, Object?>{
           'controllerId': _controllerId,
           'runId': runId,
-          'outboxBlocked': outboxBlocked,
+          'outboxBlocked': outboxResult.blocked,
+          'hasQuarantinedOutbox': outboxResult.hasQuarantined,
         },
       );
     }
@@ -206,10 +219,42 @@ class RemoteSyncController extends SyncControllerBase {
     if (next.hasError) {
       return MemoSyncFailure(_buildSyncError(next.error!));
     }
-    if (outboxBlocked) {
+    if (outboxResult.blocked) {
       return MemoSyncFailure(_outboxBlockedError());
     }
+    if (outboxResult.hasQuarantined) {
+      return MemoSyncSuccessWithAttention(latestAttention);
+    }
     return const MemoSyncSuccess();
+  }
+
+  SyncAttentionInfo? _buildSyncAttentionInfo(Map<String, dynamic>? row) {
+    if (row == null) return null;
+    final outboxId = switch (row['id']) {
+      int value => value,
+      num value => value.toInt(),
+      String value => int.tryParse(value.trim()),
+      _ => null,
+    };
+    if (outboxId == null || outboxId <= 0) return null;
+    final occurredAtMs = switch (row['occurred_at'] ?? row['quarantined_at']) {
+      int value => value,
+      num value => value.toInt(),
+      String value => int.tryParse(value.trim()),
+      _ => null,
+    };
+    return SyncAttentionInfo(
+      outboxId: outboxId,
+      failureCode: ((row['failure_code'] as String?) ?? '').trim(),
+      memoUid: (row['memo_uid'] as String?)?.trim(),
+      message: (row['last_error'] as String?)?.trim(),
+      occurredAt: occurredAtMs == null || occurredAtMs <= 0
+          ? DateTime.now()
+          : DateTime.fromMillisecondsSinceEpoch(
+              occurredAtMs > 10000000000 ? occurredAtMs : occurredAtMs * 1000,
+              isUtc: true,
+            ).toLocal(),
+    );
   }
 
   bool? _readStateLoadingSafely({required String runId}) {

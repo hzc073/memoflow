@@ -120,19 +120,27 @@ extension _RemoteSyncStateSync on RemoteSyncController {
       newUid: duplicateUid,
     );
     if (rewritten <= 0) {
-      await db.enqueueOutbox(
-        type: 'create_memo',
-        payload: buildCreateMemoOutboxPayload(
-          uid: duplicateUid,
-          content: localMemo.content,
-          visibility: localMemo.visibility,
-          pinned: localMemo.pinned,
-          createTimeSec:
-              localMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          hasAttachments: false,
-          location: localMemo.location,
-        ),
+      final allowed = await guardMemoContentForRemoteSync(
+        db: db,
+        enabled: true,
+        memoUid: duplicateUid,
+        content: localMemo.content,
       );
+      if (allowed) {
+        await db.enqueueOutbox(
+          type: 'create_memo',
+          payload: buildCreateMemoOutboxPayload(
+            uid: duplicateUid,
+            content: localMemo.content,
+            visibility: localMemo.visibility,
+            pinned: localMemo.pinned,
+            createTimeSec:
+                localMemo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            hasAttachments: false,
+            location: localMemo.location,
+          ),
+        );
+      }
     }
     return duplicateUid;
   }

@@ -148,17 +148,25 @@ class MemosListController {
       syncState: 1,
     );
 
-    await db.enqueueOutbox(
-      type: 'create_memo',
-      payload: buildCreateMemoOutboxPayload(
-        uid: uid,
-        content: content,
-        visibility: visibility,
-        pinned: false,
-        createTimeSec: nowSec,
-        hasAttachments: false,
-      ),
+    final allowed = await guardMemoContentForCurrentSyncTarget(
+      read: _ref.read,
+      db: db,
+      memoUid: uid,
+      content: content,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: buildCreateMemoOutboxPayload(
+          uid: uid,
+          content: content,
+          visibility: visibility,
+          pinned: false,
+          createTimeSec: nowSec,
+          hasAttachments: false,
+        ),
+      );
+    }
   }
 
   Future<int> retryOutboxErrors({required String memoUid}) async {
@@ -291,14 +299,22 @@ class MemosListController {
       lastError: null,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': content,
-        'visibility': memo.visibility,
-      },
+    final allowed = await guardMemoContentForCurrentSyncTarget(
+      read: _ref.read,
+      db: db,
+      memoUid: memo.uid,
+      content: content,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': content,
+          'visibility': memo.visibility,
+        },
+      );
+    }
   }
 
   Future<void> deleteMemo(

@@ -23,6 +23,7 @@ import '../../data/models/attachment.dart';
 import 'create_memo_outbox_enqueue.dart';
 import 'create_memo_outbox_payload.dart';
 import 'flomo_import_models.dart';
+import 'memo_sync_constraints.dart';
 
 enum _BackendVersion { v025, v024, v021, unknown }
 
@@ -482,38 +483,46 @@ class _FlomoImportEngine {
         syncState: 1,
       );
 
-      final uploadBeforeCreate = _shouldEnqueueAttachmentUploadsBeforeCreate();
-      if (uploadBeforeCreate) {
-        for (final payload in attachmentPayloads) {
-          await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
-          counters.setAttachmentCount(counters.attachmentCount() + 1);
-        }
-      }
-      await db.enqueueOutbox(
-        type: 'create_memo',
-        payload: buildCreateMemoOutboxPayload(
-          uid: memoUid,
-          content: content,
-          visibility: parsed.visibility,
-          pinned: parsed.pinned,
-          createTimeSec:
-              parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          hasAttachments: attachments.isNotEmpty,
-        ),
+      final allowed = await guardMemoContentForRemoteSync(
+        db: db,
+        enabled: account != null,
+        memoUid: memoUid,
+        content: content,
       );
-
-      if (parsed.state.trim().isNotEmpty &&
-          parsed.state.trim().toUpperCase() != 'NORMAL') {
+      if (allowed) {
+        final uploadBeforeCreate = _shouldEnqueueAttachmentUploadsBeforeCreate();
+        if (uploadBeforeCreate) {
+          for (final payload in attachmentPayloads) {
+            await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
+            counters.setAttachmentCount(counters.attachmentCount() + 1);
+          }
+        }
         await db.enqueueOutbox(
-          type: 'update_memo',
-          payload: {'uid': memoUid, 'state': parsed.state},
+          type: 'create_memo',
+          payload: buildCreateMemoOutboxPayload(
+            uid: memoUid,
+            content: content,
+            visibility: parsed.visibility,
+            pinned: parsed.pinned,
+            createTimeSec:
+                parsed.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            hasAttachments: attachments.isNotEmpty,
+          ),
         );
-      }
 
-      if (!uploadBeforeCreate) {
-        for (final payload in attachmentPayloads) {
-          await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
-          counters.setAttachmentCount(counters.attachmentCount() + 1);
+        if (parsed.state.trim().isNotEmpty &&
+            parsed.state.trim().toUpperCase() != 'NORMAL') {
+          await db.enqueueOutbox(
+            type: 'update_memo',
+            payload: {'uid': memoUid, 'state': parsed.state},
+          );
+        }
+
+        if (!uploadBeforeCreate) {
+          for (final payload in attachmentPayloads) {
+            await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
+            counters.setAttachmentCount(counters.attachmentCount() + 1);
+          }
         }
       }
 
@@ -671,29 +680,37 @@ class _FlomoImportEngine {
         syncState: 1,
       );
 
-      final uploadBeforeCreate = _shouldEnqueueAttachmentUploadsBeforeCreate();
-      if (uploadBeforeCreate) {
-        for (final payload in attachmentPayloads) {
-          await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
-          counters.setAttachmentCount(counters.attachmentCount() + 1);
-        }
-      }
-      await db.enqueueOutbox(
-        type: 'create_memo',
-        payload: buildCreateMemoOutboxPayload(
-          uid: memoUid,
-          content: content,
-          visibility: 'PRIVATE',
-          pinned: false,
-          createTimeSec: item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-          hasAttachments: attachments.isNotEmpty,
-        ),
+      final allowed = await guardMemoContentForRemoteSync(
+        db: db,
+        enabled: account != null,
+        memoUid: memoUid,
+        content: content,
       );
+      if (allowed) {
+        final uploadBeforeCreate = _shouldEnqueueAttachmentUploadsBeforeCreate();
+        if (uploadBeforeCreate) {
+          for (final payload in attachmentPayloads) {
+            await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
+            counters.setAttachmentCount(counters.attachmentCount() + 1);
+          }
+        }
+        await db.enqueueOutbox(
+          type: 'create_memo',
+          payload: buildCreateMemoOutboxPayload(
+            uid: memoUid,
+            content: content,
+            visibility: 'PRIVATE',
+            pinned: false,
+            createTimeSec: item.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+            hasAttachments: attachments.isNotEmpty,
+          ),
+        );
 
-      if (!uploadBeforeCreate) {
-        for (final payload in attachmentPayloads) {
-          await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
-          counters.setAttachmentCount(counters.attachmentCount() + 1);
+        if (!uploadBeforeCreate) {
+          for (final payload in attachmentPayloads) {
+            await db.enqueueOutbox(type: 'upload_attachment', payload: payload);
+            counters.setAttachmentCount(counters.attachmentCount() + 1);
+          }
         }
       }
 

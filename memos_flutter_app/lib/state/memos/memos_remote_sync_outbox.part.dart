@@ -1,7 +1,52 @@
 part of 'memos_providers.dart';
 
+class _OutboxProcessResult {
+  const _OutboxProcessResult({
+    required this.blocked,
+    required this.hasQuarantined,
+  });
+
+  final bool blocked;
+  final bool hasQuarantined;
+}
+
+enum _OutboxFailureDisposition { retry, quarantine }
+
+class _OutboxFailureClassification {
+  const _OutboxFailureClassification._({
+    required this.disposition,
+    required this.failureCode,
+    required this.failureKind,
+    this.retryDelay,
+  });
+
+  const _OutboxFailureClassification.retry({
+    required String failureCode,
+    Duration? retryDelay,
+  }) : this._(
+         disposition: _OutboxFailureDisposition.retry,
+         failureCode: failureCode,
+         failureKind: 'retryable',
+         retryDelay: retryDelay,
+       );
+
+  const _OutboxFailureClassification.quarantine({
+    required String failureCode,
+    required String failureKind,
+  }) : this._(
+         disposition: _OutboxFailureDisposition.quarantine,
+         failureCode: failureCode,
+         failureKind: failureKind,
+       );
+
+  final _OutboxFailureDisposition disposition;
+  final String failureCode;
+  final String failureKind;
+  final Duration? retryDelay;
+}
+
 extension _RemoteSyncOutbox on RemoteSyncController {
-  Future<bool> _processOutbox() async {
+  Future<_OutboxProcessResult> _processOutbox() async {
     var processedCount = 0;
     var successCount = 0;
     var failedCount = 0;
@@ -11,6 +56,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
     while (true) {
       final headItems = await db.listOutboxPending(limit: 1);
       if (headItems.isEmpty) {
+        final hasAttention = await db.countOutboxAttention() > 0;
         LogManager.instance.info(
           'RemoteSync outbox: summary',
           context: <String, Object?>{
@@ -18,10 +64,14 @@ extension _RemoteSyncOutbox on RemoteSyncController {
             'succeeded': successCount,
             'failed': failedCount,
             'blocked': false,
+            'hasQuarantined': hasAttention,
             if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
           },
         );
-        return false;
+        return _OutboxProcessResult(
+          blocked: false,
+          hasQuarantined: hasAttention,
+        );
       }
 
       final head = headItems.first;
@@ -38,11 +88,6 @@ extension _RemoteSyncOutbox on RemoteSyncController {
         _ => null,
       };
       if (headId == null || headType == null) continue;
-      if (headState == AppDatabase.outboxStateError) {
-        blockedType = headType;
-        blockedReason = 'error_head';
-        break;
-      }
       if (headState == AppDatabase.outboxStateRetry &&
           retryAtMs != null &&
           retryAtMs > nowMs) {
@@ -67,7 +112,12 @@ extension _RemoteSyncOutbox on RemoteSyncController {
       try {
         payload = (jsonDecode(payloadRaw) as Map).cast<String, dynamic>();
       } catch (e) {
-        await db.markOutboxError(id, error: 'Invalid payload: $e');
+        await db.markOutboxQuarantined(
+          id,
+          error: 'Invalid payload: $e',
+          failureCode: 'invalid_payload',
+          failureKind: 'fatal_immediate',
+        );
         processedCount++;
         failedCount++;
         typeCounts[type] = (typeCounts[type] ?? 0) + 1;
@@ -86,9 +136,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
         syncQueueProgressTracker.updateCompletedTasks(
           successCount + failedCount,
         );
-        blockedType = type;
-        blockedReason = 'invalid_payload';
-        break;
+        continue;
       }
 
       processedCount++;
@@ -257,8 +305,6 @@ extension _RemoteSyncOutbox on RemoteSyncController {
               elapsedMs: elapsedMs,
             );
         if (!discardedMissingSourceUpload) {
-          final transientNetworkError =
-              e is DioException && _isTransientOutboxNetworkError(e);
           final memoError = e is DioException
               ? _summarizeHttpError(e)
               : SyncError(
@@ -269,8 +315,18 @@ extension _RemoteSyncOutbox on RemoteSyncController {
           final outboxError = e is DioException
               ? _detailHttpError(e)
               : e.toString();
+          final classification = _classifyOutboxFailure(
+            type: type,
+            payload: payload,
+            error: e,
+            attemptsSoFar: attemptsSoFar,
+          );
+          final transientNetworkError =
+              classification.disposition == _OutboxFailureDisposition.retry;
           if (transientNetworkError) {
-            final delay = _retryDelayForOutboxAttempt(attemptsSoFar);
+            final delay =
+                classification.retryDelay ??
+                _retryDelayForOutboxAttempt(attemptsSoFar);
             final retryAt =
                 DateTime.now().toUtc().millisecondsSinceEpoch +
                 delay.inMilliseconds;
@@ -284,32 +340,44 @@ extension _RemoteSyncOutbox on RemoteSyncController {
               await db.updateMemoSyncState(memoUid, syncState: 1);
             }
           } else {
-            await db.markOutboxError(id, error: outboxError);
+            await db.markOutboxQuarantined(
+              id,
+              error: outboxError,
+              failureCode: classification.failureCode,
+              failureKind: classification.failureKind,
+            );
             final failedMemoUid = switch (type) {
               'create_memo' => payload['uid'] as String?,
+              'update_memo' => payload['uid'] as String?,
               'upload_attachment' => payload['memo_uid'] as String?,
               'delete_attachment' => payload['memo_uid'] as String?,
               _ => null,
             };
             if (failedMemoUid != null && failedMemoUid.isNotEmpty) {
-              final memoErrorMessage = memoError.message?.trim();
+              final memoErrorMessage = _memoSyncErrorMessageForFailure(
+                failureCode: classification.failureCode,
+                fallbackMessage: memoError.message?.trim(),
+                rawError: outboxError,
+              );
               final syncError = SyncError(
                 code: SyncErrorCode.unknown,
                 retryable: false,
-                message: memoErrorMessage != null && memoErrorMessage.isNotEmpty
-                    ? memoErrorMessage
-                    : memoError.toString(),
+                message: memoErrorMessage,
                 presentationKey: 'legacy.msg_sync_failed',
                 presentationParams: {'type': type},
                 cause: memoError,
               );
               await db.updateMemoSyncState(
-                failedMemoUid,
-                syncState: 2,
-                lastError: encodeSyncError(syncError),
+                  failedMemoUid,
+                  syncState: 2,
+                  lastError: encodeSyncError(syncError),
+                );
+              await _cascadeMemoQuarantine(
+                rootOutboxId: id,
+                memoUid: failedMemoUid,
+                failureKind: classification.failureKind,
               );
             }
-            blockedReason = 'error';
           }
           if (type == 'delete_memo' && memoUid != null && memoUid.isNotEmpty) {
             final currentState = await db.getMemoDeleteTombstoneState(memoUid);
@@ -329,12 +397,14 @@ extension _RemoteSyncOutbox on RemoteSyncController {
               'type': type,
               if (memoUid != null && memoUid.isNotEmpty) 'memoUid': memoUid,
               'transientNetworkError': transientNetworkError,
+              'failureCode': classification.failureCode,
               'elapsedMs': elapsedMs,
             },
           );
-          // Keep ordering: stop processing further ops until this one succeeds.
-          blockedType = type;
-          shouldStop = true;
+          if (classification.disposition == _OutboxFailureDisposition.retry) {
+            blockedType = type;
+            shouldStop = true;
+          }
         }
       } finally {
         if (!shouldStop && isUploadTask) {
@@ -357,6 +427,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
       }
     }
     final blockedOnType = blockedType;
+    final hasAttention = await db.countOutboxAttention() > 0;
     LogManager.instance.info(
       'RemoteSync outbox: summary',
       context: <String, Object?>{
@@ -364,12 +435,16 @@ extension _RemoteSyncOutbox on RemoteSyncController {
         'succeeded': successCount,
         'failed': failedCount,
         'blocked': true,
+        'hasQuarantined': hasAttention,
         'blockedOnType': blockedOnType,
         if (blockedReason != null) 'blockedReason': blockedReason,
         if (typeCounts.isNotEmpty) 'typeCounts': typeCounts,
       },
     );
-    return true;
+    return _OutboxProcessResult(
+      blocked: true,
+      hasQuarantined: hasAttention,
+    );
   }
 
   Future<bool> _discardMissingSourceUploadTaskIfNeeded({
@@ -830,6 +905,120 @@ extension _RemoteSyncOutbox on RemoteSyncController {
         ? RemoteSyncController._retryBackoffSteps.length - 1
         : normalizedAttempts;
     return RemoteSyncController._retryBackoffSteps[index];
+  }
+
+  _OutboxFailureClassification _classifyOutboxFailure({
+    required String type,
+    required Map<String, dynamic> payload,
+    required Object error,
+    required int attemptsSoFar,
+  }) {
+    if (error is FormatException) {
+      return const _OutboxFailureClassification.quarantine(
+        failureCode: 'invalid_payload',
+        failureKind: 'fatal_immediate',
+      );
+    }
+    if (looksLikeRemoteMemoTooLongError(error)) {
+      return const _OutboxFailureClassification.quarantine(
+        failureCode: 'content_too_long',
+        failureKind: 'fatal_immediate',
+      );
+    }
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (_isTransientOutboxNetworkError(error) ||
+          status == 429 ||
+          (status != null && status >= 500)) {
+        return _OutboxFailureClassification.retry(
+          failureCode: status == 429 ? 'rate_limited' : 'network_retryable',
+          retryDelay: _retryDelayForOutboxAttempt(attemptsSoFar),
+        );
+      }
+      if (type == 'update_memo' && status == 404) {
+        return const _OutboxFailureClassification.quarantine(
+          failureCode: 'remote_missing_memo',
+          failureKind: 'fatal_immediate',
+        );
+      }
+      if (status != null && status >= 400 && status < 500) {
+        return const _OutboxFailureClassification.quarantine(
+          failureCode: 'http_client_fatal',
+          failureKind: 'fatal_immediate',
+        );
+      }
+    }
+    if (attemptsSoFar >= 2) {
+      return const _OutboxFailureClassification.quarantine(
+        failureCode: 'unknown_non_retryable',
+        failureKind: 'fatal_after_threshold',
+      );
+    }
+    return _OutboxFailureClassification.retry(
+      failureCode: 'unknown_retryable',
+      retryDelay: _retryDelayForOutboxAttempt(attemptsSoFar),
+    );
+  }
+
+  String _memoSyncErrorMessageForFailure({
+    required String failureCode,
+    String? fallbackMessage,
+    required String rawError,
+  }) {
+    final fallback = (fallbackMessage ?? '').trim();
+    switch (failureCode) {
+      case 'content_too_long':
+        return buildRemoteMemoTooLongUserMessage(
+          maxChars: tryParseRemoteMemoLengthLimit(
+            '$rawError${fallback.isEmpty ? '' : ' | $fallback'}',
+          ),
+        );
+      case 'remote_missing_memo':
+        return 'memo not found on remote server';
+      case 'blocked_by_quarantined_memo_root':
+        return 'blocked by quarantined memo root task';
+      case 'invalid_payload':
+        return 'invalid sync payload';
+      default:
+        if (fallback.isNotEmpty) {
+          return fallback;
+        }
+        return rawError;
+    }
+  }
+
+  Future<void> _cascadeMemoQuarantine({
+    required int rootOutboxId,
+    required String memoUid,
+    required String failureKind,
+  }) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) return;
+    final rows = await db.listOutboxByMemoUid(
+      normalizedUid,
+      types: const {
+        'create_memo',
+        'update_memo',
+        'upload_attachment',
+        'delete_attachment',
+      },
+      states: const {
+        AppDatabase.outboxStatePending,
+        AppDatabase.outboxStateRunning,
+        AppDatabase.outboxStateRetry,
+      },
+    );
+    for (final row in rows) {
+      final id = row['id'] as int?;
+      if (id == null || id <= rootOutboxId) continue;
+      await db.markOutboxQuarantined(
+        id,
+        error: 'Blocked by quarantined memo root task',
+        failureCode: 'blocked_by_quarantined_memo_root',
+        failureKind: failureKind,
+        incrementAttempts: false,
+      );
+    }
   }
 
   String? _outboxMemoUid(String type, Map<String, dynamic> payload) {

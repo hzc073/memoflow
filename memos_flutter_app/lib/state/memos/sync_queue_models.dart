@@ -7,6 +7,7 @@ class SyncQueueOutboxState {
   static const int running = AppDatabase.outboxStateRunning;
   static const int retry = AppDatabase.outboxStateRetry;
   static const int error = AppDatabase.outboxStateError;
+  static const int quarantined = AppDatabase.outboxStateQuarantined;
 }
 
 class SyncQueueItem {
@@ -22,6 +23,7 @@ class SyncQueueItem {
     required this.memoUid,
     required this.attachmentUid,
     required this.retryAt,
+    this.failureCode,
   });
 
   final int id;
@@ -35,7 +37,10 @@ class SyncQueueItem {
   final String? memoUid;
   final String? attachmentUid;
   final DateTime? retryAt;
+  final String? failureCode;
 
   bool get isFailed => state == SyncQueueOutboxState.error;
+  bool get isQuarantined => state == SyncQueueOutboxState.quarantined;
+  bool get needsAttention => isFailed || isQuarantined;
   bool get isRetrying => state == SyncQueueOutboxState.retry;
 }

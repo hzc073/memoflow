@@ -16,6 +16,10 @@ import '../../state/memos/sync_queue_models.dart';
 import '../../state/memos/sync_queue_provider.dart';
 import '../../state/system/logging_provider.dart';
 import '../../state/settings/preferences_provider.dart';
+import '../../state/system/database_provider.dart';
+import '../../data/models/local_memo.dart';
+import '../../state/memos/memo_sync_constraints.dart';
+import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -117,6 +121,33 @@ class SyncQueueScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _openMemo(
+    BuildContext context,
+    WidgetRef ref,
+    SyncQueueItem item,
+  ) async {
+    final memoUid = item.memoUid?.trim();
+    if (memoUid == null || memoUid.isEmpty) return;
+    final row = await ref.read(databaseProvider).getMemoByUid(memoUid);
+    if (!context.mounted) return;
+    if (row == null) {
+      showTopToast(
+        context,
+        context.tr(
+          zh: '本地笔记不存在，无法打开',
+          en: 'The local memo no longer exists.',
+        ),
+      );
+      return;
+    }
+    final memo = LocalMemo.fromDb(row);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoDetailScreen(initialMemo: memo),
+      ),
+    );
+  }
+
   Future<void> _retryItem(
     BuildContext context,
     WidgetRef ref,
@@ -214,14 +245,16 @@ class SyncQueueScreen extends ConsumerWidget {
         ? MemoFlowPalette.borderDark
         : MemoFlowPalette.borderLight;
 
-    final queueAsync = ref.watch(syncQueueItemsProvider);
-    final items = queueAsync.valueOrNull ?? const <SyncQueueItem>[];
+    final activeQueueAsync = ref.watch(syncQueueItemsProvider);
+    final attentionQueueAsync = ref.watch(syncQueueAttentionItemsProvider);
+    final activeItems = activeQueueAsync.valueOrNull ?? const <SyncQueueItem>[];
+    final attentionItems =
+        attentionQueueAsync.valueOrNull ?? const <SyncQueueItem>[];
     final pendingCountAsync = ref.watch(syncQueuePendingCountProvider);
-    final failedCount = items.where((item) => item.isFailed).length;
-    final activeCount = pendingCountAsync.valueOrNull ?? items.length;
-    final pendingCount = (activeCount - failedCount) < 0
-        ? 0
-        : (activeCount - failedCount);
+    final attentionCountAsync = ref.watch(syncQueueAttentionCountProvider);
+    final pendingCount = pendingCountAsync.valueOrNull ?? activeItems.length;
+    final attentionCount =
+        attentionCountAsync.valueOrNull ?? attentionItems.length;
     final queueProgress = ref.watch(syncQueueProgressTrackerProvider).snapshot;
     final syncing =
         ref.watch(syncCoordinatorProvider).memos.running ||
@@ -238,11 +271,9 @@ class SyncQueueScreen extends ConsumerWidget {
     final syncSnapshot = ref.watch(syncStatusTrackerProvider).snapshot;
     int? firstPendingId;
     final itemIds = <int>{};
-    for (final item in items) {
+    for (final item in activeItems) {
       itemIds.add(item.id);
-      if (firstPendingId == null && !item.isFailed) {
-        firstPendingId = item.id;
-      }
+      firstPendingId ??= item.id;
     }
     final trackedOutboxId = queueProgress.currentOutboxId;
     final activeOutboxId = syncing
@@ -255,6 +286,16 @@ class SyncQueueScreen extends ConsumerWidget {
     final lastSuccessLabel = lastSuccess == null
         ? context.t.strings.legacy.msg_no_record_yet
         : DateFormat('MM-dd HH:mm').format(lastSuccess);
+    final queueLoading =
+        (activeQueueAsync.isLoading && activeQueueAsync.valueOrNull == null) ||
+        (attentionQueueAsync.isLoading &&
+            attentionQueueAsync.valueOrNull == null);
+    final queueError =
+        activeQueueAsync.hasError
+            ? activeQueueAsync.error
+            : attentionQueueAsync.hasError
+            ? attentionQueueAsync.error
+            : null;
 
     return PopScope(
       canPop: false,
@@ -286,69 +327,107 @@ class SyncQueueScreen extends ConsumerWidget {
             ),
           ],
         ),
-        body: queueAsync.when(
-          data: (_) {
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-              children: [
-                _SyncSummaryCard(
-                  card: card,
-                  textMain: textMain,
-                  textMuted: textMuted,
-                  border: border,
-                  pendingCount: pendingCount,
-                  failedCount: failedCount,
-                  lastSuccessLabel: lastSuccessLabel,
-                  syncing: syncing,
+        body: queueLoading
+            ? const Center(child: CircularProgressIndicator())
+            : (queueError != null &&
+                  activeItems.isEmpty &&
+                  attentionItems.isEmpty)
+            ? Center(
+                child: Text(
+                  context.t.strings.legacy.msg_failed_load_4(e: queueError),
+                  style: TextStyle(color: textMuted),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  context.t.strings.legacy.msg_active_tasks,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: textMain,
+              )
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                children: [
+                  _SyncSummaryCard(
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    border: border,
+                    pendingCount: pendingCount,
+                    attentionCount: attentionCount,
+                    lastSuccessLabel: lastSuccessLabel,
+                    syncing: syncing,
                   ),
-                ),
-                const SizedBox(height: 12),
-                if (items.isEmpty)
-                  _EmptyQueueCard(card: card, textMuted: textMuted)
-                else
-                  ...items.map((item) {
-                    final title = _resolveItemTitle(context, item);
-                    final subtitle = _resolveItemSubtitle(item);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _SyncQueueItemCard(
-                        item: item,
-                        title: title,
-                        subtitle: subtitle,
-                        card: card,
-                        border: border,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        activeOutboxId: activeOutboxId,
-                        activeProgress: queueProgress.currentProgress,
-                        onDelete: () => _confirmDelete(context, ref, item),
-                        onSync: (syncing || bridgeBulkPushing)
-                            ? null
-                            : () => item.isFailed
-                                  ? _retryItem(context, ref, item)
-                                  : _syncAll(context, ref),
+                  const SizedBox(height: 16),
+                  Text(
+                    context.t.strings.legacy.msg_active_tasks,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: textMain,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (activeItems.isEmpty)
+                    _EmptyQueueCard(card: card, textMuted: textMuted)
+                  else
+                    ...activeItems.map((item) {
+                      final title = _resolveItemTitle(context, item);
+                      final subtitle = _resolveItemSubtitle(item);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _SyncQueueItemCard(
+                          item: item,
+                          title: title,
+                          subtitle: subtitle,
+                          card: card,
+                          border: border,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          activeOutboxId: activeOutboxId,
+                          activeProgress: queueProgress.currentProgress,
+                          actionLabel: context.t.strings.legacy.msg_sync,
+                          onDelete: () => _confirmDelete(context, ref, item),
+                          onSync: (syncing || bridgeBulkPushing)
+                              ? null
+                              : () => _syncAll(context, ref),
+                        ),
+                      );
+                    }),
+                  if (attentionItems.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      context.tr(zh: '需处理', en: 'Needs attention'),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: textMain,
                       ),
-                    );
-                  }),
-              ],
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(
-            child: Text(
-              context.t.strings.legacy.msg_failed_load_4(e: e),
-              style: TextStyle(color: textMuted),
-            ),
-          ),
-        ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...attentionItems.map((item) {
+                      final title = _resolveItemTitle(context, item);
+                      final subtitle = _resolveItemSubtitle(item);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _SyncQueueItemCard(
+                          item: item,
+                          title: title,
+                          subtitle: subtitle,
+                          card: card,
+                          border: border,
+                          textMain: textMain,
+                          textMuted: textMuted,
+                          activeOutboxId: null,
+                          activeProgress: null,
+                          actionLabel: context.tr(zh: '重试', en: 'Retry'),
+                          onDelete: () => _confirmDelete(context, ref, item),
+                          onOpenMemo:
+                              item.memoUid?.trim().isNotEmpty == true
+                                  ? () => _openMemo(context, ref, item)
+                                  : null,
+                          onSync: (syncing || bridgeBulkPushing)
+                              ? null
+                              : () => _retryItem(context, ref, item),
+                        ),
+                      );
+                    }),
+                  ],
+                ],
+              ),
         bottomNavigationBar: SafeArea(
           minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Row(
@@ -385,7 +464,7 @@ class SyncQueueScreen extends ConsumerWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: (items.isEmpty || syncing || bridgeBulkPushing)
+                  onPressed: (activeItems.isEmpty || syncing || bridgeBulkPushing)
                       ? null
                       : () => _syncAll(context, ref),
                   icon: syncing
@@ -438,12 +517,77 @@ String? _resolveItemSubtitle(SyncQueueItem item) {
   return null;
 }
 
+String _contentTooLongFailureText(BuildContext context, SyncQueueItem item) {
+  final maxChars = tryParseRemoteMemoLengthLimit(item.lastError ?? '');
+  if (maxChars != null) {
+    return context.tr(
+      zh:
+          '\u5f53\u524d\u670d\u52a1\u5668\u9650\u5236\u4e3a $maxChars \u4e2a\u5b57\u7b26\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5\uff1b\u5982\u679c\u4f60\u65e0\u6cd5\u4fee\u6539\u670d\u52a1\u7aef\uff0c\u518d\u8003\u8651\u7f29\u77ed\u5185\u5bb9\u3002',
+      en:
+          'The current server limit is $maxChars characters. Increase the server memo length limit and retry. If you cannot change the server, shorten this memo and retry.',
+    );
+  }
+  return context.tr(
+    zh:
+        '\u5f53\u524d\u670d\u52a1\u5668\u9650\u5236\u4e86\u5355\u6761\u7b14\u8bb0\u957f\u5ea6\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5\uff1b\u5982\u679c\u4f60\u65e0\u6cd5\u4fee\u6539\u670d\u52a1\u7aef\uff0c\u518d\u8003\u8651\u7f29\u77ed\u5185\u5bb9\u3002',
+    en:
+        'This server limits memo length. Increase the server memo length limit and retry. If you cannot change the server, shorten this memo and retry.',
+  );
+}
+
+String? _friendlyFailureText(BuildContext context, SyncQueueItem item) {
+  final failureCode = item.failureCode?.trim();
+  if (failureCode != null && failureCode.isNotEmpty) {
+    switch (failureCode) {
+      case 'content_too_long':
+        return _contentTooLongFailureText(context, item);
+      case 'remote_missing_memo':
+        return context.tr(
+          zh: '服务器上已找不到这条笔记，请检查后重试或删除该任务',
+          en: 'This memo no longer exists on the server. Check it, then retry or delete the task.',
+        );
+      case 'blocked_by_quarantined_memo_root':
+        return context.tr(
+          zh: '该任务依赖一条待处理的笔记同步任务',
+          en: 'This task depends on a memo sync task that needs attention.',
+        );
+      case 'invalid_payload':
+        return context.tr(
+          zh: '同步任务数据已损坏，请删除后重新生成',
+          en: 'This sync task payload is invalid. Delete it and recreate it.',
+        );
+      case 'legacy_error_migrated':
+        return context.tr(
+          zh: '旧版本失败任务已迁移到待处理区，请手动检查',
+          en: 'This legacy failed task was migrated and needs manual review.',
+        );
+      case 'http_client_fatal':
+        return context.tr(
+          zh: '请求被服务器拒绝，请检查内容或状态后重试',
+          en: 'The server rejected this request. Review the memo and retry.',
+        );
+      case 'unknown_non_retryable':
+        return context.tr(
+          zh: '该任务已多次失败，需手动处理',
+          en: 'This task failed repeatedly and needs manual review.',
+        );
+    }
+  }
+  final raw = item.lastError?.trim();
+  if (raw == null || raw.isEmpty) return null;
+  return presentSyncErrorText(language: context.appLanguage, raw: raw);
+}
+
 String _actionLabel(BuildContext context, String type) {
   return switch (type) {
     'create_memo' => context.t.strings.legacy.msg_create_memo,
     'update_memo' => context.t.strings.legacy.msg_update_memo,
     'delete_memo' => context.t.strings.legacy.msg_delete_memo_2,
     'upload_attachment' => context.t.strings.legacy.msg_upload_attachment,
+    'delete_attachment' => context.tr(
+        zh: '\u5220\u9664\u9644\u4ef6',
+        en: 'Delete attachment',
+      ),
     _ => context.t.strings.legacy.msg_sync_task,
   };
 }
@@ -455,7 +599,7 @@ class _SyncSummaryCard extends StatelessWidget {
     required this.textMuted,
     required this.border,
     required this.pendingCount,
-    required this.failedCount,
+    required this.attentionCount,
     required this.lastSuccessLabel,
     required this.syncing,
   });
@@ -465,7 +609,7 @@ class _SyncSummaryCard extends StatelessWidget {
   final Color textMuted;
   final Color border;
   final int pendingCount;
-  final int failedCount;
+  final int attentionCount;
   final String lastSuccessLabel;
   final bool syncing;
 
@@ -533,8 +677,8 @@ class _SyncSummaryCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _SummaryMetric(
-                  value: '$failedCount',
-                  label: context.t.strings.legacy.msg_failed,
+                  value: '$attentionCount',
+                  label: context.tr(zh: '需处理', en: 'Attention'),
                   textMain: textMain,
                   textMuted: textMuted,
                 ),
@@ -654,7 +798,9 @@ class _SyncQueueItemCard extends StatelessWidget {
     required this.textMuted,
     required this.activeOutboxId,
     required this.activeProgress,
+    required this.actionLabel,
     required this.onDelete,
+    this.onOpenMemo,
     required this.onSync,
   });
 
@@ -667,21 +813,18 @@ class _SyncQueueItemCard extends StatelessWidget {
   final Color textMuted;
   final int? activeOutboxId;
   final double? activeProgress;
+  final String actionLabel;
   final VoidCallback onDelete;
+  final VoidCallback? onOpenMemo;
   final VoidCallback? onSync;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final failed = item.isFailed;
-    final active = !failed && activeOutboxId == item.id;
+    final needsAttention = item.needsAttention;
+    final active = !needsAttention && activeOutboxId == item.id;
     final timeLabel = DateFormat('MM-dd HH:mm:ss.SSS').format(item.createdAt);
-    final lastErrorText = item.lastError == null
-        ? null
-        : presentSyncErrorText(
-            language: context.appLanguage,
-            raw: item.lastError!.trim(),
-          );
+    final lastErrorText = _friendlyFailureText(context, item);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
@@ -740,7 +883,7 @@ class _SyncQueueItemCard extends StatelessWidget {
               ),
             ),
           ],
-          if (failed &&
+          if (needsAttention &&
               lastErrorText != null &&
               lastErrorText.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -769,6 +912,12 @@ class _SyncQueueItemCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              if (onOpenMemo != null)
+                IconButton(
+                  tooltip: context.tr(zh: '打开笔记', en: 'Open memo'),
+                  onPressed: onOpenMemo,
+                  icon: Icon(Icons.open_in_new, color: textMuted),
+                ),
               IconButton(
                 tooltip: context.t.strings.legacy.msg_delete,
                 onPressed: onDelete,
@@ -789,7 +938,7 @@ class _SyncQueueItemCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  context.t.strings.legacy.msg_sync,
+                  actionLabel,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -826,11 +975,15 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final failed = state == SyncQueueOutboxState.error;
+    final quarantined = state == SyncQueueOutboxState.quarantined;
     final retrying = state == SyncQueueOutboxState.retry;
-    if (failed) {
+    if (failed || quarantined) {
       final failedLabel = attempts > 0
-          ? context.t.strings.legacy.msg_failed_2(attempts: attempts)
-          : context.t.strings.legacy.msg_failed;
+          ? context.tr(
+              zh: '需处理($attempts)',
+              en: 'Review ($attempts)',
+            )
+          : context.tr(zh: '需处理', en: 'Review');
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(

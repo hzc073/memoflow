@@ -24,6 +24,7 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_version.dart';
 import '../../data/models/recycle_bin_item.dart';
+import 'memo_sync_constraints.dart';
 import 'create_memo_outbox_payload.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import '../system/database_provider.dart';
@@ -233,36 +234,47 @@ class MemoTimelineService {
     );
 
     final hasPendingAttachments = restoredAttachments.isNotEmpty;
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': current.uid,
-        'content': restoredContent,
-        'visibility': restoredVisibility,
-        'pinned': restoredPinned,
-        'location': restoredLocation?.toJson(),
-        'sync_attachments': true,
-        if (hasPendingAttachments) 'has_pending_attachments': true,
-      },
+    final allowed = await guardMemoContentForRemoteSync(
+      db: db,
+      enabled: account != null,
+      memoUid: current.uid,
+      content: restoredContent,
     );
-
-    if (current.attachments.isNotEmpty) {
-      await _enqueueDeleteAttachments(
-        memoUid: current.uid,
-        attachments: current.attachments,
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': current.uid,
+          'content': restoredContent,
+          'visibility': restoredVisibility,
+          'pinned': restoredPinned,
+          'location': restoredLocation?.toJson(),
+          'sync_attachments': true,
+          if (hasPendingAttachments) 'has_pending_attachments': true,
+        },
       );
-    }
 
-    for (final attachment in restoredAttachments) {
-      final stagedPayload = await _queuedAttachmentStager.stageUploadPayload({
-        'uid': attachment.uid,
-        'memo_uid': current.uid,
-        'file_path': _readLocalFilePathFromAttachment(attachment),
-        'filename': attachment.filename,
-        'mime_type': attachment.type,
-        'file_size': attachment.size,
-      }, scopeKey: current.uid);
-      await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
+      if (current.attachments.isNotEmpty) {
+        await _enqueueDeleteAttachments(
+          memoUid: current.uid,
+          attachments: current.attachments,
+        );
+      }
+
+      for (final attachment in restoredAttachments) {
+        final stagedPayload = await _queuedAttachmentStager.stageUploadPayload({
+          'uid': attachment.uid,
+          'memo_uid': current.uid,
+          'file_path': _readLocalFilePathFromAttachment(attachment),
+          'filename': attachment.filename,
+          'mime_type': attachment.type,
+          'file_size': attachment.size,
+        }, scopeKey: current.uid);
+        await db.enqueueOutbox(
+          type: 'upload_attachment',
+          payload: stagedPayload,
+        );
+      }
     }
 
     unawaited(triggerSync());
@@ -423,6 +435,16 @@ class MemoTimelineService {
     );
 
     final hasPendingAttachments = restoredAttachments.isNotEmpty;
+    final allowed = await guardMemoContentForRemoteSync(
+      db: db,
+      enabled: account != null,
+      memoUid: memoUid,
+      content: content,
+    );
+    if (!allowed) {
+      unawaited(triggerSync());
+      return;
+    }
     if (existing == null) {
       final attachmentPayloads = await _queuedAttachmentStager
           .stageUploadPayloads(
@@ -563,27 +585,35 @@ class MemoTimelineService {
       lastError: null,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': memo.content,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-        'sync_attachments': true,
-        'has_pending_attachments': true,
-      },
+    final allowed = await guardMemoContentForRemoteSync(
+      db: db,
+      enabled: account != null,
+      memoUid: memo.uid,
+      content: memo.content,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': memo.content,
+          'visibility': memo.visibility,
+          'pinned': memo.pinned,
+          'sync_attachments': true,
+          'has_pending_attachments': true,
+        },
+      );
 
-    final stagedPayload = await _queuedAttachmentStager.stageUploadPayload({
-      'uid': restoredAttachment.uid,
-      'memo_uid': memo.uid,
-      'file_path': _readLocalFilePathFromAttachment(restoredAttachment),
-      'filename': restoredAttachment.filename,
-      'mime_type': restoredAttachment.type,
-      'file_size': restoredAttachment.size,
-    }, scopeKey: memo.uid);
-    await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
+      final stagedPayload = await _queuedAttachmentStager.stageUploadPayload({
+        'uid': restoredAttachment.uid,
+        'memo_uid': memo.uid,
+        'file_path': _readLocalFilePathFromAttachment(restoredAttachment),
+        'filename': restoredAttachment.filename,
+        'mime_type': restoredAttachment.type,
+        'file_size': restoredAttachment.size,
+      }, scopeKey: memo.uid);
+      await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
+    }
   }
 
   Future<void> _pruneMemoVersions(String memoUid) async {

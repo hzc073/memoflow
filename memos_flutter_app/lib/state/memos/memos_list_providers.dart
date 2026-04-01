@@ -71,12 +71,13 @@ final memosListOutboxStatusProvider = StreamProvider<OutboxMemoStatus>((
     final rows = await sqlite.query(
       'outbox',
       columns: const ['type', 'payload', 'state'],
-      where: 'state IN (?, ?, ?, ?)',
+      where: 'state IN (?, ?, ?, ?, ?)',
       whereArgs: const [
         AppDatabase.outboxStatePending,
         AppDatabase.outboxStateRunning,
         AppDatabase.outboxStateRetry,
         AppDatabase.outboxStateError,
+        AppDatabase.outboxStateQuarantined,
       ],
       orderBy: 'id ASC',
     );
@@ -100,7 +101,8 @@ final memosListOutboxStatusProvider = StreamProvider<OutboxMemoStatus>((
         String v => int.tryParse(v.trim()),
         _ => null,
       };
-      if (stateCode == AppDatabase.outboxStateError) {
+      if (stateCode == AppDatabase.outboxStateError ||
+          stateCode == AppDatabase.outboxStateQuarantined) {
         failed.add(normalized);
         pending.remove(normalized);
       } else {

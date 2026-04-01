@@ -13,12 +13,13 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
-  static const _dbVersion = 18;
+  static const _dbVersion = 19;
   static const int outboxStatePending = 0;
   static const int outboxStateRunning = 1;
   static const int outboxStateRetry = 2;
   static const int outboxStateError = 3;
   static const int outboxStateDone = 4;
+  static const int outboxStateQuarantined = 5;
   static const String memoDeleteTombstoneStatePendingRemoteDelete =
       'pending_remote_delete';
   static const String memoDeleteTombstoneStateLocalOnly = 'local_only';
@@ -113,7 +114,10 @@ CREATE TABLE IF NOT EXISTS outbox (
   state INTEGER NOT NULL DEFAULT 0,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
+  failure_code TEXT,
+  failure_kind TEXT,
   retry_at INTEGER,
+  quarantined_at INTEGER,
   created_time INTEGER NOT NULL
 );
 ''');
@@ -394,6 +398,42 @@ CREATE TABLE IF NOT EXISTS compose_drafts (
             await db.execute(
               'CREATE INDEX IF NOT EXISTS idx_compose_drafts_workspace_updated ON compose_drafts(workspace_key, updated_time DESC);',
             );
+          }
+          if (oldVersion < 19) {
+            await db.execute('''
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  state INTEGER NOT NULL DEFAULT 0,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  failure_code TEXT,
+  failure_kind TEXT,
+  retry_at INTEGER,
+  quarantined_at INTEGER,
+  created_time INTEGER NOT NULL
+);
+''');
+            await _ensureColumnExists(
+              db,
+              table: 'outbox',
+              column: 'failure_code',
+              definition: 'failure_code TEXT',
+            );
+            await _ensureColumnExists(
+              db,
+              table: 'outbox',
+              column: 'failure_kind',
+              definition: 'failure_kind TEXT',
+            );
+            await _ensureColumnExists(
+              db,
+              table: 'outbox',
+              column: 'quarantined_at',
+              definition: 'quarantined_at INTEGER',
+            );
+            await _migrateLegacyOutboxErrors(db);
           }
         },
         onOpen: (db) async {
@@ -1685,7 +1725,10 @@ WHERE id = 1;
       'state': outboxStatePending,
       'attempts': 0,
       'last_error': null,
+      'failure_code': null,
+      'failure_kind': null,
       'retry_at': null,
+      'quarantined_at': null,
       'created_time': DateTime.now().toUtc().millisecondsSinceEpoch,
     });
     _notifyChanged();
@@ -1696,22 +1739,60 @@ WHERE id = 1;
     final db = await this.db;
     return db.query(
       'outbox',
-      where: 'state IN (?, ?, ?, ?)',
+      where: 'state IN (?, ?, ?)',
       whereArgs: const [
         outboxStatePending,
         outboxStateRunning,
         outboxStateRetry,
-        outboxStateError,
       ],
       orderBy: 'id ASC',
       limit: limit,
     );
   }
 
+  Future<List<Map<String, dynamic>>> listOutboxQuarantined({
+    int limit = 50,
+  }) async {
+    return listOutboxAttention(limit: limit);
+  }
+
+  Future<List<Map<String, dynamic>>> listOutboxAttention({
+    int limit = 50,
+  }) async {
+    final db = await this.db;
+    final rows = await db.query(
+      'outbox',
+      where: 'state IN (?, ?)',
+      whereArgs: const [outboxStateQuarantined, outboxStateError],
+      orderBy: 'COALESCE(quarantined_at, created_time) DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map(_withDerivedOutboxAttentionFields).toList(growable: false);
+  }
+
+  Future<int> countOutboxAttention() async {
+    final db = await this.db;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM outbox WHERE state IN ($outboxStateQuarantined, $outboxStateError)',
+    );
+    if (rows.isEmpty) return 0;
+    final raw = rows.first['count'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+    return 0;
+  }
+
+  Future<Map<String, dynamic>?> getLatestOutboxAttention() async {
+    final rows = await listOutboxAttention(limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
   Future<int> countOutboxPending() async {
     final db = await this.db;
     final rows = await db.rawQuery(
-      'SELECT COUNT(*) AS count FROM outbox WHERE state IN ($outboxStatePending, $outboxStateRunning, $outboxStateRetry, $outboxStateError)',
+      'SELECT COUNT(*) AS count FROM outbox WHERE state IN ($outboxStatePending, $outboxStateRunning, $outboxStateRetry)',
     );
     if (rows.isEmpty) return 0;
     final raw = rows.first['count'];
@@ -1747,6 +1828,19 @@ WHERE id = 1;
     return 0;
   }
 
+  Future<int> countOutboxQuarantined() async {
+    final db = await this.db;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM outbox WHERE state = $outboxStateQuarantined',
+    );
+    if (rows.isEmpty) return 0;
+    final raw = rows.first['count'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim()) ?? 0;
+    return 0;
+  }
+
   Future<int> countMemos() async {
     final db = await this.db;
     final rows = await db.rawQuery('SELECT COUNT(*) AS count FROM memos');
@@ -1758,6 +1852,77 @@ WHERE id = 1;
     return 0;
   }
 
+  Future<void> _migrateLegacyOutboxErrors(Database db) async {
+    final rows = await db.query(
+      'outbox',
+      columns: const ['id', 'type', 'payload', 'state'],
+      orderBy: 'id ASC',
+    );
+    if (rows.isEmpty) return;
+
+    final legacyErrorIds = <int>[];
+    final dependentIds = <int>[];
+    final blockedMemoUids = <String>{};
+
+    for (final row in rows) {
+      final id = row['id'];
+      if (id is! int || id <= 0) continue;
+
+      final state = switch (row['state']) {
+        int value => value,
+        num value => value.toInt(),
+        String value => int.tryParse(value.trim()),
+        _ => null,
+      };
+      if (state == null) continue;
+
+      final memoUid = _extractOutboxMemoUidFromRow(row['type'], row['payload']);
+      if (state == outboxStateError) {
+        legacyErrorIds.add(id);
+        if (memoUid != null && memoUid.isNotEmpty) {
+          blockedMemoUids.add(memoUid);
+        }
+        continue;
+      }
+
+      if (memoUid == null ||
+          memoUid.isEmpty ||
+          !blockedMemoUids.contains(memoUid)) {
+        continue;
+      }
+      if (state == outboxStatePending ||
+          state == outboxStateRunning ||
+          state == outboxStateRetry) {
+        dependentIds.add(id);
+      }
+    }
+
+    for (final id in legacyErrorIds) {
+      await db.rawUpdate(
+        'UPDATE outbox SET state = ?, retry_at = NULL, failure_code = COALESCE(NULLIF(TRIM(failure_code), \'\'), ?), failure_kind = COALESCE(NULLIF(TRIM(failure_kind), \'\'), ?), quarantined_at = COALESCE(quarantined_at, created_time) WHERE id = ?',
+        [
+          outboxStateQuarantined,
+          'legacy_error_migrated',
+          'fatal_immediate',
+          id,
+        ],
+      );
+    }
+
+    for (final id in dependentIds) {
+      await db.rawUpdate(
+        'UPDATE outbox SET state = ?, retry_at = NULL, last_error = COALESCE(NULLIF(TRIM(last_error), \'\'), ?), failure_code = COALESCE(NULLIF(TRIM(failure_code), \'\'), ?), failure_kind = COALESCE(NULLIF(TRIM(failure_kind), \'\'), ?), quarantined_at = COALESCE(quarantined_at, created_time) WHERE id = ?',
+        [
+          outboxStateQuarantined,
+          'Blocked by quarantined memo root task',
+          'blocked_by_quarantined_memo_root',
+          'fatal_immediate',
+          id,
+        ],
+      );
+    }
+  }
+
   Future<List<Map<String, dynamic>>> listOutboxPendingByType(
     String type,
   ) async {
@@ -1765,16 +1930,69 @@ WHERE id = 1;
     return db.query(
       'outbox',
       columns: const ['id', 'payload'],
-      where: 'state IN (?, ?, ?, ?) AND type = ?',
+      where: 'state IN (?, ?, ?, ?, ?) AND type = ?',
       whereArgs: [
         outboxStatePending,
         outboxStateRunning,
         outboxStateRetry,
         outboxStateError,
+        outboxStateQuarantined,
         type,
       ],
       orderBy: 'id ASC',
     );
+  }
+
+  Future<List<Map<String, dynamic>>> listOutboxByMemoUid(
+    String memoUid, {
+    Set<String>? types,
+    Set<int>? states,
+  }) async {
+    final trimmed = memoUid.trim();
+    if (trimmed.isEmpty) return const [];
+    final db = await this.db;
+    final rows = await db.query(
+      'outbox',
+      columns: const [
+        'id',
+        'type',
+        'payload',
+        'state',
+        'attempts',
+        'last_error',
+        'failure_code',
+        'failure_kind',
+        'retry_at',
+        'quarantined_at',
+        'created_time',
+      ],
+      orderBy: 'id ASC',
+    );
+    final matched = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final type = row['type'];
+      final payloadRaw = row['payload'];
+      final state = row['state'];
+      if (type is! String || payloadRaw is! String) continue;
+      if (types != null && !types.contains(type)) continue;
+      if (states != null) {
+        final normalizedState = switch (state) {
+          int value => value,
+          num value => value.toInt(),
+          String value => int.tryParse(value.trim()),
+          _ => null,
+        };
+        if (normalizedState == null || !states.contains(normalizedState)) {
+          continue;
+        }
+      }
+      final payload = _decodeOutboxPayload(payloadRaw);
+      if (payload == null) continue;
+      final targetUid = _extractOutboxMemoUid(type, payload);
+      if (targetUid == null || targetUid.trim() != trimmed) continue;
+      matched.add(row.map((key, value) => MapEntry(key, value)));
+    }
+    return matched;
   }
 
   Future<Map<String, dynamic>?> claimNextOutboxRunnable({int? nowMs}) async {
@@ -1867,7 +2085,7 @@ WHERE id = ?
   Future<void> markOutboxDone(int id) async {
     final db = await this.db;
     await db.rawUpdate(
-      'UPDATE outbox SET state = ?, retry_at = NULL, last_error = NULL WHERE id = ?',
+      'UPDATE outbox SET state = ?, retry_at = NULL, last_error = NULL, failure_code = NULL, failure_kind = NULL, quarantined_at = NULL WHERE id = ?',
       [outboxStateDone, id],
     );
     _notifyChanged();
@@ -1876,7 +2094,7 @@ WHERE id = ?
   Future<void> markOutboxError(int id, {required String error}) async {
     final db = await this.db;
     await db.rawUpdate(
-      'UPDATE outbox SET state = ?, attempts = attempts + 1, retry_at = NULL, last_error = ? WHERE id = ?',
+      'UPDATE outbox SET state = ?, attempts = attempts + 1, retry_at = NULL, last_error = ?, failure_code = NULL, failure_kind = NULL, quarantined_at = NULL WHERE id = ?',
       [outboxStateError, error, id],
     );
     _notifyChanged();
@@ -1889,9 +2107,32 @@ WHERE id = ?
   }) async {
     final db = await this.db;
     await db.rawUpdate(
-      'UPDATE outbox SET state = ?, attempts = attempts + 1, retry_at = ?, last_error = ? WHERE id = ?',
-      [outboxStateRetry, retryAtMs, error, id],
+      'UPDATE outbox SET state = ?, attempts = attempts + 1, retry_at = ?, last_error = ?, failure_code = NULL, failure_kind = ?, quarantined_at = NULL WHERE id = ?',
+      [outboxStateRetry, retryAtMs, error, 'retryable', id],
     );
+    _notifyChanged();
+  }
+
+  Future<void> markOutboxQuarantined(
+    int id, {
+    required String error,
+    required String failureCode,
+    required String failureKind,
+    bool incrementAttempts = true,
+  }) async {
+    final db = await this.db;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    if (incrementAttempts) {
+      await db.rawUpdate(
+        'UPDATE outbox SET state = ?, attempts = attempts + 1, retry_at = NULL, last_error = ?, failure_code = ?, failure_kind = ?, quarantined_at = ? WHERE id = ?',
+        [outboxStateQuarantined, error, failureCode, failureKind, now, id],
+      );
+    } else {
+      await db.rawUpdate(
+        'UPDATE outbox SET state = ?, retry_at = NULL, last_error = ?, failure_code = ?, failure_kind = ?, quarantined_at = ? WHERE id = ?',
+        [outboxStateQuarantined, error, failureCode, failureKind, now, id],
+      );
+    }
     _notifyChanged();
   }
 
@@ -1909,8 +2150,8 @@ WHERE id = ?
     final rows = await db.query(
       'outbox',
       columns: const ['id', 'type', 'payload'],
-      where: 'state = ?',
-      whereArgs: const [outboxStateError],
+      where: 'state IN (?, ?)',
+      whereArgs: const [outboxStateError, outboxStateQuarantined],
       orderBy: 'id ASC',
     );
 
@@ -1937,12 +2178,21 @@ WHERE id = ?
     if (ids.isEmpty) return 0;
     for (final id in ids) {
       await db.rawUpdate(
-        'UPDATE outbox SET state = ?, retry_at = NULL, last_error = NULL WHERE id = ?',
+        'UPDATE outbox SET state = ?, retry_at = NULL, last_error = NULL, failure_code = NULL, failure_kind = NULL, quarantined_at = NULL WHERE id = ?',
         [outboxStatePending, id],
       );
     }
     _notifyChanged();
     return ids.length;
+  }
+
+  Future<void> retryOutboxItem(int id) async {
+    final db = await this.db;
+    await db.rawUpdate(
+      'UPDATE outbox SET state = ?, retry_at = NULL, last_error = NULL, failure_code = NULL, failure_kind = NULL, quarantined_at = NULL WHERE id = ?',
+      [outboxStatePending, id],
+    );
+    _notifyChanged();
   }
 
   Future<void> deleteOutbox(int id) async {
@@ -1961,12 +2211,13 @@ WHERE id = ?
     final rows = await db.query(
       'outbox',
       columns: const ['type', 'payload'],
-      where: 'state IN (?, ?, ?, ?)',
+      where: 'state IN (?, ?, ?, ?, ?)',
       whereArgs: const [
         outboxStatePending,
         outboxStateRunning,
         outboxStateRetry,
         outboxStateError,
+        outboxStateQuarantined,
       ],
     );
 
@@ -1993,12 +2244,13 @@ WHERE id = ?
     final rows = await db.query(
       'outbox',
       columns: const ['id', 'type', 'payload'],
-      where: 'state IN (?, ?, ?, ?)',
+      where: 'state IN (?, ?, ?, ?, ?)',
       whereArgs: const [
         outboxStatePending,
         outboxStateRunning,
         outboxStateRetry,
         outboxStateError,
+        outboxStateQuarantined,
       ],
     );
     final ids = <int>[];
@@ -2441,6 +2693,22 @@ $sqlLimitClause;
     }
   }
 
+  static Map<String, dynamic> _withDerivedOutboxAttentionFields(
+    Map<String, Object?> row,
+  ) {
+    final copy = row.map((key, value) => MapEntry(key, value));
+    final type = copy['type'] as String?;
+    final payloadRaw = copy['payload'] as String?;
+    if (type != null && payloadRaw != null) {
+      final payload = _decodeOutboxPayload(payloadRaw);
+      if (payload != null) {
+        copy['memo_uid'] = _extractOutboxMemoUid(type, payload);
+      }
+    }
+    copy['occurred_at'] = copy['quarantined_at'] ?? copy['created_time'];
+    return copy;
+  }
+
   static String? _extractOutboxMemoUid(
     String type,
     Map<String, dynamic> payload,
@@ -2455,17 +2723,30 @@ $sqlLimitClause;
     };
   }
 
+  static String? _extractOutboxMemoUidFromRow(
+    Object? type,
+    Object? payloadRaw,
+  ) {
+    if (type is! String || payloadRaw is! String) return null;
+    final payload = _decodeOutboxPayload(payloadRaw);
+    if (payload == null) return null;
+    final uid = _extractOutboxMemoUid(type, payload);
+    final trimmed = uid?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   Future<Set<String>> listPendingOutboxMemoUids() async {
     final db = await this.db;
     final rows = await db.query(
       'outbox',
       columns: const ['type', 'payload'],
-      where: 'state IN (?, ?, ?, ?)',
+      where: 'state IN (?, ?, ?, ?, ?)',
       whereArgs: const [
         outboxStatePending,
         outboxStateRunning,
         outboxStateRetry,
         outboxStateError,
+        outboxStateQuarantined,
       ],
     );
 

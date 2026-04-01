@@ -806,6 +806,70 @@ void main() {
     expect(memosCalls, 0);
   });
 
+  test('clears stale memo attention after failure and skip', () async {
+    final calls = <String>[];
+    final attention = SyncAttentionInfo(
+      outboxId: 42,
+      failureCode: 'content_too_long',
+      memoUid: 'memo-1',
+      message: 'too long',
+      occurredAt: DateTime.utc(2026, 3, 13, 18, 0),
+    );
+    final error = SyncError(
+      code: SyncErrorCode.server,
+      retryable: false,
+      message: 'sync failed',
+    );
+    MemoSyncResult currentResult = MemoSyncSuccessWithAttention(attention);
+
+    final coordinator = SyncCoordinator(
+      SyncDependencies(
+        webDavSyncService: FakeWebDavSyncService(calls),
+        webDavBackupService: FakeWebDavBackupService(calls),
+        webDavBackupStateRepository: FakeWebDavBackupStateRepository(),
+        readWebDavSettings: () => WebDavSettings.defaults,
+        readCurrentAccountKey: () => null,
+        readCurrentAccount: () => null,
+        readCurrentLocalLibrary: () => const LocalLibrary(
+          key: 'local',
+          name: 'Local',
+          rootPath: 'c:\\tmp',
+        ),
+        readDatabase: () => FakeAppDatabase(retryableCount: 0),
+        runMemosSync: () async => currentResult,
+      ),
+    );
+
+    final first = await coordinator.requestSync(
+      const SyncRequest(
+        kind: SyncRequestKind.memos,
+        reason: SyncRequestReason.manual,
+      ),
+    );
+    expect(first, isA<SyncRunStarted>());
+    expect(coordinator.state.memos.attention?.outboxId, 42);
+
+    currentResult = MemoSyncFailure(error);
+    final second = await coordinator.requestSync(
+      const SyncRequest(
+        kind: SyncRequestKind.memos,
+        reason: SyncRequestReason.manual,
+      ),
+    );
+    expect(second, isA<SyncRunFailure>());
+    expect(coordinator.state.memos.attention, isNull);
+
+    currentResult = const MemoSyncSkipped();
+    final third = await coordinator.requestSync(
+      const SyncRequest(
+        kind: SyncRequestKind.memos,
+        reason: SyncRequestReason.manual,
+      ),
+    );
+    expect(third, isA<SyncRunSkipped>());
+    expect(coordinator.state.memos.attention, isNull);
+  });
+
   test('skips all sync when context is not ready', () async {
     final calls = <String>[];
     final coordinator = SyncCoordinator(

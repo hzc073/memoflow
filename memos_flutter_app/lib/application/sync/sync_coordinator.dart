@@ -565,13 +565,25 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
       return const SyncRunSkipped();
     }
     final now = DateTime.now();
-    if (result is MemoSyncSuccess) {
+    if (result is MemoSyncSuccessWithAttention) {
       _updateStateIfMounted(
         (current) => current.copyWith(
           memos: current.memos.copyWith(
             running: false,
             lastSuccessAt: now,
             lastError: null,
+            attention: result.attention,
+          ),
+        ),
+      );
+    } else if (result is MemoSyncSuccess) {
+      _updateStateIfMounted(
+        (current) => current.copyWith(
+          memos: current.memos.copyWith(
+            running: false,
+            lastSuccessAt: now,
+            lastError: null,
+            attention: null,
           ),
         ),
       );
@@ -581,6 +593,7 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
           memos: current.memos.copyWith(
             running: false,
             lastError: result.error,
+            attention: null,
           ),
         ),
       );
@@ -590,6 +603,7 @@ class SyncCoordinator extends StateNotifier<SyncCoordinatorState> {
           memos: current.memos.copyWith(
             running: false,
             lastError: result.reason,
+            attention: null,
           ),
         ),
       );

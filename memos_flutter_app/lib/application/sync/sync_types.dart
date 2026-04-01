@@ -8,6 +8,12 @@ class MemoSyncSuccess extends MemoSyncResult {
   const MemoSyncSuccess();
 }
 
+class MemoSyncSuccessWithAttention extends MemoSyncResult {
+  const MemoSyncSuccessWithAttention(this.attention);
+
+  final SyncAttentionInfo? attention;
+}
+
 class MemoSyncSkipped extends MemoSyncResult {
   const MemoSyncSkipped({this.reason});
 
@@ -132,30 +138,54 @@ class LocalScanFailure extends LocalScanResult {
   final SyncError error;
 }
 
+class SyncAttentionInfo {
+  const SyncAttentionInfo({
+    required this.outboxId,
+    required this.failureCode,
+    required this.occurredAt,
+    this.memoUid,
+    this.message,
+  });
+
+  final int outboxId;
+  final String failureCode;
+  final String? memoUid;
+  final String? message;
+  final DateTime occurredAt;
+}
+
 class SyncFlowStatus {
+  static const Object _attentionUnchanged = Object();
+
   const SyncFlowStatus({
     required this.running,
     required this.lastSuccessAt,
     required this.lastError,
     required this.hasPendingConflict,
+    this.attention,
   });
 
   final bool running;
   final DateTime? lastSuccessAt;
   final SyncError? lastError;
   final bool hasPendingConflict;
+  final SyncAttentionInfo? attention;
 
   SyncFlowStatus copyWith({
     bool? running,
     DateTime? lastSuccessAt,
     SyncError? lastError,
     bool? hasPendingConflict,
+    Object? attention = _attentionUnchanged,
   }) {
     return SyncFlowStatus(
       running: running ?? this.running,
       lastSuccessAt: lastSuccessAt ?? this.lastSuccessAt,
       lastError: lastError,
       hasPendingConflict: hasPendingConflict ?? this.hasPendingConflict,
+      attention: identical(attention, _attentionUnchanged)
+          ? this.attention
+          : attention as SyncAttentionInfo?,
     );
   }
 
@@ -164,6 +194,7 @@ class SyncFlowStatus {
     lastSuccessAt: null,
     lastError: null,
     hasPendingConflict: false,
+    attention: null,
   );
 }
 

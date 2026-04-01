@@ -221,15 +221,23 @@ class NoteInputController {
       );
     }
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': updatedContent,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-      },
+    final allowed = await guardMemoContentForCurrentSyncTarget(
+      read: _ref.read,
+      db: db,
+      memoUid: memo.uid,
+      content: updatedContent,
     );
+    if (allowed) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          'content': updatedContent,
+          'visibility': memo.visibility,
+          'pinned': memo.pinned,
+        },
+      );
+    }
     final stagedPayload = await queuedAttachmentStager.stageUploadPayload({
       'uid': stagedAttachment.uid,
       'memo_uid': memo.uid,

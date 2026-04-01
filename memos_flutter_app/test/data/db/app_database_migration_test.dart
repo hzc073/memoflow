@@ -253,6 +253,130 @@ END;
     await second.countOutboxPending();
   });
 
+  test(
+    'upgrade from v18 to v19 migrates blocked outbox chains to quarantined',
+    () async {
+      final dbName = uniqueDbName('app_database_v18_to_v19_outbox_quarantine');
+
+      addTearDown(() async {
+        await AppDatabase.deleteDatabaseFile(dbName: dbName);
+      });
+
+      final dbDir = await resolveDatabasesDirectoryPath();
+      final path = p.join(dbDir, dbName);
+
+      final legacyDb = await openDatabase(
+        path,
+        version: 18,
+        onCreate: (db, version) async {
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS memos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid TEXT NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'NORMAL',
+  create_time INTEGER NOT NULL,
+  update_time INTEGER NOT NULL,
+  tags TEXT NOT NULL DEFAULT '',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  relation_count INTEGER NOT NULL DEFAULT 0,
+  sync_state INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+''');
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  state INTEGER NOT NULL DEFAULT 0,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  retry_at INTEGER,
+  created_time INTEGER NOT NULL
+);
+''');
+          await db.insert('outbox', <String, Object?>{
+            'type': 'update_memo',
+            'payload': '{"uid":"memo-1","content":"legacy"}',
+            'state': AppDatabase.outboxStateError,
+            'attempts': 1,
+            'last_error': 'HTTP 404 | memo not found',
+            'retry_at': null,
+            'created_time': 1773424800000,
+          });
+          await db.insert('outbox', <String, Object?>{
+            'type': 'upload_attachment',
+            'payload':
+                '{"uid":"att-1","memo_uid":"memo-1","file_path":"C:/tmp/a.png","filename":"a.png","mime_type":"image/png"}',
+            'state': AppDatabase.outboxStatePending,
+            'attempts': 0,
+            'last_error': null,
+            'retry_at': null,
+            'created_time': 1773424801000,
+          });
+          await db.insert('outbox', <String, Object?>{
+            'type': 'create_memo',
+            'payload':
+                '{"uid":"memo-2","content":"independent","visibility":"PRIVATE","pinned":false}',
+            'state': AppDatabase.outboxStatePending,
+            'attempts': 0,
+            'last_error': null,
+            'retry_at': null,
+            'created_time': 1773424802000,
+          });
+        },
+      );
+      await legacyDb.close();
+
+      final appDb = AppDatabase(dbName: dbName);
+      addTearDown(() async {
+        await appDb.close();
+      });
+
+      final upgradedDb = await appDb.db;
+      final columns = await upgradedDb.rawQuery('PRAGMA table_info("outbox");');
+      expect(columns.any((row) => row['name'] == 'failure_code'), isTrue);
+      expect(columns.any((row) => row['name'] == 'failure_kind'), isTrue);
+      expect(columns.any((row) => row['name'] == 'quarantined_at'), isTrue);
+
+      final rows = await upgradedDb.query(
+        'outbox',
+        columns: const [
+          'type',
+          'state',
+          'failure_code',
+          'failure_kind',
+          'quarantined_at',
+        ],
+        orderBy: 'id ASC',
+      );
+      expect(rows, hasLength(3));
+
+      expect(rows[0]['type'], 'update_memo');
+      expect(rows[0]['state'], AppDatabase.outboxStateQuarantined);
+      expect(rows[0]['failure_code'], 'legacy_error_migrated');
+      expect(rows[0]['failure_kind'], 'fatal_immediate');
+      expect(rows[0]['quarantined_at'], isNotNull);
+
+      expect(rows[1]['type'], 'upload_attachment');
+      expect(rows[1]['state'], AppDatabase.outboxStateQuarantined);
+      expect(rows[1]['failure_code'], 'blocked_by_quarantined_memo_root');
+      expect(rows[1]['failure_kind'], 'fatal_immediate');
+      expect(rows[1]['quarantined_at'], isNotNull);
+
+      expect(rows[2]['type'], 'create_memo');
+      expect(rows[2]['state'], AppDatabase.outboxStatePending);
+      expect(rows[2]['failure_code'], isNull);
+      expect(rows[2]['failure_kind'], isNull);
+    },
+  );
+
   test('concurrent db getter reuses one opening handle per wrapper', () async {
     final dbName = uniqueDbName('app_database_single_open_race');
     final appDb = AppDatabase(dbName: dbName);

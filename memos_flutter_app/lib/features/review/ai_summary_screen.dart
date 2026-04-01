@@ -24,7 +24,9 @@ import '../../data/ai/ai_provider_models.dart';
 import '../../data/ai/ai_route_config.dart';
 import '../../data/ai/ai_settings_models.dart';
 import '../../data/models/local_memo.dart';
+import '../../state/memos/memo_sync_constraints.dart';
 import '../../state/memos/create_memo_outbox_payload.dart';
+import '../../state/system/session_provider.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
@@ -593,17 +595,26 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         syncState: 1,
       );
       await aiAnalysisRepository.upsertMemoPolicy(memoUid: uid, allowAi: false);
-      await db.enqueueOutbox(
-        type: 'create_memo',
-        payload: buildCreateMemoOutboxPayload(
-          uid: uid,
-          content: content,
-          visibility: 'PRIVATE',
-          pinned: false,
-          createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
-          hasAttachments: false,
-        ),
+      final allowed = await guardMemoContentForRemoteSync(
+        db: db,
+        enabled:
+            ref.read(appSessionProvider).valueOrNull?.currentAccount != null,
+        memoUid: uid,
+        content: content,
       );
+      if (allowed) {
+        await db.enqueueOutbox(
+          type: 'create_memo',
+          payload: buildCreateMemoOutboxPayload(
+            uid: uid,
+            content: content,
+            visibility: 'PRIVATE',
+            pinned: false,
+            createTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+            hasAttachments: false,
+          ),
+        );
+      }
       unawaited(
         ref
             .read(syncCoordinatorProvider.notifier)

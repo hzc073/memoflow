@@ -83,6 +83,10 @@ class LogReportGenerator {
       sqlite,
       'SELECT COUNT(*) FROM outbox WHERE state = ${AppDatabase.outboxStateError};',
     );
+    final quarantinedQueue = await _count(
+      sqlite,
+      'SELECT COUNT(*) FROM outbox WHERE state = ${AppDatabase.outboxStateQuarantined};',
+    );
     final outboxTypeCounts = await _loadOutboxTypeCounts(sqlite);
     final pendingOutboxItems = includeOutbox
         ? await _loadOutboxItems(
@@ -102,6 +106,13 @@ class LogReportGenerator {
             limit: outboxLimit,
           )
         : const <Map<String, dynamic>>[];
+    final quarantinedOutboxItems = includeOutbox
+        ? await _loadOutboxItems(
+            sqlite,
+            states: const [AppDatabase.outboxStateQuarantined],
+            limit: outboxLimit,
+          )
+        : const <Map<String, dynamic>>[];
     final memoSyncErrors = includeErrors
         ? await _loadMemoSyncErrors(sqlite, limit: memoErrorLimit)
         : const <Map<String, dynamic>>[];
@@ -115,6 +126,7 @@ class LogReportGenerator {
     final outboxLine = _formatOutboxCounts(
       pendingQueue,
       failedQueue,
+      quarantinedQueue,
       outboxTypeCounts,
     );
 
@@ -174,7 +186,9 @@ class LogReportGenerator {
       ..writeln('Account: ${_formatSummaryValue(summaryAccount)}')
       ..writeln('Sync Last Success: $summaryLastSuccess')
       ..writeln('Sync Last Failure: $summaryLastFailure')
-      ..writeln('Outbox: pending=$pendingQueue failed=$failedQueue')
+      ..writeln(
+        'Outbox: pending=$pendingQueue quarantined=$quarantinedQueue failed=$failedQueue',
+      )
       ..writeln(
         'Network logging: ${networkLoggingEnabled ? 'enabled' : 'disabled'} '
         '(buffer=${allNetworkLogs.length}, store=${networkStoreLogs.length})',
@@ -204,6 +218,22 @@ class LogReportGenerator {
         for (var i = 0; i < pendingOutboxItems.length; i++) {
           buffer.writeln(
             '${i + 1}. ${_formatOutboxItem(pendingOutboxItems[i])}',
+          );
+        }
+      }
+
+      buffer
+        ..writeln('')
+        ..writeln(
+          '[OUTBOX QUARANTINED] (Last ${quarantinedOutboxItems.length})',
+        );
+
+      if (quarantinedOutboxItems.isEmpty) {
+        buffer.writeln('1. (none)');
+      } else {
+        for (var i = 0; i < quarantinedOutboxItems.length; i++) {
+          buffer.writeln(
+            '${i + 1}. ${_formatOutboxItem(quarantinedOutboxItems[i])}',
           );
         }
       }
@@ -464,19 +494,22 @@ class LogReportGenerator {
   String _formatOutboxCounts(
     int pendingQueue,
     int failedQueue,
+    int quarantinedQueue,
     Map<String, _OutboxCounts> counts,
   ) {
-    if (pendingQueue == 0 && failedQueue == 0) {
-      return 'Outbox: pending=0 failed=0';
+    if (pendingQueue == 0 && failedQueue == 0 && quarantinedQueue == 0) {
+      return 'Outbox: pending=0 quarantined=0 failed=0';
     }
     final parts = <String>[];
     final keys = counts.keys.toList()..sort();
     for (final key in keys) {
       final entry = counts[key]!;
-      parts.add('$key(pending=${entry.pending}, failed=${entry.failed})');
+      parts.add(
+        '$key(pending=${entry.pending}, quarantined=${entry.quarantined}, failed=${entry.failed})',
+      );
     }
     final detail = parts.isEmpty ? '' : ' | ${parts.join('; ')}';
-    return 'Outbox: pending=$pendingQueue failed=$failedQueue$detail';
+    return 'Outbox: pending=$pendingQueue quarantined=$quarantinedQueue failed=$failedQueue$detail';
   }
 
   void _appendNetworkEntries(
@@ -523,7 +556,7 @@ class LogReportGenerator {
     final rows = await sqlite.rawQuery('''
 SELECT type, state, COUNT(*) AS count
 FROM outbox
-WHERE state IN (${AppDatabase.outboxStatePending}, ${AppDatabase.outboxStateRunning}, ${AppDatabase.outboxStateRetry}, ${AppDatabase.outboxStateError})
+WHERE state IN (${AppDatabase.outboxStatePending}, ${AppDatabase.outboxStateRunning}, ${AppDatabase.outboxStateRetry}, ${AppDatabase.outboxStateError}, ${AppDatabase.outboxStateQuarantined})
 GROUP BY type, state;
 ''');
     final out = <String, _OutboxCounts>{};
@@ -541,6 +574,8 @@ GROUP BY type, state;
       final entry = out.putIfAbsent(type, () => _OutboxCounts());
       if (state == AppDatabase.outboxStateError) {
         entry.failed += count;
+      } else if (state == AppDatabase.outboxStateQuarantined) {
+        entry.quarantined += count;
       } else {
         entry.pending += count;
       }
@@ -592,10 +627,16 @@ GROUP BY type, state;
     final lastError = LogSanitizer.sanitizeText(
       (row['last_error'] as String?) ?? '',
     ).trim();
+    final failureCode = LogSanitizer.sanitizeText(
+      (row['failure_code'] as String?) ?? '',
+    ).trim();
     final payloadSummary = _summarizeOutboxPayload(type, row['payload']);
     final parts = <String>['#$id', type, 'attempts=$attempts', 'at=$created'];
     if (payloadSummary.isNotEmpty) {
       parts.add(payloadSummary);
+    }
+    if (failureCode.isNotEmpty) {
+      parts.add('failure_code=$failureCode');
     }
     if (lastError.isNotEmpty) {
       parts.add('error=$lastError');
@@ -1056,5 +1097,6 @@ extension _FirstOrNullLogExt<T> on List<T> {
 
 class _OutboxCounts {
   int pending = 0;
+  int quarantined = 0;
   int failed = 0;
 }

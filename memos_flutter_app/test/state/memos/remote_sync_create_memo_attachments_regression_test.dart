@@ -119,7 +119,7 @@ void main() {
         _PassthroughHttpOverrides(),
       );
 
-      expect(result, isA<MemoSyncFailure>());
+      expect(result, isA<MemoSyncSuccessWithAttention>());
       final row = await db.getMemoByUid('memo-1');
       expect(row?['sync_state'], 1);
     },
@@ -249,6 +249,202 @@ void main() {
         ),
         isEmpty,
       );
+    },
+  );
+
+  test(
+    'RemoteSyncController quarantines missing update_memo and continues unrelated tasks',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start(
+        missingMemoIds: const {'memo-missing'},
+      );
+      final dbName = uniqueDbName(
+        'remote_sync_quarantines_missing_update_and_continues',
+      );
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+
+      addTearDown(() async {
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-missing',
+        content: 'bad memo content',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1773424800,
+        updateTimeSec: 1773424800,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': 'memo-missing',
+          'content': 'bad memo content',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+
+      await db.upsertMemo(
+        uid: 'memo-good',
+        content: 'plain memo',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1773424800,
+        updateTimeSec: 1773424800,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': 'memo-good',
+          'content': 'plain memo',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+          'has_attachments': false,
+          'create_time': 1773424800,
+          'display_time': 1773424800,
+        },
+      );
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccessWithAttention>());
+      final attention = (result as MemoSyncSuccessWithAttention).attention;
+      expect(attention?.failureCode, 'remote_missing_memo');
+      expect(attention?.memoUid, 'memo-missing');
+      expect(attention?.outboxId, isNotNull);
+      expect(await db.countOutboxPending(), 0);
+      expect(await db.countOutboxQuarantined(), 1);
+
+      final missingRow = await db.getMemoByUid('memo-missing');
+      final goodRow = await db.getMemoByUid('memo-good');
+      expect(missingRow?['sync_state'], 2);
+      expect(goodRow?['sync_state'], 0);
+
+      expect(
+        server.requests.where(
+          (request) =>
+              request.method == 'PATCH' &&
+              request.path == '/api/v1/memos/memo-missing',
+        ),
+        hasLength(1),
+      );
+      expect(
+        server.requests.where(
+          (request) =>
+              request.method == 'POST' && request.path == '/api/v1/memos',
+        ),
+        hasLength(1),
+      );
+      expect(
+        server.requests
+            .where(
+              (request) =>
+                  request.method == 'POST' && request.path == '/api/v1/memos',
+            )
+            .single
+            .queryParameters['memoId'],
+        'memo-good',
+      );
+    },
+  );
+
+  test(
+    'RemoteSyncController still reports attention when quarantined tasks already exist',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start();
+      final dbName = uniqueDbName('remote_sync_existing_attention_survives');
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+
+      addTearDown(() async {
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': 'memo-existing-attention',
+          'content': 'stale content',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+      final sqlite = await db.db;
+      await sqlite.rawUpdate(
+        'UPDATE outbox SET state = ?, last_error = ?, failure_code = ?, failure_kind = ?, quarantined_at = ? WHERE type = ?',
+        [
+          AppDatabase.outboxStateQuarantined,
+          'content too long (max 8192 characters)',
+          'content_too_long',
+          'fatal_immediate',
+          DateTime.now().toUtc().millisecondsSinceEpoch,
+          'update_memo',
+        ],
+      );
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccessWithAttention>());
+      final attention = (result as MemoSyncSuccessWithAttention).attention;
+      expect(attention?.failureCode, 'content_too_long');
+      expect(attention?.outboxId, isNotNull);
+      expect(await db.countOutboxAttention(), 1);
     },
   );
 
@@ -713,10 +909,12 @@ class _RemoteSyncAttachmentRegressionServer {
   _RemoteSyncAttachmentRegressionServer._(
     this._server, {
     required this.conflictOnCreate,
+    required this.missingMemoIds,
   });
 
   final HttpServer _server;
   final bool conflictOnCreate;
+  final Set<String> missingMemoIds;
   final List<_CapturedRegressionRequest> requests =
       <_CapturedRegressionRequest>[];
   Map<String, dynamic>? _createdMemo;
@@ -727,11 +925,13 @@ class _RemoteSyncAttachmentRegressionServer {
 
   static Future<_RemoteSyncAttachmentRegressionServer> start({
     bool conflictOnCreate = false,
+    Set<String> missingMemoIds = const <String>{},
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final harness = _RemoteSyncAttachmentRegressionServer._(
       server,
       conflictOnCreate: conflictOnCreate,
+      missingMemoIds: missingMemoIds,
     );
     server.listen(harness._handleRequest);
     return harness;
@@ -814,6 +1014,14 @@ class _RemoteSyncAttachmentRegressionServer {
     if (request.method == 'PATCH' &&
         RegExp(r'^/api/v1/memos/[^/]+$').hasMatch(request.uri.path)) {
       final memoId = request.uri.pathSegments[3];
+      if (missingMemoIds.contains(memoId)) {
+        await _writeJson(request.response, <String, Object?>{
+          'code': 5,
+          'message': 'memo not found',
+          'details': const <Object>[],
+        }, statusCode: HttpStatus.notFound);
+        return;
+      }
       _createdMemo ??= _buildMemo(memoId: memoId);
       if (jsonBody != null) {
         for (final entry in jsonBody.entries) {
