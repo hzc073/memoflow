@@ -35,7 +35,7 @@ String _normalizeTagSegment(String raw) {
       buffer.writeCharCode(rune);
     }
   }
-  return buffer.toString().toLowerCase();
+  return buffer.toString();
 }
 
 List<String> extractTags(String content) {
@@ -81,6 +81,6 @@ void _extractTagsFromLine(String line, Set<String> tags) {
     if (j == i + 1) continue;
     final tag = String.fromCharCodes(runes.sublist(i + 1, j));
     if (tag.isEmpty) continue;
-    tags.add(tag.toLowerCase());
+    tags.add(tag);
   }
 }

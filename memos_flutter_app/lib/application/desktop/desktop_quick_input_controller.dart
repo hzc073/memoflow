@@ -10,6 +10,7 @@ import 'package:hotkey_manager/hotkey_manager.dart';
 
 import '../../core/desktop_quick_input_channel.dart';
 import '../../core/desktop/shortcuts.dart';
+import '../../core/tags.dart';
 import 'desktop_tray_controller.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/app_preferences.dart';
@@ -294,9 +295,7 @@ class DesktopQuickInputController {
         final existing = <String>{};
         if (rawExisting is List) {
           for (final item in rawExisting) {
-            final text = (item as String? ?? '').trim().toLowerCase();
-            if (text.isEmpty) continue;
-            final normalized = text.startsWith('#') ? text.substring(1) : text;
+            final normalized = normalizeTagPath((item as String? ?? ''));
             if (normalized.isNotEmpty) {
               existing.add(normalized);
             }
@@ -306,10 +305,10 @@ class DesktopQuickInputController {
           final stats = await _bootstrapAdapter.readTagStats(_ref);
           final tags = <String>[];
           for (final stat in stats) {
-            final tag = stat.tag.trim();
+            final tag = normalizeTagPath(stat.tag);
             if (tag.isEmpty) continue;
-            if (existing.contains(tag.toLowerCase())) continue;
-            tags.add(tag);
+            if (existing.contains(tag)) continue;
+            tags.add(stat.tag.trim());
           }
           return tags;
         } catch (_) {

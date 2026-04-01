@@ -7,13 +7,13 @@ import 'package:memos_flutter_app/features/memos/memos_list_header_controller.da
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 
 void main() {
-  test('syncExternalTag normalizes incoming tag path', () {
+  test('syncExternalTag preserves incoming tag path case', () {
     final controller = MemosListHeaderController(initialTag: '#Old');
     addTearDown(controller.dispose);
 
     controller.syncExternalTag('  #Work / Sub  ');
 
-    expect(controller.activeTagFilter, 'work/sub');
+    expect(controller.activeTagFilter, 'Work/Sub');
   });
 
   test('toggleQuickSearchKind clears repeated selection', () {
