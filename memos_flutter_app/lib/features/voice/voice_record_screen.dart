@@ -47,6 +47,8 @@ abstract interface class VoiceRecordRecorder {
   Future<bool> hasPermission();
   Future<bool> hasInputDevice();
   Future<void> start({required String path});
+  Future<void> pause();
+  Future<void> resume();
   Future<String?> stop();
   Future<void> cancel();
   Stream<Amplitude> onAmplitudeChanged(Duration interval);
@@ -82,6 +84,12 @@ class AudioRecorderVoiceRecordRecorder implements VoiceRecordRecorder {
       path: path,
     );
   }
+
+  @override
+  Future<void> pause() => _delegate.pause();
+
+  @override
+  Future<void> resume() => _delegate.resume();
 
   @override
   Future<String?> stop() => _delegate.stop();
@@ -292,6 +300,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
 
   bool get _isQuickFabComposeMode =>
       widget.mode == VoiceRecordMode.quickFabCompose;
+  bool get _usesPageQuickPauseAction =>
+      _isQuickFabComposeMode &&
+      widget.presentation == VoiceRecordPresentation.page;
   bool get _usesNativeQuickSpectrum => _quickSpectrumRecorder != null;
   bool get _supportsDraftQuickAction => !_isQuickFabComposeMode;
 
@@ -885,8 +896,98 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     });
   }
 
+  Future<void> _togglePageQuickPause() async {
+    if (!_usesPageQuickPauseAction ||
+        !_recording ||
+        _awaitingConfirm ||
+        _processing) {
+      return;
+    }
+    if (_paused) {
+      await _resumeRecording();
+      return;
+    }
+    await _pauseRecording();
+  }
+
+  Future<void> _pauseRecording() async {
+    try {
+      if (_usesNativeQuickSpectrum) {
+        await _quickSpectrumRecorder!.pause();
+      } else {
+        await _recorder.pause();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u6682\u505C\u5F55\u97F3\u5931\u8D25\uFF1A$e',
+              en: 'Failed to pause recording: $e',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    _stopwatch.stop();
+    _blink.stop();
+    _stopMeter();
+    if (!mounted) return;
+    setState(() {
+      _paused = true;
+      _ampLevel = 0.0;
+      _ampPeak = 0.0;
+      _voiceActive = false;
+      _dragOffset = Offset.zero;
+      _dragPreviewAction = _VoiceRecordQuickAction.none;
+    });
+  }
+
+  Future<void> _resumeRecording() async {
+    try {
+      if (_usesNativeQuickSpectrum) {
+        await _quickSpectrumRecorder!.resume();
+      } else {
+        await _recorder.resume();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr(
+              zh: '\u7EE7\u7EED\u5F55\u97F3\u5931\u8D25\uFF1A$e',
+              en: 'Failed to resume recording: $e',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    _stopwatch.start();
+    _blink.repeat(reverse: true);
+    _startMeter();
+    if (_usesNativeQuickSpectrum) {
+      _startSpectrumFeed();
+    }
+    if (!mounted) return;
+    setState(() {
+      _paused = false;
+      _dragOffset = Offset.zero;
+      _dragPreviewAction = _VoiceRecordQuickAction.none;
+    });
+  }
+
   void _handleRecordPanUpdate(DragUpdateDetails details) {
-    if (!_recording || _awaitingConfirm || _processing || _gestureLocked) {
+    if (_paused ||
+        !_recording ||
+        _awaitingConfirm ||
+        _processing ||
+        _gestureLocked) {
       return;
     }
     final nextOffset = _dragOffset + details.delta;
@@ -923,7 +1024,10 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         await _saveAndReturn();
         break;
       case _VoiceRecordQuickAction.none:
-        if (_isQuickFabComposeMode && _recording && !_gestureLocked) {
+        if (_isQuickFabComposeMode &&
+            _recording &&
+            !_gestureLocked &&
+            !_paused) {
           await _stopRecording(autoComplete: true);
         }
         break;
@@ -949,6 +1053,9 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     if (_isQuickFabComposeMode) {
       if (dx <= -horizontalThreshold && horizontalDominant) {
         return _VoiceRecordQuickAction.discard;
+      }
+      if (_usesPageQuickPauseAction) {
+        return _VoiceRecordQuickAction.none;
       }
       if (dx >= horizontalThreshold && horizontalDominant) {
         return _VoiceRecordQuickAction.lock;
@@ -997,6 +1104,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     final bgColor = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
+    final isQuickPageLayout = _isQuickFabComposeMode && !isOverlay;
     final panelColor = isDark
         ? Colors.white.withValues(alpha: 0.04)
         : Colors.white.withValues(alpha: 0.62);
@@ -1004,17 +1112,21 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
         ? Colors.white.withValues(alpha: 0.055)
         : Colors.white.withValues(alpha: 0.74);
     final headerLabel = _isQuickFabComposeMode
-        ? switch ((_gestureLocked, _dragPreviewAction, _recording)) {
-            (_, _, false) => context.t.strings.legacy.msg_voice_memos,
-            (false, _VoiceRecordQuickAction.discard, true) => context.tr(
+        ? switch ((_paused, _gestureLocked, _dragPreviewAction, _recording)) {
+            (true, _, _, true) => context.tr(
+              zh: '\u5DF2\u6682\u505C',
+              en: 'Paused',
+            ),
+            (_, _, _, false) => context.t.strings.legacy.msg_voice_memos,
+            (false, false, _VoiceRecordQuickAction.discard, true) => context.tr(
               zh: '\u677E\u5F00\u653E\u5F03\u5F55\u97F3',
               en: 'Release to discard recording',
             ),
-            (false, _VoiceRecordQuickAction.lock, true) => context.tr(
+            (false, false, _VoiceRecordQuickAction.lock, true) => context.tr(
               zh: '\u677E\u5F00\u9501\u5B9A\u81EA\u52A8\u5F55\u97F3',
               en: 'Release to lock recording',
             ),
-            (_, _, true) => context.tr(
+            (_, _, _, true) => context.tr(
               zh: '\u5F55\u97F3\u4E2D',
               en: 'Recording',
             ),
@@ -1231,22 +1343,44 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                         ],
                                       ),
                                     ),
-                                    const Spacer(),
-                                    Text(
-                                      headerLabel,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: textMuted,
+                                    if (isQuickPageLayout) ...[
+                                      const SizedBox(width: 12),
+                                      Flexible(
+                                        child: Text(
+                                          headerLabel,
+                                          key: const ValueKey(
+                                            'voice_record_header_label',
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: textMuted,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ] else ...[
+                                      const Spacer(),
+                                      Text(
+                                        headerLabel,
+                                        key: const ValueKey(
+                                          'voice_record_header_label',
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: textMuted,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 28),
                                 Text(
                                   elapsedText,
                                   style: TextStyle(
-                                    fontSize: 38,
+                                    fontSize: isQuickPageLayout ? 34 : 38,
                                     fontWeight: FontWeight.w700,
                                     height: 1.0,
                                     color: isDark
@@ -1269,94 +1403,172 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                 const SizedBox(height: 26),
                                 Expanded(
                                   child: Center(
-                                    child: Container(
-                                      width: double.infinity,
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 312,
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: isQuickPageLayout ? 296 : 312,
                                       ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 18,
-                                        vertical: 26,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: secondaryPanel,
-                                        borderRadius: BorderRadius.circular(30),
-                                        border: Border.all(
-                                          color: isDark
-                                              ? Colors.white.withValues(
-                                                  alpha: 0.06,
-                                                )
-                                              : Colors.white.withValues(
-                                                  alpha: 0.6,
-                                                ),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          SizedBox(
-                                            height: 132,
-                                            child: _buildWaveform(
-                                              isDark: false,
-                                              level: recActive
-                                                  ? _ampLevel
-                                                  : 0.0,
-                                              peak: recActive ? _ampPeak : 0.0,
-                                              showVoiceBars:
-                                                  recActive && _voiceActive,
-                                            ),
+                                      child: SizedBox.expand(
+                                        child: Container(
+                                          width: double.infinity,
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: isQuickPageLayout
+                                                ? 0
+                                                : 18,
+                                            vertical: isQuickPageLayout
+                                                ? 0
+                                                : 26,
                                           ),
-                                          const SizedBox(height: 12),
-                                          AnimatedOpacity(
-                                            opacity:
-                                                (_recording &&
-                                                    !_awaitingConfirm)
-                                                ? 1.0
-                                                : 0.55,
-                                            duration: const Duration(
-                                              milliseconds: 180,
-                                            ),
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  _isQuickFabComposeMode
-                                                      ? Icons
-                                                            .arrow_forward_rounded
-                                                      : Icons
-                                                            .arrow_upward_rounded,
-                                                  size: 16,
-                                                  color: MemoFlowPalette.primary
-                                                      .withValues(alpha: 0.85),
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Flexible(
-                                                  child: Text(
-                                                    lockHint,
-                                                    textAlign: TextAlign.center,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: MemoFlowPalette
-                                                          .primary
-                                                          .withValues(
-                                                            alpha: 0.85,
-                                                          ),
-                                                    ),
+                                          decoration: isQuickPageLayout
+                                              ? null
+                                              : BoxDecoration(
+                                                  color: secondaryPanel,
+                                                  borderRadius:
+                                                      BorderRadius.circular(30),
+                                                  border: Border.all(
+                                                    color: isDark
+                                                        ? Colors.white
+                                                              .withValues(
+                                                                alpha: 0.06,
+                                                              )
+                                                        : Colors.white
+                                                              .withValues(
+                                                                alpha: 0.6,
+                                                              ),
                                                   ),
                                                 ),
-                                              ],
-                                            ),
+                                          child: LayoutBuilder(
+                                            builder: (context, constraints) {
+                                              final availableHeight =
+                                                  constraints.maxHeight;
+                                              final canShowLockHint =
+                                                  !isQuickPageLayout &&
+                                                  availableHeight >= 180;
+                                              final reservedHeight =
+                                                  canShowLockHint
+                                                  ? (isQuickPageLayout
+                                                        ? 30
+                                                        : 40)
+                                                  : 0.0;
+                                              final maxWaveformHeight = math
+                                                  .max(
+                                                    0.0,
+                                                    availableHeight -
+                                                        reservedHeight,
+                                                  );
+                                              final preferredWaveformHeight =
+                                                  isQuickPageLayout
+                                                  ? 88.0
+                                                  : 132.0;
+                                              final minWaveformHeight =
+                                                  isQuickPageLayout
+                                                  ? 32.0
+                                                  : 56.0;
+                                              final waveformHeight =
+                                                  maxWaveformHeight <= 0
+                                                  ? 0.0
+                                                  : maxWaveformHeight <
+                                                        minWaveformHeight
+                                                  ? maxWaveformHeight
+                                                  : math.min(
+                                                      preferredWaveformHeight,
+                                                      maxWaveformHeight,
+                                                    );
+
+                                              return Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  if (waveformHeight > 0)
+                                                    SizedBox(
+                                                      height: waveformHeight,
+                                                      child: _buildWaveform(
+                                                        isDark: false,
+                                                        level: recActive
+                                                            ? _ampLevel
+                                                            : 0.0,
+                                                        peak: recActive
+                                                            ? _ampPeak
+                                                            : 0.0,
+                                                        showVoiceBars:
+                                                            recActive &&
+                                                            _voiceActive,
+                                                      ),
+                                                    ),
+                                                  if (canShowLockHint) ...[
+                                                    SizedBox(
+                                                      height: isQuickPageLayout
+                                                          ? 8
+                                                          : 12,
+                                                    ),
+                                                    AnimatedOpacity(
+                                                      opacity:
+                                                          (_recording &&
+                                                              !_awaitingConfirm)
+                                                          ? 1.0
+                                                          : 0.55,
+                                                      duration: const Duration(
+                                                        milliseconds: 180,
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
+                                                        children: [
+                                                          Icon(
+                                                            _isQuickFabComposeMode
+                                                                ? Icons
+                                                                      .arrow_forward_rounded
+                                                                : Icons
+                                                                      .arrow_upward_rounded,
+                                                            size: 16,
+                                                            color:
+                                                                MemoFlowPalette
+                                                                    .primary
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.85,
+                                                                    ),
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 6,
+                                                          ),
+                                                          Flexible(
+                                                            child: Text(
+                                                              lockHint,
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .center,
+                                                              style: TextStyle(
+                                                                fontSize:
+                                                                    isQuickPageLayout
+                                                                    ? 11
+                                                                    : 12,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: MemoFlowPalette
+                                                                    .primary
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.85,
+                                                                    ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              );
+                                            },
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 10),
+                                SizedBox(height: isQuickPageLayout ? 8 : 10),
                                 Row(
                                   children: [
                                     _buildQuickActionButton(
@@ -1367,9 +1579,13 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                       enabled: !_processing,
                                       onTap: () => unawaited(_closeScreen()),
                                       foreground: MemoFlowPalette.primary,
+                                      size: isQuickPageLayout ? 44 : 50,
+                                      iconSize: isQuickPageLayout ? 22 : 24,
                                     ),
                                     if (_supportsDraftQuickAction) ...[
-                                      const SizedBox(width: 18),
+                                      SizedBox(
+                                        width: isQuickPageLayout ? 14 : 18,
+                                      ),
                                       _buildQuickActionButton(
                                         icon: _gestureLocked
                                             ? Icons.lock_rounded
@@ -1384,8 +1600,12 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                             !_processing,
                                         onTap: _toggleGestureLock,
                                         foreground: MemoFlowPalette.primary,
+                                        size: isQuickPageLayout ? 44 : 50,
+                                        iconSize: isQuickPageLayout ? 22 : 24,
                                       ),
-                                      const SizedBox(width: 18),
+                                      SizedBox(
+                                        width: isQuickPageLayout ? 14 : 18,
+                                      ),
                                       _buildQuickActionButton(
                                         icon: Icons.notes_rounded,
                                         active:
@@ -1399,59 +1619,82 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                         foreground: _awaitingConfirm
                                             ? MemoFlowPalette.primary
                                             : textMain.withValues(alpha: 0.8),
+                                        size: isQuickPageLayout ? 44 : 50,
+                                        iconSize: isQuickPageLayout ? 22 : 24,
                                       ),
                                     ] else ...[
                                       const Spacer(),
                                       _buildQuickActionButton(
-                                        icon: _gestureLocked
-                                            ? Icons.lock_rounded
-                                            : Icons.lock_open_rounded,
-                                        active:
-                                            _dragPreviewAction ==
-                                                _VoiceRecordQuickAction.lock ||
-                                            _gestureLocked,
+                                        icon: _usesPageQuickPauseAction
+                                            ? (_paused
+                                                  ? Icons.play_arrow_rounded
+                                                  : Icons.pause_rounded)
+                                            : (_gestureLocked
+                                                  ? Icons.lock_rounded
+                                                  : Icons.lock_open_rounded),
+                                        active: _usesPageQuickPauseAction
+                                            ? _paused
+                                            : (_dragPreviewAction ==
+                                                      _VoiceRecordQuickAction
+                                                          .lock ||
+                                                  _gestureLocked),
                                         enabled:
                                             _recording &&
                                             !_awaitingConfirm &&
                                             !_processing,
-                                        onTap: _toggleGestureLock,
+                                        onTap: _usesPageQuickPauseAction
+                                            ? () => unawaited(
+                                                _togglePageQuickPause(),
+                                              )
+                                            : _toggleGestureLock,
                                         foreground: MemoFlowPalette.primary,
+                                        size: isQuickPageLayout ? 44 : 50,
+                                        iconSize: isQuickPageLayout ? 22 : 24,
                                       ),
                                     ],
                                   ],
                                 ),
-                                const SizedBox(height: 18),
-                                _buildPrimaryButton(isDark: isDark),
-                                const SizedBox(height: 14),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        discardHint,
-                                        textAlign: TextAlign.left,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: textMuted,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        draftHint,
-                                        textAlign: _supportsDraftQuickAction
-                                            ? TextAlign.right
-                                            : TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: textMuted,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                SizedBox(height: isQuickPageLayout ? 14 : 18),
+                                _buildPrimaryButton(
+                                  isDark: isDark,
+                                  compact: isQuickPageLayout,
                                 ),
+                                if (!isQuickPageLayout) ...[
+                                  SizedBox(height: isQuickPageLayout ? 10 : 14),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          discardHint,
+                                          textAlign: TextAlign.left,
+                                          style: TextStyle(
+                                            fontSize: isQuickPageLayout
+                                                ? 11
+                                                : 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: textMuted,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          draftHint,
+                                          textAlign: _supportsDraftQuickAction
+                                              ? TextAlign.right
+                                              : TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: isQuickPageLayout
+                                                ? 11
+                                                : 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: textMuted,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                           ),

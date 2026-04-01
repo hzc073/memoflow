@@ -85,6 +85,30 @@ class QuickSpectrumRecorderChannel(
                 }
             }
 
+            "pause" -> {
+                operationExecutor.execute {
+                    runCatching {
+                        recorder.pause()
+                    }.onSuccess {
+                        result.success(null)
+                    }.onFailure {
+                        reportError(result, it)
+                    }
+                }
+            }
+
+            "resume" -> {
+                operationExecutor.execute {
+                    runCatching {
+                        recorder.resume()
+                    }.onSuccess {
+                        result.success(null)
+                    }.onFailure {
+                        reportError(result, it)
+                    }
+                }
+            }
+
             "cancel" -> {
                 operationExecutor.execute {
                     runCatching {

@@ -66,6 +66,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'page quick mode uses quick spectrum and hides standard draft action',
+    (tester) async {
+      final recorder = _FakeVoiceRecordRecorder();
+      final quickRecorder = _FakeAndroidQuickSpectrumRecorder();
+      addTearDown(recorder.dispose);
+      addTearDown(quickRecorder.dispose);
+      final tempDir = Directory.systemTemp.createTempSync(
+        'voice_record_screen_page_quick_test',
+      );
+      addTearDown(() {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      });
+
+      await _pumpVoiceRecordScreen(
+        tester,
+        recorder: recorder,
+        quickRecorder: quickRecorder,
+        mode: VoiceRecordMode.quickFabCompose,
+        presentation: VoiceRecordPresentation.page,
+        documentsDirectoryResolver: () async => tempDir,
+      );
+
+      expect(recorder.lastAmplitudeInterval, isNull);
+      expect(quickRecorder.startedPath, endsWith('.m4a'));
+      expect(
+        find.byKey(const ValueKey('voice_record_quick_spectrum')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('voice_record_standard_waveform')),
+        findsNothing,
+      );
+      expect(find.text('Slide right to lock'), findsNothing);
+      expect(find.text('Slide left to discard'), findsNothing);
+      expect(find.text('Release to finish'), findsNothing);
+      expect(find.byIcon(Icons.notes_rounded), findsNothing);
+      expect(find.byIcon(Icons.lock_rounded), findsNothing);
+      expect(find.byIcon(Icons.lock_open_rounded), findsNothing);
+      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+
+      final recPosition = tester.getTopLeft(find.text('REC'));
+      final headerPosition = tester.getTopLeft(
+        find.byKey(const ValueKey('voice_record_header_label')),
+      );
+      expect(headerPosition.dx - recPosition.dx, lessThan(120));
+
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('standard mode keeps legacy waveform renderer', (tester) async {
     final recorder = _FakeVoiceRecordRecorder();
     addTearDown(recorder.dispose);
@@ -97,6 +150,81 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('page quick mode completes immediately on first stop', (
+    tester,
+  ) async {
+    final recorder = _FakeVoiceRecordRecorder();
+    addTearDown(recorder.dispose);
+    final tempDir = Directory.systemTemp.createTempSync(
+      'voice_record_screen_page_quick_complete_test',
+    );
+    addTearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    VoiceRecordResult? completedResult;
+    await _pumpVoiceRecordScreen(
+      tester,
+      recorder: recorder,
+      mode: VoiceRecordMode.quickFabCompose,
+      presentation: VoiceRecordPresentation.page,
+      documentsDirectoryResolver: () async => tempDir,
+      onComplete: (result) => completedResult = result,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('voice_record_primary_button')));
+    await tester.pump();
+
+    expect(completedResult, isNotNull);
+    expect(completedResult!.filePath, recorder.startedPath);
+    expect(completedResult!.fileName, isNotEmpty);
+    expect(find.byIcon(Icons.check_rounded), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('page quick mode pause button toggles paused state', (
+    tester,
+  ) async {
+    final recorder = _FakeVoiceRecordRecorder();
+    final quickRecorder = _FakeAndroidQuickSpectrumRecorder();
+    addTearDown(recorder.dispose);
+    addTearDown(quickRecorder.dispose);
+    final tempDir = Directory.systemTemp.createTempSync(
+      'voice_record_screen_page_quick_pause_test',
+    );
+    addTearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    await _pumpVoiceRecordScreen(
+      tester,
+      recorder: recorder,
+      quickRecorder: quickRecorder,
+      mode: VoiceRecordMode.quickFabCompose,
+      presentation: VoiceRecordPresentation.page,
+      documentsDirectoryResolver: () async => tempDir,
+    );
+
+    await tester.tap(find.byIcon(Icons.pause_rounded));
+    await tester.pump();
+
+    expect(quickRecorder.pauseCallCount, 1);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pump();
+
+    expect(quickRecorder.resumeCallCount, 1);
+    expect(find.text('Recording'), findsOneWidget);
+    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pumpVoiceRecordScreen(
@@ -104,7 +232,9 @@ Future<void> _pumpVoiceRecordScreen(
   required _FakeVoiceRecordRecorder recorder,
   _FakeAndroidQuickSpectrumRecorder? quickRecorder,
   required VoiceRecordMode mode,
+  VoiceRecordPresentation presentation = VoiceRecordPresentation.overlay,
   required Future<Directory> Function() documentsDirectoryResolver,
+  VoiceRecordCompletionHandler? onComplete,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -116,12 +246,13 @@ Future<void> _pumpVoiceRecordScreen(
           home: MediaQuery(
             data: const MediaQueryData(size: Size(390, 844)),
             child: VoiceRecordScreen(
-              presentation: VoiceRecordPresentation.overlay,
+              presentation: presentation,
               autoStart: true,
               mode: mode,
               recorder: recorder,
               quickSpectrumRecorder: quickRecorder,
               documentsDirectoryResolver: documentsDirectoryResolver,
+              onComplete: onComplete,
             ),
           ),
         ),
@@ -140,6 +271,8 @@ class _FakeVoiceRecordRecorder implements VoiceRecordRecorder {
 
   Duration? lastAmplitudeInterval;
   String? startedPath;
+  var pauseCallCount = 0;
+  var resumeCallCount = 0;
 
   @override
   Future<void> cancel() async {}
@@ -164,8 +297,23 @@ class _FakeVoiceRecordRecorder implements VoiceRecordRecorder {
   }
 
   @override
+  Future<void> pause() async {
+    pauseCallCount += 1;
+  }
+
+  @override
+  Future<void> resume() async {
+    resumeCallCount += 1;
+  }
+
+  @override
   Future<void> start({required String path}) async {
     startedPath = path;
+    final file = File(path);
+    file.parent.createSync(recursive: true);
+    if (!file.existsSync()) {
+      file.writeAsBytesSync(const <int>[0]);
+    }
   }
 
   @override
@@ -179,6 +327,8 @@ class _FakeAndroidQuickSpectrumRecorder extends AndroidQuickSpectrumRecorder {
       StreamController<QuickSpectrumFrame>.broadcast();
 
   String? startedPath;
+  var pauseCallCount = 0;
+  var resumeCallCount = 0;
 
   void emit(QuickSpectrumFrame frame) {
     _framesController.add(frame);
@@ -190,6 +340,21 @@ class _FakeAndroidQuickSpectrumRecorder extends AndroidQuickSpectrumRecorder {
   @override
   Future<void> start({required String path}) async {
     startedPath = path;
+    final file = File(path);
+    file.parent.createSync(recursive: true);
+    if (!file.existsSync()) {
+      file.writeAsBytesSync(const <int>[0]);
+    }
+  }
+
+  @override
+  Future<void> pause() async {
+    pauseCallCount += 1;
+  }
+
+  @override
+  Future<void> resume() async {
+    resumeCallCount += 1;
   }
 
   @override

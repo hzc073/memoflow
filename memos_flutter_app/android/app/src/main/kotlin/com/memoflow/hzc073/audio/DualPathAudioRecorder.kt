@@ -54,7 +54,12 @@ class DualPathAudioRecorder(
     private var cancelRequested = false
 
     @Volatile
+    private var paused = false
+
+    @Volatile
     private var backgroundError: QuickSpectrumRecorderException? = null
+
+    private val pauseMonitor = Object()
 
     private var workerThread: Thread? = null
     private var audioRecord: AudioRecord? = null
@@ -151,6 +156,7 @@ class DualPathAudioRecorder(
         analyzer.reset()
         stopRequested = false
         cancelRequested = false
+        paused = false
         muxerStarted = false
         trackIndex = -1
         recording = true
@@ -190,6 +196,29 @@ class DualPathAudioRecorder(
     }
 
     @Synchronized
+    fun pause() {
+        if (!recording || paused) {
+            return
+        }
+        paused = true
+        try {
+            audioRecord?.stop()
+        } catch (_: Exception) {
+        }
+    }
+
+    @Synchronized
+    fun resume() {
+        if (!recording || !paused) {
+            return
+        }
+        paused = false
+        synchronized(pauseMonitor) {
+            pauseMonitor.notifyAll()
+        }
+    }
+
+    @Synchronized
     fun dispose() {
         if (recording) {
             try {
@@ -219,6 +248,25 @@ class DualPathAudioRecorder(
             }
 
             while (!stopRequested) {
+                if (paused) {
+                    synchronized(pauseMonitor) {
+                        while (paused && !stopRequested) {
+                            pauseMonitor.wait(100)
+                        }
+                    }
+                    if (stopRequested) {
+                        break
+                    }
+                    localRecord.startRecording()
+                    if (localRecord.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                        throw QuickSpectrumRecorderException(
+                            code = "recorder_init_failed",
+                            message = "AudioRecord failed to resume.",
+                        )
+                    }
+                    continue
+                }
+
                 val read = localRecord.read(readBuffer, 0, readBuffer.size)
                 when {
                     read > 0 -> {
@@ -228,6 +276,8 @@ class DualPathAudioRecorder(
                     }
 
                     read == 0 -> Unit
+
+                    paused && read == AudioRecord.ERROR_INVALID_OPERATION -> Unit
 
                     else -> {
                         throw QuickSpectrumRecorderException(
@@ -253,6 +303,7 @@ class DualPathAudioRecorder(
             recording = false
             stopRequested = false
             cancelRequested = false
+            paused = false
             workerThread = null
         }
     }

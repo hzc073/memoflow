@@ -2589,7 +2589,10 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       }
       if (!mounted) return;
       final result = await Navigator.of(context).push<VoiceRecordResult>(
-        MaterialPageRoute(builder: (_) => const VoiceRecordScreen()),
+        MaterialPageRoute(
+          builder: (_) =>
+              const VoiceRecordScreen(mode: VoiceRecordMode.quickFabCompose),
+        ),
       );
       if (!mounted || result == null) return;
       await _addVoiceAttachment(result);

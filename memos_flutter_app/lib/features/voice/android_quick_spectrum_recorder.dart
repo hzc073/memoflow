@@ -42,6 +42,14 @@ class AndroidQuickSpectrumRecorder {
     });
   }
 
+  Future<void> pause() {
+    return _methodChannel.invokeMethod<void>('pause');
+  }
+
+  Future<void> resume() {
+    return _methodChannel.invokeMethod<void>('resume');
+  }
+
   Future<String?> stop() {
     return _methodChannel.invokeMethod<String>('stop');
   }
