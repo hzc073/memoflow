@@ -1,14 +1,25 @@
 import 'package:dio/dio.dart';
 
+import '../../application/sync/sync_error.dart';
 import '../../data/db/app_database.dart';
+import '../../data/models/local_memo.dart';
 
 const int remoteMemoMaxCharsDefault = 8192;
+
+typedef MemoSyncMutationPolicy = ({
+  bool allowRemoteSync,
+  String? lastError,
+  int syncState,
+});
 
 int? tryParseRemoteMemoLengthLimit(Object errorOrRawText) {
   final normalized = _normalizeRemoteMemoErrorText(errorOrRawText);
   if (normalized.isEmpty) return null;
   for (final pattern in <RegExp>[
-    RegExp(r'max(?:imum)?\s*(?:length\s*)?(?:is\s*)?(\d+)', caseSensitive: false),
+    RegExp(
+      r'max(?:imum)?\s*(?:length\s*)?(?:is\s*)?(\d+)',
+      caseSensitive: false,
+    ),
     RegExp(r'(\d+)\s*characters', caseSensitive: false),
     RegExp(r'limit(?:ed)?\s*(?:to\s*)?(\d+)', caseSensitive: false),
   ]) {
@@ -22,7 +33,9 @@ int? tryParseRemoteMemoLengthLimit(Object errorOrRawText) {
 }
 
 bool looksLikeRemoteMemoTooLongError(Object errorOrRawText) {
-  final normalized = _normalizeRemoteMemoErrorText(errorOrRawText).toLowerCase();
+  final normalized = _normalizeRemoteMemoErrorText(
+    errorOrRawText,
+  ).toLowerCase();
   if (normalized.isEmpty) return false;
   return normalized.contains('content too long') ||
       normalized.contains('exceeds the maximum') ||
@@ -50,11 +63,46 @@ Future<bool> guardMemoContentForRemoteSync({
   required String memoUid,
   required String content,
 }) async {
+  final normalizedMemoUid = memoUid.trim();
+  if (normalizedMemoUid.isEmpty) return true;
+  if (!await shouldAllowMemoRemoteSync(db: db, memoUid: normalizedMemoUid)) {
+    return false;
+  }
   if (!enabled) return true;
-  if (memoUid.trim().isEmpty) return true;
   db.hashCode;
   content.length;
   return true;
+}
+
+MemoSyncMutationPolicy resolveMemoSyncMutationPolicy({
+  required String? currentLastError,
+  int syncStateWhenRemoteSyncAllowed = 1,
+  String? lastErrorWhenRemoteSyncAllowed,
+}) {
+  final normalizedLastError = currentLastError?.trim();
+  if (isLocalOnlySyncPausedError(normalizedLastError)) {
+    return (
+      allowRemoteSync: false,
+      lastError: normalizedLastError,
+      syncState: SyncState.error.index,
+    );
+  }
+  return (
+    allowRemoteSync: true,
+    lastError: lastErrorWhenRemoteSyncAllowed,
+    syncState: syncStateWhenRemoteSyncAllowed,
+  );
+}
+
+Future<bool> shouldAllowMemoRemoteSync({
+  required AppDatabase db,
+  required String memoUid,
+}) async {
+  final normalizedMemoUid = memoUid.trim();
+  if (normalizedMemoUid.isEmpty) return true;
+  final row = await db.getMemoByUid(normalizedMemoUid);
+  final currentLastError = row?['last_error'] as String?;
+  return !isLocalOnlySyncPausedError(currentLastError);
 }
 
 String _normalizeRemoteMemoErrorText(Object value) {

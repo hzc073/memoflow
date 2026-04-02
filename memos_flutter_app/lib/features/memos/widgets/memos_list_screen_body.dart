@@ -8,6 +8,7 @@ import '../../../data/models/local_memo.dart';
 import '../../../data/repositories/scene_micro_guide_repository.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/memos/memos_providers.dart';
+import '../../home/app_drawer_menu_button.dart';
 import '../memos_list_screen_view_state.dart';
 import 'floating_collapse_button.dart';
 import 'memos_list_floating_actions.dart';
@@ -182,7 +183,8 @@ class MemosListScreenBody extends StatelessWidget {
                         : NavigationToolbar.kMiddleSpacing,
                     automaticallyImplyLeading:
                         !data.viewState.layout.useWindowsDesktopHeader &&
-                        !data.searching,
+                        !data.searching &&
+                        drawerPanel == null,
                     leading: data.viewState.layout.useWindowsDesktopHeader
                         ? null
                         : (data.searching
@@ -190,7 +192,29 @@ class MemosListScreenBody extends StatelessWidget {
                                   icon: const Icon(Icons.arrow_back_ios_new),
                                   onPressed: onCloseSearch,
                                 )
-                              : null),
+                              : (drawerPanel != null &&
+                                        !data
+                                            .viewState
+                                            .layout
+                                            .useDesktopSidePane
+                                    ? AppDrawerMenuButton(
+                                        tooltip: context
+                                            .t
+                                            .strings
+                                            .legacy
+                                            .msg_toggle_sidebar,
+                                        iconColor:
+                                            Theme.of(
+                                              context,
+                                            ).appBarTheme.iconTheme?.color ??
+                                            IconTheme.of(context).color ??
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.onSurface,
+                                        badgeBorderColor:
+                                            data.headerBackgroundColor,
+                                      )
+                                    : null)),
                     title:
                         data.viewState.layout.useWindowsDesktopHeader &&
                             !data.searching

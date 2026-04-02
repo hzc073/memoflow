@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/api/memo_api_version.dart';
 import '../../data/db/app_database.dart';
 import '../../data/models/attachment.dart';
+import 'memo_sync_constraints.dart';
 import 'memos_providers.dart';
 import '../system/session_provider.dart';
 
@@ -102,12 +103,17 @@ Future<bool> guardMemoContentForCurrentSyncTarget({
   required AppDatabase db,
   required String memoUid,
   required String content,
-}) {
+}) async {
+  final normalizedMemoUid = memoUid.trim();
   read.hashCode;
+  if (normalizedMemoUid.isEmpty) return true;
+  if (!await shouldAllowMemoRemoteSync(db: db, memoUid: normalizedMemoUid)) {
+    return false;
+  }
   db.hashCode;
-  memoUid.length;
+  normalizedMemoUid.length;
   content.length;
-  return Future.value(true);
+  return true;
 }
 
 Future<void> enqueueCreateMemoWithAttachmentUploads({

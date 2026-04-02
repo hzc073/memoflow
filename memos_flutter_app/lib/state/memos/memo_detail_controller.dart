@@ -10,6 +10,7 @@ import '../attachments/queued_attachment_stager_provider.dart';
 import '../system/database_provider.dart';
 import 'create_memo_outbox_enqueue.dart';
 import 'memo_delete_service.dart';
+import 'memo_sync_constraints.dart';
 import 'memo_timeline_provider.dart';
 import 'memos_providers.dart';
 
@@ -31,6 +32,9 @@ class MemoDetailController {
   }) async {
     final db = _ref.read(databaseProvider);
     final now = DateTime.now();
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     await db.upsertMemo(
       uid: memo.uid,
@@ -46,18 +50,20 @@ class MemoDetailController {
           .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        if (pinned != null) 'pinned': pinned,
-        if (state != null) 'state': state,
-      },
-    );
+    if (syncPolicy.allowRemoteSync) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          if (pinned != null) 'pinned': pinned,
+          if (state != null) 'state': state,
+        },
+      );
+    }
   }
 
   Future<void> deleteMemo(LocalMemo memo) async {
@@ -72,6 +78,9 @@ class MemoDetailController {
   }) async {
     final db = _ref.read(databaseProvider);
     final timelineService = _ref.read(memoTimelineServiceProvider);
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     await timelineService.captureMemoVersion(memo);
     await db.upsertMemo(
@@ -88,16 +97,18 @@ class MemoDetailController {
           .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    final allowed = await guardMemoContentForCurrentSyncTarget(
-      read: _ref.read,
-      db: db,
-      memoUid: memo.uid,
-      content: content,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForCurrentSyncTarget(
+          read: _ref.read,
+          db: db,
+          memoUid: memo.uid,
+          content: content,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',
@@ -126,6 +137,9 @@ class MemoDetailController {
     final db = _ref.read(databaseProvider);
     final timelineService = _ref.read(memoTimelineServiceProvider);
     final queuedAttachmentStager = _ref.read(queuedAttachmentStagerProvider);
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
     final stagedPayload = await queuedAttachmentStager.stageUploadPayload({
       'uid': newUid,
       'memo_uid': memo.uid,
@@ -174,16 +188,18 @@ class MemoDetailController {
           .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    final allowed = await guardMemoContentForCurrentSyncTarget(
-      read: _ref.read,
-      db: db,
-      memoUid: memo.uid,
-      content: memo.content,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForCurrentSyncTarget(
+          read: _ref.read,
+          db: db,
+          memoUid: memo.uid,
+          content: memo.content,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',

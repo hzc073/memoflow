@@ -28,6 +28,7 @@ import '../../state/settings/preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../about/about_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_menu_button.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
 import '../memos/memo_media_grid.dart';
@@ -1601,12 +1602,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          automaticallyImplyLeading: !useDesktopSidePane,
+          automaticallyImplyLeading: false,
           toolbarHeight: 46,
           iconTheme: IconThemeData(color: textMain),
           flexibleSpace: enableWindowsDragToMove
               ? const DragToMoveArea(child: SizedBox.expand())
               : null,
+          leading: useDesktopSidePane
+              ? null
+              : AppDrawerMenuButton(
+                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                  iconColor: textMain,
+                  badgeBorderColor: bg,
+                ),
           title: IgnorePointer(
             ignoring: enableWindowsDragToMove,
             child: Text(

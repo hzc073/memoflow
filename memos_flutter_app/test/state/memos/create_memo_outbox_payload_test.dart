@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/application/attachments/queued_attachment_stager.dart';
+import 'package:memos_flutter_app/application/sync/sync_error.dart';
 import 'package:memos_flutter_app/data/api/memo_api_facade.dart';
 import 'package:memos_flutter_app/data/api/memo_api_version.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
@@ -483,6 +484,73 @@ void main() {
         isManagedPath(Uri.parse(sources.keys.single).toFilePath()),
         isTrue,
       );
+    },
+  );
+
+  test(
+    'appendDeferredThirdPartyShareInlineImage keeps local-only paused memo out of sync queue',
+    () async {
+      final dbName = uniqueDbName('note_input_append_local_only_paused');
+      final db = AppDatabase(dbName: dbName);
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final controller = container.read(noteInputControllerProvider);
+      final attachmentFile = await createAttachmentFile(
+        'note_input_append_local_only_paused',
+      );
+      const sourceUrl = 'https://example.com/sample.png';
+      final now = DateTime.utc(2026, 4, 2, 3, 0);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-local-only-inline',
+        content: '<img src="$sourceUrl">',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 2,
+        lastError: markLocalOnlySyncPausedError(
+          'memo stays local after create failure',
+        ),
+      );
+
+      await controller.appendDeferredThirdPartyShareInlineImage(
+        memoUid: 'memo-local-only-inline',
+        sourceUrl: sourceUrl,
+        attachment: NoteInputPendingAttachment(
+          uid: 'att-local-only-inline',
+          filePath: attachmentFile.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+          size: await attachmentFile.length(),
+          shareInlineImage: true,
+          fromThirdPartyShare: true,
+          sourceUrl: sourceUrl,
+        ),
+      );
+
+      final row = await db.getMemoByUid('memo-local-only-inline');
+      expect(row, isNotNull);
+      expect(row?['sync_state'], 2);
+      expect(isLocalOnlySyncPausedError(row?['last_error'] as String?), isTrue);
+      expect(row?['content'] as String, isNot(contains(sourceUrl)));
+      expect(
+        jsonDecode(row?['attachments_json'] as String) as List<dynamic>,
+        hasLength(1),
+      );
+      expect(await db.listOutboxByMemoUid('memo-local-only-inline'), isEmpty);
     },
   );
 }

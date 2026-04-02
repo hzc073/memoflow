@@ -212,6 +212,9 @@ class MemoTimelineService {
       memoUid: current.uid,
       rawAttachments: payloadMemo['attachments'],
     );
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: current.lastError,
+    );
 
     final now = DateTime.now().toUtc();
     final tags = extractTags(restoredContent);
@@ -229,17 +232,19 @@ class MemoTimelineService {
           .toList(growable: false),
       location: restoredLocation,
       relationCount: current.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
     final hasPendingAttachments = restoredAttachments.isNotEmpty;
-    final allowed = await guardMemoContentForRemoteSync(
-      db: db,
-      enabled: account != null,
-      memoUid: current.uid,
-      content: restoredContent,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForRemoteSync(
+          db: db,
+          enabled: account != null,
+          memoUid: current.uid,
+          content: restoredContent,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',
@@ -408,6 +413,9 @@ class MemoTimelineService {
       memoUid: memoUid,
       rawAttachments: payloadMemo['attachments'],
     );
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: existing?.lastError,
+    );
     final now = DateTime.now().toUtc();
     final safeCreateTimeSec = createTimeSec > 0
         ? createTimeSec
@@ -430,17 +438,19 @@ class MemoTimelineService {
           .toList(growable: false),
       location: location,
       relationCount: existing?.relationCount ?? 0,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
     final hasPendingAttachments = restoredAttachments.isNotEmpty;
-    final allowed = await guardMemoContentForRemoteSync(
-      db: db,
-      enabled: account != null,
-      memoUid: memoUid,
-      content: content,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForRemoteSync(
+          db: db,
+          enabled: account != null,
+          memoUid: memoUid,
+          content: content,
+        );
     if (!allowed) {
       unawaited(triggerSync());
       return;
@@ -567,6 +577,9 @@ class MemoTimelineService {
         .toList(growable: true);
     final targetIndex = insertIndex.clamp(0, nextAttachments.length);
     nextAttachments.insert(targetIndex, restoredAttachment.toJson());
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     final now = DateTime.now().toUtc();
     await db.upsertMemo(
@@ -581,16 +594,18 @@ class MemoTimelineService {
       attachments: nextAttachments,
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    final allowed = await guardMemoContentForRemoteSync(
-      db: db,
-      enabled: account != null,
-      memoUid: memo.uid,
-      content: memo.content,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForRemoteSync(
+          db: db,
+          enabled: account != null,
+          memoUid: memo.uid,
+          content: memo.content,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',

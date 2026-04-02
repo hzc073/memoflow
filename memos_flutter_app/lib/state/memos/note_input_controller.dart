@@ -8,6 +8,7 @@ import '../../features/share/share_inline_image_content.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import 'create_memo_outbox_enqueue.dart';
 import 'create_memo_outbox_payload.dart';
+import 'memo_sync_constraints.dart';
 import '../system/database_provider.dart';
 
 class NoteInputPendingAttachment {
@@ -196,6 +197,9 @@ class NoteInputController {
       ).toJson(),
     ];
     final now = DateTime.now().toUtc();
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     await db.upsertMemo(
       uid: memo.uid,
@@ -209,8 +213,8 @@ class NoteInputController {
       attachments: updatedAttachments,
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
     if (normalizedSourceUrl.isNotEmpty) {
@@ -221,12 +225,14 @@ class NoteInputController {
       );
     }
 
-    final allowed = await guardMemoContentForCurrentSyncTarget(
-      read: _ref.read,
-      db: db,
-      memoUid: memo.uid,
-      content: updatedContent,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForCurrentSyncTarget(
+          read: _ref.read,
+          db: db,
+          memoUid: memo.uid,
+          content: updatedContent,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',
@@ -237,19 +243,19 @@ class NoteInputController {
           'pinned': memo.pinned,
         },
       );
+      final stagedPayload = await queuedAttachmentStager.stageUploadPayload({
+        'uid': stagedAttachment.uid,
+        'memo_uid': memo.uid,
+        'file_path': stagedAttachment.filePath,
+        'filename': stagedAttachment.filename,
+        'mime_type': stagedAttachment.mimeType,
+        'file_size': stagedAttachment.size,
+        'skip_compression': stagedAttachment.skipCompression,
+        'share_inline_image': true,
+        'from_third_party_share': true,
+        'share_inline_local_url': localUrl,
+      }, scopeKey: memo.uid);
+      await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
     }
-    final stagedPayload = await queuedAttachmentStager.stageUploadPayload({
-      'uid': stagedAttachment.uid,
-      'memo_uid': memo.uid,
-      'file_path': stagedAttachment.filePath,
-      'filename': stagedAttachment.filename,
-      'mime_type': stagedAttachment.mimeType,
-      'file_size': stagedAttachment.size,
-      'skip_compression': stagedAttachment.skipCompression,
-      'share_inline_image': true,
-      'from_third_party_share': true,
-      'share_inline_local_url': localUrl,
-    }, scopeKey: memo.uid);
-    await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
   }
 }

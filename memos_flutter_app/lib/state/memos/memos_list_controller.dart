@@ -239,6 +239,9 @@ class MemosListController {
   Future<void> updateMemo(LocalMemo memo, {bool? pinned, String? state}) async {
     final now = DateTime.now();
     final db = _ref.read(databaseProvider);
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     await db.upsertMemo(
       uid: memo.uid,
@@ -254,18 +257,20 @@ class MemosListController {
           .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        if (pinned != null) 'pinned': pinned,
-        if (state != null) 'state': state,
-      },
-    );
+    if (syncPolicy.allowRemoteSync) {
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': memo.uid,
+          if (pinned != null) 'pinned': pinned,
+          if (state != null) 'state': state,
+        },
+      );
+    }
   }
 
   Future<void> updateMemoContent(
@@ -278,6 +283,9 @@ class MemosListController {
     final db = _ref.read(databaseProvider);
     final timelineService = _ref.read(memoTimelineServiceProvider);
     final tags = extractTags(content);
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     await timelineService.captureMemoVersion(memo);
 
@@ -295,16 +303,18 @@ class MemosListController {
           .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    final allowed = await guardMemoContentForCurrentSyncTarget(
-      read: _ref.read,
-      db: db,
-      memoUid: memo.uid,
-      content: content,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForCurrentSyncTarget(
+          read: _ref.read,
+          db: db,
+          memoUid: memo.uid,
+          content: content,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',

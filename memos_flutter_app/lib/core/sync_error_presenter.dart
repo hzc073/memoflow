@@ -8,14 +8,21 @@ String presentSyncError({
 }) {
   final key = error.presentationKey;
   if (key != null && key.trim().isNotEmpty) {
-    final params = <String, String>{
-      ...?error.presentationParams,
-    };
+    final params = <String, String>{...?error.presentationParams};
     final prefix = params.remove('prefix');
     if (key == 'legacy.msg_export_path_not_set') {
-      final exportLabel = trByLanguageKey(language: language, key: 'legacy.msg_export');
-      final pathLabel = trByLanguageKey(language: language, key: 'legacy.msg_path');
-      final notSetLabel = trByLanguageKey(language: language, key: 'legacy.msg_not_set');
+      final exportLabel = trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_export',
+      );
+      final pathLabel = trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_path',
+      );
+      final notSetLabel = trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_not_set',
+      );
       var composite = '$exportLabel $pathLabel: $notSetLabel';
       if (prefix != null && prefix.trim().isNotEmpty) {
         composite = '$prefix$composite';
@@ -31,11 +38,17 @@ String presentSyncError({
         !params.containsKey('memoError')) {
       final cause = error.cause;
       if (cause != null) {
-        params['memoError'] =
-            presentSyncError(language: language, error: cause);
+        params['memoError'] = presentSyncError(
+          language: language,
+          error: cause,
+        );
       }
     }
-    var resolved = trByLanguageKey(language: language, key: key, params: params);
+    var resolved = trByLanguageKey(
+      language: language,
+      key: key,
+      params: params,
+    );
     if (prefix != null && prefix.trim().isNotEmpty) {
       resolved = '$prefix$resolved';
     }
@@ -49,37 +62,37 @@ String presentSyncError({
 
   return switch (error.code) {
     SyncErrorCode.invalidConfig => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_invalid_request_parameters',
-      ),
+      language: language,
+      key: 'legacy.msg_invalid_request_parameters',
+    ),
     SyncErrorCode.authFailed => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_authentication_failed_check_token',
-      ),
+      language: language,
+      key: 'legacy.msg_authentication_failed_check_token',
+    ),
     SyncErrorCode.network => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_network_request_failed',
-      ),
+      language: language,
+      key: 'legacy.msg_network_request_failed',
+    ),
     SyncErrorCode.server => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_server_error',
-      ),
+      language: language,
+      key: 'legacy.msg_server_error',
+    ),
     SyncErrorCode.permission => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_insufficient_permissions',
-      ),
+      language: language,
+      key: 'legacy.msg_insufficient_permissions',
+    ),
     SyncErrorCode.conflict => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_sync_conflicts',
-      ),
+      language: language,
+      key: 'legacy.msg_sync_conflicts',
+    ),
     SyncErrorCode.dataCorrupt => trByLanguageKey(
-        language: language,
-        key: 'legacy.webdav.data_corrupted',
-      ),
+      language: language,
+      key: 'legacy.webdav.data_corrupted',
+    ),
     SyncErrorCode.unknown => trByLanguageKey(
-        language: language,
-        key: 'legacy.msg_request_failed',
-      ),
+      language: language,
+      key: 'legacy.msg_request_failed',
+    ),
   };
 }
 
@@ -87,9 +100,14 @@ String presentSyncErrorText({
   required AppLanguage language,
   required String raw,
 }) {
-  final decoded = decodeSyncError(raw);
+  final strippedLocalOnly = stripLocalOnlySyncPausedError(raw);
+  final effectiveRaw = (strippedLocalOnly ?? raw).trim();
+  if (effectiveRaw.isEmpty) {
+    return '';
+  }
+  final decoded = decodeSyncError(effectiveRaw);
   if (decoded != null) {
     return presentSyncError(language: language, error: decoded);
   }
-  return raw;
+  return effectiveRaw;
 }

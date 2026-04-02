@@ -7,6 +7,7 @@ import '../../data/models/memo_location.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import 'create_memo_outbox_enqueue.dart';
 import 'create_memo_outbox_payload.dart';
+import 'memo_sync_constraints.dart';
 import '../system/database_provider.dart';
 import 'memo_timeline_provider.dart';
 import 'memos_providers.dart';
@@ -119,6 +120,9 @@ class MemoEditorController {
             pendingAttachments: attachmentPayloads,
           )
         : attachments;
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: existing?.lastError,
+    );
 
     await db.upsertMemo(
       uid: uid,
@@ -132,8 +136,8 @@ class MemoEditorController {
       attachments: localAttachments,
       location: location,
       relationCount: relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
     if (existing == null) {
@@ -153,12 +157,14 @@ class MemoEditorController {
         attachmentPayloads: attachmentPayloads,
       );
     } else {
-      final allowed = await guardMemoContentForCurrentSyncTarget(
-        read: _ref.read,
-        db: db,
-        memoUid: uid,
-        content: content,
-      );
+      final allowed =
+          syncPolicy.allowRemoteSync &&
+          await guardMemoContentForCurrentSyncTarget(
+            read: _ref.read,
+            db: db,
+            memoUid: uid,
+            content: content,
+          );
       if (allowed) {
         await db.enqueueOutbox(
           type: 'update_memo',
@@ -176,7 +182,7 @@ class MemoEditorController {
       }
     }
 
-    if (existing != null) {
+    if (existing != null && syncPolicy.allowRemoteSync) {
       for (final attachment in pendingAttachments) {
         final stagedPayload = await queuedAttachmentStager.stageUploadPayload({
           'uid': attachment.uid,
@@ -193,7 +199,7 @@ class MemoEditorController {
         );
       }
     }
-    if (hasPendingAttachments) {
+    if (hasPendingAttachments && syncPolicy.allowRemoteSync) {
       for (final attachment in attachmentsToDelete) {
         final name = attachment.name.isNotEmpty
             ? attachment.name

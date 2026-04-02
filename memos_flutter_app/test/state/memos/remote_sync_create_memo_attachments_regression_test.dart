@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/application/attachments/attachment_preprocessor.dart';
+import 'package:memos_flutter_app/application/sync/sync_error.dart';
 import 'package:memos_flutter_app/application/sync/sync_types.dart';
 import 'package:memos_flutter_app/data/api/memo_api_facade.dart';
 import 'package:memos_flutter_app/data/api/memo_api_version.dart';
@@ -16,6 +17,8 @@ import 'package:memos_flutter_app/data/models/image_bed_settings.dart';
 import 'package:memos_flutter_app/data/repositories/image_bed_settings_repository.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/note_input_providers.dart';
+import 'package:memos_flutter_app/state/memos/sync_queue_controller.dart';
+import 'package:memos_flutter_app/state/memos/sync_queue_models.dart';
 import 'package:memos_flutter_app/state/system/database_provider.dart';
 
 import '../../test_support.dart';
@@ -122,6 +125,99 @@ void main() {
       expect(result, isA<MemoSyncSuccessWithAttention>());
       final row = await db.getMemoByUid('memo-1');
       expect(row?['sync_state'], 1);
+    },
+  );
+
+  test(
+    'RemoteSyncController does not prune memo after deleting failed create_memo task',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start();
+      final dbName = uniqueDbName(
+        'remote_sync_keeps_local_only_memo_after_queue_delete',
+      );
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final now = DateTime.utc(2026, 4, 2, 3, 0);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-local-only',
+        content: 'memo stays local',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 2,
+        lastError: 'content too long (max 8192 characters)',
+      );
+      final outboxId = await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': 'memo-local-only',
+          'content': 'memo stays local',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+
+      await container
+          .read(syncQueueControllerProvider)
+          .deleteItem(
+            SyncQueueItem(
+              id: outboxId,
+              type: 'create_memo',
+              state: SyncQueueOutboxState.error,
+              attempts: 1,
+              createdAt: now,
+              preview: 'memo stays local',
+              filename: null,
+              lastError: 'content too long (max 8192 characters)',
+              memoUid: 'memo-local-only',
+              attachmentUid: null,
+              retryAt: null,
+              failureCode: 'content_too_long',
+            ),
+          );
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccess>());
+      final row = await db.getMemoByUid('memo-local-only');
+      expect(row, isNotNull);
+      expect(isLocalOnlySyncPausedError(row?['last_error'] as String?), isTrue);
+      expect(row?['sync_state'], isNot(0));
     },
   );
 

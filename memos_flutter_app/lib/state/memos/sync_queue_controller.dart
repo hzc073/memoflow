@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
+import '../../application/sync/sync_error.dart';
 import '../../application/sync/sync_types.dart';
 import '../../data/db/app_database.dart';
 import '../../data/models/local_memo.dart';
@@ -25,6 +26,16 @@ class SyncQueueController {
     final db = _ref.read(databaseProvider);
     final memoUid = item.memoUid?.trim();
     if (memoUid != null && memoUid.isNotEmpty) {
+      final memoRow = await db.getMemoByUid(memoUid);
+      final currentLastError = memoRow?['last_error'] as String?;
+      final shouldPreserveLocalOnlyMemo =
+          item.type == 'create_memo' ||
+          isLocalOnlySyncPausedError(currentLastError);
+      if (shouldPreserveLocalOnlyMemo) {
+        await db.deleteOutboxForMemo(memoUid);
+        await _preserveMemoAsLocalOnly(db, memoUid, existingRow: memoRow);
+        return;
+      }
       final tombstoneState = await db.getMemoDeleteTombstoneState(memoUid);
       if (item.type == 'delete_memo' && tombstoneState != null) {
         await db.upsertMemoDeleteTombstone(
@@ -188,7 +199,30 @@ class SyncQueueController {
     if (trimmed.isEmpty) return;
     final pending = await db.listPendingOutboxMemoUids();
     if (pending.contains(trimmed)) return;
+    final row = await db.getMemoByUid(trimmed);
+    final currentLastError = row?['last_error'] as String?;
+    if (isLocalOnlySyncPausedError(currentLastError)) {
+      await _preserveMemoAsLocalOnly(db, trimmed, existingRow: row);
+      return;
+    }
     await db.updateMemoSyncState(trimmed, syncState: 0, lastError: null);
+  }
+
+  Future<void> _preserveMemoAsLocalOnly(
+    AppDatabase db,
+    String memoUid, {
+    Map<String, dynamic>? existingRow,
+  }) async {
+    final trimmed = memoUid.trim();
+    if (trimmed.isEmpty) return;
+    final row = existingRow ?? await db.getMemoByUid(trimmed);
+    if (row == null) return;
+    final currentLastError = row['last_error'] as String?;
+    await db.updateMemoSyncState(
+      trimmed,
+      syncState: SyncState.error.index,
+      lastError: markLocalOnlySyncPausedError(currentLastError),
+    );
   }
 
   String _resolveRebuildRootType({

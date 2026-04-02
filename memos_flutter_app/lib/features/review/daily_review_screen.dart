@@ -642,6 +642,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     final db = ref.read(databaseProvider);
     final timelineService = ref.read(memoTimelineServiceProvider);
     final tags = extractTags(updated);
+    final syncPolicy = resolveMemoSyncMutationPolicy(
+      currentLastError: memo.lastError,
+    );
 
     await timelineService.captureMemoVersion(memo);
 
@@ -659,17 +662,19 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           .toList(growable: false),
       location: memo.location,
       relationCount: memo.relationCount,
-      syncState: 1,
-      lastError: null,
+      syncState: syncPolicy.syncState,
+      lastError: syncPolicy.lastError,
     );
 
-    final allowed = await guardMemoContentForRemoteSync(
-      db: db,
-      enabled:
-          ref.read(appSessionProvider).valueOrNull?.currentAccount != null,
-      memoUid: memo.uid,
-      content: updated,
-    );
+    final allowed =
+        syncPolicy.allowRemoteSync &&
+        await guardMemoContentForRemoteSync(
+          db: db,
+          enabled:
+              ref.read(appSessionProvider).valueOrNull?.currentAccount != null,
+          memoUid: memo.uid,
+          content: updated,
+        );
     if (allowed) {
       await db.enqueueOutbox(
         type: 'update_memo',

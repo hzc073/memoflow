@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/application/sync/sync_error.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_controller.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_models.dart';
@@ -222,4 +223,314 @@ void main() {
     final deletePayload = jsonDecode(deleteRow['payload'] as String) as Map;
     expect(deletePayload['attachment_name'], 'resources/att-old');
   });
+
+  test('deleteItem keeps failed create_memo as local-only memo', () async {
+    final dbName = uniqueDbName('sync_queue_delete_local_only_create_memo');
+    final db = AppDatabase(dbName: dbName);
+    final container = ProviderContainer(
+      overrides: [databaseProvider.overrideWithValue(db)],
+    );
+    final controller = container.read(syncQueueControllerProvider);
+    final now = DateTime.utc(2026, 4, 2, 3, 0);
+
+    addTearDown(() async {
+      container.dispose();
+      await db.close();
+      await deleteTestDatabase(dbName);
+    });
+
+    await db.upsertMemo(
+      uid: 'memo-local-only',
+      content: 'memo stays local',
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+      tags: const <String>[],
+      attachments: const <Map<String, dynamic>>[],
+      location: null,
+      relationCount: 0,
+      syncState: 2,
+      lastError: 'content too long (max 8192 characters)',
+    );
+    final outboxId = await db.enqueueOutbox(
+      type: 'create_memo',
+      payload: {
+        'uid': 'memo-local-only',
+        'content': 'memo stays local',
+        'visibility': 'PRIVATE',
+        'pinned': false,
+      },
+    );
+
+    await controller.deleteItem(
+      SyncQueueItem(
+        id: outboxId,
+        type: 'create_memo',
+        state: SyncQueueOutboxState.error,
+        attempts: 1,
+        createdAt: now,
+        preview: 'memo stays local',
+        filename: null,
+        lastError: 'content too long (max 8192 characters)',
+        memoUid: 'memo-local-only',
+        attachmentUid: null,
+        retryAt: null,
+        failureCode: 'content_too_long',
+      ),
+    );
+
+    final row = await db.getMemoByUid('memo-local-only');
+    expect(row, isNotNull);
+    expect(row?['sync_state'], 2);
+    expect(isLocalOnlySyncPausedError(row?['last_error'] as String?), isTrue);
+    expect(await db.listOutboxByMemoUid('memo-local-only'), isEmpty);
+  });
+
+  test(
+    'deleteItem marks active create_memo as local-only error instead of pending',
+    () async {
+      final dbName = uniqueDbName('sync_queue_delete_active_local_only_create');
+      final db = AppDatabase(dbName: dbName);
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final controller = container.read(syncQueueControllerProvider);
+      final now = DateTime.utc(2026, 4, 2, 3, 0);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-active-local-only',
+        content: 'memo becomes local only',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      final outboxId = await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': 'memo-active-local-only',
+          'content': 'memo becomes local only',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+
+      await controller.deleteItem(
+        SyncQueueItem(
+          id: outboxId,
+          type: 'create_memo',
+          state: SyncQueueOutboxState.pending,
+          attempts: 0,
+          createdAt: now,
+          preview: 'memo becomes local only',
+          filename: null,
+          lastError: null,
+          memoUid: 'memo-active-local-only',
+          attachmentUid: null,
+          retryAt: null,
+          failureCode: null,
+        ),
+      );
+
+      final row = await db.getMemoByUid('memo-active-local-only');
+      expect(row, isNotNull);
+      expect(row?['sync_state'], 2);
+      expect(isLocalOnlySyncPausedError(row?['last_error'] as String?), isTrue);
+      expect(await db.listOutboxByMemoUid('memo-active-local-only'), isEmpty);
+    },
+  );
+
+  test(
+    'deleteItem clears sibling upload tasks for local-only create_memo',
+    () async {
+      final dbName = uniqueDbName(
+        'sync_queue_delete_local_only_create_memo_attachments',
+      );
+      final db = AppDatabase(dbName: dbName);
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final controller = container.read(syncQueueControllerProvider);
+      final now = DateTime.utc(2026, 4, 2, 3, 0);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-local-only-attachments',
+        content: 'memo keeps local attachments',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[
+          {
+            'name': 'attachments/att-local-only',
+            'filename': 'sample.png',
+            'type': 'image/png',
+            'size': 42,
+            'externalLink': 'file:///tmp/sample.png',
+          },
+        ],
+        location: null,
+        relationCount: 0,
+        syncState: 2,
+        lastError: 'content too long (max 8192 characters)',
+      );
+      final createOutboxId = await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': 'memo-local-only-attachments',
+          'content': 'memo keeps local attachments',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+      await db.enqueueOutbox(
+        type: 'upload_attachment',
+        payload: {
+          'uid': 'att-local-only',
+          'memo_uid': 'memo-local-only-attachments',
+          'file_path': '/tmp/sample.png',
+          'filename': 'sample.png',
+          'mime_type': 'image/png',
+          'file_size': 42,
+        },
+      );
+
+      await controller.deleteItem(
+        SyncQueueItem(
+          id: createOutboxId,
+          type: 'create_memo',
+          state: SyncQueueOutboxState.error,
+          attempts: 1,
+          createdAt: now,
+          preview: 'memo keeps local attachments',
+          filename: null,
+          lastError: 'content too long (max 8192 characters)',
+          memoUid: 'memo-local-only-attachments',
+          attachmentUid: null,
+          retryAt: null,
+          failureCode: 'content_too_long',
+        ),
+      );
+
+      final row = await db.getMemoByUid('memo-local-only-attachments');
+      expect(row, isNotNull);
+      expect(row?['sync_state'], 2);
+      expect(isLocalOnlySyncPausedError(row?['last_error'] as String?), isTrue);
+      expect(
+        jsonDecode(row?['attachments_json'] as String) as List,
+        hasLength(1),
+      );
+      expect(
+        await db.listOutboxByMemoUid('memo-local-only-attachments'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'deleteItem keeps attachment placeholder for local-only upload',
+    () async {
+      final dbName = uniqueDbName(
+        'sync_queue_delete_local_only_upload_attachment',
+      );
+      final db = AppDatabase(dbName: dbName);
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final controller = container.read(syncQueueControllerProvider);
+      final now = DateTime.utc(2026, 4, 2, 3, 0);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-local-only-upload',
+        content: 'memo keeps pending upload locally',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[
+          {
+            'name': 'attachments/att-local-only-upload',
+            'filename': 'sample.png',
+            'type': 'image/png',
+            'size': 42,
+            'externalLink': 'file:///tmp/sample.png',
+          },
+        ],
+        location: null,
+        relationCount: 0,
+        syncState: 2,
+        lastError: markLocalOnlySyncPausedError(
+          'attachment upload paused for local-only memo',
+        ),
+      );
+      final uploadOutboxId = await db.enqueueOutbox(
+        type: 'upload_attachment',
+        payload: {
+          'uid': 'att-local-only-upload',
+          'memo_uid': 'memo-local-only-upload',
+          'file_path': '/tmp/sample.png',
+          'filename': 'sample.png',
+          'mime_type': 'image/png',
+          'file_size': 42,
+        },
+      );
+
+      await controller.deleteItem(
+        SyncQueueItem(
+          id: uploadOutboxId,
+          type: 'upload_attachment',
+          state: SyncQueueOutboxState.error,
+          attempts: 1,
+          createdAt: now,
+          preview: 'memo keeps pending upload locally',
+          filename: 'sample.png',
+          lastError: 'file missing',
+          memoUid: 'memo-local-only-upload',
+          attachmentUid: 'att-local-only-upload',
+          retryAt: null,
+          failureCode: 'file_not_found',
+        ),
+      );
+
+      final row = await db.getMemoByUid('memo-local-only-upload');
+      expect(row, isNotNull);
+      expect(isLocalOnlySyncPausedError(row?['last_error'] as String?), isTrue);
+      expect(
+        jsonDecode(row?['attachments_json'] as String) as List,
+        hasLength(1),
+      );
+      expect(await db.listOutboxByMemoUid('memo-local-only-upload'), isEmpty);
+    },
+  );
 }

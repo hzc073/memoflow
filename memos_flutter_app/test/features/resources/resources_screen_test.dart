@@ -13,8 +13,10 @@ import 'package:memos_flutter_app/data/models/memo_relation.dart';
 import 'package:memos_flutter_app/features/resources/resources_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
+import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 import 'package:memos_flutter_app/state/system/database_provider.dart';
+import 'package:memos_flutter_app/state/system/notifications_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
 import 'package:memos_flutter_app/state/tags/tag_color_lookup.dart';
 
@@ -199,6 +201,25 @@ void main() {
     },
   );
 
+  testWidgets('shows merged drawer badge on mobile resources screen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildTestApp(
+        database: database,
+        resourceEntries: const <ResourceEntry>[],
+        unreadNotificationCount: 1,
+        syncAttentionCount: 1,
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.byKey(const ValueKey('drawer-menu-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('drawer-menu-badge')), findsOneWidget);
+
+    await _disposeTree(tester);
+  });
+
   testWidgets('open memo action opens source memo for any attachment', (
     tester,
   ) async {
@@ -282,6 +303,8 @@ void _expectVisualBefore(WidgetTester tester, Finder first, Finder second) {
 Widget _buildTestApp({
   required AppDatabase database,
   List<ResourceEntry>? resourceEntries,
+  int unreadNotificationCount = 0,
+  int syncAttentionCount = 0,
 }) {
   return ProviderScope(
     overrides: [
@@ -290,6 +313,12 @@ Widget _buildTestApp({
         (ref) => _TestAppPreferencesController(ref),
       ),
       databaseProvider.overrideWithValue(database),
+      unreadNotificationCountProvider.overrideWith(
+        (ref) => unreadNotificationCount,
+      ),
+      syncQueueAttentionCountProvider.overrideWith(
+        (ref) => Stream<int>.value(syncAttentionCount),
+      ),
       if (resourceEntries != null)
         resourcesProvider.overrideWith((ref) => Stream.value(resourceEntries)),
       tagColorLookupProvider.overrideWith((ref) => TagColorLookup(const [])),

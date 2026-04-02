@@ -129,6 +129,7 @@ class SyncError implements Exception {
 }
 
 const String kSyncErrorPrefix = 'SYNC_ERROR:';
+const String kLocalOnlySyncPausedPrefix = 'LOCAL_ONLY_SYNC_PAUSED:';
 
 String encodeSyncError(SyncError error) {
   return '$kSyncErrorPrefix${jsonEncode(error.toJson())}';
@@ -146,4 +147,25 @@ SyncError? decodeSyncError(String? raw) {
     }
   } catch (_) {}
   return null;
+}
+
+bool isLocalOnlySyncPausedError(String? raw) {
+  final trimmed = raw?.trim() ?? '';
+  return trimmed.startsWith(kLocalOnlySyncPausedPrefix);
+}
+
+String markLocalOnlySyncPausedError(String? raw) {
+  final trimmed = raw?.trim() ?? '';
+  if (trimmed.startsWith(kLocalOnlySyncPausedPrefix)) {
+    return trimmed;
+  }
+  return '$kLocalOnlySyncPausedPrefix$trimmed';
+}
+
+String? stripLocalOnlySyncPausedError(String? raw) {
+  final trimmed = raw?.trim();
+  if (trimmed == null || !trimmed.startsWith(kLocalOnlySyncPausedPrefix)) {
+    return null;
+  }
+  return trimmed.substring(kLocalOnlySyncPausedPrefix.length).trim();
 }

@@ -23,6 +23,7 @@ import '../../state/system/session_provider.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_menu_button.dart';
 import '../memos/attachment_video_screen.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
@@ -817,8 +818,15 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          automaticallyImplyLeading: !useDesktopSidePane,
+          automaticallyImplyLeading: false,
           toolbarHeight: 46,
+          leading: useDesktopSidePane
+              ? null
+              : AppDrawerMenuButton(
+                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                  iconColor: colorScheme.onSurface,
+                  badgeBorderColor: Theme.of(context).scaffoldBackgroundColor,
+                ),
           flexibleSpace: enableWindowsDragToMove
               ? const DragToMoveArea(child: SizedBox.expand())
               : null,

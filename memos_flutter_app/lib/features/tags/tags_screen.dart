@@ -11,6 +11,7 @@ import '../../state/tags/tag_color_lookup.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_menu_button.dart';
 import '../memos/memos_list_screen.dart';
 import '../memos/recycle_bin_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -23,12 +24,7 @@ import '../sync/sync_queue_screen.dart';
 import 'tag_edit_sheet.dart';
 import '../../i18n/strings.g.dart';
 
-enum _TagsFilterMode {
-  all,
-  frequent,
-  recent,
-  pinned,
-}
+enum _TagsFilterMode { all, frequent, recent, pinned }
 
 class TagsScreen extends ConsumerStatefulWidget {
   const TagsScreen({super.key});
@@ -52,8 +48,9 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
           final byCount = b.count.compareTo(a.count);
           if (byCount != 0) return byCount;
           if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-          final byRecent =
-              (b.lastUsedTimeSec ?? 0).compareTo(a.lastUsedTimeSec ?? 0);
+          final byRecent = (b.lastUsedTimeSec ?? 0).compareTo(
+            a.lastUsedTimeSec ?? 0,
+          );
           if (byRecent != 0) return byRecent;
           return a.tag.compareTo(b.tag);
         });
@@ -61,8 +58,9 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
       case _TagsFilterMode.recent:
         final sorted = items.toList(growable: false);
         sorted.sort((a, b) {
-          final byRecent =
-              (b.lastUsedTimeSec ?? 0).compareTo(a.lastUsedTimeSec ?? 0);
+          final byRecent = (b.lastUsedTimeSec ?? 0).compareTo(
+            a.lastUsedTimeSec ?? 0,
+          );
           if (byRecent != 0) return byRecent;
           final byCount = b.count.compareTo(a.count);
           if (byCount != 0) return byCount;
@@ -293,10 +291,14 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
                           runSpacing: 8,
                           children: [
                             ChoiceChip(
-                              label: Text(_filterLabel(context, _TagsFilterMode.all)),
+                              label: Text(
+                                _filterLabel(context, _TagsFilterMode.all),
+                              ),
                               selected: _filterMode == _TagsFilterMode.all,
                               onSelected: (_) {
-                                setState(() => _filterMode = _TagsFilterMode.all);
+                                setState(
+                                  () => _filterMode = _TagsFilterMode.all,
+                                );
                               },
                             ),
                             ChoiceChip(
@@ -327,7 +329,9 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
                               ),
                               selected: _filterMode == _TagsFilterMode.pinned,
                               onSelected: (_) {
-                                setState(() => _filterMode = _TagsFilterMode.pinned);
+                                setState(
+                                  () => _filterMode = _TagsFilterMode.pinned,
+                                );
                               },
                             ),
                           ],
@@ -348,9 +352,9 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
                             Icon(
                               Icons.search_off,
                               size: 42,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                             const SizedBox(height: 12),
                             Text(context.t.strings.legacy.msg_no_tags),
@@ -378,7 +382,9 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
                               tag: tag,
                               colors: tagColors.resolveChipColorsByPath(
                                 tag.path,
-                                surfaceColor: Theme.of(context).colorScheme.surface,
+                                surfaceColor: Theme.of(
+                                  context,
+                                ).colorScheme.surface,
                                 isDark: isDark,
                               ),
                               maxWidth: pillMaxWidth,
@@ -413,6 +419,17 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
           flexibleSpace: enableWindowsDragToMove
               ? const DragToMoveArea(child: SizedBox.expand())
               : null,
+          automaticallyImplyLeading: false,
+          leading: useDesktopSidePane
+              ? null
+              : AppDrawerMenuButton(
+                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                  iconColor:
+                      Theme.of(context).appBarTheme.iconTheme?.color ??
+                      IconTheme.of(context).color ??
+                      Theme.of(context).colorScheme.onSurface,
+                  badgeBorderColor: Theme.of(context).scaffoldBackgroundColor,
+                ),
           title: IgnorePointer(
             ignoring: enableWindowsDragToMove,
             child: Text(context.t.strings.legacy.msg_tags),
@@ -584,13 +601,15 @@ class _TagPill extends StatelessWidget {
     final fallbackBorder = isDark
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.black.withValues(alpha: 0.08);
-    final background = colors?.background ??
+    final background =
+        colors?.background ??
         (isDark
             ? Colors.white.withValues(alpha: 0.03)
             : Colors.white.withValues(alpha: 0.92));
     final border = colors?.border ?? fallbackBorder;
     final titleColor = colors?.text ?? Theme.of(context).colorScheme.onSurface;
-    final mutedColor = colors?.text.withValues(alpha: 0.72) ??
+    final mutedColor =
+        colors?.text.withValues(alpha: 0.72) ??
         Theme.of(context).colorScheme.onSurfaceVariant;
     final dotColor = colors?.border ?? MemoFlowPalette.primary;
 
@@ -645,11 +664,7 @@ class _TagPill extends StatelessWidget {
                   ),
                   if (tag.pinned) ...[
                     const SizedBox(width: 8),
-                    Icon(
-                      Icons.push_pin_outlined,
-                      size: 15,
-                      color: mutedColor,
-                    ),
+                    Icon(Icons.push_pin_outlined, size: 15, color: mutedColor),
                   ],
                   if (onEdit != null) ...[
                     const SizedBox(width: 4),
