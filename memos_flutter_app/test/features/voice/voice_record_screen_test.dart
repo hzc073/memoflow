@@ -44,6 +44,8 @@ void main() {
       find.byKey(const ValueKey('voice_record_quick_spectrum')),
       findsOneWidget,
     );
+    expect(find.byIcon(Icons.lock_open_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.lock_rounded), findsNothing);
 
     quickRecorder.emit(
       QuickSpectrumFrame(
@@ -66,58 +68,35 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'page quick mode uses quick spectrum and hides standard draft action',
-    (tester) async {
-      final recorder = _FakeVoiceRecordRecorder();
-      final quickRecorder = _FakeAndroidQuickSpectrumRecorder();
-      addTearDown(recorder.dispose);
-      addTearDown(quickRecorder.dispose);
-      final tempDir = Directory.systemTemp.createTempSync(
-        'voice_record_screen_page_quick_test',
-      );
-      addTearDown(() {
-        if (tempDir.existsSync()) {
-          tempDir.deleteSync(recursive: true);
-        }
-      });
+  testWidgets('overlay quick mode can start locked', (tester) async {
+    final recorder = _FakeVoiceRecordRecorder();
+    final quickRecorder = _FakeAndroidQuickSpectrumRecorder();
+    addTearDown(recorder.dispose);
+    addTearDown(quickRecorder.dispose);
+    final tempDir = Directory.systemTemp.createTempSync(
+      'voice_record_screen_overlay_locked_test',
+    );
+    addTearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
 
-      await _pumpVoiceRecordScreen(
-        tester,
-        recorder: recorder,
-        quickRecorder: quickRecorder,
-        mode: VoiceRecordMode.quickFabCompose,
-        presentation: VoiceRecordPresentation.page,
-        documentsDirectoryResolver: () async => tempDir,
-      );
+    await _pumpVoiceRecordScreen(
+      tester,
+      recorder: recorder,
+      quickRecorder: quickRecorder,
+      mode: VoiceRecordMode.quickFabCompose,
+      presentation: VoiceRecordPresentation.overlay,
+      documentsDirectoryResolver: () async => tempDir,
+      startLocked: true,
+    );
 
-      expect(recorder.lastAmplitudeInterval, isNull);
-      expect(quickRecorder.startedPath, endsWith('.m4a'));
-      expect(
-        find.byKey(const ValueKey('voice_record_quick_spectrum')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('voice_record_standard_waveform')),
-        findsNothing,
-      );
-      expect(find.text('Slide right to lock'), findsNothing);
-      expect(find.text('Slide left to discard'), findsNothing);
-      expect(find.text('Release to finish'), findsNothing);
-      expect(find.byIcon(Icons.notes_rounded), findsNothing);
-      expect(find.byIcon(Icons.lock_rounded), findsNothing);
-      expect(find.byIcon(Icons.lock_open_rounded), findsNothing);
-      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
-
-      final recPosition = tester.getTopLeft(find.text('REC'));
-      final headerPosition = tester.getTopLeft(
-        find.byKey(const ValueKey('voice_record_header_label')),
-      );
-      expect(headerPosition.dx - recPosition.dx, lessThan(120));
-
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(quickRecorder.startedPath, endsWith('.m4a'));
+    expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.lock_open_rounded), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('standard mode keeps legacy waveform renderer', (tester) async {
     final recorder = _FakeVoiceRecordRecorder();
@@ -151,13 +130,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('page quick mode completes immediately on first stop', (
+  testWidgets('overlay quick mode completes immediately on first stop', (
     tester,
   ) async {
     final recorder = _FakeVoiceRecordRecorder();
     addTearDown(recorder.dispose);
     final tempDir = Directory.systemTemp.createTempSync(
-      'voice_record_screen_page_quick_complete_test',
+      'voice_record_screen_overlay_quick_complete_test',
     );
     addTearDown(() {
       if (tempDir.existsSync()) {
@@ -170,7 +149,6 @@ void main() {
       tester,
       recorder: recorder,
       mode: VoiceRecordMode.quickFabCompose,
-      presentation: VoiceRecordPresentation.page,
       documentsDirectoryResolver: () async => tempDir,
       onComplete: (result) => completedResult = result,
     );
@@ -184,47 +162,6 @@ void main() {
     expect(find.byIcon(Icons.check_rounded), findsNothing);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets('page quick mode pause button toggles paused state', (
-    tester,
-  ) async {
-    final recorder = _FakeVoiceRecordRecorder();
-    final quickRecorder = _FakeAndroidQuickSpectrumRecorder();
-    addTearDown(recorder.dispose);
-    addTearDown(quickRecorder.dispose);
-    final tempDir = Directory.systemTemp.createTempSync(
-      'voice_record_screen_page_quick_pause_test',
-    );
-    addTearDown(() {
-      if (tempDir.existsSync()) {
-        tempDir.deleteSync(recursive: true);
-      }
-    });
-
-    await _pumpVoiceRecordScreen(
-      tester,
-      recorder: recorder,
-      quickRecorder: quickRecorder,
-      mode: VoiceRecordMode.quickFabCompose,
-      presentation: VoiceRecordPresentation.page,
-      documentsDirectoryResolver: () async => tempDir,
-    );
-
-    await tester.tap(find.byIcon(Icons.pause_rounded));
-    await tester.pump();
-
-    expect(quickRecorder.pauseCallCount, 1);
-    expect(find.text('Paused'), findsOneWidget);
-    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
-    await tester.pump();
-
-    expect(quickRecorder.resumeCallCount, 1);
-    expect(find.text('Recording'), findsOneWidget);
-    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
 }
 
 Future<void> _pumpVoiceRecordScreen(
@@ -235,6 +172,8 @@ Future<void> _pumpVoiceRecordScreen(
   VoiceRecordPresentation presentation = VoiceRecordPresentation.overlay,
   required Future<Directory> Function() documentsDirectoryResolver,
   VoiceRecordCompletionHandler? onComplete,
+  bool autoStart = true,
+  bool startLocked = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -247,7 +186,8 @@ Future<void> _pumpVoiceRecordScreen(
             data: const MediaQueryData(size: Size(390, 844)),
             child: VoiceRecordScreen(
               presentation: presentation,
-              autoStart: true,
+              autoStart: autoStart,
+              startLocked: startLocked,
               mode: mode,
               recorder: recorder,
               quickSpectrumRecorder: quickRecorder,

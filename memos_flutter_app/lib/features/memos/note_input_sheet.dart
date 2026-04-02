@@ -2588,11 +2588,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         return;
       }
       if (!mounted) return;
-      final result = await Navigator.of(context).push<VoiceRecordResult>(
-        MaterialPageRoute(
-          builder: (_) =>
-              const VoiceRecordScreen(mode: VoiceRecordMode.quickFabCompose),
-        ),
+      final result = await VoiceRecordScreen.showOverlay(
+        context,
+        autoStart: true,
+        startLocked: true,
+        mode: VoiceRecordMode.quickFabCompose,
       );
       if (!mounted || result == null) return;
       await _addVoiceAttachment(result);

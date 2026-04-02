@@ -134,8 +134,9 @@ class VoiceRecordOverlayDragSession extends ChangeNotifier {
 class VoiceRecordScreen extends ConsumerStatefulWidget {
   const VoiceRecordScreen({
     super.key,
-    this.presentation = VoiceRecordPresentation.page,
+    this.presentation = VoiceRecordPresentation.overlay,
     this.autoStart = false,
+    this.startLocked = false,
     this.dragSession,
     this.mode = VoiceRecordMode.standard,
     this.recorder,
@@ -147,6 +148,7 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
 
   final VoiceRecordPresentation presentation;
   final bool autoStart;
+  final bool startLocked;
   final VoiceRecordOverlayDragSession? dragSession;
   final VoiceRecordMode mode;
   final VoiceRecordRecorder? recorder;
@@ -158,6 +160,7 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
   static Future<VoiceRecordResult?> showOverlay(
     BuildContext context, {
     bool autoStart = true,
+    bool startLocked = false,
     VoiceRecordOverlayDragSession? dragSession,
     VoiceRecordMode mode = VoiceRecordMode.standard,
   }) {
@@ -180,6 +183,7 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
             child: VoiceRecordScreen(
               presentation: VoiceRecordPresentation.overlay,
               autoStart: autoStart,
+              startLocked: startLocked,
               dragSession: dragSession,
               mode: mode,
               onComplete: complete,
@@ -200,6 +204,7 @@ class VoiceRecordScreen extends ConsumerStatefulWidget {
           VoiceRecordScreen(
             presentation: VoiceRecordPresentation.overlay,
             autoStart: autoStart,
+            startLocked: startLocked,
             dragSession: dragSession,
             mode: mode,
           ),
@@ -300,9 +305,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
 
   bool get _isQuickFabComposeMode =>
       widget.mode == VoiceRecordMode.quickFabCompose;
-  bool get _usesPageQuickPauseAction =>
-      _isQuickFabComposeMode &&
-      widget.presentation == VoiceRecordPresentation.page;
+  bool get _usesPageQuickPauseAction => false;
   bool get _usesNativeQuickSpectrum => _quickSpectrumRecorder != null;
   bool get _supportsDraftQuickAction => !_isQuickFabComposeMode;
 
@@ -606,6 +609,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     _resetVisualizer();
     setState(() {
       _recording = true;
+      _gestureLocked = widget.startLocked && _isQuickFabComposeMode;
       _ampLevel = 0.0;
       _ampPeak = 0.0;
       _voiceActive = false;
@@ -1079,7 +1083,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isOverlay = widget.presentation == VoiceRecordPresentation.overlay;
+    final isOverlay = true;
     final overlay = Colors.black.withValues(alpha: isDark ? 0.18 : 0.08);
     final cardColor = isDark
         ? const Color(0xFF1F1A19)
@@ -1104,7 +1108,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
     final bgColor = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
-    final isQuickPageLayout = _isQuickFabComposeMode && !isOverlay;
+    final isQuickPageLayout = false;
     final panelColor = isDark
         ? Colors.white.withValues(alpha: 0.04)
         : Colors.white.withValues(alpha: 0.62);
@@ -1568,98 +1572,100 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
                                     ),
                                   ),
                                 ),
-                                SizedBox(height: isQuickPageLayout ? 8 : 10),
-                                Row(
-                                  children: [
-                                    _buildQuickActionButton(
-                                      icon: Icons.chevron_left_rounded,
-                                      active:
-                                          _dragPreviewAction ==
-                                          _VoiceRecordQuickAction.discard,
-                                      enabled: !_processing,
-                                      onTap: () => unawaited(_closeScreen()),
-                                      foreground: MemoFlowPalette.primary,
-                                      size: isQuickPageLayout ? 44 : 50,
-                                      iconSize: isQuickPageLayout ? 22 : 24,
+                                if (isQuickPageLayout) ...[
+                                  const SizedBox(height: 8),
+                                  Transform.translate(
+                                    offset: const Offset(0, -36),
+                                    child: _buildPageQuickActionCluster(
+                                      isDark: isDark,
                                     ),
-                                    if (_supportsDraftQuickAction) ...[
-                                      SizedBox(
-                                        width: isQuickPageLayout ? 14 : 18,
-                                      ),
+                                  ),
+                                ] else ...[
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
                                       _buildQuickActionButton(
-                                        icon: _gestureLocked
-                                            ? Icons.lock_rounded
-                                            : Icons.lock_open_rounded,
+                                        icon: Icons.close_rounded,
                                         active:
                                             _dragPreviewAction ==
-                                                _VoiceRecordQuickAction.lock ||
-                                            _gestureLocked,
-                                        enabled:
-                                            _recording &&
-                                            !_awaitingConfirm &&
-                                            !_processing,
-                                        onTap: _toggleGestureLock,
+                                            _VoiceRecordQuickAction.discard,
+                                        enabled: !_processing,
+                                        onTap: () => unawaited(_closeScreen()),
                                         foreground: MemoFlowPalette.primary,
-                                        size: isQuickPageLayout ? 44 : 50,
-                                        iconSize: isQuickPageLayout ? 22 : 24,
+                                        size: 50,
+                                        iconSize: 24,
                                       ),
-                                      SizedBox(
-                                        width: isQuickPageLayout ? 14 : 18,
-                                      ),
-                                      _buildQuickActionButton(
-                                        icon: Icons.notes_rounded,
-                                        active:
-                                            _dragPreviewAction ==
-                                            _VoiceRecordQuickAction.draft,
-                                        enabled:
-                                            !_processing &&
-                                            (_recording || _awaitingConfirm),
-                                        onTap: () =>
-                                            unawaited(_saveAndReturn()),
-                                        foreground: _awaitingConfirm
-                                            ? MemoFlowPalette.primary
-                                            : textMain.withValues(alpha: 0.8),
-                                        size: isQuickPageLayout ? 44 : 50,
-                                        iconSize: isQuickPageLayout ? 22 : 24,
-                                      ),
-                                    ] else ...[
-                                      const Spacer(),
-                                      _buildQuickActionButton(
-                                        icon: _usesPageQuickPauseAction
-                                            ? (_paused
-                                                  ? Icons.play_arrow_rounded
-                                                  : Icons.pause_rounded)
-                                            : (_gestureLocked
-                                                  ? Icons.lock_rounded
-                                                  : Icons.lock_open_rounded),
-                                        active: _usesPageQuickPauseAction
-                                            ? _paused
-                                            : (_dragPreviewAction ==
-                                                      _VoiceRecordQuickAction
-                                                          .lock ||
-                                                  _gestureLocked),
-                                        enabled:
-                                            _recording &&
-                                            !_awaitingConfirm &&
-                                            !_processing,
-                                        onTap: _usesPageQuickPauseAction
-                                            ? () => unawaited(
-                                                _togglePageQuickPause(),
-                                              )
-                                            : _toggleGestureLock,
-                                        foreground: MemoFlowPalette.primary,
-                                        size: isQuickPageLayout ? 44 : 50,
-                                        iconSize: isQuickPageLayout ? 22 : 24,
-                                      ),
+                                      if (_supportsDraftQuickAction) ...[
+                                        const SizedBox(width: 18),
+                                        _buildQuickActionButton(
+                                          icon: _gestureLocked
+                                              ? Icons.lock_rounded
+                                              : Icons.lock_open_rounded,
+                                          active:
+                                              _dragPreviewAction ==
+                                                  _VoiceRecordQuickAction
+                                                      .lock ||
+                                              _gestureLocked,
+                                          enabled:
+                                              _recording &&
+                                              !_awaitingConfirm &&
+                                              !_processing,
+                                          onTap: _toggleGestureLock,
+                                          foreground: MemoFlowPalette.primary,
+                                          size: 50,
+                                          iconSize: 24,
+                                        ),
+                                        const SizedBox(width: 18),
+                                        _buildQuickActionButton(
+                                          icon: Icons.notes_rounded,
+                                          active:
+                                              _dragPreviewAction ==
+                                              _VoiceRecordQuickAction.draft,
+                                          enabled:
+                                              !_processing &&
+                                              (_recording || _awaitingConfirm),
+                                          onTap: () =>
+                                              unawaited(_saveAndReturn()),
+                                          foreground: _awaitingConfirm
+                                              ? MemoFlowPalette.primary
+                                              : textMain.withValues(alpha: 0.8),
+                                          size: 50,
+                                          iconSize: 24,
+                                        ),
+                                      ] else ...[
+                                        const Spacer(),
+                                        _buildQuickActionButton(
+                                          icon: _usesPageQuickPauseAction
+                                              ? (_paused
+                                                    ? Icons.play_arrow_rounded
+                                                    : Icons.pause_rounded)
+                                              : (_gestureLocked
+                                                    ? Icons.lock_rounded
+                                                    : Icons.lock_open_rounded),
+                                          active: _usesPageQuickPauseAction
+                                              ? _paused
+                                              : (_dragPreviewAction ==
+                                                        _VoiceRecordQuickAction
+                                                            .lock ||
+                                                    _gestureLocked),
+                                          enabled:
+                                              _recording &&
+                                              !_awaitingConfirm &&
+                                              !_processing,
+                                          onTap: _usesPageQuickPauseAction
+                                              ? () => unawaited(
+                                                  _togglePageQuickPause(),
+                                                )
+                                              : _toggleGestureLock,
+                                          foreground: MemoFlowPalette.primary,
+                                          size: 50,
+                                          iconSize: 24,
+                                        ),
+                                      ],
                                     ],
-                                  ],
-                                ),
-                                SizedBox(height: isQuickPageLayout ? 14 : 18),
-                                _buildPrimaryButton(
-                                  isDark: isDark,
-                                  compact: isQuickPageLayout,
-                                ),
-                                if (!isQuickPageLayout) ...[
+                                  ),
+                                  const SizedBox(height: 18),
+                                  _buildPrimaryButton(isDark: isDark),
                                   SizedBox(height: isQuickPageLayout ? 10 : 14),
                                   Row(
                                     children: [
@@ -1726,8 +1732,7 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
   }
 
   bool _shouldUseCompactOverlayLayout(Size? size) {
-    if (widget.presentation != VoiceRecordPresentation.overlay ||
-        size == null) {
+    if (size == null) {
       return false;
     }
     return size.height >= 560 && size.height >= size.width;
@@ -2448,6 +2453,51 @@ class _VoiceRecordScreenState extends ConsumerState<VoiceRecordScreen>
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPageQuickActionCluster({required bool isDark}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 156,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          Positioned(
+            left: 8,
+            top: 0,
+            child: _buildQuickActionButton(
+              icon: Icons.close_rounded,
+              active: _dragPreviewAction == _VoiceRecordQuickAction.discard,
+              enabled: !_processing,
+              onTap: () => unawaited(_closeScreen()),
+              foreground: MemoFlowPalette.primary,
+              size: 56,
+              iconSize: 26,
+            ),
+          ),
+          Positioned(
+            right: 8,
+            top: 0,
+            child: _buildQuickActionButton(
+              icon: _paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+              active: _paused,
+              enabled: _recording && !_awaitingConfirm && !_processing,
+              onTap: () => unawaited(_togglePageQuickPause()),
+              foreground: MemoFlowPalette.primary,
+              size: 56,
+              iconSize: 26,
+            ),
+          ),
+          Positioned(
+            bottom: 10,
+            child: Transform.scale(
+              scale: 1.16,
+              child: _buildPrimaryButton(isDark: isDark, compact: true),
+            ),
+          ),
+        ],
       ),
     );
   }

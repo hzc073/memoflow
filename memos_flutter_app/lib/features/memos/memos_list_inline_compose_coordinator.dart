@@ -837,12 +837,11 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
 
       final result = await (recordVoiceOverride != null
           ? recordVoiceOverride!(context)
-          : Navigator.of(context).push<VoiceRecordResult>(
-              MaterialPageRoute(
-                builder: (_) => const VoiceRecordScreen(
-                  mode: VoiceRecordMode.quickFabCompose,
-                ),
-              ),
+          : VoiceRecordScreen.showOverlay(
+              context,
+              autoStart: true,
+              startLocked: true,
+              mode: VoiceRecordMode.quickFabCompose,
             ));
       if (!context.mounted || result == null) return null;
       await addVoiceAttachment(context, result);

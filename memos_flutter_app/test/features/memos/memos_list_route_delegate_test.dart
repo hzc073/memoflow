@@ -113,6 +113,7 @@ void main() {
     final harness = await _pumpRouteDelegateHarness(tester);
     final dragSession = VoiceRecordOverlayDragSession();
     VoiceRecordMode? capturedMode;
+    bool? capturedAutoStart;
     VoiceRecordOverlayDragSession? capturedSession;
     String? capturedInitialText;
     List<String> capturedAttachmentPaths = const <String>[];
@@ -125,6 +126,7 @@ void main() {
             VoiceRecordOverlayDragSession? dragSession,
             VoiceRecordMode mode = VoiceRecordMode.standard,
           }) async {
+            capturedAutoStart = autoStart;
             capturedMode = mode;
             capturedSession = dragSession;
             return Future<VoiceRecordResult?>.value(
@@ -153,6 +155,7 @@ void main() {
     await delegate.openVoiceNoteInput(origin: dragSession);
 
     expect(capturedMode, VoiceRecordMode.quickFabCompose);
+    expect(capturedAutoStart, isTrue);
     expect(capturedSession, same(dragSession));
     expect(capturedInitialText, isNull);
     expect(capturedAttachmentPaths, <String>['/tmp/voice.m4a']);
