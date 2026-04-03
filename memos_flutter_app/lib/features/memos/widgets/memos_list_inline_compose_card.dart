@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/image_thumbnail_cache.dart';
 import '../../../core/markdown_editing.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../data/models/memo_location.dart';
@@ -736,6 +737,10 @@ class _InlineAttachmentTile extends StatelessWidget {
     final isImage = _isInlineImageMimeType(attachment.mimeType);
     final isVideo = _isInlineVideoMimeType(attachment.mimeType);
     final file = _resolveInlinePendingAttachmentFile(attachment);
+    final cacheExtent = resolveThumbnailCacheExtent(
+      size,
+      MediaQuery.devicePixelRatioOf(context),
+    );
 
     Widget content;
     if (isImage && file != null) {
@@ -744,6 +749,8 @@ class _InlineAttachmentTile extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: cacheExtent,
+        cacheHeight: cacheExtent,
         errorBuilder: (context, error, stackTrace) {
           return _InlineAttachmentFallback(
             iconColor: iconColor,

@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/image_formats.dart';
 import '../../core/image_error_logger.dart';
+import '../../core/image_thumbnail_cache.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
 import 'attachment_gallery_screen.dart';
@@ -337,7 +338,12 @@ class MemoImageGrid extends StatelessWidget {
       );
     }
 
-    Widget buildTile(MemoImageEntry entry, int index) {
+    Widget buildTile(
+      MemoImageEntry entry,
+      int index, {
+      int? cacheWidth,
+      int? cacheHeight,
+    }) {
       final file = entry.localFile;
       final url = (entry.previewUrl ?? entry.fullUrl ?? '').trim();
       Widget image;
@@ -370,6 +376,8 @@ class MemoImageGrid extends StatelessWidget {
           image = Image.file(
             file,
             fit: BoxFit.cover,
+            cacheWidth: cacheWidth,
+            cacheHeight: cacheHeight,
             errorBuilder: (context, error, stackTrace) {
               logImageLoadError(
                 scope: 'memo_image_grid_local',
@@ -498,6 +506,15 @@ class MemoImageGrid extends StatelessWidget {
         final aspectRatio = tileWidth > 0 && tileHeight > 0
             ? tileWidth / tileHeight
             : 1.0;
+        final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+        final cacheWidth = resolveThumbnailCacheExtent(
+          tileWidth,
+          devicePixelRatio,
+        );
+        final cacheHeight = resolveThumbnailCacheExtent(
+          tileHeight,
+          devicePixelRatio,
+        );
         return GridView.builder(
           shrinkWrap: true,
           primary: false,
@@ -510,7 +527,12 @@ class MemoImageGrid extends StatelessWidget {
             childAspectRatio: aspectRatio,
           ),
           itemCount: visible.length,
-          itemBuilder: (context, index) => buildTile(visible[index], index),
+          itemBuilder: (context, index) => buildTile(
+            visible[index],
+            index,
+            cacheWidth: cacheWidth,
+            cacheHeight: cacheHeight,
+          ),
         );
       },
     );

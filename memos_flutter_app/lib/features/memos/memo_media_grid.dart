@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/image_formats.dart';
 import '../../core/image_error_logger.dart';
+import '../../core/image_thumbnail_cache.dart';
 import 'attachment_gallery_screen.dart';
 import 'attachment_video_screen.dart';
 import 'memo_image_grid.dart';
@@ -121,7 +122,12 @@ class MemoMediaGrid extends StatelessWidget {
       );
     }
 
-    Widget buildImageTile(MemoImageEntry entry, int index) {
+    Widget buildImageTile(
+      MemoImageEntry entry,
+      int index, {
+      int? cacheWidth,
+      int? cacheHeight,
+    }) {
       final file = entry.localFile;
       final url = (entry.previewUrl ?? entry.fullUrl ?? '').trim();
       Widget image;
@@ -153,6 +159,8 @@ class MemoMediaGrid extends StatelessWidget {
           image = Image.file(
             file,
             fit: BoxFit.cover,
+            cacheWidth: cacheWidth,
+            cacheHeight: cacheHeight,
             errorBuilder: (context, error, stackTrace) {
               logImageLoadError(
                 scope: 'memo_media_grid_local',
@@ -186,7 +194,8 @@ class MemoMediaGrid extends StatelessWidget {
                   'entryId': entry.id,
                   'mimeType': entry.mimeType,
                   'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                      entry.headers?['Authorization']?.trim().isNotEmpty ??
+                      false,
                 },
               );
               return placeholder(Icons.broken_image_outlined);
@@ -207,7 +216,8 @@ class MemoMediaGrid extends StatelessWidget {
                   'entryId': entry.id,
                   'mimeType': entry.mimeType,
                   'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                      entry.headers?['Authorization']?.trim().isNotEmpty ??
+                      false,
                 },
               );
               return placeholder(Icons.broken_image_outlined);
@@ -255,7 +265,12 @@ class MemoMediaGrid extends StatelessWidget {
       );
     }
 
-    Widget buildTile(MemoMediaEntry entry, int index) {
+    Widget buildTile(
+      MemoMediaEntry entry,
+      int index, {
+      int? cacheWidth,
+      int? cacheHeight,
+    }) {
       final overlay = (overflow > 0 && index == visibleCount - 1)
           ? Container(
               color: Colors.black.withValues(alpha: 0.45),
@@ -273,7 +288,12 @@ class MemoMediaGrid extends StatelessWidget {
 
       final content = entry.isVideo
           ? buildVideoTile(entry.video!, index)
-          : buildImageTile(entry.image!, index);
+          : buildImageTile(
+              entry.image!,
+              index,
+              cacheWidth: cacheWidth,
+              cacheHeight: cacheHeight,
+            );
 
       if (overlay == null) return content;
 
@@ -311,6 +331,15 @@ class MemoMediaGrid extends StatelessWidget {
         final aspectRatio = tileWidth > 0 && tileHeight > 0
             ? tileWidth / tileHeight
             : 1.0;
+        final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+        final cacheWidth = resolveThumbnailCacheExtent(
+          tileWidth,
+          devicePixelRatio,
+        );
+        final cacheHeight = resolveThumbnailCacheExtent(
+          tileHeight,
+          devicePixelRatio,
+        );
         Widget grid = GridView.builder(
           shrinkWrap: true,
           primary: false,
@@ -323,7 +352,12 @@ class MemoMediaGrid extends StatelessWidget {
             childAspectRatio: aspectRatio,
           ),
           itemCount: visible.length,
-          itemBuilder: (context, index) => buildTile(visible[index], index),
+          itemBuilder: (context, index) => buildTile(
+            visible[index],
+            index,
+            cacheWidth: cacheWidth,
+            cacheHeight: cacheHeight,
+          ),
         );
 
         if (preserveSquareTilesWhenHeightLimited &&

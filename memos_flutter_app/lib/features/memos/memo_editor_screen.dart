@@ -14,6 +14,7 @@ import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
 import '../../core/desktop/shortcuts.dart';
+import '../../core/image_thumbnail_cache.dart';
 import '../../core/markdown_editing.dart';
 import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
@@ -1772,6 +1773,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final isImage = _isImageMimeType(attachment.mimeType);
     final isVideo = _isVideoMimeType(attachment.mimeType);
     final file = _resolvePendingAttachmentFile(attachment);
+    final cacheExtent = resolveThumbnailCacheExtent(
+      size,
+      MediaQuery.devicePixelRatioOf(context),
+    );
 
     Widget content;
     if (isImage && file != null) {
@@ -1780,6 +1785,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: cacheExtent,
+        cacheHeight: cacheExtent,
         errorBuilder: (context, error, stackTrace) {
           return _attachmentFallback(
             iconColor: iconColor,
@@ -1924,6 +1931,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       thumbnail: true,
       baseUrl: baseUrl,
     );
+    final cacheExtent = resolveThumbnailCacheExtent(
+      size,
+      MediaQuery.devicePixelRatioOf(context),
+    );
     final videoEntry = isVideo
         ? memoVideoEntryFromAttachment(
             attachment,
@@ -1941,6 +1952,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: cacheExtent,
+        cacheHeight: cacheExtent,
         errorBuilder: (context, error, stackTrace) {
           return _attachmentFallback(
             iconColor: iconColor,
