@@ -481,11 +481,15 @@ class _FlomoImportEngine {
       final location = sidecar != null && sidecar.hasLocation
           ? sidecar.location
           : null;
-      final relations = sidecar != null && sidecar.hasRelations
+      final hasCompleteRelations =
+          sidecar != null &&
+          sidecar.hasRelationMetadata &&
+          sidecar.relationsAreComplete;
+      final relations = hasCompleteRelations
           ? sidecar.relations
           : const <MemoRelation>[];
-      final relationCount = sidecar != null && sidecar.hasRelations
-          ? countReferenceRelations(memoUid: memoUid, relations: relations)
+      final relationCount = sidecar != null && sidecar.hasRelationMetadata
+          ? sidecar.resolveRelationCount()
           : 0;
 
       await db.upsertMemo(
@@ -503,7 +507,7 @@ class _FlomoImportEngine {
         relationCount: relationCount,
         syncState: 1,
       );
-      if (sidecar != null && sidecar.hasRelations) {
+      if (hasCompleteRelations) {
         await db.upsertMemoRelationsCache(
           memoUid,
           relationsJson: encodeMemoRelationsJson(relations),
@@ -537,7 +541,7 @@ class _FlomoImportEngine {
             displayTimeSec: displayTimeSec,
             hasAttachments: attachments.isNotEmpty,
             location: location,
-            relations: sidecar != null && sidecar.hasRelations
+            relations: hasCompleteRelations
                 ? relations
                       .map((relation) => relation.toJson())
                       .toList(growable: false)

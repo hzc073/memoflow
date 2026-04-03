@@ -134,6 +134,7 @@ class MemoEditorController {
             ? const <MemoRelation>[]
             : decodeMemoRelationsJson(existingRelationsJson),
         nextRelations: relations,
+        memoSnippet: content,
       );
       nextRelationCount = countReferenceRelations(
         memoUid: uid,

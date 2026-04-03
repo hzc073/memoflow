@@ -734,14 +734,18 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
         }
 
         final relationsJson = memoEntry.relationsJson;
-        final hasRelations = relationsJson != null;
+        final relationSnapshot = resolveMemoRelationsSidecarSnapshot(
+          relationCount: memo.relationCount,
+          relationsJson: relationsJson,
+        );
         final sidecar = LocalLibraryMemoSidecar.fromMemo(
           memo: memo,
-          hasRelations: hasRelations,
-          relations: hasRelations
-              ? decodeMemoRelationsJson(relationsJson)
-              : const <MemoRelation>[],
+          hasRelations: true,
+          relations: relationSnapshot.relations,
           attachments: sidecarAttachments,
+          hasAttachments: !attachmentFailed,
+          relationCount: relationSnapshot.relationCount,
+          relationsComplete: relationSnapshot.relationsComplete,
         );
         var sidecarWritten = false;
         while (!sidecarWritten) {

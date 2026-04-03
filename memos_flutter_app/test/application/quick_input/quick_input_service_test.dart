@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/application/attachments/queued_attachment_stager.dart';
 import 'package:memos_flutter_app/application/quick_input/quick_input_service.dart';
+import 'package:memos_flutter_app/core/memo_relations.dart';
 import 'package:memos_flutter_app/data/api/memo_api_facade.dart';
 import 'package:memos_flutter_app/data/api/memo_api_version.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
@@ -130,6 +131,58 @@ void main() {
       });
     },
   );
+
+  testWidgets('QuickInputService stores local relation snippets in cache', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final dbName = uniqueDbName('quick_input_relation_snippets');
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: Uri.parse('https://example.com'),
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+      final ref = await pumpRef(
+        tester,
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          memosApiProvider.overrideWithValue(api),
+        ],
+      );
+      final service = QuickInputService(
+        bootstrapAdapter: _FakeBootstrapAdapter(db),
+      );
+
+      addTearDown(() async {
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await service.submitQuickInput(
+        ref,
+        'quick input memo [[memo-2]]',
+        relations: const <Map<String, dynamic>>[
+          {
+            'relatedMemo': {'name': 'memos/memo-2', 'snippet': 'memo two'},
+            'type': 'REFERENCE',
+          },
+        ],
+      );
+
+      final rows = await db.listMemos(limit: 10);
+      expect(rows, hasLength(1));
+      final memoUid = rows.single['uid'] as String;
+      final relationsJson = await db.getMemoRelationsCacheJson(memoUid);
+      final cachedRelations = decodeMemoRelationsJson(relationsJson ?? '');
+      expect(cachedRelations, hasLength(1));
+      expect(
+        cachedRelations.single.memo.snippet,
+        'quick input memo [[memo-2]]',
+      );
+      expect(cachedRelations.single.relatedMemo.name, 'memos/memo-2');
+    });
+  });
 }
 
 class _FakeBootstrapAdapter extends AppBootstrapAdapter {

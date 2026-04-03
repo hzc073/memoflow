@@ -214,6 +214,15 @@ void main() {
       expect(
         cachedRelations.any(
           (relation) =>
+              relation.memo.name == 'memos/memo-1' &&
+              relation.memo.snippet == 'memo one updated' &&
+              relation.relatedMemo.name == 'memos/memo-2',
+        ),
+        isTrue,
+      );
+      expect(
+        cachedRelations.any(
+          (relation) =>
               relation.memo.name == 'memos/memo-3' &&
               relation.relatedMemo.name == 'memos/memo-1',
         ),

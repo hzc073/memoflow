@@ -87,6 +87,7 @@ class NoteInputController {
       memoUid: uid,
       existingRelations: const [],
       nextRelations: relations,
+      memoSnippet: content,
     );
     final relationCount = countReferenceRelations(
       memoUid: uid,

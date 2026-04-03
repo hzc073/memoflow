@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/memo_relations.dart';
 import '../models/attachment.dart';
 import '../models/local_memo.dart';
 import '../models/memo_location.dart';
@@ -88,6 +89,8 @@ class LocalLibraryMemoSidecar {
     this.location,
     this.relations = const <MemoRelation>[],
     this.attachments = const <LocalLibraryAttachmentExportMeta>[],
+    this.relationCount,
+    this.relationsComplete,
     this.hasDisplayTime = false,
     this.hasLocation = false,
     this.hasRelations = false,
@@ -101,16 +104,35 @@ class LocalLibraryMemoSidecar {
   final MemoLocation? location;
   final List<MemoRelation> relations;
   final List<LocalLibraryAttachmentExportMeta> attachments;
+  final int? relationCount;
+  final bool? relationsComplete;
   final bool hasDisplayTime;
   final bool hasLocation;
   final bool hasRelations;
   final bool hasAttachments;
+
+  bool get hasRelationMetadata =>
+      hasRelations || relationCount != null || relationsComplete != null;
+
+  bool get relationsAreComplete => relationsComplete ?? hasRelations;
+
+  int resolveRelationCount() {
+    final explicitRelationCount = relationCount;
+    if (explicitRelationCount != null) {
+      return explicitRelationCount < 0 ? 0 : explicitRelationCount;
+    }
+    if (!hasRelations) return 0;
+    return countReferenceRelations(memoUid: memoUid, relations: relations);
+  }
 
   factory LocalLibraryMemoSidecar.fromMemo({
     required LocalMemo memo,
     required bool hasRelations,
     required List<MemoRelation> relations,
     required List<LocalLibraryAttachmentExportMeta> attachments,
+    bool hasAttachments = true,
+    int? relationCount,
+    bool? relationsComplete,
   }) {
     return LocalLibraryMemoSidecar(
       schemaVersion: localLibraryMemoSidecarSchemaVersion,
@@ -120,10 +142,16 @@ class LocalLibraryMemoSidecar {
       location: memo.location,
       relations: relations,
       attachments: attachments,
+      relationCount: hasRelations
+          ? (relationCount ?? memo.relationCount)
+          : null,
+      relationsComplete: hasRelations
+          ? (relationsComplete ?? true)
+          : relationsComplete,
       hasDisplayTime: true,
       hasLocation: true,
       hasRelations: hasRelations,
-      hasAttachments: true,
+      hasAttachments: hasAttachments,
     );
   }
 
@@ -177,6 +205,28 @@ class LocalLibraryMemoSidecar {
           .toList(growable: false);
     }
 
+    int? readOptionalInt(String key) {
+      if (!json.containsKey(key)) return null;
+      final raw = json[key];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim());
+      return null;
+    }
+
+    bool? readOptionalBool(String key) {
+      if (!json.containsKey(key)) return null;
+      final raw = json[key];
+      if (raw is bool) return raw;
+      if (raw is num) return raw != 0;
+      if (raw is String) {
+        final normalized = raw.trim().toLowerCase();
+        if (normalized == 'true' || normalized == '1') return true;
+        if (normalized == 'false' || normalized == '0') return false;
+      }
+      return null;
+    }
+
     return LocalLibraryMemoSidecar(
       schemaVersion: readSchemaVersion(),
       memoUid: (json['memoUid'] as String?) ?? '',
@@ -185,6 +235,8 @@ class LocalLibraryMemoSidecar {
       location: readLocation(),
       relations: readRelations(),
       attachments: readAttachments(),
+      relationCount: readOptionalInt('relationCount'),
+      relationsComplete: readOptionalBool('relationsComplete'),
       hasDisplayTime: json.containsKey('displayTime'),
       hasLocation: json.containsKey('location'),
       hasRelations: json.containsKey('relations'),
@@ -208,6 +260,12 @@ class LocalLibraryMemoSidecar {
       payload['relations'] = relations
           .map((relation) => relation.toJson())
           .toList(growable: false);
+    }
+    if (relationCount != null) {
+      payload['relationCount'] = relationCount;
+    }
+    if (relationsComplete != null) {
+      payload['relationsComplete'] = relationsComplete;
     }
     if (hasAttachments) {
       payload['attachments'] = attachments

@@ -11,6 +11,7 @@ import 'package:memos_flutter_app/data/local_library/local_library_fs.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_markdown.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_memo_sidecar.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_paths.dart';
+import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
@@ -391,6 +392,209 @@ void main() {
         decodeMemoRelationsJson(relationsJson ?? '').single.relatedMemo.name,
         'memos/memo-3',
       );
+
+      await db.close();
+      await deleteTestDatabase(dbName);
+      await Directory(libraryDir.path).delete(recursive: true);
+    },
+  );
+
+  test(
+    'explicit empty relations in sidecar clear stale relation cache',
+    () async {
+      final dbName = uniqueDbName('local_scan_sidecar_clear_relations');
+      final db = AppDatabase(dbName: dbName);
+      final libraryDir = await support.createTempDir('library');
+      final library = LocalLibrary(
+        key: 'local',
+        name: 'Local',
+        rootPath: libraryDir.path,
+      );
+      final fs = LocalLibraryFileSystem(library);
+      await fs.ensureStructure();
+
+      final uid = 'memo-clear-relations';
+      final created = DateTime.utc(2026, 4, 1, 8);
+      final updated = DateTime.utc(2026, 4, 1, 9);
+
+      await db.upsertMemo(
+        uid: uid,
+        content: 'db content [[memo-3]]',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: created.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: created.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 1,
+        syncState: 0,
+      );
+      await db.upsertMemoRelationsCache(
+        uid,
+        relationsJson: encodeMemoRelationsJson(const <MemoRelation>[
+          MemoRelation(
+            memo: MemoRelationMemo(
+              name: 'memos/memo-clear-relations',
+              snippet: 'db content',
+            ),
+            relatedMemo: MemoRelationMemo(
+              name: 'memos/memo-3',
+              snippet: 'memo three',
+            ),
+            type: 'REFERENCE',
+          ),
+        ]),
+      );
+
+      final diskMemo = LocalMemo(
+        uid: uid,
+        content: 'disk content updated',
+        contentFingerprint: computeContentFingerprint('disk content updated'),
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTime: created,
+        updateTime: updated,
+        tags: const <String>[],
+        attachments: const <Attachment>[],
+        relationCount: 0,
+        location: null,
+        syncState: SyncState.synced,
+        lastError: null,
+      );
+      await fs.writeMemo(
+        uid: uid,
+        content: buildLocalLibraryMarkdown(diskMemo),
+      );
+      await fs.writeMemoSidecar(
+        uid: uid,
+        content: LocalLibraryMemoSidecar.fromMemo(
+          memo: diskMemo,
+          hasRelations: true,
+          relations: const <MemoRelation>[],
+          attachments: const <LocalLibraryAttachmentExportMeta>[],
+        ).encodeJson(),
+      );
+
+      final service = LocalLibraryScanService(
+        db: db,
+        fileSystem: fs,
+        attachmentStore: LocalAttachmentStore(),
+      );
+
+      final result = await service.scanAndMerge(forceDisk: true);
+
+      expect(result, isA<LocalScanSuccess>());
+      final row = await db.getMemoByUid(uid);
+      expect(row?['relation_count'], 0);
+      final relationsJson = await db.getMemoRelationsCacheJson(uid);
+      expect(decodeMemoRelationsJson(relationsJson ?? ''), isEmpty);
+
+      await db.close();
+      await deleteTestDatabase(dbName);
+      await Directory(libraryDir.path).delete(recursive: true);
+    },
+  );
+
+  test(
+    'incomplete sidecar relation metadata preserves cached relations and count',
+    () async {
+      final dbName = uniqueDbName('local_scan_sidecar_incomplete_relations');
+      final db = AppDatabase(dbName: dbName);
+      final libraryDir = await support.createTempDir('library');
+      final library = LocalLibrary(
+        key: 'local',
+        name: 'Local',
+        rootPath: libraryDir.path,
+      );
+      final fs = LocalLibraryFileSystem(library);
+      await fs.ensureStructure();
+
+      final uid = 'memo-incomplete-relations';
+      final created = DateTime.utc(2026, 4, 2, 8);
+      final updated = DateTime.utc(2026, 4, 2, 9);
+
+      await db.upsertMemo(
+        uid: uid,
+        content: 'db content [[memo-3]]',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: created.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: created.millisecondsSinceEpoch ~/ 1000,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 1,
+        syncState: 0,
+      );
+      await db.upsertMemoRelationsCache(
+        uid,
+        relationsJson: encodeMemoRelationsJson(const <MemoRelation>[
+          MemoRelation(
+            memo: MemoRelationMemo(
+              name: 'memos/memo-incomplete-relations',
+              snippet: 'db content',
+            ),
+            relatedMemo: MemoRelationMemo(
+              name: 'memos/memo-3',
+              snippet: 'memo three',
+            ),
+            type: 'REFERENCE',
+          ),
+        ]),
+      );
+
+      final diskMemo = LocalMemo(
+        uid: uid,
+        content: 'disk content updated',
+        contentFingerprint: computeContentFingerprint('disk content updated'),
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTime: created,
+        updateTime: updated,
+        tags: const <String>[],
+        attachments: const <Attachment>[],
+        relationCount: 2,
+        location: null,
+        syncState: SyncState.synced,
+        lastError: null,
+      );
+      await fs.writeMemo(
+        uid: uid,
+        content: buildLocalLibraryMarkdown(diskMemo),
+      );
+      await fs.writeMemoSidecar(
+        uid: uid,
+        content: LocalLibraryMemoSidecar(
+          schemaVersion: localLibraryMemoSidecarSchemaVersion,
+          memoUid: uid,
+          contentFingerprint: diskMemo.contentFingerprint,
+          relations: const <MemoRelation>[],
+          relationCount: 2,
+          relationsComplete: false,
+          hasRelations: true,
+        ).encodeJson(),
+      );
+
+      final service = LocalLibraryScanService(
+        db: db,
+        fileSystem: fs,
+        attachmentStore: LocalAttachmentStore(),
+      );
+
+      final result = await service.scanAndMerge(forceDisk: true);
+
+      expect(result, isA<LocalScanSuccess>());
+      final row = await db.getMemoByUid(uid);
+      expect(row?['relation_count'], 2);
+      final relationsJson = await db.getMemoRelationsCacheJson(uid);
+      final cachedRelations = decodeMemoRelationsJson(relationsJson ?? '');
+      expect(cachedRelations, hasLength(1));
+      expect(cachedRelations.single.relatedMemo.name, 'memos/memo-3');
 
       await db.close();
       await deleteTestDatabase(dbName);

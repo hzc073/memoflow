@@ -71,6 +71,8 @@ void main() {
     expect(decoded.hasLocation, isTrue);
     expect(decoded.location?.placeholder, 'Shanghai');
     expect(decoded.hasRelations, isTrue);
+    expect(decoded.relationCount, 1);
+    expect(decoded.relationsAreComplete, isTrue);
     expect(decoded.relations, hasLength(1));
     expect(decoded.relations.single.relatedMemo.name, 'memos/memo-2');
     expect(decoded.hasAttachments, isTrue);
@@ -89,6 +91,7 @@ void main() {
     expect(missing!.hasDisplayTime, isFalse);
     expect(missing.hasLocation, isFalse);
     expect(missing.hasRelations, isFalse);
+    expect(missing.hasRelationMetadata, isFalse);
     expect(missing.hasAttachments, isFalse);
 
     expect(explicit, isNotNull);
@@ -97,8 +100,59 @@ void main() {
     expect(explicit.hasLocation, isTrue);
     expect(explicit.location, isNull);
     expect(explicit.hasRelations, isTrue);
+    expect(explicit.relationsAreComplete, isTrue);
     expect(explicit.relations, isEmpty);
     expect(explicit.hasAttachments, isTrue);
     expect(explicit.attachments, isEmpty);
+  });
+
+  test('sidecar can omit attachment metadata while keeping other fields', () {
+    final memo = LocalMemo(
+      uid: 'memo-2',
+      content: 'hello',
+      contentFingerprint: computeContentFingerprint('hello'),
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTime: DateTime.utc(2026, 5, 1, 8),
+      updateTime: DateTime.utc(2026, 5, 1, 9),
+      tags: const <String>[],
+      attachments: const <Attachment>[],
+      relationCount: 0,
+      location: null,
+      syncState: SyncState.synced,
+      lastError: null,
+    );
+
+    final sidecar = LocalLibraryMemoSidecar.fromMemo(
+      memo: memo,
+      hasRelations: true,
+      relations: const <MemoRelation>[],
+      attachments: const <LocalLibraryAttachmentExportMeta>[],
+      hasAttachments: false,
+    );
+
+    final decoded = LocalLibraryMemoSidecar.tryParse(sidecar.encodeJson());
+
+    expect(decoded, isNotNull);
+    expect(decoded!.hasRelations, isTrue);
+    expect(decoded.relations, isEmpty);
+    expect(decoded.relationCount, 0);
+    expect(decoded.relationsAreComplete, isTrue);
+    expect(decoded.hasAttachments, isFalse);
+    expect(decoded.attachments, isEmpty);
+  });
+
+  test('sidecar can preserve incomplete relation metadata', () {
+    final sidecar = LocalLibraryMemoSidecar.tryParse(
+      '{"schemaVersion":1,"memoUid":"memo-3","contentFingerprint":"fp","relations":[],"relationCount":2,"relationsComplete":false}',
+    );
+
+    expect(sidecar, isNotNull);
+    expect(sidecar!.hasRelationMetadata, isTrue);
+    expect(sidecar.relations, isEmpty);
+    expect(sidecar.relationCount, 2);
+    expect(sidecar.relationsAreComplete, isFalse);
+    expect(sidecar.resolveRelationCount(), 2);
   });
 }

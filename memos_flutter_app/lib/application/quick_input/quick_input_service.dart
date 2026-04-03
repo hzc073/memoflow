@@ -117,6 +117,7 @@ class QuickInputService {
       memoUid: uid,
       existingRelations: const [],
       nextRelations: normalizedRelations,
+      memoSnippet: content,
     );
     final relationCount = countReferenceRelations(
       memoUid: uid,

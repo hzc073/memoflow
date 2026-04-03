@@ -23,7 +23,6 @@ import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memoflow_bridge_settings.dart';
-import '../../data/models/memo_relation.dart';
 import '../../data/repositories/memoflow_bridge_settings_repository.dart';
 import '../../data/logs/sync_status_tracker.dart';
 import 'sync_controller_base.dart';
@@ -1040,14 +1039,14 @@ class LocalSyncController extends SyncControllerBase {
     }
     final memo = LocalMemo.fromDb(row);
     final relationsJson = await db.getMemoRelationsCacheJson(memoUid);
-    final hasRelations = relationsJson != null;
-    final relations = hasRelations
-        ? decodeMemoRelationsJson(relationsJson)
-        : const <MemoRelation>[];
+    final relationSnapshot = resolveMemoRelationsSidecarSnapshot(
+      relationCount: memo.relationCount,
+      relationsJson: relationsJson,
+    );
     final sidecar = LocalLibraryMemoSidecar.fromMemo(
       memo: memo,
-      hasRelations: hasRelations,
-      relations: relations,
+      hasRelations: true,
+      relations: relationSnapshot.relations,
       attachments: memo.attachments
           .map(
             (attachment) => LocalLibraryAttachmentExportMeta.fromAttachment(
@@ -1056,6 +1055,8 @@ class LocalSyncController extends SyncControllerBase {
             ),
           )
           .toList(growable: false),
+      relationCount: relationSnapshot.relationCount,
+      relationsComplete: relationSnapshot.relationsComplete,
     );
     final markdown = buildLocalLibraryMarkdown(memo);
     await fileSystem.writeMemo(uid: memoUid, content: markdown);

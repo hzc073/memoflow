@@ -13,6 +13,7 @@ class AppDatabase {
   AppDatabase({String dbName = 'memos_app.db'}) : _dbName = dbName;
 
   final String _dbName;
+  static const Object _displayTimeUnspecified = Object();
   static const _dbVersion = 20;
   static const int outboxStatePending = 0;
   static const int outboxStateRunning = 1;
@@ -1016,7 +1017,7 @@ WHERE id = 1;
     required bool pinned,
     required String state,
     required int createTimeSec,
-    int? displayTimeSec,
+    Object? displayTimeSec = _displayTimeUnspecified,
     required int updateTimeSec,
     required List<String> tags,
     required List<Map<String, dynamic>> attachments,
@@ -1030,6 +1031,20 @@ WHERE id = 1;
     final locationPlaceholder = location?.placeholder;
     final locationLat = location?.latitude;
     final locationLng = location?.longitude;
+    final shouldPreserveDisplayTime = identical(
+      displayTimeSec,
+      _displayTimeUnspecified,
+    );
+    final normalizedDisplayTimeSec = switch (displayTimeSec) {
+      int value => value,
+      num value => value.toInt(),
+      null || _displayTimeUnspecified => null,
+      _ => throw ArgumentError.value(
+        displayTimeSec,
+        'displayTimeSec',
+        'must be an int, num, null, or omitted',
+      ),
+    };
 
     await db.transaction((txn) async {
       final normalizedTags = _normalizeTags(tags);
@@ -1043,25 +1058,28 @@ WHERE id = 1;
       final tagsText = canonicalTags.join(' ');
 
       final before = await _fetchMemoSnapshot(txn, uid);
+      final values = <String, Object?>{
+        'content': content,
+        'visibility': visibility,
+        'pinned': pinned ? 1 : 0,
+        'state': state,
+        'create_time': createTimeSec,
+        'update_time': updateTimeSec,
+        'tags': tagsText,
+        'attachments_json': attachmentsJson,
+        'location_placeholder': locationPlaceholder,
+        'location_lat': locationLat,
+        'location_lng': locationLng,
+        'relation_count': relationCount,
+        'sync_state': syncState,
+        'last_error': lastError,
+      };
+      if (!shouldPreserveDisplayTime) {
+        values['display_time'] = normalizedDisplayTimeSec;
+      }
       final updated = await txn.update(
         'memos',
-        {
-          'content': content,
-          'visibility': visibility,
-          'pinned': pinned ? 1 : 0,
-          'state': state,
-          'create_time': createTimeSec,
-          'display_time': displayTimeSec,
-          'update_time': updateTimeSec,
-          'tags': tagsText,
-          'attachments_json': attachmentsJson,
-          'location_placeholder': locationPlaceholder,
-          'location_lat': locationLat,
-          'location_lng': locationLng,
-          'relation_count': relationCount,
-          'sync_state': syncState,
-          'last_error': lastError,
-        },
+        values,
         where: 'uid = ?',
         whereArgs: [uid],
       );
@@ -1075,7 +1093,7 @@ WHERE id = 1;
           'pinned': pinned ? 1 : 0,
           'state': state,
           'create_time': createTimeSec,
-          'display_time': displayTimeSec,
+          'display_time': normalizedDisplayTimeSec,
           'update_time': updateTimeSec,
           'tags': tagsText,
           'attachments_json': attachmentsJson,

@@ -7,6 +7,12 @@ typedef ReferenceRelationPatch = ({
   bool shouldSync,
 });
 
+typedef MemoRelationsSidecarSnapshot = ({
+  List<MemoRelation> relations,
+  int relationCount,
+  bool relationsComplete,
+});
+
 int countReferenceRelations({
   required String memoUid,
   required List<MemoRelation> relations,
@@ -104,6 +110,28 @@ ReferenceRelationPatch prepareReferenceRelationPatch({
       relations: relations,
     ),
     shouldSync: true,
+  );
+}
+
+MemoRelationsSidecarSnapshot resolveMemoRelationsSidecarSnapshot({
+  required int relationCount,
+  String? relationsJson,
+}) {
+  final normalizedRelationCount = relationCount < 0 ? 0 : relationCount;
+  final trimmedRelationsJson = relationsJson?.trim();
+  if (trimmedRelationsJson == null || trimmedRelationsJson.isEmpty) {
+    return (
+      relations: const <MemoRelation>[],
+      relationCount: normalizedRelationCount,
+      relationsComplete: normalizedRelationCount <= 0,
+    );
+  }
+
+  final relations = decodeMemoRelationsJson(trimmedRelationsJson);
+  return (
+    relations: relations,
+    relationCount: normalizedRelationCount,
+    relationsComplete: relations.isNotEmpty || normalizedRelationCount <= 0,
   );
 }
 

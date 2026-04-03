@@ -225,7 +225,6 @@ class LocalLibraryScanService {
           ),
           location: _resolvedLocationForInsert(sidecar: diskMemo.sidecar),
           relationCount: _resolvedRelationCountForInsert(
-            uid: uid,
             sidecar: diskMemo.sidecar,
           ),
         );
@@ -292,7 +291,6 @@ class LocalLibraryScanService {
           sidecar: diskMemo.sidecar,
         ),
         relationCount: _resolvedRelationCountForUpdate(
-          uid: uid,
           localMemo: localMemo,
           sidecar: diskMemo.sidecar,
         ),
@@ -520,10 +518,7 @@ class LocalLibraryScanService {
             sidecar: sidecar,
           ),
           location: _resolvedLocationForInsert(sidecar: sidecar),
-          relationCount: _resolvedRelationCountForInsert(
-            uid: uid,
-            sidecar: sidecar,
-          ),
+          relationCount: _resolvedRelationCountForInsert(sidecar: sidecar),
         );
         await _applySidecarToDb(uid: uid, sidecar: sidecar);
         insertedCount++;
@@ -579,7 +574,6 @@ class LocalLibraryScanService {
                 sidecar: sidecar,
               ),
               relationCount: _resolvedRelationCountForUpdate(
-                uid: uid,
                 localMemo: localMemo,
                 sidecar: sidecar,
               ),
@@ -807,15 +801,14 @@ class LocalLibraryScanService {
           !_locationsEqual(localMemo.location, sidecar.location)) {
         return true;
       }
-      if (sidecar.hasRelations) {
-        final relationCount = countReferenceRelations(
-          memoUid: localMemo.uid,
-          relations: sidecar.relations,
-        );
+      if (sidecar.hasRelationMetadata) {
+        final relationCount = sidecar.resolveRelationCount();
         if (localMemo.relationCount != relationCount) return true;
-        final nextRelationsJson = encodeMemoRelationsJson(sidecar.relations);
-        final currentRelationsJson = (existingRelationsJson ?? '').trim();
-        if (currentRelationsJson != nextRelationsJson.trim()) return true;
+        if (sidecar.relationsAreComplete) {
+          final nextRelationsJson = encodeMemoRelationsJson(sidecar.relations);
+          final currentRelationsJson = (existingRelationsJson ?? '').trim();
+          if (currentRelationsJson != nextRelationsJson.trim()) return true;
+        }
       }
     }
     return false;
@@ -1000,7 +993,11 @@ class LocalLibraryScanService {
     required String uid,
     required LocalLibraryMemoSidecar? sidecar,
   }) async {
-    if (sidecar == null || !sidecar.hasRelations) return null;
+    if (sidecar == null ||
+        !sidecar.hasRelationMetadata ||
+        !sidecar.relationsAreComplete) {
+      return null;
+    }
     return db.getMemoRelationsCacheJson(uid);
   }
 
@@ -1008,7 +1005,12 @@ class LocalLibraryScanService {
     required String uid,
     required LocalLibraryMemoSidecar? sidecar,
   }) async {
-    if (sidecar == null || !sidecar.hasRelations) return;
+    if (sidecar == null || !sidecar.hasRelationMetadata) return;
+    if (!sidecar.relationsAreComplete) return;
+    if (sidecar.relations.isEmpty) {
+      await db.deleteMemoRelationsCache(uid);
+      return;
+    }
     await db.upsertMemoRelationsCache(
       uid,
       relationsJson: encodeMemoRelationsJson(sidecar.relations),
@@ -1051,22 +1053,20 @@ class LocalLibraryScanService {
   }
 
   int _resolvedRelationCountForInsert({
-    required String uid,
     required LocalLibraryMemoSidecar? sidecar,
   }) {
-    if (sidecar == null || !sidecar.hasRelations) return 0;
-    return countReferenceRelations(memoUid: uid, relations: sidecar.relations);
+    if (sidecar == null || !sidecar.hasRelationMetadata) return 0;
+    return sidecar.resolveRelationCount();
   }
 
   int _resolvedRelationCountForUpdate({
-    required String uid,
     required LocalMemo localMemo,
     required LocalLibraryMemoSidecar? sidecar,
   }) {
-    if (sidecar == null || !sidecar.hasRelations) {
+    if (sidecar == null || !sidecar.hasRelationMetadata) {
       return localMemo.relationCount;
     }
-    return countReferenceRelations(memoUid: uid, relations: sidecar.relations);
+    return sidecar.resolveRelationCount();
   }
 
   bool _locationsEqual(MemoLocation? a, MemoLocation? b) {

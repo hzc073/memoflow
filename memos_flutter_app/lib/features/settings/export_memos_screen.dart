@@ -226,6 +226,7 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
       final totalMemoCount = rows.length;
       final exportedMemoCount = memos.length;
       final skippedMemoCount = totalMemoCount - exportedMemoCount;
+      final relationSnapshotsByUid = <String, MemoRelationsSidecarSnapshot>{};
 
       final archive = Archive();
       final indexLines = <String>[
@@ -297,28 +298,38 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
         }
 
         final relationsJson = memoEntry.relationsJson;
-        final hasRelations = relationsJson != null;
+        final relationSnapshot = resolveMemoRelationsSidecarSnapshot(
+          relationCount: memo.relationCount,
+          relationsJson: relationsJson,
+        );
+        relationSnapshotsByUid[memo.uid] = relationSnapshot;
         sidecarsByUid[memo.uid] = LocalLibraryMemoSidecar.fromMemo(
           memo: memo,
-          hasRelations: hasRelations,
-          relations: hasRelations
-              ? decodeMemoRelationsJson(relationsJson)
-              : const [],
+          hasRelations: true,
+          relations: relationSnapshot.relations,
           attachments: sidecarAttachments,
+          relationCount: relationSnapshot.relationCount,
+          relationsComplete: relationSnapshot.relationsComplete,
         );
       }
 
       for (final memoEntry in memos) {
         final memo = memoEntry.memo;
+        final relationSnapshot =
+            relationSnapshotsByUid[memo.uid] ??
+            resolveMemoRelationsSidecarSnapshot(
+              relationCount: memo.relationCount,
+              relationsJson: memoEntry.relationsJson,
+            );
         final sidecar =
             sidecarsByUid[memo.uid] ??
             LocalLibraryMemoSidecar.fromMemo(
               memo: memo,
-              hasRelations: memoEntry.relationsJson != null,
-              relations: memoEntry.relationsJson != null
-                  ? decodeMemoRelationsJson(memoEntry.relationsJson!)
-                  : const [],
+              hasRelations: true,
+              relations: relationSnapshot.relations,
               attachments: const [],
+              relationCount: relationSnapshot.relationCount,
+              relationsComplete: relationSnapshot.relationsComplete,
             );
         final content = utf8.encode(sidecar.encodeJson());
         archive.addFile(

@@ -159,6 +159,7 @@ void main() {
     final cachedRelations = decodeMemoRelationsJson(relationsJson ?? '');
     expect(cachedRelations, hasLength(1));
     expect(cachedRelations.single.memo.name, 'memos/memo-1');
+    expect(cachedRelations.single.memo.snippet, 'offline memo [[memo-2]]');
     expect(cachedRelations.single.relatedMemo.name, 'memos/memo-2');
   });
 

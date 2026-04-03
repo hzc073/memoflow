@@ -486,4 +486,56 @@ CREATE TABLE IF NOT EXISTS memos (
     expect(rows.single['create_time'], 1735689600);
     expect(rows.single['display_time'], 1735689600);
   });
+
+  test('upsertMemo preserves display_time when omitted on update', () async {
+    final dbName = uniqueDbName('app_database_preserve_display_time');
+    final appDb = AppDatabase(dbName: dbName);
+
+    addTearDown(() async {
+      await appDb.close();
+      await AppDatabase.deleteDatabaseFile(dbName: dbName);
+    });
+
+    await appDb.upsertMemo(
+      uid: 'memo-1',
+      content: 'original',
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTimeSec: 1735689600,
+      displayTimeSec: 1735776000,
+      updateTimeSec: 1735689600,
+      tags: const <String>[],
+      attachments: const <Map<String, dynamic>>[],
+      location: null,
+      syncState: 0,
+    );
+
+    await appDb.upsertMemo(
+      uid: 'memo-1',
+      content: 'updated',
+      visibility: 'PRIVATE',
+      pinned: true,
+      state: 'NORMAL',
+      createTimeSec: 1735689600,
+      updateTimeSec: 1735862400,
+      tags: const <String>['tag-a'],
+      attachments: const <Map<String, dynamic>>[],
+      location: null,
+      syncState: 1,
+    );
+
+    final upgradedDb = await appDb.db;
+    final rows = await upgradedDb.query(
+      'memos',
+      columns: const <String>['uid', 'display_time', 'pinned', 'sync_state'],
+      where: 'uid = ?',
+      whereArgs: const <Object?>['memo-1'],
+    );
+
+    expect(rows, hasLength(1));
+    expect(rows.single['display_time'], 1735776000);
+    expect(rows.single['pinned'], 1);
+    expect(rows.single['sync_state'], 1);
+  });
 }
