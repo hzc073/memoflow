@@ -60,14 +60,72 @@ String normalizeBaseUrl(String baseUrl) {
   return baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
 }
 
+bool hasApiVersionSegment(String hostOrPath) {
+  final normalized = hostOrPath.trim();
+  if (normalized.isEmpty) return false;
+  final regex = RegExp(r'/v\d+(?:alpha|beta)?(?=/|$)', caseSensitive: false);
+  final uri = Uri.tryParse(normalized);
+  if (uri != null && uri.hasScheme) {
+    return regex.hasMatch(uri.path);
+  }
+  return regex.hasMatch(normalized);
+}
+
 String ensureVersionSegment(String baseUrl, String segment) {
   final normalizedBase = normalizeBaseUrl(baseUrl);
   if (normalizedBase.isEmpty) return normalizedBase;
+  if (hasApiVersionSegment(normalizedBase)) {
+    return normalizedBase;
+  }
   final normalizedSegment = segment.replaceFirst(RegExp(r'^/+'), '');
   if (normalizedBase.endsWith('/$normalizedSegment')) {
     return normalizedBase;
   }
   return '$normalizedBase/$normalizedSegment';
+}
+
+String normalizeOpenAiCompatibleApiBaseUrl(AiServiceInstance service) {
+  return normalizeBaseUrl(service.baseUrl);
+}
+
+String normalizeAnthropicApiBaseUrl(String baseUrl) {
+  return ensureVersionSegment(baseUrl, 'v1');
+}
+
+String normalizeGeminiApiBaseUrl(String baseUrl) {
+  return ensureVersionSegment(baseUrl, 'v1beta');
+}
+
+String normalizeAzureOpenAiApiBaseUrl(String baseUrl) {
+  final normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.isEmpty) return normalized;
+  final withoutV1 = normalized.replaceFirst(
+    RegExp(r'/v1$', caseSensitive: false),
+    '',
+  );
+  final withoutOpenAi = withoutV1.replaceFirst(
+    RegExp(r'/openai$', caseSensitive: false),
+    '',
+  );
+  return '${normalizeBaseUrl(withoutOpenAi)}/openai';
+}
+
+String normalizeOllamaApiBaseUrl(String baseUrl) {
+  final normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.isEmpty) return normalized;
+  final withoutV1 = normalized.replaceFirst(
+    RegExp(r'/v1$', caseSensitive: false),
+    '',
+  );
+  final withoutApi = withoutV1.replaceFirst(
+    RegExp(r'/api$', caseSensitive: false),
+    '',
+  );
+  final withoutChat = withoutApi.replaceFirst(
+    RegExp(r'/chat$', caseSensitive: false),
+    '',
+  );
+  return '${normalizeBaseUrl(withoutChat)}/api';
 }
 
 String resolveEndpoint(String baseUrl, String path) {
@@ -296,7 +354,8 @@ String describeAiProxyMode(
   if (!service.usesSharedProxy) return 'direct';
   final settings = proxySettings ?? AiProxySettings.defaults;
   if (!settings.isConfigured) return 'misconfigured';
-  if (settings.bypassLocalAddresses && isLocalOrPrivateBaseUrl(service.baseUrl)) {
+  if (settings.bypassLocalAddresses &&
+      isLocalOrPrivateBaseUrl(service.baseUrl)) {
     return 'bypass_local';
   }
   return settings.protocol.name;
@@ -322,11 +381,15 @@ Future<_AiProxyDecision> _resolveProxyDecision(
   if (!settings.isConfigured) {
     throw StateError(_proxyConfigurationRequiredMessage);
   }
-  if (settings.bypassLocalAddresses && isLocalOrPrivateBaseUrl(service.baseUrl)) {
+  if (settings.bypassLocalAddresses &&
+      isLocalOrPrivateBaseUrl(service.baseUrl)) {
     return const _AiProxyDecision(mode: 'bypass_local');
   }
   if (settings.protocol == AiProxyProtocol.http) {
-    return _AiProxyDecision(mode: AiProxyProtocol.http.name, settings: settings);
+    return _AiProxyDecision(
+      mode: AiProxyProtocol.http.name,
+      settings: settings,
+    );
   }
   return _AiProxyDecision(
     mode: AiProxyProtocol.socks5.name,
@@ -342,7 +405,8 @@ void _configureProxy(HttpClient client, _AiProxyDecision decision) {
   }
   if (decision.mode == AiProxyProtocol.http.name) {
     client.findProxy = (uri) => 'PROXY ${settings.host}:${settings.port}';
-    if (settings.username.trim().isNotEmpty || settings.password.trim().isNotEmpty) {
+    if (settings.username.trim().isNotEmpty ||
+        settings.password.trim().isNotEmpty) {
       client.authenticateProxy = (host, port, scheme, realm) async {
         client.addProxyCredentials(
           host,

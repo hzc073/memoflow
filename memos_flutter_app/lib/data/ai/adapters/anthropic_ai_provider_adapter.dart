@@ -11,9 +11,8 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
   Future<AiServiceValidationResult> validateConfig(
     AiServiceInstance service, {
     AiProxySettings? proxySettings,
-  }
-  ) async {
-    final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
+  }) async {
+    final baseUrl = normalizeAnthropicApiBaseUrl(service.baseUrl);
     if (baseUrl.isEmpty) {
       return const AiServiceValidationResult(
         status: AiValidationStatus.failed,
@@ -96,7 +95,7 @@ class AnthropicAiProviderAdapter implements AiProviderAdapter {
     AiServiceInstance service, {
     AiProxySettings? proxySettings,
   }) async {
-    final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
+    final baseUrl = normalizeAnthropicApiBaseUrl(service.baseUrl);
     if (baseUrl.isEmpty) return const <AiDiscoveredModel>[];
     final endpoint = resolveEndpoint(baseUrl, 'models');
     final headers = _requestHeaders(service);

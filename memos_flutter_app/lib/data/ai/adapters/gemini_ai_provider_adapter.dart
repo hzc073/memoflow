@@ -11,8 +11,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
   Future<AiServiceValidationResult> validateConfig(
     AiServiceInstance service, {
     AiProxySettings? proxySettings,
-  }
-  ) async {
+  }) async {
     final baseUrl = _baseUrl(service.baseUrl);
     if (baseUrl.isEmpty) {
       return const AiServiceValidationResult(
@@ -234,12 +233,7 @@ class GeminiAiProviderAdapter implements AiProviderAdapter {
   }
 
   String _baseUrl(String baseUrl) {
-    final normalized = normalizeBaseUrl(baseUrl);
-    if (normalized.isEmpty) return normalized;
-    if (normalized.contains('/v1beta') || normalized.contains('/v1/')) {
-      return normalized;
-    }
-    return '$normalized/v1beta';
+    return normalizeGeminiApiBaseUrl(baseUrl);
   }
 
   Map<String, Object?> _queryParameters(AiServiceInstance service) {

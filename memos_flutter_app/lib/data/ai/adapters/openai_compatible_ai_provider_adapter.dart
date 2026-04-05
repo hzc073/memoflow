@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../ai_provider_adapter.dart';
 import '../ai_provider_models.dart';
+import '../ai_provider_templates.dart';
 import '_ai_provider_http.dart';
 
 class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
@@ -11,9 +12,8 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
   Future<AiServiceValidationResult> validateConfig(
     AiServiceInstance service, {
     AiProxySettings? proxySettings,
-  }
-  ) async {
-    final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
+  }) async {
+    final baseUrl = _apiBaseUrl(service);
     if (baseUrl.isEmpty) {
       return const AiServiceValidationResult(
         status: AiValidationStatus.failed,
@@ -21,7 +21,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       );
     }
 
-    final endpoint = resolveEndpoint(baseUrl, 'models');
+    final endpoint = _modelsEndpoint(service);
     final headers = _requestHeaders(service);
     final dio = await buildAiProviderDio(
       service,
@@ -101,9 +101,9 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
     AiServiceInstance service, {
     AiProxySettings? proxySettings,
   }) async {
-    final baseUrl = ensureVersionSegment(service.baseUrl, 'v1');
+    final baseUrl = _apiBaseUrl(service);
     if (baseUrl.isEmpty) return const <AiDiscoveredModel>[];
-    final endpoint = resolveEndpoint(baseUrl, 'models');
+    final endpoint = _modelsEndpoint(service);
     final headers = _requestHeaders(service);
     final dio = await buildAiProviderDio(
       service,
@@ -141,8 +141,8 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
         );
         throw StateError(message);
       }
-      final data = response.data;
-      if (data is! Map || data['data'] is! List) {
+      final models = _extractDiscoveredModels(service, response.data);
+      if (models.isEmpty) {
         logAiProviderRequestFinished(
           service,
           stopwatch,
@@ -156,27 +156,6 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
           responseMessage: 'No model list returned.',
         );
         return const <AiDiscoveredModel>[];
-      }
-      final models = <AiDiscoveredModel>[];
-      for (final item in (data['data'] as List)) {
-        if (item is! Map) continue;
-        final modelKey = (item['id'] ?? '').toString().trim();
-        if (modelKey.isEmpty) continue;
-        final displayName = ((item['name'] ?? item['id']) ?? '')
-            .toString()
-            .trim();
-        final ownedBy =
-            ((item['owned_by'] ?? item['ownedBy'] ?? item['provider']) ?? '')
-                .toString()
-                .trim();
-        models.add(
-          AiDiscoveredModel(
-            displayName: displayName.isEmpty ? modelKey : displayName,
-            modelKey: modelKey,
-            capabilities: inferOpenAiCompatibleCapabilities(modelKey),
-            ownedBy: ownedBy.isEmpty ? null : ownedBy,
-          ),
-        );
       }
       logAiProviderRequestFinished(
         service,
@@ -213,7 +192,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
   Future<AiChatCompletionResult> chatCompletion(
     AiChatCompletionRequest request,
   ) async {
-    final baseUrl = ensureVersionSegment(request.service.baseUrl, 'v1');
+    final baseUrl = _apiBaseUrl(request.service);
     if (baseUrl.isEmpty) {
       throw StateError('Base URL is required.');
     }
@@ -329,7 +308,7 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
 
   @override
   Future<List<double>> embed(AiEmbeddingRequest request) async {
-    final baseUrl = ensureVersionSegment(request.service.baseUrl, 'v1');
+    final baseUrl = _apiBaseUrl(request.service);
     if (baseUrl.isEmpty) {
       throw StateError('Base URL is required.');
     }
@@ -429,6 +408,115 @@ class OpenAiCompatibleAiProviderAdapter implements AiProviderAdapter {
       }
       rethrow;
     }
+  }
+
+  String _apiBaseUrl(AiServiceInstance service) {
+    return normalizeOpenAiCompatibleApiBaseUrl(service);
+  }
+
+  String _modelsEndpoint(AiServiceInstance service) {
+    final baseUrl = _apiBaseUrl(service);
+    if (baseUrl.isEmpty) return '';
+    if (_usesGitHubCatalogModelDiscovery(service, baseUrl)) {
+      return _githubCatalogModelsEndpoint(baseUrl);
+    }
+    return resolveEndpoint(baseUrl, 'models');
+  }
+
+  bool _usesGitHubCatalogModelDiscovery(
+    AiServiceInstance service,
+    String baseUrl,
+  ) {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null) {
+      return false;
+    }
+    final normalizedPath = uri.path
+        .replaceAll(RegExp(r'/+$'), '')
+        .toLowerCase();
+    final isOfficialHost = uri.host.toLowerCase() == 'models.github.ai';
+    return isOfficialHost ||
+        (service.templateId == aiTemplateGitHubModels &&
+            normalizedPath.endsWith('/inference'));
+  }
+
+  String _githubCatalogModelsEndpoint(String baseUrl) {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null) {
+      return resolveEndpoint(baseUrl, 'models');
+    }
+    final normalizedPath = uri.path.replaceAll(RegExp(r'/+$'), '');
+    final catalogPath = normalizedPath.toLowerCase().endsWith('/inference')
+        ? normalizedPath.replaceFirst(
+            RegExp(r'/inference$', caseSensitive: false),
+            '/catalog',
+          )
+        : normalizedPath.isEmpty
+        ? '/catalog'
+        : '$normalizedPath/catalog';
+    return uri.replace(path: '$catalogPath/models').toString();
+  }
+
+  List<AiDiscoveredModel> _extractDiscoveredModels(
+    AiServiceInstance service,
+    Object? data,
+  ) {
+    if (_usesGitHubCatalogResponse(service, data)) {
+      return _extractGitHubCatalogModels(data as List);
+    }
+    if (data is! Map || data['data'] is! List) {
+      return const <AiDiscoveredModel>[];
+    }
+    final models = <AiDiscoveredModel>[];
+    for (final item in (data['data'] as List)) {
+      if (item is! Map) continue;
+      final modelKey = (item['id'] ?? '').toString().trim();
+      if (modelKey.isEmpty) continue;
+      final displayName = ((item['name'] ?? item['id']) ?? '')
+          .toString()
+          .trim();
+      final ownedBy =
+          ((item['owned_by'] ?? item['ownedBy'] ?? item['provider']) ?? '')
+              .toString()
+              .trim();
+      models.add(
+        AiDiscoveredModel(
+          displayName: displayName.isEmpty ? modelKey : displayName,
+          modelKey: modelKey,
+          capabilities: inferOpenAiCompatibleCapabilities(modelKey),
+          ownedBy: ownedBy.isEmpty ? null : ownedBy,
+        ),
+      );
+    }
+    return models;
+  }
+
+  bool _usesGitHubCatalogResponse(AiServiceInstance service, Object? data) {
+    return service.templateId == aiTemplateGitHubModels && data is List;
+  }
+
+  List<AiDiscoveredModel> _extractGitHubCatalogModels(List data) {
+    final models = <AiDiscoveredModel>[];
+    for (final item in data) {
+      if (item is! Map) continue;
+      final modelKey = (item['id'] ?? '').toString().trim();
+      if (modelKey.isEmpty) continue;
+      final displayName = ((item['name'] ?? item['id']) ?? '')
+          .toString()
+          .trim();
+      final ownedBy = ((item['publisher'] ?? item['owned_by']) ?? '')
+          .toString()
+          .trim();
+      models.add(
+        AiDiscoveredModel(
+          displayName: displayName.isEmpty ? modelKey : displayName,
+          modelKey: modelKey,
+          capabilities: inferOpenAiCompatibleCapabilities(modelKey),
+          ownedBy: ownedBy.isEmpty ? null : ownedBy,
+        ),
+      );
+    }
+    return models;
   }
 
   Map<String, String> _requestHeaders(AiServiceInstance service) {

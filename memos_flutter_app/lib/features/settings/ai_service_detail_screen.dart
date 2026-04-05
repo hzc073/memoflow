@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../data/ai/adapters/_ai_provider_http.dart';
 import '../../data/ai/ai_settings_log.dart';
 import '../../data/logs/log_manager.dart';
 import '../../core/top_toast.dart';
@@ -335,49 +336,53 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
             ),
           ),
           const SizedBox.shrink(),
-          Offstage(offstage: true, child: _SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isZh ? '连接状态' : 'Connection Status',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: textMain,
+          Offstage(
+            offstage: true,
+            child: _SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isZh ? '连接状态' : 'Connection Status',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: textMain,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    _ValidationIcon(
-                      status: service.lastValidationStatus,
-                      checking: _isCheckingConnection,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        service.lastValidationMessage?.trim().isNotEmpty == true
-                            ? service.lastValidationMessage!.trim()
-                            : _validationDescription(
-                                service.lastValidationStatus,
-                                isZh,
-                              ),
-                        style: TextStyle(color: textMain),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _ValidationIcon(
+                        status: service.lastValidationStatus,
+                        checking: _isCheckingConnection,
+                        size: 20,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  service.lastValidatedAt == null
-                      ? (isZh ? '最近校验：从未检查' : 'Last checked: never')
-                      : '${isZh ? '最近校验' : 'Last checked'}: ${service.lastValidatedAt}',
-                  style: TextStyle(fontSize: 12, color: textMuted),
-                ),
-              ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          service.lastValidationMessage?.trim().isNotEmpty ==
+                                  true
+                              ? service.lastValidationMessage!.trim()
+                              : _validationDescription(
+                                  service.lastValidationStatus,
+                                  isZh,
+                                ),
+                          style: TextStyle(color: textMain),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    service.lastValidatedAt == null
+                        ? (isZh ? '最近校验：从未检查' : 'Last checked: never')
+                        : '${isZh ? '最近校验' : 'Last checked'}: ${service.lastValidatedAt}',
+                    style: TextStyle(fontSize: 12, color: textMuted),
+                  ),
+                ],
+              ),
             ),
-          )),
+          ),
           const SizedBox(height: 12),
           AiServiceModelScreen(serviceId: service.serviceId, embedded: true),
           const SizedBox(height: 12),
@@ -638,17 +643,34 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
     final baseUrl = _baseUrlController.text.trim().isEmpty
         ? service.baseUrl
         : _baseUrlController.text.trim();
-    final normalized = baseUrl.replaceAll(RegExp(r'/+$'), '');
-    if (normalized.isEmpty) return '';
+    final draftService = service.copyWith(baseUrl: baseUrl);
     return switch (service.adapterKind) {
-      AiProviderAdapterKind.openAiCompatible =>
-        '$normalized/v1/chat/completions',
-      AiProviderAdapterKind.anthropic => '$normalized/v1/messages',
-      AiProviderAdapterKind.gemini => '$normalized/v1beta/models',
-      AiProviderAdapterKind.azureOpenAi =>
-        '$normalized/openai/models?api-version=...',
-      AiProviderAdapterKind.ollama => '$normalized/api/tags',
+      AiProviderAdapterKind.openAiCompatible => _previewWithPath(
+        normalizeOpenAiCompatibleApiBaseUrl(draftService),
+        'chat/completions',
+      ),
+      AiProviderAdapterKind.anthropic => _previewWithPath(
+        normalizeAnthropicApiBaseUrl(baseUrl),
+        'messages',
+      ),
+      AiProviderAdapterKind.gemini => _previewWithPath(
+        normalizeGeminiApiBaseUrl(baseUrl),
+        'models',
+      ),
+      AiProviderAdapterKind.azureOpenAi => _previewWithPath(
+        normalizeAzureOpenAiApiBaseUrl(baseUrl),
+        'models?api-version=...',
+      ),
+      AiProviderAdapterKind.ollama => _previewWithPath(
+        normalizeOllamaApiBaseUrl(baseUrl),
+        'tags',
+      ),
     };
+  }
+
+  String _previewWithPath(String baseUrl, String path) {
+    if (baseUrl.isEmpty) return '';
+    return '$baseUrl/$path';
   }
 }
 
@@ -694,7 +716,10 @@ class _ProxyWarningCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, color: colorScheme.onSecondaryContainer),
+          Icon(
+            Icons.warning_amber_rounded,
+            color: colorScheme.onSecondaryContainer,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
