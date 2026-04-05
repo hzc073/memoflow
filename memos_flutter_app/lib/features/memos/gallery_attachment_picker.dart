@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
-import 'gallery_attachment_picker_constants.dart';
 import 'gallery_attachment_original_picker.dart';
 import 'windows_camera_capture_screen.dart';
 
@@ -90,28 +89,14 @@ String guessLocalAttachmentMimeType(String filename) {
 Future<GalleryAttachmentPickResult?> pickGalleryAttachments(
   BuildContext context, {
   int maxAssets = 100,
-  bool enableOriginalToggle = false,
+  bool showOriginalToggle = false,
 }) async {
-  OriginalToggleGalleryAssetPickResult? originalPickResult;
-  List<AssetEntity>? assets;
-  if (enableOriginalToggle) {
-    originalPickResult = await pickGalleryAssetsWithOriginalToggle(
-      context,
-      maxAssets: maxAssets,
-    );
-    assets = originalPickResult?.assets;
-  } else {
-    final themeColor = Theme.of(context).colorScheme.primary;
-    assets = await AssetPicker.pickAssets(
-      context,
-      pickerConfig: AssetPickerConfig(
-        requestType: RequestType.common,
-        maxAssets: maxAssets,
-        themeColor: themeColor,
-        previewThumbnailSize: memoGalleryPreviewThumbnailSize,
-      ),
-    );
-  }
+  final originalPickResult = await pickGalleryAssetsWithOriginalToggle(
+    context,
+    maxAssets: maxAssets,
+    showOriginalToggle: showOriginalToggle,
+  );
+  final assets = originalPickResult?.assets;
   if (assets == null || assets.isEmpty) {
     return null;
   }

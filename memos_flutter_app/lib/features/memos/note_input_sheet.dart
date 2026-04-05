@@ -1747,7 +1747,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       if (!mounted) return;
       final result = await pickGalleryAttachments(
         context,
-        enableOriginalToggle: compressionSettings.enabled,
+        showOriginalToggle: compressionSettings.enabled,
       );
       if (!mounted || result == null) return;
       if (result.attachments.isEmpty) {

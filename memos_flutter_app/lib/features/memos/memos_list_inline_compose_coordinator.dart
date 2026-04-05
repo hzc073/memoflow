@@ -482,7 +482,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
               }
               return gallery_picker.pickGalleryAttachments(
                 context,
-                enableOriginalToggle: compressionSettings.enabled,
+                showOriginalToggle: compressionSettings.enabled,
               );
             }());
       // ignore: avoid_print

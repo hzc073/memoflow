@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
+import 'package:memos_flutter_app/data/models/image_compression_settings.dart';
 import 'package:memos_flutter_app/features/memos/gallery_attachment_original_picker.dart';
 import 'package:memos_flutter_app/features/memos/gallery_attachment_picker.dart';
 
@@ -22,6 +23,13 @@ AssetEntity _asset({
 }
 
 void main() {
+  test(
+    'ImageCompressionSettings defaults enable compression for new installs',
+    () {
+      expect(ImageCompressionSettings.defaults.enabled, isTrue);
+    },
+  );
+
   test('normalizeGalleryOriginalAssetIds keeps only selected images', () {
     final image = _asset(id: 'img-1', type: AssetType.image);
     final video = _asset(id: 'video-1', type: AssetType.video);
@@ -196,4 +204,136 @@ void main() {
       expect(provider.isMarkedOriginal(image2), isFalse);
     },
   );
+
+  test('buildOriginalTogglePickResult preserves assets and original ids', () {
+    final image = _asset(id: 'img-1', type: AssetType.image);
+    final provider = OriginalToggleAssetPickerProvider(maxAssets: 10);
+
+    provider.selectedAssets = [image];
+    provider.toggleOriginalForAsset(image);
+
+    final result = buildOriginalTogglePickResult(provider);
+
+    expect(result.assets, [image]);
+    expect(result.originalAssetIds, {'img-1'});
+  });
+
+  test('shouldShowGridOriginalToggle follows compression visibility', () {
+    expect(
+      shouldShowGridOriginalToggle(
+        showOriginalToggle: true,
+        hasSelectedImages: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowGridOriginalToggle(
+        showOriginalToggle: false,
+        hasSelectedImages: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowGridOriginalToggle(
+        showOriginalToggle: true,
+        hasSelectedImages: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'shouldShowOriginalSelectionSummary matches original toggle visibility',
+    () {
+      expect(
+        shouldShowOriginalSelectionSummary(
+          showOriginalToggle: true,
+          hasSelection: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowOriginalSelectionSummary(
+          showOriginalToggle: false,
+          hasSelection: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowOriginalSelectionSummary(
+          showOriginalToggle: true,
+          hasSelection: false,
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test('shouldShowOriginalBadge only applies to selected images', () {
+    final image = _asset(id: 'img-1', type: AssetType.image);
+    final video = _asset(id: 'video-1', type: AssetType.video);
+
+    expect(
+      shouldShowOriginalBadge(
+        showOriginalToggle: true,
+        selected: true,
+        asset: image,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowOriginalBadge(
+        showOriginalToggle: false,
+        selected: true,
+        asset: image,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowOriginalBadge(
+        showOriginalToggle: true,
+        selected: false,
+        asset: image,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowOriginalBadge(
+        showOriginalToggle: true,
+        selected: true,
+        asset: video,
+      ),
+      isFalse,
+    );
+  });
+
+  test('shouldShowViewerOriginalToggle mirrors grid image rules', () {
+    final image = _asset(id: 'img-1', type: AssetType.image);
+    final video = _asset(id: 'video-1', type: AssetType.video);
+
+    expect(
+      shouldShowViewerOriginalToggle(
+        showOriginalToggle: true,
+        selected: true,
+        asset: image,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowViewerOriginalToggle(
+        showOriginalToggle: true,
+        selected: false,
+        asset: image,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowViewerOriginalToggle(
+        showOriginalToggle: true,
+        selected: true,
+        asset: video,
+      ),
+      isFalse,
+    );
+  });
 }

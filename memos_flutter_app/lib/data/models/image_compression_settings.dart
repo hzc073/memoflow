@@ -8,7 +8,7 @@ class ImageCompressionSettings {
 
   static const defaults = ImageCompressionSettings(
     schemaVersion: 1,
-    enabled: false,
+    enabled: true,
     maxSide: 1920,
     quality: 80,
     format: ImageCompressionFormat.jpeg,
@@ -47,12 +47,12 @@ class ImageCompressionSettings {
   }
 
   Map<String, dynamic> toJson() => {
-        'schemaVersion': schemaVersion,
-        'enabled': enabled,
-        'maxSide': maxSide,
-        'quality': quality,
-        'format': format.name,
-      };
+    'schemaVersion': schemaVersion,
+    'enabled': enabled,
+    'maxSide': maxSide,
+    'quality': quality,
+    'format': format.name,
+  };
 
   factory ImageCompressionSettings.fromJson(Map<String, dynamic> json) {
     int readInt(String key, int fallback) {
@@ -98,8 +98,7 @@ class ImageCompressionSettings {
     );
   }
 
-  static int _clampMaxSide(int value) =>
-      value.clamp(minMaxSide, maxMaxSide);
+  static int _clampMaxSide(int value) => value.clamp(minMaxSide, maxMaxSide);
 
   static int _clampQuality(int value) => value.clamp(minQuality, maxQuality);
 }

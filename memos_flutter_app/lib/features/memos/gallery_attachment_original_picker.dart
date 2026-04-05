@@ -96,6 +96,49 @@ class OriginalToggleAssetPickerProvider extends DefaultAssetPickerProvider {
   }
 }
 
+OriginalToggleGalleryAssetPickResult buildOriginalTogglePickResult(
+  OriginalToggleAssetPickerProvider provider,
+) {
+  return OriginalToggleGalleryAssetPickResult(
+    assets: List<AssetEntity>.from(provider.selectedAssets),
+    originalAssetIds: Set<String>.from(provider.originalAssetIds),
+  );
+}
+
+bool shouldShowOriginalSelectionSummary({
+  required bool showOriginalToggle,
+  required bool hasSelection,
+}) {
+  return showOriginalToggle && hasSelection;
+}
+
+bool shouldShowGridOriginalToggle({
+  required bool showOriginalToggle,
+  required bool hasSelectedImages,
+}) {
+  return showOriginalToggle && hasSelectedImages;
+}
+
+bool shouldShowOriginalBadge({
+  required bool showOriginalToggle,
+  required bool selected,
+  required AssetEntity asset,
+}) {
+  return showOriginalToggle && selected && asset.type == AssetType.image;
+}
+
+bool shouldShowViewerOriginalToggle({
+  required bool showOriginalToggle,
+  required bool selected,
+  required AssetEntity asset,
+}) {
+  return shouldShowOriginalBadge(
+    showOriginalToggle: showOriginalToggle,
+    selected: selected,
+    asset: asset,
+  );
+}
+
 class OriginalToggleAssetPickerBuilderDelegate
     extends
         DefaultAssetPickerBuilderDelegate<OriginalToggleAssetPickerProvider> {
@@ -125,7 +168,132 @@ class OriginalToggleAssetPickerBuilderDelegate
     super.shouldAutoplayPreview,
     super.dragToSelect,
     super.enableLivePhoto,
+    this.showOriginalToggle = false,
   });
+
+  final bool showOriginalToggle;
+
+  @override
+  Future<void> viewAsset(
+    BuildContext context,
+    int? index,
+    AssetEntity currentAsset,
+  ) async {
+    final selectionProvider = provider;
+    if ((!selectionProvider.selectedAssets.contains(currentAsset) &&
+            selectionProvider.selectedMaximumAssets) ||
+        (isWeChatMoment &&
+            currentAsset.type == AssetType.video &&
+            selectionProvider.selectedAssets.isNotEmpty)) {
+      return;
+    }
+    final revert = effectiveShouldRevertGrid(context);
+    final int debugFlow;
+    final List<AssetEntity> current;
+    final List<AssetEntity>? selected;
+    final int effectiveIndex;
+    if (isWeChatMoment) {
+      if (currentAsset.type == AssetType.video) {
+        current = <AssetEntity>[currentAsset];
+        selected = null;
+        effectiveIndex = 0;
+        debugFlow = 10;
+      } else {
+        final List<AssetEntity> list;
+        if (index == null) {
+          list = selectionProvider.selectedAssets.reversed.toList(
+            growable: false,
+          );
+        } else {
+          list = selectionProvider.currentAssets;
+        }
+        current = list.where((asset) => asset.type == AssetType.image).toList();
+        selected = selectionProvider.selectedAssets;
+        final currentIndex = current.indexOf(currentAsset);
+        effectiveIndex = revert
+            ? current.length - currentIndex - 1
+            : currentIndex;
+        debugFlow = switch ((index == null, revert)) {
+          (true, true) => 21,
+          (true, false) => 20,
+          (false, true) => 31,
+          (false, false) => 30,
+        };
+      }
+    } else {
+      selected = selectionProvider.selectedAssets;
+      final List<AssetEntity> list;
+      if (index == null) {
+        if (revert) {
+          list = selectionProvider.selectedAssets.reversed.toList(
+            growable: false,
+          );
+        } else {
+          list = selectionProvider.selectedAssets;
+        }
+        effectiveIndex = selectionProvider.selectedAssets.indexOf(currentAsset);
+        current = list;
+      } else {
+        current = selectionProvider.currentAssets;
+        effectiveIndex = revert ? current.length - index - 1 : index;
+      }
+      debugFlow = switch ((index == null, revert)) {
+        (true, true) => 41,
+        (true, false) => 40,
+        (false, true) => 51,
+        (false, false) => 50,
+      };
+    }
+    if (current.isEmpty) {
+      throw StateError('Previewing empty assets is not allowed. $debugFlow');
+    }
+    final viewer =
+        AssetPickerViewer<
+          AssetEntity,
+          AssetPathEntity,
+          AssetPickerViewerProvider<AssetEntity>,
+          OriginalToggleAssetPickerViewerBuilderDelegate
+        >(
+          builder: OriginalToggleAssetPickerViewerBuilderDelegate(
+            currentIndex: effectiveIndex,
+            previewAssets: current,
+            provider: selected != null
+                ? AssetPickerViewerProvider<AssetEntity>(
+                    selected,
+                    maxAssets: selectionProvider.maxAssets,
+                  )
+                : null,
+            themeData: theme,
+            previewThumbnailSize: previewThumbnailSize,
+            selectedAssets: selected,
+            selectorProvider: selectionProvider,
+            specialPickerType: specialPickerType,
+            maxAssets: selectionProvider.maxAssets,
+            shouldReversePreview: revert,
+            selectPredicate: selectPredicate,
+            shouldAutoplayPreview: shouldAutoplayPreview,
+            enableLivePhoto: enableLivePhoto,
+            showOriginalToggle: showOriginalToggle,
+          ),
+        );
+    final result =
+        await Navigator.maybeOf(
+          context,
+          rootNavigator: viewerUseRootNavigator,
+        )?.push<List<AssetEntity>>(
+          viewerPageRouteBuilder?.call(viewer) ??
+              AssetPickerViewerPageRoute(builder: (context) => viewer),
+        );
+    if (!context.mounted) return;
+    if (result != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        Navigator.maybeOf(
+          context,
+        )?.maybePop(buildOriginalTogglePickResult(selectionProvider));
+      });
+    }
+  }
 
   @override
   Widget confirmButton(BuildContext context) {
@@ -146,16 +314,9 @@ class OriginalToggleAssetPickerBuilderDelegate
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
           onPressed: shouldAllowConfirm
               ? () {
-                  Navigator.maybeOf(context)?.maybePop(
-                    OriginalToggleGalleryAssetPickResult(
-                      assets: List<AssetEntity>.from(
-                        selectionProvider.selectedAssets,
-                      ),
-                      originalAssetIds: Set<String>.from(
-                        selectionProvider.originalAssetIds,
-                      ),
-                    ),
-                  );
+                  Navigator.maybeOf(
+                    context,
+                  )?.maybePop(buildOriginalTogglePickResult(selectionProvider));
                 }
               : null,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -198,10 +359,13 @@ class OriginalToggleAssetPickerBuilderDelegate
               asset,
             );
             final selected = selectedIndex != -1;
-            final showOriginalToggle =
-                selected && asset.type == AssetType.image;
+            final showOriginalBadge = shouldShowOriginalBadge(
+              showOriginalToggle: showOriginalToggle,
+              selected: selected,
+              asset: asset,
+            );
             final isOriginal =
-                showOriginalToggle && selectionProvider.isMarkedOriginal(asset);
+                showOriginalBadge && selectionProvider.isMarkedOriginal(asset);
             return AnimatedContainer(
               duration: switchingPathDuration,
               padding: EdgeInsets.all(indicatorSize * .35),
@@ -230,7 +394,7 @@ class OriginalToggleAssetPickerBuilderDelegate
                         ),
                       ),
                     ),
-                  if (showOriginalToggle && isOriginal)
+                  if (showOriginalBadge && isOriginal)
                     Align(
                       alignment: AlignmentDirectional.bottomStart,
                       child: IgnorePointer(
@@ -261,14 +425,23 @@ class OriginalToggleAssetPickerBuilderDelegate
           if (hasBottomActions)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20).copyWith(
-                top: selectionProvider.isSelectedNotEmpty ? 8 : 0,
+                top:
+                    shouldShowOriginalSelectionSummary(
+                      showOriginalToggle: showOriginalToggle,
+                      hasSelection: selectionProvider.isSelectedNotEmpty,
+                    )
+                    ? 8
+                    : 0,
                 bottom: bottomPadding,
               ),
               color: theme.bottomAppBarTheme.color ?? theme.colorScheme.surface,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (selectionProvider.isSelectedNotEmpty)
+                  if (shouldShowOriginalSelectionSummary(
+                    showOriginalToggle: showOriginalToggle,
+                    hasSelection: selectionProvider.isSelectedNotEmpty,
+                  ))
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
@@ -289,7 +462,11 @@ class OriginalToggleAssetPickerBuilderDelegate
                     child: Row(
                       children: [
                         if (isPreviewEnabled) previewButton(context),
-                        if (selectionProvider.hasSelectedImages)
+                        if (shouldShowGridOriginalToggle(
+                          showOriginalToggle: showOriginalToggle,
+                          hasSelectedImages:
+                              selectionProvider.hasSelectedImages,
+                        ))
                           Padding(
                             padding: EdgeInsetsDirectional.only(
                               start: isPreviewEnabled ? 12 : 0,
@@ -321,11 +498,134 @@ class OriginalToggleAssetPickerBuilderDelegate
   }
 }
 
+class OriginalToggleAssetPickerViewerBuilderDelegate
+    extends
+        DefaultAssetPickerViewerBuilderDelegate<
+          AssetPickerViewerProvider<AssetEntity>,
+          OriginalToggleAssetPickerProvider
+        > {
+  OriginalToggleAssetPickerViewerBuilderDelegate({
+    required super.currentIndex,
+    required super.previewAssets,
+    required super.themeData,
+    super.provider,
+    super.selectedAssets,
+    super.selectorProvider,
+    super.previewThumbnailSize,
+    super.specialPickerType,
+    super.maxAssets,
+    super.shouldReversePreview,
+    super.selectPredicate,
+    super.shouldAutoplayPreview = false,
+    super.enableLivePhoto = true,
+    this.showOriginalToggle = false,
+  });
+
+  final bool showOriginalToggle;
+
+  Widget _buildCurrentAssetOriginalToggle(BuildContext context) {
+    final selectionProvider = selectorProvider;
+    if (selectionProvider == null) {
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<int>(
+      initialData: currentIndex,
+      stream: pageStreamController.stream,
+      builder: (context, snapshot) {
+        final asset = currentAsset;
+        if (asset.type != AssetType.image) {
+          return const SizedBox.shrink();
+        }
+        return ListenableBuilder(
+          listenable: selectionProvider,
+          builder: (context, child) {
+            final isSelected = selectionProvider.selectedAssets.any(
+              (selectedAsset) => selectedAsset.id == asset.id,
+            );
+            if (!shouldShowViewerOriginalToggle(
+              showOriginalToggle: showOriginalToggle,
+              selected: isSelected,
+              asset: asset,
+            )) {
+              return const SizedBox.shrink();
+            }
+            return _BottomOriginalToggle(
+              selected: selectionProvider.isMarkedOriginal(asset),
+              label: context.t.strings.legacy.msg_original_image,
+              onTap: () => selectionProvider.toggleOriginalForAsset(asset),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget bottomDetailBuilder(BuildContext context) {
+    final backgroundColor =
+        themeData.bottomAppBarTheme.color ?? themeData.colorScheme.surface;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    return ValueListenableBuilder(
+      valueListenable: isDisplayingDetail,
+      builder: (_, value, child) => AnimatedPositionedDirectional(
+        duration: kThemeAnimationDuration,
+        curve: Curves.easeInOut,
+        bottom: value ? 0.0 : -(bottomPadding + bottomDetailHeight),
+        start: 0.0,
+        end: 0.0,
+        height: bottomPadding + bottomDetailHeight,
+        child: child!,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: <Widget>[
+          if (provider != null)
+            ValueListenableBuilder<int>(
+              valueListenable: selectedNotifier,
+              builder: (context, int count, child) => Container(
+                width: count > 0 ? double.maxFinite : 0,
+                height: bottomPreviewHeight,
+                color: backgroundColor,
+                child: ListView.builder(
+                  controller: previewingListController,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 5.0),
+                  physics: const ClampingScrollPhysics(),
+                  itemCount: count,
+                  itemBuilder: bottomDetailItemBuilder,
+                ),
+              ),
+            ),
+          Container(
+            height: bottomBarHeight + bottomPadding,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+            ).copyWith(bottom: bottomPadding),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: themeData.canvasColor)),
+              color: backgroundColor,
+            ),
+            child: Row(
+              children: <Widget>[
+                _buildCurrentAssetOriginalToggle(context),
+                const Spacer(),
+                if (provider != null || isWeChatMoment) confirmButton(context),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 Future<OriginalToggleGalleryAssetPickResult?>
 pickGalleryAssetsWithOriginalToggle(
   BuildContext context, {
   int maxAssets = 100,
   bool useRootNavigator = true,
+  bool showOriginalToggle = false,
 }) async {
   final requestOption = PermissionRequestOption(
     androidPermission: AndroidPermission(
@@ -362,7 +662,7 @@ pickGalleryAssetsWithOriginalToggle(
           pickerTheme: AssetPicker.themeData(themeColor),
           locale: Localizations.maybeLocaleOf(context),
           previewThumbnailSize: memoGalleryPreviewThumbnailSize,
-          specialPickerType: SpecialPickerType.noPreview,
+          showOriginalToggle: showOriginalToggle,
         ),
       );
 

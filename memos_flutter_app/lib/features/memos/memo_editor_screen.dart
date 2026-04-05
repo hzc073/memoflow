@@ -1236,7 +1236,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       if (!mounted) return;
       final result = await pickGalleryAttachments(
         context,
-        enableOriginalToggle: compressionSettings.enabled,
+        showOriginalToggle: compressionSettings.enabled,
       );
       if (!mounted || result == null) return;
       if (result.attachments.isEmpty) {
