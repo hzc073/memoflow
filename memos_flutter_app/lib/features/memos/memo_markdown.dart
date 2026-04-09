@@ -157,7 +157,7 @@ class MemoMarkdown extends StatelessWidget {
       cacheKey: cacheKey,
       renderImages: renderImages,
       selectable: selectable,
-      maxLines: this.maxLines,
+      maxLines: maxLines,
       normalizeHeadings: normalizeHeadings,
     );
 
@@ -717,7 +717,7 @@ class MemoMarkdown extends StatelessWidget {
       },
     );
 
-    final effectiveMaxLines = this.maxLines;
+    final effectiveMaxLines = maxLines;
     if (effectiveMaxLines != null && effectiveMaxLines > 0) {
       final fontSize = baseStyle.fontSize ?? 14;
       final lineHeight = baseStyle.height ?? _defaultLineHeight;
