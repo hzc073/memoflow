@@ -42,6 +42,17 @@ void main() {
     expect(toggleCount, 1);
   });
 
+  testWidgets('hides pill actions when no quick actions are configured', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildHarness(child: _buildTitleBar(quickActions: const [])),
+    );
+
+    expect(find.byType(MemosListPillRow), findsNothing);
+    expect(find.byKey(const Key('search-field')), findsNothing);
+  });
+
   testWidgets('shows sort button only when home sort is enabled', (
     tester,
   ) async {
@@ -139,6 +150,7 @@ Widget _buildTitleBar({
   bool screenshotModeEnabled = false,
   bool desktopWindowMaximized = false,
   String debugApiVersionText = 'API v0.24',
+  List<HomeQuickActionChipData>? quickActions,
   VoidCallback? onToggleSearch,
   VoidCallback? onMinimize,
   VoidCallback? onToggleMaximize,
@@ -157,7 +169,7 @@ Widget _buildTitleBar({
     searchFieldChild: const SizedBox(key: Key('search-field')),
     sortButton: const SizedBox(key: Key('sort-button')),
     onToggleSearch: onToggleSearch ?? () {},
-    quickActions: _buildQuickActions(),
+    quickActions: quickActions ?? _buildQuickActions(),
     onMinimize: onMinimize ?? () {},
     onToggleMaximize: onToggleMaximize ?? () {},
     onClose: onClose ?? () {},

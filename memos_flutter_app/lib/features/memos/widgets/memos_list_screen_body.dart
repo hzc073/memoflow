@@ -285,7 +285,8 @@ class MemosListScreenBody extends StatelessWidget {
                                     ),
                                   ),
                                 ))
-                        : (data.viewState.layout.showHeaderPillActions
+                        : (data.viewState.layout.showHeaderPillActions &&
+                                  quickActions.isNotEmpty
                               ? PreferredSize(
                                   preferredSize: const Size.fromHeight(46),
                                   child: Align(

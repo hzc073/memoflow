@@ -684,7 +684,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       return;
     }
 
-    final route = switch (action) {
+    final Widget? route = switch (action) {
+      HomeQuickAction.none => null,
       HomeQuickAction.monthlyStats => const StatsScreen(),
       HomeQuickAction.aiSummary => const AiSummaryScreen(),
       HomeQuickAction.dailyReview => const DailyReviewScreen(),
@@ -694,6 +695,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       HomeQuickAction.archived => _buildArchivedScreen(),
     };
 
+    if (route == null) return;
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => route));
   }
 
@@ -1979,6 +1981,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
     final quickActions = [
       for (final action in resolvedQuickActions)
+        if (action != HomeQuickAction.none)
         buildHomeQuickActionChipData(
           context: context,
           action: action,

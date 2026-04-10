@@ -5,6 +5,7 @@ import '../../data/models/app_preferences.dart';
 import '../../i18n/strings.g.dart';
 
 const List<HomeQuickAction> kHomeQuickActionCandidateOrder = [
+  HomeQuickAction.none,
   HomeQuickAction.explore,
   HomeQuickAction.dailyReview,
   HomeQuickAction.aiSummary,
@@ -51,6 +52,7 @@ bool isHomeQuickActionAvailable(
   required bool hasAccount,
 }) {
   return switch (action) {
+    HomeQuickAction.none => true,
     HomeQuickAction.explore || HomeQuickAction.notifications => hasAccount,
     HomeQuickAction.monthlyStats ||
     HomeQuickAction.aiSummary ||
@@ -71,6 +73,11 @@ List<HomeQuickAction> resolveHomeQuickActions({
 
   for (var index = 0; index < rawActions.length; index++) {
     final rawAction = rawActions[index];
+    if (rawAction == HomeQuickAction.none) {
+      resolved.add(HomeQuickAction.none);
+      continue;
+    }
+
     if (isHomeQuickActionAvailable(rawAction, hasAccount: hasAccount) &&
         !resolved.contains(rawAction)) {
       resolved.add(rawAction);
@@ -107,6 +114,7 @@ bool isHomeQuickActionUsedByOtherSlot({
   required List<HomeQuickAction> selectedActions,
   required int editingIndex,
 }) {
+  if (action == HomeQuickAction.none) return false;
   for (var index = 0; index < selectedActions.length; index++) {
     if (index == editingIndex) continue;
     if (selectedActions[index] == action) return true;
@@ -117,6 +125,7 @@ bool isHomeQuickActionUsedByOtherSlot({
 
 String homeQuickActionLabel(BuildContext context, HomeQuickAction action) {
   return switch (action) {
+    HomeQuickAction.none => context.t.strings.legacy.msg_none,
     HomeQuickAction.monthlyStats => context.t.strings.legacy.msg_monthly_stats,
     HomeQuickAction.aiSummary => context.t.strings.legacy.msg_ai_summary,
     HomeQuickAction.dailyReview => context.t.strings.legacy.msg_random_review,
@@ -129,6 +138,7 @@ String homeQuickActionLabel(BuildContext context, HomeQuickAction action) {
 
 IconData homeQuickActionIcon(HomeQuickAction action) {
   return switch (action) {
+    HomeQuickAction.none => Icons.visibility_off_outlined,
     HomeQuickAction.monthlyStats => Icons.insights,
     HomeQuickAction.aiSummary => Icons.auto_awesome,
     HomeQuickAction.dailyReview => Icons.explore,
@@ -141,6 +151,8 @@ IconData homeQuickActionIcon(HomeQuickAction action) {
 
 Color homeQuickActionIconColor(HomeQuickAction action, {required bool isDark}) {
   return switch (action) {
+    HomeQuickAction.none =>
+      isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
     HomeQuickAction.monthlyStats =>
       isDark ? const Color(0xFFFF8A7A) : const Color(0xFFCC5C4C),
     HomeQuickAction.aiSummary =>

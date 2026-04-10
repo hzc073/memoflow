@@ -125,7 +125,7 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: windowsHeaderSearchExpanded
                           ? searchFieldChild
-                          : (showPillActions
+                          : (showPillActions && quickActions.isNotEmpty
                                 ? MemosListPillRow(quickActions: quickActions)
                                 : const SizedBox.shrink()),
                     ),

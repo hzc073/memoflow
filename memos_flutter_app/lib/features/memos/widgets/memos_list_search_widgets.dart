@@ -9,13 +9,14 @@ import '../../../state/tags/tag_color_lookup.dart';
 import '../home_quick_actions.dart';
 
 class MemosListPillRow extends StatelessWidget {
-  const MemosListPillRow({super.key, required this.quickActions})
-    : assert(quickActions.length == 3);
+  const MemosListPillRow({super.key, required this.quickActions});
 
   final List<HomeQuickActionChipData> quickActions;
 
   @override
   Widget build(BuildContext context) {
+    if (quickActions.isEmpty) return const SizedBox.shrink();
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark
         ? MemoFlowPalette.borderDark

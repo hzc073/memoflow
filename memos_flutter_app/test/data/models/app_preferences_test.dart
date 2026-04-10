@@ -38,6 +38,18 @@ void main() {
       expect(json['homeQuickActionTertiary'], 'resources');
     });
 
+    test('parses hidden quick action values', () {
+      final prefs = AppPreferences.fromJson(<String, dynamic>{
+        'homeQuickActionPrimary': 'none',
+        'homeQuickActionSecondary': 'monthlyStats',
+        'homeQuickActionTertiary': 'none',
+      });
+
+      expect(prefs.homeQuickActionPrimary, HomeQuickAction.none);
+      expect(prefs.homeQuickActionSecondary, HomeQuickAction.monthlyStats);
+      expect(prefs.homeQuickActionTertiary, HomeQuickAction.none);
+    });
+
     test('copyWith overrides only requested quick action slots', () {
       final base = AppPreferences.defaults;
       final next = base.copyWith(
@@ -139,6 +151,21 @@ void main() {
 
       expect(resolved, hasLength(3));
       expect(resolved.toSet(), hasLength(3));
+    });
+
+    test('preserves hidden slots instead of refilling them', () {
+      final resolved = resolveHomeQuickActions(
+        rawPrimary: HomeQuickAction.none,
+        rawSecondary: HomeQuickAction.monthlyStats,
+        rawTertiary: HomeQuickAction.none,
+        hasAccount: true,
+      );
+
+      expect(resolved, const [
+        HomeQuickAction.none,
+        HomeQuickAction.monthlyStats,
+        HomeQuickAction.none,
+      ]);
     });
   });
 }
