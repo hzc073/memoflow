@@ -42,10 +42,10 @@ onboarding:
   localLibraryDefaultName: "本地库"
   getStarted: "开始使用"
 legalConsent:
-  title: "请先阅读并同意协议"
-  description: "使用 MemoFlow 前，请先阅读并同意《用户协议》和《隐私协议》。"
-  linksHint: "你可以先打开以下文档查看完整内容。"
-  acknowledge: "我已阅读并同意《用户协议》和《隐私协议》"
+  title: "用户协议与隐私政策"
+  description: "在使用本应用前，您需要先阅读并同意《用户协议》与《隐私政策》。若您不同意，很遗憾我们将无法继续为您提供服务。"
+  linksHint: "您可以通过下方文档了解详细内容。如您同意，请点击“同意并继续”开始使用。"
+  acknowledge: "我已阅读并同意《用户协议》与《隐私政策》"
   continueAction: "同意并继续"
   exitAction: "退出应用"
 login:
@@ -298,7 +298,7 @@ legacy:
   msg_version_description_v_build: "版本说明：v$version ($build)"
   msg_about_website_link: "官网链接"
   msg_about_website_link_subtitle: "访问 MemoFlow 官方网站"
-  msg_about_privacy_policy: "隐私协议"
+  msg_about_privacy_policy: "隐私政策"
   msg_about_privacy_policy_subtitle: "查看隐私信息与数据说明"
   msg_about_user_agreement: "用户协议"
   msg_about_user_agreement_subtitle: "查看服务条款与使用规范"

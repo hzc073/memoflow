@@ -6,7 +6,7 @@
 /// Locales: 5
 /// Strings: 7980 (1596 per locale)
 ///
-/// Built on 2026-04-09 at 12:51 UTC
+/// Built on 2026-04-10 at 02:15 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -6585,10 +6585,10 @@ class _StringsStringsLegalConsentZhHans extends _StringsStringsLegalConsentEn {
 	@override final _StringsZhHans _root; // ignore: unused_field
 
 	// Translations
-	@override String get title => '请先阅读并同意协议';
-	@override String get description => '使用 MemoFlow 前，请先阅读并同意《用户协议》和《隐私协议》。';
-	@override String get linksHint => '你可以先打开以下文档查看完整内容。';
-	@override String get acknowledge => '我已阅读并同意《用户协议》和《隐私协议》';
+	@override String get title => '用户协议与隐私政策';
+	@override String get description => '在使用本应用前，您需要先阅读并同意《用户协议》与《隐私政策》。若您不同意，很遗憾我们将无法继续为您提供服务。';
+	@override String get linksHint => '您可以通过下方文档了解详细内容。如您同意，请点击“同意并继续”开始使用。';
+	@override String get acknowledge => '我已阅读并同意《用户协议》与《隐私政策》';
 	@override String get continueAction => '同意并继续';
 	@override String get exitAction => '退出应用';
 }
@@ -6715,7 +6715,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String msg_version_description_v_build({required Object version, required Object build}) => '版本说明：v${version} (${build})';
 	@override String get msg_about_website_link => '官网链接';
 	@override String get msg_about_website_link_subtitle => '访问 MemoFlow 官方网站';
-	@override String get msg_about_privacy_policy => '隐私协议';
+	@override String get msg_about_privacy_policy => '隐私政策';
 	@override String get msg_about_privacy_policy_subtitle => '查看隐私信息与数据说明';
 	@override String get msg_about_user_agreement => '用户协议';
 	@override String get msg_about_user_agreement_subtitle => '查看服务条款与使用规范';
@@ -15568,10 +15568,10 @@ extension on _StringsZhHans {
 			case 'strings.onboarding.localLibraryNameHint': return '请输入名称';
 			case 'strings.onboarding.localLibraryDefaultName': return '本地库';
 			case 'strings.onboarding.getStarted': return '开始使用';
-			case 'strings.legalConsent.title': return '请先阅读并同意协议';
-			case 'strings.legalConsent.description': return '使用 MemoFlow 前，请先阅读并同意《用户协议》和《隐私协议》。';
-			case 'strings.legalConsent.linksHint': return '你可以先打开以下文档查看完整内容。';
-			case 'strings.legalConsent.acknowledge': return '我已阅读并同意《用户协议》和《隐私协议》';
+			case 'strings.legalConsent.title': return '用户协议与隐私政策';
+			case 'strings.legalConsent.description': return '在使用本应用前，您需要先阅读并同意《用户协议》与《隐私政策》。若您不同意，很遗憾我们将无法继续为您提供服务。';
+			case 'strings.legalConsent.linksHint': return '您可以通过下方文档了解详细内容。如您同意，请点击“同意并继续”开始使用。';
+			case 'strings.legalConsent.acknowledge': return '我已阅读并同意《用户协议》与《隐私政策》';
 			case 'strings.legalConsent.continueAction': return '同意并继续';
 			case 'strings.legalConsent.exitAction': return '退出应用';
 			case 'strings.login.title': return '连接 Memos';
@@ -15790,7 +15790,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_version_description_v_build': return ({required Object version, required Object build}) => '版本说明：v${version} (${build})';
 			case 'strings.legacy.msg_about_website_link': return '官网链接';
 			case 'strings.legacy.msg_about_website_link_subtitle': return '访问 MemoFlow 官方网站';
-			case 'strings.legacy.msg_about_privacy_policy': return '隐私协议';
+			case 'strings.legacy.msg_about_privacy_policy': return '隐私政策';
 			case 'strings.legacy.msg_about_privacy_policy_subtitle': return '查看隐私信息与数据说明';
 			case 'strings.legacy.msg_about_user_agreement': return '用户协议';
 			case 'strings.legacy.msg_about_user_agreement_subtitle': return '查看服务条款与使用规范';
