@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -108,6 +109,31 @@ class LegalConsentScreen extends ConsumerStatefulWidget {
 class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
   bool _agreed = false;
   bool _submitting = false;
+  late final TapGestureRecognizer _termsRecognizer;
+  late final TapGestureRecognizer _privacyRecognizer;
+
+  @override
+  void initState() {
+    super.initState();
+    _termsRecognizer = TapGestureRecognizer()
+      ..onTap = () => unawaited(
+        _openExternalLink(
+          context,
+          MemoFlowLegalConsentPolicy.termsOfServiceUrl,
+        ),
+      );
+    _privacyRecognizer = TapGestureRecognizer()
+      ..onTap = () => unawaited(
+        _openExternalLink(context, MemoFlowLegalConsentPolicy.privacyPolicyUrl),
+      );
+  }
+
+  @override
+  void dispose() {
+    _termsRecognizer.dispose();
+    _privacyRecognizer.dispose();
+    super.dispose();
+  }
 
   Future<void> _openExternalLink(BuildContext context, String rawUrl) async {
     final uri = Uri.parse(rawUrl);
@@ -172,6 +198,66 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
         });
       }
     }
+  }
+
+  List<InlineSpan> _buildDescriptionSpans({
+    required BuildContext context,
+    required TextStyle baseStyle,
+    required TextStyle linkStyle,
+  }) {
+    final description = context.t.strings.legalConsent.description;
+    final termsText = context.t.strings.legacy.msg_about_user_agreement;
+    final privacyText = context.t.strings.legacy.msg_about_privacy_policy;
+    final matches = <_DescriptionLinkMatch>[
+      _DescriptionLinkMatch(
+        start: description.indexOf(termsText),
+        text: termsText,
+        recognizer: _termsRecognizer,
+      ),
+      _DescriptionLinkMatch(
+        start: description.indexOf(privacyText),
+        text: privacyText,
+        recognizer: _privacyRecognizer,
+      ),
+    ]..removeWhere((match) => match.start < 0);
+
+    if (matches.length != 2) {
+      return [TextSpan(text: description, style: baseStyle)];
+    }
+
+    matches.sort((left, right) => left.start.compareTo(right.start));
+    final spans = <InlineSpan>[];
+    var cursor = 0;
+
+    for (final match in matches) {
+      if (match.start < cursor) {
+        return [TextSpan(text: description, style: baseStyle)];
+      }
+      if (match.start > cursor) {
+        spans.add(
+          TextSpan(
+            text: description.substring(cursor, match.start),
+            style: baseStyle,
+          ),
+        );
+      }
+      spans.add(
+        TextSpan(
+          text: match.text,
+          style: linkStyle,
+          recognizer: match.recognizer,
+        ),
+      );
+      cursor = match.start + match.text.length;
+    }
+
+    if (cursor < description.length) {
+      spans.add(
+        TextSpan(text: description.substring(cursor), style: baseStyle),
+      );
+    }
+
+    return spans;
   }
 
   @override
@@ -249,26 +335,6 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
                           color: textMain,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        context.t.strings.legalConsent.description,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                          color: textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'v${widget.currentAppVersion}',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: textMuted,
-                        ),
-                      ),
                       const SizedBox(height: 24),
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -289,51 +355,26 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              context.t.strings.legalConsent.linksHint,
-                              style: TextStyle(
-                                fontSize: 13,
-                                height: 1.45,
-                                color: textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 8,
-                              children: [
-                                _InlineLink(
-                                  text: context
-                                      .t
-                                      .strings
-                                      .legacy
-                                      .msg_about_user_agreement,
-                                  onTap: () => _openExternalLink(
-                                    context,
-                                    MemoFlowLegalConsentPolicy
-                                        .termsOfServiceUrl,
-                                  ),
-                                ),
-                                Text(
-                                  '/',
-                                  style: TextStyle(
+                            Text.rich(
+                              TextSpan(
+                                children: _buildDescriptionSpans(
+                                  context: context,
+                                  baseStyle: TextStyle(
                                     fontSize: 13.5,
+                                    height: 1.55,
                                     color: textMuted,
                                   ),
-                                ),
-                                _InlineLink(
-                                  text: context
-                                      .t
-                                      .strings
-                                      .legacy
-                                      .msg_about_privacy_policy,
-                                  onTap: () => _openExternalLink(
-                                    context,
-                                    MemoFlowLegalConsentPolicy.privacyPolicyUrl,
+                                  linkStyle: TextStyle(
+                                    fontSize: 13.5,
+                                    height: 1.55,
+                                    color: MemoFlowPalette.primary,
+                                    fontWeight: FontWeight.w700,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: MemoFlowPalette.primary,
                                   ),
                                 ),
-                              ],
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 14),
                             CheckboxListTile(
@@ -407,30 +448,14 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
   }
 }
 
-class _InlineLink extends StatelessWidget {
-  const _InlineLink({required this.text, required this.onTap});
+class _DescriptionLinkMatch {
+  const _DescriptionLinkMatch({
+    required this.start,
+    required this.text,
+    required this.recognizer,
+  });
 
+  final int start;
   final String text;
-  final Future<void> Function() onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => unawaited(onTap()),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: MemoFlowPalette.primary,
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
-            decoration: TextDecoration.underline,
-            decorationColor: MemoFlowPalette.primary,
-          ),
-        ),
-      ),
-    );
-  }
+  final TapGestureRecognizer recognizer;
 }

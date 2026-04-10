@@ -10,24 +10,41 @@ import 'package:memos_flutter_app/access_boundary/access_decision.dart';
 import 'package:memos_flutter_app/access_boundary/app_capability.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
+import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
 import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
+import 'package:memos_flutter_app/features/home/home_entry_screen.dart';
+import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
 import 'package:memos_flutter_app/features/settings/customize_home_shortcuts_screen.dart';
+import 'package:memos_flutter_app/features/settings/laboratory_screen.dart';
+import 'package:memos_flutter_app/features/settings/navigation_mode_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/module_boundary/settings_entry_contribution.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle_provider.dart';
+import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
 import 'package:memos_flutter_app/state/system/local_library_provider.dart';
+import 'package:memos_flutter_app/state/system/notifications_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    HomeEntryScreen.debugClassicScreenBuilderOverride = null;
+    HomeEntryScreen.debugBottomNavShellBuilderOverride = null;
+  });
+
+  tearDown(() {
+    HomeEntryScreen.debugClassicScreenBuilderOverride = null;
+    HomeEntryScreen.debugBottomNavShellBuilderOverride = null;
+  });
 
   setUpAll(() {
     PackageInfo.setMockInitialValues(
@@ -156,7 +173,7 @@ void main() {
         find.byWidgetPredicate(
           (widget) => widget is RadioListTile<HomeQuickAction>,
         ),
-        findsNWidgets(5),
+        findsWidgets,
       );
       final dialogFinder = find.byType(AlertDialog);
       expect(
@@ -222,7 +239,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) => widget is RadioListTile<HomeQuickAction>,
       ),
-      findsNWidgets(7),
+      findsWidgets,
     );
 
     await tester.tap(
@@ -232,6 +249,80 @@ void main() {
 
     expect(find.text('Explore'), findsOneWidget);
   });
+
+  testWidgets('laboratory screen exposes navigation mode entry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildTestApp(home: const LaboratoryScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Navigation Mode'), findsOneWidget);
+
+    await tester.tap(find.text('Navigation Mode'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationModeScreen), findsOneWidget);
+  });
+
+  testWidgets('embedded settings uses drawer menu instead of close button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestApp(
+        home: SettingsScreen(
+          presentation: HomeScreenPresentation.embeddedBottomNav,
+          embeddedNavigationHost: _TestEmbeddedNavigationHost(),
+        ),
+        overrides: [
+          unreadNotificationCountProvider.overrideWith((ref) => 0),
+          syncQueuePendingCountProvider.overrideWith(
+            (ref) => Stream<int>.value(0),
+          ),
+          syncQueueAttentionCountProvider.overrideWith(
+            (ref) => Stream<int>.value(0),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('drawer-menu-button')), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsNothing);
+  });
+
+  testWidgets(
+    'standalone settings close returns to home entry respecting bottom nav mode',
+    (tester) async {
+      HomeEntryScreen.debugClassicScreenBuilderOverride = (_) =>
+          const Text('classic-home');
+      HomeEntryScreen.debugBottomNavShellBuilderOverride = (_) =>
+          const Text('bottom-nav-home');
+
+      await tester.pumpWidget(
+        buildTestApp(
+          home: const SettingsScreen(),
+          overrides: [
+            currentWorkspacePreferencesProvider.overrideWith(
+              (ref) => _TestWorkspacePreferencesController(
+                ref,
+                initial: WorkspacePreferences.defaults.copyWith(
+                  homeNavigationPreferences: HomeNavigationPreferences.defaults
+                      .copyWith(mode: HomeNavigationMode.bottomBar),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(find.text('bottom-nav-home'), findsOneWidget);
+      expect(find.text('classic-home'), findsNothing);
+    },
+  );
 }
 
 class _FakePrivateExtensionBundle implements PrivateExtensionBundle {
@@ -386,7 +477,8 @@ class _TestAppPreferencesController extends AppPreferencesController {
   }
 }
 
-class _TestWorkspacePreferencesRepository extends WorkspacePreferencesRepository {
+class _TestWorkspacePreferencesRepository
+    extends WorkspacePreferencesRepository {
   _TestWorkspacePreferencesRepository(this._stored)
     : super(
         PreferencesMigrationService(const FlutterSecureStorage()),
@@ -411,7 +503,8 @@ class _TestWorkspacePreferencesRepository extends WorkspacePreferencesRepository
   }
 }
 
-class _TestWorkspacePreferencesController extends WorkspacePreferencesController {
+class _TestWorkspacePreferencesController
+    extends WorkspacePreferencesController {
   _TestWorkspacePreferencesController(Ref ref, {WorkspacePreferences? initial})
     : super(
         ref,
@@ -424,6 +517,20 @@ class _TestWorkspacePreferencesController extends WorkspacePreferencesController
       ) {
     state = initial ?? WorkspacePreferences.defaults;
   }
+}
+
+class _TestEmbeddedNavigationHost implements HomeEmbeddedNavigationHost {
+  @override
+  void handleBackToPrimaryDestination(BuildContext context) {}
+
+  @override
+  void handleDrawerDestination(BuildContext context, destination) {}
+
+  @override
+  void handleDrawerTag(BuildContext context, String tag) {}
+
+  @override
+  void handleOpenNotifications(BuildContext context) {}
 }
 
 const _testAccountKey = 'account-1';

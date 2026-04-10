@@ -60,13 +60,13 @@ final appPreferencesProvider =
         prev,
         next,
       ) {
-        controller.syncFromProviders();
+        controller.syncFromProviders(resolvedSettings: next);
       });
       ref.listen<bool>(devicePreferencesLoadedProvider, (prev, next) {
-        controller.syncLoadedState();
+        controller.syncLoadedState(devicePreferencesLoaded: next);
       });
       ref.listen<bool>(workspacePreferencesLoadedProvider, (prev, next) {
-        controller.syncLoadedState();
+        controller.syncLoadedState(workspacePreferencesLoaded: next);
       });
       return controller;
     });
@@ -88,6 +88,10 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
        _bridgeOnLoaded = onLoaded,
        _bridgeMode = true,
        super(_composeLegacyPreferences(_ref)) {
+    _bridgeDevicePreferencesLoaded = _ref.read(devicePreferencesLoadedProvider);
+    _bridgeWorkspacePreferencesLoaded = _ref.read(
+      workspacePreferencesLoadedProvider,
+    );
     Future.microtask(() {
       if (!mounted) return;
       syncFromProviders();
@@ -100,6 +104,8 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   final void Function()? _legacyOnLoaded;
   final void Function(bool loaded)? _bridgeOnLoaded;
   final bool _bridgeMode;
+  bool _bridgeDevicePreferencesLoaded = false;
+  bool _bridgeWorkspacePreferencesLoaded = false;
   Future<void> _writeChain = Future<void>.value();
 
   static AppPreferences _composeLegacyPreferences(Ref ref) {
@@ -107,17 +113,27 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
   }
 
   bool get _combinedLoaded =>
-      _ref.read(devicePreferencesLoadedProvider) &&
-      _ref.read(workspacePreferencesLoadedProvider);
+      _bridgeDevicePreferencesLoaded && _bridgeWorkspacePreferencesLoaded;
 
-  void syncFromProviders() {
+  void syncFromProviders({ResolvedAppSettings? resolvedSettings}) {
     if (!_bridgeMode || !mounted) return;
-    state = _composeLegacyPreferences(_ref);
+    final ResolvedAppSettings effectiveResolvedSettings =
+        resolvedSettings ?? _ref.read(resolvedAppSettingsProvider);
+    state = effectiveResolvedSettings.toLegacyAppPreferences();
     _bridgeOnLoaded?.call(_combinedLoaded);
   }
 
-  void syncLoadedState() {
+  void syncLoadedState({
+    bool? devicePreferencesLoaded,
+    bool? workspacePreferencesLoaded,
+  }) {
     if (!_bridgeMode) return;
+    if (devicePreferencesLoaded != null) {
+      _bridgeDevicePreferencesLoaded = devicePreferencesLoaded;
+    }
+    if (workspacePreferencesLoaded != null) {
+      _bridgeWorkspacePreferencesLoaded = workspacePreferencesLoaded;
+    }
     _bridgeOnLoaded?.call(_combinedLoaded);
   }
 
@@ -128,6 +144,12 @@ class AppPreferencesController extends StateNotifier<AppPreferences> {
           .read(currentWorkspacePreferencesProvider.notifier)
           .reloadFromStorage();
       if (mounted) {
+        syncLoadedState(
+          devicePreferencesLoaded: _ref.read(devicePreferencesLoadedProvider),
+          workspacePreferencesLoaded: _ref.read(
+            workspacePreferencesLoadedProvider,
+          ),
+        );
         syncFromProviders();
       }
       return;

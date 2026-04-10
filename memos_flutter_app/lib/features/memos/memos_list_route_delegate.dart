@@ -21,6 +21,7 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
+import '../home/home_navigation_host.dart';
 import '../about/about_screen.dart';
 import '../desktop/quick_input/desktop_quick_input_dialog.dart';
 import '../explore/explore_screen.dart';
@@ -170,6 +171,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
     required String? Function() selectedShortcutIdResolver,
     required void Function(String? shortcutId) selectShortcutId,
     required void Function(SceneMicroGuideId id) markSceneGuideSeen,
+    HomeEmbeddedNavigationHost? embeddedNavigationHost,
     MemosListRouteDesktopAdapter? desktopAdapter,
     MemosListRouteToastPresenter? showToast,
     MemosListRouteSettingsFallbackOpener? openSettingsFallback,
@@ -198,6 +200,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
        _selectedShortcutIdResolver = selectedShortcutIdResolver,
        _selectShortcutId = selectShortcutId,
        _markSceneGuideSeen = markSceneGuideSeen,
+       _embeddedNavigationHost = embeddedNavigationHost,
        _desktopAdapter =
            desktopAdapter ?? const DefaultMemosListRouteDesktopAdapter(),
        _showToast = showToast ?? _defaultShowToast,
@@ -229,6 +232,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
   final String? Function() _selectedShortcutIdResolver;
   final void Function(String? shortcutId) _selectShortcutId;
   final void Function(SceneMicroGuideId id) _markSceneGuideSeen;
+  final HomeEmbeddedNavigationHost? _embeddedNavigationHost;
   final MemosListRouteDesktopAdapter _desktopAdapter;
   final MemosListRouteToastPresenter _showToast;
   final MemosListRouteSettingsFallbackOpener _openSettingsFallback;
@@ -246,6 +250,11 @@ class MemosListRouteDelegate extends ChangeNotifier {
   BuildContext get _context => _contextResolver();
 
   void backToAllMemos() {
+    final embeddedNavigationHost = _embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleBackToPrimaryDestination(_context);
+      return;
+    }
     Navigator.of(_context).pushAndRemoveUntil(
       MaterialPageRoute<void>(builder: (_) => _buildHomeScreen()),
       (route) => false,
@@ -266,6 +275,11 @@ class MemosListRouteDelegate extends ChangeNotifier {
       return true;
     }
     if (!_isAllMemos()) {
+      final embeddedNavigationHost = _embeddedNavigationHost;
+      if (embeddedNavigationHost != null) {
+        embeddedNavigationHost.handleBackToPrimaryDestination(context);
+        return false;
+      }
       if (_showDrawer()) {
         backToAllMemos();
         return false;
@@ -309,6 +323,11 @@ class MemosListRouteDelegate extends ChangeNotifier {
       );
       return;
     }
+    final embeddedNavigationHost = _embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerDestination(context, dest);
+      return;
+    }
     final route = switch (dest) {
       AppDrawerDestination.memos => _buildHomeScreen(),
       AppDrawerDestination.syncQueue => const SyncQueueScreen(),
@@ -338,6 +357,11 @@ class MemosListRouteDelegate extends ChangeNotifier {
         context,
         context.t.strings.legacy.msg_feature_not_available_local_library_mode,
       );
+      return;
+    }
+    final embeddedNavigationHost = _embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleOpenNotifications(context);
       return;
     }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());

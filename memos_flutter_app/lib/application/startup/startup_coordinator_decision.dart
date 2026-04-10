@@ -2,34 +2,39 @@ part of 'startup_coordinator.dart';
 
 extension _StartupCoordinatorDecision on StartupCoordinator {
   void _requestStartupHandlingFromState({String? source}) {
-    try {
-      final snapshot = _readStartupSnapshot();
-      _requestStartupHandling(
-        prefsLoaded: snapshot.prefsLoaded,
-        hasWorkspace: snapshot.hasWorkspace,
-        hasAccount: snapshot.hasAccount,
-        settings: snapshot.settings,
-        source: source,
-      );
-    } catch (e, st) {
-      _logStartupInfo(
-        'Startup: state_read_failed',
-        context: _buildStartupContext(
+    Future<void>.microtask(() {
+      if (!_isMounted() || _startupHandled) return;
+      try {
+        final snapshot = _readStartupSnapshot();
+        _requestStartupHandling(
+          prefsLoaded: snapshot.prefsLoaded,
+          hasWorkspace: snapshot.hasWorkspace,
+          hasAccount: snapshot.hasAccount,
+          settings: snapshot.settings,
           source: source,
-          reason: 'state_read_failed',
-        ),
-        error: e,
-        stackTrace: st,
-      );
-      final action = _pendingSharePayload != null
-          ? _StartupAction.share
-          : (_pendingWidgetLaunch != null
-                ? _StartupAction.widget
-                : _StartupAction.none);
-      if (action != _StartupAction.none) {
-        _scheduleStartupRetry(action: action, reason: 'state_read_failed');
+        );
+      } catch (e, st) {
+        _logStartupInfo(
+          'Startup: state_read_failed',
+          context: _buildStartupContext(
+            source: source,
+            reason: 'state_read_failed',
+          ),
+          error: e,
+          stackTrace: st,
+        );
+        final action = _pendingSharePayload != null
+            ? _StartupAction.share
+            : (_pendingWidgetLaunch != null
+                  ? _StartupAction.widget
+                  : _StartupAction.none);
+        if (action != _StartupAction.none) {
+          _scheduleStartupRetry(action: action, reason: 'state_read_failed');
+          return;
+        }
+        _scheduleStartupHandling();
       }
-    }
+    });
   }
 
   _StartupSelection _resolveStartupSelection(ResolvedAppSettings settings) {

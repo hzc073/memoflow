@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../features/explore/explore_screen.dart';
-import '../../features/memos/memos_list_screen.dart';
+import '../../features/home/home_entry_screen.dart';
 import '../../features/review/daily_review_screen.dart';
 
 class AppNavigator {
@@ -15,14 +15,7 @@ class AppNavigator {
     final navigator = _navigator;
     if (navigator == null) return;
     navigator.pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
-          state: 'NORMAL',
-          showDrawer: true,
-          enableCompose: true,
-        ),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const HomeEntryScreen()),
       (route) => false,
     );
   }

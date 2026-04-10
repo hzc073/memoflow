@@ -16,7 +16,7 @@ import '../startup/startup_screen.dart';
 import '../startup/storage_error_screen.dart';
 import '../startup/storage_error_banner.dart';
 import '../auth/login_screen.dart';
-import 'home_screen.dart';
+import 'home_entry_screen.dart';
 import '../onboarding/language_selection_screen.dart';
 import '../../data/models/app_preferences.dart';
 import '../../state/memos/app_bootstrap_adapter_provider.dart';
@@ -299,7 +299,7 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
                 : (needsLogin ? 'login' : 'home'),
           );
           if (showOnboarding) return const LanguageSelectionScreen();
-          return needsLogin ? const LoginScreen() : const HomeScreen();
+          return needsLogin ? const LoginScreen() : const HomeEntryScreen();
         },
         loading: () {
           if (session != null) {
@@ -325,7 +325,7 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
                   : (needsLogin ? 'login' : 'home'),
             );
             if (showOnboarding) return const LanguageSelectionScreen();
-            return needsLogin ? const LoginScreen() : const HomeScreen();
+            return needsLogin ? const LoginScreen() : const HomeEntryScreen();
           }
           _logRouteDecision(
             prefsLoaded: true,
@@ -362,7 +362,7 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
                   : (needsLogin ? 'login' : 'home'),
             );
             if (showOnboarding) return const LanguageSelectionScreen();
-            return needsLogin ? const LoginScreen() : const HomeScreen();
+            return needsLogin ? const LoginScreen() : const HomeEntryScreen();
           }
           final showOnboarding =
               prefs.onboardingMode == null ||

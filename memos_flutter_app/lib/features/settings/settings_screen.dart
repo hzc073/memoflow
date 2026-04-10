@@ -15,7 +15,10 @@ import '../../private_hooks/private_extension_bundle_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
-import '../memos/memos_list_screen.dart';
+import '../home/app_drawer.dart';
+import '../home/app_drawer_menu_button.dart';
+import '../home/home_entry_screen.dart';
+import '../home/home_navigation_host.dart';
 import '../stats/stats_screen.dart';
 import 'about_us_screen.dart';
 import 'account_security_screen.dart';
@@ -40,16 +43,25 @@ class SettingsScreen extends ConsumerWidget
     this.onRequestClose,
     this.showAppBar = true,
     this.enableDragToMove = false,
+    this.presentation = HomeScreenPresentation.standalone,
+    this.embeddedNavigationHost,
   });
 
   final VoidCallback? onRequestClose;
   final bool showAppBar;
   final bool enableDragToMove;
+  final HomeScreenPresentation presentation;
+  final HomeEmbeddedNavigationHost? embeddedNavigationHost;
 
   static final Future<PackageInfo> _packageInfoFuture =
       PackageInfo.fromPlatform();
 
   void _close(BuildContext context) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleBackToPrimaryDestination(context);
+      return;
+    }
     final closeCallback = onRequestClose;
     if (closeCallback != null) {
       closeCallback();
@@ -60,14 +72,7 @@ class SettingsScreen extends ConsumerWidget
       return;
     }
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
-          state: 'NORMAL',
-          showDrawer: true,
-          enableCompose: true,
-        ),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const HomeEntryScreen()),
       (route) => false,
     );
   }
@@ -112,6 +117,26 @@ class SettingsScreen extends ConsumerWidget
           .watch(privateExtensionBundleProvider)
           .settingsEntries(context, ref),
     ]..sort((a, b) => a.order.compareTo(b.order));
+    final useEmbeddedBottomNav =
+        presentation == HomeScreenPresentation.embeddedBottomNav;
+    final drawerPanel = useEmbeddedBottomNav
+        ? AppDrawer(
+            selected: AppDrawerDestination.settings,
+            onSelect: (destination) {
+              embeddedNavigationHost?.handleDrawerDestination(
+                context,
+                destination,
+              );
+            },
+            onSelectTag: (tag) {
+              embeddedNavigationHost?.handleDrawerTag(context, tag);
+            },
+            onOpenNotifications: () {
+              embeddedNavigationHost?.handleOpenNotifications(context);
+            },
+            embedded: false,
+          )
+        : null;
 
     void haptic() {
       if (hapticsEnabled) {
@@ -139,23 +164,30 @@ class SettingsScreen extends ConsumerWidget
         : _resolveAvatarUrl((account?.user.avatarUrl ?? ''), account?.baseUrl);
 
     return PopScope(
-      canPop: false,
+      canPop: useEmbeddedBottomNav,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
+        if (didPop || useEmbeddedBottomNav) return;
         _close(context);
       },
       child: Scaffold(
         backgroundColor: bg,
+        drawer: drawerPanel,
         appBar: showAppBar
             ? AppBar(
                 flexibleSpace: enableAppBarDragToMove
                     ? const DragToMoveArea(child: SizedBox.expand())
                     : null,
-                leading: IconButton(
-                  tooltip: context.t.strings.legacy.msg_close,
-                  icon: const Icon(Icons.close),
-                  onPressed: () => _close(context),
-                ),
+                leading: useEmbeddedBottomNav
+                    ? AppDrawerMenuButton(
+                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                        iconColor: textMain,
+                        badgeBorderColor: bg,
+                      )
+                    : IconButton(
+                        tooltip: context.t.strings.legacy.msg_close,
+                        icon: const Icon(Icons.close),
+                        onPressed: () => _close(context),
+                      ),
                 title: IgnorePointer(
                   ignoring: enableAppBarDragToMove,
                   child: Text(context.t.strings.legacy.msg_settings),

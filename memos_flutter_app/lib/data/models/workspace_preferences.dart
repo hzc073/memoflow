@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../core/theme_colors.dart';
 import 'app_preferences.dart';
+import 'home_navigation_preferences.dart';
 import 'memo_toolbar_preferences.dart';
 
 class WorkspacePreferences {
@@ -21,6 +22,7 @@ class WorkspacePreferences {
     homeQuickActionPrimary: HomeQuickAction.monthlyStats,
     homeQuickActionSecondary: HomeQuickAction.aiSummary,
     homeQuickActionTertiary: HomeQuickAction.dailyReview,
+    homeNavigationPreferences: HomeNavigationPreferences.defaults,
     aiSummaryAllowPrivateMemos: false,
     memoToolbarPreferences: MemoToolbarPreferences.defaults,
     themeColorOverride: null,
@@ -41,6 +43,7 @@ class WorkspacePreferences {
     required this.homeQuickActionPrimary,
     required this.homeQuickActionSecondary,
     required this.homeQuickActionTertiary,
+    required this.homeNavigationPreferences,
     required this.aiSummaryAllowPrivateMemos,
     required this.memoToolbarPreferences,
     required this.themeColorOverride,
@@ -60,6 +63,7 @@ class WorkspacePreferences {
   final HomeQuickAction homeQuickActionPrimary;
   final HomeQuickAction homeQuickActionSecondary;
   final HomeQuickAction homeQuickActionTertiary;
+  final HomeNavigationPreferences homeNavigationPreferences;
   final bool aiSummaryAllowPrivateMemos;
   final MemoToolbarPreferences memoToolbarPreferences;
   final AppThemeColor? themeColorOverride;
@@ -79,6 +83,7 @@ class WorkspacePreferences {
     'homeQuickActionPrimary': homeQuickActionPrimary.name,
     'homeQuickActionSecondary': homeQuickActionSecondary.name,
     'homeQuickActionTertiary': homeQuickActionTertiary.name,
+    'homeNavigationPreferences': homeNavigationPreferences.toJson(),
     'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
     'memoToolbarPreferences': memoToolbarPreferences.toJson(),
     'themeColorOverride': themeColorOverride?.name,
@@ -116,10 +121,16 @@ class WorkspacePreferences {
       if (raw is! Map) return null;
       return CustomThemeSettings.fromJson(raw.cast<String, dynamic>());
     }();
+    final homeNavigationPreferences = () {
+      final raw = json['homeNavigationPreferences'];
+      if (raw is! Map) return HomeNavigationPreferences.defaults;
+      return HomeNavigationPreferences.fromJson(raw.cast<String, dynamic>());
+    }();
     return WorkspacePreferences.fromLegacy(
       legacy,
       themeColorOverride: themeColorOverride,
       customThemeOverride: customThemeOverride,
+      homeNavigationPreferences: homeNavigationPreferences,
     );
   }
 
@@ -128,6 +139,7 @@ class WorkspacePreferences {
     String? workspaceKey,
     AppThemeColor? themeColorOverride,
     CustomThemeSettings? customThemeOverride,
+    HomeNavigationPreferences? homeNavigationPreferences,
   }) {
     final key = workspaceKey?.trim();
     final normalizedKey = key == null || key.isEmpty ? null : key;
@@ -145,6 +157,8 @@ class WorkspacePreferences {
       homeQuickActionPrimary: legacy.homeQuickActionPrimary,
       homeQuickActionSecondary: legacy.homeQuickActionSecondary,
       homeQuickActionTertiary: legacy.homeQuickActionTertiary,
+      homeNavigationPreferences:
+          homeNavigationPreferences ?? HomeNavigationPreferences.defaults,
       aiSummaryAllowPrivateMemos: legacy.aiSummaryAllowPrivateMemos,
       memoToolbarPreferences: legacy.memoToolbarPreferences,
       themeColorOverride:
@@ -204,6 +218,7 @@ class WorkspacePreferences {
     HomeQuickAction? homeQuickActionPrimary,
     HomeQuickAction? homeQuickActionSecondary,
     HomeQuickAction? homeQuickActionTertiary,
+    HomeNavigationPreferences? homeNavigationPreferences,
     bool? aiSummaryAllowPrivateMemos,
     MemoToolbarPreferences? memoToolbarPreferences,
     Object? themeColorOverride = _unset,
@@ -230,6 +245,8 @@ class WorkspacePreferences {
           homeQuickActionSecondary ?? this.homeQuickActionSecondary,
       homeQuickActionTertiary:
           homeQuickActionTertiary ?? this.homeQuickActionTertiary,
+      homeNavigationPreferences:
+          homeNavigationPreferences ?? this.homeNavigationPreferences,
       aiSummaryAllowPrivateMemos:
           aiSummaryAllowPrivateMemos ?? this.aiSummaryAllowPrivateMemos,
       memoToolbarPreferences:

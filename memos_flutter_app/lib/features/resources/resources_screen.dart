@@ -24,6 +24,7 @@ import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_menu_button.dart';
+import '../home/home_navigation_host.dart';
 import '../memos/attachment_video_screen.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
@@ -46,10 +47,17 @@ class _AttachmentSection {
 }
 
 class ResourcesScreen extends ConsumerStatefulWidget {
-  const ResourcesScreen({super.key});
+  const ResourcesScreen({
+    super.key,
+    this.presentation = HomeScreenPresentation.standalone,
+    this.embeddedNavigationHost,
+  });
 
   @visibleForTesting
   static void Function(String routeName)? debugRouteRequestOverride;
+
+  final HomeScreenPresentation presentation;
+  final HomeEmbeddedNavigationHost? embeddedNavigationHost;
 
   @override
   ConsumerState<ResourcesScreen> createState() => _ResourcesScreenState();
@@ -324,6 +332,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }
 
   void _backToAllMemos(BuildContext context) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleBackToPrimaryDestination(context);
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
@@ -338,6 +351,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerDestination(context, dest);
+      return;
+    }
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
         title: 'MemoFlow',
@@ -365,6 +383,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }
 
   void _openTag(BuildContext context, String tag) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerTag(context, tag);
+      return;
+    }
     closeDrawerThenPushReplacement(
       context,
       MemosListScreen(
@@ -378,6 +401,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
   }
 
   void _openNotifications(BuildContext context) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleOpenNotifications(context);
+      return;
+    }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
@@ -805,10 +833,13 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
       embedded: useDesktopSidePane,
     );
 
+    final shouldInterceptPop =
+        widget.presentation != HomeScreenPresentation.embeddedBottomNav;
+
     return PopScope(
-      canPop: false,
+      canPop: !shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
+        if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
       child: Scaffold(

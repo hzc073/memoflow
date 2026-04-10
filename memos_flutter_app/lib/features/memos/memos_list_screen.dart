@@ -52,6 +52,7 @@ import '../../state/system/session_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/home_navigation_host.dart';
 import '../notifications/notifications_screen.dart';
 import '../reminders/memo_reminder_editor_screen.dart';
 import '../resources/resources_screen.dart';
@@ -108,6 +109,9 @@ class MemosListScreen extends ConsumerStatefulWidget {
     this.toastMessage,
     this.showNoteInputSheet,
     this.showVoiceRecordOverlay,
+    this.presentation = HomeScreenPresentation.standalone,
+    this.embeddedNavigationHost,
+    this.hidePrimaryComposeFab = false,
   });
 
   final String title;
@@ -125,6 +129,9 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final String? toastMessage;
   final MemosListRouteNoteInputPresenter? showNoteInputSheet;
   final MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay;
+  final HomeScreenPresentation presentation;
+  final HomeEmbeddedNavigationHost? embeddedNavigationHost;
+  final bool hidePrimaryComposeFab;
 
   @override
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
@@ -293,6 +300,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       selectShortcutId: (shortcutId) =>
           _headerController.selectShortcut(shortcutId),
       markSceneGuideSeen: _markSceneGuideSeen,
+      embeddedNavigationHost: widget.embeddedNavigationHost,
       showNoteInputSheet: widget.showNoteInputSheet,
       showVoiceRecordOverlay: widget.showVoiceRecordOverlay,
     );
@@ -309,6 +317,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       openReminder: _openMemoReminder,
       handleRestoreSuccess: (toastMessage) async {
         if (!mounted) return;
+        final embeddedNavigationHost = widget.embeddedNavigationHost;
+        if (embeddedNavigationHost != null) {
+          showTopToast(context, toastMessage);
+          embeddedNavigationHost.handleBackToPrimaryDestination(context);
+          return;
+        }
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(
             builder: (_) => _buildHomeScreen(toastMessage: toastMessage),
@@ -657,6 +671,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       showDrawer: true,
       enableCompose: true,
       toastMessage: toastMessage,
+      presentation: widget.presentation,
+      embeddedNavigationHost: widget.embeddedNavigationHost,
+      hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
     );
   }
 
@@ -665,6 +682,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       title: context.t.strings.legacy.msg_archive,
       state: 'ARCHIVED',
       showDrawer: true,
+      presentation: widget.presentation,
+      embeddedNavigationHost: widget.embeddedNavigationHost,
+      hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
     );
   }
 
@@ -682,6 +702,49 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         context.t.strings.legacy.msg_feature_not_available_local_library_mode,
       );
       return;
+    }
+
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      switch (action) {
+        case HomeQuickAction.none:
+          return;
+        case HomeQuickAction.monthlyStats:
+          break;
+        case HomeQuickAction.aiSummary:
+          embeddedNavigationHost.handleDrawerDestination(
+            context,
+            AppDrawerDestination.aiSummary,
+          );
+          return;
+        case HomeQuickAction.dailyReview:
+          embeddedNavigationHost.handleDrawerDestination(
+            context,
+            AppDrawerDestination.dailyReview,
+          );
+          return;
+        case HomeQuickAction.explore:
+          embeddedNavigationHost.handleDrawerDestination(
+            context,
+            AppDrawerDestination.explore,
+          );
+          return;
+        case HomeQuickAction.notifications:
+          embeddedNavigationHost.handleOpenNotifications(context);
+          return;
+        case HomeQuickAction.resources:
+          embeddedNavigationHost.handleDrawerDestination(
+            context,
+            AppDrawerDestination.resources,
+          );
+          return;
+        case HomeQuickAction.archived:
+          embeddedNavigationHost.handleDrawerDestination(
+            context,
+            AppDrawerDestination.archived,
+          );
+          return;
+      }
     }
 
     final Widget? route = switch (action) {
@@ -1296,6 +1359,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     if (ref.read(devicePreferencesProvider).hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerTag(context, tag);
+      return;
+    }
     closeDrawerThenPushReplacement(
       context,
       MemosListScreen(
@@ -1631,6 +1699,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       showPillActions: widget.showPillActions,
       showFilterTagChip: widget.showFilterTagChip,
       enableCompose: widget.enableCompose,
+      hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
       searching: _searching,
       screenWidth: screenWidth,
       isWindowsDesktop: Platform.isWindows,
@@ -2164,10 +2233,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           )
         : null;
 
+    final shouldInterceptPop =
+        widget.presentation != HomeScreenPresentation.embeddedBottomNav ||
+        _isAllMemos;
+
     return PopScope(
-      canPop: false,
+      canPop: !shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
+        if (didPop || !shouldInterceptPop) return;
         final shouldPop = await _routeDelegate.handleWillPop();
         if (!context.mounted) return;
         if (!shouldPop) return;

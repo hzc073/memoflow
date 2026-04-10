@@ -7,8 +7,10 @@ import '../../core/storage_read.dart';
 import '../../core/theme_colors.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/app_preferences.dart';
+import '../../data/models/home_navigation_preferences.dart';
 import '../../data/models/memo_toolbar_preferences.dart';
 import '../../data/models/workspace_preferences.dart';
+import '../../features/home/home_navigation_resolver.dart';
 import '../sync/sync_coordinator_provider.dart';
 import '../system/session_provider.dart';
 import '../system/storage_error_provider.dart';
@@ -173,6 +175,74 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
         homeQuickActionPrimary: primary,
         homeQuickActionSecondary: secondary,
         homeQuickActionTertiary: tertiary,
+      ),
+    );
+  }
+
+  void setHomeNavigationMode(HomeNavigationMode mode) {
+    final current = state.homeNavigationPreferences;
+    final hasAccount = _ref.read(appSessionProvider).valueOrNull?.currentAccount !=
+        null;
+    _setAndPersist(
+      state.copyWith(
+        homeNavigationPreferences: sanitizeHomeNavigationPreferences(
+          current.copyWith(mode: mode),
+          hasAccount: hasAccount,
+        ),
+      ),
+    );
+  }
+
+  void setHomeNavigationSlots({
+    required HomeRootDestination leftPrimary,
+    required HomeRootDestination leftSecondary,
+    required HomeRootDestination rightPrimary,
+    required HomeRootDestination rightSecondary,
+  }) {
+    final hasAccount = _ref.read(appSessionProvider).valueOrNull?.currentAccount !=
+        null;
+    _setAndPersist(
+      state.copyWith(
+        homeNavigationPreferences: sanitizeHomeNavigationPreferences(
+          state.homeNavigationPreferences.copyWith(
+            leftPrimary: leftPrimary,
+            leftSecondary: leftSecondary,
+            rightPrimary: rightPrimary,
+            rightSecondary: rightSecondary,
+          ),
+          hasAccount: hasAccount,
+        ),
+      ),
+    );
+  }
+
+  void setHomeNavigationSlot(
+    HomeNavigationSlot slot,
+    HomeRootDestination destination,
+  ) {
+    final current = state.homeNavigationPreferences;
+    final next = switch (slot) {
+      HomeNavigationSlot.leftPrimary => current.copyWith(
+        leftPrimary: destination,
+      ),
+      HomeNavigationSlot.leftSecondary => current.copyWith(
+        leftSecondary: destination,
+      ),
+      HomeNavigationSlot.rightPrimary => current.copyWith(
+        rightPrimary: destination,
+      ),
+      HomeNavigationSlot.rightSecondary => current.copyWith(
+        rightSecondary: destination,
+      ),
+    };
+    final hasAccount = _ref.read(appSessionProvider).valueOrNull?.currentAccount !=
+        null;
+    _setAndPersist(
+      state.copyWith(
+        homeNavigationPreferences: sanitizeHomeNavigationPreferences(
+          next,
+          hasAccount: hasAccount,
+        ),
       ),
     );
   }

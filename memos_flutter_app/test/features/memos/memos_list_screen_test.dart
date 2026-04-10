@@ -39,6 +39,7 @@ import 'package:memos_flutter_app/data/repositories/location_settings_repository
 import 'package:memos_flutter_app/data/repositories/memo_template_settings_repository.dart';
 import 'package:memos_flutter_app/data/repositories/scene_micro_guide_repository.dart';
 import 'package:memos_flutter_app/data/repositories/webdav_backup_state_repository.dart';
+import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_screen.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_route_delegate.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
@@ -47,6 +48,7 @@ import 'package:memos_flutter_app/features/voice/voice_record_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_list_providers.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
+import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
 import 'package:memos_flutter_app/state/settings/location_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/memo_template_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
@@ -55,6 +57,7 @@ import 'package:memos_flutter_app/state/settings/user_settings_provider.dart';
 import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
 import 'package:memos_flutter_app/state/system/local_library_provider.dart';
 import 'package:memos_flutter_app/state/system/logging_provider.dart';
+import 'package:memos_flutter_app/state/system/notifications_provider.dart';
 import 'package:memos_flutter_app/state/system/reminder_providers.dart';
 import 'package:memos_flutter_app/state/system/scene_micro_guide_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
@@ -230,6 +233,27 @@ void main() {
     expect(find.byType(MemoFlowFab), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('embedded bottom nav mode hides primary compose fab', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: Stream.value(<LocalMemo>[
+          _buildMemo(uid: 'memo-1', content: 'First memo'),
+        ]),
+        screenSize: const Size(430, 900),
+        enableCompose: true,
+        showDrawer: true,
+        presentation: HomeScreenPresentation.embeddedBottomNav,
+        embeddedNavigationHost: _TestEmbeddedNavigationHost(),
+        hidePrimaryComposeFab: true,
+      ),
+    );
+    await _pumpScreenFrames(tester);
+
+    expect(find.byType(MemoFlowFab), findsNothing);
+  });
 }
 
 Future<void> _pumpScreenFrames(WidgetTester tester) async {
@@ -243,6 +267,10 @@ Widget _buildHarness({
   required Stream<List<LocalMemo>> memosStream,
   Size screenSize = const Size(1280, 1800),
   bool enableCompose = false,
+  bool showDrawer = false,
+  HomeScreenPresentation presentation = HomeScreenPresentation.standalone,
+  HomeEmbeddedNavigationHost? embeddedNavigationHost,
+  bool hidePrimaryComposeFab = false,
   MemosListRouteNoteInputPresenter? showNoteInputSheet,
   MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
 }) {
@@ -284,6 +312,9 @@ Widget _buildHarness({
       syncQueueProgressTrackerProvider.overrideWith(
         (ref) => SyncQueueProgressTracker(),
       ),
+      unreadNotificationCountProvider.overrideWith((ref) => 0),
+      syncQueuePendingCountProvider.overrideWith((ref) => Stream.value(0)),
+      syncQueueAttentionCountProvider.overrideWith((ref) => Stream.value(0)),
     ],
     child: TranslationProvider(
       child: MaterialApp(
@@ -295,11 +326,14 @@ Widget _buildHarness({
           child: MemosListScreen(
             title: 'Memos',
             state: 'NORMAL',
-            showDrawer: false,
+            showDrawer: showDrawer,
             enableCompose: enableCompose,
             enableSearch: false,
             enableTitleMenu: false,
             showPillActions: false,
+            presentation: presentation,
+            embeddedNavigationHost: embeddedNavigationHost,
+            hidePrimaryComposeFab: hidePrimaryComposeFab,
             showNoteInputSheet: showNoteInputSheet,
             showVoiceRecordOverlay: showVoiceRecordOverlay,
           ),
@@ -374,6 +408,20 @@ class _MemorySecureStorage extends FlutterSecureStorage {
   }) async {
     _values.remove(key);
   }
+}
+
+class _TestEmbeddedNavigationHost implements HomeEmbeddedNavigationHost {
+  @override
+  void handleBackToPrimaryDestination(BuildContext context) {}
+
+  @override
+  void handleDrawerDestination(BuildContext context, destination) {}
+
+  @override
+  void handleDrawerTag(BuildContext context, String tag) {}
+
+  @override
+  void handleOpenNotifications(BuildContext context) {}
 }
 
 class _TestSessionController extends AppSessionController {

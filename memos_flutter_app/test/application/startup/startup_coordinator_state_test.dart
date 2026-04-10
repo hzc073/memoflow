@@ -1,5 +1,7 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
+import 'package:memos_flutter_app/data/models/resolved_app_settings.dart';
 
 import 'startup_coordinator_test_harness.dart';
 
@@ -34,9 +36,7 @@ void main() {
     testWidgets('share preview startup state defers heavy startup work', (
       tester,
     ) async {
-      final bootstrapAdapter = FakeBootstrapAdapter(
-        preferencesLoaded: false,
-      );
+      final bootstrapAdapter = FakeBootstrapAdapter(preferencesLoaded: false);
       final harness = await pumpStartupCoordinatorHarness(
         tester,
         bootstrapAdapter: bootstrapAdapter,
@@ -92,5 +92,43 @@ void main() {
       expect(harness.navigatorKey.currentState?.canPop(), isFalse);
       expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
     });
+
+    testWidgets(
+      'session-triggered startup recovers from a transient state read failure',
+      (tester) async {
+        final bootstrapAdapter = _ThrowingResolvedSettingsBootstrapAdapter(
+          preferencesLoaded: true,
+          localLibrary: buildTestLocalLibrary(),
+        );
+        final harness = await pumpStartupCoordinatorHarness(
+          tester,
+          bootstrapAdapter: bootstrapAdapter,
+        );
+
+        harness.coordinator.onSessionChanged();
+        await tester.pump();
+        await tester.pump();
+
+        expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
+      },
+    );
   });
+}
+
+class _ThrowingResolvedSettingsBootstrapAdapter extends FakeBootstrapAdapter {
+  _ThrowingResolvedSettingsBootstrapAdapter({
+    super.preferencesLoaded,
+    super.localLibrary,
+  });
+
+  bool _shouldThrow = true;
+
+  @override
+  ResolvedAppSettings readResolvedAppSettings(WidgetRef ref) {
+    if (_shouldThrow) {
+      _shouldThrow = false;
+      throw StateError('transient state read failure');
+    }
+    return super.readResolvedAppSettings(ref);
+  }
 }

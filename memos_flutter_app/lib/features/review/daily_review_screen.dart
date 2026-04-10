@@ -35,6 +35,8 @@ import '../../state/tags/tag_color_lookup.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_menu_button.dart';
+import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
 import '../memos/memo_location_line.dart';
@@ -57,7 +59,14 @@ import 'random_walk_providers.dart';
 import '../../i18n/strings.g.dart';
 
 class DailyReviewScreen extends ConsumerStatefulWidget {
-  const DailyReviewScreen({super.key});
+  const DailyReviewScreen({
+    super.key,
+    this.presentation = HomeScreenPresentation.standalone,
+    this.embeddedNavigationHost,
+  });
+
+  final HomeScreenPresentation presentation;
+  final HomeEmbeddedNavigationHost? embeddedNavigationHost;
 
   @override
   ConsumerState<DailyReviewScreen> createState() => _DailyReviewScreenState();
@@ -154,6 +163,11 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   }
 
   void _back() {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleBackToPrimaryDestination(context);
+      return;
+    }
     if (Navigator.of(context).canPop()) {
       context.safePop();
       return;
@@ -172,6 +186,11 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   }
 
   void _navigate(AppDrawerDestination dest) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerDestination(context, dest);
+      return;
+    }
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
         title: 'MemoFlow',
@@ -199,6 +218,11 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   }
 
   void _openTag(String tag) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerTag(context, tag);
+      return;
+    }
     closeDrawerThenPushReplacement(
       context,
       MemosListScreen(
@@ -212,6 +236,11 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   }
 
   void _openNotifications() {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleOpenNotifications(context);
+      return;
+    }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
@@ -1388,10 +1417,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       embedded: useDesktopSidePane,
     );
 
+    final shouldInterceptPop =
+        widget.presentation != HomeScreenPresentation.embeddedBottomNav;
+
     return PopScope(
-      canPop: false,
+      canPop: !shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
+        if (didPop || !shouldInterceptPop) return;
         _back();
       },
       child: Scaffold(
@@ -1410,6 +1442,13 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
               : null,
           leading: useDesktopSidePane
               ? null
+              : widget.presentation ==
+                    HomeScreenPresentation.embeddedBottomNav
+              ? AppDrawerMenuButton(
+                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                  iconColor: textMain,
+                  badgeBorderColor: bg,
+                )
               : IconButton(
                   tooltip: context.t.strings.legacy.msg_back,
                   icon: const Icon(Icons.arrow_back),

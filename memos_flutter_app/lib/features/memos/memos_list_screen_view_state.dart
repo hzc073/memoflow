@@ -224,6 +224,7 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
   required bool showPillActions,
   required bool showFilterTagChip,
   required bool enableCompose,
+  required bool hidePrimaryComposeFab,
   required bool searching,
   required double screenWidth,
   required bool isWindowsDesktop,
@@ -235,7 +236,10 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
       showDrawer && shouldUseDesktopSidePaneLayout(screenWidth);
   final useDesktopSidePane = supportsDesktopSidePane;
   final useInlineCompose =
-      enableCompose && !searching && shouldUseInlineComposeLayout(screenWidth);
+      enableCompose &&
+      !hidePrimaryComposeFab &&
+      !searching &&
+      shouldUseInlineComposeLayout(screenWidth);
   final useWindowsDesktopHeader = isWindowsDesktop;
   final headerToolbarHeight = useWindowsDesktopHeader && !searching
       ? 0.0
@@ -256,7 +260,11 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
       listTopPadding +
       listVisualOffset +
       10;
-  final showComposeFab = enableCompose && !searching && !useInlineCompose;
+  final showComposeFab =
+      enableCompose &&
+      !hidePrimaryComposeFab &&
+      !searching &&
+      !useInlineCompose;
   final backToTopBaseOffset = showComposeFab ? 104.0 : 24.0;
 
   return MemosListScreenLayoutState(

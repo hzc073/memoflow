@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 7980 (1596 per locale)
+/// Strings: 8025 (1605 per locale)
 ///
-/// Built on 2026-04-10 at 02:15 UTC
+/// Built on 2026-04-10 at 04:08 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -483,6 +483,15 @@ class _StringsStringsLegacyEn {
 	String get msg_added_voice_attachment => 'Added voice attachment.';
 	String get msg_customize_sidebar => 'Customize Sidebar';
 	String get msg_customize_quick_entries => 'Customize Quick Entries';
+	String get msg_navigation_mode => 'Navigation Mode';
+	String get msg_navigation_mode_classic => 'Classic mode (no bottom navigation)';
+	String get msg_navigation_mode_bottom_bar => 'Bottom navigation mode';
+	String get msg_navigation_preview => 'Preview';
+	String get msg_navigation_slot_left_1 => 'Left Slot 1';
+	String get msg_navigation_slot_left_2 => 'Left Slot 2';
+	String get msg_navigation_slot_center => 'Center Action';
+	String get msg_navigation_slot_right_1 => 'Right Slot 1';
+	String get msg_navigation_slot_right_2 => 'Right Slot 2';
 	String get msg_quick_entry_slot_1 => 'Quick Entry 1';
 	String get msg_quick_entry_slot_2 => 'Quick Entry 2';
 	String get msg_quick_entry_slot_3 => 'Quick Entry 3';
@@ -2658,6 +2667,15 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_added_voice_attachment => 'Sprachanhang hinzugefügt.';
 	@override String get msg_customize_sidebar => 'Seitenleiste anpassen';
 	@override String get msg_customize_quick_entries => 'Schnellzugriffe anpassen';
+	@override String get msg_navigation_mode => 'Navigationsmodus';
+	@override String get msg_navigation_mode_classic => 'Klassischer Modus (ohne untere Navigation)';
+	@override String get msg_navigation_mode_bottom_bar => 'Unterer Navigationsmodus';
+	@override String get msg_navigation_preview => 'Vorschau';
+	@override String get msg_navigation_slot_left_1 => 'Linker Slot 1';
+	@override String get msg_navigation_slot_left_2 => 'Linker Slot 2';
+	@override String get msg_navigation_slot_center => 'Mittlere Aktion';
+	@override String get msg_navigation_slot_right_1 => 'Rechter Slot 1';
+	@override String get msg_navigation_slot_right_2 => 'Rechter Slot 2';
 	@override String get msg_quick_entry_slot_1 => 'Schnellzugriff 1';
 	@override String get msg_quick_entry_slot_2 => 'Schnellzugriff 2';
 	@override String get msg_quick_entry_slot_3 => 'Schnellzugriff 3';
@@ -4734,6 +4752,15 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_added_voice_attachment => '音声添付を追加しました。';
 	@override String get msg_customize_sidebar => 'サイドバーをカスタマイズ';
 	@override String get msg_customize_quick_entries => 'クイックエントリをカスタマイズ';
+	@override String get msg_navigation_mode => 'ナビゲーションモード';
+	@override String get msg_navigation_mode_classic => 'クラシックモード（下部ナビなし）';
+	@override String get msg_navigation_mode_bottom_bar => '下部ナビゲーションモード';
+	@override String get msg_navigation_preview => 'プレビュー';
+	@override String get msg_navigation_slot_left_1 => '左スロット 1';
+	@override String get msg_navigation_slot_left_2 => '左スロット 2';
+	@override String get msg_navigation_slot_center => '中央固定ボタン';
+	@override String get msg_navigation_slot_right_1 => '右スロット 1';
+	@override String get msg_navigation_slot_right_2 => '右スロット 2';
 	@override String get msg_quick_entry_slot_1 => 'クイックエントリ 1';
 	@override String get msg_quick_entry_slot_2 => 'クイックエントリ 2';
 	@override String get msg_quick_entry_slot_3 => 'クイックエントリ 3';
@@ -6811,6 +6838,15 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_added_voice_attachment => '已添加录音附件';
 	@override String get msg_customize_sidebar => '自定义侧边栏';
 	@override String get msg_customize_quick_entries => '自定义快捷入口';
+	@override String get msg_navigation_mode => '导航模式';
+	@override String get msg_navigation_mode_classic => '经典模式（无底部导航栏）';
+	@override String get msg_navigation_mode_bottom_bar => '底部导航栏模式';
+	@override String get msg_navigation_preview => '实时预览';
+	@override String get msg_navigation_slot_left_1 => '左侧位置 1';
+	@override String get msg_navigation_slot_left_2 => '左侧位置 2';
+	@override String get msg_navigation_slot_center => '中间固定按钮';
+	@override String get msg_navigation_slot_right_1 => '右侧位置 1';
+	@override String get msg_navigation_slot_right_2 => '右侧位置 2';
 	@override String get msg_quick_entry_slot_1 => '快捷入口 1';
 	@override String get msg_quick_entry_slot_2 => '快捷入口 2';
 	@override String get msg_quick_entry_slot_3 => '快捷入口 3';
@@ -8986,6 +9022,15 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_added_voice_attachment => '已添加录音附件';
 	@override String get msg_customize_sidebar => '自定义侧边栏';
 	@override String get msg_customize_quick_entries => '自定義快捷入口';
+	@override String get msg_navigation_mode => '導覽模式';
+	@override String get msg_navigation_mode_classic => '經典模式（無底部導覽列）';
+	@override String get msg_navigation_mode_bottom_bar => '底部導覽列模式';
+	@override String get msg_navigation_preview => '即時預覽';
+	@override String get msg_navigation_slot_left_1 => '左側位置 1';
+	@override String get msg_navigation_slot_left_2 => '左側位置 2';
+	@override String get msg_navigation_slot_center => '中間固定按鈕';
+	@override String get msg_navigation_slot_right_1 => '右側位置 1';
+	@override String get msg_navigation_slot_right_2 => '右側位置 2';
 	@override String get msg_quick_entry_slot_1 => '快捷入口 1';
 	@override String get msg_quick_entry_slot_2 => '快捷入口 2';
 	@override String get msg_quick_entry_slot_3 => '快捷入口 3';
@@ -11128,6 +11173,15 @@ extension on Translations {
 			case 'strings.legacy.msg_added_voice_attachment': return 'Added voice attachment.';
 			case 'strings.legacy.msg_customize_sidebar': return 'Customize Sidebar';
 			case 'strings.legacy.msg_customize_quick_entries': return 'Customize Quick Entries';
+			case 'strings.legacy.msg_navigation_mode': return 'Navigation Mode';
+			case 'strings.legacy.msg_navigation_mode_classic': return 'Classic mode (no bottom navigation)';
+			case 'strings.legacy.msg_navigation_mode_bottom_bar': return 'Bottom navigation mode';
+			case 'strings.legacy.msg_navigation_preview': return 'Preview';
+			case 'strings.legacy.msg_navigation_slot_left_1': return 'Left Slot 1';
+			case 'strings.legacy.msg_navigation_slot_left_2': return 'Left Slot 2';
+			case 'strings.legacy.msg_navigation_slot_center': return 'Center Action';
+			case 'strings.legacy.msg_navigation_slot_right_1': return 'Right Slot 1';
+			case 'strings.legacy.msg_navigation_slot_right_2': return 'Right Slot 2';
 			case 'strings.legacy.msg_quick_entry_slot_1': return 'Quick Entry 1';
 			case 'strings.legacy.msg_quick_entry_slot_2': return 'Quick Entry 2';
 			case 'strings.legacy.msg_quick_entry_slot_3': return 'Quick Entry 3';
@@ -12774,6 +12828,15 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_added_voice_attachment': return 'Sprachanhang hinzugefügt.';
 			case 'strings.legacy.msg_customize_sidebar': return 'Seitenleiste anpassen';
 			case 'strings.legacy.msg_customize_quick_entries': return 'Schnellzugriffe anpassen';
+			case 'strings.legacy.msg_navigation_mode': return 'Navigationsmodus';
+			case 'strings.legacy.msg_navigation_mode_classic': return 'Klassischer Modus (ohne untere Navigation)';
+			case 'strings.legacy.msg_navigation_mode_bottom_bar': return 'Unterer Navigationsmodus';
+			case 'strings.legacy.msg_navigation_preview': return 'Vorschau';
+			case 'strings.legacy.msg_navigation_slot_left_1': return 'Linker Slot 1';
+			case 'strings.legacy.msg_navigation_slot_left_2': return 'Linker Slot 2';
+			case 'strings.legacy.msg_navigation_slot_center': return 'Mittlere Aktion';
+			case 'strings.legacy.msg_navigation_slot_right_1': return 'Rechter Slot 1';
+			case 'strings.legacy.msg_navigation_slot_right_2': return 'Rechter Slot 2';
 			case 'strings.legacy.msg_quick_entry_slot_1': return 'Schnellzugriff 1';
 			case 'strings.legacy.msg_quick_entry_slot_2': return 'Schnellzugriff 2';
 			case 'strings.legacy.msg_quick_entry_slot_3': return 'Schnellzugriff 3';
@@ -14330,6 +14393,15 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_added_voice_attachment': return '音声添付を追加しました。';
 			case 'strings.legacy.msg_customize_sidebar': return 'サイドバーをカスタマイズ';
 			case 'strings.legacy.msg_customize_quick_entries': return 'クイックエントリをカスタマイズ';
+			case 'strings.legacy.msg_navigation_mode': return 'ナビゲーションモード';
+			case 'strings.legacy.msg_navigation_mode_classic': return 'クラシックモード（下部ナビなし）';
+			case 'strings.legacy.msg_navigation_mode_bottom_bar': return '下部ナビゲーションモード';
+			case 'strings.legacy.msg_navigation_preview': return 'プレビュー';
+			case 'strings.legacy.msg_navigation_slot_left_1': return '左スロット 1';
+			case 'strings.legacy.msg_navigation_slot_left_2': return '左スロット 2';
+			case 'strings.legacy.msg_navigation_slot_center': return '中央固定ボタン';
+			case 'strings.legacy.msg_navigation_slot_right_1': return '右スロット 1';
+			case 'strings.legacy.msg_navigation_slot_right_2': return '右スロット 2';
 			case 'strings.legacy.msg_quick_entry_slot_1': return 'クイックエントリ 1';
 			case 'strings.legacy.msg_quick_entry_slot_2': return 'クイックエントリ 2';
 			case 'strings.legacy.msg_quick_entry_slot_3': return 'クイックエントリ 3';
@@ -15886,6 +15958,15 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_added_voice_attachment': return '已添加录音附件';
 			case 'strings.legacy.msg_customize_sidebar': return '自定义侧边栏';
 			case 'strings.legacy.msg_customize_quick_entries': return '自定义快捷入口';
+			case 'strings.legacy.msg_navigation_mode': return '导航模式';
+			case 'strings.legacy.msg_navigation_mode_classic': return '经典模式（无底部导航栏）';
+			case 'strings.legacy.msg_navigation_mode_bottom_bar': return '底部导航栏模式';
+			case 'strings.legacy.msg_navigation_preview': return '实时预览';
+			case 'strings.legacy.msg_navigation_slot_left_1': return '左侧位置 1';
+			case 'strings.legacy.msg_navigation_slot_left_2': return '左侧位置 2';
+			case 'strings.legacy.msg_navigation_slot_center': return '中间固定按钮';
+			case 'strings.legacy.msg_navigation_slot_right_1': return '右侧位置 1';
+			case 'strings.legacy.msg_navigation_slot_right_2': return '右侧位置 2';
 			case 'strings.legacy.msg_quick_entry_slot_1': return '快捷入口 1';
 			case 'strings.legacy.msg_quick_entry_slot_2': return '快捷入口 2';
 			case 'strings.legacy.msg_quick_entry_slot_3': return '快捷入口 3';
@@ -17532,6 +17613,15 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_added_voice_attachment': return '已添加录音附件';
 			case 'strings.legacy.msg_customize_sidebar': return '自定义侧边栏';
 			case 'strings.legacy.msg_customize_quick_entries': return '自定義快捷入口';
+			case 'strings.legacy.msg_navigation_mode': return '導覽模式';
+			case 'strings.legacy.msg_navigation_mode_classic': return '經典模式（無底部導覽列）';
+			case 'strings.legacy.msg_navigation_mode_bottom_bar': return '底部導覽列模式';
+			case 'strings.legacy.msg_navigation_preview': return '即時預覽';
+			case 'strings.legacy.msg_navigation_slot_left_1': return '左側位置 1';
+			case 'strings.legacy.msg_navigation_slot_left_2': return '左側位置 2';
+			case 'strings.legacy.msg_navigation_slot_center': return '中間固定按鈕';
+			case 'strings.legacy.msg_navigation_slot_right_1': return '右側位置 1';
+			case 'strings.legacy.msg_navigation_slot_right_2': return '右側位置 2';
 			case 'strings.legacy.msg_quick_entry_slot_1': return '快捷入口 1';
 			case 'strings.legacy.msg_quick_entry_slot_2': return '快捷入口 2';
 			case 'strings.legacy.msg_quick_entry_slot_3': return '快捷入口 3';

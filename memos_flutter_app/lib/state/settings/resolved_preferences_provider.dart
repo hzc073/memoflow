@@ -10,11 +10,15 @@ import 'workspace_preferences_provider.dart';
 final resolvedAppSettingsProvider = Provider<ResolvedAppSettings>((ref) {
   final device = ref.watch(devicePreferencesProvider);
   final workspace = ref.watch(currentWorkspacePreferencesProvider);
-  final workspaceKey = ref.watch(currentWorkspaceKeyProvider);
   final session = ref.watch(appSessionProvider).valueOrNull;
+  final currentLocalLibrary = ref.watch(currentLocalLibraryProvider);
+  final trimmedWorkspaceKey = session?.currentKey?.trim();
+  final workspaceKey =
+      trimmedWorkspaceKey == null || trimmedWorkspaceKey.isEmpty
+      ? currentLocalLibrary?.key
+      : trimmedWorkspaceKey;
   final hasWorkspace =
-      session?.currentAccount != null ||
-      ref.watch(currentLocalLibraryProvider) != null;
+      session?.currentAccount != null || currentLocalLibrary != null;
   return ResolvedAppSettings(
     device: device,
     workspace: workspace,

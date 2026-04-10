@@ -28,6 +28,8 @@ import '../../state/memos/memo_mutation_service.dart';
 import '../about/about_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_menu_button.dart';
+import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../memos/recycle_bin_screen.dart';
@@ -53,9 +55,16 @@ import 'quick_prompt_editor_screen.dart';
 import '../../i18n/strings.g.dart';
 
 class AiSummaryScreen extends ConsumerStatefulWidget {
-  const AiSummaryScreen({super.key, this.initialHistorySelection});
+  const AiSummaryScreen({
+    super.key,
+    this.initialHistorySelection,
+    this.presentation = HomeScreenPresentation.standalone,
+    this.embeddedNavigationHost,
+  });
 
   final AiInsightHistorySelection? initialHistorySelection;
+  final HomeScreenPresentation presentation;
+  final HomeEmbeddedNavigationHost? embeddedNavigationHost;
 
   @override
   ConsumerState<AiSummaryScreen> createState() => _AiSummaryScreenState();
@@ -93,6 +102,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       definitionForInsight(_selectedInsightId);
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerDestination(context, dest);
+      return;
+    }
     final route = switch (dest) {
       AppDrawerDestination.memos => const MemosListScreen(
         title: 'MemoFlow',
@@ -120,6 +134,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _backToAllMemos(BuildContext context) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleBackToPrimaryDestination(context);
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => const MemosListScreen(
@@ -152,6 +171,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _openTag(BuildContext context, String tag) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleDrawerTag(context, tag);
+      return;
+    }
     closeDrawerThenPushReplacement(
       context,
       MemosListScreen(
@@ -165,6 +189,11 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }
 
   void _openNotifications(BuildContext context) {
+    final embeddedNavigationHost = widget.embeddedNavigationHost;
+    if (embeddedNavigationHost != null) {
+      embeddedNavigationHost.handleOpenNotifications(context);
+      return;
+    }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
@@ -648,6 +677,12 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       toolbarHeight: 46,
       leading: useDesktopSidePane
           ? null
+          : widget.presentation == HomeScreenPresentation.embeddedBottomNav
+          ? AppDrawerMenuButton(
+              tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+              iconColor: textMain,
+              badgeBorderColor: bg,
+            )
           : IconButton(
               icon: const Icon(Icons.arrow_back_ios_new),
               color: textMain,
@@ -744,10 +779,13 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       ],
     );
 
+    final shouldInterceptPop =
+        widget.presentation != HomeScreenPresentation.embeddedBottomNav;
+
     return PopScope(
-      canPop: false,
+      canPop: !shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
+        if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
       child: Scaffold(
