@@ -844,6 +844,8 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
       },
       child: Scaffold(
         drawer: useDesktopSidePane ? null : drawerPanel,
+        drawerEnableOpenDragGesture:
+            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
         appBar: AppBar(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,

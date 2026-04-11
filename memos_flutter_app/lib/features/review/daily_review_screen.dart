@@ -22,6 +22,7 @@ import '../../core/tags.dart';
 import '../../core/url.dart';
 import '../../data/ai/ai_analysis_models.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/home_navigation_preferences.dart';
 import '../../data/models/local_library.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/user.dart';
@@ -76,6 +77,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   static const double _collapsedFilterTagMaxHeight = 112;
 
   final _random = math.Random();
+  final GlobalKey _deckSwipeExclusionKey = GlobalKey();
   ProviderSubscription<AsyncValue<List<RandomWalkDeckEntry>>>?
   _deckSubscription;
   List<RandomWalkDeckEntry> _deck = const [];
@@ -151,6 +153,9 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
 
   @override
   void dispose() {
+    widget.embeddedNavigationHost?.clearGlobalSwipeExclusionRects(
+      HomeRootDestination.dailyReview,
+    );
     _deckSubscription?.close();
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
@@ -1429,6 +1434,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       child: Scaffold(
         backgroundColor: bg,
         drawer: useDesktopSidePane ? null : drawerPanel,
+        drawerEnableOpenDragGesture:
+            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
         appBar: AppBar(
           backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
           elevation: 0,
@@ -1607,66 +1614,137 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                           alignment: Alignment.topCenter,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(maxWidth: maxCardWidth),
-                            child: AppinioSwiper(
-                              key: ValueKey(_deckVersion),
-                              cardCount: deck.length,
-                              backgroundCardCount: backgroundCardCount,
-                              backgroundCardScale: 0.92,
-                              backgroundCardOffset: const Offset(0, 24),
-                              initialIndex: 0,
-                              loop: canLoopCards,
-                              isDisabled: !canLoopCards,
-                              swipeOptions: const SwipeOptions.symmetric(
-                                horizontal: true,
-                              ),
-                              maxAngle: 14,
-                              onSwipeEnd:
-                                  (previousIndex, targetIndex, activity) {
-                                    if (!mounted) return;
-                                    unawaited(_stopAudioPlayback());
-                                    setState(() {
-                                      _cursor = deck.isEmpty
-                                          ? 0
-                                          : targetIndex % deck.length;
-                                    });
-                                  },
-                              cardBuilder: (context, index) {
-                                final entry = deck[index];
-                                if (entry.isAiHistory) {
-                                  final history = entry.historyEntry!;
-                                  final createdAt =
-                                      DateTime.fromMillisecondsSinceEpoch(
-                                        history.createdTime,
-                                        isUtc: true,
-                                      ).toLocal();
+                            child: _HomeSwipeExclusionReporter(
+                              key: _deckSwipeExclusionKey,
+                              destination: HomeRootDestination.dailyReview,
+                              navigationHost: widget.embeddedNavigationHost,
+                              child: AppinioSwiper(
+                                key: ValueKey(_deckVersion),
+                                cardCount: deck.length,
+                                backgroundCardCount: backgroundCardCount,
+                                backgroundCardScale: 0.92,
+                                backgroundCardOffset: const Offset(0, 24),
+                                initialIndex: 0,
+                                loop: canLoopCards,
+                                isDisabled: !canLoopCards,
+                                swipeOptions: const SwipeOptions.symmetric(
+                                  horizontal: true,
+                                ),
+                                maxAngle: 14,
+                                onSwipeEnd:
+                                    (previousIndex, targetIndex, activity) {
+                                      if (!mounted) return;
+                                      unawaited(_stopAudioPlayback());
+                                      setState(() {
+                                        _cursor = deck.isEmpty
+                                            ? 0
+                                            : targetIndex % deck.length;
+                                      });
+                                    },
+                                cardBuilder: (context, index) {
+                                  final entry = deck[index];
+                                  if (entry.isAiHistory) {
+                                    final history = entry.historyEntry!;
+                                    final createdAt =
+                                        DateTime.fromMillisecondsSinceEpoch(
+                                          history.createdTime,
+                                          isUtc: true,
+                                        ).toLocal();
+                                    final headerPrimaryText =
+                                        '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
+                                    final headerSecondaryText = _formatDateYmd(
+                                      createdAt,
+                                    );
+                                    final headerAvatar = _buildHeaderAvatar(
+                                      rawAvatarUrl:
+                                          currentUser?.avatarUrl ?? '',
+                                      baseUrl: baseUrl,
+                                      fallback: _currentUserFallbackLabel(
+                                        currentUser,
+                                        localLibrary,
+                                      ),
+                                      borderColor: avatarBorderColor,
+                                      textColor: textMain,
+                                      isDark: isDark,
+                                    );
+                                    return KeyedSubtree(
+                                      key: ValueKey(entry.key),
+                                      child: RepaintBoundary(
+                                        child: _RandomWalkAiHistoryCard(
+                                          entry: history,
+                                          bodyText:
+                                              entry.fullBodyText
+                                                      ?.trim()
+                                                      .isNotEmpty ==
+                                                  true
+                                              ? entry.fullBodyText!.trim()
+                                              : history.summary.trim(),
+                                          headerPrimaryText: headerPrimaryText,
+                                          headerSecondaryText:
+                                              headerSecondaryText,
+                                          headerAvatar: headerAvatar,
+                                          card: card,
+                                          textMain: textMain,
+                                          textMuted: textMuted,
+                                          isDark: isDark,
+                                          onTap: () => unawaited(
+                                            _openAiHistoryEntry(history),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  final memo = entry.memo!;
+                                  final createdAt = memo.createTime;
                                   final headerPrimaryText =
                                       '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
                                   final headerSecondaryText = _formatDateYmd(
                                     createdAt,
                                   );
+                                  final creator =
+                                      _creatorCache[entry.creatorRef?.trim() ??
+                                          ''];
+                                  final avatarFallback =
+                                      entry.memoOrigin ==
+                                          RandomWalkMemoOrigin.explore
+                                      ? (creator?.displayName
+                                                    .trim()
+                                                    .isNotEmpty ==
+                                                true
+                                            ? creator!.displayName.trim()
+                                            : creator?.username
+                                                      .trim()
+                                                      .isNotEmpty ==
+                                                  true
+                                            ? creator!.username.trim()
+                                            : entry.creatorFallback)
+                                      : _currentUserFallbackLabel(
+                                          currentUser,
+                                          localLibrary,
+                                        );
+                                  final avatarUrl =
+                                      entry.memoOrigin ==
+                                          RandomWalkMemoOrigin.explore
+                                      ? creator?.avatarUrl ?? ''
+                                      : currentUser?.avatarUrl ?? '';
                                   final headerAvatar = _buildHeaderAvatar(
-                                    rawAvatarUrl: currentUser?.avatarUrl ?? '',
+                                    rawAvatarUrl: avatarUrl,
                                     baseUrl: baseUrl,
-                                    fallback: _currentUserFallbackLabel(
-                                      currentUser,
-                                      localLibrary,
-                                    ),
+                                    fallback: avatarFallback,
                                     borderColor: avatarBorderColor,
                                     textColor: textMain,
                                     isDark: isDark,
                                   );
+                                  final isAudioActive =
+                                      _playingMemoUid == memo.uid;
+                                  final canToggleTasks =
+                                      entry.memoOrigin ==
+                                      RandomWalkMemoOrigin.localAll;
                                   return KeyedSubtree(
                                     key: ValueKey(entry.key),
                                     child: RepaintBoundary(
-                                      child: _RandomWalkAiHistoryCard(
-                                        entry: history,
-                                        bodyText:
-                                            entry.fullBodyText
-                                                    ?.trim()
-                                                    .isNotEmpty ==
-                                                true
-                                            ? entry.fullBodyText!.trim()
-                                            : history.summary.trim(),
+                                      child: _RandomWalkCard(
+                                        memo: memo,
                                         headerPrimaryText: headerPrimaryText,
                                         headerSecondaryText:
                                             headerSecondaryText,
@@ -1675,99 +1753,39 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                                         textMain: textMain,
                                         textMuted: textMuted,
                                         isDark: isDark,
-                                        onTap: () => unawaited(
-                                          _openAiHistoryEntry(history),
+                                        baseUrl: baseUrl,
+                                        authHeader: authHeader,
+                                        rebaseAbsoluteFileUrlForV024:
+                                            rebaseAbsoluteFileUrlForV024,
+                                        attachAuthForSameOriginAbsolute:
+                                            attachAuthForSameOriginAbsolute,
+                                        audioPlaying:
+                                            isAudioActive &&
+                                            _audioPlayer.playing,
+                                        audioLoading:
+                                            isAudioActive && _audioLoading,
+                                        audioPositionListenable: isAudioActive
+                                            ? _audioPositionNotifier
+                                            : null,
+                                        audioDurationListenable: isAudioActive
+                                            ? _audioDurationNotifier
+                                            : null,
+                                        onAudioTap: () => unawaited(
+                                          _toggleAudioPlayback(memo),
                                         ),
+                                        onToggleTask: canToggleTasks
+                                            ? (request) => unawaited(
+                                                _toggleMemoCheckbox(
+                                                  memo,
+                                                  request.taskIndex,
+                                                ),
+                                              )
+                                            : null,
                                       ),
                                     ),
                                   );
-                                }
-                                final memo = entry.memo!;
-                                final createdAt = memo.createTime;
-                                final headerPrimaryText =
-                                    '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
-                                final headerSecondaryText = _formatDateYmd(
-                                  createdAt,
-                                );
-                                final creator =
-                                    _creatorCache[entry.creatorRef?.trim() ??
-                                        ''];
-                                final avatarFallback =
-                                    entry.memoOrigin ==
-                                        RandomWalkMemoOrigin.explore
-                                    ? (creator?.displayName.trim().isNotEmpty ==
-                                              true
-                                          ? creator!.displayName.trim()
-                                          : creator?.username
-                                                    .trim()
-                                                    .isNotEmpty ==
-                                                true
-                                          ? creator!.username.trim()
-                                          : entry.creatorFallback)
-                                    : _currentUserFallbackLabel(
-                                        currentUser,
-                                        localLibrary,
-                                      );
-                                final avatarUrl =
-                                    entry.memoOrigin ==
-                                        RandomWalkMemoOrigin.explore
-                                    ? creator?.avatarUrl ?? ''
-                                    : currentUser?.avatarUrl ?? '';
-                                final headerAvatar = _buildHeaderAvatar(
-                                  rawAvatarUrl: avatarUrl,
-                                  baseUrl: baseUrl,
-                                  fallback: avatarFallback,
-                                  borderColor: avatarBorderColor,
-                                  textColor: textMain,
-                                  isDark: isDark,
-                                );
-                                final isAudioActive =
-                                    _playingMemoUid == memo.uid;
-                                final canToggleTasks =
-                                    entry.memoOrigin ==
-                                    RandomWalkMemoOrigin.localAll;
-                                return KeyedSubtree(
-                                  key: ValueKey(entry.key),
-                                  child: RepaintBoundary(
-                                    child: _RandomWalkCard(
-                                      memo: memo,
-                                      headerPrimaryText: headerPrimaryText,
-                                      headerSecondaryText: headerSecondaryText,
-                                      headerAvatar: headerAvatar,
-                                      card: card,
-                                      textMain: textMain,
-                                      textMuted: textMuted,
-                                      isDark: isDark,
-                                      baseUrl: baseUrl,
-                                      authHeader: authHeader,
-                                      rebaseAbsoluteFileUrlForV024:
-                                          rebaseAbsoluteFileUrlForV024,
-                                      attachAuthForSameOriginAbsolute:
-                                          attachAuthForSameOriginAbsolute,
-                                      audioPlaying:
-                                          isAudioActive && _audioPlayer.playing,
-                                      audioLoading:
-                                          isAudioActive && _audioLoading,
-                                      audioPositionListenable: isAudioActive
-                                          ? _audioPositionNotifier
-                                          : null,
-                                      audioDurationListenable: isAudioActive
-                                          ? _audioDurationNotifier
-                                          : null,
-                                      onAudioTap: () =>
-                                          unawaited(_toggleAudioPlayback(memo)),
-                                      onToggleTask: canToggleTasks
-                                          ? (request) => unawaited(
-                                              _toggleMemoCheckbox(
-                                                memo,
-                                                request.taskIndex,
-                                              ),
-                                            )
-                                          : null,
-                                    ),
-                                  ),
-                                );
-                              },
+                                },
+                              ),
                             ),
                           ),
                         );
@@ -1855,6 +1873,68 @@ class _ActiveFilterChip extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _HomeSwipeExclusionReporter extends StatefulWidget {
+  const _HomeSwipeExclusionReporter({
+    super.key,
+    required this.destination,
+    required this.navigationHost,
+    required this.child,
+  });
+
+  final HomeRootDestination destination;
+  final HomeEmbeddedNavigationHost? navigationHost;
+  final Widget child;
+
+  @override
+  State<_HomeSwipeExclusionReporter> createState() =>
+      _HomeSwipeExclusionReporterState();
+}
+
+class _HomeSwipeExclusionReporterState
+    extends State<_HomeSwipeExclusionReporter> {
+  Rect? _lastReportedRect;
+
+  @override
+  void didUpdateWidget(covariant _HomeSwipeExclusionReporter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.navigationHost != null &&
+        oldWidget.navigationHost != widget.navigationHost) {
+      oldWidget.navigationHost!.clearGlobalSwipeExclusionRects(
+        oldWidget.destination,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.navigationHost?.clearGlobalSwipeExclusionRects(widget.destination);
+    super.dispose();
+  }
+
+  void _reportRect() {
+    if (!mounted) return;
+    final host = widget.navigationHost;
+    if (host == null) return;
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.attached || !renderBox.hasSize) {
+      host.clearGlobalSwipeExclusionRects(widget.destination);
+      _lastReportedRect = null;
+      return;
+    }
+
+    final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+    if (_lastReportedRect == rect) return;
+    _lastReportedRect = rect;
+    host.updateGlobalSwipeExclusionRects(widget.destination, [rect]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportRect());
+    return widget.child;
   }
 }
 

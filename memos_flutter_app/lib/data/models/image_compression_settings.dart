@@ -11,7 +11,7 @@ class ImageCompressionSettings {
     enabled: true,
     maxSide: 1920,
     quality: 80,
-    format: ImageCompressionFormat.jpeg,
+    format: ImageCompressionFormat.auto,
   );
 
   const ImageCompressionSettings({

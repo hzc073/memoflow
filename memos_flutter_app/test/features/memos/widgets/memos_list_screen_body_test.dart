@@ -133,6 +133,7 @@ Widget _buildBodyScreen({Widget? drawerPanel}) {
     hapticsEnabled: false,
     floatingCollapseVisible: false,
     floatingCollapseScrolling: false,
+    enableDrawerOpenDragGesture: true,
   );
 
   return MemosListScreenBody(

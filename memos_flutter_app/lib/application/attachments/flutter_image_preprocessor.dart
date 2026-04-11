@@ -29,6 +29,8 @@ class FlutterImagePreprocessor implements ImagePreprocessor {
   Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
     final format = _resolveFormat(request.format);
     final target = File(request.targetPath);
+    final minWidth = request.targetWidth ?? request.maxSide;
+    final minHeight = request.targetHeight ?? request.maxSide;
     if (!target.parent.existsSync()) {
       target.parent.createSync(recursive: true);
     }
@@ -38,8 +40,8 @@ class FlutterImagePreprocessor implements ImagePreprocessor {
         request.sourcePath,
         request.targetPath,
         quality: request.quality,
-        minWidth: request.maxSide,
-        minHeight: request.maxSide,
+        minWidth: minWidth,
+        minHeight: minHeight,
         format: format,
       );
       if (file == null) {

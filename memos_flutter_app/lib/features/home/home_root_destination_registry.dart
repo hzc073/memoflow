@@ -170,6 +170,8 @@ Widget buildHomeRootScreen({
         embeddedNavigationHost: navigationHost,
         hidePrimaryComposeFab:
             presentation == HomeScreenPresentation.embeddedBottomNav,
+        enableDrawerOpenDragGesture:
+            presentation != HomeScreenPresentation.embeddedBottomNav,
       );
   }
 }

@@ -26,6 +26,8 @@ class DartImagePreprocessor implements ImagePreprocessor {
       maxSide: request.maxSide,
       quality: request.quality,
       format: request.format.name,
+      targetWidth: request.targetWidth,
+      targetHeight: request.targetHeight,
     );
     final result = await compute(_runDartImageJob, job);
     if (result == null) {
@@ -50,12 +52,16 @@ class _DartImageJob {
     required this.maxSide,
     required this.quality,
     required this.format,
+    this.targetWidth,
+    this.targetHeight,
   });
 
   final String sourcePath;
   final int maxSide;
   final int quality;
   final String format;
+  final int? targetWidth;
+  final int? targetHeight;
 }
 
 class _DartImageJobResult {
@@ -76,7 +82,13 @@ _DartImageJobResult? _runDartImageJob(_DartImageJob job) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
 
-    final resized = _resizeImage(decoded, job.maxSide);
+    final normalized = img.bakeOrientation(decoded);
+    final resized = _resizeImage(
+      normalized,
+      maxSide: job.maxSide,
+      targetWidth: job.targetWidth,
+      targetHeight: job.targetHeight,
+    );
     final encodedFormat = _resolveFormat(job.format);
     // image package doesn't support WebP encoding on all platforms.
     final encodedBytes = switch (encodedFormat) {
@@ -97,18 +109,37 @@ _DartImageJobResult? _runDartImageJob(_DartImageJob job) {
   }
 }
 
-img.Image _resizeImage(img.Image source, int maxSide) {
+img.Image _resizeImage(
+  img.Image source, {
+  required int maxSide,
+  int? targetWidth,
+  int? targetHeight,
+}) {
+  if (targetWidth != null &&
+      targetHeight != null &&
+      targetWidth > 0 &&
+      targetHeight > 0) {
+    if (source.width == targetWidth && source.height == targetHeight) {
+      return source;
+    }
+    return img.copyResize(
+      source,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+  }
   final maxDim = max(source.width, source.height);
   if (maxDim <= maxSide || maxSide <= 0) {
     return source;
   }
   final scale = maxSide / maxDim;
-  final targetWidth = (source.width * scale).round().clamp(1, maxSide);
-  final targetHeight = (source.height * scale).round().clamp(1, maxSide);
+  final scaledWidth = (source.width * scale).round().clamp(1, maxSide);
+  final scaledHeight = (source.height * scale).round().clamp(1, maxSide);
   return img.copyResize(
     source,
-    width: targetWidth,
-    height: targetHeight,
+    width: scaledWidth,
+    height: scaledHeight,
     interpolation: img.Interpolation.cubic,
   );
 }

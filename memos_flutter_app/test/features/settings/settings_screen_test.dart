@@ -531,6 +531,15 @@ class _TestEmbeddedNavigationHost implements HomeEmbeddedNavigationHost {
 
   @override
   void handleOpenNotifications(BuildContext context) {}
+
+  @override
+  void updateGlobalSwipeExclusionRects(
+    HomeRootDestination destination,
+    List<Rect> rects,
+  ) {}
+
+  @override
+  void clearGlobalSwipeExclusionRects(HomeRootDestination destination) {}
 }
 
 const _testAccountKey = 'account-1';

@@ -73,7 +73,6 @@ abstract class AttachmentPreprocessor {
 
 typedef ImageCompressionSettingsLoader =
     Future<ImageCompressionSettings> Function();
-typedef AlphaDetector = Future<bool> Function(String path);
 
 class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
   DefaultAttachmentPreprocessor({
@@ -81,21 +80,18 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     ImagePreprocessor? windowsPreprocessor,
     ImagePreprocessor? flutterPreprocessor,
     ImagePreprocessor? dartPreprocessor,
-    AlphaDetector? alphaDetector,
     LogManager? logManager,
   }) : _loadSettings = loadSettings,
        _windowsPreprocessor =
            windowsPreprocessor ?? ImageCompressPlusPreprocessor(),
        _flutterPreprocessor = flutterPreprocessor ?? FlutterImagePreprocessor(),
        _dartPreprocessor = dartPreprocessor ?? DartImagePreprocessor(),
-       _alphaDetector = alphaDetector ?? _detectAlphaInIsolate,
        _logManager = logManager ?? LogManager.instance;
 
   final ImageCompressionSettingsLoader _loadSettings;
   final ImagePreprocessor _windowsPreprocessor;
   final ImagePreprocessor _flutterPreprocessor;
   final ImagePreprocessor _dartPreprocessor;
-  final AlphaDetector _alphaDetector;
   final LogManager _logManager;
   final Map<String, Future<AttachmentPreprocessResult>> _pending =
       <String, Future<AttachmentPreprocessResult>>{};
@@ -300,6 +296,10 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     );
 
     try {
+      final resizeTarget = await _resolveCompressionTarget(
+        normalizedPath,
+        settings.maxSide,
+      );
       final result = await engine.compress(
         ImagePreprocessRequest(
           sourcePath: normalizedPath,
@@ -307,6 +307,8 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
           maxSide: settings.maxSide,
           quality: settings.quality,
           format: outputFormat,
+          targetWidth: resizeTarget?.width,
+          targetHeight: resizeTarget?.height,
         ),
       );
       final outFile = File(result.outputPath);
@@ -415,26 +417,14 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     }
     if (format == ImageCompressionFormat.auto) {
       if (!engine.supportsWebp) return ImageCompressionFormat.jpeg;
-      final isCandidate = _isPngOrWebp(request.mimeType, request.filename);
-      if (!isCandidate) {
+      if (_isPngOrWebp(request.mimeType, request.filename)) {
         _logManager.debug(
-          'AttachmentPreprocess: alpha_skip_not_png_webp',
+          'AttachmentPreprocess: auto_prefers_webp_for_sharp_content',
           context: {'mimeType': request.mimeType},
         );
-        return ImageCompressionFormat.jpeg;
+        return ImageCompressionFormat.webp;
       }
-      _logManager.debug(
-        'AttachmentPreprocess: alpha_detect_start',
-        context: {'mimeType': request.mimeType},
-      );
-      final hasAlpha = await _alphaDetector(_normalizePath(request.filePath));
-      _logManager.debug(
-        'AttachmentPreprocess: alpha_detect_result',
-        context: {'hasAlpha': hasAlpha},
-      );
-      return hasAlpha
-          ? ImageCompressionFormat.webp
-          : ImageCompressionFormat.jpeg;
+      return ImageCompressionFormat.jpeg;
     }
     return format;
   }
@@ -633,6 +623,16 @@ Future<_ImageDimensions?> _readImageDimensions(String path) async {
   return _runIsolate(_decodeImageDimensions, path);
 }
 
+Future<_ImageDimensions?> _resolveCompressionTarget(
+  String path,
+  int maxSide,
+) async {
+  return _runIsolate(
+    _decodeCompressionTarget,
+    _CompressionTargetJob(path: path, maxSide: maxSide),
+  );
+}
+
 _ImageDimensions? _decodeImageDimensions(String path) {
   try {
     final bytes = File(path).readAsBytesSync();
@@ -644,23 +644,37 @@ _ImageDimensions? _decodeImageDimensions(String path) {
   }
 }
 
-Future<bool> _detectAlphaInIsolate(String path) async {
-  final result = await _runIsolate(_detectAlpha, path);
-  return result ?? false;
+class _CompressionTargetJob {
+  const _CompressionTargetJob({required this.path, required this.maxSide});
+
+  final String path;
+  final int maxSide;
 }
 
-bool _detectAlpha(String path) {
+_ImageDimensions? _decodeCompressionTarget(_CompressionTargetJob job) {
   try {
-    final bytes = File(path).readAsBytesSync();
+    final bytes = File(job.path).readAsBytesSync();
     final decoded = img.decodeImage(bytes);
-    if (decoded == null || !decoded.hasAlpha) return false;
-    for (final p in decoded) {
-      if (p.a < 255) return true;
+    if (decoded == null) return null;
+    final orientation = decoded.exif.imageIfd.orientation;
+    final swapsAxes = switch (orientation) {
+      5 || 6 || 7 || 8 => true,
+      _ => false,
+    };
+    final sourceWidth = swapsAxes ? decoded.height : decoded.width;
+    final sourceHeight = swapsAxes ? decoded.width : decoded.height;
+    final maxDim = max(sourceWidth, sourceHeight);
+    if (maxDim <= job.maxSide || job.maxSide <= 0) {
+      return _ImageDimensions(sourceWidth, sourceHeight);
     }
+    final scale = job.maxSide / maxDim;
+    return _ImageDimensions(
+      (sourceWidth * scale).round().clamp(1, job.maxSide),
+      (sourceHeight * scale).round().clamp(1, job.maxSide),
+    );
   } catch (_) {
-    return false;
+    return null;
   }
-  return false;
 }
 
 Future<T?> _runIsolate<T, P>(T? Function(P) fn, P param) async {

@@ -791,6 +791,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       child: Scaffold(
         backgroundColor: bg,
         drawer: useDesktopSidePane ? null : drawerPanel,
+        drawerEnableOpenDragGesture:
+            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
         appBar: _buildAppBar(
           context: context,
           isReport: isReport,

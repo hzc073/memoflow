@@ -7,6 +7,8 @@ class ImagePreprocessRequest {
     required this.maxSide,
     required this.quality,
     required this.format,
+    this.targetWidth,
+    this.targetHeight,
   });
 
   final String sourcePath;
@@ -14,6 +16,8 @@ class ImagePreprocessRequest {
   final int maxSide;
   final int quality;
   final ImageCompressionFormat format;
+  final int? targetWidth;
+  final int? targetHeight;
 }
 
 class ImagePreprocessResult {

@@ -1641,6 +1641,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       child: Scaffold(
         backgroundColor: bg,
         drawer: useDesktopSidePane ? null : drawerPanel,
+        drawerEnableOpenDragGesture:
+            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
         appBar: AppBar(
           backgroundColor: bg,
           elevation: 0,

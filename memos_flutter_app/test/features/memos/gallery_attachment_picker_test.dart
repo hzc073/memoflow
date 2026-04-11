@@ -27,6 +27,7 @@ void main() {
     'ImageCompressionSettings defaults enable compression for new installs',
     () {
       expect(ImageCompressionSettings.defaults.enabled, isTrue);
+      expect(ImageCompressionSettings.defaults.format, ImageCompressionFormat.auto);
     },
   );
 

@@ -24,6 +24,7 @@ import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/device_preferences.dart';
+import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
@@ -691,6 +692,15 @@ class _TestEmbeddedNavigationHost implements HomeEmbeddedNavigationHost {
 
   @override
   void handleOpenNotifications(BuildContext context) {}
+
+  @override
+  void updateGlobalSwipeExclusionRects(
+    HomeRootDestination destination,
+    List<Rect> rects,
+  ) {}
+
+  @override
+  void clearGlobalSwipeExclusionRects(HomeRootDestination destination) {}
 }
 
 class _TestSessionController extends AppSessionController {

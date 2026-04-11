@@ -15,6 +15,9 @@ class MemoFlowFab extends StatefulWidget {
     this.onLongPressStart,
     this.onLongPressMoveUpdate,
     this.onLongPressEnd,
+    this.size = 64,
+    this.iconSize = 32,
+    this.borderWidth = 4,
   });
 
   final VoidCallback? onPressed;
@@ -23,6 +26,9 @@ class MemoFlowFab extends StatefulWidget {
   onLongPressMoveUpdate;
   final void Function(LongPressEndDetails details)? onLongPressEnd;
   final bool hapticsEnabled;
+  final double size;
+  final double iconSize;
+  final double borderWidth;
 
   @override
   State<MemoFlowFab> createState() => _MemoFlowFabState();
@@ -186,16 +192,16 @@ class _MemoFlowFabState extends State<MemoFlowFab> {
           scale: _pressed ? 0.9 : 1.0,
           duration: const Duration(milliseconds: 160),
           child: Container(
-            width: 64,
-            height: 64,
+            width: widget.size,
+            height: widget.size,
             decoration: BoxDecoration(
               color: MemoFlowPalette.primary,
               shape: BoxShape.circle,
-              border: Border.all(color: bg, width: 4),
+              border: Border.all(color: bg, width: widget.borderWidth),
               boxShadow: [
                 BoxShadow(
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
+                  blurRadius: widget.size * 0.375,
+                  offset: Offset(0, widget.size * 0.15625),
                   color: MemoFlowPalette.primary.withValues(
                     alpha: Theme.of(context).brightness == Brightness.dark
                         ? 0.2
@@ -204,7 +210,7 @@ class _MemoFlowFabState extends State<MemoFlowFab> {
                 ),
               ],
             ),
-            child: const Icon(Icons.add, size: 32, color: Colors.white),
+            child: Icon(Icons.add, size: widget.iconSize, color: Colors.white),
           ),
         ),
       ),

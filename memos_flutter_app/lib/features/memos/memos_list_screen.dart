@@ -116,6 +116,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
     this.embeddedNavigationHost,
     this.hidePrimaryComposeFab = false,
     this.enableDesktopResizableHomeInlineCompose = false,
+    this.enableDrawerOpenDragGesture = true,
   });
 
   final String title;
@@ -137,6 +138,7 @@ class MemosListScreen extends ConsumerStatefulWidget {
   final HomeEmbeddedNavigationHost? embeddedNavigationHost;
   final bool hidePrimaryComposeFab;
   final bool enableDesktopResizableHomeInlineCompose;
+  final bool enableDrawerOpenDragGesture;
 
   @override
   ConsumerState<MemosListScreen> createState() => _MemosListScreenState();
@@ -918,6 +920,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       presentation: widget.presentation,
       embeddedNavigationHost: widget.embeddedNavigationHost,
       hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
+      enableDrawerOpenDragGesture: true,
     );
   }
 
@@ -929,6 +932,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       presentation: widget.presentation,
       embeddedNavigationHost: widget.embeddedNavigationHost,
       hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
+      enableDrawerOpenDragGesture:
+          widget.presentation != HomeScreenPresentation.embeddedBottomNav,
     );
   }
 
@@ -2634,6 +2639,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           hapticsEnabled: hapticsEnabled,
           floatingCollapseVisible: _floatingCollapseMemoUid != null,
           floatingCollapseScrolling: _floatingCollapseScrolling,
+          enableDrawerOpenDragGesture: widget.enableDrawerOpenDragGesture,
         ),
         drawerPanel: drawerPanel,
         titleChild: titleChild,

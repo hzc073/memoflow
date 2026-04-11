@@ -172,6 +172,7 @@ class SettingsScreen extends ConsumerWidget
       child: Scaffold(
         backgroundColor: bg,
         drawer: drawerPanel,
+        drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
         appBar: showAppBar
             ? AppBar(
                 flexibleSpace: enableAppBarDragToMove

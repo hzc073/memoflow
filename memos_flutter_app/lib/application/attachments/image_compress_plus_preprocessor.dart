@@ -27,6 +27,8 @@ class ImageCompressPlusPreprocessor implements ImagePreprocessor {
   @override
   Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
     final target = File(request.targetPath);
+    final minWidth = request.targetWidth ?? request.maxSide;
+    final minHeight = request.targetHeight ?? request.maxSide;
     if (!target.parent.existsSync()) {
       target.parent.createSync(recursive: true);
     }
@@ -38,8 +40,8 @@ class ImageCompressPlusPreprocessor implements ImagePreprocessor {
           .compressWithList(
         Uint8List.fromList(inputBytes),
         quality: request.quality,
-        minWidth: request.maxSide,
-        minHeight: request.maxSide,
+        minWidth: minWidth,
+        minHeight: minHeight,
         format: _resolveFormat(request.format),
       );
       if (outputBytes.isEmpty) {

@@ -49,6 +49,7 @@ class MemosListScreenBodyData {
     required this.hapticsEnabled,
     required this.floatingCollapseVisible,
     required this.floatingCollapseScrolling,
+    required this.enableDrawerOpenDragGesture,
   });
 
   final MemosListScreenViewState viewState;
@@ -74,6 +75,7 @@ class MemosListScreenBodyData {
   final bool hapticsEnabled;
   final bool floatingCollapseVisible;
   final bool floatingCollapseScrolling;
+  final bool enableDrawerOpenDragGesture;
 }
 
 class MemosListScreenBody extends StatelessWidget {
@@ -531,9 +533,13 @@ class MemosListScreenBody extends StatelessWidget {
       key: scaffoldKey,
       drawer: data.viewState.layout.useDesktopSidePane ? null : drawerPanel,
       drawerEnableOpenDragGesture:
-          !data.viewState.layout.useDesktopSidePane && !data.searching,
+          data.enableDrawerOpenDragGesture &&
+          !data.viewState.layout.useDesktopSidePane &&
+          !data.searching,
       drawerEdgeDragWidth:
-          !data.viewState.layout.useDesktopSidePane && !data.searching
+          data.enableDrawerOpenDragGesture &&
+              !data.viewState.layout.useDesktopSidePane &&
+              !data.searching
           ? MediaQuery.sizeOf(context).width
           : null,
       body: scaffoldBody,

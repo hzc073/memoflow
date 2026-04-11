@@ -54,6 +54,18 @@ class _CopyingPreprocessor implements ImagePreprocessor {
   }
 }
 
+class _RecordingPreprocessor extends _CopyingPreprocessor {
+  _RecordingPreprocessor({super.name = 'recording'});
+
+  ImagePreprocessRequest? lastRequest;
+
+  @override
+  Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
+    lastRequest = request;
+    return super.compress(request);
+  }
+}
+
 class _MissingPluginPreprocessor implements ImagePreprocessor {
   _MissingPluginPreprocessor(this.name);
 
@@ -81,10 +93,12 @@ Future<File> _writeTestImage(
   required String name,
   required ImageCompressionFormat format,
   bool withAlpha = false,
+  int width = 16,
+  int height = 16,
 }) async {
   final dir = await support.createTempDir('img');
   final file = File('${dir.path}${Platform.pathSeparator}$name');
-  final image = img.Image(width: 16, height: 16);
+  final image = img.Image(width: width, height: height);
   image.clear(img.ColorRgba8(10, 20, 30, 255));
   if (withAlpha) {
     image.setPixelRgba(0, 0, 10, 20, 30, 100);
@@ -206,8 +220,7 @@ void main() {
       expect(failing.calls, 1);
     });
 
-    test('auto alpha detection only for png/webp', () async {
-      var alphaChecks = 0;
+    test('auto format keeps png-like content on webp', () async {
       final jpgFile = await _writeTestImage(
         support,
         name: 'sample.jpg',
@@ -231,13 +244,9 @@ void main() {
           available: false,
         ),
         flutterPreprocessor: _CopyingPreprocessor(),
-        alphaDetector: (path) async {
-          alphaChecks += 1;
-          return false;
-        },
       );
 
-      await preprocessor.preprocess(
+      final jpgResult = await preprocessor.preprocess(
         AttachmentPreprocessRequest(
           filePath: jpgFile.path,
           filename: 'sample.jpg',
@@ -245,7 +254,7 @@ void main() {
         ),
       );
 
-      await preprocessor.preprocess(
+      final pngResult = await preprocessor.preprocess(
         AttachmentPreprocessRequest(
           filePath: pngFile.path,
           filename: 'sample.png',
@@ -253,7 +262,50 @@ void main() {
         ),
       );
 
-      expect(alphaChecks, 1);
+      expect(jpgResult.mimeType, 'image/jpeg');
+      expect(pngResult.mimeType, 'image/webp');
+      expect(pngResult.filename, endsWith('.webp'));
+    });
+
+    test('native preprocessors receive proportional resize targets', () async {
+      final file = await _writeTestImage(
+        support,
+        name: 'tall.png',
+        format: ImageCompressionFormat.auto,
+        width: 100,
+        height: 300,
+      );
+      final recorder = _RecordingPreprocessor(name: 'flutter');
+      final preprocessor = DefaultAttachmentPreprocessor(
+        loadSettings: () async => ImageCompressionSettings(
+          schemaVersion: 1,
+          enabled: true,
+          maxSide: 75,
+          quality: 80,
+          format: ImageCompressionFormat.jpeg,
+        ),
+        windowsPreprocessor: _CopyingPreprocessor(
+          name: 'windows',
+          available: false,
+        ),
+        flutterPreprocessor: recorder,
+        dartPreprocessor: _CopyingPreprocessor(
+          name: 'dart',
+          available: false,
+        ),
+      );
+
+      await preprocessor.preprocess(
+        AttachmentPreprocessRequest(
+          filePath: file.path,
+          filename: 'tall.png',
+          mimeType: 'image/png',
+        ),
+      );
+
+      expect(recorder.lastRequest, isNotNull);
+      expect(recorder.lastRequest!.targetWidth, 25);
+      expect(recorder.lastRequest!.targetHeight, 75);
     });
 
     test('sha256 matches final output', () async {

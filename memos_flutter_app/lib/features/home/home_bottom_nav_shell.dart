@@ -38,10 +38,41 @@ class HomeBottomNavShell extends ConsumerStatefulWidget {
 }
 
 class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
+    with SingleTickerProviderStateMixin
     implements HomeEmbeddedNavigationHost {
+  static const double _kTabSwipeMinDistance = 72;
+  static const double _kTabSwipeMinHorizontalRatio = 1.35;
+  static const Duration _kTabTransitionDuration = Duration(milliseconds: 210);
+  static const double _kSwipeEdgeTriggerExtent = 24;
+
   HomeRootDestination _activeDestination = HomeRootDestination.memos;
   VoiceRecordOverlayDragSession? _voiceOverlayDragSession;
   Future<void>? _voiceOverlayDragFuture;
+  late final AnimationController _tabTransitionController;
+  HomeRootDestination? _transitionPreviousDestination;
+  int _transitionDirection = 0;
+  int? _trackedBodySwipePointer;
+  Offset? _bodySwipeStartPosition;
+  Offset? _bodySwipeLatestPosition;
+  final Map<HomeRootDestination, List<Rect>> _globalSwipeExclusionRects = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _tabTransitionController =
+        AnimationController(vsync: this, duration: _kTabTransitionDuration)
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) {
+              _finishTabTransition();
+            }
+          });
+  }
+
+  @override
+  void dispose() {
+    _tabTransitionController.dispose();
+    super.dispose();
+  }
 
   bool get _currentHasAccount =>
       ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
@@ -66,7 +97,227 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
 
   void _switchDestination(HomeRootDestination destination) {
     if (_activeDestination == destination) return;
-    setState(() => _activeDestination = destination);
+    final visibleTabs = _resolvedPreferences.visibleTabs;
+    final currentIndex = visibleTabs.indexOf(_activeDestination);
+    final nextIndex = visibleTabs.indexOf(destination);
+    final direction =
+        currentIndex >= 0 && nextIndex >= 0 && nextIndex != currentIndex
+        ? (nextIndex > currentIndex ? 1 : -1)
+        : 0;
+
+    if (_tabTransitionController.isAnimating) {
+      _tabTransitionController.stop();
+      _finishTabTransition();
+    }
+
+    setState(() {
+      _transitionPreviousDestination = direction == 0
+          ? null
+          : _activeDestination;
+      _transitionDirection = direction;
+      _activeDestination = destination;
+    });
+
+    if (direction != 0) {
+      _tabTransitionController.forward(from: 0);
+    }
+  }
+
+  void _switchToAdjacentDestination(
+    List<HomeRootDestination> visibleTabs,
+    HomeRootDestination activeDestination,
+    int offset,
+  ) {
+    final currentIndex = visibleTabs.indexOf(activeDestination);
+    if (currentIndex < 0) return;
+    final nextIndex = currentIndex + offset;
+    if (nextIndex < 0 || nextIndex >= visibleTabs.length) return;
+    _switchDestination(visibleTabs[nextIndex]);
+  }
+
+  void _finishTabTransition() {
+    if (!mounted) return;
+    setState(() {
+      _transitionPreviousDestination = null;
+      _transitionDirection = 0;
+    });
+  }
+
+  void _handleBodySwipePointerDown(PointerDownEvent event) {
+    if (_trackedBodySwipePointer != null ||
+        _tabTransitionController.isAnimating) {
+      return;
+    }
+    if (_isGlobalSwipeExcluded(event.position)) return;
+    _trackedBodySwipePointer = event.pointer;
+    _bodySwipeStartPosition = event.position;
+    _bodySwipeLatestPosition = event.position;
+  }
+
+  void _handleBodySwipePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _trackedBodySwipePointer) return;
+    _bodySwipeLatestPosition = event.position;
+  }
+
+  void _handleBodySwipePointerUp(
+    PointerUpEvent event,
+    List<HomeRootDestination> visibleTabs,
+    HomeRootDestination activeDestination,
+  ) {
+    if (event.pointer != _trackedBodySwipePointer) return;
+    _bodySwipeLatestPosition = event.position;
+    final start = _bodySwipeStartPosition;
+    final end = _bodySwipeLatestPosition;
+    _resetBodySwipeTracking();
+    if (start == null || end == null) return;
+
+    final dragDx = end.dx - start.dx;
+    final dragDy = (end.dy - start.dy).abs();
+    if (dragDx.abs() < _kTabSwipeMinDistance) return;
+    if (dragDx.abs() <= dragDy * _kTabSwipeMinHorizontalRatio) return;
+
+    if (activeDestination == HomeRootDestination.memos) {
+      if (dragDx >= 0) return;
+      _switchToAdjacentDestination(visibleTabs, activeDestination, 1);
+      return;
+    }
+
+    _switchToAdjacentDestination(
+      visibleTabs,
+      activeDestination,
+      dragDx < 0 ? 1 : -1,
+    );
+  }
+
+  void _handleBodySwipePointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _trackedBodySwipePointer) return;
+    _resetBodySwipeTracking();
+  }
+
+  void _resetBodySwipeTracking() {
+    _trackedBodySwipePointer = null;
+    _bodySwipeStartPosition = null;
+    _bodySwipeLatestPosition = null;
+  }
+
+  bool _isGlobalSwipeExcluded(Offset globalPosition) {
+    final rects = _globalSwipeExclusionRects[_activeDestination];
+    if (rects == null || rects.isEmpty) return false;
+    final width = MediaQuery.sizeOf(context).width;
+    final isNearHorizontalEdge =
+        globalPosition.dx <= _kSwipeEdgeTriggerExtent ||
+        globalPosition.dx >= width - _kSwipeEdgeTriggerExtent;
+    if (isNearHorizontalEdge) return false;
+    for (final rect in rects) {
+      if (rect.contains(globalPosition)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Widget _buildAnimatedBody(
+    List<HomeRootDestination> visibleTabs,
+    HomeRootDestination activeDestination,
+  ) {
+    final previousDestination =
+        visibleTabs.contains(_transitionPreviousDestination)
+        ? _transitionPreviousDestination
+        : null;
+    final transitionAnimation = CurvedAnimation(
+      parent: _tabTransitionController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          for (final destination in visibleTabs)
+            _buildAnimatedDestinationLayer(
+              destination: destination,
+              activeDestination: activeDestination,
+              previousDestination: previousDestination,
+              transitionAnimation: transitionAnimation,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnimatedDestinationLayer({
+    required HomeRootDestination destination,
+    required HomeRootDestination activeDestination,
+    required HomeRootDestination? previousDestination,
+    required Animation<double> transitionAnimation,
+  }) {
+    final page = KeyedSubtree(
+      key: ValueKey(destination),
+      child: buildHomeRootScreen(
+        context: context,
+        destination: destination,
+        presentation: HomeScreenPresentation.embeddedBottomNav,
+        navigationHost: this,
+      ),
+    );
+    final isActive = destination == activeDestination;
+    final isPrevious = destination == previousDestination;
+
+    if (!isActive && !isPrevious) {
+      return Offstage(
+        offstage: true,
+        child: TickerMode(enabled: false, child: page),
+      );
+    }
+
+    if (isPrevious && _transitionDirection != 0) {
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: Offset.zero,
+          end: Offset(_transitionDirection > 0 ? -1 : 1, 0),
+        ).animate(transitionAnimation),
+        child: IgnorePointer(ignoring: true, child: page),
+      );
+    }
+
+    if (isActive &&
+        isPrevious == false &&
+        previousDestination != null &&
+        _transitionDirection != 0) {
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: Offset(_transitionDirection > 0 ? 1 : -1, 0),
+          end: Offset.zero,
+        ).animate(transitionAnimation),
+        child: page,
+      );
+    }
+
+    return page;
+  }
+
+  Widget _buildSwipeAwareBody({
+    required Widget child,
+    required HomeRootDestination activeDestination,
+    required List<HomeRootDestination> visibleTabs,
+    required bool enabled,
+  }) {
+    if (!enabled ||
+        visibleTabs.length < 2 ||
+        _tabTransitionController.isAnimating) {
+      return child;
+    }
+
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handleBodySwipePointerDown,
+      onPointerMove: _handleBodySwipePointerMove,
+      onPointerUp: (event) =>
+          _handleBodySwipePointerUp(event, visibleTabs, activeDestination),
+      onPointerCancel: _handleBodySwipePointerCancel,
+      child: child,
+    );
   }
 
   void _closeDrawerThen(BuildContext context, VoidCallback action) {
@@ -241,6 +492,23 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
   }
 
   @override
+  void updateGlobalSwipeExclusionRects(
+    HomeRootDestination destination,
+    List<Rect> rects,
+  ) {
+    if (rects.isEmpty) {
+      _globalSwipeExclusionRects.remove(destination);
+      return;
+    }
+    _globalSwipeExclusionRects[destination] = List<Rect>.unmodifiable(rects);
+  }
+
+  @override
+  void clearGlobalSwipeExclusionRects(HomeRootDestination destination) {
+    _globalSwipeExclusionRects.remove(destination);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final preferences = ref.watch(
       currentWorkspacePreferencesProvider.select(
@@ -272,8 +540,8 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
     final primaryDestination = resolved.fallbackDestinationFor(
       HomeRootDestination.memos,
     );
-    final activeIndex = visibleTabs.indexOf(activeDestination);
     final enableVoiceFabLongPress = _isMobileNativePlatform();
+    final enableSwipeNavigation = _isMobileNativePlatform();
 
     return PopScope(
       canPop: activeDestination == primaryDestination,
@@ -282,20 +550,11 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
         _switchDestination(primaryDestination);
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: activeIndex < 0 ? 0 : activeIndex,
-          children: [
-            for (final destination in visibleTabs)
-              KeyedSubtree(
-                key: ValueKey(destination),
-                child: buildHomeRootScreen(
-                  context: context,
-                  destination: destination,
-                  presentation: HomeScreenPresentation.embeddedBottomNav,
-                  navigationHost: this,
-                ),
-              ),
-          ],
+        body: _buildSwipeAwareBody(
+          activeDestination: activeDestination,
+          visibleTabs: visibleTabs,
+          enabled: enableSwipeNavigation,
+          child: _buildAnimatedBody(visibleTabs, activeDestination),
         ),
         bottomNavigationBar: _HomeBottomNavigationBar(
           resolved: resolved,
@@ -407,6 +666,19 @@ class _OverlayHomeNavigationHost implements HomeEmbeddedNavigationHost {
       }),
     );
   }
+
+  @override
+  void updateGlobalSwipeExclusionRects(
+    HomeRootDestination destination,
+    List<Rect> rects,
+  ) {
+    shell.updateGlobalSwipeExclusionRects(destination, rects);
+  }
+
+  @override
+  void clearGlobalSwipeExclusionRects(HomeRootDestination destination) {
+    shell.clearGlobalSwipeExclusionRects(destination);
+  }
 }
 
 class _HomeBottomNavigationBar extends StatelessWidget {
@@ -457,53 +729,48 @@ class _HomeBottomNavigationBar extends StatelessWidget {
           ],
         ),
         child: SizedBox(
-          height: 94,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _HomeBottomNavigationGroup(
-                        destinations: [
-                          resolved.leftPrimary,
-                          resolved.leftSecondary,
-                        ],
-                        activeDestination: activeDestination,
-                        onSelectDestination: onSelectDestination,
-                      ),
-                    ),
-                    const SizedBox(width: 84),
-                    Expanded(
-                      child: _HomeBottomNavigationGroup(
-                        destinations: [
-                          resolved.rightPrimary,
-                          resolved.rightSecondary,
-                        ],
-                        activeDestination: activeDestination,
-                        onSelectDestination: onSelectDestination,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: -24,
-                child: Center(
-                  child: MemoFlowFab(
-                    onPressed: () => unawaited(onAddPressed()),
-                    onLongPressStart: onAddLongPressStart,
-                    onLongPressMoveUpdate: onAddLongPressMoveUpdate,
-                    onLongPressEnd: onAddLongPressEnd,
-                    hapticsEnabled: hapticsEnabled,
+          height: 52,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _HomeBottomNavigationGroup(
+                    destinations: [
+                      resolved.leftPrimary,
+                      resolved.leftSecondary,
+                    ],
+                    activeDestination: activeDestination,
+                    onSelectDestination: onSelectDestination,
                   ),
                 ),
-              ),
-            ],
+                SizedBox(
+                  width: 62,
+                  child: Center(
+                    child: MemoFlowFab(
+                      onPressed: () => unawaited(onAddPressed()),
+                      onLongPressStart: onAddLongPressStart,
+                      onLongPressMoveUpdate: onAddLongPressMoveUpdate,
+                      onLongPressEnd: onAddLongPressEnd,
+                      hapticsEnabled: hapticsEnabled,
+                      size: 44,
+                      iconSize: 22,
+                      borderWidth: 2,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _HomeBottomNavigationGroup(
+                    destinations: [
+                      resolved.rightPrimary,
+                      resolved.rightSecondary,
+                    ],
+                    activeDestination: activeDestination,
+                    onSelectDestination: onSelectDestination,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -565,26 +832,21 @@ class _HomeBottomNavigationItem extends StatelessWidget {
         : (isDark ? Colors.white70 : Colors.black54);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(definition.icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              definition.labelBuilder(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: color,
-              ),
+        child: Center(
+          child: Text(
+            definition.labelBuilder(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: color,
             ),
-          ],
+          ),
         ),
       ),
     );
