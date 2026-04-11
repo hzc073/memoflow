@@ -117,6 +117,8 @@ class EditedImageResult {
   final int size;
 }
 
+enum _AttachmentGalleryPageDirection { previous, next }
+
 class AttachmentGalleryScreen extends ConsumerStatefulWidget {
   const AttachmentGalleryScreen({
     super.key,
@@ -126,6 +128,7 @@ class AttachmentGalleryScreen extends ConsumerStatefulWidget {
     this.onReplace,
     this.enableDownload = true,
     this.albumName = 'MemoFlow',
+    @visibleForTesting this.isDesktopOverride,
   });
 
   final List<AttachmentImageSource> images;
@@ -134,6 +137,7 @@ class AttachmentGalleryScreen extends ConsumerStatefulWidget {
   final Future<void> Function(EditedImageResult result)? onReplace;
   final bool enableDownload;
   final String albumName;
+  final bool? isDesktopOverride;
 
   @override
   ConsumerState<AttachmentGalleryScreen> createState() =>
@@ -151,12 +155,15 @@ class _AttachmentGalleryScreenState
   late final List<AttachmentGalleryItem> _items;
   int _index = 0;
   bool _busy = false;
+  final Set<int> _zoomedImageIndexes = <int>{};
 
   bool get _isDesktopGallery =>
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+      widget.isDesktopOverride ??
+      (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
   bool get _hasPreviousPage => _index > 0;
   bool get _hasNextPage => _index < _items.length - 1;
+  bool get _isCurrentImageZoomed => _zoomedImageIndexes.contains(_index);
 
   @override
   void initState() {
@@ -198,6 +205,32 @@ class _AttachmentGalleryScreenState
   void _showPreviousPage() => _goToPage(_index - 1);
 
   void _showNextPage() => _goToPage(_index + 1);
+
+  void _handleImageZoomChanged(int index, bool isZoomed) {
+    if (!mounted || _items.isEmpty || index < 0 || index >= _items.length) {
+      return;
+    }
+    if (_items[index].isVideo) return;
+    final hasChanged = isZoomed
+        ? _zoomedImageIndexes.add(index)
+        : _zoomedImageIndexes.remove(index);
+    if (!hasChanged) return;
+    setState(() {});
+  }
+
+  void _handleImageEdgePageRequest(
+    int index,
+    _AttachmentGalleryPageDirection direction,
+  ) {
+    if (!mounted || index != _index) return;
+    _markSceneGuideSeen(SceneMicroGuideId.attachmentGalleryControls);
+    switch (direction) {
+      case _AttachmentGalleryPageDirection.previous:
+        _showPreviousPage();
+      case _AttachmentGalleryPageDirection.next:
+        _showNextPage();
+    }
+  }
 
   void _closeGallery() {
     final navigator = Navigator.of(context);
@@ -483,8 +516,9 @@ class _AttachmentGalleryScreenState
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final targetPath =
-          await _pickDesktopSavePath(suggestedName: suggestedName);
+      final targetPath = await _pickDesktopSavePath(
+        suggestedName: suggestedName,
+      );
       if (!mounted) return;
       if (targetPath == null || targetPath.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -854,7 +888,10 @@ class _AttachmentGalleryScreenState
     return _wrapGalleryPage(content);
   }
 
-  Widget _buildImagePage(AttachmentImageSource source) {
+  Widget _buildImagePage(
+    AttachmentImageSource source, {
+    required int pageIndex,
+  }) {
     return _wrapGalleryPage(
       LayoutBuilder(
         builder: (context, constraints) {
@@ -891,6 +928,10 @@ class _AttachmentGalleryScreenState
             minScale: _minScale,
             maxScale: _maxScale,
             enableWheelZoom: _isDesktopGallery,
+            onZoomChanged: (isZoomed) =>
+                _handleImageZoomChanged(pageIndex, isZoomed),
+            onEdgePageRequest: (direction) =>
+                _handleImageEdgePageRequest(pageIndex, direction),
             onReset: () => _markSceneGuideSeen(
               SceneMicroGuideId.attachmentGalleryControls,
             ),
@@ -983,7 +1024,7 @@ class _AttachmentGalleryScreenState
               children: [
                 PageView.builder(
                   controller: _controller,
-                  physics: _isDesktopGallery
+                  physics: _isDesktopGallery || _isCurrentImageZoomed
                       ? const NeverScrollableScrollPhysics()
                       : null,
                   itemCount: _items.length,
@@ -993,7 +1034,7 @@ class _AttachmentGalleryScreenState
                     if (item.isVideo) {
                       return _buildVideoPage(item.video!);
                     }
-                    return _buildImagePage(item.image!);
+                    return _buildImagePage(item.image!, pageIndex: index);
                   },
                 ),
                 Positioned(
@@ -1178,6 +1219,8 @@ class _AttachmentGalleryZoomableImage extends StatefulWidget {
     required this.minScale,
     required this.maxScale,
     required this.enableWheelZoom,
+    this.onZoomChanged,
+    this.onEdgePageRequest,
     this.onReset,
   });
 
@@ -1185,6 +1228,8 @@ class _AttachmentGalleryZoomableImage extends StatefulWidget {
   final double minScale;
   final double maxScale;
   final bool enableWheelZoom;
+  final ValueChanged<bool>? onZoomChanged;
+  final ValueChanged<_AttachmentGalleryPageDirection>? onEdgePageRequest;
   final VoidCallback? onReset;
 
   @override
@@ -1194,18 +1239,47 @@ class _AttachmentGalleryZoomableImage extends StatefulWidget {
 
 class _AttachmentGalleryZoomableImageState
     extends State<_AttachmentGalleryZoomableImage> {
+  static const double _zoomEpsilon = 0.001;
+  static const double _edgeEpsilon = 1;
+  static const double _edgeSwipeThreshold = 32;
+
   late final TransformationController _transformationController;
+  Size _viewportSize = Size.zero;
+  bool _isZoomed = false;
+  double _edgeSwipeProgress = 0;
+  _AttachmentGalleryPageDirection? _edgeSwipeDirection;
+  bool _edgePageTriggered = false;
 
   @override
   void initState() {
     super.initState();
     _transformationController = TransformationController();
+    _transformationController.addListener(_handleTransformChanged);
   }
 
   @override
   void dispose() {
+    final wasZoomed = _isZoomed;
+    _transformationController.removeListener(_handleTransformChanged);
     _transformationController.dispose();
+    if (wasZoomed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onZoomChanged?.call(false);
+      });
+    }
     super.dispose();
+  }
+
+  void _handleTransformChanged() {
+    final isZoomed =
+        _transformationController.value.getMaxScaleOnAxis() >
+        widget.minScale + _zoomEpsilon;
+    if (_isZoomed == isZoomed) return;
+    _isZoomed = isZoomed;
+    if (!_isZoomed) {
+      _resetEdgeSwipeTracking();
+    }
+    widget.onZoomChanged?.call(isZoomed);
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -1232,6 +1306,80 @@ class _AttachmentGalleryZoomableImageState
           );
   }
 
+  void _handleInteractionStart(ScaleStartDetails details) {
+    _resetEdgeSwipeTracking();
+  }
+
+  void _handleInteractionUpdate(ScaleUpdateDetails details) {
+    if (widget.enableWheelZoom ||
+        widget.onEdgePageRequest == null ||
+        !_isZoomed) {
+      _resetEdgeSwipeTracking();
+      return;
+    }
+    if (details.pointerCount != 1 || details.scale != 1) {
+      _resetEdgeSwipeTracking();
+      return;
+    }
+
+    final dragDelta = details.focalPointDelta;
+    if (dragDelta.dx == 0 || dragDelta.dx.abs() <= dragDelta.dy.abs()) {
+      _resetEdgeSwipeTracking();
+      return;
+    }
+
+    final direction = dragDelta.dx > 0
+        ? _AttachmentGalleryPageDirection.previous
+        : _AttachmentGalleryPageDirection.next;
+    if (!_isAtHorizontalBoundary(direction)) {
+      _resetEdgeSwipeTracking();
+      return;
+    }
+
+    if (_edgeSwipeDirection != direction) {
+      _edgeSwipeDirection = direction;
+      _edgeSwipeProgress = 0;
+    }
+
+    _edgeSwipeProgress += dragDelta.dx;
+    if (_edgePageTriggered) return;
+
+    final thresholdReached = switch (direction) {
+      _AttachmentGalleryPageDirection.previous =>
+        _edgeSwipeProgress >= _edgeSwipeThreshold,
+      _AttachmentGalleryPageDirection.next =>
+        _edgeSwipeProgress <= -_edgeSwipeThreshold,
+    };
+    if (!thresholdReached) return;
+
+    _edgePageTriggered = true;
+    widget.onEdgePageRequest?.call(direction);
+  }
+
+  void _handleInteractionEnd(ScaleEndDetails details) {
+    _resetEdgeSwipeTracking();
+  }
+
+  bool _isAtHorizontalBoundary(_AttachmentGalleryPageDirection direction) {
+    if (_viewportSize.width <= 0) return false;
+    final scale = _transformationController.value.getMaxScaleOnAxis();
+    if (scale <= widget.minScale + _zoomEpsilon) return false;
+
+    final translationX = _transformationController.value.storage[12];
+    final minTranslationX = _viewportSize.width - (_viewportSize.width * scale);
+    return switch (direction) {
+      _AttachmentGalleryPageDirection.previous => translationX >= -_edgeEpsilon,
+      _AttachmentGalleryPageDirection.next =>
+        translationX <= minTranslationX + _edgeEpsilon,
+    };
+  }
+
+  void _resetEdgeSwipeTracking() {
+    _edgeSwipeProgress = 0;
+    _edgeSwipeDirection = null;
+    _edgePageTriggered = false;
+  }
+
   void _resetTransform() {
     _transformationController.value = Matrix4.identity();
     widget.onReset?.call();
@@ -1239,24 +1387,41 @@ class _AttachmentGalleryZoomableImageState
 
   @override
   Widget build(BuildContext context) {
-    final viewer = InteractiveViewer(
-      transformationController: _transformationController,
-      minScale: widget.minScale,
-      maxScale: widget.maxScale,
-      trackpadScrollCausesScale: widget.enableWheelZoom,
-      child: widget.child,
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaSize = MediaQuery.sizeOf(context);
+        _viewportSize = Size(
+          constraints.maxWidth.isFinite && constraints.maxWidth > 0
+              ? constraints.maxWidth
+              : mediaSize.width,
+          constraints.maxHeight.isFinite && constraints.maxHeight > 0
+              ? constraints.maxHeight
+              : mediaSize.height,
+        );
 
-    final resettableViewer = GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onDoubleTap: _resetTransform,
-      child: viewer,
-    );
+        final viewer = InteractiveViewer(
+          transformationController: _transformationController,
+          minScale: widget.minScale,
+          maxScale: widget.maxScale,
+          onInteractionStart: _handleInteractionStart,
+          onInteractionUpdate: _handleInteractionUpdate,
+          onInteractionEnd: _handleInteractionEnd,
+          trackpadScrollCausesScale: widget.enableWheelZoom,
+          child: widget.child,
+        );
 
-    if (!widget.enableWheelZoom) return resettableViewer;
-    return Listener(
-      onPointerSignal: _handlePointerSignal,
-      child: resettableViewer,
+        final resettableViewer = GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onDoubleTap: _resetTransform,
+          child: viewer,
+        );
+
+        if (!widget.enableWheelZoom) return resettableViewer;
+        return Listener(
+          onPointerSignal: _handlePointerSignal,
+          child: resettableViewer,
+        );
+      },
     );
   }
 }

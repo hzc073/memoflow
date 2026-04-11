@@ -238,6 +238,160 @@ void main() {
     expect(find.byType(SceneMicroGuideOverlayPill), findsNothing);
   });
 
+  testWidgets('mobile gallery pans zoomed image before switching pages', (
+    tester,
+  ) async {
+    final repository = SceneMicroGuideRepository(_MemorySecureStorage());
+    await tester.pumpWidget(
+      _buildTestApp(
+        const AttachmentGalleryScreen(
+          images: [
+            AttachmentImageSource(
+              id: 'first',
+              title: 'First',
+              mimeType: 'image/png',
+            ),
+            AttachmentImageSource(
+              id: 'second',
+              title: 'Second',
+              mimeType: 'image/png',
+            ),
+          ],
+          initialIndex: 0,
+          isDesktopOverride: false,
+        ),
+        repository: repository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final viewerFinder = find.byType(InteractiveViewer);
+    final pageViewFinder = find.byType(PageView);
+    final viewer = tester.widget<InteractiveViewer>(viewerFinder);
+    final viewerRect = tester.getRect(viewerFinder);
+
+    viewer.transformationController!.value = Matrix4.diagonal3Values(2, 2, 1);
+    await tester.pump();
+
+    final zoomedPageView = tester.widget<PageView>(pageViewFinder);
+    expect(zoomedPageView.physics, isA<NeverScrollableScrollPhysics>());
+
+    await tester.drag(viewerFinder, const Offset(-120, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1/2'), findsOneWidget);
+
+    final rightEdgeMatrix = Matrix4.diagonal3Values(2, 2, 1)
+      ..setTranslationRaw(-viewerRect.width, 0, 0);
+    viewer.transformationController!.value = rightEdgeMatrix;
+    await tester.pump();
+
+    await tester.drag(viewerFinder, const Offset(-80, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2/2'), findsOneWidget);
+  });
+
+  testWidgets(
+    'mobile gallery clears zoom lock after a zoomed page is disposed',
+    (tester) async {
+      final repository = SceneMicroGuideRepository(_MemorySecureStorage());
+      await tester.pumpWidget(
+        _buildTestApp(
+          const AttachmentGalleryScreen(
+            images: [
+              AttachmentImageSource(
+                id: 'first',
+                title: 'First',
+                mimeType: 'image/png',
+              ),
+              AttachmentImageSource(
+                id: 'second',
+                title: 'Second',
+                mimeType: 'image/png',
+              ),
+              AttachmentImageSource(
+                id: 'third',
+                title: 'Third',
+                mimeType: 'image/png',
+              ),
+              AttachmentImageSource(
+                id: 'fourth',
+                title: 'Fourth',
+                mimeType: 'image/png',
+              ),
+            ],
+            initialIndex: 0,
+            isDesktopOverride: false,
+          ),
+          repository: repository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final viewerFinder = find.byType(InteractiveViewer);
+      final pageViewFinder = find.byType(PageView);
+      final viewer = tester.widget<InteractiveViewer>(viewerFinder);
+      final viewerRect = tester.getRect(viewerFinder);
+      final pageRect = tester.getRect(pageViewFinder);
+      final pageSwipeDistance = pageRect.width * 0.75;
+
+      final rightEdgeMatrix = Matrix4.diagonal3Values(2, 2, 1)
+        ..setTranslationRaw(-viewerRect.width, 0, 0);
+      viewer.transformationController!.value = rightEdgeMatrix;
+      await tester.pump();
+
+      expect(
+        tester.widget<PageView>(pageViewFinder).physics,
+        isA<NeverScrollableScrollPhysics>(),
+      );
+
+      await tester.drag(viewerFinder, const Offset(-80, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('2/4'), findsOneWidget);
+
+      await tester.drag(pageViewFinder, Offset(-pageSwipeDistance, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('3/4'), findsOneWidget);
+
+      await tester.drag(pageViewFinder, Offset(-pageSwipeDistance, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('4/4'), findsOneWidget);
+
+      final viewerScales = tester
+          .widgetList<InteractiveViewer>(
+            find.byType(InteractiveViewer, skipOffstage: false),
+          )
+          .map(
+            (current) =>
+                current.transformationController!.value.getMaxScaleOnAxis(),
+          )
+          .toList();
+      expect(viewerScales, isNot(contains(greaterThan(1.1))));
+
+      await tester.drag(pageViewFinder, Offset(pageSwipeDistance, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('3/4'), findsOneWidget);
+
+      await tester.drag(pageViewFinder, Offset(pageSwipeDistance, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('2/4'), findsOneWidget);
+
+      await tester.drag(pageViewFinder, Offset(pageSwipeDistance, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('1/4'), findsOneWidget);
+
+      expect(
+        tester.widget<PageView>(pageViewFinder).physics,
+        isNot(isA<NeverScrollableScrollPhysics>()),
+      );
+
+      await tester.drag(pageViewFinder, Offset(-pageSwipeDistance, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('2/4'), findsOneWidget);
+    },
+  );
+
   testWidgets('controls guide is shown once per device state', (tester) async {
     final storage = _MemorySecureStorage();
     final repository = SceneMicroGuideRepository(storage);
