@@ -84,7 +84,7 @@ jobs:
       - name: Build APK packages
         working-directory: memos_flutter_app
         shell: pwsh
-        run: ./tool/build_apk.ps1 -NoPubGet -OutDir ./dist/apk
+        run: ./tool/build_apk.ps1 -NoPubGet -SplitPerAbi -OutDir ./dist/apk
 
       - name: Create release and upload APK
         uses: ncipollo/release-action@v1

@@ -23,6 +23,10 @@ if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
   $ProjectRoot = (Resolve-Path (Join-Path $scriptRoot "..")).Path
 }
 
+if ($SplitPerAbi -and $UniversalOnly) {
+  throw "SplitPerAbi and UniversalOnly cannot be used together."
+}
+
 function Resolve-ExistingPath([string]$PathValue) {
   if ([string]::IsNullOrWhiteSpace($PathValue)) {
     throw "Path is empty."
@@ -157,7 +161,9 @@ if ([string]::IsNullOrWhiteSpace($safeAppName)) {
   throw "AppName resolves to an empty safe file name."
 }
 $version = Get-PubspecVersion $pubspecPath
-$buildAllApks = -not $UniversalOnly
+$buildSplitOnly = $SplitPerAbi.IsPresent -and -not $UniversalOnly.IsPresent
+$buildUniversalOnly = $UniversalOnly.IsPresent -and -not $SplitPerAbi.IsPresent
+$buildAllApks = -not $buildSplitOnly -and -not $buildUniversalOnly
 
 Push-Location $projectRootResolved
 try {
@@ -188,6 +194,14 @@ try {
       $null = $copied.Add($apkPath)
     }
 
+    Write-Host "APKs copied to:"
+    $copied | ForEach-Object { Write-Host " - $_" }
+    return
+  }
+
+  if ($buildSplitOnly) {
+    Invoke-FlutterApkBuild -SplitBuild
+    $copied = Copy-SplitApks -ProjectRootPath $projectRootResolved -DestinationDir $OutDir -SafeAppName $safeAppName -Version $version
     Write-Host "APKs copied to:"
     $copied | ForEach-Object { Write-Host " - $_" }
     return
