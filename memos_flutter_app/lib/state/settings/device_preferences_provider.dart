@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
@@ -8,6 +9,7 @@ import '../../core/storage_read.dart';
 import '../../core/theme_colors.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/app_preferences.dart';
+import '../../data/models/collection_reader.dart';
 import '../../data/models/device_preferences.dart';
 import '../sync/sync_coordinator_provider.dart';
 import '../system/storage_error_provider.dart';
@@ -241,6 +243,293 @@ class DevicePreferencesController extends StateNotifier<DevicePreferences> {
     HomeInlineComposePanelLayoutPreference? value,
   ) {
     _setAndPersist(_queuedState.copyWith(homeInlineComposePanelLayout: value));
+  }
+
+  void setCollectionReaderMode(CollectionReaderMode value) {
+    _setAndPersist(
+      _queuedState.copyWith(collectionReaderMode: value),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderPageAnimation(CollectionReaderPageAnimation value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(pageAnimation: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderThemePreset(CollectionReaderThemePreset value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(themePreset: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderBrightnessMode(
+    CollectionReaderBrightnessMode value,
+  ) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(brightnessMode: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderBrightness(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(brightness: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTextScale(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(textScale: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderLineSpacing(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(lineSpacing: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderPagePadding(EdgeInsets value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(pagePadding: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderAutoPageSeconds(int value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(autoPageSeconds: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderFontFamily({String? family, String? filePath}) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(readerFontFamily: family, readerFontFile: filePath),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderFontWeightMode(
+    CollectionReaderFontWeightMode value,
+  ) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(fontWeightMode: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderLetterSpacing(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(letterSpacing: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderParagraphSpacing(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(paragraphSpacing: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderParagraphIndentChars(int value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(paragraphIndentChars: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTitleMode(CollectionReaderTitleMode value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(titleMode: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTitleScale(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(titleScale: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTitleTopSpacing(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(titleTopSpacing: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTitleBottomSpacing(double value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(titleBottomSpacing: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderHeaderPadding(EdgeInsets value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(headerPadding: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderFooterPadding(EdgeInsets value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(footerPadding: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderShowHeaderLine(bool value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(showHeaderLine: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderShowFooterLine(bool value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(showFooterLine: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTipLayout(CollectionReaderTipLayout value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(tipLayout: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderBackgroundConfig(
+    CollectionReaderBackgroundConfig value,
+  ) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(backgroundConfig: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderDisplayConfig(CollectionReaderDisplayConfig value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(displayConfig: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderInputConfig(CollectionReaderInputConfig value) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(inputConfig: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderTapRegionConfig(
+    CollectionReaderTapRegionConfig value,
+  ) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(tapRegionConfig: value),
+      ),
+      triggerSync: false,
+    );
+  }
+
+  void setCollectionReaderSavedStyleCards(
+    List<CollectionReaderStyleCard> value,
+  ) {
+    _setAndPersist(
+      _queuedState.copyWith(
+        collectionReaderPreferences: _queuedState.collectionReaderPreferences
+            .copyWith(savedStyleCards: List<CollectionReaderStyleCard>.unmodifiable(value)),
+      ),
+      triggerSync: false,
+    );
   }
 
   void resetDesktopShortcutBindings() {

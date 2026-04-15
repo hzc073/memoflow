@@ -13,19 +13,11 @@ import '../../core/platform_layout.dart';
 import '../../data/models/recycle_bin_item.dart';
 import '../../state/memos/memo_timeline_provider.dart';
 import '../../i18n/strings.g.dart';
-import '../about/about_screen.dart';
-import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_destination_builder.dart';
 import 'memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
 import 'recycle_bin_preview_screen.dart';
-import '../resources/resources_screen.dart';
-import '../review/ai_summary_screen.dart';
-import '../review/daily_review_screen.dart';
-import '../settings/settings_screen.dart';
-import '../stats/stats_screen.dart';
-import '../sync/sync_queue_screen.dart';
-import '../tags/tags_screen.dart';
 
 class RecycleBinScreen extends ConsumerStatefulWidget {
   const RecycleBinScreen({super.key});
@@ -59,30 +51,10 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
   }
 
   void _navigate(AppDrawerDestination dest) {
-    final route = switch (dest) {
-      AppDrawerDestination.memos => const MemosListScreen(
-        title: 'MemoFlow',
-        state: 'NORMAL',
-        showDrawer: true,
-        enableCompose: true,
-      ),
-      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
-      AppDrawerDestination.explore => const ExploreScreen(),
-      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
-      AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => MemosListScreen(
-        title: context.t.strings.legacy.msg_archive,
-        state: 'ARCHIVED',
-        showDrawer: true,
-      ),
-      AppDrawerDestination.tags => const TagsScreen(),
-      AppDrawerDestination.resources => const ResourcesScreen(),
-      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
-      AppDrawerDestination.stats => const StatsScreen(),
-      AppDrawerDestination.settings => const SettingsScreen(),
-      AppDrawerDestination.about => const AboutScreen(),
-    };
-    closeDrawerThenPushReplacement(context, route);
+    closeDrawerThenPushReplacement(
+      context,
+      buildDrawerDestinationScreen(context: context, destination: dest),
+    );
   }
 
   void _openTag(String tag) {

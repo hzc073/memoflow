@@ -181,6 +181,10 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.descendant(of: dialogFinder, matching: find.text('Collections')),
+        findsOneWidget,
+      );
+      expect(
         find.descendant(of: dialogFinder, matching: find.text('Random Review')),
         findsOneWidget,
       );
@@ -233,6 +237,10 @@ void main() {
     expect(dialogFinder, findsOneWidget);
     expect(
       find.descendant(of: dialogFinder, matching: find.text('Explore')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('Collections')),
       findsOneWidget,
     );
     expect(

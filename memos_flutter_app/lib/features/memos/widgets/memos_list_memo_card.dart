@@ -119,6 +119,7 @@ enum MemoCardAction {
   edit,
   history,
   reminder,
+  addToCollection,
   archive,
   restore,
   delete,
@@ -146,6 +147,7 @@ class MemoListCard extends StatefulWidget {
   const MemoListCard({
     super.key,
     required this.memo,
+    this.heroTag,
     this.debugRemoving = false,
     required this.dateText,
     required this.reminderText,
@@ -174,6 +176,7 @@ class MemoListCard extends StatefulWidget {
   });
 
   final LocalMemo memo;
+  final Object? heroTag;
   final bool debugRemoving;
   final String dateText;
   final String? reminderText;
@@ -722,35 +725,30 @@ class MemoListCardState extends State<MemoListCard> {
       );
     }
 
-    return Hero(
-      tag: memo.uid,
-      createRectTween: (begin, end) =>
-          MaterialRectArcTween(begin: begin, end: end),
-      flightShuttleBuilder: memoHeroFlightShuttleBuilder(isPinned: memo.pinned),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(22),
-          onTap: onTap,
-          onLongPress: onLongPress,
-          child: Container(
-            key: _cardKey,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: cardSurface,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: cardBorderColor),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: isDark ? 20 : 12,
-                  offset: const Offset(0, 4),
-                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.03),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    final card = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Container(
+          key: _cardKey,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: cardSurface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: cardBorderColor),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: isDark ? 20 : 12,
+                offset: const Offset(0, 4),
+                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.03),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 Stack(
                   children: [
                     Column(
@@ -947,6 +945,17 @@ class MemoListCardState extends State<MemoListCard> {
                                             ),
                                           ),
                                           PopupMenuItem(
+                                            value:
+                                                MemoCardAction.addToCollection,
+                                            child: Text(
+                                              context
+                                                  .t
+                                                  .strings
+                                                  .collections
+                                                  .addToCollection,
+                                            ),
+                                          ),
+                                          PopupMenuItem(
                                             value: MemoCardAction.archive,
                                             child: Text(
                                               context
@@ -983,11 +992,21 @@ class MemoListCardState extends State<MemoListCard> {
                 ),
                 const SizedBox(height: 0),
                 content,
-              ],
-            ),
+            ],
           ),
         ),
       ),
+    );
+    final heroTag = widget.heroTag;
+    if (heroTag == null) {
+      return card;
+    }
+    return Hero(
+      tag: heroTag,
+      createRectTween: (begin, end) =>
+          MaterialRectArcTween(begin: begin, end: end),
+      flightShuttleBuilder: memoHeroFlightShuttleBuilder(isPinned: memo.pinned),
+      child: card,
     );
   }
 

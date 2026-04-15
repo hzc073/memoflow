@@ -86,6 +86,18 @@ class AppSyncOrchestrator {
     bool showFeedbackToast = true,
   }) {
     if (!isResume) return;
+    if (!_adapter.areStartupPreferencesLoaded()) {
+      if (kDebugMode) {
+        LogManager.instance.info(
+          'AutoSync: lifecycle_skip_startup_not_ready',
+          context: <String, Object?>{
+            'trigger': 'resumed',
+            'workspaceMode': _resolveActiveWorkspaceMode(),
+          },
+        );
+      }
+      return;
+    }
     if (!_hasActiveWorkspace()) {
       if (kDebugMode) {
         LogManager.instance.info(

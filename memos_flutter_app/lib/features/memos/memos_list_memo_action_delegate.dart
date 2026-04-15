@@ -18,6 +18,7 @@ class MemosListMemoActionDelegate {
     required Future<void> Function(LocalMemo memo) openEditor,
     required Future<void> Function(LocalMemo memo) openHistory,
     required Future<void> Function(LocalMemo memo) openReminder,
+    required Future<void> Function(LocalMemo memo) openAddToCollection,
     required Future<void> Function(String toastMessage) handleRestoreSuccess,
     required void Function(String message) showTopToast,
     required void Function(String message) showSnackBar,
@@ -31,6 +32,7 @@ class MemosListMemoActionDelegate {
        _openEditor = openEditor,
        _openHistory = openHistory,
        _openReminder = openReminder,
+       _openAddToCollection = openAddToCollection,
        _handleRestoreSuccess = handleRestoreSuccess,
        _showTopToast = showTopToast,
        _showSnackBar = showSnackBar;
@@ -45,6 +47,7 @@ class MemosListMemoActionDelegate {
   final Future<void> Function(LocalMemo memo) _openEditor;
   final Future<void> Function(LocalMemo memo) _openHistory;
   final Future<void> Function(LocalMemo memo) _openReminder;
+  final Future<void> Function(LocalMemo memo) _openAddToCollection;
   final Future<void> Function(String toastMessage) _handleRestoreSuccess;
   final void Function(String message) _showTopToast;
   final void Function(String message) _showSnackBar;
@@ -197,6 +200,9 @@ class MemosListMemoActionDelegate {
         return;
       case MemoCardAction.reminder:
         await _openReminder(memo);
+        return;
+      case MemoCardAction.addToCollection:
+        await _openAddToCollection(memo);
         return;
       case MemoCardAction.archive:
         await archiveMemo(memo);

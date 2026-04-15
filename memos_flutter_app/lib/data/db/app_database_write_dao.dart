@@ -902,6 +902,26 @@ WHERE id IN (
     _db.notifyDataChanged();
   }
 
+  Future<void> upsertCollectionReaderProgressRow(
+    Map<String, Object?> row,
+  ) async {
+    final sqlite = await _db.db;
+    await sqlite.insert(
+      'collection_read_progress',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteCollectionReaderProgress(String collectionId) async {
+    final sqlite = await _db.db;
+    await sqlite.delete(
+      'collection_read_progress',
+      where: 'collection_id = ?',
+      whereArgs: <Object?>[collectionId],
+    );
+  }
+
   Future<int> insertRecycleBinItem({
     required String itemType,
     required String memoUid,
@@ -2216,7 +2236,11 @@ WHERE id = ?
       content: content,
       tags: canonicalTags,
     );
-    await _db.applyMemoCacheDeltaPayload(executor, before: before, after: after);
+    await _db.applyMemoCacheDeltaPayload(
+      executor,
+      before: before,
+      after: after,
+    );
   }
 
   Future<void> _upsertMemoRelationsCache(
@@ -2302,7 +2326,11 @@ WHERE id = ?
       limit: 1,
     );
     final rowId = rows.isEmpty ? null : _readInt(rows.first['id']);
-    await executor.delete('memos', where: 'uid = ?', whereArgs: [normalizedUid]);
+    await executor.delete(
+      'memos',
+      where: 'uid = ?',
+      whereArgs: [normalizedUid],
+    );
     await executor.delete(
       'memo_relations_cache',
       where: 'memo_uid = ?',

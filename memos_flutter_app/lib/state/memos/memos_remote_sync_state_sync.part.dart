@@ -87,6 +87,112 @@ extension _RemoteSyncStateSync on RemoteSyncController {
     ].join('|');
   }
 
+  bool _matchesRemoteSyncTarget({
+    required Map<String, dynamic>? localRow,
+    required String content,
+    required String visibility,
+    required bool pinned,
+    required String state,
+    required int createTimeSec,
+    required int? displayTimeSec,
+    required int updateTimeSec,
+    required List<String> tags,
+    required List<Map<String, dynamic>> attachments,
+    required MemoLocation? location,
+    required int relationCount,
+    required int syncState,
+    required String? lastError,
+  }) {
+    if (localRow == null) return false;
+
+    final localContent = (localRow['content'] as String?) ?? '';
+    if (localContent != content) return false;
+
+    final localVisibility = (localRow['visibility'] as String?) ?? '';
+    if (localVisibility != visibility) return false;
+
+    final localPinned = ((localRow['pinned'] as int?) ?? 0) == 1;
+    if (localPinned != pinned) return false;
+
+    final localState = (localRow['state'] as String?) ?? '';
+    if (localState != state) return false;
+
+    final localCreateTimeSec = _readRowInt(localRow['create_time']) ?? 0;
+    if (localCreateTimeSec != createTimeSec) return false;
+
+    final localDisplayTimeSec = _readRowInt(localRow['display_time']);
+    if (localDisplayTimeSec != displayTimeSec) return false;
+
+    final localUpdateTimeSec = _readRowInt(localRow['update_time']) ?? 0;
+    if (localUpdateTimeSec != updateTimeSec) return false;
+
+    final localTags = ((localRow['tags'] as String?) ?? '').trim();
+    if (localTags != tags.join(' ')) return false;
+
+    final localAttachmentsJson =
+        (localRow['attachments_json'] as String?) ?? '[]';
+    if (localAttachmentsJson != jsonEncode(attachments)) return false;
+
+    final localRelationCount = _readRowInt(localRow['relation_count']) ?? 0;
+    if (localRelationCount != relationCount) return false;
+
+    final localSyncState = _readRowInt(localRow['sync_state']) ?? 0;
+    if (localSyncState != syncState) return false;
+
+    final normalizedLocalLastError =
+        (localRow['last_error'] as String?)?.trim().isEmpty ?? true
+        ? null
+        : (localRow['last_error'] as String?)!.trim();
+    final normalizedLastError = lastError == null || lastError.trim().isEmpty
+        ? null
+        : lastError.trim();
+    if (normalizedLocalLastError != normalizedLastError) return false;
+
+    final localPlaceholder = _normalizeOptionalText(
+      localRow['location_placeholder'],
+    );
+    final localLat = _readRowDouble(localRow['location_lat']);
+    final localLng = _readRowDouble(localRow['location_lng']);
+    final targetPlaceholder = _normalizeOptionalText(location?.placeholder);
+    final targetLat = location?.latitude;
+    final targetLng = location?.longitude;
+    if (localPlaceholder != targetPlaceholder) return false;
+    if (!_sameOptionalDouble(localLat, targetLat)) return false;
+    if (!_sameOptionalDouble(localLng, targetLng)) return false;
+
+    return true;
+  }
+
+  String? _normalizeOptionalText(Object? value) {
+    final text = switch (value) {
+      String raw => raw.trim(),
+      _ => value?.toString().trim() ?? '',
+    };
+    return text.isEmpty ? null : text;
+  }
+
+  int? _readRowInt(Object? value) {
+    return switch (value) {
+      int raw => raw,
+      num raw => raw.toInt(),
+      String raw => int.tryParse(raw.trim()),
+      _ => null,
+    };
+  }
+
+  double? _readRowDouble(Object? value) {
+    return switch (value) {
+      num raw => raw.toDouble(),
+      String raw => double.tryParse(raw.trim()),
+      _ => null,
+    };
+  }
+
+  bool _sameOptionalDouble(double? a, double? b) {
+    if (a == null || b == null) return a == b;
+    return (a - b).abs() <= 1e-7;
+  }
+
   Future<String> _duplicateConflictLocalMemo({
     required LocalMemo localMemo,
     required String? localLastError,
@@ -204,7 +310,7 @@ extension _RemoteSyncStateSync on RemoteSyncController {
 
     var pageToken = '';
     // 0.23 creator-scoped filters are much slower on some deployments.
-    var syncPageSize = api.requiresCreatorScopedListMemos ? 600 : 1000;
+    var syncPageSize = api.requiresCreatorScopedListMemos ? 200 : 300;
     // For 0.23, cold list queries can exceed the default large-list timeout.
     // Keep this override scoped to the creator-filter route profile only.
     final syncListReceiveTimeout = api.requiresCreatorScopedListMemos
@@ -232,6 +338,7 @@ extension _RemoteSyncStateSync on RemoteSyncController {
     var remoteFetchedCount = 0;
     var creatorFilteredOutCount = 0;
     var upsertedCount = 0;
+    var skippedUnchangedCount = 0;
     var preservedDraftCount = 0;
     var duplicateConflictCount = 0;
     final duplicateConflictSampleUids = <String>[];
@@ -398,10 +505,37 @@ extension _RemoteSyncStateSync on RemoteSyncController {
           final location = draftMemo != null
               ? draftMemo.location
               : memo.location;
-          if (draftMemo == null) {
+          final relationsJson = draftMemo == null
+              ? encodeMemoRelationsJson(memo.relations)
+              : null;
+          final shouldSkipUpsert =
+              _matchesRemoteSyncTarget(
+                localRow: local,
+                content: content,
+                visibility: visibility,
+                pinned: pinned,
+                state: memoState,
+                createTimeSec: createTimeSec,
+                displayTimeSec: displayTimeSec,
+                updateTimeSec: updateTimeSec,
+                tags: tags,
+                attachments: mergedAttachments,
+                location: location,
+                relationCount: relationCount,
+                syncState: effectiveLocalSync == 0 ? 0 : effectiveLocalSync,
+                lastError: preserveLocalDraft ? localLastError : null,
+              ) &&
+              (relationsJson == null ||
+                  await db.getMemoRelationsCacheJson(memo.uid) ==
+                      relationsJson);
+          if (shouldSkipUpsert) {
+            skippedUnchangedCount++;
+            continue;
+          }
+          if (relationsJson != null) {
             await _mutations.upsertMemoRelationsCache(
               memo.uid,
-              relationsJson: encodeMemoRelationsJson(memo.relations),
+              relationsJson: relationsJson,
             );
           }
 
@@ -540,6 +674,7 @@ extension _RemoteSyncStateSync on RemoteSyncController {
         'remoteFetched': remoteFetchedCount,
         'creatorFilteredOut': creatorFilteredOutCount,
         'upserted': upsertedCount,
+        'skippedUnchanged': skippedUnchangedCount,
         'preservedDraft': preservedDraftCount,
         'duplicateConflict': duplicateConflictCount,
         if (duplicateConflictSampleUids.isNotEmpty)

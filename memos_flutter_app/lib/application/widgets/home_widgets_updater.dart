@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -17,6 +18,10 @@ import 'home_widget_service.dart';
 import 'home_widget_snapshot_builder.dart';
 
 class HomeWidgetsUpdater {
+  static const Duration _forcedUpdateDebounce = Duration(milliseconds: 350);
+  static const Duration _databaseChangeDebounce = Duration(seconds: 2);
+  static const Duration _minimumUpdateInterval = Duration(seconds: 8);
+
   HomeWidgetsUpdater({
     required AppBootstrapAdapter bootstrapAdapter,
     required bool Function() isMounted,
@@ -33,6 +38,10 @@ class HomeWidgetsUpdater {
   bool _queuedForce = false;
   String? _cachedAvatarKey;
   Uint8List? _cachedAvatarBytes;
+  DateTime? _lastCompletedUpdateAt;
+  String? _appliedDailyReviewSignature;
+  String? _appliedQuickInputSignature;
+  String? _appliedCalendarSignature;
 
   bool get _supportsWidgets =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -44,21 +53,17 @@ class HomeWidgetsUpdater {
     if (database == null) return;
     _dbChangesSubscription = database.changes.listen((_) {
       if (!_isMounted()) return;
-      scheduleUpdate(ref, force: true);
+      scheduleUpdate(ref);
     });
-    debugPrint('[HomeWidgetsUpdater] database change binding ready');
   }
 
   void scheduleUpdate(WidgetRef ref, {bool force = false}) {
     if (!_supportsWidgets || !_isMounted()) return;
     _queuedForce = _queuedForce || force;
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () {
-      if (!_isMounted()) return;
-      final nextForce = _queuedForce;
-      _queuedForce = false;
-      unawaited(updateIfNeeded(ref, force: nextForce));
-    });
+    _scheduleDeferredUpdate(
+      ref,
+      delay: _queuedForce ? _forcedUpdateDebounce : _databaseChangeDebounce,
+    );
   }
 
   Future<void> updateIfNeeded(WidgetRef ref, {bool force = false}) async {
@@ -66,28 +71,36 @@ class HomeWidgetsUpdater {
     if (_updating) {
       _queued = true;
       _queuedForce = _queuedForce || force;
-      debugPrint(
-        '[HomeWidgetsUpdater] skip because updating; queued force=$_queuedForce',
-      );
       return;
+    }
+    if (!force) {
+      final lastCompletedUpdateAt = _lastCompletedUpdateAt;
+      if (lastCompletedUpdateAt != null) {
+        final elapsed = DateTime.now().difference(lastCompletedUpdateAt);
+        if (elapsed < _minimumUpdateInterval) {
+          _scheduleDeferredUpdate(ref, delay: _minimumUpdateInterval - elapsed);
+          return;
+        }
+      }
     }
 
     _updating = true;
-    debugPrint('[HomeWidgetsUpdater] updateIfNeeded start force=$force');
     try {
       if (!_hasActiveWorkspace(ref)) {
         await _clearWidgets();
         return;
       }
-      await _updateDailyReviewWidget(ref);
+      final memoRows = await _loadNormalMemoRows(ref);
+      if (!_isMounted()) return;
+      await _updateDailyReviewWidget(ref, rows: memoRows);
       await _updateQuickInputWidget(ref);
-      await _updateCalendarWidget(ref);
+      await _updateCalendarWidget(ref, rows: memoRows);
     } catch (error, stackTrace) {
       debugPrint('[HomeWidgetsUpdater] update failed: $error');
       debugPrint('$stackTrace');
       // Ignore widget refresh failures to keep app startup resilient.
     } finally {
-      debugPrint('[HomeWidgetsUpdater] updateIfNeeded done queued=$_queued');
+      _lastCompletedUpdateAt = DateTime.now();
       _updating = false;
       if (_isMounted() && _queued) {
         final nextForce = _queuedForce;
@@ -98,19 +111,30 @@ class HomeWidgetsUpdater {
     }
   }
 
-  Future<void> _updateDailyReviewWidget(WidgetRef ref) async {
+  Future<List<Map<String, dynamic>>?> _loadNormalMemoRows(WidgetRef ref) async {
+    final database = _tryReadDatabase(ref, source: '_loadNormalMemoRows');
+    if (database == null) return null;
+    return database.listMemos(state: 'NORMAL', limit: null);
+  }
+
+  Future<void> _updateDailyReviewWidget(
+    WidgetRef ref, {
+    List<Map<String, dynamic>>? rows,
+  }) async {
     if (!_isMounted()) return;
     final prefs = _tryReadDevicePreferences(
       ref,
       source: '_updateDailyReviewWidget',
     );
-    final database = _tryReadDatabase(ref, source: '_updateDailyReviewWidget');
     final session = _tryReadSession(ref, source: '_updateDailyReviewWidget');
-    if (prefs == null || database == null) return;
-    final rows = await database.listMemos(state: 'NORMAL', limit: null);
+    if (prefs == null) return;
+    final memoRows =
+        rows ??
+        await _loadNormalMemoRows(ref) ??
+        const <Map<String, dynamic>>[];
     if (!_isMounted()) return;
     final items = buildDailyReviewWidgetItems(
-      rows,
+      memoRows,
       language: prefs.language,
       now: DateTime.now(),
     );
@@ -118,7 +142,24 @@ class HomeWidgetsUpdater {
     final localeTag = _localeTagForLanguage(prefs.language);
     final clearAvatar = _shouldClearAvatar(session);
     if (!_isMounted()) return;
-    await HomeWidgetService.updateDailyReviewWidget(
+    final signature = jsonEncode(<String, Object?>{
+      'items': items.map((item) => item.toJson()).toList(growable: false),
+      'title': trByLanguageKey(
+        language: prefs.language,
+        key: 'legacy.msg_random_review',
+      ),
+      'fallbackBody': trByLanguageKey(
+        language: prefs.language,
+        key: 'legacy.msg_remember_moment_feel_warmth_life_take',
+      ),
+      'localeTag': localeTag,
+      'clearAvatar': clearAvatar,
+      'avatarKey': _avatarSignature(session),
+    });
+    if (_appliedDailyReviewSignature == signature) {
+      return;
+    }
+    final result = await HomeWidgetService.updateDailyReviewWidget(
       items: items,
       title: trByLanguageKey(
         language: prefs.language,
@@ -132,6 +173,9 @@ class HomeWidgetsUpdater {
       clearAvatar: clearAvatar,
       localeTag: localeTag,
     );
+    if (result) {
+      _appliedDailyReviewSignature = signature;
+    }
   }
 
   Future<void> _updateQuickInputWidget(WidgetRef ref) async {
@@ -141,12 +185,23 @@ class HomeWidgetsUpdater {
       source: '_updateQuickInputWidget',
     );
     if (prefs == null) return;
-    await HomeWidgetService.updateQuickInputWidget(
-      hint: trByLanguageKey(language: prefs.language, key: 'legacy.msg_what_s'),
+    final hint = trByLanguageKey(
+      language: prefs.language,
+      key: 'legacy.msg_what_s',
     );
+    if (_appliedQuickInputSignature == hint) {
+      return;
+    }
+    final result = await HomeWidgetService.updateQuickInputWidget(hint: hint);
+    if (result) {
+      _appliedQuickInputSignature = hint;
+    }
   }
 
-  Future<void> _updateCalendarWidget(WidgetRef ref) async {
+  Future<void> _updateCalendarWidget(
+    WidgetRef ref, {
+    List<Map<String, dynamic>>? rows,
+  }) async {
     if (!_isMounted()) return;
     final prefs = _tryReadDevicePreferences(
       ref,
@@ -156,39 +211,32 @@ class HomeWidgetsUpdater {
       ref,
       source: '_updateCalendarWidget',
     );
-    final database = _tryReadDatabase(ref, source: '_updateCalendarWidget');
-    if (prefs == null || resolvedSettings == null || database == null) return;
+    if (prefs == null || resolvedSettings == null) return;
     final now = DateTime.now();
     final month = DateTime(now.year, now.month);
-    final rows = await database.listMemos(state: 'NORMAL', limit: null);
+    final memoRows =
+        rows ??
+        await _loadNormalMemoRows(ref) ??
+        const <Map<String, dynamic>>[];
     if (!_isMounted()) return;
     final snapshot = buildCalendarWidgetSnapshot(
       month: month,
-      rows: rows,
+      rows: memoRows,
       language: prefs.language,
       themeColorArgb: themeColorSpec(
         resolvedSettings.resolvedThemeColor,
       ).primary.toARGB32(),
     );
-    final filledDays = snapshot.days
-        .where((day) => day.isCurrentMonth && day.intensity > 0)
-        .length;
-    final maxIntensity = snapshot.days.fold<int>(
-      0,
-      (maxValue, day) => day.intensity > maxValue ? day.intensity : maxValue,
-    );
-    final maxHeatScore = snapshot.heatScores.fold<int>(
-      0,
-      (maxValue, entry) =>
-          entry.heatScore > maxValue ? entry.heatScore : maxValue,
-    );
-    debugPrint(
-      '[HomeWidgetsUpdater] calendar snapshot month=${snapshot.monthLabel} rows=${rows.length} heatScores=${snapshot.heatScores.length} filledDays=$filledDays maxIntensity=$maxIntensity maxHeatScore=$maxHeatScore theme=${snapshot.themeColorArgb}',
-    );
+    final signature = jsonEncode(snapshot.toJson());
+    if (_appliedCalendarSignature == signature) {
+      return;
+    }
     final result = await HomeWidgetService.updateCalendarWidget(
       snapshot: snapshot,
     );
-    debugPrint('[HomeWidgetsUpdater] updateCalendarWidget result=$result');
+    if (result) {
+      _appliedCalendarSignature = signature;
+    }
   }
 
   void dispose() {
@@ -210,8 +258,20 @@ class HomeWidgetsUpdater {
   Future<void> _clearWidgets() async {
     _cachedAvatarKey = null;
     _cachedAvatarBytes = null;
-    debugPrint('[HomeWidgetsUpdater] clearing persisted home widgets');
+    _appliedDailyReviewSignature = null;
+    _appliedQuickInputSignature = null;
+    _appliedCalendarSignature = null;
     await HomeWidgetService.clearHomeWidgets();
+  }
+
+  void _scheduleDeferredUpdate(WidgetRef ref, {required Duration delay}) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(delay, () {
+      if (!_isMounted()) return;
+      final nextForce = _queuedForce;
+      _queuedForce = false;
+      unawaited(updateIfNeeded(ref, force: nextForce));
+    });
   }
 
   DevicePreferences? _tryReadDevicePreferences(
@@ -326,6 +386,14 @@ class HomeWidgetsUpdater {
     final account = session?.currentAccount;
     if (account == null) return true;
     return account.user.avatarUrl.trim().isEmpty;
+  }
+
+  String _avatarSignature(AppSessionState? session) {
+    final account = session?.currentAccount;
+    if (account == null) return 'none';
+    final rawAvatarUrl = account.user.avatarUrl.trim();
+    if (rawAvatarUrl.isEmpty) return '${account.key}|none';
+    return '${account.key}|${resolveMaybeRelativeUrl(account.baseUrl, rawAvatarUrl)}';
   }
 
   bool _shouldAttachAvatarAuth({

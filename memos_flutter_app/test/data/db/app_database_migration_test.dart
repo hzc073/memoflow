@@ -538,4 +538,226 @@ CREATE TABLE IF NOT EXISTS memos (
     expect(rows.single['pinned'], 1);
     expect(rows.single['sync_state'], 1);
   });
+
+  test('upgrade to v21 creates memo_collections table', () async {
+    final dbName = uniqueDbName('app_database_v20_collections');
+
+    addTearDown(() async {
+      await AppDatabase.deleteDatabaseFile(dbName: dbName);
+    });
+
+    final dbDir = await resolveDatabasesDirectoryPath();
+    final path = p.join(dbDir, dbName);
+
+    final legacyDb = await openDatabase(
+      path,
+      version: 20,
+      onCreate: (db, version) async {
+        await db.execute('''
+CREATE TABLE IF NOT EXISTS memos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid TEXT NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'NORMAL',
+  create_time INTEGER NOT NULL,
+  display_time INTEGER,
+  update_time INTEGER NOT NULL,
+  tags TEXT NOT NULL DEFAULT '',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  relation_count INTEGER NOT NULL DEFAULT 0,
+  sync_state INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+''');
+      },
+    );
+    await legacyDb.close();
+
+    final appDb = AppDatabase(dbName: dbName);
+    addTearDown(() async {
+      await appDb.close();
+    });
+
+    final upgradedDb = await appDb.db;
+    final columns = await upgradedDb.rawQuery(
+      'PRAGMA table_info("memo_collections");',
+    );
+
+    expect(columns.any((row) => row['name'] == 'id'), isTrue);
+    expect(columns.any((row) => row['name'] == 'rules_json'), isTrue);
+    expect(columns.any((row) => row['name'] == 'cover_json'), isTrue);
+    expect(columns.any((row) => row['name'] == 'view_json'), isTrue);
+  });
+
+  test('upgrade to v22 creates memo_collection_items table', () async {
+    final dbName = uniqueDbName('app_database_v21_collection_items');
+
+    addTearDown(() async {
+      await AppDatabase.deleteDatabaseFile(dbName: dbName);
+    });
+
+    final dbDir = await resolveDatabasesDirectoryPath();
+    final path = p.join(dbDir, dbName);
+
+    final legacyDb = await openDatabase(
+      path,
+      version: 21,
+      onCreate: (db, version) async {
+        await db.execute('''
+CREATE TABLE IF NOT EXISTS memos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid TEXT NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'NORMAL',
+  create_time INTEGER NOT NULL,
+  display_time INTEGER,
+  update_time INTEGER NOT NULL,
+  tags TEXT NOT NULL DEFAULT '',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  relation_count INTEGER NOT NULL DEFAULT 0,
+  sync_state INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+''');
+        await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_collections (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL,
+  icon_key TEXT NOT NULL DEFAULT '',
+  accent_color_hex TEXT,
+  rules_json TEXT NOT NULL DEFAULT '{}',
+  cover_json TEXT NOT NULL DEFAULT '{}',
+  view_json TEXT NOT NULL DEFAULT '{}',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  hide_when_empty INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL
+);
+''');
+      },
+    );
+    await legacyDb.close();
+
+    final appDb = AppDatabase(dbName: dbName);
+    addTearDown(() async {
+      await appDb.close();
+    });
+
+    final upgradedDb = await appDb.db;
+    final columns = await upgradedDb.rawQuery(
+      'PRAGMA table_info("memo_collection_items");',
+    );
+
+    expect(columns.any((row) => row['name'] == 'collection_id'), isTrue);
+    expect(columns.any((row) => row['name'] == 'memo_uid'), isTrue);
+    expect(columns.any((row) => row['name'] == 'sort_order'), isTrue);
+    expect(columns.any((row) => row['name'] == 'created_time'), isTrue);
+    expect(columns.any((row) => row['name'] == 'updated_time'), isTrue);
+  });
+
+  test(
+    'upgrade from v23 to v24 upgrades collection reader progress table',
+    () async {
+      final dbName = uniqueDbName('app_database_v23_to_v24_reader_progress');
+
+      addTearDown(() async {
+        await AppDatabase.deleteDatabaseFile(dbName: dbName);
+      });
+
+      final dbDir = await resolveDatabasesDirectoryPath();
+      final path = p.join(dbDir, dbName);
+
+      final legacyDb = await openDatabase(
+        path,
+        version: 23,
+        onCreate: (db, version) async {
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS memos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid TEXT NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'NORMAL',
+  create_time INTEGER NOT NULL,
+  update_time INTEGER NOT NULL,
+  tags TEXT NOT NULL DEFAULT '',
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  location_placeholder TEXT,
+  location_lat REAL,
+  location_lng REAL,
+  relation_count INTEGER NOT NULL DEFAULT 0,
+  sync_state INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+''');
+          await db.insert('memos', <String, Object?>{
+            'uid': 'memo-v22',
+            'content': 'legacy memo',
+            'visibility': 'PRIVATE',
+            'pinned': 0,
+            'state': 'NORMAL',
+            'create_time': 1775001600,
+            'update_time': 1775001600,
+            'tags': '',
+            'attachments_json': '[]',
+            'relation_count': 0,
+            'sync_state': 0,
+          });
+          await db.execute('''
+CREATE TABLE IF NOT EXISTS collection_read_progress (
+  collection_id TEXT NOT NULL PRIMARY KEY,
+  reader_mode TEXT NOT NULL,
+  current_memo_uid TEXT,
+  current_memo_index INTEGER NOT NULL DEFAULT 0,
+  list_scroll_offset REAL NOT NULL DEFAULT 0,
+  inner_scroll_offset REAL NOT NULL DEFAULT 0,
+  updated_time INTEGER NOT NULL
+);
+''');
+        },
+      );
+      await legacyDb.close();
+
+      final appDb = AppDatabase(dbName: dbName);
+      addTearDown(() async {
+        await appDb.close();
+      });
+
+    final upgradedDb = await appDb.db;
+    final columns = await upgradedDb.rawQuery(
+      'PRAGMA table_info("collection_read_progress");',
+    );
+
+      expect(columns.any((row) => row['name'] == 'collection_id'), isTrue);
+      expect(columns.any((row) => row['name'] == 'reader_mode'), isTrue);
+      expect(columns.any((row) => row['name'] == 'page_animation'), isTrue);
+      expect(columns.any((row) => row['name'] == 'current_memo_uid'), isTrue);
+      expect(columns.any((row) => row['name'] == 'current_memo_index'), isTrue);
+      expect(
+        columns.any((row) => row['name'] == 'current_chapter_page_index'),
+        isTrue,
+      );
+      expect(columns.any((row) => row['name'] == 'list_scroll_offset'), isTrue);
+      expect(
+        columns.any((row) => row['name'] == 'current_match_char_offset'),
+        isTrue,
+      );
+      expect(columns.any((row) => row['name'] == 'updated_time'), isTrue);
+    },
+  );
 }

@@ -76,6 +76,7 @@ enum LaunchAction {
 enum HomeQuickAction {
   none,
   monthlyStats,
+  collections,
   aiSummary,
   dailyReview,
   explore,

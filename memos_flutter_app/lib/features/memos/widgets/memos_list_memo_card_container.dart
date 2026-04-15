@@ -22,12 +22,71 @@ import '../memo_video_grid.dart';
 import 'memos_list_memo_card.dart';
 
 final DateFormat _memoDateFormatter = DateFormat('yyyy-MM-dd HH:mm');
+final _memoMediaEntriesCache = _LruCache<String, _MemoMediaEntriesCacheEntry>(
+  capacity: 120,
+);
+
+class _LruCache<K, V> {
+  _LruCache({required int capacity}) : _capacity = capacity;
+
+  final int _capacity;
+  final _map = <K, V>{};
+
+  V? get(K key) {
+    final value = _map.remove(key);
+    if (value == null) return null;
+    _map[key] = value;
+    return value;
+  }
+
+  void set(K key, V value) {
+    if (_capacity <= 0) return;
+    _map.remove(key);
+    _map[key] = value;
+    if (_map.length > _capacity) {
+      _map.remove(_map.keys.first);
+    }
+  }
+}
+
+class _MemoMediaEntriesCacheEntry {
+  const _MemoMediaEntriesCacheEntry({
+    required this.imageEntries,
+    required this.videoEntries,
+    required this.mediaEntries,
+  });
+
+  final List<MemoImageEntry> imageEntries;
+  final List<MemoVideoEntry> videoEntries;
+  final List<MemoMediaEntry> mediaEntries;
+}
+
+String _memoMediaEntriesCacheKey({
+  required LocalMemo memo,
+  required Uri? baseUrl,
+  required String? authHeader,
+  required bool rebaseAbsoluteFileUrlForV024,
+  required bool attachAuthForSameOriginAbsolute,
+}) {
+  final authFingerprint = authHeader == null || authHeader.trim().isEmpty
+      ? 0
+      : authHeader.trim().hashCode;
+  return '${memo.uid}|'
+      '${memo.contentFingerprint}|'
+      '${memo.updateTime.toUtc().millisecondsSinceEpoch}|'
+      '${memo.attachments.length}|'
+      '${baseUrl?.toString() ?? ''}|'
+      '$authFingerprint|'
+      '${rebaseAbsoluteFileUrlForV024 ? 1 : 0}|'
+      '${attachAuthForSameOriginAbsolute ? 1 : 0}';
+}
 
 class MemosListMemoCardContainer extends ConsumerWidget {
   const MemosListMemoCardContainer({
     super.key,
     required this.memoCardKey,
     required this.memo,
+    required this.heroTag,
     required this.prefs,
     required this.outboxStatus,
     required this.tagColors,
@@ -54,6 +113,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
 
   final GlobalKey<MemoListCardState> memoCardKey;
   final LocalMemo memo;
+  final Object? heroTag;
   final AppPreferences prefs;
   final OutboxMemoStatus outboxStatus;
   final TagColorLookup tagColors;
@@ -98,25 +158,46 @@ class MemosListMemoCardContainer extends ConsumerWidget {
     final attachAuthForSameOriginAbsolute = isServerVersion021(serverVersion);
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
-    final imageEntries = collectMemoImageEntries(
-      content: memo.content,
-      attachments: memo.attachments,
+    final mediaCacheKey = _memoMediaEntriesCacheKey(
+      memo: memo,
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
-    final videoEntries = collectMemoVideoEntries(
-      attachments: memo.attachments,
-      baseUrl: baseUrl,
-      authHeader: authHeader,
-      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
-      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
-    );
-    final mediaEntries = buildMemoMediaEntries(
-      images: imageEntries,
-      videos: videoEntries,
-    );
+    final cachedMedia = _memoMediaEntriesCache.get(mediaCacheKey);
+    final imageEntries =
+        cachedMedia?.imageEntries ??
+        collectMemoImageEntries(
+          content: memo.content,
+          attachments: memo.attachments,
+          baseUrl: baseUrl,
+          authHeader: authHeader,
+          rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        );
+    final videoEntries =
+        cachedMedia?.videoEntries ??
+        collectMemoVideoEntries(
+          attachments: memo.attachments,
+          baseUrl: baseUrl,
+          authHeader: authHeader,
+          rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        );
+    final mediaEntries =
+        cachedMedia?.mediaEntries ??
+        buildMemoMediaEntries(images: imageEntries, videos: videoEntries);
+    if (cachedMedia == null) {
+      _memoMediaEntriesCache.set(
+        mediaCacheKey,
+        _MemoMediaEntriesCacheEntry(
+          imageEntries: imageEntries,
+          videoEntries: videoEntries,
+          mediaEntries: mediaEntries,
+        ),
+      );
+    }
     final suppressRemovingMediaOnWindows =
         !kIsWeb &&
         defaultTargetPlatform == TargetPlatform.windows &&
@@ -143,9 +224,8 @@ class MemosListMemoCardContainer extends ConsumerWidget {
       locationSettingsProvider.select((value) => value.provider),
     );
     final syncStatus = _resolveMemoSyncStatus(memo, outboxStatus);
-    final reminderMap = ref.watch(memoReminderMapProvider);
+    final reminder = ref.watch(memoReminderByUidProvider(memo.uid));
     final reminderSettings = ref.watch(reminderSettingsProvider);
-    final reminder = reminderMap[memo.uid];
     final nextReminderTime = reminder == null
         ? null
         : nextEffectiveReminderTime(
@@ -166,6 +246,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
     return MemoListCard(
       key: memoCardKey,
       memo: memo,
+      heroTag: heroTag,
       debugRemoving: removing,
       dateText: _memoDateFormatter.format(displayTime),
       reminderText: reminderText,

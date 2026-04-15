@@ -20,6 +20,7 @@ import '../../core/platform_layout.dart';
 import '../../core/tag_colors.dart';
 import '../../core/tags.dart';
 import '../../core/url.dart';
+import '../../data/api/memos_api.dart';
 import '../../data/ai/ai_analysis_models.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/home_navigation_preferences.dart';
@@ -33,9 +34,8 @@ import '../../state/review/ai_analysis_provider.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
-import '../about/about_screen.dart';
-import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
@@ -44,13 +44,7 @@ import '../memos/memo_location_line.dart';
 import '../memos/memo_markdown.dart';
 import '../memos/memo_video_grid.dart';
 import '../memos/memos_list_screen.dart';
-import '../memos/recycle_bin_screen.dart';
 import '../notifications/notifications_screen.dart';
-import '../resources/resources_screen.dart';
-import '../settings/settings_screen.dart';
-import '../stats/stats_screen.dart';
-import '../sync/sync_queue_screen.dart';
-import '../tags/tags_screen.dart';
 import '../memos/widgets/audio_row.dart';
 import 'ai_insight_history_shared.dart';
 import 'random_walk_display.dart';
@@ -196,30 +190,10 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       embeddedNavigationHost.handleDrawerDestination(context, dest);
       return;
     }
-    final route = switch (dest) {
-      AppDrawerDestination.memos => const MemosListScreen(
-        title: 'MemoFlow',
-        state: 'NORMAL',
-        showDrawer: true,
-        enableCompose: true,
-      ),
-      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
-      AppDrawerDestination.explore => const ExploreScreen(),
-      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
-      AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => MemosListScreen(
-        title: context.t.strings.legacy.msg_archive,
-        state: 'ARCHIVED',
-        showDrawer: true,
-      ),
-      AppDrawerDestination.tags => const TagsScreen(),
-      AppDrawerDestination.resources => const ResourcesScreen(),
-      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
-      AppDrawerDestination.stats => const StatsScreen(),
-      AppDrawerDestination.settings => const SettingsScreen(),
-      AppDrawerDestination.about => const AboutScreen(),
-    };
-    closeDrawerThenPushReplacement(context, route);
+    closeDrawerThenPushReplacement(
+      context,
+      buildDrawerDestinationScreen(context: context, destination: dest),
+    );
   }
 
   void _openTag(String tag) {
@@ -315,7 +289,16 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
   }
 
   Future<void> _prefetchCreatorsByName(Iterable<String> names) async {
-    final api = ref.read(memosApiProvider);
+    final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
+    if (account == null) {
+      return;
+    }
+    late final MemosApi api;
+    try {
+      api = ref.read(memosApiProvider);
+    } on StateError {
+      return;
+    }
     final pending = <String>[];
     for (final raw in names) {
       final creator = raw.trim();
@@ -1449,8 +1432,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
               : null,
           leading: useDesktopSidePane
               ? null
-              : widget.presentation ==
-                    HomeScreenPresentation.embeddedBottomNav
+              : widget.presentation == HomeScreenPresentation.embeddedBottomNav
               ? AppDrawerMenuButton(
                   tooltip: context.t.strings.legacy.msg_toggle_sidebar,
                   iconColor: textMain,
@@ -1745,6 +1727,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                                     child: RepaintBoundary(
                                       child: _RandomWalkCard(
                                         memo: memo,
+                                        heroTag:
+                                            'daily-review:${entry.key}:$index',
                                         headerPrimaryText: headerPrimaryText,
                                         headerSecondaryText:
                                             headerSecondaryText,
@@ -2086,6 +2070,7 @@ class _RandomWalkAiHistoryCard extends StatelessWidget {
 class _RandomWalkCard extends StatelessWidget {
   const _RandomWalkCard({
     required this.memo,
+    required this.heroTag,
     required this.headerPrimaryText,
     required this.headerSecondaryText,
     required this.headerAvatar,
@@ -2106,6 +2091,7 @@ class _RandomWalkCard extends StatelessWidget {
   });
 
   final LocalMemo memo;
+  final Object heroTag;
   final String headerPrimaryText;
   final String headerSecondaryText;
   final Widget headerAvatar;
@@ -2229,7 +2215,7 @@ class _RandomWalkCard extends StatelessWidget {
         Navigator.of(context).push(
           PageRouteBuilder<void>(
             pageBuilder: (context, animation, secondaryAnimation) =>
-                MemoDetailScreen(initialMemo: memo),
+                MemoDetailScreen(initialMemo: memo, heroTag: heroTag),
             transitionDuration: const Duration(milliseconds: 320),
             reverseTransitionDuration: const Duration(milliseconds: 260),
             transitionsBuilder:
@@ -2245,7 +2231,7 @@ class _RandomWalkCard extends StatelessWidget {
         );
       },
       child: Hero(
-        tag: memo.uid,
+        tag: heroTag,
         createRectTween: (begin, end) =>
             MaterialRectArcTween(begin: begin, end: end),
         child: RepaintBoundary(

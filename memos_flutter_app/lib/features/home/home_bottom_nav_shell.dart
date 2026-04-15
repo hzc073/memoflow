@@ -11,17 +11,13 @@ import '../../data/models/home_navigation_preferences.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
-import '../about/about_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../memos/note_input_sheet.dart';
-import '../memos/recycle_bin_screen.dart';
 import '../memos/widgets/memos_list_floating_actions.dart';
 import '../notifications/notifications_screen.dart';
-import '../stats/stats_screen.dart';
-import '../sync/sync_queue_screen.dart';
-import '../tags/tags_screen.dart';
 import '../voice/voice_record_screen.dart';
 import 'app_drawer.dart';
+import 'app_drawer_destination_builder.dart';
 import 'home_navigation_host.dart';
 import 'home_navigation_resolver.dart';
 import 'home_root_destination_registry.dart';
@@ -55,6 +51,7 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
   Offset? _bodySwipeStartPosition;
   Offset? _bodySwipeLatestPosition;
   final Map<HomeRootDestination, List<Rect>> _globalSwipeExclusionRects = {};
+  final Map<HomeRootDestination, GlobalObjectKey> _destinationPageKeys = {};
 
   @override
   void initState() {
@@ -252,49 +249,51 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
     required HomeRootDestination? previousDestination,
     required Animation<double> transitionAnimation,
   }) {
-    final page = KeyedSubtree(
-      key: ValueKey(destination),
-      child: buildHomeRootScreen(
-        context: context,
-        destination: destination,
-        presentation: HomeScreenPresentation.embeddedBottomNav,
-        navigationHost: this,
-      ),
-    );
     final isActive = destination == activeDestination;
     final isPrevious = destination == previousDestination;
-
-    if (!isActive && !isPrevious) {
-      return Offstage(
-        offstage: true,
-        child: TickerMode(enabled: false, child: page),
-      );
-    }
+    final isVisible = isActive || isPrevious;
+    final Animation<Offset> position;
 
     if (isPrevious && _transitionDirection != 0) {
-      return SlideTransition(
-        position: Tween<Offset>(
-          begin: Offset.zero,
-          end: Offset(_transitionDirection > 0 ? -1 : 1, 0),
-        ).animate(transitionAnimation),
-        child: IgnorePointer(ignoring: true, child: page),
-      );
-    }
-
-    if (isActive &&
-        isPrevious == false &&
+      position = Tween<Offset>(
+        begin: Offset.zero,
+        end: Offset(_transitionDirection > 0 ? -1 : 1, 0),
+      ).animate(transitionAnimation);
+    } else if (isActive &&
         previousDestination != null &&
         _transitionDirection != 0) {
-      return SlideTransition(
-        position: Tween<Offset>(
-          begin: Offset(_transitionDirection > 0 ? 1 : -1, 0),
-          end: Offset.zero,
-        ).animate(transitionAnimation),
-        child: page,
-      );
+      position = Tween<Offset>(
+        begin: Offset(_transitionDirection > 0 ? 1 : -1, 0),
+        end: Offset.zero,
+      ).animate(transitionAnimation);
+    } else {
+      position = const AlwaysStoppedAnimation<Offset>(Offset.zero);
     }
 
-    return page;
+    return KeyedSubtree(
+      key: _destinationPageKeys.putIfAbsent(
+        destination,
+        () => GlobalObjectKey(destination),
+      ),
+      child: Offstage(
+        offstage: !isVisible,
+        child: TickerMode(
+          enabled: isVisible,
+          child: IgnorePointer(
+            ignoring: !isActive,
+            child: SlideTransition(
+              position: position,
+              child: buildHomeRootScreen(
+                context: context,
+                destination: destination,
+                presentation: HomeScreenPresentation.embeddedBottomNav,
+                navigationHost: this,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildSwipeAwareBody({
@@ -351,27 +350,23 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
     AppDrawerDestination destination,
   ) {
     final overlayNavigationHost = _OverlayHomeNavigationHost(shell: this);
-    return switch (destination) {
-      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
-      AppDrawerDestination.tags => const TagsScreen(),
-      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
-      AppDrawerDestination.stats => const StatsScreen(),
-      AppDrawerDestination.about => const AboutScreen(),
-      AppDrawerDestination.memos ||
-      AppDrawerDestination.explore ||
-      AppDrawerDestination.dailyReview ||
-      AppDrawerDestination.aiSummary ||
-      AppDrawerDestination.resources ||
-      AppDrawerDestination.archived ||
-      AppDrawerDestination.settings => buildHomeRootScreen(
+    final rootDestination = homeRootDestinationFromDrawerDestination(
+      destination,
+    );
+    if (rootDestination != null) {
+      return buildHomeRootScreen(
         context: context,
-        destination:
-            homeRootDestinationFromDrawerDestination(destination) ??
-            HomeRootDestination.memos,
+        destination: rootDestination,
         presentation: HomeScreenPresentation.standalone,
         navigationHost: overlayNavigationHost,
-      ),
-    };
+      );
+    }
+    return buildDrawerDestinationScreen(
+      context: context,
+      destination: destination,
+      presentation: HomeScreenPresentation.standalone,
+      navigationHost: overlayNavigationHost,
+    );
   }
 
   Future<void> _openNoteInput() {

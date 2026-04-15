@@ -9,6 +9,49 @@ import '../../state/memos/memos_providers.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../state/tags/tag_repository.dart';
 
+Future<bool> confirmAndDeleteTag({
+  required BuildContext context,
+  required WidgetRef ref,
+  required TagStat tag,
+  VoidCallback? onDeleted,
+}) async {
+  final tagId = tag.tagId ?? 0;
+  if (tagId <= 0) return false;
+
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(context.t.strings.legacy.msg_delete_tag_confirm),
+      content: Text(context.t.strings.legacy.msg_delete_tag_warning),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(context.t.strings.common.cancel),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(context.t.strings.common.confirm),
+        ),
+      ],
+    ),
+  );
+  if (ok != true) return false;
+
+  try {
+    await ref.read(tagRepositoryProvider).deleteTag(tagId);
+    onDeleted?.call();
+    return true;
+  } catch (e) {
+    if (!context.mounted) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
+      ),
+    );
+    return false;
+  }
+}
+
 class TagEditSheet extends ConsumerStatefulWidget {
   const TagEditSheet({super.key, this.tag});
 
@@ -246,7 +289,18 @@ class _TagEditSheetState extends ConsumerState<TagEditSheet> {
                 children: [
                   if (tag != null)
                     TextButton.icon(
-                      onPressed: _saving ? null : () => _confirmDelete(tag),
+                      onPressed: _saving
+                          ? null
+                          : () => confirmAndDeleteTag(
+                              context: context,
+                              ref: ref,
+                              tag: tag,
+                              onDeleted: () {
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                            ),
                       icon: const Icon(Icons.delete_outline),
                       label: Text(context.t.strings.legacy.msg_delete_tag),
                       style: TextButton.styleFrom(
@@ -349,37 +403,6 @@ class _TagEditSheetState extends ConsumerState<TagEditSheet> {
     }
   }
 
-  Future<void> _confirmDelete(TagStat tag) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t.strings.legacy.msg_delete_tag_confirm),
-        content: Text(context.t.strings.legacy.msg_delete_tag_warning),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(context.t.strings.common.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(context.t.strings.common.confirm),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await ref.read(tagRepositoryProvider).deleteTag(tag.tagId ?? 0);
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
-        ),
-      );
-    }
-  }
 }
 
 class _ColorSwatch extends StatelessWidget {

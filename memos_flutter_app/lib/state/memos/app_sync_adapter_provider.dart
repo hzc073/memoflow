@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
 import '../../data/models/workspace_preferences.dart';
+import '../settings/device_preferences_provider.dart';
 import '../system/database_provider.dart';
 import '../system/local_library_provider.dart';
 import '../settings/workspace_preferences_provider.dart';
@@ -19,6 +20,10 @@ class AppSyncAdapter {
 
   WorkspacePreferences readWorkspacePreferences() =>
       _ref.read(currentWorkspacePreferencesProvider);
+
+  bool areStartupPreferencesLoaded() =>
+      _ref.read(devicePreferencesLoadedProvider) &&
+      _ref.read(workspacePreferencesLoadedProvider);
 
   AppSessionState? readSession() => _ref.read(appSessionProvider).valueOrNull;
 

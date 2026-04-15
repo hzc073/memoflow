@@ -207,7 +207,6 @@ class _RouteDelegateHarness {
       read: _unusedRead,
       scaffoldKey: scaffoldKey,
       buildHomeScreen: ({toastMessage}) => const SizedBox(),
-      buildArchivedScreen: () => const SizedBox(),
       invalidateShortcuts: () {},
       submitDesktopQuickInput: (_) async {},
       scrollToTop: () async {},

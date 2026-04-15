@@ -15,6 +15,9 @@ abstract class WorkspaceWriteHost {
 }
 
 class SerializingWorkspaceWriteHost implements WorkspaceWriteHost {
+  static const int _debugQueueWaitLogThresholdMs = 200;
+  static const int _debugExecutionLogThresholdMs = 500;
+
   SerializingWorkspaceWriteHost({
     required SerializedWorkspaceWriteRunner runner,
     required DesktopDbChangeBroadcaster broadcaster,
@@ -55,21 +58,29 @@ class SerializingWorkspaceWriteHost implements WorkspaceWriteHost {
         ),
       );
       final decoded = decode(result);
-      LogManager.instance.info(
-        'Desktop DB write: completed',
-        context: <String, Object?>{
-          'requestId': envelope.requestId,
-          'workspaceKey': envelope.workspaceKey,
-          'dbName': envelope.dbName,
-          'originRole': envelope.originRole,
-          'originWindowId': envelope.originWindowId,
-          'commandType': envelope.commandType,
-          'operation': envelope.operation,
-          'queueWaitMs': queueWaitMs,
-          'executionMs': executionStopwatch.elapsedMilliseconds,
-          'totalMs': totalStopwatch.elapsedMilliseconds,
-        },
-      );
+      final executionMs = executionStopwatch.elapsedMilliseconds;
+      final totalMs = totalStopwatch.elapsedMilliseconds;
+      final shouldLogCompletedWrite =
+          !kDebugMode ||
+          queueWaitMs >= _debugQueueWaitLogThresholdMs ||
+          executionMs >= _debugExecutionLogThresholdMs;
+      if (shouldLogCompletedWrite) {
+        LogManager.instance.info(
+          'Desktop DB write: completed',
+          context: <String, Object?>{
+            'requestId': envelope.requestId,
+            'workspaceKey': envelope.workspaceKey,
+            'dbName': envelope.dbName,
+            'originRole': envelope.originRole,
+            'originWindowId': envelope.originWindowId,
+            'commandType': envelope.commandType,
+            'operation': envelope.operation,
+            'queueWaitMs': queueWaitMs,
+            'executionMs': executionMs,
+            'totalMs': totalMs,
+          },
+        );
+      }
       return decoded;
     } catch (error, stackTrace) {
       LogManager.instance.warn(

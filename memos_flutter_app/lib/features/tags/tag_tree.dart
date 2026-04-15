@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../core/memoflow_palette.dart';
-import '../../core/tag_badge.dart';
-import '../../core/tag_colors.dart';
-import '../../state/memos/memos_providers.dart';
 import '../../i18n/strings.g.dart';
+import '../../state/memos/memos_providers.dart';
 
 class TagTreeNode {
   TagTreeNode({
@@ -16,6 +13,7 @@ class TagTreeNode {
     this.pinned = false,
     this.colorHex,
     this.effectiveColorHex,
+    this.lastUsedTimeSec,
     List<TagTreeNode>? children,
   }) : children = children ?? [];
 
@@ -26,11 +24,42 @@ class TagTreeNode {
   final bool pinned;
   final String? colorHex;
   String? effectiveColorHex;
+  final int? lastUsedTimeSec;
   int count;
   final List<TagTreeNode> children;
+
+  TagTreeNode copyWithChildren(List<TagTreeNode> nextChildren) {
+    return TagTreeNode(
+      key: key,
+      path: path,
+      count: count,
+      tagId: tagId,
+      parentId: parentId,
+      pinned: pinned,
+      colorHex: colorHex,
+      effectiveColorHex: effectiveColorHex,
+      lastUsedTimeSec: lastUsedTimeSec,
+      children: nextChildren,
+    );
+  }
 }
 
-List<TagTreeNode> buildTagTree(List<TagStat> stats) {
+class TagTreeFilterResult {
+  const TagTreeFilterResult({
+    required this.nodes,
+    required this.autoExpandedPaths,
+  });
+
+  final List<TagTreeNode> nodes;
+  final Set<String> autoExpandedPaths;
+}
+
+enum TagTreeMenuAction { edit, delete }
+
+List<TagTreeNode> buildTagTree(
+  List<TagStat> stats, {
+  int Function(TagTreeNode a, TagTreeNode b)? comparator,
+}) {
   final cleaned = stats
       .where((s) => s.tag.trim().isNotEmpty)
       .toList(growable: false);
@@ -54,6 +83,7 @@ List<TagTreeNode> buildTagTree(List<TagStat> stats) {
           parentId: stat.parentId,
           pinned: stat.pinned,
           colorHex: stat.colorHex,
+          lastUsedTimeSec: stat.lastUsedTimeSec,
         );
     if (existing == null) {
       nodesByPath[path] = node;
@@ -84,18 +114,76 @@ List<TagTreeNode> buildTagTree(List<TagStat> stats) {
   }
 
   _applyInheritedColors(rootNodes, null);
-  _sortNodes(rootNodes);
+  _sortNodes(rootNodes, comparator);
   return rootNodes;
 }
 
-void _sortNodes(List<TagTreeNode> nodes) {
+TagTreeFilterResult filterTagTree(
+  List<TagTreeNode> nodes,
+  bool Function(TagTreeNode node) predicate,
+) {
+  final result = <TagTreeNode>[];
+  final autoExpandedPaths = <String>{};
+
+  TagTreeNode? visit(TagTreeNode node) {
+    final filteredChildren = <TagTreeNode>[];
+    for (final child in node.children) {
+      final filteredChild = visit(child);
+      if (filteredChild != null) {
+        filteredChildren.add(filteredChild);
+      }
+    }
+
+    final matches = predicate(node);
+    if (!matches && filteredChildren.isEmpty) {
+      return null;
+    }
+    if (filteredChildren.isNotEmpty) {
+      autoExpandedPaths.add(node.path);
+    }
+    return node.copyWithChildren(filteredChildren);
+  }
+
+  for (final node in nodes) {
+    final filteredNode = visit(node);
+    if (filteredNode != null) {
+      result.add(filteredNode);
+    }
+  }
+
+  return TagTreeFilterResult(
+    nodes: result,
+    autoExpandedPaths: autoExpandedPaths,
+  );
+}
+
+Set<String> collectAncestorTagPaths(String? path, {bool includeSelf = true}) {
+  final trimmed = path?.trim() ?? '';
+  if (trimmed.isEmpty) return const <String>{};
+  final segments = trimmed.split('/');
+  final result = <String>{};
+  final limit = includeSelf ? segments.length : segments.length - 1;
+  for (var i = 0; i < limit; i++) {
+    result.add(segments.take(i + 1).join('/'));
+  }
+  return result;
+}
+
+void _sortNodes(
+  List<TagTreeNode> nodes,
+  int Function(TagTreeNode a, TagTreeNode b)? comparator,
+) {
   nodes.sort((a, b) {
+    if (comparator != null) {
+      final result = comparator(a, b);
+      if (result != 0) return result;
+    }
     if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
     return a.key.compareTo(b.key);
   });
   for (final node in nodes) {
     if (node.children.isNotEmpty) {
-      _sortNodes(node.children);
+      _sortNodes(node.children, comparator);
     }
   }
 }
@@ -146,11 +234,14 @@ class TagTreeList extends StatelessWidget {
     required this.onSelect,
     required this.textMain,
     required this.textMuted,
-    this.showCount = false,
-    this.initiallyExpanded = true,
+    this.showCount = true,
     this.compact = false,
-    this.onEdit,
     this.selectedPath,
+    this.showSelectedLeadingCheck = false,
+    this.showMenu = false,
+    this.onMenuAction,
+    this.expandedPaths = const <String>{},
+    this.onToggleExpanded,
   });
 
   final List<TagTreeNode> nodes;
@@ -158,10 +249,13 @@ class TagTreeList extends StatelessWidget {
   final Color textMain;
   final Color textMuted;
   final bool showCount;
-  final bool initiallyExpanded;
   final bool compact;
-  final ValueChanged<TagTreeNode>? onEdit;
   final String? selectedPath;
+  final bool showSelectedLeadingCheck;
+  final bool showMenu;
+  final void Function(TagTreeNode node, TagTreeMenuAction action)? onMenuAction;
+  final Set<String> expandedPaths;
+  final ValueChanged<String>? onToggleExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +263,7 @@ class TagTreeList extends StatelessWidget {
       return const SizedBox.shrink();
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final node in nodes)
           _TagTreeItem(
@@ -178,17 +273,20 @@ class TagTreeList extends StatelessWidget {
             textMain: textMain,
             textMuted: textMuted,
             showCount: showCount,
-            initiallyExpanded: initiallyExpanded,
             compact: compact,
-            onEdit: onEdit,
             selectedPath: selectedPath,
+            showSelectedLeadingCheck: showSelectedLeadingCheck,
+            showMenu: showMenu,
+            onMenuAction: onMenuAction,
+            expandedPaths: expandedPaths,
+            onToggleExpanded: onToggleExpanded,
           ),
       ],
     );
   }
 }
 
-class _TagTreeItem extends StatefulWidget {
+class _TagTreeItem extends StatelessWidget {
   const _TagTreeItem({
     required this.node,
     required this.depth,
@@ -196,10 +294,13 @@ class _TagTreeItem extends StatefulWidget {
     required this.textMain,
     required this.textMuted,
     required this.showCount,
-    required this.initiallyExpanded,
     required this.compact,
-    required this.onEdit,
     required this.selectedPath,
+    required this.showSelectedLeadingCheck,
+    required this.showMenu,
+    required this.onMenuAction,
+    required this.expandedPaths,
+    required this.onToggleExpanded,
   });
 
   final TagTreeNode node;
@@ -208,101 +309,107 @@ class _TagTreeItem extends StatefulWidget {
   final Color textMain;
   final Color textMuted;
   final bool showCount;
-  final bool initiallyExpanded;
   final bool compact;
-  final ValueChanged<TagTreeNode>? onEdit;
   final String? selectedPath;
-
-  @override
-  State<_TagTreeItem> createState() => _TagTreeItemState();
-}
-
-class _TagTreeItemState extends State<_TagTreeItem> {
-  late bool _expanded;
-
-  @override
-  void initState() {
-    super.initState();
-    _expanded = widget.initiallyExpanded;
-  }
-
-  @override
-  void didUpdateWidget(covariant _TagTreeItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.node.path != widget.node.path) {
-      _expanded = widget.initiallyExpanded;
-    }
-  }
+  final bool showSelectedLeadingCheck;
+  final bool showMenu;
+  final void Function(TagTreeNode node, TagTreeMenuAction action)? onMenuAction;
+  final Set<String> expandedPaths;
+  final ValueChanged<String>? onToggleExpanded;
 
   @override
   Widget build(BuildContext context) {
-    final node = widget.node;
     final hasChildren = node.children.isNotEmpty;
-    final indent = widget.compact ? 10.0 : 14.0;
-    final vertical = widget.compact ? 8.0 : 10.0;
-    final iconSize = widget.compact ? 18.0 : 20.0;
-    final label = '#${node.key}';
-    final count = widget.showCount && node.count > 1 ? ' (${node.count})' : '';
-    final normalizedSelectedPath = widget.selectedPath?.trim();
+    final isExpanded = hasChildren && expandedPaths.contains(node.path);
+    final normalizedSelectedPath = selectedPath?.trim();
     final isSelected =
         normalizedSelectedPath != null &&
         normalizedSelectedPath.isNotEmpty &&
         normalizedSelectedPath == node.path;
-    final accent = MemoFlowPalette.primary;
-    final colors = node.effectiveColorHex == null
-        ? null
-        : buildTagChipColors(
-            baseColor: parseTagColor(node.effectiveColorHex!) ?? accent,
-            surfaceColor: Theme.of(context).colorScheme.surface,
-            isDark: Theme.of(context).brightness == Brightness.dark,
-          );
-
+    final indent = compact ? 12.0 : 16.0;
+    final leadingSize = compact ? 18.0 : 20.0;
+    final neutralColor = textMuted;
     final row = InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => widget.onSelect(node.path),
+      borderRadius: BorderRadius.circular(compact ? 10 : 12),
+      onTap: () => onSelect(node.path),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: vertical),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 4 : 6,
+          vertical: compact ? 6 : 8,
+        ),
         child: Row(
           children: [
-            Icon(Icons.tag, size: iconSize, color: widget.textMuted),
-            const SizedBox(width: 10),
-            Expanded(
+            SizedBox(
+              width: leadingSize,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: TagBadge(
-                  label: '$label$count',
-                  colors: colors,
-                  compact: widget.compact,
+                child: _LeadingMarker(
+                  compact: compact,
+                  isSelected: isSelected,
+                  showSelectedLeadingCheck: showSelectedLeadingCheck,
+                  color: neutralColor,
                 ),
               ),
             ),
-            if (node.pinned)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(Icons.push_pin, size: 16, color: widget.textMuted),
+            SizedBox(width: compact ? 8 : 10),
+            Expanded(
+              child: Text(
+                node.key,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 14 : 15,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                  color: textMain,
+                ),
               ),
+            ),
+            if (showCount) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${node.count}',
+                style: TextStyle(
+                  fontSize: compact ? 12 : 13,
+                  fontWeight: FontWeight.w700,
+                  color: neutralColor,
+                ),
+              ),
+            ],
             if (hasChildren)
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _expanded = !_expanded),
-                child: AnimatedRotation(
-                  turns: _expanded ? 0.25 : 0.0,
-                  duration: const Duration(milliseconds: 160),
-                  child: Icon(
-                    Icons.chevron_right,
-                    size: 18,
-                    color: widget.textMuted,
+                onTap: () => onToggleExpanded?.call(node.path),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: AnimatedRotation(
+                    turns: isExpanded ? 0.25 : 0.0,
+                    duration: const Duration(milliseconds: 160),
+                    child: Icon(
+                      Icons.chevron_right,
+                      size: compact ? 18 : 20,
+                      color: neutralColor,
+                    ),
                   ),
                 ),
               ),
-            if (node.tagId != null &&
-                widget.onEdit != null &&
-                (!widget.compact || isSelected))
-              IconButton(
-                onPressed: () => widget.onEdit?.call(node),
-                icon: Icon(Icons.edit, size: 18, color: widget.textMuted),
-                tooltip: context.t.strings.legacy.msg_edit_tag,
-                visualDensity: VisualDensity.compact,
+            if (showMenu && node.tagId != null && onMenuAction != null)
+              PopupMenuButton<TagTreeMenuAction>(
+                icon: Icon(
+                  Icons.more_horiz,
+                  size: compact ? 18 : 20,
+                  color: neutralColor,
+                ),
+                onSelected: (action) => onMenuAction?.call(node, action),
+                itemBuilder: (context) => [
+                  PopupMenuItem<TagTreeMenuAction>(
+                    value: TagTreeMenuAction.edit,
+                    child: Text(context.t.strings.legacy.msg_edit_tag),
+                  ),
+                  PopupMenuItem<TagTreeMenuAction>(
+                    value: TagTreeMenuAction.delete,
+                    child: Text(context.t.strings.legacy.msg_delete_tag),
+                  ),
+                ],
               ),
           ],
         ),
@@ -311,46 +418,84 @@ class _TagTreeItemState extends State<_TagTreeItem> {
 
     if (!hasChildren) {
       return Padding(
-        padding: EdgeInsets.only(left: widget.depth * indent),
+        padding: EdgeInsets.only(left: depth * indent),
         child: row,
       );
     }
 
     return Padding(
-      padding: EdgeInsets.only(left: widget.depth * indent),
+      padding: EdgeInsets.only(left: depth * indent),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           row,
-          if (_expanded)
+          if (isExpanded)
             Container(
               margin: EdgeInsets.only(left: indent),
               decoration: BoxDecoration(
                 border: Border(
                   left: BorderSide(
-                    color: accent.withValues(alpha: 0.2),
-                    width: 1.2,
+                    color: textMuted.withValues(alpha: 0.18),
+                    width: 1,
                   ),
                 ),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   for (final child in node.children)
                     _TagTreeItem(
                       node: child,
-                      depth: widget.depth + 1,
-                      onSelect: widget.onSelect,
-                      textMain: widget.textMain,
-                      textMuted: widget.textMuted,
-                      showCount: widget.showCount,
-                      initiallyExpanded: widget.initiallyExpanded,
-                      compact: widget.compact,
-                      onEdit: widget.onEdit,
-                      selectedPath: widget.selectedPath,
+                      depth: depth + 1,
+                      onSelect: onSelect,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      showCount: showCount,
+                      compact: compact,
+                      selectedPath: selectedPath,
+                      showSelectedLeadingCheck: showSelectedLeadingCheck,
+                      showMenu: showMenu,
+                      onMenuAction: onMenuAction,
+                      expandedPaths: expandedPaths,
+                      onToggleExpanded: onToggleExpanded,
                     ),
                 ],
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _LeadingMarker extends StatelessWidget {
+  const _LeadingMarker({
+    required this.compact,
+    required this.isSelected,
+    required this.showSelectedLeadingCheck,
+    required this.color,
+  });
+
+  final bool compact;
+  final bool isSelected;
+  final bool showSelectedLeadingCheck;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (showSelectedLeadingCheck && isSelected) {
+      return Icon(
+        Icons.check,
+        size: compact ? 16 : 18,
+        color: Theme.of(context).colorScheme.primary,
+      );
+    }
+    return Text(
+      '#',
+      style: TextStyle(
+        fontSize: compact ? 16 : 18,
+        fontWeight: FontWeight.w800,
+        color: color,
       ),
     );
   }

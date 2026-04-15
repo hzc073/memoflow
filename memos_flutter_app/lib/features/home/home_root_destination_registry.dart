@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/home_navigation_preferences.dart';
 import '../../i18n/strings.g.dart';
+import '../collections/collections_screen.dart';
 import '../explore/explore_screen.dart';
 import '../home/app_drawer.dart';
 import '../memos/memos_list_screen.dart';
@@ -39,6 +40,12 @@ const List<HomeRootDestinationDefinition> kHomeRootDestinationDefinitions = [
     drawerDestination: AppDrawerDestination.memos,
     icon: Icons.notes_rounded,
     labelBuilder: _allMemosLabel,
+  ),
+  HomeRootDestinationDefinition(
+    destination: HomeRootDestination.collections,
+    drawerDestination: AppDrawerDestination.collections,
+    icon: Icons.auto_stories_rounded,
+    labelBuilder: _collectionsLabel,
   ),
   HomeRootDestinationDefinition(
     destination: HomeRootDestination.explore,
@@ -136,6 +143,8 @@ Widget buildHomeRootScreen({
         hidePrimaryComposeFab:
             presentation == HomeScreenPresentation.embeddedBottomNav,
       );
+    case HomeRootDestination.collections:
+      return CollectionsScreen(embeddedNavigationHost: navigationHost);
     case HomeRootDestination.explore:
       return ExploreScreen(
         presentation: presentation,
@@ -178,6 +187,9 @@ Widget buildHomeRootScreen({
 
 String _allMemosLabel(BuildContext context) =>
     context.t.strings.legacy.msg_memos;
+
+String _collectionsLabel(BuildContext context) =>
+    context.t.strings.collections.drawerLabel;
 
 String _exploreLabel(BuildContext context) =>
     context.t.strings.legacy.msg_explore;

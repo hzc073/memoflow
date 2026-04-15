@@ -52,6 +52,7 @@ class MemoMediaGrid extends StatelessWidget {
     required this.textColor,
     this.onReplace,
     this.enableDownload = true,
+    this.enablePreviewOnTap = true,
   });
 
   final List<MemoMediaEntry> entries;
@@ -66,6 +67,7 @@ class MemoMediaGrid extends StatelessWidget {
   final Color textColor;
   final Future<void> Function(EditedImageResult result)? onReplace;
   final bool enableDownload;
+  final bool enablePreviewOnTap;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +86,7 @@ class MemoMediaGrid extends StatelessWidget {
         .toList(growable: false);
 
     void openGallery(int mediaIndex) {
+      if (!enablePreviewOnTap) return;
       if (galleryItems.isEmpty) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -99,6 +102,7 @@ class MemoMediaGrid extends StatelessWidget {
     }
 
     void openVideo(MemoVideoEntry entry) {
+      if (!enablePreviewOnTap) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => AttachmentVideoScreen(

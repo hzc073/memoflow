@@ -3,6 +3,7 @@ enum HomeNavigationMode { classic, bottomBar }
 enum HomeRootDestination {
   none,
   memos,
+  collections,
   explore,
   dailyReview,
   settings,

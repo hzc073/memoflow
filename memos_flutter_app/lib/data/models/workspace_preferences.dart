@@ -17,6 +17,7 @@ class WorkspacePreferences {
     showDrawerExplore: true,
     showDrawerDailyReview: true,
     showDrawerAiSummary: true,
+    showDrawerCollections: true,
     showDrawerResources: true,
     showDrawerArchive: true,
     homeQuickActionPrimary: HomeQuickAction.monthlyStats,
@@ -38,6 +39,7 @@ class WorkspacePreferences {
     required this.showDrawerExplore,
     required this.showDrawerDailyReview,
     required this.showDrawerAiSummary,
+    required this.showDrawerCollections,
     required this.showDrawerResources,
     required this.showDrawerArchive,
     required this.homeQuickActionPrimary,
@@ -58,6 +60,7 @@ class WorkspacePreferences {
   final bool showDrawerExplore;
   final bool showDrawerDailyReview;
   final bool showDrawerAiSummary;
+  final bool showDrawerCollections;
   final bool showDrawerResources;
   final bool showDrawerArchive;
   final HomeQuickAction homeQuickActionPrimary;
@@ -78,6 +81,7 @@ class WorkspacePreferences {
     'showDrawerExplore': showDrawerExplore,
     'showDrawerDailyReview': showDrawerDailyReview,
     'showDrawerAiSummary': showDrawerAiSummary,
+    'showDrawerCollections': showDrawerCollections,
     'showDrawerResources': showDrawerResources,
     'showDrawerArchive': showDrawerArchive,
     'homeQuickActionPrimary': homeQuickActionPrimary.name,
@@ -100,6 +104,7 @@ class WorkspacePreferences {
       'showDrawerExplore': json['showDrawerExplore'],
       'showDrawerDailyReview': json['showDrawerDailyReview'],
       'showDrawerAiSummary': json['showDrawerAiSummary'],
+      'showDrawerCollections': json['showDrawerCollections'],
       'showDrawerResources': json['showDrawerResources'],
       'showDrawerArchive': json['showDrawerArchive'],
       'homeQuickActionPrimary': json['homeQuickActionPrimary'],
@@ -152,6 +157,8 @@ class WorkspacePreferences {
       showDrawerExplore: legacy.showDrawerExplore,
       showDrawerDailyReview: legacy.showDrawerDailyReview,
       showDrawerAiSummary: legacy.showDrawerAiSummary,
+      showDrawerCollections:
+          WorkspacePreferences.defaults.showDrawerCollections,
       showDrawerResources: legacy.showDrawerResources,
       showDrawerArchive: legacy.showDrawerArchive,
       homeQuickActionPrimary: legacy.homeQuickActionPrimary,
@@ -193,14 +200,12 @@ class WorkspacePreferences {
       homeQuickActionTertiary: homeQuickActionTertiary,
       aiSummaryAllowPrivateMemos: aiSummaryAllowPrivateMemos,
       memoToolbarPreferences: memoToolbarPreferences,
-      accountThemeColors:
-          hasKey && themeColorOverride != null
-              ? {normalizedKey: themeColorOverride!}
-              : const {},
-      accountCustomThemes:
-          hasKey && customThemeOverride != null
-              ? {normalizedKey: customThemeOverride!}
-              : const {},
+      accountThemeColors: hasKey && themeColorOverride != null
+          ? {normalizedKey: themeColorOverride!}
+          : const {},
+      accountCustomThemes: hasKey && customThemeOverride != null
+          ? {normalizedKey: customThemeOverride!}
+          : const {},
     );
   }
 
@@ -213,6 +218,7 @@ class WorkspacePreferences {
     bool? showDrawerExplore,
     bool? showDrawerDailyReview,
     bool? showDrawerAiSummary,
+    bool? showDrawerCollections,
     bool? showDrawerResources,
     bool? showDrawerArchive,
     HomeQuickAction? homeQuickActionPrimary,
@@ -228,8 +234,7 @@ class WorkspacePreferences {
       collapseLongContent: collapseLongContent ?? this.collapseLongContent,
       collapseReferences: collapseReferences ?? this.collapseReferences,
       showEngagementInAllMemoDetails:
-          showEngagementInAllMemoDetails ??
-          this.showEngagementInAllMemoDetails,
+          showEngagementInAllMemoDetails ?? this.showEngagementInAllMemoDetails,
       autoSyncOnStartAndResume:
           autoSyncOnStartAndResume ?? this.autoSyncOnStartAndResume,
       defaultUseLegacyApi: defaultUseLegacyApi ?? this.defaultUseLegacyApi,
@@ -237,6 +242,8 @@ class WorkspacePreferences {
       showDrawerDailyReview:
           showDrawerDailyReview ?? this.showDrawerDailyReview,
       showDrawerAiSummary: showDrawerAiSummary ?? this.showDrawerAiSummary,
+      showDrawerCollections:
+          showDrawerCollections ?? this.showDrawerCollections,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
       showDrawerArchive: showDrawerArchive ?? this.showDrawerArchive,
       homeQuickActionPrimary:

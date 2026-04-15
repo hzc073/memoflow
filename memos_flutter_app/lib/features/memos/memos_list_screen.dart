@@ -49,6 +49,8 @@ import '../../state/system/database_provider.dart';
 import '../../state/system/debug_screenshot_mode_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/system/local_library_scanner.dart';
+import '../collections/add_to_collection_sheet.dart';
+import '../collections/collections_screen.dart';
 import '../../state/system/logging_provider.dart';
 import '../../state/system/scene_micro_guide_provider.dart';
 import '../../state/system/session_provider.dart';
@@ -93,6 +95,17 @@ import 'widgets/memos_list_screen_body.dart';
 import 'widgets/memos_list_search_header.dart';
 import 'widgets/memos_list_search_widgets.dart';
 import '../../i18n/strings.g.dart';
+
+Object _memoListHeroTag({
+  required String scope,
+  required LocalMemo memo,
+  required int index,
+}) {
+  final uid = memo.uid.trim();
+  final fallback = memo.contentFingerprint.trim();
+  final identity = uid.isNotEmpty ? uid : fallback;
+  return 'memo-list:$scope:$index:$identity';
+}
 
 class MemosListScreen extends ConsumerStatefulWidget {
   const MemosListScreen({
@@ -525,7 +538,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       read: ref.read,
       scaffoldKey: _scaffoldKey,
       buildHomeScreen: _buildHomeScreen,
-      buildArchivedScreen: _buildArchivedScreen,
       invalidateShortcuts: () => ref.invalidate(shortcutsProvider),
       submitDesktopQuickInput: _submitDesktopQuickInput,
       scrollToTop: _handleScrollToTop,
@@ -560,6 +572,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       openEditor: _openMemoEditor,
       openHistory: _openMemoHistory,
       openReminder: _openMemoReminder,
+      openAddToCollection: (memo) async {
+        await showAddMemoToCollectionSheet(
+          context: context,
+          ref: ref,
+          memo: memo,
+        );
+      },
       handleRestoreSuccess: (toastMessage) async {
         if (!mounted) return;
         final embeddedNavigationHost = widget.embeddedNavigationHost;
@@ -960,6 +979,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           return;
         case HomeQuickAction.monthlyStats:
           break;
+        case HomeQuickAction.collections:
+          embeddedNavigationHost.handleDrawerDestination(
+            context,
+            AppDrawerDestination.collections,
+          );
+          return;
         case HomeQuickAction.aiSummary:
           embeddedNavigationHost.handleDrawerDestination(
             context,
@@ -999,6 +1024,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final Widget? route = switch (action) {
       HomeQuickAction.none => null,
       HomeQuickAction.monthlyStats => const StatsScreen(),
+      HomeQuickAction.collections => const CollectionsScreen(),
       HomeQuickAction.aiSummary => const AiSummaryScreen(),
       HomeQuickAction.dailyReview => const DailyReviewScreen(),
       HomeQuickAction.explore => const ExploreScreen(),
@@ -1876,6 +1902,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           debugLabel: 'removing-${memo.uid}',
         ),
         memo: memo,
+        heroTag: null,
         animation: animation,
         prefs: prefs,
         outboxStatus: outboxStatus,
@@ -2029,9 +2056,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final inlineVisibility = _inlineComposeCoordinator.currentVisibility();
     final inlineVisibilityPresentation = _inlineComposeUiController
         .resolveInlineVisibilityPresentation(context, inlineVisibility);
-    final tagPresentationSignature = buildMemosListTagPresentationSignature(
-      tagStats,
-    );
     final memosValue = memosAsync.valueOrNull;
     final memosLoading = memosAsync.isLoading;
     final memosError = memosAsync.whenOrNull(error: (error, _) => error);
@@ -2102,7 +2126,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
           '${useShortcutFilter ? 1 : 0}|${selectedQuickSearchKind?.name ?? ''}|'
           '${useQuickSearch ? 1 : 0}|${queryState.startTimeSec ?? ''}|${queryState.endTimeSecExclusive ?? ''}|'
-          '${queryState.enableHomeSort ? _sortOption.name : 'default'}|$tagPresentationSignature|'
+          '${queryState.enableHomeSort ? _sortOption.name : 'default'}|'
           '${queryState.advancedFilters.signature}';
       _animatedListController.syncAnimatedMemos(
         sortedMemos,
@@ -2688,9 +2712,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         },
         animatedItemBuilder: (context, index, animation) {
           final memo = visibleMemos[index];
+          final heroTag = _memoListHeroTag(
+            scope: 'visible',
+            memo: memo,
+            index: index,
+          );
           return MemosListAnimatedMemoItem(
             memoCardKey: _animatedListController.keyFor(memo.uid),
             memo: memo,
+            heroTag: heroTag,
             animation: animation,
             prefs: prefs,
             outboxStatus: outboxStatus,
@@ -2726,7 +2756,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               }
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => MemoDetailScreen(initialMemo: memo),
+                  builder: (_) =>
+                      MemoDetailScreen(initialMemo: memo, heroTag: heroTag),
                 ),
               );
             },

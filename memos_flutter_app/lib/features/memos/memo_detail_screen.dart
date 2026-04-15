@@ -1,16 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
-import '../../core/location_launcher.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/pointer_double_tap_listener.dart';
 import '../../core/sync_error_presenter.dart';
@@ -31,18 +28,18 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../state/system/session_provider.dart';
-import '../../state/settings/location_settings_provider.dart';
 import '../share/share_inline_image_content.dart';
+import '../collections/add_to_collection_sheet.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
 import 'memo_image_grid.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
-import 'memo_location_line.dart';
 import 'memo_hero_flight.dart';
 import 'memo_versions_screen.dart';
 import 'memos_list_screen.dart';
 import 'memo_video_grid.dart';
+import 'widgets/memo_reader_content.dart';
 import '../../i18n/strings.g.dart';
 
 String memoDetailMarkdownCacheKey(
@@ -75,18 +72,19 @@ class MemoDetailScreen extends ConsumerStatefulWidget {
     required this.initialMemo,
     this.readOnly = false,
     this.showEngagement = false,
+    this.heroTag,
   });
 
   final LocalMemo initialMemo;
   final bool readOnly;
   final bool showEngagement;
+  final Object? heroTag;
 
   @override
   ConsumerState<MemoDetailScreen> createState() => _MemoDetailScreenState();
 }
 
 class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
-  final _dateFmt = DateFormat('yyyy-MM-dd HH:mm');
   final _player = AudioPlayer();
   final _scrollController = ScrollController();
 
@@ -97,6 +95,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   _MemoDetailDeferredContent? _deferredContent;
   String? _preparedDeferredContentKey;
   String? _pendingDeferredContentKey;
+
+  Object get _heroTag =>
+      widget.heroTag ?? (_memo?.uid ?? widget.initialMemo.uid);
 
   @override
   void initState() {
@@ -673,15 +674,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         !imageEntries.any((entry) => !entry.isAttachment);
     final nonImageAttachments =
         deferredContent?.nonImageAttachments ?? const <Attachment>[];
-    final borderColor = isDark
-        ? MemoFlowPalette.borderDark
-        : MemoFlowPalette.borderLight;
-    final imageBg = isDark
-        ? MemoFlowPalette.audioSurfaceDark.withValues(alpha: 0.6)
-        : MemoFlowPalette.audioSurfaceLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
     final canToggleTasks = !widget.readOnly && !isArchived;
     final tagColors = ref.watch(tagColorLookupProvider);
@@ -703,10 +695,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           ? (request) {
               maybeHaptic();
               unawaited(
-                _toggleTask(
-                  request,
-                  skipReferenceLines: collapseReferences,
-                ),
+                _toggleTask(request, skipReferenceLines: collapseReferences),
               );
             }
           : null,
@@ -719,9 +708,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             language: context.appLanguage,
             raw: memo.lastError!.trim(),
           );
-    final displayTime = memo.effectiveDisplayTime.millisecondsSinceEpoch > 0
-        ? memo.effectiveDisplayTime
-        : memo.updateTime;
     final header = PointerDoubleTapListener(
       key: const ValueKey('memo-detail-edit-hit-area'),
       behavior: HitTestBehavior.translucent,
@@ -729,46 +715,22 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _dateFmt.format(displayTime),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          MemoReaderContent(
+            memo: memo,
+            padding: EdgeInsets.zero,
+            contentTextStyle: contentStyle,
+            metaTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
+            mediaMaxHeightFactor: 0.4,
+            mediaMaxCount: 9,
+            contentOverride: contentWidget,
+            mediaEntriesOverride: mediaEntries,
+            nonMediaAttachmentsOverride: nonImageAttachments,
+            showAttachmentsSection: false,
+            onReplaceAttachment: allowImageEdit ? _replaceMemoAttachment : null,
           ),
-          if (memo.location != null) ...[
-            const SizedBox(height: 6),
-            MemoLocationLine(
-              location: memo.location!,
-              textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-              onTap: () => openMemoLocation(
-                context,
-                memo.location!,
-                memoUid: memo.uid,
-                provider: ref.read(locationSettingsProvider).provider,
-              ),
-              fontSize: 12,
-            ),
-          ],
-          const SizedBox(height: 8),
-          contentWidget,
-          const SizedBox(height: 12),
-          if (mediaEntries.isNotEmpty) ...[
-            MemoMediaGrid(
-              entries: mediaEntries,
-              columns: 3,
-              maxCount: 9,
-              maxHeight: MediaQuery.of(context).size.height * 0.4,
-              preserveSquareTilesWhenHeightLimited: Platform.isWindows,
-              borderColor: borderColor.withValues(alpha: 0.65),
-              backgroundColor: imageBg,
-              textColor: textMain,
-              radius: 12,
-              spacing: 8,
-              onReplace: allowImageEdit ? _replaceMemoAttachment : null,
-              enableDownload: true,
-            ),
-            const SizedBox(height: 12),
-          ],
+          if (mediaEntries.isNotEmpty) const SizedBox(height: 12),
           if (memoErrorText != null && memoErrorText.trim().isNotEmpty) ...[
             const SizedBox(height: 12),
             Container(
@@ -888,6 +850,21 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
                       memo.pinned ? Icons.push_pin : Icons.push_pin_outlined,
                     ),
                   ),
+                if (!isArchived)
+                  IconButton(
+                    tooltip: context.t.strings.collections.addToCollection,
+                    onPressed: () {
+                      maybeHaptic();
+                      unawaited(
+                        showAddMemoToCollectionSheet(
+                          context: context,
+                          ref: ref,
+                          memo: memo,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.library_add_rounded),
+                  ),
                 IconButton(
                   tooltip: isArchived
                       ? context.t.strings.legacy.msg_restore
@@ -912,7 +889,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         children: [
           Positioned.fill(
             child: Hero(
-              tag: memo.uid,
+              tag: _heroTag,
               createRectTween: (begin, end) =>
                   MaterialRectArcTween(begin: begin, end: end),
               flightShuttleBuilder: memoHeroFlightShuttleBuilder(

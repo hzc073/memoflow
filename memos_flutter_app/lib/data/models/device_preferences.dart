@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../core/desktop/shortcuts.dart';
 import '../../core/theme_colors.dart';
 import 'app_preferences.dart';
+import 'collection_reader.dart';
 
 class HomeInlineComposePanelLayoutPreference {
   const HomeInlineComposePanelLayoutPreference({
@@ -83,6 +84,7 @@ class DevicePreferences {
     lastSeenAnnouncementId: 0,
     lastSeenNoticeHash: '',
     homeInlineComposePanelLayout: null,
+    collectionReaderPreferences: CollectionReaderPreferences.defaults,
   );
 
   static DevicePreferences defaultsForLanguage(AppLanguage language) {
@@ -121,6 +123,7 @@ class DevicePreferences {
     required this.lastSeenAnnouncementId,
     required this.lastSeenNoticeHash,
     required this.homeInlineComposePanelLayout,
+    required this.collectionReaderPreferences,
   });
 
   final AppLanguage language;
@@ -151,6 +154,10 @@ class DevicePreferences {
   final int lastSeenAnnouncementId;
   final String lastSeenNoticeHash;
   final HomeInlineComposePanelLayoutPreference? homeInlineComposePanelLayout;
+  final CollectionReaderPreferences collectionReaderPreferences;
+
+  CollectionReaderMode get collectionReaderMode =>
+      collectionReaderPreferences.mode;
 
   Map<String, dynamic> toJson() => {
     'language': language.name,
@@ -183,6 +190,8 @@ class DevicePreferences {
     'lastSeenAnnouncementId': lastSeenAnnouncementId,
     'lastSeenNoticeHash': lastSeenNoticeHash,
     'homeInlineComposePanelLayout': homeInlineComposePanelLayout?.toJson(),
+    'collectionReaderPreferences': collectionReaderPreferences.toJson(),
+    'collectionReaderMode': collectionReaderPreferences.mode.name,
   };
 
   factory DevicePreferences.fromJson(Map<String, dynamic> json) {
@@ -215,15 +224,28 @@ class DevicePreferences {
       'lastSeenNoticeHash': json['lastSeenNoticeHash'],
     });
     final layoutRaw = json['homeInlineComposePanelLayout'];
-    return DevicePreferences.fromLegacy(
-      legacy,
-    ).copyWith(
-      homeInlineComposePanelLayout:
-          layoutRaw is Map
-              ? HomeInlineComposePanelLayoutPreference.tryFromJson(
-                  layoutRaw.cast<String, dynamic>(),
-                )
-              : null,
+    final readerPreferencesRaw = json['collectionReaderPreferences'];
+    final readerModeRaw = json['collectionReaderMode'];
+    return DevicePreferences.fromLegacy(legacy).copyWith(
+      homeInlineComposePanelLayout: layoutRaw is Map
+          ? HomeInlineComposePanelLayoutPreference.tryFromJson(
+              layoutRaw.cast<String, dynamic>(),
+            )
+          : null,
+      collectionReaderPreferences: () {
+        if (readerPreferencesRaw is Map) {
+          return CollectionReaderPreferences.fromJson(
+            readerPreferencesRaw.cast<String, dynamic>(),
+          );
+        }
+        final rawName = (readerModeRaw as String? ?? '').trim();
+        for (final mode in CollectionReaderMode.values) {
+          if (mode.name == rawName) {
+            return CollectionReaderPreferences.defaults.copyWith(mode: mode);
+          }
+        }
+        return DevicePreferences.defaults.collectionReaderPreferences;
+      }(),
     );
   }
 
@@ -256,6 +278,8 @@ class DevicePreferences {
       lastSeenAnnouncementId: legacy.lastSeenAnnouncementId,
       lastSeenNoticeHash: legacy.lastSeenNoticeHash,
       homeInlineComposePanelLayout: null,
+      collectionReaderPreferences:
+          DevicePreferences.defaults.collectionReaderPreferences,
     );
   }
 
@@ -318,6 +342,8 @@ class DevicePreferences {
     int? lastSeenAnnouncementId,
     String? lastSeenNoticeHash,
     Object? homeInlineComposePanelLayout = _unset,
+    CollectionReaderPreferences? collectionReaderPreferences,
+    CollectionReaderMode? collectionReaderMode,
   }) {
     return DevicePreferences(
       language: language ?? this.language,
@@ -362,9 +388,16 @@ class DevicePreferences {
       lastSeenNoticeHash: lastSeenNoticeHash ?? this.lastSeenNoticeHash,
       homeInlineComposePanelLayout:
           identical(homeInlineComposePanelLayout, _unset)
-              ? this.homeInlineComposePanelLayout
-              : homeInlineComposePanelLayout
-                    as HomeInlineComposePanelLayoutPreference?,
+          ? this.homeInlineComposePanelLayout
+          : homeInlineComposePanelLayout
+                as HomeInlineComposePanelLayoutPreference?,
+      collectionReaderPreferences:
+          collectionReaderPreferences ??
+          (collectionReaderMode == null
+              ? this.collectionReaderPreferences
+              : this.collectionReaderPreferences.copyWith(
+                  mode: collectionReaderMode,
+                )),
     );
   }
 

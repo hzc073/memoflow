@@ -97,6 +97,22 @@ List<MemoImageEntry> collectMemoImageEntries({
   return entries;
 }
 
+MemoImageEntry? memoImageEntryFromAttachment(
+  Attachment attachment,
+  Uri? baseUrl,
+  String? authHeader, {
+  bool rebaseAbsoluteFileUrlForV024 = false,
+  bool attachAuthForSameOriginAbsolute = false,
+}) {
+  return _entryFromAttachment(
+    attachment,
+    baseUrl,
+    authHeader,
+    rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+    attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+  );
+}
+
 MemoImageEntry? _entryFromContentUrl({
   required String rawUrl,
   required int index,

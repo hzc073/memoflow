@@ -203,7 +203,7 @@ Future<PickedLocalAttachment?> captureCameraAttachment({
   return buildPickedLocalAttachment(
     filePath: path,
     filename: filename,
-    size: await file.length(),
+    size: file.lengthSync(),
     source: PickedLocalAttachmentSource.camera,
   );
 }

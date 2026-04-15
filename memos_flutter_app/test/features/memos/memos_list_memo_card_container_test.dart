@@ -182,6 +182,17 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  testWidgets('uses explicit hero tag when provided', (tester) async {
+    final memo = _buildMemo();
+    const heroTag = 'memo-list:visible:0:memo-1';
+
+    await tester.pumpWidget(_buildHarness(memo: memo, heroTag: heroTag));
+    await tester.pumpAndSettle();
+
+    final hero = tester.widget<Hero>(find.byType(Hero));
+    expect(hero.tag, heroTag);
+  });
 }
 
 Widget _buildHarness({
@@ -191,6 +202,7 @@ Widget _buildHarness({
   ReminderSettings? reminderSettings,
   String? playingMemoUid,
   bool removing = false,
+  Object? heroTag,
   VoidCallback? onTap,
   ValueChanged<MemoCardAction>? onAction,
   ValueChanged<int>? onToggleTask,
@@ -228,6 +240,7 @@ Widget _buildHarness({
               child: MemosListMemoCardContainer(
                 memoCardKey: GlobalKey<MemoListCardState>(),
                 memo: memo,
+                heroTag: removing ? null : (heroTag ?? memo.uid),
                 prefs: prefs,
                 outboxStatus: outboxStatus,
                 tagColors: TagColorLookup(const []),

@@ -6,6 +6,7 @@ import '../../i18n/strings.g.dart';
 
 const List<HomeQuickAction> kHomeQuickActionCandidateOrder = [
   HomeQuickAction.none,
+  HomeQuickAction.collections,
   HomeQuickAction.explore,
   HomeQuickAction.dailyReview,
   HomeQuickAction.aiSummary,
@@ -23,6 +24,7 @@ const List<HomeQuickAction> kHomeQuickActionSlotDefaults = [
 
 const List<HomeQuickAction> kHomeQuickActionFillOrder = [
   HomeQuickAction.monthlyStats,
+  HomeQuickAction.collections,
   HomeQuickAction.aiSummary,
   HomeQuickAction.dailyReview,
   HomeQuickAction.explore,
@@ -55,6 +57,7 @@ bool isHomeQuickActionAvailable(
     HomeQuickAction.none => true,
     HomeQuickAction.explore || HomeQuickAction.notifications => hasAccount,
     HomeQuickAction.monthlyStats ||
+    HomeQuickAction.collections ||
     HomeQuickAction.aiSummary ||
     HomeQuickAction.dailyReview ||
     HomeQuickAction.resources ||
@@ -127,6 +130,7 @@ String homeQuickActionLabel(BuildContext context, HomeQuickAction action) {
   return switch (action) {
     HomeQuickAction.none => context.t.strings.legacy.msg_none,
     HomeQuickAction.monthlyStats => context.t.strings.legacy.msg_monthly_stats,
+    HomeQuickAction.collections => context.t.strings.collections.drawerLabel,
     HomeQuickAction.aiSummary => context.t.strings.legacy.msg_ai_summary,
     HomeQuickAction.dailyReview => context.t.strings.legacy.msg_random_review,
     HomeQuickAction.explore => context.t.strings.legacy.msg_explore,
@@ -140,6 +144,7 @@ IconData homeQuickActionIcon(HomeQuickAction action) {
   return switch (action) {
     HomeQuickAction.none => Icons.visibility_off_outlined,
     HomeQuickAction.monthlyStats => Icons.insights,
+    HomeQuickAction.collections => Icons.auto_stories_rounded,
     HomeQuickAction.aiSummary => Icons.auto_awesome,
     HomeQuickAction.dailyReview => Icons.explore,
     HomeQuickAction.explore => Icons.public,
@@ -155,6 +160,8 @@ Color homeQuickActionIconColor(HomeQuickAction action, {required bool isDark}) {
       isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
     HomeQuickAction.monthlyStats =>
       isDark ? const Color(0xFFFF8A7A) : const Color(0xFFCC5C4C),
+    HomeQuickAction.collections =>
+      isDark ? const Color(0xFF8EC5FF) : const Color(0xFF2563EB),
     HomeQuickAction.aiSummary =>
       isDark ? MemoFlowPalette.aiChipBlueDark : MemoFlowPalette.aiChipBlueLight,
     HomeQuickAction.dailyReview =>

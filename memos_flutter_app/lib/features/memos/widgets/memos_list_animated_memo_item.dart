@@ -41,6 +41,7 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
     super.key,
     required this.memoCardKey,
     required this.memo,
+    required this.heroTag,
     required this.animation,
     required this.prefs,
     required this.outboxStatus,
@@ -68,6 +69,7 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
 
   final GlobalKey<MemoListCardState> memoCardKey;
   final LocalMemo memo;
+  final Object? heroTag;
   final Animation<double> animation;
   final AppPreferences prefs;
   final OutboxMemoStatus outboxStatus;
@@ -111,6 +113,7 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
     Widget memoCard = MemosListMemoCardContainer(
       memoCardKey: memoCardKey,
       memo: memo,
+      heroTag: heroTag,
       prefs: prefs,
       outboxStatus: outboxStatus,
       tagColors: tagColors,

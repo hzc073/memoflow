@@ -35,23 +35,29 @@ final workspacePreferencesRepositoryProvider =
 
 final workspacePreferencesLoadedProvider = StateProvider<bool>((ref) => false);
 
-final currentWorkspacePreferencesProvider = StateNotifierProvider<
-  WorkspacePreferencesController,
-  WorkspacePreferences
->((ref) {
-  final loadedState = ref.read(workspacePreferencesLoadedProvider.notifier);
-  Future.microtask(() => loadedState.state = false);
-  return WorkspacePreferencesController(
-    ref,
-    ref.watch(workspacePreferencesRepositoryProvider),
-    onLoaded: () => loadedState.state = true,
-  );
-});
+final currentWorkspacePreferencesProvider =
+    StateNotifierProvider<WorkspacePreferencesController, WorkspacePreferences>(
+      (ref) {
+        final loadedState = ref.read(
+          workspacePreferencesLoadedProvider.notifier,
+        );
+        Future.microtask(() => loadedState.state = false);
+        return WorkspacePreferencesController(
+          ref,
+          ref.watch(workspacePreferencesRepositoryProvider),
+          onLoaded: () => loadedState.state = true,
+        );
+      },
+    );
 
-class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences> {
-  WorkspacePreferencesController(this._ref, this._repo, {void Function()? onLoaded})
-    : _onLoaded = onLoaded,
-      super(WorkspacePreferences.defaults) {
+class WorkspacePreferencesController
+    extends StateNotifier<WorkspacePreferences> {
+  WorkspacePreferencesController(
+    this._ref,
+    this._repo, {
+    void Function()? onLoaded,
+  }) : _onLoaded = onLoaded,
+       super(WorkspacePreferences.defaults) {
     unawaited(_loadFromStorage());
   }
 
@@ -95,12 +101,13 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
       );
       if (!mounted) return;
       if (!identical(state, stateBeforeLoad)) return;
-      _ref.read(workspacePreferencesStorageErrorProvider.notifier).state =
-          StorageLoadError(
-            source: 'workspace_preferences',
-            error: error,
-            stackTrace: stackTrace,
-          );
+      _ref
+          .read(workspacePreferencesStorageErrorProvider.notifier)
+          .state = StorageLoadError(
+        source: 'workspace_preferences',
+        error: error,
+        stackTrace: stackTrace,
+      );
       return;
     } finally {
       if (mounted) {
@@ -110,7 +117,9 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
   }
 
   void _setAndPersist(WorkspacePreferences next, {bool triggerSync = true}) {
-    final effective = _repo.hasWorkspaceKey ? next : WorkspacePreferences.defaults;
+    final effective = _repo.hasWorkspaceKey
+        ? next
+        : WorkspacePreferences.defaults;
     state = effective;
     _writeChain = _writeChain.then((_) async {
       try {
@@ -148,9 +157,8 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
       _setAndPersist(state.copyWith(collapseLongContent: value));
   void setCollapseReferences(bool value) =>
       _setAndPersist(state.copyWith(collapseReferences: value));
-  void setShowEngagementInAllMemoDetails(bool value) => _setAndPersist(
-    state.copyWith(showEngagementInAllMemoDetails: value),
-  );
+  void setShowEngagementInAllMemoDetails(bool value) =>
+      _setAndPersist(state.copyWith(showEngagementInAllMemoDetails: value));
   void setAutoSyncOnStartAndResume(bool value) =>
       _setAndPersist(state.copyWith(autoSyncOnStartAndResume: value));
   void setDefaultUseLegacyApi(bool value) =>
@@ -161,6 +169,8 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
       _setAndPersist(state.copyWith(showDrawerDailyReview: value));
   void setShowDrawerAiSummary(bool value) =>
       _setAndPersist(state.copyWith(showDrawerAiSummary: value));
+  void setShowDrawerCollections(bool value) =>
+      _setAndPersist(state.copyWith(showDrawerCollections: value));
   void setShowDrawerResources(bool value) =>
       _setAndPersist(state.copyWith(showDrawerResources: value));
   void setShowDrawerArchive(bool value) =>
@@ -181,8 +191,8 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
 
   void setHomeNavigationMode(HomeNavigationMode mode) {
     final current = state.homeNavigationPreferences;
-    final hasAccount = _ref.read(appSessionProvider).valueOrNull?.currentAccount !=
-        null;
+    final hasAccount =
+        _ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     _setAndPersist(
       state.copyWith(
         homeNavigationPreferences: sanitizeHomeNavigationPreferences(
@@ -199,8 +209,8 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
     required HomeRootDestination rightPrimary,
     required HomeRootDestination rightSecondary,
   }) {
-    final hasAccount = _ref.read(appSessionProvider).valueOrNull?.currentAccount !=
-        null;
+    final hasAccount =
+        _ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     _setAndPersist(
       state.copyWith(
         homeNavigationPreferences: sanitizeHomeNavigationPreferences(
@@ -235,8 +245,8 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
         rightSecondary: destination,
       ),
     };
-    final hasAccount = _ref.read(appSessionProvider).valueOrNull?.currentAccount !=
-        null;
+    final hasAccount =
+        _ref.read(appSessionProvider).valueOrNull?.currentAccount != null;
     _setAndPersist(
       state.copyWith(
         homeNavigationPreferences: sanitizeHomeNavigationPreferences(
@@ -260,10 +270,7 @@ class WorkspacePreferencesController extends StateNotifier<WorkspacePreferences>
       _setAndPersist(state.copyWith(customThemeOverride: value));
   void clearThemeOverrides() {
     _setAndPersist(
-      state.copyWith(
-        themeColorOverride: null,
-        customThemeOverride: null,
-      ),
+      state.copyWith(themeColorOverride: null, customThemeOverride: null),
     );
   }
 }

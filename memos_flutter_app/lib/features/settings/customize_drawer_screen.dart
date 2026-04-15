@@ -12,10 +12,16 @@ class CustomizeDrawerScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(currentWorkspacePreferencesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Scaffold(
       backgroundColor: bg,
@@ -41,11 +47,7 @@ class CustomizeDrawerScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -80,6 +82,14 @@ class CustomizeDrawerScreen extends ConsumerWidget {
                     onChanged: (v) => ref
                         .read(currentWorkspacePreferencesProvider.notifier)
                         .setShowDrawerAiSummary(v),
+                  ),
+                  _ToggleRow(
+                    label: context.t.strings.collections.drawerLabel,
+                    value: prefs.showDrawerCollections,
+                    textMain: textMain,
+                    onChanged: (v) => ref
+                        .read(currentWorkspacePreferencesProvider.notifier)
+                        .setShowDrawerCollections(v),
                   ),
                   _ToggleRow(
                     label: context.t.strings.legacy.msg_attachments,
@@ -163,8 +173,12 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactiveTrack = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.12);
-    final inactiveThumb = isDark ? Colors.white.withValues(alpha: 0.6) : Colors.white;
+    final inactiveTrack = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.12);
+    final inactiveThumb = isDark
+        ? Colors.white.withValues(alpha: 0.6)
+        : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

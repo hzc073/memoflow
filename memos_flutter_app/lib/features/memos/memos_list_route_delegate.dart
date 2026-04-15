@@ -21,24 +21,17 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_destination_builder.dart';
 import '../home/home_navigation_host.dart';
-import '../about/about_screen.dart';
 import '../desktop/quick_input/desktop_quick_input_dialog.dart';
-import '../explore/explore_screen.dart';
 import '../notifications/notifications_screen.dart';
-import '../resources/resources_screen.dart';
-import '../review/ai_summary_screen.dart';
-import '../review/daily_review_screen.dart';
 import '../settings/desktop_shortcuts_overview_screen.dart';
 import '../settings/password_lock_screen.dart';
 import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
-import '../stats/stats_screen.dart';
 import '../sync/sync_queue_screen.dart';
-import '../tags/tags_screen.dart';
 import '../voice/voice_record_screen.dart';
 import 'note_input_sheet.dart';
-import 'recycle_bin_screen.dart';
 import 'widgets/memos_list_title_menu.dart';
 import '../../i18n/strings.g.dart';
 
@@ -153,7 +146,6 @@ class MemosListRouteDelegate extends ChangeNotifier {
     required MemosListRouteRead read,
     required GlobalKey<ScaffoldState> scaffoldKey,
     required Widget Function({String? toastMessage}) buildHomeScreen,
-    required Widget Function() buildArchivedScreen,
     required VoidCallback invalidateShortcuts,
     required Future<void> Function(String rawContent) submitDesktopQuickInput,
     required Future<void> Function() scrollToTop,
@@ -181,7 +173,6 @@ class MemosListRouteDelegate extends ChangeNotifier {
        _read = read,
        _scaffoldKey = scaffoldKey,
        _buildHomeScreen = buildHomeScreen,
-       _buildArchivedScreen = buildArchivedScreen,
        _invalidateShortcuts = invalidateShortcuts,
        _submitDesktopQuickInput = submitDesktopQuickInput,
        _scrollToTop = scrollToTop,
@@ -214,7 +205,6 @@ class MemosListRouteDelegate extends ChangeNotifier {
   final MemosListRouteRead _read;
   final GlobalKey<ScaffoldState> _scaffoldKey;
   final Widget Function({String? toastMessage}) _buildHomeScreen;
-  final Widget Function() _buildArchivedScreen;
   final VoidCallback _invalidateShortcuts;
   final Future<void> Function(String rawContent) _submitDesktopQuickInput;
   final Future<void> Function() _scrollToTop;
@@ -328,21 +318,10 @@ class MemosListRouteDelegate extends ChangeNotifier {
       embeddedNavigationHost.handleDrawerDestination(context, dest);
       return;
     }
-    final route = switch (dest) {
-      AppDrawerDestination.memos => _buildHomeScreen(),
-      AppDrawerDestination.syncQueue => const SyncQueueScreen(),
-      AppDrawerDestination.explore => const ExploreScreen(),
-      AppDrawerDestination.dailyReview => const DailyReviewScreen(),
-      AppDrawerDestination.aiSummary => const AiSummaryScreen(),
-      AppDrawerDestination.archived => _buildArchivedScreen(),
-      AppDrawerDestination.tags => const TagsScreen(),
-      AppDrawerDestination.resources => const ResourcesScreen(),
-      AppDrawerDestination.recycleBin => const RecycleBinScreen(),
-      AppDrawerDestination.stats => const StatsScreen(),
-      AppDrawerDestination.settings => const SettingsScreen(),
-      AppDrawerDestination.about => const AboutScreen(),
-    };
-    closeDrawerThenPushReplacement(context, route);
+    closeDrawerThenPushReplacement(
+      context,
+      buildDrawerDestinationScreen(context: context, destination: dest),
+    );
   }
 
   void openNotifications() {

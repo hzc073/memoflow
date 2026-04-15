@@ -2,6 +2,7 @@ import '../../data/models/home_navigation_preferences.dart';
 
 const List<HomeRootDestination> kHomeRootDestinationPickerOrder = [
   HomeRootDestination.memos,
+  HomeRootDestination.collections,
   HomeRootDestination.explore,
   HomeRootDestination.dailyReview,
   HomeRootDestination.settings,
@@ -13,6 +14,7 @@ const List<HomeRootDestination> kHomeRootDestinationPickerOrder = [
 
 const List<HomeRootDestination> _kHomeRootDestinationFallbackOrder = [
   HomeRootDestination.memos,
+  HomeRootDestination.collections,
   HomeRootDestination.dailyReview,
   HomeRootDestination.settings,
   HomeRootDestination.aiSummary,
@@ -77,6 +79,7 @@ bool isHomeRootDestinationAvailable(
     HomeRootDestination.none => true,
     HomeRootDestination.explore => hasAccount,
     HomeRootDestination.memos ||
+    HomeRootDestination.collections ||
     HomeRootDestination.dailyReview ||
     HomeRootDestination.settings ||
     HomeRootDestination.aiSummary ||
@@ -114,7 +117,9 @@ ResolvedHomeNavigationPreferences resolveHomeNavigationPreferences(
     );
   }
 
-  if (resolved.every((destination) => destination == HomeRootDestination.none)) {
+  if (resolved.every(
+    (destination) => destination == HomeRootDestination.none,
+  )) {
     resolved[0] = HomeRootDestination.memos;
   }
 

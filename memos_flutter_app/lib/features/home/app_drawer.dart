@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/measure_size.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../state/system/database_provider.dart';
@@ -16,9 +17,9 @@ import '../../state/system/notifications_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../../state/memos/stats_providers.dart';
-import '../../state/tags/tag_color_lookup.dart';
 import '../settings/quick_qr_action.dart';
 import '../tags/tag_edit_sheet.dart';
+import '../tags/tag_tree.dart';
 import '../../i18n/strings.g.dart';
 
 enum AppDrawerDestination {
@@ -27,6 +28,7 @@ enum AppDrawerDestination {
   explore,
   dailyReview,
   aiSummary,
+  collections,
   archived,
   tags,
   resources,
@@ -77,7 +79,11 @@ class AppDrawer extends ConsumerStatefulWidget {
 }
 
 class _AppDrawerState extends ConsumerState<AppDrawer> {
+  static const double _drawerTagSectionMaxHeight = 208;
+
   _DrawerTagFilter _tagFilter = _DrawerTagFilter.all;
+  final Set<String> _expandedTagPaths = <String>{};
+  double _measuredTagSectionHeight = 0;
 
   List<TagStat> _applyTagFilter(List<TagStat> tags) {
     final items = List<TagStat>.of(tags, growable: false);
@@ -144,6 +150,74 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     };
   }
 
+  int _compareDrawerTagNodes(TagTreeNode a, TagTreeNode b) {
+    switch (_tagFilter) {
+      case _DrawerTagFilter.all:
+      case _DrawerTagFilter.pinned:
+        return 0;
+      case _DrawerTagFilter.frequent:
+        final byCount = b.count.compareTo(a.count);
+        if (byCount != 0) return byCount;
+        final byRecent = (b.lastUsedTimeSec ?? 0).compareTo(
+          a.lastUsedTimeSec ?? 0,
+        );
+        if (byRecent != 0) return byRecent;
+        return 0;
+      case _DrawerTagFilter.recent:
+        final byRecent = (b.lastUsedTimeSec ?? 0).compareTo(
+          a.lastUsedTimeSec ?? 0,
+        );
+        if (byRecent != 0) return byRecent;
+        final byCount = b.count.compareTo(a.count);
+        if (byCount != 0) return byCount;
+        return 0;
+    }
+  }
+
+  void _toggleTagExpanded(String path) {
+    setState(() {
+      if (!_expandedTagPaths.add(path)) {
+        _expandedTagPaths.remove(path);
+      }
+    });
+  }
+
+  void _updateMeasuredTagSectionHeight(Size size) {
+    final nextHeight = size.height;
+    final currentOverflow =
+        _measuredTagSectionHeight > _drawerTagSectionMaxHeight;
+    final nextOverflow = nextHeight > _drawerTagSectionMaxHeight;
+    if (!currentOverflow &&
+        !nextOverflow &&
+        (nextHeight - _measuredTagSectionHeight).abs() < 0.5) {
+      return;
+    }
+    if (currentOverflow == nextOverflow &&
+        (nextHeight - _measuredTagSectionHeight).abs() < 0.5) {
+      return;
+    }
+    setState(() => _measuredTagSectionHeight = nextHeight);
+  }
+
+  Future<void> _handleTagMenuAction(
+    BuildContext context,
+    Map<String, TagStat> tagsByPath,
+    TagTreeNode node,
+    TagTreeMenuAction action,
+  ) async {
+    final tag = tagsByPath[node.path];
+    if (tag == null) return;
+
+    switch (action) {
+      case TagTreeMenuAction.edit:
+        await TagEditSheet.showEditorDialog(context, tag: tag);
+        break;
+      case TagTreeMenuAction.delete:
+        await confirmAndDeleteTag(context: context, ref: ref, tag: tag);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = widget.selected;
@@ -167,13 +241,13 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);
-    final tagColors = ref.watch(tagColorLookupProvider);
     final drawerPrefs = ref.watch(
       currentWorkspacePreferencesProvider.select(
         (prefs) => (
           showDrawerExplore: prefs.showDrawerExplore,
           showDrawerDailyReview: prefs.showDrawerDailyReview,
           showDrawerAiSummary: prefs.showDrawerAiSummary,
+          showDrawerCollections: prefs.showDrawerCollections,
           showDrawerResources: prefs.showDrawerResources,
           showDrawerArchive: prefs.showDrawerArchive,
         ),
@@ -192,8 +266,29 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
         : Colors.black.withValues(alpha: 0.04);
     final resolvedTags = tagsAsync.valueOrNull ?? const <TagStat>[];
     final filteredTags = _applyTagFilter(resolvedTags);
-    final tagPreviewCount = filteredTags.length;
-    final tagSectionTitle = _tagFilterLabel(context, _tagFilter);
+    final tagsByPath = {for (final tag in resolvedTags) tag.path: tag};
+    final fullTagTree = buildTagTree(
+      resolvedTags,
+      comparator: _compareDrawerTagNodes,
+    );
+    final filteredPaths = filteredTags.map((tag) => tag.path).toSet();
+    final shouldFilterTree =
+        _tagFilter != _DrawerTagFilter.all &&
+        filteredPaths.length < resolvedTags.length;
+    final tagTreeResult = !shouldFilterTree
+        ? TagTreeFilterResult(
+            nodes: fullTagTree,
+            autoExpandedPaths: const <String>{},
+          )
+        : filterTagTree(
+            fullTagTree,
+            (node) => filteredPaths.contains(node.path),
+          );
+    final drawerExpandedPaths = <String>{
+      ..._expandedTagPaths,
+      ...tagTreeResult.autoExpandedPaths,
+      ...collectAncestorTagPaths(selectedTagPath),
+    };
     final showScanAction =
         kIsWeb || defaultTargetPlatform != TargetPlatform.windows;
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
@@ -456,6 +551,15 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                     textMain: textMain,
                     hover: hover,
                   ),
+                if (drawerPrefs.showDrawerCollections)
+                  _NavButton(
+                    selected: selected == AppDrawerDestination.collections,
+                    label: context.t.strings.collections.drawerLabel,
+                    icon: Icons.auto_stories_rounded,
+                    onTap: () => onSelect(AppDrawerDestination.collections),
+                    textMain: textMain,
+                    hover: hover,
+                  ),
                 if (drawerPrefs.showDrawerResources)
                   _NavButton(
                     selected: selected == AppDrawerDestination.resources,
@@ -478,40 +582,13 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                 Row(
                   children: [
                     Expanded(
-                      child: Row(
-                        children: [
-                          Text(
-                            tagSectionTitle,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: textMuted,
-                            ),
-                          ),
-                          if (tagPreviewCount > 0) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.white.withValues(alpha: 0.06)
-                                    : Colors.black.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                '$tagPreviewCount',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: textMuted,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      child: Text(
+                        context.t.strings.legacy.msg_tags,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: textMuted,
+                        ),
                       ),
                     ),
                     PopupMenuButton<_DrawerTagFilter>(
@@ -561,8 +638,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                 ),
                 tagsAsync.when(
                   data: (tags) {
-                    final visibleTags = _applyTagFilter(tags);
-                    if (visibleTags.isEmpty) {
+                    if (tagTreeResult.nodes.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
@@ -571,66 +647,79 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                         ),
                       );
                     }
-                    const previewLimit = 6;
-                    final preview = visibleTags
-                        .take(previewLimit)
-                        .toList(growable: false);
-                    final remainingCount = visibleTags.length - preview.length;
-                    return LayoutBuilder(
-                      builder: (context, constraints) {
-                        final chipMaxWidth = math.max(
-                          120.0,
-                          constraints.maxWidth * 0.56,
-                        );
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 10,
-                              children: [
-                                for (final tag in preview)
-                                  _DrawerTagChip(
-                                    tag: tag,
-                                    tagColors: tagColors,
-                                    isDark: isDark,
-                                    textMain: textMain,
-                                    textMuted: textMuted,
-                                    hover: hover,
-                                    selected: selectedTagPath == tag.path,
-                                    maxWidth: chipMaxWidth,
-                                    onTap: () {
-                                      final cb = onSelectTag;
-                                      if (cb != null) {
-                                        cb(tag.path);
-                                      } else {
-                                        onSelect(AppDrawerDestination.tags);
-                                      }
-                                    },
-                                    onLongPress: tag.tagId == null
-                                        ? null
-                                        : () {
-                                            TagEditSheet.showEditorDialog(
-                                              context,
-                                              tag: tag,
-                                            );
-                                          },
-                                  ),
-                                if (remainingCount > 0)
-                                  _DrawerMoreTagsChip(
-                                    remainingCount: remainingCount,
-                                    isDark: isDark,
-                                    textMain: textMain,
-                                    hover: hover,
-                                    onTap: () =>
-                                        onSelect(AppDrawerDestination.tags),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        );
+                    final tagTree = TagTreeList(
+                      nodes: tagTreeResult.nodes,
+                      expandedPaths: drawerExpandedPaths,
+                      onToggleExpanded: _toggleTagExpanded,
+                      onSelect: (path) {
+                        final cb = onSelectTag;
+                        if (cb != null) {
+                          cb(path);
+                        } else {
+                          onSelect(AppDrawerDestination.tags);
+                        }
                       },
+                      onMenuAction: (node, action) => _handleTagMenuAction(
+                        context,
+                        tagsByPath,
+                        node,
+                        action,
+                      ),
+                      showMenu: true,
+                      compact: true,
+                      selectedPath: selectedTagPath,
+                      showSelectedLeadingCheck: true,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                    );
+                    final showViewMore =
+                        _measuredTagSectionHeight >
+                        _drawerTagSectionMaxHeight + 0.5;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRect(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxHeight: _drawerTagSectionMaxHeight,
+                              ),
+                              child: SingleChildScrollView(
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: tagTree,
+                              ),
+                            ),
+                          ),
+                          if (showViewMore)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () =>
+                                    onSelect(AppDrawerDestination.tags),
+                                icon: const Icon(Icons.open_in_new, size: 16),
+                                label: Text(context.t.strings.legacy.msg_more),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: textMuted,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 4,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Offstage(
+                            offstage: true,
+                            child: IgnorePointer(
+                              child: MeasureSize(
+                                onChange: _updateMeasuredTagSectionHeight,
+                                child: tagTree,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   },
                   loading: () => Padding(
@@ -876,173 +965,6 @@ class _BottomNavRow extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DrawerTagChip extends StatelessWidget {
-  const _DrawerTagChip({
-    required this.tag,
-    required this.tagColors,
-    required this.isDark,
-    required this.textMain,
-    required this.textMuted,
-    required this.hover,
-    required this.selected,
-    required this.maxWidth,
-    required this.onTap,
-    this.onLongPress,
-  });
-
-  final TagStat tag;
-  final TagColorLookup tagColors;
-  final bool isDark;
-  final Color textMain;
-  final Color textMuted;
-  final Color hover;
-  final bool selected;
-  final double maxWidth;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final resolvedColors = tagColors.resolveChipColorsByPath(
-      tag.path,
-      surfaceColor: Theme.of(context).colorScheme.surface,
-      isDark: isDark,
-    );
-    final fallbackBackground = isDark
-        ? Colors.white.withValues(alpha: 0.05)
-        : Colors.black.withValues(alpha: 0.045);
-    final fallbackBorder = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.08);
-    final background = resolvedColors?.background ?? fallbackBackground;
-    final labelColor = resolvedColors?.text ?? textMain;
-    final borderColor = selected
-        ? MemoFlowPalette.primary.withValues(alpha: isDark ? 0.95 : 0.7)
-        : (resolvedColors?.border ?? fallbackBorder);
-    final dotColor =
-        tagColors.resolveColorByPath(tag.path) ?? MemoFlowPalette.primary;
-
-    return Tooltip(
-      message: tag.path,
-      waitDuration: const Duration(milliseconds: 350),
-      child: Material(
-        color: background,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          onLongPress: onLongPress,
-          hoverColor: hover,
-          child: Container(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: dotColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    tag.path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: labelColor,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${tag.count}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: (resolvedColors?.text ?? textMuted).withValues(
-                      alpha: selected ? 0.96 : 0.8,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DrawerMoreTagsChip extends StatelessWidget {
-  const _DrawerMoreTagsChip({
-    required this.remainingCount,
-    required this.isDark,
-    required this.textMain,
-    required this.hover,
-    required this.onTap,
-  });
-
-  final int remainingCount;
-  final bool isDark;
-  final Color textMain;
-  final Color hover;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final languageCode = Localizations.localeOf(context).languageCode;
-    final viewMoreLabel = switch (languageCode) {
-      'de' => 'Mehr anzeigen',
-      'ja' => 'もっと見る',
-      'zh' => '查看更多',
-      _ => 'View more',
-    };
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        hoverColor: hover,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.03)
-                : Colors.black.withValues(alpha: 0.02),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.08),
-            ),
-          ),
-          child: Text(
-            '+$remainingCount $viewMoreLabel',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: textMain.withValues(alpha: 0.82),
             ),
           ),
         ),
