@@ -165,6 +165,14 @@ class DesktopWindowManager {
     });
   }
 
+  @visibleForTesting
+  Future<dynamic> handleMethodCallForTest(
+    MethodCall call, {
+    int fromWindowId = 0,
+  }) {
+    return _handleMethodCall(call, fromWindowId);
+  }
+
   Future<dynamic> _handleMethodCall(MethodCall call, int fromWindowId) async {
     if (!_isMounted()) return null;
     if (_isQuickInputMethod(call.method)) {
@@ -217,39 +225,20 @@ class DesktopWindowManager {
         final hasKey = map != null && map.containsKey('currentKey');
         final rawKey = map == null ? null : map['currentKey'];
         final log = _bootstrapAdapter.readLogManager(_ref);
+        String? desiredKey;
         var setKeyOk = true;
-        var reloadOk = true;
+        var sessionReloadOk = true;
+        var librariesReloadOk = true;
         var keyEmpty = false;
         var keyInvalidType = false;
         if (hasKey) {
           if (rawKey == null) {
             keyEmpty = true;
-            try {
-              await _bootstrapAdapter.setCurrentSessionKey(_ref, null);
-            } catch (error, stackTrace) {
-              setKeyOk = false;
-              log.error(
-                'Desktop workspace reload failed to clear session key',
-                error: error,
-                stackTrace: stackTrace,
-              );
-            }
+            desiredKey = null;
           } else if (rawKey is String) {
             final nextKey = rawKey.trim();
             keyEmpty = nextKey.isEmpty;
-            try {
-              await _bootstrapAdapter.setCurrentSessionKey(
-                _ref,
-                nextKey.isEmpty ? null : nextKey,
-              );
-            } catch (error, stackTrace) {
-              setKeyOk = false;
-              log.error(
-                'Desktop workspace reload failed to set session key',
-                error: error,
-                stackTrace: stackTrace,
-              );
-            }
+            desiredKey = nextKey.isEmpty ? null : nextKey;
           } else {
             keyInvalidType = true;
             setKeyOk = false;
@@ -259,10 +248,43 @@ class DesktopWindowManager {
             );
           }
         }
+        if (hasKey && !keyInvalidType) {
+          try {
+            await _bootstrapAdapter.reloadSessionFromStorage(_ref);
+          } catch (error, stackTrace) {
+            sessionReloadOk = false;
+            log.error(
+              'Desktop workspace reload failed to refresh session',
+              error: error,
+              stackTrace: stackTrace,
+            );
+          }
+          final activeKey = _bootstrapAdapter
+              .readSession(_ref)
+              ?.currentKey
+              ?.trim();
+          final resolvedActiveKey = (activeKey == null || activeKey.isEmpty)
+              ? null
+              : activeKey;
+          if (resolvedActiveKey != desiredKey) {
+            try {
+              await _bootstrapAdapter.setCurrentSessionKey(_ref, desiredKey);
+            } catch (error, stackTrace) {
+              setKeyOk = false;
+              log.error(
+                desiredKey == null
+                    ? 'Desktop workspace reload failed to clear session key'
+                    : 'Desktop workspace reload failed to set session key',
+                error: error,
+                stackTrace: stackTrace,
+              );
+            }
+          }
+        }
         try {
           await _bootstrapAdapter.reloadLocalLibrariesFromStorage(_ref);
         } catch (error, stackTrace) {
-          reloadOk = false;
+          librariesReloadOk = false;
           log.error(
             'Desktop workspace reload failed to refresh libraries',
             error: error,
@@ -275,11 +297,12 @@ class DesktopWindowManager {
             'hasKey': hasKey,
             'keyEmpty': keyEmpty,
             'keyInvalidType': keyInvalidType,
+            'sessionReloadOk': sessionReloadOk,
             'setKeyOk': setKeyOk,
-            'reloadOk': reloadOk,
+            'reloadOk': librariesReloadOk,
           },
         );
-        return reloadOk && (!hasKey || setKeyOk);
+        return librariesReloadOk && (!hasKey || (sessionReloadOk && setKeyOk));
       case desktopMainReloadAiSettingsMethod:
         final log = _bootstrapAdapter.readLogManager(_ref);
         try {
@@ -299,7 +322,9 @@ class DesktopWindowManager {
       case desktopMainReloadPreferencesMethod:
         final log = _bootstrapAdapter.readLogManager(_ref);
         try {
-          await _ref.read(devicePreferencesProvider.notifier).reloadFromStorage();
+          await _ref
+              .read(devicePreferencesProvider.notifier)
+              .reloadFromStorage();
           await _ref
               .read(currentWorkspacePreferencesProvider.notifier)
               .reloadFromStorage();
@@ -1050,10 +1075,10 @@ class DesktopWindowManager {
       await _quickInputController.handleHotKey();
       return;
     }
-    final autoFocus = _bootstrapAdapter.readDevicePreferences(_ref).quickInputAutoFocus;
-    unawaited(
-      _openQuickInput(autoFocus: autoFocus),
-    );
+    final autoFocus = _bootstrapAdapter
+        .readDevicePreferences(_ref)
+        .quickInputAutoFocus;
+    unawaited(_openQuickInput(autoFocus: autoFocus));
   }
 
   BuildContext? _resolveDesktopUiContext() {

@@ -150,10 +150,15 @@ class AppSessionNotifier extends AppSessionController {
 
     state = const AsyncValue<AppSessionState>.loading().copyWithPrevious(state);
     state = await AsyncValue.guard(() async {
-      await _accountsRepository.write(
-        AccountsState(accounts: current.accounts, currentKey: nextKey),
+      final accounts = await _resolveAccountsForKeyWrite(
+        currentAccounts: current.accounts,
+        nextKey: nextKey,
+        operation: 'set_current_key',
       );
-      return AppSessionState(accounts: current.accounts, currentKey: nextKey);
+      await _accountsRepository.write(
+        AccountsState(accounts: accounts, currentKey: nextKey),
+      );
+      return AppSessionState(accounts: accounts, currentKey: nextKey);
     });
   }
 
@@ -232,6 +237,35 @@ class AppSessionNotifier extends AppSessionController {
 
   void _setStorageError(StorageLoadError? error) {
     _ref.read(appSessionStorageErrorProvider.notifier).state = error;
+  }
+
+  Future<List<Account>> _resolveAccountsForKeyWrite({
+    required List<Account> currentAccounts,
+    required String? nextKey,
+    required String operation,
+  }) async {
+    if (currentAccounts.isNotEmpty) {
+      return currentAccounts;
+    }
+    final stored = await _accountsRepository.readWithStatus();
+    if (!stored.isSuccess) {
+      return currentAccounts;
+    }
+    final persistedAccounts = stored.data?.accounts ?? const <Account>[];
+    if (persistedAccounts.isEmpty) {
+      return currentAccounts;
+    }
+    if (kDebugMode) {
+      LogManager.instance.info(
+        'Session: restored_accounts_for_key_write',
+        context: <String, Object?>{
+          'operation': operation,
+          'restoredAccountCount': persistedAccounts.length,
+          'nextKey': nextKey,
+        },
+      );
+    }
+    return persistedAccounts;
   }
 
   Future<AppSessionState> _upsertAccount({
@@ -440,8 +474,18 @@ class AppSessionNotifier extends AppSessionController {
       );
     }
     try {
+      final accounts = await _resolveAccountsForKeyWrite(
+        currentAccounts: current.accounts,
+        nextKey: key,
+        operation: 'switch_workspace',
+      );
+      if (mounted && current.accounts.isEmpty && accounts.isNotEmpty) {
+        state = AsyncValue.data(
+          AppSessionState(accounts: accounts, currentKey: key),
+        );
+      }
       await _accountsRepository.write(
-        AccountsState(accounts: current.accounts, currentKey: key),
+        AccountsState(accounts: accounts, currentKey: key),
       );
       if (kDebugMode) {
         LogManager.instance.info(
