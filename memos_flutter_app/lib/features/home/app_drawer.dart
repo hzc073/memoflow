@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/app_localization.dart';
 import '../../core/measure_size.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/tag_list_mode.dart';
 import '../../core/top_toast.dart';
 import '../../state/system/database_provider.dart';
 import '../../state/system/local_library_provider.dart';
@@ -81,13 +82,33 @@ class AppDrawer extends ConsumerStatefulWidget {
 class _AppDrawerState extends ConsumerState<AppDrawer> {
   static const double _drawerTagSectionMaxHeight = 208;
 
-  _DrawerTagFilter _tagFilter = _DrawerTagFilter.all;
   final Set<String> _expandedTagPaths = <String>{};
   double _measuredTagSectionHeight = 0;
 
-  List<TagStat> _applyTagFilter(List<TagStat> tags) {
+  _DrawerTagFilter _drawerTagFilterFromMode(TagListMode mode) {
+    return switch (mode) {
+      TagListMode.all => _DrawerTagFilter.all,
+      TagListMode.frequent => _DrawerTagFilter.frequent,
+      TagListMode.recent => _DrawerTagFilter.recent,
+      TagListMode.pinned => _DrawerTagFilter.pinned,
+    };
+  }
+
+  TagListMode _modeFromDrawerTagFilter(_DrawerTagFilter filter) {
+    return switch (filter) {
+      _DrawerTagFilter.all => TagListMode.all,
+      _DrawerTagFilter.frequent => TagListMode.frequent,
+      _DrawerTagFilter.recent => TagListMode.recent,
+      _DrawerTagFilter.pinned => TagListMode.pinned,
+    };
+  }
+
+  List<TagStat> _applyTagFilter(
+    List<TagStat> tags,
+    _DrawerTagFilter tagFilter,
+  ) {
     final items = List<TagStat>.of(tags, growable: false);
-    switch (_tagFilter) {
+    switch (tagFilter) {
       case _DrawerTagFilter.all:
         return items;
       case _DrawerTagFilter.frequent:
@@ -150,8 +171,12 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     };
   }
 
-  int _compareDrawerTagNodes(TagTreeNode a, TagTreeNode b) {
-    switch (_tagFilter) {
+  int _compareDrawerTagNodes(
+    TagTreeNode a,
+    TagTreeNode b,
+    _DrawerTagFilter tagFilter,
+  ) {
+    switch (tagFilter) {
       case _DrawerTagFilter.all:
       case _DrawerTagFilter.pinned:
         return 0;
@@ -241,6 +266,9 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
 
     final statsAsync = ref.watch(localStatsProvider);
     final tagsAsync = ref.watch(tagStatsProvider);
+    final tagListMode = ref.watch(
+      currentWorkspacePreferencesProvider.select((prefs) => prefs.tagListMode),
+    );
     final drawerPrefs = ref.watch(
       currentWorkspacePreferencesProvider.select(
         (prefs) => (
@@ -264,16 +292,17 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     final hover = isDark
         ? Colors.white.withValues(alpha: 0.05)
         : Colors.black.withValues(alpha: 0.04);
+    final tagFilter = _drawerTagFilterFromMode(tagListMode);
     final resolvedTags = tagsAsync.valueOrNull ?? const <TagStat>[];
-    final filteredTags = _applyTagFilter(resolvedTags);
+    final filteredTags = _applyTagFilter(resolvedTags, tagFilter);
     final tagsByPath = {for (final tag in resolvedTags) tag.path: tag};
     final fullTagTree = buildTagTree(
       resolvedTags,
-      comparator: _compareDrawerTagNodes,
+      comparator: (a, b) => _compareDrawerTagNodes(a, b, tagFilter),
     );
     final filteredPaths = filteredTags.map((tag) => tag.path).toSet();
     final shouldFilterTree =
-        _tagFilter != _DrawerTagFilter.all &&
+        tagFilter != _DrawerTagFilter.all &&
         filteredPaths.length < resolvedTags.length;
     final tagTreeResult = !shouldFilterTree
         ? TagTreeFilterResult(
@@ -592,44 +621,46 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                       ),
                     ),
                     PopupMenuButton<_DrawerTagFilter>(
-                      tooltip: context.t.strings.legacy.msg_filter,
-                      initialValue: _tagFilter,
+                      tooltip: context.t.strings.legacy.msg_sort,
+                      initialValue: tagFilter,
                       onSelected: (value) {
-                        if (value == _tagFilter) return;
-                        setState(() => _tagFilter = value);
+                        if (value == tagFilter) return;
+                        ref
+                            .read(currentWorkspacePreferencesProvider.notifier)
+                            .setTagListMode(_modeFromDrawerTagFilter(value));
                       },
                       itemBuilder: (context) => [
                         CheckedPopupMenuItem<_DrawerTagFilter>(
                           value: _DrawerTagFilter.all,
-                          checked: _tagFilter == _DrawerTagFilter.all,
+                          checked: tagFilter == _DrawerTagFilter.all,
                           child: Text(
                             _tagFilterLabel(context, _DrawerTagFilter.all),
                           ),
                         ),
                         CheckedPopupMenuItem<_DrawerTagFilter>(
                           value: _DrawerTagFilter.frequent,
-                          checked: _tagFilter == _DrawerTagFilter.frequent,
+                          checked: tagFilter == _DrawerTagFilter.frequent,
                           child: Text(
                             _tagFilterLabel(context, _DrawerTagFilter.frequent),
                           ),
                         ),
                         CheckedPopupMenuItem<_DrawerTagFilter>(
                           value: _DrawerTagFilter.recent,
-                          checked: _tagFilter == _DrawerTagFilter.recent,
+                          checked: tagFilter == _DrawerTagFilter.recent,
                           child: Text(
                             _tagFilterLabel(context, _DrawerTagFilter.recent),
                           ),
                         ),
                         CheckedPopupMenuItem<_DrawerTagFilter>(
                           value: _DrawerTagFilter.pinned,
-                          checked: _tagFilter == _DrawerTagFilter.pinned,
+                          checked: tagFilter == _DrawerTagFilter.pinned,
                           child: Text(
                             _tagFilterLabel(context, _DrawerTagFilter.pinned),
                           ),
                         ),
                       ],
                       icon: Icon(
-                        _tagFilterIcon(_tagFilter),
+                        _tagFilterIcon(tagFilter),
                         color: textMuted,
                         size: 20,
                       ),

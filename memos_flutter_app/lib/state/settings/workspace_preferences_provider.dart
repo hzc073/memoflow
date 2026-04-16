@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
+import '../../core/tag_list_mode.dart';
 import '../../core/storage_read.dart';
 import '../../core/theme_colors.dart';
 import '../../data/logs/log_manager.dart';
@@ -175,6 +176,8 @@ class WorkspacePreferencesController
       _setAndPersist(state.copyWith(showDrawerResources: value));
   void setShowDrawerArchive(bool value) =>
       _setAndPersist(state.copyWith(showDrawerArchive: value));
+  void setTagListMode(TagListMode value) =>
+      _setAndPersist(state.copyWith(tagListMode: value));
   void setHomeQuickActions({
     required HomeQuickAction primary,
     required HomeQuickAction secondary,

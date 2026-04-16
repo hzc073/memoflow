@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/tag_list_mode.dart';
 import '../../core/theme_colors.dart';
 import 'app_preferences.dart';
 import 'home_navigation_preferences.dart';
@@ -20,6 +21,7 @@ class WorkspacePreferences {
     showDrawerCollections: true,
     showDrawerResources: true,
     showDrawerArchive: true,
+    tagListMode: TagListMode.all,
     homeQuickActionPrimary: HomeQuickAction.monthlyStats,
     homeQuickActionSecondary: HomeQuickAction.aiSummary,
     homeQuickActionTertiary: HomeQuickAction.dailyReview,
@@ -42,6 +44,7 @@ class WorkspacePreferences {
     required this.showDrawerCollections,
     required this.showDrawerResources,
     required this.showDrawerArchive,
+    required this.tagListMode,
     required this.homeQuickActionPrimary,
     required this.homeQuickActionSecondary,
     required this.homeQuickActionTertiary,
@@ -63,6 +66,7 @@ class WorkspacePreferences {
   final bool showDrawerCollections;
   final bool showDrawerResources;
   final bool showDrawerArchive;
+  final TagListMode tagListMode;
   final HomeQuickAction homeQuickActionPrimary;
   final HomeQuickAction homeQuickActionSecondary;
   final HomeQuickAction homeQuickActionTertiary;
@@ -84,6 +88,7 @@ class WorkspacePreferences {
     'showDrawerCollections': showDrawerCollections,
     'showDrawerResources': showDrawerResources,
     'showDrawerArchive': showDrawerArchive,
+    'tagListMode': tagListMode.name,
     'homeQuickActionPrimary': homeQuickActionPrimary.name,
     'homeQuickActionSecondary': homeQuickActionSecondary.name,
     'homeQuickActionTertiary': homeQuickActionTertiary.name,
@@ -131,8 +136,10 @@ class WorkspacePreferences {
       if (raw is! Map) return HomeNavigationPreferences.defaults;
       return HomeNavigationPreferences.fromJson(raw.cast<String, dynamic>());
     }();
+    final tagListMode = TagListMode.fromStorage(json['tagListMode']);
     return WorkspacePreferences.fromLegacy(
       legacy,
+      tagListMode: tagListMode,
       themeColorOverride: themeColorOverride,
       customThemeOverride: customThemeOverride,
       homeNavigationPreferences: homeNavigationPreferences,
@@ -142,6 +149,7 @@ class WorkspacePreferences {
   factory WorkspacePreferences.fromLegacy(
     AppPreferences legacy, {
     String? workspaceKey,
+    TagListMode tagListMode = TagListMode.all,
     AppThemeColor? themeColorOverride,
     CustomThemeSettings? customThemeOverride,
     HomeNavigationPreferences? homeNavigationPreferences,
@@ -161,6 +169,7 @@ class WorkspacePreferences {
           WorkspacePreferences.defaults.showDrawerCollections,
       showDrawerResources: legacy.showDrawerResources,
       showDrawerArchive: legacy.showDrawerArchive,
+      tagListMode: tagListMode,
       homeQuickActionPrimary: legacy.homeQuickActionPrimary,
       homeQuickActionSecondary: legacy.homeQuickActionSecondary,
       homeQuickActionTertiary: legacy.homeQuickActionTertiary,
@@ -221,6 +230,7 @@ class WorkspacePreferences {
     bool? showDrawerCollections,
     bool? showDrawerResources,
     bool? showDrawerArchive,
+    TagListMode? tagListMode,
     HomeQuickAction? homeQuickActionPrimary,
     HomeQuickAction? homeQuickActionSecondary,
     HomeQuickAction? homeQuickActionTertiary,
@@ -246,6 +256,7 @@ class WorkspacePreferences {
           showDrawerCollections ?? this.showDrawerCollections,
       showDrawerResources: showDrawerResources ?? this.showDrawerResources,
       showDrawerArchive: showDrawerArchive ?? this.showDrawerArchive,
+      tagListMode: tagListMode ?? this.tagListMode,
       homeQuickActionPrimary:
           homeQuickActionPrimary ?? this.homeQuickActionPrimary,
       homeQuickActionSecondary:

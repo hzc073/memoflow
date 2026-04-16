@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../../core/drawer_navigation.dart';
 import '../../core/platform_layout.dart';
+import '../../core/drawer_navigation.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/memos/memos_providers.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
 import 'tag_edit_sheet.dart';
+import 'tag_sorting.dart';
 import 'tag_tree.dart';
 
 class TagsScreen extends ConsumerStatefulWidget {
@@ -103,6 +105,9 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
   @override
   Widget build(BuildContext context) {
     final tagsAsync = ref.watch(tagStatsProvider);
+    final tagListMode = ref.watch(
+      currentWorkspacePreferencesProvider.select((prefs) => prefs.tagListMode),
+    );
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
     final enableWindowsDragToMove =
@@ -145,18 +150,13 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
 
         final textMain = Theme.of(context).colorScheme.onSurface;
         final textMuted = Theme.of(context).colorScheme.onSurfaceVariant;
-        final tree = buildTagTree(tags);
-        final tagsByPath = {
-          for (final tag in tags) tag.path: tag,
-        };
+        final baseTree = buildTagTreeForMode(tags, mode: tagListMode);
+        final tagsByPath = {for (final tag in tags) tag.path: tag};
         final query = _searchController.text.trim().toLowerCase();
         final filterResult = query.isEmpty
-            ? TagTreeFilterResult(
-                nodes: tree,
-                autoExpandedPaths: const <String>{},
-              )
+            ? baseTree
             : filterTagTree(
-                tree,
+                baseTree.nodes,
                 (node) => node.path.toLowerCase().contains(query),
               );
         final visibleTree = filterResult.nodes;
@@ -265,6 +265,19 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
             child: Text(context.t.strings.legacy.msg_tags),
           ),
           actions: [
+            TagListModeMenuButton(
+              mode: tagListMode,
+              onSelected: (value) {
+                if (value == tagListMode) return;
+                ref
+                    .read(currentWorkspacePreferencesProvider.notifier)
+                    .setTagListMode(value);
+              },
+              iconColor:
+                  Theme.of(context).appBarTheme.iconTheme?.color ??
+                  IconTheme.of(context).color ??
+                  Theme.of(context).colorScheme.onSurface,
+            ),
             IconButton(
               tooltip: context.t.strings.legacy.msg_create_tag,
               onPressed: () => _openTagEditor(context, null),
