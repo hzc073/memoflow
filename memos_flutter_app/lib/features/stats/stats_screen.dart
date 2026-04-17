@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,9 +17,53 @@ import 'package:window_manager/window_manager.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../data/models/app_preferences.dart';
+import '../../data/models/local_memo.dart';
+import '../../features/collections/add_to_collection_sheet.dart';
+import '../../features/reminders/memo_reminder_editor_screen.dart';
+import '../../state/memos/memos_list_providers.dart';
+import '../../state/settings/resolved_preferences_provider.dart';
+import '../../state/system/database_provider.dart';
+import '../../state/tags/tag_color_lookup.dart';
+import '../memos/memo_editor_screen.dart';
+import '../memos/memo_markdown.dart';
+import '../memos/memo_detail_screen.dart';
+import '../memos/memo_versions_screen.dart';
+import '../memos/memos_list_memo_action_delegate.dart';
+import '../memos/memos_list_mutation_coordinator.dart';
 import '../memos/memos_list_screen.dart';
+import '../memos/widgets/memos_list_memo_card.dart';
+import '../memos/widgets/memos_list_memo_card_container.dart';
+import '../sync/sync_queue_screen.dart';
 import '../../state/memos/stats_providers.dart';
 import '../../i18n/strings.g.dart';
+
+enum _StatsScreenView { data, calendar }
+
+final _calendarDayMemosProvider =
+    StreamProvider.family<List<LocalMemo>, DateTime>((ref, day) async* {
+      final db = ref.watch(databaseProvider);
+      final normalizedDay = DateTime(day.year, day.month, day.day);
+      final nextDay = DateTime(day.year, day.month, day.day + 1);
+
+      Future<List<LocalMemo>> load() async {
+        final sqlite = await db.db;
+        final startSec = normalizedDay.toUtc().millisecondsSinceEpoch ~/ 1000;
+        final endSec = nextDay.toUtc().millisecondsSinceEpoch ~/ 1000;
+        final rows = await sqlite.query(
+          'memos',
+          where: "state = 'NORMAL' AND create_time >= ? AND create_time < ?",
+          whereArgs: [startSec, endSec],
+          orderBy: 'pinned DESC, create_time DESC',
+        );
+        return rows.map(LocalMemo.fromDb).toList(growable: false);
+      }
+
+      yield await load();
+      await for (final _ in db.changes) {
+        yield await load();
+      }
+    });
 
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key, this.showBackButton = true});
@@ -29,13 +76,60 @@ class StatsScreen extends ConsumerStatefulWidget {
 
 class _StatsScreenState extends ConsumerState<StatsScreen> {
   late DateTime _selectedMonth;
+  DateTime? _selectedDay;
+  _StatsScreenView _selectedView = _StatsScreenView.data;
   final _posterBoundaryKey = GlobalKey();
+  final ValueNotifier<Duration> _idleAudioPosition = ValueNotifier(
+    Duration.zero,
+  );
+  final ValueNotifier<Duration?> _idleAudioDuration = ValueNotifier(null);
+  final Map<String, GlobalKey<MemoListCardState>> _calendarMemoCardKeys =
+      <String, GlobalKey<MemoListCardState>>{};
+  late final MemosListMutationCoordinator _memoMutationCoordinator;
+  late final MemosListMemoActionDelegate _memoActionDelegate;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
+    _selectedDay = DateTime(now.year, now.month, now.day);
+    _memoMutationCoordinator = MemosListMutationCoordinator(read: ref.read);
+    _memoActionDelegate = MemosListMemoActionDelegate(
+      contextResolver: () => context,
+      mutationCoordinator: _memoMutationCoordinator,
+      onRetryOpenSyncQueue: (_) => _openSyncQueue(),
+      confirmDelete: _confirmDeleteMemo,
+      removeMemoWithAnimation: (_) {},
+      invalidateMemoRenderCache: invalidateMemoRenderCacheForUid,
+      invalidateMemoMarkdownCache: invalidateMemoMarkdownCacheForUid,
+      openEditor: _openMemoEditor,
+      openHistory: _openMemoHistory,
+      openReminder: _openMemoReminder,
+      openAddToCollection: _openAddMemoToCollection,
+      handleRestoreSuccess: (toastMessage) async {
+        if (!mounted) return;
+        showTopToast(context, toastMessage);
+      },
+      showTopToast: (message) {
+        if (!mounted) return;
+        showTopToast(context, message);
+      },
+      showSnackBar: (message) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _idleAudioPosition.dispose();
+    _idleAudioDuration.dispose();
+    _memoMutationCoordinator.dispose();
+    super.dispose();
   }
 
   void _backToAllMemos() {
@@ -60,65 +154,156 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     _backToAllMemos();
   }
 
-  Future<void> _pickMonth(List<DateTime> months) async {
-    if (months.isEmpty) return;
+  Future<void> _openSyncQueue() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const SyncQueueScreen()));
+  }
 
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(context.t.strings.legacy.msg_select_month),
-                ),
+  Future<bool> _confirmDeleteMemo(LocalMemo memo) async {
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(context.t.strings.legacy.msg_delete_memo),
+            content: Text(
+              context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_removed_locally_now_deleted_server_when,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(context.t.strings.legacy.msg_cancel_2),
               ),
-              ...months.map((m) {
-                final label = _formatMonth(m);
-                final selected =
-                    m.year == _selectedMonth.year &&
-                    m.month == _selectedMonth.month;
-                return ListTile(
-                  leading: Icon(
-                    selected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                  ),
-                  title: Text(label),
-                  onTap: () {
-                    context.safePop();
-                    setState(() => _selectedMonth = DateTime(m.year, m.month));
-                  },
-                );
-              }),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(context.t.strings.legacy.msg_delete),
+              ),
             ],
           ),
-        );
-      },
+        ) ??
+        false;
+  }
+
+  Future<void> _openMemoEditor(LocalMemo memo) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
     );
   }
 
-  Future<void> _sharePoster() async {
+  Future<void> _openMemoHistory(LocalMemo memo) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoVersionsScreen(memoUid: memo.uid),
+      ),
+    );
+  }
+
+  Future<void> _openMemoReminder(LocalMemo memo) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoReminderEditorScreen(memo: memo),
+      ),
+    );
+  }
+
+  Future<void> _openAddMemoToCollection(LocalMemo memo) async {
+    await showAddMemoToCollectionSheet(context: context, ref: ref, memo: memo);
+  }
+
+  Future<void> _handleCalendarMemoToggleTask(LocalMemo memo, int index) async {
+    final prefs = ref
+        .read(resolvedAppSettingsProvider)
+        .toLegacyAppPreferences();
+    await _memoActionDelegate.toggleMemoCheckbox(
+      memo,
+      index,
+      skipQuotedLines: prefs.collapseReferences,
+    );
+  }
+
+  Future<void> _handleCalendarMemoSyncStatusTap(
+    LocalMemo memo,
+    MemoSyncStatus status,
+  ) async {
+    await _memoActionDelegate.handleMemoSyncStatusTap(status, memo.uid);
+  }
+
+  Future<void> _handleCalendarMemoAction(
+    LocalMemo memo,
+    MemoCardAction action,
+  ) async {
+    await _memoActionDelegate.handleMemoAction(memo, action);
+  }
+
+  void _openMemoDetail(LocalMemo memo) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoDetailScreen(initialMemo: memo),
+      ),
+    );
+  }
+
+  Future<void> _pickMonth(List<DateTime> months) async {
+    if (months.isEmpty) return;
+    final firstDate = DateTime(months.last.year, months.last.month, 1);
+    final lastMonth = months.first;
+    final lastDate = DateTime(lastMonth.year, lastMonth.month + 1, 0);
+    final candidate = _selectedDay ?? _selectedMonth;
+    final initialDate = _clampDateToRange(
+      DateTime(candidate.year, candidate.month, math.max(candidate.day, 1)),
+      firstDate,
+      lastDate,
+    );
+    final theme = Theme.of(context);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      currentDate: DateTime.now(),
+      initialEntryMode: DatePickerEntryMode.calendarOnly,
+      builder: (context, child) {
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(
+              primary: MemoFlowPalette.primary,
+            ),
+            dialogTheme: DialogThemeData(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    _setSelectedDay(picked);
+  }
+
+  Future<XFile?> _capturePosterFile() async {
     final boundary = _posterBoundaryKey.currentContext?.findRenderObject();
     if (boundary is! RenderRepaintBoundary) {
       showTopToast(context, context.t.strings.legacy.msg_poster_not_ready_yet);
-      return;
+      return null;
     }
 
     try {
       await Future.delayed(const Duration(milliseconds: 30));
-      if (!mounted) return;
+      if (!mounted) return null;
       final pixelRatio = MediaQuery.of(
         context,
       ).devicePixelRatio.clamp(2.0, 3.0);
       final image = await boundary.toImage(pixelRatio: pixelRatio);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) {
-        if (!mounted) return;
+        if (!mounted) return null;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -126,7 +311,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             ),
           ),
         );
-        return;
+        return null;
       }
 
       final dir = await getTemporaryDirectory();
@@ -134,16 +319,428 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         '${dir.path}${Platform.pathSeparator}stats_${DateTime.now().millisecondsSinceEpoch}.png',
       );
       await file.writeAsBytes(byteData.buffer.asUint8List());
-
-      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
+      return XFile(file.path);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(context.t.strings.legacy.msg_share_failed(e: e)),
         ),
       );
+      return null;
     }
+  }
+
+  Future<void> _sharePoster() async {
+    final file = await _capturePosterFile();
+    if (file == null || !mounted) return;
+    await SharePlus.instance.share(ShareParams(files: [file]));
+  }
+
+  Future<void> _shareStatsPoster() async {
+    final previousView = _selectedView;
+    if (previousView == _StatsScreenView.data) {
+      await _sharePoster();
+      return;
+    }
+
+    if (previousView != _StatsScreenView.data) {
+      setState(() => _selectedView = _StatsScreenView.data);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+    }
+
+    final file = await _capturePosterFile();
+    if (!mounted) return;
+
+    if (previousView != _StatsScreenView.data) {
+      setState(() => _selectedView = previousView);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+    }
+
+    if (file == null) return;
+    await SharePlus.instance.share(ShareParams(files: [file]));
+  }
+
+  GlobalKey<MemoListCardState> _calendarMemoCardKeyForUid(String memoUid) {
+    return _calendarMemoCardKeys.putIfAbsent(
+      memoUid,
+      () => GlobalKey<MemoListCardState>(debugLabel: 'stats-calendar-$memoUid'),
+    );
+  }
+
+  void _setSelectedMonth(DateTime month) {
+    final normalized = DateTime(month.year, month.month);
+    if (_sameMonth(_selectedMonth, normalized)) return;
+    setState(() => _selectedMonth = normalized);
+  }
+
+  void _setSelectedDay(DateTime day) {
+    final normalizedDay = DateTime(day.year, day.month, day.day);
+    final normalizedMonth = DateTime(normalizedDay.year, normalizedDay.month);
+    if (DateUtils.isSameDay(_selectedDay, normalizedDay) &&
+        _sameMonth(_selectedMonth, normalizedMonth)) {
+      return;
+    }
+    setState(() {
+      _selectedDay = normalizedDay;
+      _selectedMonth = normalizedMonth;
+    });
+  }
+
+  void _setSelectedView(_StatsScreenView view) {
+    if (_selectedView == view) return;
+    setState(() => _selectedView = view);
+  }
+
+  void _selectAdjacentMonth(
+    List<DateTime> months,
+    DateTime currentMonth, {
+    required bool previous,
+  }) {
+    final currentIndex = months.indexWhere(
+      (month) => _sameMonth(month, currentMonth),
+    );
+    if (currentIndex < 0) return;
+    final targetIndex = previous ? currentIndex + 1 : currentIndex - 1;
+    if (targetIndex < 0 || targetIndex >= months.length) return;
+    _setSelectedMonth(months[targetIndex]);
+  }
+
+  DateTime _resolveSelectedCalendarDay(
+    DateTime month,
+    Map<DateTime, int> dailyCounts,
+  ) {
+    final explicit = _selectedDay;
+    if (explicit != null && _sameMonth(explicit, month)) {
+      return DateTime(explicit.year, explicit.month, explicit.day);
+    }
+
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    if (_sameMonth(normalizedToday, month)) {
+      return normalizedToday;
+    }
+
+    final activeDays =
+        dailyCounts.entries
+            .where((entry) => entry.value > 0)
+            .map((entry) => entry.key.toLocal())
+            .map((day) => DateTime(day.year, day.month, day.day))
+            .where((day) => _sameMonth(day, month))
+            .toList(growable: false)
+          ..sort();
+    if (activeDays.isNotEmpty) {
+      return activeDays.last;
+    }
+
+    return DateTime(month.year, month.month, 1);
+  }
+
+  Widget _buildDataStatsContent({
+    required BoxConstraints constraints,
+    required List<DateTime> months,
+    required String monthTitle,
+    required String monthLabel,
+    required MonthlyStats monthly,
+    required _MonthGrowthSummaryNew growth,
+    required String trendMonthLabel,
+    required DateTime monthDate,
+    required List<int> daySeries,
+    required Map<DateTime, int> lastYear,
+    required AnnualInsights annual,
+    required List<_MetricItemNew> bottomItems,
+    required List<_MetricItemNew> additionalBottomItems,
+    required Color card,
+    required Color textMain,
+    required Color textMuted,
+    required bool isDark,
+  }) {
+    final isDesktop = constraints.maxWidth >= 980;
+    final onPickMonth = months.isEmpty ? null : () => _pickMonth(months);
+    final annualRowHeight = ((constraints.maxWidth - 14) * 0.28)
+        .clamp(200.0, 260.0)
+        .toDouble();
+    final annualTrendHeight = ((constraints.maxWidth - 14) * 0.12)
+        .clamp(120.0, 150.0)
+        .toDouble();
+    final headerChildren = <Widget>[
+      Text(
+        context.t.strings.legacy.msg_memo_stats,
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          color: textMain,
+        ),
+      ),
+      const SizedBox(height: 12),
+      _StatsViewModeToggle(
+        selectedView: _selectedView,
+        onChanged: _setSelectedView,
+        textMain: textMain,
+        textMuted: textMuted,
+      ),
+    ];
+
+    if (isDesktop) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        children: [
+          ...headerChildren,
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 35,
+                child: _MonthlyOverviewCardNew(
+                  card: card,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  title: monthTitle,
+                  monthLabel: monthLabel,
+                  onPickMonth: onPickMonth,
+                  memos: monthly.totalMemos,
+                  chars: monthly.totalChars,
+                  maxMemosPerDay: monthly.maxMemosPerDay,
+                  maxCharsPerDay: monthly.maxCharsPerDay,
+                  growth: growth,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 65,
+                child: _DailyTrendCardNew(
+                  card: card,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  monthLabel: trendMonthLabel,
+                  month: monthDate,
+                  counts: daySeries,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: annualRowHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 66,
+                  child: _HeatmapCard(
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    title: '\u5e74\u5ea6\u7b14\u8bb0\u70ed\u529b\u56fe',
+                    dailyCounts: lastYear,
+                    isDark: isDark,
+                    compact: false,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  flex: 34,
+                  child: _AnnualInsightsCardNew(
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    insights: annual,
+                    isDark: isDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: annualTrendHeight,
+            child: _YearCharsTrendCardNew(
+              card: card,
+              textMain: textMain,
+              textMuted: textMuted,
+              points: annual.monthlyChars,
+              isDark: isDark,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _BottomMetricRowNew(
+            items: bottomItems,
+            card: card,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+          const SizedBox(height: 12),
+          _BottomMetricRowNew(
+            items: additionalBottomItems,
+            card: card,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+      children: [
+        ...headerChildren,
+        const SizedBox(height: 12),
+        _MonthlyOverviewCardNew(
+          card: card,
+          textMain: textMain,
+          textMuted: textMuted,
+          title: monthTitle,
+          monthLabel: monthLabel,
+          onPickMonth: onPickMonth,
+          memos: monthly.totalMemos,
+          chars: monthly.totalChars,
+          maxMemosPerDay: monthly.maxMemosPerDay,
+          maxCharsPerDay: monthly.maxCharsPerDay,
+          growth: growth,
+        ),
+        const SizedBox(height: 12),
+        _DailyTrendCardNew(
+          card: card,
+          textMain: textMain,
+          textMuted: textMuted,
+          monthLabel: trendMonthLabel,
+          month: monthDate,
+          counts: daySeries,
+        ),
+        const SizedBox(height: 12),
+        _HeatmapCard(
+          card: card,
+          textMain: textMain,
+          textMuted: textMuted,
+          title: '\u5e74\u5ea6\u7b14\u8bb0\u70ed\u529b\u56fe',
+          dailyCounts: lastYear,
+          isDark: isDark,
+        ),
+        const SizedBox(height: 12),
+        _YearCharsTrendCardNew(
+          card: card,
+          textMain: textMain,
+          textMuted: textMuted,
+          points: annual.monthlyChars,
+          isDark: isDark,
+        ),
+        const SizedBox(height: 12),
+        _AnnualInsightsCardNew(
+          card: card,
+          textMain: textMain,
+          textMuted: textMuted,
+          insights: annual,
+          isDark: isDark,
+        ),
+        const SizedBox(height: 12),
+        _BottomMetricWrapNew(
+          items: [...bottomItems, ...additionalBottomItems],
+          card: card,
+          textMain: textMain,
+          textMuted: textMuted,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarStatsContent({
+    required BoxConstraints constraints,
+    required List<DateTime> months,
+    required DateTime monthDate,
+    required MonthlyStats monthly,
+    required Color card,
+    required Color textMain,
+    required Color textMuted,
+  }) {
+    final isDesktop = constraints.maxWidth >= 980;
+    final monthIndex = months.indexWhere(
+      (month) => _sameMonth(month, monthDate),
+    );
+    final canGoPrevious = monthIndex >= 0 && monthIndex < months.length - 1;
+    final canGoNext = monthIndex > 0;
+    final onPickMonth = months.isEmpty ? null : () => _pickMonth(months);
+    final selectedDay = _resolveSelectedCalendarDay(
+      monthDate,
+      monthly.dailyCounts,
+    );
+    final selectedDayMemosAsync = ref.watch(
+      _calendarDayMemosProvider(selectedDay),
+    );
+    final outboxStatus =
+        ref.watch(memosListOutboxStatusProvider).valueOrNull ??
+        const OutboxMemoStatus.empty();
+    final prefs = ref
+        .watch(resolvedAppSettingsProvider)
+        .toLegacyAppPreferences();
+    final tagColors = ref.watch(tagColorLookupProvider);
+    final headerChildren = <Widget>[
+      Text(
+        context.t.strings.legacy.msg_memo_stats,
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          color: textMain,
+        ),
+      ),
+      const SizedBox(height: 12),
+      _StatsViewModeToggle(
+        selectedView: _selectedView,
+        onChanged: _setSelectedView,
+        textMain: textMain,
+        textMuted: textMuted,
+      ),
+      const SizedBox(height: 12),
+    ];
+    final calendarCard = _CalendarMonthCard(
+      card: card,
+      textMain: textMain,
+      textMuted: textMuted,
+      month: monthDate,
+      dailyCounts: monthly.dailyCounts,
+      selectedDay: selectedDay,
+      onPickMonth: onPickMonth,
+      onSelectDay: _setSelectedDay,
+      onPreviousMonth: canGoPrevious
+          ? () => _selectAdjacentMonth(months, monthDate, previous: true)
+          : null,
+      onNextMonth: canGoNext
+          ? () => _selectAdjacentMonth(months, monthDate, previous: false)
+          : null,
+    );
+    final selectedDaySection = _CalendarSelectedDaySection(
+      selectedDay: selectedDay,
+      dayMemosAsync: selectedDayMemosAsync,
+      memoCardKeyForUid: _calendarMemoCardKeyForUid,
+      prefs: prefs,
+      outboxStatus: outboxStatus,
+      tagColors: tagColors,
+      audioPositionListenable: _idleAudioPosition,
+      audioDurationListenable: _idleAudioDuration,
+      onOpenMemo: _openMemoDetail,
+      onToggleTask: _handleCalendarMemoToggleTask,
+      onSyncStatusTap: _handleCalendarMemoSyncStatusTap,
+      onAction: _handleCalendarMemoAction,
+      textMain: textMain,
+      textMuted: textMuted,
+    );
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        isDesktop ? 16 : 12,
+        0,
+        isDesktop ? 16 : 12,
+        24,
+      ),
+      children: [
+        ...headerChildren,
+        calendarCard,
+        const SizedBox(height: 16),
+        selectedDaySection,
+      ],
+    );
   }
 
   // ignore: unused_element
@@ -335,7 +932,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               : null,
           actions: [
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 final stats = statsAsync.valueOrNull;
                 if (stats == null) {
                   showTopToast(
@@ -344,7 +941,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   );
                   return;
                 }
-                _sharePoster();
+                await _shareStatsPoster();
               },
               child: Text(
                 context.t.strings.legacy.msg_share,
@@ -508,193 +1105,35 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               key: _posterBoundaryKey,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final isDesktop = constraints.maxWidth >= 980;
-                  final annualRowHeight = ((constraints.maxWidth - 14) * 0.28)
-                      .clamp(200.0, 260.0)
-                      .toDouble();
-                  final annualTrendHeight = ((constraints.maxWidth - 14) * 0.12)
-                      .clamp(120.0, 150.0)
-                      .toDouble();
-
-                  if (isDesktop) {
-                    return ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      children: [
-                        Text(
-                          context.t.strings.legacy.msg_memo_stats,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: textMain,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 35,
-                              child: _MonthlyOverviewCardNew(
-                                card: card,
-                                textMain: textMain,
-                                textMuted: textMuted,
-                                title: monthTitle,
-                                monthLabel: monthLabel,
-                                onPickMonth: months.isEmpty
-                                    ? null
-                                    : () => _pickMonth(months),
-                                memos: monthly.totalMemos,
-                                chars: monthly.totalChars,
-                                maxMemosPerDay: monthly.maxMemosPerDay,
-                                maxCharsPerDay: monthly.maxCharsPerDay,
-                                growth: growth,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              flex: 65,
-                              child: _DailyTrendCardNew(
-                                card: card,
-                                textMain: textMain,
-                                textMuted: textMuted,
-                                monthLabel: trendMonthLabel,
-                                month: monthDate,
-                                counts: daySeries,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          height: annualRowHeight,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                flex: 66,
-                                child: _HeatmapCard(
-                                  card: card,
-                                  textMain: textMain,
-                                  textMuted: textMuted,
-                                  title:
-                                      '\u5e74\u5ea6\u7b14\u8bb0\u70ed\u529b\u56fe',
-                                  dailyCounts: lastYear,
-                                  isDark: isDark,
-                                  compact: false,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                flex: 34,
-                                child: _AnnualInsightsCardNew(
-                                  card: card,
-                                  textMain: textMain,
-                                  textMuted: textMuted,
-                                  insights: annual,
-                                  isDark: isDark,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: annualTrendHeight,
-                          child: _YearCharsTrendCardNew(
-                            card: card,
-                            textMain: textMain,
-                            textMuted: textMuted,
-                            points: annual.monthlyChars,
-                            isDark: isDark,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _BottomMetricRowNew(
-                          items: bottomItems,
-                          card: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        _BottomMetricRowNew(
-                          items: additionalBottomItems,
-                          card: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                        ),
-                      ],
+                  if (_selectedView == _StatsScreenView.calendar) {
+                    return _buildCalendarStatsContent(
+                      constraints: constraints,
+                      months: months,
+                      monthDate: monthDate,
+                      monthly: monthly,
+                      card: card,
+                      textMain: textMain,
+                      textMuted: textMuted,
                     );
                   }
-
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                    children: [
-                      Text(
-                        context.t.strings.legacy.msg_memo_stats,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: textMain,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _MonthlyOverviewCardNew(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        title: monthTitle,
-                        monthLabel: monthLabel,
-                        onPickMonth: months.isEmpty
-                            ? null
-                            : () => _pickMonth(months),
-                        memos: monthly.totalMemos,
-                        chars: monthly.totalChars,
-                        maxMemosPerDay: monthly.maxMemosPerDay,
-                        maxCharsPerDay: monthly.maxCharsPerDay,
-                        growth: growth,
-                      ),
-                      const SizedBox(height: 12),
-                      _DailyTrendCardNew(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        monthLabel: trendMonthLabel,
-                        month: monthDate,
-                        counts: daySeries,
-                      ),
-                      const SizedBox(height: 12),
-                      _HeatmapCard(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        title: '\u5e74\u5ea6\u7b14\u8bb0\u70ed\u529b\u56fe',
-                        dailyCounts: lastYear,
-                        isDark: isDark,
-                      ),
-                      const SizedBox(height: 12),
-                      _YearCharsTrendCardNew(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        points: annual.monthlyChars,
-                        isDark: isDark,
-                      ),
-                      const SizedBox(height: 12),
-                      _AnnualInsightsCardNew(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        insights: annual,
-                        isDark: isDark,
-                      ),
-                      const SizedBox(height: 12),
-                      _BottomMetricWrapNew(
-                        items: [...bottomItems, ...additionalBottomItems],
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                      ),
-                    ],
+                  return _buildDataStatsContent(
+                    constraints: constraints,
+                    months: months,
+                    monthTitle: monthTitle,
+                    monthLabel: monthLabel,
+                    monthly: monthly,
+                    growth: growth,
+                    trendMonthLabel: trendMonthLabel,
+                    monthDate: monthDate,
+                    daySeries: daySeries,
+                    lastYear: lastYear,
+                    annual: annual,
+                    bottomItems: bottomItems,
+                    additionalBottomItems: additionalBottomItems,
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    isDark: isDark,
                   );
                 },
               ),
@@ -706,6 +1145,551 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _StatsViewModeToggle extends StatelessWidget {
+  const _StatsViewModeToggle({
+    required this.selectedView,
+    required this.onChanged,
+    required this.textMain,
+    required this.textMuted,
+  });
+
+  final _StatsScreenView selectedView;
+  final ValueChanged<_StatsScreenView> onChanged;
+  final Color textMain;
+  final Color textMuted;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final trackColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.black.withValues(alpha: 0.03);
+    final thumbColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.white.withValues(alpha: 0.95);
+    final selectedColor = textMain;
+    final unselectedColor = textMuted.withValues(alpha: 0.82);
+
+    return CupertinoSlidingSegmentedControl<_StatsScreenView>(
+      groupValue: selectedView,
+      padding: const EdgeInsets.all(3),
+      backgroundColor: trackColor,
+      thumbColor: thumbColor,
+      onValueChanged: (value) {
+        if (value != null) onChanged(value);
+      },
+      children: {
+        _StatsScreenView.data: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          child: Text(
+            context.tr(zh: '\u6570\u636e', en: 'Data'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: selectedView == _StatsScreenView.data
+                  ? selectedColor
+                  : unselectedColor,
+            ),
+          ),
+        ),
+        _StatsScreenView.calendar: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          child: Text(
+            context.tr(zh: '\u65e5\u5386', en: 'Calendar'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: selectedView == _StatsScreenView.calendar
+                  ? selectedColor
+                  : unselectedColor,
+            ),
+          ),
+        ),
+      },
+    );
+  }
+}
+
+class _CalendarDayData {
+  const _CalendarDayData({
+    required this.day,
+    required this.count,
+    required this.intensity,
+    required this.isCurrentMonth,
+    required this.isToday,
+  });
+
+  final DateTime day;
+  final int count;
+  final int intensity;
+  final bool isCurrentMonth;
+  final bool isToday;
+}
+
+class _CalendarMonthCard extends StatelessWidget {
+  const _CalendarMonthCard({
+    required this.card,
+    required this.textMain,
+    required this.textMuted,
+    required this.month,
+    required this.dailyCounts,
+    required this.selectedDay,
+    required this.onPickMonth,
+    required this.onSelectDay,
+    required this.onPreviousMonth,
+    required this.onNextMonth,
+  });
+
+  final Color card;
+  final Color textMain;
+  final Color textMuted;
+  final DateTime month;
+  final Map<DateTime, int> dailyCounts;
+  final DateTime selectedDay;
+  final VoidCallback? onPickMonth;
+  final ValueChanged<DateTime> onSelectDay;
+  final VoidCallback? onPreviousMonth;
+  final VoidCallback? onNextMonth;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final monthLabel = _formatCalendarMonthTitle(context, month);
+    final weekdayLabels = _calendarWeekdayLabels(context);
+    final days = _buildCalendarMonthDays(context, month, dailyCounts);
+
+    final titleChild = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            monthLabel,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: textMain,
+            ),
+          ),
+        ),
+        if (onPickMonth != null) ...[
+          const SizedBox(width: 4),
+          Icon(Icons.expand_more, size: 20, color: textMuted),
+        ],
+      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _buildCalendarSectionDecoration(card, isDark: isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: onPickMonth == null
+                    ? titleChild
+                    : Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: onPickMonth,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: titleChild,
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              _CalendarMonthNavButton(
+                icon: Icons.chevron_left,
+                onTap: onPreviousMonth,
+                color: textMuted,
+              ),
+              const SizedBox(width: 6),
+              _CalendarMonthNavButton(
+                icon: Icons.chevron_right,
+                onTap: onNextMonth,
+                color: textMuted,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              for (final label in weekdayLabels)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: textMuted.withValues(alpha: 0.68),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: days.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
+            itemBuilder: (context, index) {
+              final item = days[index];
+              final isSelected = DateUtils.isSameDay(item.day, selectedDay);
+              final fill = isSelected
+                  ? MemoFlowPalette.primary.withValues(
+                      alpha: isDark ? 0.88 : 0.96,
+                    )
+                  : _calendarCellFill(
+                      intensity: item.intensity,
+                      isCurrentMonth: item.isCurrentMonth,
+                      isDark: isDark,
+                    );
+              final border = isSelected
+                  ? Border.all(
+                      color: MemoFlowPalette.primary.withValues(
+                        alpha: isDark ? 0.96 : 0.72,
+                      ),
+                      width: 1.5,
+                    )
+                  : item.isToday
+                  ? Border.all(
+                      color: MemoFlowPalette.primary.withValues(
+                        alpha: isDark ? 0.88 : 0.64,
+                      ),
+                      width: 1.6,
+                    )
+                  : null;
+              final textColor = isSelected
+                  ? Colors.white
+                  : _calendarCellTextColor(
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      intensity: item.intensity,
+                      isCurrentMonth: item.isCurrentMonth,
+                    );
+              final cell = AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: fill,
+                  borderRadius: BorderRadius.circular(16),
+                  border: border,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '${item.day.day}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                  ),
+                ),
+              );
+
+              if (!item.isCurrentMonth) return cell;
+
+              return Tooltip(
+                message: _buildCalendarDayTooltip(
+                  context,
+                  day: item.day,
+                  count: item.count,
+                ),
+                waitDuration: const Duration(milliseconds: 200),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => onSelectDay(item.day),
+                    child: cell,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalendarMonthNavButton extends StatelessWidget {
+  const _CalendarMonthNavButton({
+    required this.icon,
+    required this.onTap,
+    required this.color,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+    return IconButton(
+      onPressed: onTap,
+      visualDensity: VisualDensity.compact,
+      splashRadius: 18,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+      padding: EdgeInsets.zero,
+      icon: Icon(
+        icon,
+        size: 22,
+        color: disabled ? color.withValues(alpha: 0.35) : color,
+      ),
+    );
+  }
+}
+
+class _CalendarSelectedDaySection extends StatelessWidget {
+  const _CalendarSelectedDaySection({
+    required this.selectedDay,
+    required this.dayMemosAsync,
+    required this.memoCardKeyForUid,
+    required this.prefs,
+    required this.outboxStatus,
+    required this.tagColors,
+    required this.audioPositionListenable,
+    required this.audioDurationListenable,
+    required this.onOpenMemo,
+    required this.onToggleTask,
+    required this.onSyncStatusTap,
+    required this.onAction,
+    required this.textMain,
+    required this.textMuted,
+  });
+
+  final DateTime selectedDay;
+  final AsyncValue<List<LocalMemo>> dayMemosAsync;
+  final GlobalKey<MemoListCardState> Function(String memoUid) memoCardKeyForUid;
+  final AppPreferences prefs;
+  final OutboxMemoStatus outboxStatus;
+  final TagColorLookup tagColors;
+  final ValueListenable<Duration> audioPositionListenable;
+  final ValueListenable<Duration?> audioDurationListenable;
+  final ValueChanged<LocalMemo> onOpenMemo;
+  final Future<void> Function(LocalMemo memo, int index) onToggleTask;
+  final Future<void> Function(LocalMemo memo, MemoSyncStatus status)
+  onSyncStatusTap;
+  final Future<void> Function(LocalMemo memo, MemoCardAction action) onAction;
+  final Color textMain;
+  final Color textMuted;
+
+  @override
+  Widget build(BuildContext context) {
+    return dayMemosAsync.when(
+      data: (memos) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CalendarSelectedDayHeader(
+              selectedDay: selectedDay,
+              memoCount: memos.length,
+              textMain: textMain,
+              textMuted: textMuted,
+            ),
+            const SizedBox(height: 8),
+            if (memos.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 10, 2, 0),
+                child: Text(
+                  context.tr(
+                    zh: '\u8fd9\u4e00\u5929\u8fd8\u6ca1\u6709\u7b14\u8bb0\uff0c\u53ef\u4ee5\u70b9\u5176\u4ed6\u65e5\u671f\u770b\u770b\u3002',
+                    en: 'No memos on this day yet. Try another date.',
+                  ),
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.6,
+                    fontWeight: FontWeight.w500,
+                    color: textMuted,
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: [
+                  for (var index = 0; index < memos.length; index++) ...[
+                    _CalendarSelectedMemoRow(
+                      memoCardKey: memoCardKeyForUid(memos[index].uid),
+                      memo: memos[index],
+                      prefs: prefs,
+                      outboxStatus: outboxStatus,
+                      tagColors: tagColors,
+                      audioPositionListenable: audioPositionListenable,
+                      audioDurationListenable: audioDurationListenable,
+                      onOpenMemo: onOpenMemo,
+                      onToggleTask: onToggleTask,
+                      onSyncStatusTap: onSyncStatusTap,
+                      onAction: onAction,
+                    ),
+                    if (index != memos.length - 1) const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+          ],
+        );
+      },
+      loading: () => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CalendarSelectedDayHeader(
+            selectedDay: selectedDay,
+            memoCount: null,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2.2)),
+          ),
+        ],
+      ),
+      error: (error, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CalendarSelectedDayHeader(
+            selectedDay: selectedDay,
+            memoCount: null,
+            textMain: textMain,
+            textMuted: textMuted,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            context.t.strings.legacy.msg_failed_load_4(e: error),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.6,
+              fontWeight: FontWeight.w500,
+              color: textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalendarSelectedDayHeader extends StatelessWidget {
+  const _CalendarSelectedDayHeader({
+    required this.selectedDay,
+    required this.memoCount,
+    required this.textMain,
+    required this.textMuted,
+  });
+
+  final DateTime selectedDay;
+  final int? memoCount;
+  final Color textMain;
+  final Color textMuted;
+
+  @override
+  Widget build(BuildContext context) {
+    final countLabel = memoCount == null
+        ? context.tr(zh: '\u52a0\u8f7d\u4e2d', en: 'Loading')
+        : context.tr(
+            zh: '\u5171${_formatNumber(memoCount!)}\u6761\u7b14\u8bb0',
+            en: '${_formatNumber(memoCount!)} memos',
+          );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 2),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          Text(
+            _formatSelectedDayTitle(context, selectedDay),
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: textMain,
+            ),
+          ),
+          Text(
+            countLabel,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: MemoFlowPalette.primary.withValues(alpha: 0.88),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalendarSelectedMemoRow extends StatelessWidget {
+  const _CalendarSelectedMemoRow({
+    required this.memoCardKey,
+    required this.memo,
+    required this.prefs,
+    required this.outboxStatus,
+    required this.tagColors,
+    required this.audioPositionListenable,
+    required this.audioDurationListenable,
+    required this.onOpenMemo,
+    required this.onToggleTask,
+    required this.onSyncStatusTap,
+    required this.onAction,
+  });
+
+  final GlobalKey<MemoListCardState> memoCardKey;
+  final LocalMemo memo;
+  final AppPreferences prefs;
+  final OutboxMemoStatus outboxStatus;
+  final TagColorLookup tagColors;
+  final ValueListenable<Duration> audioPositionListenable;
+  final ValueListenable<Duration?> audioDurationListenable;
+  final ValueChanged<LocalMemo> onOpenMemo;
+  final Future<void> Function(LocalMemo memo, int index) onToggleTask;
+  final Future<void> Function(LocalMemo memo, MemoSyncStatus status)
+  onSyncStatusTap;
+  final Future<void> Function(LocalMemo memo, MemoCardAction action) onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return MemosListMemoCardContainer(
+      memoCardKey: memoCardKey,
+      memo: memo,
+      heroTag: null,
+      prefs: prefs,
+      outboxStatus: outboxStatus,
+      tagColors: tagColors,
+      removing: false,
+      searching: false,
+      windowsHeaderSearchExpanded: false,
+      selectedQuickSearchKind: null,
+      searchQuery: '',
+      playingMemoUid: null,
+      audioPlaying: false,
+      audioLoading: false,
+      audioPositionListenable: audioPositionListenable,
+      audioDurationListenable: audioDurationListenable,
+      onAudioSeek: null,
+      onAudioTap: null,
+      onSyncStatusTap: (status) => unawaited(onSyncStatusTap(memo, status)),
+      onToggleTask: (index) => unawaited(onToggleTask(memo, index)),
+      onTap: () => onOpenMemo(memo),
+      onAction: (action) => unawaited(onAction(memo, action)),
     );
   }
 }
@@ -3253,14 +4237,168 @@ _MonthGrowthSummaryNew _buildMonthlyGrowthSummary({
 }
 
 List<DateTime> _deriveMonths(Map<DateTime, int> dailyCounts) {
-  final set = <DateTime>{};
+  final today = DateTime.now();
+  var earliest = DateTime(today.year, today.month);
+  var latest = earliest;
   for (final d in dailyCounts.keys) {
     final local = d.toLocal();
-    set.add(DateTime(local.year, local.month));
+    final month = DateTime(local.year, local.month);
+    if (month.isBefore(earliest)) earliest = month;
+    if (month.isAfter(latest)) latest = month;
   }
-  final list = set.toList();
-  list.sort((a, b) => b.compareTo(a));
-  return list;
+
+  final months = <DateTime>[];
+  var cursor = latest;
+  while (!cursor.isBefore(earliest)) {
+    months.add(cursor);
+    cursor = DateTime(cursor.year, cursor.month - 1);
+  }
+  return months;
+}
+
+DateTime _clampDateToRange(DateTime value, DateTime first, DateTime last) {
+  if (value.isBefore(first)) return first;
+  if (value.isAfter(last)) return last;
+  return value;
+}
+
+bool _sameMonth(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month;
+
+BoxDecoration _buildCalendarSectionDecoration(
+  Color card, {
+  required bool isDark,
+}) {
+  return BoxDecoration(
+    color: isDark
+        ? Color.alphaBlend(Colors.white.withValues(alpha: 0.02), card)
+        : Color.alphaBlend(Colors.white.withValues(alpha: 0.3), card),
+    borderRadius: BorderRadius.circular(24),
+    border: Border.all(
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.05)
+          : Colors.black.withValues(alpha: 0.03),
+    ),
+  );
+}
+
+String _formatCalendarMonthTitle(BuildContext context, DateTime month) {
+  final localeTag = Localizations.localeOf(context).toLanguageTag();
+  try {
+    return DateFormat.yMMMM(localeTag).format(month);
+  } catch (_) {
+    return _formatMonth(month);
+  }
+}
+
+String _formatSelectedDayTitle(BuildContext context, DateTime day) {
+  final localeTag = Localizations.localeOf(context).toLanguageTag();
+  try {
+    return DateFormat.yMMMMd(localeTag).format(day);
+  } catch (_) {
+    return DateFormat('yyyy-MM-dd').format(day);
+  }
+}
+
+List<String> _calendarWeekdayLabels(BuildContext context) {
+  final localizations = MaterialLocalizations.of(context);
+  final weekdays = localizations.narrowWeekdays;
+  final firstDay = localizations.firstDayOfWeekIndex;
+  return List<String>.generate(
+    7,
+    (index) => weekdays[(firstDay + index) % weekdays.length],
+    growable: false,
+  );
+}
+
+List<_CalendarDayData> _buildCalendarMonthDays(
+  BuildContext context,
+  DateTime month,
+  Map<DateTime, int> dailyCounts,
+) {
+  final localizations = MaterialLocalizations.of(context);
+  final firstDayOfMonth = DateTime(month.year, month.month, 1);
+  final weekdayIndex = firstDayOfMonth.weekday % DateTime.daysPerWeek;
+  final leadingDays =
+      (weekdayIndex - localizations.firstDayOfWeekIndex + 7) % 7;
+  final gridStart = DateTime(month.year, month.month, 1 - leadingDays);
+  final today = DateTime.now();
+  final normalizedToday = DateTime(today.year, today.month, today.day);
+  final maxCount = dailyCounts.values.fold<int>(
+    0,
+    (max, value) => math.max(max, value),
+  );
+
+  return List<_CalendarDayData>.generate(42, (index) {
+    final day = DateTime(
+      gridStart.year,
+      gridStart.month,
+      gridStart.day + index,
+    );
+    final isCurrentMonth = _sameMonth(day, month);
+    final count = isCurrentMonth ? (dailyCounts[day] ?? 0) : 0;
+    return _CalendarDayData(
+      day: day,
+      count: count,
+      intensity: _resolveCalendarIntensity(count: count, maxCount: maxCount),
+      isCurrentMonth: isCurrentMonth,
+      isToday: DateUtils.isSameDay(day, normalizedToday),
+    );
+  }, growable: false);
+}
+
+int _resolveCalendarIntensity({required int count, required int maxCount}) {
+  if (count <= 0 || maxCount <= 0) return 0;
+  if (count >= maxCount) return 6;
+  final ratio = count / maxCount;
+  return (ratio * 6).ceil().clamp(1, 6);
+}
+
+Color _calendarCellFill({
+  required int intensity,
+  required bool isCurrentMonth,
+  required bool isDark,
+}) {
+  if (!isCurrentMonth) {
+    return Colors.transparent;
+  }
+  if (intensity <= 0) {
+    return isDark ? const Color(0xFF2B2B2B) : const Color(0xFFF7F3EE);
+  }
+  const lightAlphas = <double>[0.16, 0.24, 0.34, 0.46, 0.60, 0.78];
+  const darkAlphas = <double>[0.22, 0.30, 0.40, 0.54, 0.68, 0.84];
+  final alpha = isDark ? darkAlphas[intensity - 1] : lightAlphas[intensity - 1];
+  return MemoFlowPalette.primary.withValues(alpha: alpha);
+}
+
+Color _calendarCellTextColor({
+  required Color textMain,
+  required Color textMuted,
+  required int intensity,
+  required bool isCurrentMonth,
+}) {
+  if (!isCurrentMonth) {
+    return textMuted.withValues(alpha: 0.38);
+  }
+  if (intensity >= 4) {
+    return Colors.white;
+  }
+  if (intensity > 0) {
+    return textMain;
+  }
+  return textMuted.withValues(alpha: 0.88);
+}
+
+String _buildCalendarDayTooltip(
+  BuildContext context, {
+  required DateTime day,
+  required int count,
+}) {
+  final dateLabel = DateFormat('yyyy-MM-dd').format(day);
+  return context.tr(
+    zh: '$dateLabel  ·  ${_formatNumber(count)} \u6761\u7b14\u8bb0',
+    en: '$dateLabel · ${_formatNumber(count)} memos',
+  );
 }
 
 Map<DateTime, int> _lastNDaysCounts(
