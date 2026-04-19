@@ -4,6 +4,7 @@ import 'package:memos_flutter_app/data/local_library/local_library_memo_sidecar.
 import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/data/models/memo_clip_card_metadata.dart';
 import 'package:memos_flutter_app/data/models/memo_location.dart';
 import 'package:memos_flutter_app/data/models/memo_relation.dart';
 
@@ -77,6 +78,57 @@ void main() {
     expect(decoded.relations.single.relatedMemo.name, 'memos/memo-2');
     expect(decoded.hasAttachments, isTrue);
     expect(decoded.attachments.single.archiveName, 'att-1_photo.jpg');
+  });
+
+  test('sidecar round trips clip card metadata', () {
+    final memo = LocalMemo(
+      uid: 'memo-clip',
+      content: '# 标题\n\n正文',
+      contentFingerprint: computeContentFingerprint('# 标题\n\n正文'),
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTime: DateTime.utc(2026, 4, 18, 2),
+      displayTime: null,
+      updateTime: DateTime.utc(2026, 4, 18, 3),
+      tags: const <String>[],
+      attachments: const <Attachment>[],
+      relationCount: 0,
+      location: null,
+      syncState: SyncState.synced,
+      lastError: null,
+    );
+
+    final sidecar = LocalLibraryMemoSidecar.fromMemo(
+      memo: memo,
+      hasRelations: false,
+      relations: const <MemoRelation>[],
+      attachments: const <LocalLibraryAttachmentExportMeta>[],
+      clipCard: MemoClipCardMetadata(
+        memoUid: memo.uid,
+        clipKind: MemoClipKind.article,
+        platform: MemoClipPlatform.wechat,
+        sourceName: '中国民兵',
+        sourceAvatarUrl: '',
+        authorName: '编辑部',
+        authorAvatarUrl: '',
+        sourceUrl: 'https://mp.weixin.qq.com/s/example',
+        leadImageUrl: 'https://example.com/cover.jpg',
+        parserTag: 'wechat',
+        createdTime: memo.createTime,
+        updatedTime: memo.updateTime,
+      ),
+    );
+
+    final decoded = LocalLibraryMemoSidecar.tryParse(sidecar.encodeJson());
+
+    expect(decoded, isNotNull);
+    expect(decoded!.hasClipCard, isTrue);
+    expect(decoded.clipCard, isNotNull);
+    expect(decoded.clipCard!.platform, MemoClipPlatform.wechat);
+    expect(decoded.clipCard!.sourceName, '中国民兵');
+    expect(decoded.clipCard!.authorName, '编辑部');
+    expect(decoded.clipCard!.sourceUrl, 'https://mp.weixin.qq.com/s/example');
   });
 
   test('sidecar preserves missing versus null and empty semantics', () {

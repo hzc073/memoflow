@@ -7,8 +7,10 @@ import '../../data/db/app_database.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
+import '../../data/models/memo_clip_card_metadata.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_relation.dart';
+import '../../features/share/share_clip_models.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import '../system/database_provider.dart';
 import '../system/reminder_scheduler.dart';
@@ -69,6 +71,10 @@ class MemoMutationService {
         hasAttachments: false,
       ),
     );
+  }
+
+  Future<void> upsertMemoClipCardMetadata(MemoClipCardMetadata metadata) {
+    return db.upsertMemoClipCard(metadata);
   }
 
   Future<int> retryOutboxErrors({required String memoUid}) async {
@@ -327,6 +333,7 @@ class MemoMutationService {
     required List<Map<String, dynamic>> attachmentPayloads,
     List<Map<String, String>> inlineImageSourceMappings =
         const <Map<String, String>>[],
+    ShareClipMetadataDraft? clipMetadataDraft,
   }) async {
     final db = this.db;
     final localAttachments = mergePendingAttachmentPlaceholders(
@@ -375,6 +382,12 @@ class MemoMutationService {
         memoUid: uid,
         localUrl: localUrl,
         sourceUrl: sourceUrl,
+      );
+    }
+
+    if (clipMetadataDraft != null) {
+      await db.upsertMemoClipCard(
+        clipMetadataDraft.toMemoClipCardMetadata(memoUid: uid, now: now),
       );
     }
 
@@ -474,6 +487,16 @@ class MemoMutationService {
           content: content,
         );
     if (!allowed) return;
+
+    final updatedPendingCreateCount = await db.updatePendingCreateMemoContent(
+      memoUid: memo.uid,
+      content: content,
+      visibility: memo.visibility,
+    );
+    if (updatedPendingCreateCount > 0) {
+      return;
+    }
+
     await db.enqueueOutbox(
       type: 'update_memo',
       payload: {
@@ -832,7 +855,10 @@ class MemoMutationService {
     required String normalizedSourceUrl,
     required Map<String, dynamic> stagedUploadPayload,
   }) async {
-    if (updatedContent == memo.content) return;
+    final contentChanged = updatedContent != memo.content;
+    final attachmentsChanged =
+        updatedAttachments.length != memo.attachments.length;
+    if (!contentChanged && !attachmentsChanged) return;
     final db = this.db;
     final now = DateTime.now().toUtc();
     final syncPolicy = resolveMemoSyncMutationPolicy(
@@ -872,18 +898,23 @@ class MemoMutationService {
           content: updatedContent,
         );
     if (!allowed) return;
-    await db.enqueueOutbox(
-      type: 'update_memo',
-      payload: {
-        'uid': memo.uid,
-        'content': updatedContent,
-        'visibility': memo.visibility,
-        'pinned': memo.pinned,
-      },
-    );
-    await db.enqueueOutbox(
-      type: 'upload_attachment',
-      payload: stagedUploadPayload,
+    await db.enqueueOutboxBatch(
+      items: [
+        <String, Object?>{
+          'type': 'update_memo',
+          'payload': <String, Object?>{
+            'uid': memo.uid,
+            'content': updatedContent,
+            'visibility': memo.visibility,
+            'pinned': memo.pinned,
+            'has_pending_attachments': true,
+          },
+        },
+        <String, Object?>{
+          'type': 'upload_attachment',
+          'payload': stagedUploadPayload,
+        },
+      ],
     );
   }
 

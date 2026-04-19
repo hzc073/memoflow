@@ -21,6 +21,7 @@ import '../../data/local_library/local_library_memo_sidecar.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/memo_clip_card_metadata.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/database_provider.dart';
@@ -255,9 +256,14 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
       var skippedAttachmentCount = 0;
       final usedAttachmentPaths = <String>{};
       final sidecarsByUid = <String, LocalLibraryMemoSidecar>{};
+      final clipCardsByUid = <String, MemoClipCardMetadata>{};
       final httpClient = Dio();
       for (final memoEntry in memos) {
         final memo = memoEntry.memo;
+        final clipCardRow = await db.getMemoClipCardByUid(memo.uid);
+        if (clipCardRow != null) {
+          clipCardsByUid[memo.uid] = MemoClipCardMetadata.fromDb(clipCardRow);
+        }
         if (memo.attachments.isEmpty) continue;
         final memoDir = _sanitizePathSegment(memo.uid, fallback: 'memo');
         final sidecarAttachments = <LocalLibraryAttachmentExportMeta>[];
@@ -309,6 +315,7 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
           hasRelations: true,
           relations: relationSnapshot.relations,
           attachments: sidecarAttachments,
+          clipCard: clipCardsByUid[memo.uid],
           relationCount: relationSnapshot.relationCount,
           relationsComplete: relationSnapshot.relationsComplete,
         );
@@ -329,6 +336,7 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
               hasRelations: true,
               relations: relationSnapshot.relations,
               attachments: const [],
+              clipCard: clipCardsByUid[memo.uid],
               relationCount: relationSnapshot.relationCount,
               relationsComplete: relationSnapshot.relationsComplete,
             );

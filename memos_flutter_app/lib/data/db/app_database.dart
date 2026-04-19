@@ -10,6 +10,7 @@ import '../../core/tags.dart';
 import 'db_write_protocol.dart';
 import 'desktop_db_write_gateway.dart';
 import 'app_database_write_dao.dart';
+import '../models/memo_clip_card_metadata.dart';
 import '../models/memo_location.dart';
 
 class AppDatabase {
@@ -26,7 +27,7 @@ class AppDatabase {
   final DesktopDbWriteGateway? _writeGateway;
   late final AppDatabaseWriteDao _writeDao = AppDatabaseWriteDao(db: this);
   static const Object _displayTimeUnspecified = Object();
-  static const _dbVersion = 24;
+  static const _dbVersion = 25;
   static const int outboxStatePending = 0;
   static const int outboxStateRunning = 1;
   static const int outboxStateRetry = 2;
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
   FOREIGN KEY (memo_uid) REFERENCES memos(uid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 ''');
+          await _ensureMemoClipCardsTable(db);
 
           await db.execute('''
 CREATE TABLE IF NOT EXISTS attachments (
@@ -486,7 +488,8 @@ CREATE TABLE IF NOT EXISTS outbox (
               db,
               table: 'collection_read_progress',
               column: 'current_chapter_page_index',
-              definition: 'current_chapter_page_index INTEGER NOT NULL DEFAULT 0',
+              definition:
+                  'current_chapter_page_index INTEGER NOT NULL DEFAULT 0',
             );
             await _ensureColumnExists(
               db,
@@ -495,8 +498,12 @@ CREATE TABLE IF NOT EXISTS outbox (
               definition: 'current_match_char_offset INTEGER',
             );
           }
+          if (oldVersion < 25) {
+            await _ensureMemoClipCardsTable(db);
+          }
         },
         onOpen: (db) async {
+          await _ensureMemoClipCardsTable(db);
           await _ensureStatsCache(db);
           await _ensureFts(db);
         },
@@ -952,6 +959,14 @@ CREATE TABLE IF NOT EXISTS outbox (
           () => deleteOutboxForMemo(_requiredString(payload, 'memoUid')),
         );
         return null;
+      case 'updatePendingCreateMemoContent':
+        return _runLocalWrite(
+          () => updatePendingCreateMemoContent(
+            memoUid: _requiredString(payload, 'memoUid'),
+            content: _requiredString(payload, 'content'),
+            visibility: payload['visibility'] as String?,
+          ),
+        );
       case 'clearOutbox':
         await _runLocalWrite(clearOutbox);
         return null;
@@ -983,6 +998,23 @@ CREATE TABLE IF NOT EXISTS outbox (
       case 'deleteMemoByUid':
         await _runLocalWrite(
           () => deleteMemoByUid(_requiredString(payload, 'uid')),
+        );
+        return null;
+      case 'upsertMemoClipCard':
+        await _runLocalWrite(
+          () => upsertMemoClipCard(
+            MemoClipCardMetadata.fromDb(
+              _readObjectMapPayload(
+                payload,
+                'row',
+              ).map<String, dynamic>((key, value) => MapEntry(key, value)),
+            ),
+          ),
+        );
+        return null;
+      case 'deleteMemoClipCard':
+        await _runLocalWrite(
+          () => deleteMemoClipCard(_requiredString(payload, 'memoUid')),
         );
         return null;
       case 'upsertMemoReminder':
@@ -1381,9 +1413,10 @@ WHERE mt.memo_uid = ?;
     );
     final rowId = _readInt(rows.firstOrNull?['id']) ?? 0;
     if (rowId > 0) {
-      await _replaceMemoFtsEntry(
+      await refreshMemoFtsEntryForMemo(
         txn,
         rowId: rowId,
+        memoUid: normalizedUid,
         content: before.content,
         tags: tagsText,
       );
@@ -1421,6 +1454,63 @@ WHERE mt.memo_uid = ?;
         const <String, dynamic>{};
   }
 
+  Future<Map<String, dynamic>?> getMemoClipCardByUidFromExecutor(
+    DatabaseExecutor executor,
+    String memoUid,
+  ) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) return null;
+    final rows = await executor.query(
+      'memo_clip_cards',
+      where: 'memo_uid = ?',
+      whereArgs: [normalizedUid],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<String> buildMemoSearchDocumentForMemo(
+    DatabaseExecutor executor, {
+    required String memoUid,
+    required String content,
+  }) async {
+    final clipRow = await getMemoClipCardByUidFromExecutor(executor, memoUid);
+    return buildMemoSearchDocument(
+      content: content,
+      sourceName: (clipRow?['source_name'] as String? ?? '').trim(),
+      authorName: (clipRow?['author_name'] as String? ?? '').trim(),
+      sourceUrl: (clipRow?['source_url'] as String? ?? '').trim(),
+    );
+  }
+
+  static String buildMemoSearchDocument({
+    required String content,
+    String sourceName = '',
+    String authorName = '',
+    String sourceUrl = '',
+  }) {
+    final parts = <String>[
+      content.trimRight(),
+      sourceName.trim(),
+      authorName.trim(),
+    ];
+    final normalizedUrl = sourceUrl.trim();
+    if (normalizedUrl.isNotEmpty) {
+      final parsed = Uri.tryParse(normalizedUrl);
+      final host = (parsed?.host ?? '').trim().toLowerCase();
+      final hostWithoutWww = host.startsWith('www.') ? host.substring(4) : host;
+      if (host.isNotEmpty) {
+        parts.add(host);
+      }
+      if (hostWithoutWww.isNotEmpty && hostWithoutWww != host) {
+        parts.add(hostWithoutWww);
+      }
+      parts.add(normalizedUrl);
+    }
+    return parts.where((part) => part.trim().isNotEmpty).join('\n');
+  }
+
   Future<void> applyMemoCacheDeltaPayload(
     DatabaseExecutor txn, {
     required Map<String, dynamic>? before,
@@ -1443,6 +1533,26 @@ WHERE mt.memo_uid = ?;
       executor,
       rowId: rowId,
       content: content,
+      tags: tags,
+    );
+  }
+
+  Future<void> refreshMemoFtsEntryForMemo(
+    DatabaseExecutor executor, {
+    required int rowId,
+    required String memoUid,
+    required String content,
+    required String tags,
+  }) async {
+    final searchDocument = await buildMemoSearchDocumentForMemo(
+      executor,
+      memoUid: memoUid,
+      content: content,
+    );
+    await replaceMemoFtsEntry(
+      executor,
+      rowId: rowId,
+      content: searchDocument,
       tags: tags,
     );
   }
@@ -2445,6 +2555,30 @@ WHERE id = 1;
     return rows.first;
   }
 
+  Future<Map<String, dynamic>?> getMemoClipCardByUid(String memoUid) async {
+    final db = await this.db;
+    final rows = await db.query(
+      'memo_clip_cards',
+      where: 'memo_uid = ?',
+      whereArgs: [memoUid],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> listMemoClipCards() async {
+    final db = await this.db;
+    return db.query('memo_clip_cards', orderBy: 'updated_time DESC, id DESC');
+  }
+
+  Stream<List<Map<String, dynamic>>> watchMemoClipCards() async* {
+    yield await listMemoClipCards();
+    await for (final _ in changes) {
+      yield await listMemoClipCards();
+    }
+  }
+
   Future<int> enqueueOutbox({
     required String type,
     required Map<String, dynamic> payload,
@@ -2990,6 +3124,29 @@ WHERE id = 1;
     await _writeDao.deleteOutboxForMemo(memoUid);
   }
 
+  Future<int> updatePendingCreateMemoContent({
+    required String memoUid,
+    required String content,
+    String? visibility,
+  }) async {
+    if (_writeProxyEnabled && _localWriteDepth == 0) {
+      return _dispatchWriteCommand<int>(
+        operation: 'updatePendingCreateMemoContent',
+        payload: <String, dynamic>{
+          'memoUid': memoUid,
+          'content': content,
+          if (visibility != null) 'visibility': visibility,
+        },
+        decode: (result) => result is int ? result : 0,
+      );
+    }
+    return _writeDao.updatePendingCreateMemoContent(
+      memoUid: memoUid,
+      content: content,
+      visibility: visibility,
+    );
+  }
+
   Future<void> clearOutbox() async {
     if (_writeProxyEnabled && _localWriteDepth == 0) {
       await _dispatchWriteCommand<void>(
@@ -3098,6 +3255,30 @@ WHERE id = 1;
       return;
     }
     await _writeDao.deleteMemoByUid(uid);
+  }
+
+  Future<void> upsertMemoClipCard(MemoClipCardMetadata metadata) async {
+    if (_writeProxyEnabled && _localWriteDepth == 0) {
+      await _dispatchWriteCommand<void>(
+        operation: 'upsertMemoClipCard',
+        payload: <String, dynamic>{'row': metadata.toDbRow()},
+        decode: (_) {},
+      );
+      return;
+    }
+    await _writeDao.upsertMemoClipCard(metadata);
+  }
+
+  Future<void> deleteMemoClipCard(String memoUid) async {
+    if (_writeProxyEnabled && _localWriteDepth == 0) {
+      await _dispatchWriteCommand<void>(
+        operation: 'deleteMemoClipCard',
+        payload: <String, dynamic>{'memoUid': memoUid},
+        decode: (_) {},
+      );
+      return;
+    }
+    await _writeDao.deleteMemoClipCard(memoUid);
   }
 
   Future<Map<String, dynamic>?> getMemoReminderByUid(String memoUid) async {
@@ -3436,17 +3617,45 @@ $sqlLimitClause;
     } on DatabaseException {
       final like = '%$normalizedSearch%';
       final fallbackClauses = <String>[
-        ...baseWhereClauses,
-        '(content LIKE ? OR tags LIKE ?)',
+        if (normalizedState.isNotEmpty) 'm.state = ?',
+        if (normalizedTag.isNotEmpty) "(' ' || m.tags || ' ') LIKE ?",
+        if (startTimeSec != null)
+          'COALESCE(m.display_time, m.create_time) >= ?',
+        if (endTimeSecExclusive != null)
+          'COALESCE(m.display_time, m.create_time) < ?',
+        '''
+(
+  m.content LIKE ?
+  OR m.tags LIKE ?
+  OR COALESCE(c.source_name, '') LIKE ?
+  OR COALESCE(c.author_name, '') LIKE ?
+  OR COALESCE(c.source_url, '') LIKE ?
+)
+''',
       ];
-      final fallbackArgs = <Object?>[...baseWhereArgs, like, like];
-      return db.query(
-        'memos',
-        where: fallbackClauses.join(' AND '),
-        whereArgs: fallbackArgs,
-        orderBy: 'pinned DESC, COALESCE(display_time, create_time) DESC',
-        limit: normalizedLimit,
-      );
+      final fallbackArgs = <Object?>[
+        if (normalizedState.isNotEmpty) normalizedState,
+        if (normalizedTag.isNotEmpty) '% $normalizedTag %',
+        if (startTimeSec != null) startTimeSec,
+        if (endTimeSecExclusive != null) endTimeSecExclusive,
+        like,
+        like,
+        like,
+        like,
+        like,
+      ];
+      final fallbackLimitClause = normalizedLimit == null ? '' : '\nLIMIT ?';
+      if (normalizedLimit != null) {
+        fallbackArgs.add(normalizedLimit);
+      }
+      return db.rawQuery('''
+SELECT DISTINCT m.*
+FROM memos m
+LEFT JOIN memo_clip_cards c ON c.memo_uid = m.uid
+WHERE ${fallbackClauses.join(' AND ')}
+ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC
+$fallbackLimitClause;
+''', fallbackArgs);
     }
   }
 
@@ -3874,10 +4083,24 @@ CREATE TABLE IF NOT EXISTS memo_tags (
           }
           final rowId = _readInt(row['id']) ?? 0;
           if (rowId > 0) {
+            final clipRows = await txn.query(
+              'memo_clip_cards',
+              columns: const ['source_name', 'author_name', 'source_url'],
+              where: 'memo_uid = ?',
+              whereArgs: [uid],
+              limit: 1,
+            );
+            final clipRow = clipRows.firstOrNull;
+            final searchDocument = buildMemoSearchDocument(
+              content: (row['content'] as String?) ?? '',
+              sourceName: (clipRow?['source_name'] as String?) ?? '',
+              authorName: (clipRow?['author_name'] as String?) ?? '',
+              sourceUrl: (clipRow?['source_url'] as String?) ?? '',
+            );
             await _replaceMemoFtsEntry(
               txn,
               rowId: rowId,
-              content: (row['content'] as String?) ?? '',
+              content: searchDocument,
               tags: updatedTagsText,
             );
           }
@@ -3885,6 +4108,33 @@ CREATE TABLE IF NOT EXISTS memo_tags (
       });
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
+  }
+
+  static Future<void> _ensureMemoClipCardsTable(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS memo_clip_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memo_uid TEXT NOT NULL UNIQUE,
+  clip_kind TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  source_name TEXT NOT NULL DEFAULT '',
+  source_avatar_url TEXT NOT NULL DEFAULT '',
+  author_name TEXT NOT NULL DEFAULT '',
+  author_avatar_url TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  lead_image_url TEXT NOT NULL DEFAULT '',
+  parser_tag TEXT NOT NULL DEFAULT '',
+  created_time INTEGER NOT NULL,
+  updated_time INTEGER NOT NULL,
+  FOREIGN KEY (memo_uid) REFERENCES memos(uid) ON DELETE CASCADE ON UPDATE CASCADE
+);
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_clip_cards_platform ON memo_clip_cards(platform);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_clip_cards_updated_time ON memo_clip_cards(updated_time DESC);',
+    );
   }
 
   static Future<void> _ensureStatsCache(
@@ -4181,17 +4431,30 @@ CREATE TABLE IF NOT EXISTS memos_fts (
 
   static Future<void> _backfillFts(Database db) async {
     await db.execute('DELETE FROM memos_fts;');
-    final rows = await db.query(
-      'memos',
-      columns: const ['id', 'content', 'tags'],
-    );
+    final rows = await db.rawQuery('''
+SELECT
+  m.id,
+  m.content,
+  m.tags,
+  c.source_name,
+  c.author_name,
+  c.source_url
+FROM memos m
+LEFT JOIN memo_clip_cards c ON c.memo_uid = m.uid;
+''');
     for (final row in rows) {
       final id = row['id'] as int?;
       if (id == null) continue;
+      final document = buildMemoSearchDocument(
+        content: (row['content'] as String?) ?? '',
+        sourceName: (row['source_name'] as String?) ?? '',
+        authorName: (row['author_name'] as String?) ?? '',
+        sourceUrl: (row['source_url'] as String?) ?? '',
+      );
       await _replaceMemoFtsEntry(
         db,
         rowId: id,
-        content: (row['content'] as String?) ?? '',
+        content: document,
         tags: (row['tags'] as String?) ?? '',
       );
     }

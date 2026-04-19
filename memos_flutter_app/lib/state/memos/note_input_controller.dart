@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo_location.dart';
+import '../../features/share/share_clip_models.dart';
 import '../../features/share/share_inline_image_content.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import 'memo_mutation_service.dart';
@@ -49,6 +50,7 @@ class NoteInputController {
     required bool hasAttachments,
     required List<Map<String, dynamic>> relations,
     required List<NoteInputPendingAttachment> pendingAttachments,
+    ShareClipMetadataDraft? clipMetadataDraft,
   }) async {
     final queuedAttachmentStager = _ref.read(queuedAttachmentStagerProvider);
 
@@ -100,20 +102,23 @@ class NoteInputController {
       }
     }
 
-    await _ref.read(memoMutationServiceProvider).createNoteInputMemo(
-      uid: uid,
-      content: content,
-      syncContent: syncContent,
-      visibility: visibility,
-      now: now,
-      tags: tags,
-      attachments: attachments,
-      location: location,
-      hasAttachments: hasAttachments,
-      relations: relations,
-      attachmentPayloads: attachmentPayloads,
-      inlineImageSourceMappings: inlineImageSourceMappings,
-    );
+    await _ref
+        .read(memoMutationServiceProvider)
+        .createNoteInputMemo(
+          uid: uid,
+          content: content,
+          syncContent: syncContent,
+          visibility: visibility,
+          now: now,
+          tags: tags,
+          attachments: attachments,
+          location: location,
+          hasAttachments: hasAttachments,
+          relations: relations,
+          attachmentPayloads: attachmentPayloads,
+          inlineImageSourceMappings: inlineImageSourceMappings,
+          clipMetadataDraft: clipMetadataDraft,
+        );
   }
 
   Future<void> appendDeferredThirdPartyShareInlineImage({
@@ -150,16 +155,37 @@ class NoteInputController {
 
     final memo = LocalMemo.fromDb(row);
     final localUrl = Uri.file(stagedAttachment.filePath).toString();
+    final originalLocalUrl = shareInlineLocalUrlFromPath(attachment.filePath);
     final normalizedSourceUrl =
         stagedAttachment.sourceUrl?.trim() ?? sourceUrl.trim();
-    final updatedContent = replaceShareInlineImageUrl(
+    var updatedContent = replaceShareInlineImageUrl(
       memo.content,
       fromUrl: sourceUrl,
       toUrl: localUrl,
     );
-    if (updatedContent == memo.content) {
+    if (originalLocalUrl.isNotEmpty && originalLocalUrl != localUrl) {
+      updatedContent = replaceShareInlineImageUrl(
+        updatedContent,
+        fromUrl: originalLocalUrl,
+        toUrl: localUrl,
+      );
+    }
+    final contentAlreadyContainsLocalUrl = contentContainsShareInlineImageUrl(
+      updatedContent,
+      localUrl,
+    );
+    final attachmentAlreadyExists = memo.attachments.any(
+      (item) => item.externalLink.trim() == localUrl,
+    );
+    if (attachmentAlreadyExists) {
       return;
     }
+    if (updatedContent == memo.content && !contentAlreadyContainsLocalUrl) {
+      return;
+    }
+    final nextContent = updatedContent == memo.content
+        ? memo.content
+        : updatedContent;
 
     final updatedAttachments = <Map<String, dynamic>>[
       ...memo.attachments.map((item) => item.toJson()),
@@ -187,7 +213,7 @@ class NoteInputController {
         .read(memoMutationServiceProvider)
         .appendDeferredThirdPartyShareInlineImage(
           memo: memo,
-          updatedContent: updatedContent,
+          updatedContent: nextContent,
           updatedAttachments: updatedAttachments,
           localUrl: localUrl,
           normalizedSourceUrl: normalizedSourceUrl,

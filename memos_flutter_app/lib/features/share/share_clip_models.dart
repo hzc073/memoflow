@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../data/models/memo_clip_card_metadata.dart';
 import 'share_handler.dart';
 
 enum ShareCaptureStatus { success, failure }
@@ -163,6 +164,51 @@ String? normalizeShareText(String? value) {
 }
 
 @immutable
+class ShareClipMetadataDraft {
+  const ShareClipMetadataDraft({
+    required this.clipKind,
+    required this.platform,
+    required this.sourceName,
+    this.sourceAvatarUrl = '',
+    this.authorName = '',
+    this.authorAvatarUrl = '',
+    required this.sourceUrl,
+    this.leadImageUrl = '',
+    this.parserTag = '',
+  });
+
+  final MemoClipKind clipKind;
+  final MemoClipPlatform platform;
+  final String sourceName;
+  final String sourceAvatarUrl;
+  final String authorName;
+  final String authorAvatarUrl;
+  final String sourceUrl;
+  final String leadImageUrl;
+  final String parserTag;
+
+  MemoClipCardMetadata toMemoClipCardMetadata({
+    required String memoUid,
+    required DateTime now,
+  }) {
+    return MemoClipCardMetadata(
+      memoUid: memoUid,
+      clipKind: clipKind,
+      platform: platform,
+      sourceName: sourceName.trim(),
+      sourceAvatarUrl: sourceAvatarUrl.trim(),
+      authorName: authorName.trim(),
+      authorAvatarUrl: authorAvatarUrl.trim(),
+      sourceUrl: sourceUrl.trim(),
+      leadImageUrl: leadImageUrl.trim(),
+      parserTag: parserTag.trim(),
+      createdTime: now,
+      updatedTime: now,
+    );
+  }
+}
+
+@immutable
 class ShareCaptureRequest {
   const ShareCaptureRequest({
     required this.payload,
@@ -185,7 +231,9 @@ class ShareCaptureResult {
     this.pageTitle,
     this.articleTitle,
     this.siteName,
+    this.sourceAvatarUrl,
     this.byline,
+    this.authorAvatarUrl,
     this.excerpt,
     this.contentHtml,
     this.textContent,
@@ -206,7 +254,9 @@ class ShareCaptureResult {
     String? pageTitle,
     String? articleTitle,
     String? siteName,
+    String? sourceAvatarUrl,
     String? byline,
+    String? authorAvatarUrl,
     String? excerpt,
     String? contentHtml,
     String? textContent,
@@ -224,7 +274,9 @@ class ShareCaptureResult {
          pageTitle: pageTitle,
          articleTitle: articleTitle,
          siteName: siteName,
+         sourceAvatarUrl: sourceAvatarUrl,
          byline: byline,
+         authorAvatarUrl: authorAvatarUrl,
          excerpt: excerpt,
          contentHtml: contentHtml,
          textContent: textContent,
@@ -245,6 +297,7 @@ class ShareCaptureResult {
     String? pageTitle,
     String? articleTitle,
     String? siteName,
+    String? sourceAvatarUrl,
     String? excerpt,
     String? textContent,
     SharePageKind pageKind = SharePageKind.unknown,
@@ -260,6 +313,7 @@ class ShareCaptureResult {
          pageTitle: pageTitle,
          articleTitle: articleTitle,
          siteName: siteName,
+         sourceAvatarUrl: sourceAvatarUrl,
          excerpt: excerpt,
          textContent: textContent,
          pageKind: pageKind,
@@ -274,7 +328,9 @@ class ShareCaptureResult {
   final String? pageTitle;
   final String? articleTitle;
   final String? siteName;
+  final String? sourceAvatarUrl;
   final String? byline;
+  final String? authorAvatarUrl;
   final String? excerpt;
   final String? contentHtml;
   final String? textContent;
@@ -312,6 +368,7 @@ class ShareComposeRequest {
     this.initialAttachmentSeeds = const [],
     this.deferredInlineImageAttachments = const [],
     this.deferredVideoAttachments = const [],
+    this.clipMetadataDraft,
     this.userMessage,
   });
 
@@ -322,6 +379,7 @@ class ShareComposeRequest {
   final List<ShareDeferredInlineImageAttachmentRequest>
   deferredInlineImageAttachments;
   final List<ShareDeferredVideoAttachmentRequest> deferredVideoAttachments;
+  final ShareClipMetadataDraft? clipMetadataDraft;
   final String? userMessage;
 
   ShareComposeRequest copyWith({
@@ -332,6 +390,7 @@ class ShareComposeRequest {
     List<ShareDeferredInlineImageAttachmentRequest>?
     deferredInlineImageAttachments,
     List<ShareDeferredVideoAttachmentRequest>? deferredVideoAttachments,
+    ShareClipMetadataDraft? clipMetadataDraft,
     String? userMessage,
   }) {
     return ShareComposeRequest(
@@ -344,6 +403,7 @@ class ShareComposeRequest {
           deferredInlineImageAttachments ?? this.deferredInlineImageAttachments,
       deferredVideoAttachments:
           deferredVideoAttachments ?? this.deferredVideoAttachments,
+      clipMetadataDraft: clipMetadataDraft ?? this.clipMetadataDraft,
       userMessage: userMessage ?? this.userMessage,
     );
   }

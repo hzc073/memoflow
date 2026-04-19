@@ -64,8 +64,63 @@ void main() {
     expect(payload!.title, 'Example Article');
   });
 
-  test('extractShareUrl returns the first url when multiple urls are shared', () {
-    const raw = 'Read this https://example.com/one and also https://example.com/two';
+  test(
+    'extractShareUrl returns the first url when multiple urls are shared',
+    () {
+      const raw =
+          'Read this https://example.com/one and also https://example.com/two';
+
+      final url = extractShareUrl(raw);
+
+      expect(url, 'https://example.com/one');
+    },
+  );
+
+  test('extractShareUrl trims trailing punctuation from shared text', () {
+    const raw = 'Read this https://example.com/one.';
+
+    final url = extractShareUrl(raw);
+
+    expect(url, 'https://example.com/one');
+  });
+
+  test('extractShareUrl preserves valid urls ending with a parenthesis', () {
+    const raw = 'https://en.wikipedia.org/wiki/Function_(mathematics)';
+
+    final url = extractShareUrl(raw);
+
+    expect(url, raw);
+  });
+
+  test(
+    'extractShareUrl keeps balanced closing parenthesis before sentence punctuation',
+    () {
+      const raw = 'See https://en.wikipedia.org/wiki/Function_(mathematics).';
+
+      final url = extractShareUrl(raw);
+
+      expect(url, 'https://en.wikipedia.org/wiki/Function_(mathematics)');
+    },
+  );
+
+  test('extractShareUrl trims wrapper closing parenthesis', () {
+    const raw = '(https://example.com/one)';
+
+    final url = extractShareUrl(raw);
+
+    expect(url, 'https://example.com/one');
+  });
+
+  test('extractShareUrl trims full-width wrapper closing parenthesis', () {
+    const raw = '\uFF08https://example.com/one\uFF09';
+
+    final url = extractShareUrl(raw);
+
+    expect(url, 'https://example.com/one');
+  });
+
+  test('extractShareUrl ignores zero-width characters in clipboard text', () {
+    const raw = 'https://example.com/one\u200b';
 
     final url = extractShareUrl(raw);
 

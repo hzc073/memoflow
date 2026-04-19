@@ -22,6 +22,7 @@ import '../../data/logs/log_manager.dart';
 import '../../data/logs/sync_queue_progress_tracker.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/memo_clip_card_metadata.dart';
 import '../../data/models/memoflow_bridge_settings.dart';
 import '../../data/repositories/memoflow_bridge_settings_repository.dart';
 import '../../data/logs/sync_status_tracker.dart';
@@ -665,7 +666,18 @@ class LocalSyncController extends SyncControllerBase {
           final memo = await _handleUpsertMemo(payload);
           final hasPendingAttachments =
               payload['has_pending_attachments'] as bool? ?? false;
-          if (!hasPendingAttachments && memo != null && memo.uid.isNotEmpty) {
+          final hasPendingAttachmentTasks =
+              !hasPendingAttachments &&
+              memo != null &&
+              memo.uid.isNotEmpty &&
+              await db.hasPendingOutboxTaskForMemo(
+                memo.uid,
+                types: const {'upload_attachment', 'delete_attachment'},
+              );
+          if (!hasPendingAttachments &&
+              !hasPendingAttachmentTasks &&
+              memo != null &&
+              memo.uid.isNotEmpty) {
             await mutations.markMemoSynchronized(memo.uid);
             await _syncMemoToBridgeIfEnabled(memo);
           }
@@ -1029,10 +1041,15 @@ class LocalSyncController extends SyncControllerBase {
       relationCount: memo.relationCount,
       relationsJson: relationsJson,
     );
+    final clipCardRow = await db.getMemoClipCardByUid(memoUid);
+    final clipCard = clipCardRow == null
+        ? null
+        : MemoClipCardMetadata.fromDb(clipCardRow);
     final sidecar = LocalLibraryMemoSidecar.fromMemo(
       memo: memo,
       hasRelations: true,
       relations: relationSnapshot.relations,
+      clipCard: clipCard,
       attachments: memo.attachments
           .map(
             (attachment) => LocalLibraryAttachmentExportMeta.fromAttachment(

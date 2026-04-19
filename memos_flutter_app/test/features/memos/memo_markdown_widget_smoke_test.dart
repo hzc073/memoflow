@@ -3,6 +3,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/features/memos/memo_markdown.dart';
 
 void main() {
+  test('resolveMemoMarkdownRemoteImageRequest resolves relative file urls', () {
+    final request = resolveMemoMarkdownRemoteImageRequest(
+      rawSrc: '/file/resources/demo/image.webp',
+      baseUrl: Uri.parse('http://192.168.13.13:45230'),
+      authHeader: 'Bearer token',
+    );
+
+    expect(request, isNotNull);
+    expect(
+      request?.url,
+      'http://192.168.13.13:45230/file/resources/demo/image.webp',
+    );
+    expect(request?.headers, {'Authorization': 'Bearer token'});
+  });
+
+  test(
+    'resolveMemoMarkdownRemoteImageRequest ignores local file image urls',
+    () {
+      final request = resolveMemoMarkdownRemoteImageRequest(
+        rawSrc: 'file:///tmp/memo-inline.webp',
+        baseUrl: Uri.parse('http://192.168.13.13:45230'),
+        authHeader: 'Bearer token',
+      );
+
+      expect(request, isNull);
+    },
+  );
+
   testWidgets('MemoMarkdown emits stable checkbox indices in UI order', (
     WidgetTester tester,
   ) async {

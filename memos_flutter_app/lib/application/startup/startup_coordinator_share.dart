@@ -6,6 +6,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
     if (!_isMounted() || payload == null) return;
     _pendingSharePayload = payload;
     _armStartupShareLaunchUi(payload);
+    _armRuntimeShareLaunchUi(payload);
     if (_startupHandled) {
       _logStartupInfo(
         'Startup: runtime_share',
@@ -37,6 +38,9 @@ extension _StartupCoordinatorShare on StartupCoordinator {
     if (!_bootstrapAdapter.readDevicePreferencesLoaded(_ref)) return false;
     final prefs = _bootstrapAdapter.readDevicePreferences(_ref);
     final session = _bootstrapAdapter.readSession(_ref);
+    final localLibrary = _bootstrapAdapter.readCurrentLocalLibrary(_ref);
+    final hasWorkspace =
+        session?.currentAccount != null || localLibrary != null;
     if (!prefs.thirdPartyShareEnabled) {
       _logStartupInfo(
         'Startup: share_disabled',
@@ -49,9 +53,9 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       _clearStartupShareLaunchUi();
       _setShareFlowActive(false);
       _notifyShareDisabled();
-      return session?.currentAccount != null;
+      return hasWorkspace;
     }
-    if (session?.currentAccount == null) return false;
+    if (!hasWorkspace) return false;
     final navigator = _navigatorKey.currentState;
     final context = _navigatorKey.currentContext;
     if (navigator == null || context == null) return false;
@@ -65,7 +69,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       ),
     );
     if (_shouldOpenSharePreviewDirectly(payload)) {
-      unawaited(_openSharePreviewFlow(payload));
+      unawaited(_openShareQuickClipFlow(payload));
       return true;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -84,14 +88,12 @@ extension _StartupCoordinatorShare on StartupCoordinator {
         buildShareCaptureRequest(payload) != null;
   }
 
-  Future<void> _openSharePreviewFlow(SharePayload payload) async {
+  Future<void> _openShareQuickClipFlow(SharePayload payload) async {
     final captureRequest = buildShareCaptureRequest(payload);
     if (captureRequest == null) {
       await _openShareFlow(payload);
       return;
     }
-    final navigator = _navigatorKey.currentState;
-    if (navigator == null) return;
     _logStartupInfo(
       'Startup: share_preview_open',
       context: _buildStartupContext(
@@ -103,21 +105,29 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       ),
     );
     try {
-      final composeFuture = navigator.push<ShareComposeRequest>(
-        _buildSharePreviewRoute(payload),
+      _clearStartupShareLaunchUi();
+      final context = _navigatorKey.currentContext;
+      if (context == null || !context.mounted) return;
+      final activeContext = _navigatorKey.currentContext;
+      if (activeContext == null || !activeContext.mounted) return;
+      final initialTagText = buildDefaultQuickClipTagText(payload);
+      final locale = Localizations.localeOf(activeContext);
+      final submission = await showShareQuickClipSheet(
+        activeContext,
+        payload: payload,
+        initialTagText: initialTagText,
+        initialTitleAndLinkOnly: true,
       );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_isMounted()) return;
-        _clearStartupShareLaunchUi();
-      });
-      final composeRequest = await composeFuture;
-      if (!_isMounted() || composeRequest == null) return;
-
-      _appNavigator.openAllMemos();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_isMounted()) return;
-        _openComposeRequestWithCurrentContext(composeRequest);
-      });
+      if (!_isMounted() || !activeContext.mounted || submission == null) return;
+      final service = ShareQuickClipService(
+        ref: _ref,
+        bootstrapAdapter: _bootstrapAdapter,
+      );
+      await service.start(
+        payload: payload,
+        submission: submission,
+        locale: locale,
+      );
     } finally {
       _clearStartupShareLaunchUi();
       _setShareFlowActive(false);
@@ -196,6 +206,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       ),
       initialAttachmentPaths: request.attachmentPaths,
       initialAttachmentSeeds: request.initialAttachmentSeeds,
+      initialClipMetadataDraft: request.clipMetadataDraft,
       initialDeferredInlineImageAttachments:
           request.deferredInlineImageAttachments,
       initialDeferredVideoAttachments: request.deferredVideoAttachments,

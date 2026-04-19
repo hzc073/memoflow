@@ -1,5 +1,92 @@
 part of 'memos_providers.dart';
 
+Future<String> _rewriteThirdPartyShareInlineUrlsForRemoteContent({
+  required RemoteSyncController controller,
+  required String memoUid,
+  required String content,
+}) async {
+  final normalizedMemoUid = memoUid.trim();
+  if (normalizedMemoUid.isEmpty || content.trim().isEmpty) {
+    return content;
+  }
+
+  final localUrlsInContent = extractShareInlineLocalImageUrls(content).toSet();
+  if (localUrlsInContent.isEmpty) {
+    return content;
+  }
+
+  final row = await controller.db.getMemoByUid(normalizedMemoUid);
+  final memo = row == null ? null : LocalMemo.fromDb(row);
+  final sourceMappings = await controller.db.listMemoInlineImageSources(
+    normalizedMemoUid,
+  );
+
+  final replacements = <String, String>{};
+  final remoteLocalUrls = <String>{};
+  final sourceLocalUrls = <String>{};
+
+  if (memo != null) {
+    for (final attachment in memo.attachments) {
+      final localUrl = attachment.externalLink.trim();
+      if (!localUrlsInContent.contains(localUrl)) continue;
+      final remoteUrl = resolveShareInlineAttachmentRemoteUrl(
+        attachment,
+        baseUrl: controller.serverBaseUrl,
+      );
+      if (remoteUrl == null || remoteUrl.trim().isEmpty) continue;
+      replacements[localUrl] = remoteUrl.trim();
+      remoteLocalUrls.add(localUrl);
+    }
+  }
+
+  for (final entry in sourceMappings.entries) {
+    final localUrl = entry.key.trim();
+    final sourceUrl = entry.value.trim();
+    if (!localUrlsInContent.contains(localUrl)) continue;
+    if (sourceUrl.isEmpty || replacements.containsKey(localUrl)) continue;
+    replacements[localUrl] = sourceUrl;
+    sourceLocalUrls.add(localUrl);
+  }
+
+  final removeLocalUrls = localUrlsInContent
+      .where((localUrl) => !replacements.containsKey(localUrl))
+      .toSet();
+  final rewritten = rewriteShareInlineImageUrlsForSyncContent(
+    content,
+    replacements: replacements,
+    removeLocalUrls: removeLocalUrls,
+  );
+  final remainingLocalUrls = extractShareInlineLocalImageUrls(rewritten);
+
+  final rewrittenToRemoteCount = remoteLocalUrls.length;
+  final rewrittenToSourceCount = sourceLocalUrls
+      .where((localUrl) => !remoteLocalUrls.contains(localUrl))
+      .length;
+  final droppedLocalInlineImageCount = removeLocalUrls.length;
+  final logContext = <String, Object?>{
+    'memoUid': normalizedMemoUid,
+    'rewrittenToRemoteCount': rewrittenToRemoteCount,
+    'rewrittenToSourceCount': rewrittenToSourceCount,
+    'droppedLocalInlineImageCount': droppedLocalInlineImageCount,
+    'remainingFileUrlCount': remainingLocalUrls.length,
+    'hasThirdPartyShareMarker': contentHasThirdPartyShareMarker(content),
+  };
+
+  if (remainingLocalUrls.isNotEmpty) {
+    LogManager.instance.warn(
+      'RemoteSync outbox: inline_image_remote_rewrite_remaining_local_urls',
+      context: logContext,
+    );
+  } else if (rewritten != content) {
+    LogManager.instance.debug(
+      'RemoteSync outbox: inline_image_remote_rewrite_applied',
+      context: logContext,
+    );
+  }
+
+  return rewritten;
+}
+
 class _OutboxProcessResult {
   const _OutboxProcessResult({
     required this.blocked,
@@ -219,7 +306,18 @@ extension _RemoteSyncOutbox on RemoteSyncController {
             final uid = payload['uid'] as String?;
             final hasPendingAttachments =
                 payload['has_pending_attachments'] as bool? ?? false;
-            if (!hasPendingAttachments && uid != null && uid.isNotEmpty) {
+            final hasPendingAttachmentTasks =
+                !hasPendingAttachments &&
+                uid != null &&
+                uid.isNotEmpty &&
+                await db.hasPendingOutboxTaskForMemo(
+                  uid,
+                  types: const {'upload_attachment', 'delete_attachment'},
+                );
+            if (!hasPendingAttachments &&
+                !hasPendingAttachmentTasks &&
+                uid != null &&
+                uid.isNotEmpty) {
               await _mutations.updateMemoSyncState(uid, syncState: 0);
             }
             await _mutations.completeOutboxTask(id);
@@ -546,19 +644,19 @@ extension _RemoteSyncOutbox on RemoteSyncController {
   Future<String?> _handleCreateMemo(Map<String, dynamic> payload) async {
     final uid = payload['uid'] as String?;
     final rawContent = payload['content'] as String?;
-    final visibility = payload['visibility'] as String? ?? 'PRIVATE';
-    final pinned = payload['pinned'] as bool? ?? false;
-    final location = _parseLocationPayload(payload['location']);
-    final createTime = _parsePayloadTime(
+    final payloadVisibility = payload['visibility'] as String? ?? 'PRIVATE';
+    final payloadPinned = payload['pinned'] as bool? ?? false;
+    final payloadLocation = _parseLocationPayload(payload['location']);
+    final payloadCreateTime = _parsePayloadTime(
       payload['create_time'] ??
           payload['createTime'] ??
           payload['display_time'] ??
           payload['displayTime'],
     );
-    final displayTime = _parsePayloadTime(
+    final payloadDisplayTime = _parsePayloadTime(
       payload['display_time'] ?? payload['displayTime'],
     );
-    final resolvedDisplayTime = displayTime ?? createTime;
+    final payloadResolvedDisplayTime = payloadDisplayTime ?? payloadCreateTime;
     final relationsRaw = payload['relations'];
     final relations = <Map<String, dynamic>>[];
     if (relationsRaw is List) {
@@ -571,9 +669,21 @@ extension _RemoteSyncOutbox on RemoteSyncController {
     if (uid == null || uid.isEmpty || rawContent == null) {
       throw const FormatException('create_memo missing fields');
     }
+    final localRow = await db.getMemoByUid(uid);
+    final localMemo = localRow == null ? null : LocalMemo.fromDb(localRow);
+    final effectiveRawContent = localMemo?.content ?? rawContent;
+    final effectiveVisibility = localMemo?.visibility ?? payloadVisibility;
+    final effectivePinned = localMemo?.pinned ?? payloadPinned;
+    final effectiveLocation = localMemo?.location ?? payloadLocation;
+    final effectiveCreateTime =
+        localMemo?.createTime.toUtc() ?? payloadCreateTime;
+    final effectiveDisplayTime =
+        localMemo?.displayTime?.toUtc() ??
+        payloadResolvedDisplayTime ??
+        effectiveCreateTime;
     final content = await _rewriteThirdPartyShareInlineUrlsForRemote(
       memoUid: uid,
-      content: rawContent,
+      content: effectiveRawContent,
     );
     final normalizedRelations = normalizeReferenceRelationPayloads(
       memoUid: uid,
@@ -583,27 +693,27 @@ extension _RemoteSyncOutbox on RemoteSyncController {
     final followUpDisplayTime = resolveCreateMemoFollowUpDisplayTime(
       supportsCreateMemoTimestampsInCreateBody:
           api.supportsCreateMemoTimestampsInCreateBody,
-      createTime: createTime,
-      displayTime: resolvedDisplayTime,
+      createTime: effectiveCreateTime,
+      displayTime: effectiveDisplayTime,
     );
     final followUpCreateTime = resolveCreateMemoFollowUpCreateTime(
       supportsCreateMemoTimestampsInCreateBody:
           api.supportsCreateMemoTimestampsInCreateBody,
       supportsMemoCreateTimeUpdate: api.supportsMemoCreateTimeUpdate,
-      createTime: createTime,
+      createTime: effectiveCreateTime,
     );
     try {
       final created = await api.createMemo(
         memoId: uid,
         content: content,
-        visibility: visibility,
-        pinned: pinned,
-        location: location,
+        visibility: effectiveVisibility,
+        pinned: effectivePinned,
+        location: effectiveLocation,
         createTime: api.supportsCreateMemoTimestampsInCreateBody
-            ? createTime
+            ? effectiveCreateTime
             : null,
         displayTime: api.supportsCreateMemoTimestampsInCreateBody
-            ? resolvedDisplayTime
+            ? effectiveDisplayTime
             : null,
         attachmentNames: attachmentNames,
         relations: normalizedRelations,
@@ -641,11 +751,11 @@ extension _RemoteSyncOutbox on RemoteSyncController {
       final status = e.response?.statusCode ?? 0;
       if (status == 409) {
         if (api.supportsMemoCreateTimeUpdate &&
-            (createTime != null || resolvedDisplayTime != null)) {
+            (effectiveCreateTime != null || effectiveDisplayTime != null)) {
           await api.updateMemo(
             memoUid: uid,
-            createTime: createTime,
-            displayTime: resolvedDisplayTime,
+            createTime: effectiveCreateTime,
+            displayTime: effectiveDisplayTime,
           );
         } else if (followUpDisplayTime != null) {
           try {
@@ -765,21 +875,11 @@ extension _RemoteSyncOutbox on RemoteSyncController {
     required String memoUid,
     required String content,
   }) async {
-    if (content.trim().isEmpty) return content;
-    final settings = await imageBedRepository.read();
-    if (settings.enabled) return content;
-    final mappings = await db.listMemoInlineImageSources(memoUid);
-    if (mappings.isEmpty) return content;
-
-    var normalized = content;
-    for (final entry in mappings.entries) {
-      normalized = replaceShareInlineLocalUrlWithRemote(
-        normalized,
-        localUrl: entry.key,
-        remoteUrl: entry.value,
-      );
-    }
-    return normalized;
+    return _rewriteThirdPartyShareInlineUrlsForRemoteContent(
+      controller: this,
+      memoUid: memoUid,
+      content: content,
+    );
   }
 
   Future<void> _applyMemoRelations(

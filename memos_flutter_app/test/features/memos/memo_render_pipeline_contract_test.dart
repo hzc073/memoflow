@@ -79,6 +79,24 @@ void main() {
     expect(artifact.content, contains('<code>keyword</code>'));
   });
 
+  test('tag decoration skips hashes inside links', () {
+    const content =
+        'See [section](https://example.com/article#intro) '
+        'and [jump](#details) #Work';
+
+    final artifact = pipeline.build(data: content, renderImages: true);
+
+    expect(_countMatches(artifact.content, 'class="memotag"'), 1);
+    expect(artifact.content, contains('data-tag="Work"'));
+    expect(
+      artifact.content,
+      contains('href="https://example.com/article#intro"'),
+    );
+    expect(artifact.content, contains('href="#details"'));
+    expect(artifact.content, isNot(contains('data-tag="intro"')));
+    expect(artifact.content, isNot(contains('data-tag="details"')));
+  });
+
   test('image src normalizer keeps blob to raw conversions stable', () {
     expect(
       normalizeMarkdownImageSrc('https://github.com/o/r/blob/main/a.png'),

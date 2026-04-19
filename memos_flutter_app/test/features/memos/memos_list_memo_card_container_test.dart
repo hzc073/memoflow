@@ -13,13 +13,18 @@ import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/data/models/memo_clip_card_metadata.dart';
 import 'package:memos_flutter_app/data/models/location_settings.dart';
 import 'package:memos_flutter_app/data/models/memo_reminder.dart';
 import 'package:memos_flutter_app/data/repositories/location_settings_repository.dart';
+import 'package:memos_flutter_app/features/memos/memo_markdown.dart';
+import 'package:memos_flutter_app/features/memos/memo_image_grid.dart';
 import 'package:memos_flutter_app/features/memos/memo_media_grid.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_memo_card.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_memo_card_container.dart';
+import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/state/memos/memo_clip_card_providers.dart';
 import 'package:memos_flutter_app/state/memos/memos_list_providers.dart';
 import 'package:memos_flutter_app/state/settings/location_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
@@ -193,6 +198,109 @@ void main() {
     final hero = tester.widget<Hero>(find.byType(Hero));
     expect(hero.tag, heroTag);
   });
+
+  testWidgets('clip cards enable expanded article body mode on memo cards', (
+    tester,
+  ) async {
+    final memo = _buildMemo(
+      content:
+          '# Clip title\n\n'
+          'Intro paragraph.\n\n'
+          '<img src="https://example.com/clip.jpg">\n\n'
+          '${'Detailed body paragraph. ' * 80}\n\n'
+          '${buildThirdPartyShareMemoMarker()}',
+    );
+    final clipCard = _buildClipCardMetadata(memo.uid);
+
+    await tester.pumpWidget(
+      _buildHarness(memo: memo, clipCardMetadata: clipCard),
+    );
+    await tester.pumpAndSettle();
+
+    final card = tester.widget<MemoListCard>(find.byType(MemoListCard));
+    expect(card.useExpandedArticleBody, isTrue);
+  });
+
+  testWidgets(
+    'MemoListCard hides media grid and renders inline images in expanded article mode',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(900, 2200));
+
+      final memo = _buildMemo(content: '# Clip title');
+      final body =
+          'Intro paragraph.\n\n'
+          '<img src="https://example.com/clip.jpg">\n\n'
+          '${'Detailed body paragraph. ' * 80}';
+      const imageEntry = MemoImageEntry(
+        id: 'inline_0',
+        title: 'clip',
+        mimeType: 'image/*',
+        previewUrl: 'https://example.com/clip.jpg',
+        fullUrl: 'https://example.com/clip.jpg',
+      );
+
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SizedBox(
+                  width: 420,
+                  child: MemoListCard(
+                    memo: memo,
+                    dateText: '2024-01-02',
+                    reminderText: null,
+                    tagColors: TagColorLookup(const []),
+                    initiallyExpanded: false,
+                    highlightQuery: null,
+                    collapseLongContent: true,
+                    collapseReferences: true,
+                    isAudioPlaying: false,
+                    isAudioLoading: false,
+                    audioPositionListenable: null,
+                    audioDurationListenable: null,
+                    imageEntries: const [imageEntry],
+                    mediaEntries: const [MemoMediaEntry.image(imageEntry)],
+                    contentTextOverride: body,
+                    contentHeader: const SizedBox.shrink(),
+                    useExpandedArticleBody: true,
+                    locationProvider: LocationServiceProvider.google,
+                    onAudioSeek: null,
+                    onAudioTap: null,
+                    syncStatus: MemoSyncStatus.none,
+                    onToggleTask: (_) {},
+                    onTap: () {},
+                    onAction: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MemoMediaGrid), findsOneWidget);
+      var markdown = tester.widget<MemoMarkdown>(find.byType(MemoMarkdown));
+      expect(markdown.renderImages, isFalse);
+
+      await tester.tap(find.text('Expand'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MemoMediaGrid), findsNothing);
+      markdown = tester.widget<MemoMarkdown>(find.byType(MemoMarkdown));
+      expect(markdown.renderImages, isTrue);
+      expect(
+        markdown.data,
+        contains('<img src="https://example.com/clip.jpg">'),
+      );
+      expect(markdown.data, contains('Detailed body paragraph.'));
+    },
+  );
 }
 
 Widget _buildHarness({
@@ -200,6 +308,7 @@ Widget _buildHarness({
   OutboxMemoStatus outboxStatus = const OutboxMemoStatus.empty(),
   Map<String, MemoReminder> reminderMap = const <String, MemoReminder>{},
   ReminderSettings? reminderSettings,
+  MemoClipCardMetadata? clipCardMetadata,
   String? playingMemoUid,
   bool removing = false,
   Object? heroTag,
@@ -225,6 +334,13 @@ Widget _buildHarness({
           ref,
           reminderSettings ?? ReminderSettings.defaultsFor(AppLanguage.en),
         ),
+      ),
+      memoClipCardMapProvider.overrideWith(
+        (ref) => clipCardMetadata == null
+            ? const <String, MemoClipCardMetadata>{}
+            : <String, MemoClipCardMetadata>{
+                clipCardMetadata.memoUid: clipCardMetadata,
+              },
       ),
       memoReminderMapProvider.overrideWith((ref) => reminderMap),
     ],
@@ -273,6 +389,24 @@ Widget _buildHarness({
         ),
       ),
     ),
+  );
+}
+
+MemoClipCardMetadata _buildClipCardMetadata(String memoUid) {
+  final now = DateTime(2024, 1, 2, 3, 4, 5);
+  return MemoClipCardMetadata(
+    memoUid: memoUid,
+    clipKind: MemoClipKind.article,
+    platform: MemoClipPlatform.wechat,
+    sourceName: 'Example Source',
+    sourceAvatarUrl: '',
+    authorName: '',
+    authorAvatarUrl: '',
+    sourceUrl: 'https://example.com/article',
+    leadImageUrl: '',
+    parserTag: 'wechat',
+    createdTime: now,
+    updatedTime: now,
   );
 }
 

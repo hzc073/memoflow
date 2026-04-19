@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
+import '../../core/memo_clip_markdown.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/pointer_double_tap_listener.dart';
 import '../../core/sync_error_presenter.dart';
@@ -23,6 +25,7 @@ import '../../data/models/memo.dart';
 import '../../data/models/reaction.dart';
 import '../../data/models/user.dart';
 import '../../state/memos/memo_detail_providers.dart';
+import '../../state/memos/memo_clip_card_providers.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
@@ -39,15 +42,18 @@ import 'memo_hero_flight.dart';
 import 'memo_versions_screen.dart';
 import 'memos_list_screen.dart';
 import 'memo_video_grid.dart';
+import 'widgets/memo_clip_card_header.dart';
 import 'widgets/memo_reader_content.dart';
 import '../../i18n/strings.g.dart';
 
 String memoDetailMarkdownCacheKey(
   LocalMemo memo, {
   required bool renderImages,
+  bool stripClipTitle = false,
 }) {
   final renderFlag = renderImages ? 1 : 0;
-  return 'detail|${memo.uid}|${memo.contentFingerprint}|renderImages=$renderFlag|highlight=';
+  final stripFlag = stripClipTitle ? 1 : 0;
+  return 'detail|${memo.uid}|${memo.contentFingerprint}|renderImages=$renderFlag|clip=$stripFlag|highlight=';
 }
 
 const _likeReactionType = '❤️';
@@ -655,7 +661,16 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final deferredContent = _preparedDeferredContentKey == deferredContentKey
         ? _deferredContent
         : null;
+    final clipCard = ref.watch(memoClipCardByUidProvider(memo.uid));
+    final clipParts = clipCard == null
+        ? null
+        : parseMemoClipMarkdown(memo.content);
     final renderInlineImages = contentHasThirdPartyShareMarker(memo.content);
+    final displayContentText = clipCard == null
+        ? memo.content
+        : stripMemoClipTitle(memo.content)
+              .replaceAll(buildThirdPartyShareMemoMarker(), '')
+              .trimRight();
     final imageEntries =
         deferredContent?.imageEntries ?? const <MemoImageEntry>[];
     final videoEntries =
@@ -679,7 +694,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final tagColors = ref.watch(tagColorLookupProvider);
 
     final contentWidget = _CollapsibleText(
-      text: memo.content,
+      text: displayContentText,
       collapseEnabled: collapseLongContent,
       initiallyExpanded: true,
       style: contentStyle,
@@ -687,6 +702,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       markdownCacheKey: memoDetailMarkdownCacheKey(
         memo,
         renderImages: renderInlineImages,
+        stripClipTitle: clipCard != null,
       ),
       markdownSelectable: _routeSettled,
       renderImages: renderInlineImages,
@@ -715,6 +731,23 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (clipCard != null) ...[
+            MemoClipReadonlyHeader(
+              metadata: clipCard,
+              title: clipParts?.title,
+              onSourceTap: clipCard.sourceUrl.trim().isEmpty
+                  ? null
+                  : () async {
+                      final uri = Uri.tryParse(clipCard.sourceUrl.trim());
+                      if (uri == null) return;
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    },
+            ),
+            const SizedBox(height: 16),
+          ],
           MemoReaderContent(
             memo: memo,
             padding: EdgeInsets.zero,

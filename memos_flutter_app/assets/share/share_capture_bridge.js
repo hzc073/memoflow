@@ -18,6 +18,71 @@
     return null;
   };
 
+  const readText = (selectors) => {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      const text = normalize(element && element.textContent);
+      if (text) {
+        return text;
+      }
+    }
+    return null;
+  };
+
+  const readAttributeUrl = (selectors, attributes) => {
+    const resolvedAttributes =
+      Array.isArray(attributes) && attributes.length > 0 ? attributes : ['href'];
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element || typeof element.getAttribute !== 'function') continue;
+      for (const attribute of resolvedAttributes) {
+        const url = toAbsoluteUrl(element.getAttribute(attribute));
+        if (url) {
+          return url;
+        }
+      }
+    }
+    return null;
+  };
+
+  const readImageUrl = (selectors, options) => {
+    const excludePatterns =
+      options && Array.isArray(options.excludePatterns)
+        ? options.excludePatterns.map((item) => String(item || '').toLowerCase())
+        : [];
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (!element) continue;
+      const candidates = [
+        readWechatImageCandidate(element),
+        element.getAttribute && element.getAttribute('data-headimg'),
+      ];
+      for (const candidate of candidates) {
+        const url = toAbsoluteUrl(candidate);
+        if (!url) continue;
+        const lower = url.toLowerCase();
+        if (excludePatterns.some((pattern) => pattern && lower.includes(pattern))) {
+          continue;
+        }
+        return url;
+      }
+    }
+    return null;
+  };
+
+  const readWindowString = (keys) => {
+    for (const key of keys) {
+      try {
+        const value = window[key];
+        const normalized = normalize(typeof value === 'string' ? value : null);
+        if (normalized) {
+          return normalized;
+        }
+      } catch (_) {}
+    }
+    return null;
+  };
+
   const toAbsoluteUrl = (value) => {
     const normalized = normalize(value);
     if (!normalized) {
@@ -28,6 +93,81 @@
     } catch (_) {
       return normalized;
     }
+  };
+
+  const sanitizeWechatImageUrl = (value) => {
+    const absolute = toAbsoluteUrl(value);
+    if (!absolute) {
+      return null;
+    }
+
+    let sanitized = absolute
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/#imgIndex=\d+.*$/i, '');
+
+    try {
+      const parsed = new URL(sanitized, location.href);
+      if (/^imgindex=/i.test(String(parsed.hash || '').replace(/^#/, ''))) {
+        parsed.hash = '';
+      }
+      if (parsed.protocol === 'http:' && /\.?qpic\.cn$/i.test(parsed.hostname)) {
+        parsed.protocol = 'https:';
+      }
+      sanitized = parsed.toString();
+    } catch (_) {}
+
+    return sanitized;
+  };
+
+  const readWechatImageCandidate = (element) => {
+    if (!element) {
+      return null;
+    }
+
+    const dataset = element.dataset || {};
+    const candidates = [
+      element.getAttribute && element.getAttribute('data-src'),
+      element.getAttribute && element.getAttribute('data-lazy-src'),
+      element.getAttribute && element.getAttribute('data-actualsrc'),
+      element.getAttribute && element.getAttribute('data-original'),
+      element.getAttribute && element.getAttribute('data-backsrc'),
+      element.getAttribute && element.getAttribute('data-url'),
+      element.getAttribute && element.getAttribute('data-imgsrc'),
+      element.getAttribute && element.getAttribute('data-origin-src'),
+      element.getAttribute && element.getAttribute('data-cover'),
+      element.getAttribute && element.getAttribute('_src'),
+      element.getAttribute && element.getAttribute('srcs'),
+      dataset.src,
+      dataset.lazySrc,
+      dataset.actualsrc,
+      dataset.original,
+      dataset.backsrc,
+      dataset.url,
+      dataset.imgsrc,
+      dataset.originSrc,
+      dataset.cover,
+      element.currentSrc,
+      element.getAttribute && element.getAttribute('src'),
+    ];
+    let fallbackUrl = null;
+    for (const candidate of candidates) {
+      const url = sanitizeWechatImageUrl(candidate);
+      if (url) {
+        const lower = url.toLowerCase();
+        if (
+          lower.startsWith('data:') ||
+          lower.startsWith('blob:') ||
+          lower.startsWith('about:')
+        ) {
+          fallbackUrl = fallbackUrl || url;
+          continue;
+        }
+        return url;
+      }
+    }
+    return fallbackUrl;
   };
 
   const collectJsonScripts = () => {
@@ -198,11 +338,266 @@
     return normalize(root && root.innerText ? root.innerText : '');
   };
 
+  const collectWechatContentRoots = () => {
+    const collectBySelectors = (selectors) => {
+      const roots = [];
+      const seen = new Set();
+      for (const selector of selectors) {
+        for (const element of document.querySelectorAll(selector)) {
+          if (!element || seen.has(element)) continue;
+          seen.add(element);
+          roots.push(element);
+        }
+      }
+      return roots;
+    };
+
+    const preferredRoots = collectBySelectors([
+      '#js_content',
+      '.rich_media_content',
+    ]);
+    if (preferredRoots.length > 0) {
+      return preferredRoots;
+    }
+
+    return collectBySelectors([
+      '#img-content',
+      '.rich_media_area_primary_inner',
+      '.rich_media_wrp',
+    ]);
+  };
+
+  const scoreWechatContentRoot = (element) => {
+    if (!element) {
+      return -1;
+    }
+
+    const textLength = (normalize(element.innerText || '') || '').length;
+    const htmlLength =
+      typeof element.innerHTML === 'string' ? element.innerHTML.length : 0;
+    const imageCount = element.querySelectorAll('img').length;
+    const lazyImageCount = element.querySelectorAll(
+      'img[data-src],img[data-lazy-src],img[data-actualsrc],img[data-original],img[data-backsrc],img[data-url],img[data-imgsrc],img[data-origin-src],img[_src],img[srcs]'
+    ).length;
+    const paragraphCount = element.querySelectorAll('p').length;
+
+    return (
+      imageCount * 20000 +
+      lazyImageCount * 12000 +
+      paragraphCount * 300 +
+      textLength +
+      Math.floor(htmlLength / 10)
+    );
+  };
+
+  const selectWechatContentRoot = () => {
+    const candidates = collectWechatContentRoots();
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    candidates.sort((left, right) => {
+      return scoreWechatContentRoot(right) - scoreWechatContentRoot(left);
+    });
+    return candidates[0];
+  };
+
+  const serializeWechatContentRoot = (element) => {
+    if (!element) {
+      return null;
+    }
+
+    const clone = element.cloneNode(true);
+    normalizeCapturedImages(clone);
+
+    const html =
+      typeof clone.innerHTML === 'string' ? clone.innerHTML.trim() : '';
+    return html.length > 0 ? html : null;
+  };
+
+  const normalizeCapturedImages = (root) => {
+    if (!root || typeof root.querySelectorAll !== 'function') {
+      return;
+    }
+
+    for (const image of root.querySelectorAll('img')) {
+      const resolved = readWechatImageCandidate(image);
+      if (resolved) {
+        image.setAttribute('src', resolved);
+      }
+      for (const attribute of [
+        'data-src',
+        'data-lazy-src',
+        'data-actualsrc',
+        'data-original',
+        'data-backsrc',
+        'data-url',
+        'data-imgsrc',
+        'data-origin-src',
+        'data-cover',
+        '_src',
+        'srcs',
+      ]) {
+        image.removeAttribute(attribute);
+      }
+    }
+  };
+
+  const serializeCoolapkContentRoot = (element) => {
+    if (!element) {
+      return null;
+    }
+
+    const clone = document.createElement('div');
+    let appendedCount = 0;
+    for (const selector of [
+      '.feed-message',
+      '.message-image-group',
+      '.message-video-group',
+      '.feed-link-url',
+    ]) {
+      for (const node of element.querySelectorAll(selector)) {
+        clone.appendChild(node.cloneNode(true));
+        appendedCount += 1;
+      }
+    }
+
+    if (appendedCount === 0) {
+      clone.appendChild(element.cloneNode(true));
+    }
+    normalizeCapturedImages(clone);
+
+    const html =
+      typeof clone.innerHTML === 'string' ? clone.innerHTML.trim() : '';
+    return html.length > 0 ? html : null;
+  };
+
+  const isWechatMp = /(^|\.)mp\.weixin\.qq\.com$/i.test(
+    String(location && location.hostname ? location.hostname : '')
+  );
+  const isCoolapk = /(^|\.)coolapk\.com$/i.test(
+    String(location && location.hostname ? location.hostname : '')
+  );
+  const wechatContentRoot = isWechatMp ? selectWechatContentRoot() : null;
+  const wechatContentHtml = isWechatMp
+    ? serializeWechatContentRoot(wechatContentRoot)
+    : null;
+  const wechatTextContent =
+    wechatContentRoot && typeof wechatContentRoot.innerText === 'string'
+      ? normalize(wechatContentRoot.innerText)
+      : null;
+  const wechatAccountName = isWechatMp
+    ? readText([
+        '#js_name',
+        '.rich_media_meta_nickname',
+        '#profileBt',
+        '#js_wx_follow_nickname_small_font',
+      ]) || readWindowString(['nickname'])
+    : null;
+  const wechatAuthor = isWechatMp
+    ? readWindowString(['author']) ||
+      readText([
+        '#js_author_name',
+        '.meta_content#js_author_name',
+        '.rich_media_meta_link[rel="author"]',
+      ])
+    : null;
+  const wechatAccountAvatar = isWechatMp
+    ? toAbsoluteUrl(
+        readWindowString([
+          'round_head_img',
+          'hd_head_img',
+          'ori_head_img_url',
+          'msg_cdn_url',
+        ])
+      ) ||
+      readImageUrl(
+        [
+          '.profile_container .profile_avatar',
+          '.profile_container .profile_meta_hd img',
+          '.wx_profile_card_inner .profile_avatar',
+          '.wx_profile_card_inner .profile_meta_hd img',
+          '.account_nickname_inner img',
+        ],
+        { excludePatterns: ['qrcode', 'qr_code', '/qr', 'ticket='] }
+      )
+    : null;
+  const wechatAuthorAvatar = isWechatMp
+    ? toAbsoluteUrl(
+        readWindowString(['author_head_img', 'authorHeadImg', 'authorAvatar'])
+      ) ||
+      readImageUrl(
+        [
+          '#js_author_avatar img',
+          '.rich_media_meta.author img',
+          '.rich_media_meta_link[rel="author"] img',
+          '.author_avatar img',
+        ],
+        { excludePatterns: ['qrcode', 'qr_code', '/qr', 'ticket='] }
+      )
+    : null;
+  const coolapkContentRoot = isCoolapk
+    ? document.querySelector('#feed-detail')
+    : null;
+  const coolapkContentHtml = isCoolapk
+    ? serializeCoolapkContentRoot(coolapkContentRoot)
+    : null;
+  const coolapkTextContent =
+    coolapkContentRoot && typeof coolapkContentRoot.innerText === 'string'
+      ? normalize(coolapkContentRoot.innerText)
+      : null;
+  const coolapkSiteName = isCoolapk
+    ? readText([
+        '#header-logo span:last-child',
+        '.mobile-header-content .text-group .title',
+      ]) || '\u9177\u5b89'
+    : null;
+  const coolapkSiteIconUrl = isCoolapk
+    ? readImageUrl([
+        '#header-logo img',
+        '.mobile-header-content .left-part img',
+        '#footer .footer-logo-box img',
+      ]) ||
+      readAttributeUrl(
+        [
+          'link[rel="icon"]',
+          'link[rel="shortcut icon"]',
+          'link[rel="apple-touch-icon"]',
+          'link[rel="apple-touch-icon-precomposed"]',
+        ],
+        ['href']
+      )
+    : null;
+  const coolapkAuthor = isCoolapk
+    ? readText([
+        '#feed-detail .username-item p',
+        '#feed-detail .common-userinfo-group .username-item p',
+      ])
+    : null;
+  const coolapkAuthorAvatar = isCoolapk
+    ? readImageUrl([
+        '#feed-detail .avatar-item img',
+        '#feed-detail .common-userinfo-group .avatar-item img',
+      ])
+    : null;
+  const coolapkLeadImageUrl = isCoolapk
+    ? readImageUrl(['#feed-detail .message-image-group img'])
+    : null;
+
   const ogTitle = readMeta([
     'meta[property="og:title"]',
     'meta[name="og:title"]',
     'meta[name="twitter:title"]'
   ]);
+  const siteIconUrl = readAttributeUrl(
+    [
+      'link[rel="icon"]',
+      'link[rel="shortcut icon"]',
+      'link[rel="apple-touch-icon"]',
+      'link[rel="apple-touch-icon-precomposed"]',
+    ],
+    ['href']
+  );
   const siteName = readMeta([
     'meta[property="og:site_name"]',
     'meta[name="application-name"]'
@@ -247,6 +642,20 @@
     excerpt: normalize(parsed && parsed.excerpt ? parsed.excerpt : description),
     contentHtml: contentHtml,
     textContent: textContent,
+    siteIconUrl: normalize(siteIconUrl),
+    wechatContentHtml: wechatContentHtml,
+    wechatTextContent: wechatTextContent,
+    wechatAccountName: wechatAccountName,
+    wechatAuthor: wechatAuthor,
+    wechatAccountAvatar: normalize(wechatAccountAvatar),
+    wechatAuthorAvatar: normalize(wechatAuthorAvatar),
+    coolapkContentHtml: coolapkContentHtml,
+    coolapkTextContent: coolapkTextContent,
+    coolapkSiteName: normalize(coolapkSiteName),
+    coolapkSiteIconUrl: normalize(coolapkSiteIconUrl),
+    coolapkAuthor: normalize(coolapkAuthor),
+    coolapkAuthorAvatar: normalize(coolapkAuthorAvatar),
+    coolapkLeadImageUrl: normalize(coolapkLeadImageUrl),
     leadImageUrl: normalize(leadImageUrl),
     length: textContent ? textContent.length : 0,
     readabilitySucceeded: !!contentHtml,

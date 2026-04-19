@@ -1,6 +1,7 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
+import '../../data/models/memo_clip_card_metadata.dart';
 import 'share_clip_models.dart';
 import 'share_handler.dart';
 import 'share_inline_image_content.dart';
@@ -81,6 +82,7 @@ ShareComposeRequest buildShareComposeRequestFromCapture({
     selectionOffset: text.length,
     attachmentPaths: attachmentPaths,
     initialAttachmentSeeds: initialAttachmentSeeds,
+    clipMetadataDraft: buildShareClipMetadataDraft(result: result),
     userMessage: userMessage,
   );
 }
@@ -91,6 +93,20 @@ ShareComposeRequest buildLinkOnlyComposeRequest(SharePayload payload) {
     text: draft.text,
     selectionOffset: draft.selectionOffset,
   );
+}
+
+String buildLinkOnlyMemoText(
+  SharePayload payload, {
+  List<String> tags = const [],
+}) {
+  final text = buildLinkOnlyComposeRequest(payload).text.trimRight();
+  final normalizedTags = tags
+      .map((tag) => tag.trim())
+      .where((tag) => tag.isNotEmpty)
+      .toList(growable: false);
+  if (normalizedTags.isEmpty) return text;
+  if (text.isEmpty) return normalizedTags.join(' ');
+  return '$text\n\n${normalizedTags.join(' ')}';
 }
 
 String buildShareCaptureMemoText({
@@ -109,7 +125,6 @@ String buildShareCaptureMemoText({
     payload: payload,
     url: resolvedUrl,
   );
-  final siteLabel = _resolveSiteLabel(result: result, url: resolvedUrl);
   final excerpt = _normalizeWhitespace(result.excerpt);
   final body = _buildMarkdownBody(
     result: result,
@@ -117,25 +132,45 @@ String buildShareCaptureMemoText({
     contentHtmlOverride: contentHtmlOverride,
     allowedLocalImageUrls: allowedLocalImageUrls,
   );
-  final buffer = StringBuffer()
-    ..writeln('# $title')
-    ..writeln();
-  final linkLabel = title.isNotEmpty ? title : siteLabel;
-  buffer.writeln(_buildMarkdownLink(linkLabel, resolvedUrl));
-  if (excerpt != null) {
+  final articleBody = _resolveArticleBody(
+    body: body,
+    excerpt: excerpt,
+    fallbackUrl: resolvedUrl,
+  );
+  final buffer = StringBuffer()..writeln('# $title');
+  if (articleBody.isNotEmpty) {
     buffer
       ..writeln()
-      ..writeln('> $excerpt');
-  }
-  if (body != null) {
-    buffer
-      ..writeln()
-      ..writeln(body);
+      ..writeln(articleBody);
   }
   buffer
     ..writeln()
     ..writeln(buildThirdPartyShareMemoMarker());
   return buffer.toString().trimRight();
+}
+
+ShareClipMetadataDraft? buildShareClipMetadataDraft({
+  required ShareCaptureResult result,
+}) {
+  if (!result.isSuccess || result.pageKind != SharePageKind.article) {
+    return null;
+  }
+  final resolvedUrl = _resolveFinalUrl(result.finalUrl);
+  final sourceName =
+      _normalizeWhitespace(result.siteName) ??
+      _normalizeWhitespace(result.pageTitle) ??
+      resolvedUrl.host;
+  return ShareClipMetadataDraft(
+    clipKind: MemoClipKind.article,
+    platform: _resolveClipPlatform(result.siteParserTag, resolvedUrl),
+    sourceName: sourceName,
+    sourceAvatarUrl: _normalizeClipImageUrl(result.sourceAvatarUrl) ?? '',
+    authorName: _sanitizeClipAuthorName(result.byline) ?? '',
+    authorAvatarUrl: _normalizeClipImageUrl(result.authorAvatarUrl) ?? '',
+    sourceUrl: resolvedUrl.toString(),
+    leadImageUrl: _resolveClipLeadImageUrl(result, resolvedUrl) ?? '',
+    parserTag: (result.siteParserTag ?? '').trim(),
+  );
 }
 
 String _buildShareVideoMemoText({
@@ -176,11 +211,32 @@ String _resolveTitle({
       url.host;
 }
 
-String _resolveSiteLabel({
-  required ShareCaptureResult result,
-  required Uri url,
-}) {
-  return _normalizeWhitespace(result.siteName) ?? url.host;
+MemoClipPlatform _resolveClipPlatform(String? parserTag, Uri url) {
+  final normalizedParserTag = (parserTag ?? '').trim().toLowerCase();
+  switch (normalizedParserTag) {
+    case 'wechat':
+      return MemoClipPlatform.wechat;
+    case 'xiaohongshu':
+      return MemoClipPlatform.xiaohongshu;
+    case 'bilibili':
+      return MemoClipPlatform.bilibili;
+    case 'coolapk':
+      return MemoClipPlatform.coolapk;
+  }
+  final host = url.host.toLowerCase();
+  if (host == 'mp.weixin.qq.com' || host.endsWith('.mp.weixin.qq.com')) {
+    return MemoClipPlatform.wechat;
+  }
+  if (host.contains('xiaohongshu.com') || host.contains('xhslink.com')) {
+    return MemoClipPlatform.xiaohongshu;
+  }
+  if (host.contains('bilibili.com') || host.contains('b23.tv')) {
+    return MemoClipPlatform.bilibili;
+  }
+  if (host == 'coolapk.com' || host.endsWith('.coolapk.com')) {
+    return MemoClipPlatform.coolapk;
+  }
+  return MemoClipPlatform.web;
 }
 
 Uri _resolveFinalUrl(Uri url) {
@@ -192,19 +248,89 @@ Uri _resolveFinalUrl(Uri url) {
   return Uri.parse('https://${url.toString()}');
 }
 
+String _resolveArticleBody({
+  required String? body,
+  required String? excerpt,
+  required Uri fallbackUrl,
+}) {
+  final normalizedBody = (body ?? '').trim();
+  if (normalizedBody.isNotEmpty) {
+    return normalizedBody;
+  }
+  final normalizedExcerpt = (excerpt ?? '').trim();
+  if (normalizedExcerpt.isNotEmpty) {
+    return normalizedExcerpt;
+  }
+  return fallbackUrl.toString();
+}
+
+String? _sanitizeClipAuthorName(String? value) {
+  final normalized = _normalizeWhitespace(value);
+  if (normalized == null) return null;
+  if (_looksLikeClipTimestampLabel(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
+String? _resolveClipLeadImageUrl(ShareCaptureResult result, Uri resolvedUrl) {
+  final platform = _resolveClipPlatform(result.siteParserTag, resolvedUrl);
+  if (platform == MemoClipPlatform.wechat) {
+    return null;
+  }
+  return _normalizeClipImageUrl(result.leadImageUrl);
+}
+
+String? _normalizeClipImageUrl(String? value) {
+  final normalized = _normalizeWhitespace(value);
+  if (normalized == null) return null;
+  final uri = Uri.tryParse(normalized);
+  if (uri != null &&
+      uri.scheme.toLowerCase() == 'http' &&
+      uri.host.toLowerCase().endsWith('qpic.cn')) {
+    return uri.replace(scheme: 'https').toString();
+  }
+  if (uri != null &&
+      uri.scheme.toLowerCase() == 'http' &&
+      uri.host.toLowerCase().endsWith('coolapk.com')) {
+    return uri.replace(scheme: 'https').toString();
+  }
+  return normalized;
+}
+
+bool _looksLikeClipTimestampLabel(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return false;
+  return RegExp(
+        r'^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$',
+      ).hasMatch(normalized) ||
+      RegExp(r'^\d{1,2}\s*月\s*\d{1,2}\s*日').hasMatch(normalized) ||
+      RegExp(r'^\d{1,2}:\d{2}(?::\d{2})?$').hasMatch(normalized);
+}
+
 String? _buildMarkdownBody({
   required ShareCaptureResult result,
   required Uri baseUrl,
   String? contentHtmlOverride,
   Set<String> allowedLocalImageUrls = const <String>{},
 }) {
+  final explicitTextOnly =
+      contentHtmlOverride != null && contentHtmlOverride.trim().isEmpty;
   final rawHtml = (contentHtmlOverride ?? result.contentHtml ?? '').trim();
-  if (rawHtml.isNotEmpty) {
+  if (!explicitTextOnly && rawHtml.isNotEmpty) {
     return _sanitizeFragmentToMarkdown(
       rawHtml,
       baseUrl,
+      normalizeWechatImageWidths: _shouldNormalizeWechatImageWidths(result),
       allowedLocalImageUrls: allowedLocalImageUrls,
     );
+  }
+
+  if (explicitTextOnly) {
+    final htmlTextFallback = _buildHtmlTextFallback(result.contentHtml);
+    if (htmlTextFallback != null) {
+      return htmlTextFallback;
+    }
   }
 
   final fallback = _buildTextFallback(result.textContent);
@@ -212,9 +338,21 @@ String? _buildMarkdownBody({
   return fallback;
 }
 
+String? _buildHtmlTextFallback(String? rawHtml) {
+  final normalizedHtml = (rawHtml ?? '').trim();
+  if (normalizedHtml.isEmpty) {
+    return null;
+  }
+  final fragment = html_parser.parseFragment(normalizedHtml);
+  final blocks = _collectPlainTextBlocks(fragment.nodes);
+  final text = _cleanupGeneratedMarkdown(blocks.join('\n\n'));
+  return text.isEmpty ? null : text;
+}
+
 String? _sanitizeFragmentToMarkdown(
   String rawHtml,
   Uri baseUrl, {
+  bool normalizeWechatImageWidths = false,
   Set<String> allowedLocalImageUrls = const <String>{},
 }) {
   final fragment = html_parser.parseFragment(rawHtml);
@@ -230,6 +368,9 @@ String? _sanitizeFragmentToMarkdown(
     attribute: 'src',
     baseUrl: baseUrl,
   );
+  if (normalizeWechatImageWidths) {
+    _normalizeWechatImageDisplayWidths(fragment);
+  }
   final sanitized = _sanitizeFragmentToHtml(
     fragment,
     allowedLocalImageUrls: allowedLocalImageUrls,
@@ -240,10 +381,95 @@ String? _sanitizeFragmentToMarkdown(
   return markdown;
 }
 
+bool _shouldNormalizeWechatImageWidths(ShareCaptureResult result) {
+  final parserTag = (result.siteParserTag ?? '').trim().toLowerCase();
+  if (parserTag == 'wechat' || parserTag == 'wechat-static') {
+    return true;
+  }
+  final host = result.finalUrl.host.toLowerCase();
+  return host == 'mp.weixin.qq.com' || host.endsWith('.mp.weixin.qq.com');
+}
+
+void _normalizeWechatImageDisplayWidths(dom.DocumentFragment fragment) {
+  final measured = <(dom.Element, double)>[];
+  var maxWidth = 0.0;
+
+  for (final image in fragment.querySelectorAll('img')) {
+    final width = _parseAbsoluteImageWidth(image.attributes['width']);
+    if (width == null || width <= 0) {
+      continue;
+    }
+    measured.add((image, width));
+    if (width > maxWidth) {
+      maxWidth = width;
+    }
+  }
+
+  if (measured.isEmpty || maxWidth <= 0) {
+    return;
+  }
+
+  for (final (image, width) in measured) {
+    final percent = ((width / maxWidth) * 100).clamp(0.0, 100.0);
+    image.attributes['width'] = percent >= 99.5
+        ? '100%'
+        : '${_formatImageHtmlLength(percent)}%';
+    image.attributes.remove('height');
+  }
+}
+
+double? _parseAbsoluteImageWidth(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty || trimmed.endsWith('%')) {
+    return null;
+  }
+  final match = RegExp(
+    r'^(\d+(?:\.\d+)?)(px)?$',
+    caseSensitive: false,
+  ).firstMatch(trimmed);
+  if (match == null) {
+    return null;
+  }
+  final parsed = double.tryParse(match.group(1)!);
+  if (parsed == null || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
 String _convertSanitizedHtmlToMarkdown(String sanitizedHtml) {
   final fragment = html_parser.parseFragment(sanitizedHtml);
   final blocks = _collectMarkdownBlocks(fragment.nodes);
   return _cleanupGeneratedMarkdown(blocks.join('\n\n'));
+}
+
+List<String> _collectPlainTextBlocks(List<dom.Node> nodes) {
+  final blocks = <String>[];
+  final inlineNodes = <dom.Node>[];
+
+  void flushInlineNodes() {
+    final text = _cleanupPlainText(_renderPlainTextInline(inlineNodes));
+    inlineNodes.clear();
+    if (text.isNotEmpty) {
+      blocks.add(text);
+    }
+  }
+
+  for (final node in nodes) {
+    if (_isMarkdownBlockNode(node)) {
+      flushInlineNodes();
+      final block = _renderPlainTextBlock(node);
+      if (block.isNotEmpty) {
+        blocks.add(block);
+      }
+      continue;
+    }
+    inlineNodes.add(node);
+  }
+
+  flushInlineNodes();
+  return blocks;
 }
 
 const Set<String> _markdownBlockTags = {
@@ -271,11 +497,11 @@ const Set<String> _markdownBlockTags = {
 
 List<String> _collectMarkdownBlocks(List<dom.Node> nodes) {
   final blocks = <String>[];
-  final inlineBuffer = StringBuffer();
+  final inlineNodes = <dom.Node>[];
 
   void flushInlineBuffer() {
-    final text = _cleanupInlineMarkdown(inlineBuffer.toString());
-    inlineBuffer.clear();
+    final text = _cleanupInlineMarkdown(_renderInlineMarkdown(inlineNodes));
+    inlineNodes.clear();
     if (text.isNotEmpty) {
       blocks.add(text);
     }
@@ -290,7 +516,7 @@ List<String> _collectMarkdownBlocks(List<dom.Node> nodes) {
       }
       continue;
     }
-    inlineBuffer.write(_renderInlineMarkdownNode(node));
+    inlineNodes.add(node);
   }
 
   flushInlineBuffer();
@@ -358,18 +584,36 @@ String _convertMarkdownBlock(dom.Node node) {
 
 String _renderInlineMarkdown(List<dom.Node> nodes) {
   final buffer = StringBuffer();
-  for (final node in nodes) {
-    buffer.write(_renderInlineMarkdownNode(node));
+  for (var index = 0; index < nodes.length; index++) {
+    buffer.write(
+      _renderInlineMarkdownNode(nodes[index], siblings: nodes, index: index),
+    );
   }
   return buffer.toString();
 }
 
-String _renderInlineMarkdownNode(dom.Node node) {
+String _renderPlainTextInline(List<dom.Node> nodes) {
+  final buffer = StringBuffer();
+  for (final node in nodes) {
+    buffer.write(_renderPlainTextInlineNode(node));
+  }
+  return buffer.toString();
+}
+
+String _renderInlineMarkdownNode(
+  dom.Node node, {
+  List<dom.Node>? siblings,
+  int? index,
+}) {
   if (node is dom.Text) {
-    return _escapeMarkdownTextNode(node.text);
+    return _renderInlineTextNode(node.text, siblings: siblings, index: index);
   }
   if (node is! dom.Element) {
-    return _escapeMarkdownTextNode(node.text ?? '');
+    return _renderInlineTextNode(
+      node.text ?? '',
+      siblings: siblings,
+      index: index,
+    );
   }
 
   final tag = node.localName?.toLowerCase();
@@ -409,6 +653,96 @@ String _renderInlineMarkdownNode(dom.Node node) {
     default:
       return _renderInlineMarkdown(node.nodes);
   }
+}
+
+String _renderPlainTextBlock(dom.Node node) {
+  if (node is dom.Text) {
+    return _cleanupPlainText(node.text);
+  }
+  if (node is! dom.Element) {
+    return _cleanupPlainText(node.text ?? '');
+  }
+
+  final tag = node.localName?.toLowerCase();
+  if (tag == null) return '';
+  switch (tag) {
+    case 'img':
+    case 'hr':
+      return '';
+    case 'ul':
+      return _renderPlainTextList(node, ordered: false);
+    case 'ol':
+      return _renderPlainTextList(node, ordered: true);
+    case 'li':
+      return _renderPlainTextListItem(node, ordered: false, index: 1);
+    case 'blockquote':
+    case 'details':
+    case 'thead':
+    case 'tbody':
+    case 'tr':
+      return _cleanupGeneratedMarkdown(
+        _collectPlainTextBlocks(node.nodes).join('\n\n'),
+      );
+    default:
+      return _cleanupPlainText(_renderPlainTextInline(node.nodes));
+  }
+}
+
+String _renderPlainTextInlineNode(dom.Node node) {
+  if (node is dom.Text) {
+    return node.text;
+  }
+  if (node is! dom.Element) {
+    return node.text ?? '';
+  }
+
+  final tag = node.localName?.toLowerCase();
+  if (tag == null) return '';
+  switch (tag) {
+    case 'br':
+      return '\n';
+    case 'img':
+    case 'hr':
+    case 'input':
+      return '';
+    case 'div':
+    case 'section':
+    case 'article':
+      return _collectPlainTextBlocks(node.nodes).join('\n\n');
+    default:
+      return _renderPlainTextInline(node.nodes);
+  }
+}
+
+String _renderPlainTextList(dom.Element list, {required bool ordered}) {
+  final lines = <String>[];
+  var index = 1;
+  for (final child in list.children) {
+    if (child.localName?.toLowerCase() != 'li') continue;
+    final item = _renderPlainTextListItem(
+      child,
+      ordered: ordered,
+      index: index,
+    );
+    if (item.isNotEmpty) {
+      lines.add(item);
+    }
+    index++;
+  }
+  return lines.join('\n');
+}
+
+String _renderPlainTextListItem(
+  dom.Element item, {
+  required bool ordered,
+  required int index,
+}) {
+  final text = _cleanupPlainText(_renderPlainTextInline(item.nodes));
+  if (text.isEmpty) {
+    return '';
+  }
+  final marker = ordered ? '$index. ' : '- ';
+  return '$marker$text';
 }
 
 String _renderBlockquoteMarkdown(dom.Element element) {
@@ -543,14 +877,50 @@ String _wrapInlineCode(String raw) {
 String _renderImageMarkdown(dom.Element element) {
   final src = element.attributes['src']?.trim();
   if (src == null || src.isEmpty) return '';
-  final alt = _escapeMarkdownText(
-    (element.attributes['alt'] ?? element.attributes['title'] ?? '').trim(),
-  );
+  final altText =
+      (element.attributes['alt'] ?? element.attributes['title'] ?? '').trim();
   final title = (element.attributes['title'] ?? '').trim();
+  final width = _normalizeImageHtmlLength(element.attributes['width']);
+  final height = _normalizeImageHtmlLength(element.attributes['height']);
+  if (width != null || height != null) {
+    final attributes = <String>[
+      'src="${_escapeHtmlAttribute(src)}"',
+      if (altText.isNotEmpty) 'alt="${_escapeHtmlAttribute(altText)}"',
+      if (title.isNotEmpty) 'title="${_escapeHtmlAttribute(title)}"',
+      if (width != null) 'width="${_escapeHtmlAttribute(width)}"',
+      if (height != null) 'height="${_escapeHtmlAttribute(height)}"',
+    ].join(' ');
+    return '<img $attributes>';
+  }
+  final alt = _escapeMarkdownText(altText);
   if (title.isEmpty) {
     return '![$alt]($src)';
   }
   return '![$alt]($src "${title.replaceAll('"', r'\"')}")';
+}
+
+String? _normalizeImageHtmlLength(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final match = RegExp(
+    r'^(\d+(?:\.\d+)?)(%|px)?$',
+    caseSensitive: false,
+  ).firstMatch(trimmed);
+  if (match == null) return null;
+  final parsed = double.tryParse(match.group(1)!);
+  if (parsed == null || parsed <= 0) return null;
+  final unit = (match.group(2) ?? '').toLowerCase();
+  final normalized = _formatImageHtmlLength(parsed);
+  return unit == '%' ? '$normalized%' : normalized;
+}
+
+String _formatImageHtmlLength(double value) {
+  final rounded = value.roundToDouble();
+  if ((value - rounded).abs() < 0.01) {
+    return rounded.toInt().toString();
+  }
+  return value.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
 }
 
 String _renderCheckboxMarkdown(dom.Element element) {
@@ -614,17 +984,49 @@ String _formatMarkdownTableRow(List<String> cells) {
   return '| ${cells.join(' | ')} |';
 }
 
+final RegExp _inlineWhitespacePattern = RegExp(
+  r'[ \t\n\r\f\v\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]+',
+);
+final RegExp _cjkSeparatedBySpacePattern = RegExp(
+  r'([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])\s+([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])',
+);
+final RegExp _cjkBeforeOpeningPunctuationSpacePattern = RegExp(
+  r'([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])\s+([（［｛〈《「『【〔〖〘〚])',
+);
+final RegExp _openingPunctuationBeforeCjkSpacePattern = RegExp(
+  r'([（［｛〈《「『【〔〖〘〚])\s+([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])',
+);
+final RegExp _cjkBeforeClosingPunctuationSpacePattern = RegExp(
+  r'([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])\s+([）］｝〉》」』】〕〗〙〛、，。．！？：；·])',
+);
+final RegExp _closingPunctuationBeforeCjkSpacePattern = RegExp(
+  r'([）］｝〉》」』】〕〗〙〛、，。．！？：；·])\s+([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af])',
+);
+
 String _cleanupInlineMarkdown(String text) {
-  return text
+  const softBreakPlaceholder = '__MEMOFLOW_SOFT_BREAK__';
+  final normalized = text
       .replaceAll('\r\n', '\n')
-      .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
-      .replaceAll(RegExp(r' *\\\n *'), '\\\n')
-      .trim();
+      .replaceAll('\r', '\n')
+      .replaceAll(RegExp(r' *\\\n *'), softBreakPlaceholder)
+      .replaceAll(_inlineWhitespacePattern, ' ');
+  final compacted = _compactCjkInlineSpacing(normalized).trim();
+  return compacted.replaceAll(softBreakPlaceholder, '\\\n');
 }
 
 String _cleanupGeneratedMarkdown(String text) {
   return text
       .replaceAll('\r\n', '\n')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+}
+
+String _cleanupPlainText(String text) {
+  return text
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
+      .replaceAll(RegExp(r'[ \t\u00A0]+'), ' ')
+      .replaceAll(RegExp(r' *\n *'), '\n')
       .replaceAll(RegExp(r'\n{3,}'), '\n\n')
       .trim();
 }
@@ -637,6 +1039,181 @@ String _escapeMarkdownTextNode(String value) {
       .replaceAll('[', r'\[')
       .replaceAll(']', r'\]')
       .replaceAll('`', r'\`');
+}
+
+String _renderInlineTextNode(
+  String value, {
+  List<dom.Node>? siblings,
+  int? index,
+}) {
+  final normalized = _normalizeInlineText(value);
+  if (normalized.isEmpty) {
+    return '';
+  }
+  if (!_isWhitespaceOnlyInlineText(value)) {
+    return _escapeMarkdownTextNode(normalized);
+  }
+  if (siblings == null || index == null) {
+    return ' ';
+  }
+  final previousChar = _neighborInlineBoundaryChar(
+    siblings,
+    startIndex: index - 1,
+    step: -1,
+  );
+  final nextChar = _neighborInlineBoundaryChar(
+    siblings,
+    startIndex: index + 1,
+    step: 1,
+  );
+  if (previousChar == null || nextChar == null) {
+    return '';
+  }
+  return _shouldPreserveInlineSeparator(previousChar, nextChar) ? ' ' : '';
+}
+
+String _normalizeInlineText(String value) {
+  return value
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
+      .replaceAll(_inlineWhitespacePattern, ' ');
+}
+
+bool _isWhitespaceOnlyInlineText(String value) {
+  return _normalizeInlineText(value).trim().isEmpty;
+}
+
+String? _neighborInlineBoundaryChar(
+  List<dom.Node> siblings, {
+  required int startIndex,
+  required int step,
+}) {
+  for (
+    var index = startIndex;
+    index >= 0 && index < siblings.length;
+    index += step
+  ) {
+    final text = _meaningfulInlineText(siblings[index]);
+    if (text.isEmpty) {
+      continue;
+    }
+    return step < 0 ? _lastRuneAsString(text) : _firstRuneAsString(text);
+  }
+  return null;
+}
+
+String _meaningfulInlineText(dom.Node node) {
+  if (node is dom.Element) {
+    final tag = node.localName?.toLowerCase();
+    if (tag == 'br' || tag == 'img' || tag == 'input') {
+      return '';
+    }
+  }
+  return _normalizeInlineText(node.text ?? '').trim();
+}
+
+bool _shouldPreserveInlineSeparator(String previousChar, String nextChar) {
+  if ((_isCjkCharacter(previousChar) && _isCjkCharacter(nextChar)) ||
+      (_isCjkCharacter(previousChar) &&
+          _isOpeningInlinePunctuation(nextChar)) ||
+      (_isClosingInlinePunctuation(previousChar) &&
+          _isCjkCharacter(nextChar)) ||
+      _isOpeningInlinePunctuation(previousChar) ||
+      _isClosingInlinePunctuation(nextChar)) {
+    return false;
+  }
+  return true;
+}
+
+bool _isCjkCharacter(String value) {
+  final rune = value.runes.first;
+  return (rune >= 0x3040 && rune <= 0x30FF) ||
+      (rune >= 0x3400 && rune <= 0x4DBF) ||
+      (rune >= 0x4E00 && rune <= 0x9FFF) ||
+      (rune >= 0xF900 && rune <= 0xFAFF) ||
+      (rune >= 0xAC00 && rune <= 0xD7AF);
+}
+
+bool _isOpeningInlinePunctuation(String value) {
+  return const {
+    '（',
+    '［',
+    '｛',
+    '〈',
+    '《',
+    '「',
+    '『',
+    '【',
+    '〔',
+    '〖',
+    '〘',
+    '〚',
+  }.contains(value);
+}
+
+bool _isClosingInlinePunctuation(String value) {
+  return const {
+    '）',
+    '］',
+    '｝',
+    '〉',
+    '》',
+    '」',
+    '』',
+    '】',
+    '〕',
+    '〗',
+    '〙',
+    '〛',
+    '、',
+    '，',
+    '。',
+    '．',
+    '！',
+    '？',
+    '：',
+    '；',
+    '·',
+  }.contains(value);
+}
+
+String _compactCjkInlineSpacing(String value) {
+  var compacted = value;
+  while (true) {
+    final next = compacted
+        .replaceAllMapped(
+          _cjkSeparatedBySpacePattern,
+          (match) => '${match.group(1)}${match.group(2)}',
+        )
+        .replaceAllMapped(
+          _cjkBeforeOpeningPunctuationSpacePattern,
+          (match) => '${match.group(1)}${match.group(2)}',
+        )
+        .replaceAllMapped(
+          _openingPunctuationBeforeCjkSpacePattern,
+          (match) => '${match.group(1)}${match.group(2)}',
+        )
+        .replaceAllMapped(
+          _cjkBeforeClosingPunctuationSpacePattern,
+          (match) => '${match.group(1)}${match.group(2)}',
+        )
+        .replaceAllMapped(
+          _closingPunctuationBeforeCjkSpacePattern,
+          (match) => '${match.group(1)}${match.group(2)}',
+        );
+    if (next == compacted) {
+      return next;
+    }
+    compacted = next;
+  }
+}
+
+String _firstRuneAsString(String value) {
+  return String.fromCharCode(value.runes.first);
+}
+
+String _lastRuneAsString(String value) {
+  return String.fromCharCode(value.runes.last);
 }
 
 String _sanitizeFragmentToHtml(

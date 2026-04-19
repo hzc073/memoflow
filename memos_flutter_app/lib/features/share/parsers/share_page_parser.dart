@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -59,7 +59,9 @@ class SharePageParserResult {
     this.contentHtml,
     this.textContent,
     this.siteName,
+    this.sourceAvatarUrl,
     this.byline,
+    this.authorAvatarUrl,
     this.leadImageUrl,
     this.parserTag,
   });
@@ -72,7 +74,9 @@ class SharePageParserResult {
   final String? contentHtml;
   final String? textContent;
   final String? siteName;
+  final String? sourceAvatarUrl;
   final String? byline;
+  final String? authorAvatarUrl;
   final String? leadImageUrl;
   final String? parserTag;
 }
@@ -105,9 +109,9 @@ SharePageParserResult mergeSharePageParserResults(
       : mergedCandidates.isNotEmpty || mergedUnsupportedCandidates.isNotEmpty
       ? SharePageKind.video
       : _hasArticleContent(
-            _firstNonEmpty(list.map((item) => item.contentHtml)),
-            _firstNonEmpty(list.map((item) => item.textContent)),
-          )
+          _firstNonEmpty(list.map((item) => item.contentHtml)),
+          _firstNonEmpty(list.map((item) => item.textContent)),
+        )
       ? SharePageKind.article
       : SharePageKind.unknown;
 
@@ -120,7 +124,9 @@ SharePageParserResult mergeSharePageParserResults(
     contentHtml: _firstNonEmpty(list.map((item) => item.contentHtml)),
     textContent: _firstNonEmpty(list.map((item) => item.textContent)),
     siteName: _firstNonEmpty(list.map((item) => item.siteName)),
+    sourceAvatarUrl: _firstNonEmpty(list.map((item) => item.sourceAvatarUrl)),
     byline: _firstNonEmpty(list.map((item) => item.byline)),
+    authorAvatarUrl: _firstNonEmpty(list.map((item) => item.authorAvatarUrl)),
     leadImageUrl: _firstNonEmpty(list.map((item) => item.leadImageUrl)),
     parserTag: preferred.parserTag ?? fallback.parserTag,
   );
@@ -147,10 +153,9 @@ int compareShareVideoCandidate(
   ShareVideoCandidate left,
   ShareVideoCandidate right,
 ) {
-  final directComparison =
-      (right.isDirectDownloadable ? 1 : 0).compareTo(
-        left.isDirectDownloadable ? 1 : 0,
-      );
+  final directComparison = (right.isDirectDownloadable ? 1 : 0).compareTo(
+    left.isDirectDownloadable ? 1 : 0,
+  );
   if (directComparison != 0) return directComparison;
 
   final parserComparison =
@@ -160,12 +165,14 @@ int compareShareVideoCandidate(
           );
   if (parserComparison != 0) return parserComparison;
 
-  final mimeComparison =
-      (right.mimeType == null ? 0 : 1).compareTo(left.mimeType == null ? 0 : 1);
+  final mimeComparison = (right.mimeType == null ? 0 : 1).compareTo(
+    left.mimeType == null ? 0 : 1,
+  );
   if (mimeComparison != 0) return mimeComparison;
 
-  final sourceComparison =
-      _sourcePriority(left.source).compareTo(_sourcePriority(right.source));
+  final sourceComparison = _sourcePriority(
+    left.source,
+  ).compareTo(_sourcePriority(right.source));
   if (sourceComparison != 0) return sourceComparison;
 
   final priorityComparison = right.priority.compareTo(left.priority);
@@ -198,9 +205,14 @@ bool isDirectVideoUrl(String url, {String? mimeType}) {
   final lowerMime = (mimeType ?? '').toLowerCase();
   if (lowerMime.startsWith('video/')) return true;
   final lowerUrl = url.toLowerCase();
-  return const ['.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi'].any(
-    lowerUrl.contains,
-  );
+  return const [
+    '.mp4',
+    '.webm',
+    '.mov',
+    '.m4v',
+    '.mkv',
+    '.avi',
+  ].any(lowerUrl.contains);
 }
 
 bool isUnsupportedStreamUrl(String url) {

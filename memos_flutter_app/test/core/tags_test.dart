@@ -8,9 +8,15 @@ void main() {
   });
 
   test('extractTags preserves tag case and distinguishes variants', () {
+    expect(extractTags('#Work #work'), const <String>['Work', 'work']);
+  });
+
+  test('extractTags ignores link fragments while keeping real tags', () {
     expect(
-      extractTags('#Work #work'),
-      const <String>['Work', 'work'],
+      extractTags(
+        'Read [section](https://example.com/article#intro) #Work\n\n[jump](#details)',
+      ),
+      const <String>['Work'],
     );
   });
 }

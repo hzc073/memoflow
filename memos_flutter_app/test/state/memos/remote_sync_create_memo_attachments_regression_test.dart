@@ -15,6 +15,7 @@ import 'package:memos_flutter_app/data/logs/sync_queue_progress_tracker.dart';
 import 'package:memos_flutter_app/data/logs/sync_status_tracker.dart';
 import 'package:memos_flutter_app/data/models/image_bed_settings.dart';
 import 'package:memos_flutter_app/data/repositories/image_bed_settings_repository.dart';
+import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/note_input_providers.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_controller.dart';
@@ -33,6 +34,95 @@ void main() {
   tearDownAll(() async {
     await support.dispose();
   });
+
+  test(
+    'RemoteSyncController keeps memo pending for update_memo when attachment tasks remain',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start();
+      final dbName = uniqueDbName('remote_sync_update_waits_for_attachment');
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+
+      addTearDown(() async {
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-1',
+        content: 'memo updated before upload',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1773424800,
+        updateTimeSec: 1773424800,
+        tags: const <String>[],
+        attachments: const [
+          {
+            'name': 'attachments/att-1',
+            'filename': 'sample.png',
+            'type': 'image/png',
+            'size': 42,
+            'externalLink': 'file:///tmp/sample.png',
+          },
+        ],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': 'memo-1',
+          'content': 'memo updated before upload',
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+      final uploadOutboxId = await db.enqueueOutbox(
+        type: 'upload_attachment',
+        payload: {
+          'uid': 'att-1',
+          'memo_uid': 'memo-1',
+          'file_path': '/tmp/sample.png',
+          'filename': 'sample.png',
+          'mime_type': 'image/png',
+          'file_size': 42,
+        },
+      );
+      final sqlite = await db.db;
+      await sqlite.rawUpdate('UPDATE outbox SET state = ? WHERE id = ?', [
+        AppDatabase.outboxStateError,
+        uploadOutboxId,
+      ]);
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccessWithAttention>());
+      final row = await db.getMemoByUid('memo-1');
+      expect(row?['sync_state'], 1);
+    },
+  );
 
   test(
     'RemoteSyncController keeps memo pending when later attachment tasks remain',
@@ -893,6 +983,292 @@ void main() {
       expect(server.createdMemo?['resources'], [
         {'name': 'resources/att-1'},
       ]);
+    },
+  );
+
+  test(
+    'RemoteSyncController rewrites update_memo local inline image urls to source urls when no remote attachment url exists',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start();
+      final dbName = uniqueDbName('remote_sync_update_rewrites_local_inline');
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+      final localUrl = shareInlineLocalUrlFromPath(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}shared-inline-source.png',
+      );
+      const sourceUrl = 'https://example.com/source-inline-image.png';
+      final content = '<p>intro</p><img src="$localUrl">\n![]($localUrl)';
+
+      addTearDown(() async {
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-1',
+        content: content,
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1773424800,
+        updateTimeSec: 1773424800,
+        tags: const <String>[],
+        attachments: [
+          {
+            'name': 'att-1',
+            'filename': 'sample.png',
+            'type': 'image/png',
+            'size': 42,
+            'externalLink': localUrl,
+          },
+        ],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      await db.upsertMemoInlineImageSource(
+        memoUid: 'memo-1',
+        localUrl: localUrl,
+        sourceUrl: sourceUrl,
+      );
+      await db.enqueueOutbox(
+        type: 'update_memo',
+        payload: {
+          'uid': 'memo-1',
+          'content': content,
+          'visibility': 'PRIVATE',
+          'pinned': false,
+        },
+      );
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccess>());
+      final patchRequest = server.requests.singleWhere(
+        (request) =>
+            request.method == 'PATCH' &&
+            request.path == '/api/v1/memos/memo-1',
+      );
+      final rewrittenContent = patchRequest.jsonBody?['content'] as String? ?? '';
+      expect(rewrittenContent, contains(sourceUrl));
+      expect(rewrittenContent, isNot(contains(localUrl)));
+    },
+  );
+
+  test(
+    'RemoteSyncController prefers remote attachment urls over source urls for create_memo',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start();
+      final dbName = uniqueDbName('remote_sync_create_prefers_remote_inline');
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v023,
+      );
+      final localUrl = shareInlineLocalUrlFromPath(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}shared-inline-remote.png',
+      );
+      const sourceUrl = 'https://example.com/source-inline-image.png';
+      final remoteUrl = '${server.baseUrl}/file/resources/att-1/sample.png';
+      final content = '<p>intro</p><img src="$localUrl">';
+
+      addTearDown(() async {
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-1',
+        content: content,
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1773424800,
+        updateTimeSec: 1773424800,
+        tags: const <String>[],
+        attachments: [
+          {
+            'name': 'resources/att-1',
+            'filename': 'sample.png',
+            'type': 'image/png',
+            'size': 42,
+            'externalLink': localUrl,
+          },
+        ],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      await db.upsertMemoInlineImageSource(
+        memoUid: 'memo-1',
+        localUrl: localUrl,
+        sourceUrl: sourceUrl,
+      );
+      await db.enqueueOutbox(
+        type: 'create_memo',
+        payload: {
+          'uid': 'memo-1',
+          'content': content,
+          'visibility': 'PRIVATE',
+          'pinned': false,
+          'has_attachments': true,
+          'create_time': 1773424800,
+          'display_time': 1773424800,
+        },
+      );
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        serverBaseUrl: server.baseUrl,
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccess>());
+      final createRequest = server.requests.singleWhere(
+        (request) =>
+            request.method == 'POST' && request.path == '/api/v1/memos',
+      );
+      final rewrittenContent = createRequest.jsonBody?['content'] as String? ?? '';
+      expect(rewrittenContent, contains(remoteUrl));
+      expect(rewrittenContent, isNot(contains(sourceUrl)));
+      expect(rewrittenContent, isNot(contains(localUrl)));
+    },
+  );
+
+  test(
+    'RemoteSyncController rewrites syncCurrentLocalMemoContent after inline upload',
+    () async {
+      final server = await _RemoteSyncAttachmentRegressionServer.start();
+      final dbName = uniqueDbName('remote_sync_inline_upload_rewrites_sync_current');
+      final db = AppDatabase(dbName: dbName);
+      final api = MemoApiFacade.authenticated(
+        baseUrl: server.baseUrl,
+        personalAccessToken: 'test-pat',
+        version: MemoApiVersion.v024,
+      );
+      final tempDir = await support.createTempDir(
+        'remote_sync_inline_upload_rewrites_sync_current',
+      );
+      final stagedFile = File(
+        '${tempDir.path}${Platform.pathSeparator}uploaded-sample.png',
+      );
+      await stagedFile.writeAsBytes(const <int>[137, 80, 78, 71, 1, 2, 3, 4]);
+      final contentLocalUrl = shareInlineLocalUrlFromPath(
+        '${tempDir.path}${Platform.pathSeparator}content-only.png',
+      );
+      final payloadLocalUrl = shareInlineLocalUrlFromPath(stagedFile.path);
+      const sourceUrl = 'https://example.com/source-inline-image.png';
+      final content = '<p>intro</p><img src="$contentLocalUrl">';
+
+      addTearDown(() async {
+        await db.close();
+        await server.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-1',
+        content: content,
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1773424800,
+        updateTimeSec: 1773424800,
+        tags: const <String>[],
+        attachments: [
+          {
+            'name': 'attachments/att-1',
+            'filename': 'sample.png',
+            'type': 'image/png',
+            'size': 42,
+            'externalLink': contentLocalUrl,
+          },
+        ],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+      await db.upsertMemoInlineImageSource(
+        memoUid: 'memo-1',
+        localUrl: contentLocalUrl,
+        sourceUrl: sourceUrl,
+      );
+      await db.enqueueOutbox(
+        type: 'upload_attachment',
+        payload: {
+          'uid': 'att-1',
+          'memo_uid': 'memo-1',
+          'file_path': stagedFile.path,
+          'filename': 'sample.png',
+          'mime_type': 'image/png',
+          'file_size': await stagedFile.length(),
+          'share_inline_image': true,
+          'share_inline_local_url': payloadLocalUrl,
+        },
+      );
+
+      final controller = RemoteSyncController(
+        db: db,
+        api: api,
+        currentUserName: 'users/1',
+        serverBaseUrl: server.baseUrl,
+        syncStatusTracker: SyncStatusTracker(),
+        syncQueueProgressTracker: SyncQueueProgressTracker(),
+        imageBedRepository: _FakeImageBedSettingsRepository(),
+        attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+      );
+      addTearDown(controller.dispose);
+
+      final result = await HttpOverrides.runWithHttpOverrides(
+        () => controller.syncNow(),
+        _PassthroughHttpOverrides(),
+      );
+
+      expect(result, isA<MemoSyncSuccess>());
+      final patchRequest = server.requests.lastWhere(
+        (request) =>
+            request.method == 'PATCH' &&
+            request.path == '/api/v1/memos/memo-1',
+      );
+      final rewrittenContent = patchRequest.jsonBody?['content'] as String? ?? '';
+      expect(rewrittenContent, contains(sourceUrl));
+      expect(rewrittenContent, isNot(contains(contentLocalUrl)));
+      expect(rewrittenContent, isNot(contains(payloadLocalUrl)));
     },
   );
 

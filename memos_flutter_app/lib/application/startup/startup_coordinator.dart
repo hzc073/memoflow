@@ -14,6 +14,8 @@ import '../../features/memos/note_input_sheet.dart';
 import '../../features/share/share_clip_models.dart';
 import '../../features/share/share_clip_screen.dart';
 import '../../features/share/share_handler.dart';
+import '../../features/share/share_quick_clip_service.dart';
+import '../../features/share/share_quick_clip_sheet.dart';
 import '../../i18n/strings.g.dart';
 import '../../presentation/navigation/app_navigator.dart';
 import '../../state/memos/app_bootstrap_adapter_provider.dart';
@@ -185,6 +187,7 @@ class StartupCoordinator extends ChangeNotifier {
   Future<void> handleShareLaunch(SharePayload payload) async {
     _pendingSharePayload = payload;
     _armStartupShareLaunchUi(payload);
+    _armRuntimeShareLaunchUi(payload);
     if (_startupHandled) {
       _logStartupInfo(
         'Startup: runtime_share',

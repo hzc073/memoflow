@@ -162,6 +162,13 @@ class MemoListCard extends StatefulWidget {
     required this.audioDurationListenable,
     required this.imageEntries,
     required this.mediaEntries,
+    this.contentTextOverride,
+    this.contentHeader,
+    this.useExpandedArticleBody = false,
+    this.baseUrl,
+    this.authHeader,
+    this.rebaseAbsoluteFileUrlForV024 = false,
+    this.attachAuthForSameOriginAbsolute = false,
     required this.locationProvider,
     required this.onAudioSeek,
     required this.onAudioTap,
@@ -191,6 +198,13 @@ class MemoListCard extends StatefulWidget {
   final ValueListenable<Duration?>? audioDurationListenable;
   final List<MemoImageEntry> imageEntries;
   final List<MemoMediaEntry> mediaEntries;
+  final String? contentTextOverride;
+  final Widget? contentHeader;
+  final bool useExpandedArticleBody;
+  final Uri? baseUrl;
+  final String? authHeader;
+  final bool rebaseAbsoluteFileUrlForV024;
+  final bool attachAuthForSameOriginAbsolute;
   final LocationServiceProvider locationProvider;
   final ValueChanged<Duration>? onAudioSeek;
   final VoidCallback? onAudioTap;
@@ -402,6 +416,7 @@ class MemoListCardState extends State<MemoListCard> {
     final nonMediaAttachments = filterNonMediaAttachments(memo.attachments);
     final attachmentLines = attachmentNameLines(nonMediaAttachments);
     final attachmentCount = nonMediaAttachments.length;
+    final contentText = widget.contentTextOverride ?? memo.content;
     final language = context.appLanguage;
     final normalizedHighlightQuery = widget.highlightQuery?.trim();
     final highlightQuery =
@@ -409,17 +424,20 @@ class MemoListCardState extends State<MemoListCard> {
         ? null
         : normalizedHighlightQuery;
     final highlightKey = highlightQuery?.toLowerCase() ?? '';
-    final cacheKey = _memoRenderCacheKey(
+    final cacheKeyBase = _memoRenderCacheKey(
       memo,
       collapseLongContent: collapseLongContent,
       collapseReferences: collapseReferences,
       language: language,
     );
+    final cacheKey = widget.contentTextOverride == null
+        ? cacheKeyBase
+        : '$cacheKeyBase|clip=${contentText.hashCode}';
     final cached = _memoRenderCache.get(cacheKey);
     final previewText =
         cached?.previewText ??
         buildMemoCardPreviewText(
-          memo.content,
+          contentText,
           collapseReferences: false,
           language: language,
         );
@@ -431,7 +449,7 @@ class MemoListCardState extends State<MemoListCard> {
         );
     final taskStats =
         cached?.taskStats ??
-        countTaskStats(memo.content, skipQuotedLines: collapseReferences);
+        countTaskStats(contentText, skipQuotedLines: collapseReferences);
     if (cached == null) {
       _memoRenderCache.set(
         cacheKey,
@@ -445,12 +463,14 @@ class MemoListCardState extends State<MemoListCard> {
     final showToggle = preview.truncated;
     _showToggle = showToggle;
     final showCollapsed = showToggle && !_expanded;
-    final displayText = previewText;
+    final renderExpandedArticleBody =
+        widget.useExpandedArticleBody && _expanded;
+    final displayText = renderExpandedArticleBody ? contentText : previewText;
     final markdownCacheKey = '$cacheKey|md|searchhl=v2|hl=$highlightKey';
     final showProgress = !hasAudio && taskStats.total > 0;
     final progress = showProgress ? taskStats.checked / taskStats.total : 0.0;
-    final audioDurationText = _parseVoiceDuration(memo.content) ?? '00:00';
-    final audioDurationFallback = _parseVoiceDurationValue(memo.content);
+    final audioDurationText = _parseVoiceDuration(contentText) ?? '00:00';
+    final audioDurationFallback = _parseVoiceDurationValue(contentText);
     if (!kIsWeb &&
         defaultTargetPlatform == TargetPlatform.windows &&
         widget.debugRemoving) {
@@ -603,6 +623,10 @@ class MemoListCardState extends State<MemoListCard> {
     Widget content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (widget.contentHeader != null) ...[
+          widget.contentHeader!,
+          const SizedBox(height: 12),
+        ],
         if (showProgress) ...[
           TaskProgressBar(
             progress: progress,
@@ -623,10 +647,16 @@ class MemoListCardState extends State<MemoListCard> {
               textStyle: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: textMain),
-              blockSpacing: 4,
+              blockSpacing: renderExpandedArticleBody ? 8 : 4,
               normalizeHeadings: true,
-              renderImages: false,
+              renderImages: renderExpandedArticleBody,
               tagColors: widget.tagColors,
+              baseUrl: widget.baseUrl,
+              authHeader: widget.authHeader,
+              rebaseAbsoluteFileUrlForV024:
+                  widget.rebaseAbsoluteFileUrlForV024,
+              attachAuthForSameOriginAbsolute:
+                  widget.attachAuthForSameOriginAbsolute,
               onToggleTask: (request) => onToggleTask(request.taskIndex),
             ),
             if (showToggle) ...[
@@ -660,7 +690,7 @@ class MemoListCardState extends State<MemoListCard> {
                 ),
               ),
             ],
-            if (mediaEntries.isNotEmpty) ...[
+            if (mediaEntries.isNotEmpty && !renderExpandedArticleBody) ...[
               const SizedBox(height: 2),
               buildMediaGrid(),
             ],
@@ -749,249 +779,235 @@ class MemoListCardState extends State<MemoListCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                Stack(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          height: headerMinHeight,
-                          child: Row(
-                            children: [
-                              if (pinnedChip != null) ...[
-                                pinnedChip,
-                                const SizedBox(width: 8),
-                              ],
-                              Text(
-                                dateText,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.0,
-                                  color: textMain.withValues(
-                                    alpha: isDark ? 0.4 : 0.5,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (memo.location != null) ...[
-                          const SizedBox(height: 2),
-                          MemoLocationLine(
-                            location: memo.location!,
-                            textColor: textMain.withValues(
-                              alpha: isDark ? 0.4 : 0.5,
-                            ),
-                            onTap: () => openMemoLocation(
-                              context,
-                              memo.location!,
-                              memoUid: memo.uid,
-                              provider: widget.locationProvider,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Theme(
-                        data: Theme.of(context).copyWith(
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
+              Stack(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: headerMinHeight,
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (reminderText != null)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.notifications_active_outlined,
-                                      size: 14,
-                                      color: MemoFlowPalette.primary,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      reminderText,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: MemoFlowPalette.primary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            if (showSyncStatus)
-                              IconButton(
-                                onPressed: onSyncStatusTap,
-                                icon: Icon(
-                                  syncIcon,
-                                  size: 16,
-                                  color: syncColor,
-                                ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 32,
-                                  height: 32,
-                                ),
-                                splashRadius: 16,
-                              ),
-                            SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: Center(
-                                child: PopupMenuButton<MemoCardAction>(
-                                  tooltip: context.t.strings.legacy.msg_more,
-                                  padding: EdgeInsets.zero,
-                                  icon: Icon(
-                                    Icons.more_horiz,
-                                    size: 20,
-                                    color: textMain.withValues(
-                                      alpha: isDark ? 0.4 : 0.5,
-                                    ),
-                                  ),
-                                  onSelected: onAction,
-                                  color: menuColor,
-                                  surfaceTintColor: Colors.transparent,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  itemBuilder: (context) => isArchived
-                                      ? [
-                                          PopupMenuItem(
-                                            value: MemoCardAction.history,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .settings
-                                                  .preferences
-                                                  .history,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.restore,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .legacy
-                                                  .msg_restore,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.delete,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .legacy
-                                                  .msg_delete,
-                                              style: TextStyle(
-                                                color: deleteColor,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ]
-                                      : [
-                                          PopupMenuItem(
-                                            value: MemoCardAction.togglePinned,
-                                            child: Text(
-                                              memo.pinned
-                                                  ? context
-                                                        .t
-                                                        .strings
-                                                        .legacy
-                                                        .msg_unpin
-                                                  : context
-                                                        .t
-                                                        .strings
-                                                        .legacy
-                                                        .msg_pin,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.edit,
-                                            child: Text(
-                                              context.t.strings.legacy.msg_edit,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.history,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .settings
-                                                  .preferences
-                                                  .history,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.reminder,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .legacy
-                                                  .msg_reminder,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value:
-                                                MemoCardAction.addToCollection,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .collections
-                                                  .addToCollection,
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.archive,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .legacy
-                                                  .msg_archive,
-                                            ),
-                                          ),
-                                          const PopupMenuDivider(),
-                                          PopupMenuItem(
-                                            value: MemoCardAction.delete,
-                                            child: Text(
-                                              context
-                                                  .t
-                                                  .strings
-                                                  .legacy
-                                                  .msg_delete,
-                                              style: TextStyle(
-                                                color: deleteColor,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                            if (pinnedChip != null) ...[
+                              pinnedChip,
+                              const SizedBox(width: 8),
+                            ],
+                            Text(
+                              dateText,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.0,
+                                color: textMain.withValues(
+                                  alpha: isDark ? 0.4 : 0.5,
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ),
+                      if (memo.location != null) ...[
+                        const SizedBox(height: 2),
+                        MemoLocationLine(
+                          location: memo.location!,
+                          textColor: textMain.withValues(
+                            alpha: isDark ? 0.4 : 0.5,
+                          ),
+                          onTap: () => openMemoLocation(
+                            context,
+                            memo.location!,
+                            memoUid: memo.uid,
+                            provider: widget.locationProvider,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Theme(
+                      data: Theme.of(context).copyWith(
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (reminderText != null)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.notifications_active_outlined,
+                                    size: 14,
+                                    color: MemoFlowPalette.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    reminderText,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: MemoFlowPalette.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (showSyncStatus)
+                            IconButton(
+                              onPressed: onSyncStatusTap,
+                              icon: Icon(syncIcon, size: 16, color: syncColor),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 32,
+                              ),
+                              splashRadius: 16,
+                            ),
+                          SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: Center(
+                              child: PopupMenuButton<MemoCardAction>(
+                                tooltip: context.t.strings.legacy.msg_more,
+                                padding: EdgeInsets.zero,
+                                icon: Icon(
+                                  Icons.more_horiz,
+                                  size: 20,
+                                  color: textMain.withValues(
+                                    alpha: isDark ? 0.4 : 0.5,
+                                  ),
+                                ),
+                                onSelected: onAction,
+                                color: menuColor,
+                                surfaceTintColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                itemBuilder: (context) => isArchived
+                                    ? [
+                                        PopupMenuItem(
+                                          value: MemoCardAction.history,
+                                          child: Text(
+                                            context
+                                                .t
+                                                .strings
+                                                .settings
+                                                .preferences
+                                                .history,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.restore,
+                                          child: Text(
+                                            context
+                                                .t
+                                                .strings
+                                                .legacy
+                                                .msg_restore,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.delete,
+                                          child: Text(
+                                            context.t.strings.legacy.msg_delete,
+                                            style: TextStyle(
+                                              color: deleteColor,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ]
+                                    : [
+                                        PopupMenuItem(
+                                          value: MemoCardAction.togglePinned,
+                                          child: Text(
+                                            memo.pinned
+                                                ? context
+                                                      .t
+                                                      .strings
+                                                      .legacy
+                                                      .msg_unpin
+                                                : context
+                                                      .t
+                                                      .strings
+                                                      .legacy
+                                                      .msg_pin,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.edit,
+                                          child: Text(
+                                            context.t.strings.legacy.msg_edit,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.history,
+                                          child: Text(
+                                            context
+                                                .t
+                                                .strings
+                                                .settings
+                                                .preferences
+                                                .history,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.reminder,
+                                          child: Text(
+                                            context
+                                                .t
+                                                .strings
+                                                .legacy
+                                                .msg_reminder,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.addToCollection,
+                                          child: Text(
+                                            context
+                                                .t
+                                                .strings
+                                                .collections
+                                                .addToCollection,
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.archive,
+                                          child: Text(
+                                            context
+                                                .t
+                                                .strings
+                                                .legacy
+                                                .msg_archive,
+                                          ),
+                                        ),
+                                        const PopupMenuDivider(),
+                                        PopupMenuItem(
+                                          value: MemoCardAction.delete,
+                                          child: Text(
+                                            context.t.strings.legacy.msg_delete,
+                                            style: TextStyle(
+                                              color: deleteColor,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 0),
-                content,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 0),
+              content,
             ],
           ),
         ),

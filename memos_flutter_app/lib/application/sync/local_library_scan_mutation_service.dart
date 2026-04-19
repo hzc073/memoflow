@@ -1,4 +1,5 @@
 import '../../data/db/app_database.dart';
+import '../../data/models/memo_clip_card_metadata.dart';
 import '../../data/models/memo_location.dart';
 
 class LocalLibraryScanMutationService {
@@ -58,6 +59,14 @@ class LocalLibraryScanMutationService {
 
   Future<void> deleteMemoByUid(String memoUid) {
     return db.deleteMemoByUid(memoUid);
+  }
+
+  Future<void> upsertMemoClipCard(MemoClipCardMetadata metadata) {
+    return db.upsertMemoClipCard(metadata);
+  }
+
+  Future<void> deleteMemoClipCard(String memoUid) {
+    return db.deleteMemoClipCard(memoUid);
   }
 
   Future<void> upsertMemo({

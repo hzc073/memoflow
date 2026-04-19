@@ -2,9 +2,20 @@ import 'dart:convert';
 
 import 'package:path/path.dart' as p;
 
+import '../../core/url.dart';
+import '../../data/models/attachment.dart';
 import 'share_clip_models.dart';
 
 const String _thirdPartyShareMemoMarker = '<!-- memoflow-third-party-share -->';
+final RegExp _shareInlineMarkdownImagePattern = RegExp(
+  r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)',
+);
+final RegExp _shareInlineCodeFencePattern = RegExp(r'^\s*(```|~~~)');
+final RegExp _shareInlineHtmlImagePattern = RegExp(
+  r'''<img\b[^>]*\bsrc=("|')(.*?)\1[^>]*>''',
+  caseSensitive: false,
+  dotAll: true,
+);
 
 String shareInlineLocalUrlFromPath(String filePath) {
   final trimmed = filePath.trim();
@@ -101,6 +112,113 @@ bool contentContainsShareInlineLocalUrl(String content, String filePath) {
   return content.contains(localUrl);
 }
 
+String rewriteShareInlineImageUrlsForSyncContent(
+  String content, {
+  required Map<String, String> replacements,
+  Set<String> removeLocalUrls = const <String>{},
+}) {
+  if (content.trim().isEmpty) return content;
+
+  var next = content;
+  final replacementEntries = replacements.entries
+      .where((entry) => entry.key.trim().isNotEmpty && entry.value.trim().isNotEmpty)
+      .toList(growable: false)
+    ..sort((left, right) => right.key.length.compareTo(left.key.length));
+  for (final entry in replacementEntries) {
+    next = replaceShareInlineImageUrl(
+      next,
+      fromUrl: entry.key,
+      toUrl: entry.value,
+    );
+  }
+
+  final removalList = removeLocalUrls
+      .where((url) => url.trim().isNotEmpty && !replacements.containsKey(url))
+      .toList(growable: false)
+    ..sort((left, right) => right.length.compareTo(left.length));
+  for (final localUrl in removalList) {
+    next = removeShareInlineImageReferences(next, localUrl: localUrl);
+  }
+
+  return _cleanupBlankLines(next);
+}
+
+List<String> extractShareInlineLocalImageUrls(String content) {
+  if (content.trim().isEmpty) return const <String>[];
+
+  final urls = <String>{};
+  final htmlBuffer = StringBuffer();
+  var inFence = false;
+  for (final line in content.split('\n')) {
+    if (_shareInlineCodeFencePattern.hasMatch(line.trimLeft())) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    for (final match in _shareInlineMarkdownImagePattern.allMatches(line)) {
+      var url = (match.group(1) ?? '').trim();
+      if (url.startsWith('<') && url.endsWith('>') && url.length > 2) {
+        url = url.substring(1, url.length - 1).trim();
+      }
+      if (_isShareInlineLocalLikeUrl(url)) {
+        urls.add(url);
+      }
+    }
+
+    htmlBuffer.writeln(line);
+  }
+
+  final htmlContent = htmlBuffer.toString();
+  for (final match in _shareInlineHtmlImagePattern.allMatches(htmlContent)) {
+    final url = (match.group(2) ?? '').trim();
+    if (_isShareInlineLocalLikeUrl(url)) {
+      urls.add(url);
+    }
+  }
+
+  return urls.toList(growable: false);
+}
+
+String? resolveShareInlineAttachmentRemoteUrl(
+  Attachment attachment, {
+  Uri? baseUrl,
+}) {
+  final externalLink = attachment.externalLink.trim();
+  final filename = attachment.filename.trim();
+  if (externalLink.isNotEmpty && !_isShareInlineLocalLikeUrl(externalLink)) {
+    final parsed = Uri.tryParse(externalLink);
+    String candidate = externalLink;
+    if (parsed != null && filename.isNotEmpty) {
+      final segments = parsed.pathSegments;
+      if (segments.length == 3 &&
+          segments[0] == 'file' &&
+          (segments[1] == 'resources' || segments[1] == 'attachments')) {
+        final repaired = parsed
+            .replace(pathSegments: [...segments, filename])
+            .toString();
+        if (externalLink.startsWith('/') && !repaired.startsWith('/')) {
+          candidate = '/$repaired';
+        } else {
+          candidate = repaired;
+        }
+      }
+    }
+    return baseUrl == null ? candidate : resolveMaybeRelativeUrl(baseUrl, candidate);
+  }
+
+  final name = attachment.name.trim();
+  if (name.isEmpty) return null;
+  if (!name.startsWith('resources/') && !name.startsWith('attachments/')) {
+    return null;
+  }
+  final relativePath = filename.isNotEmpty ? '/file/$name/$filename' : '/file/$name';
+  if (baseUrl == null) {
+    return relativePath;
+  }
+  return resolveMaybeRelativeUrl(baseUrl, relativePath);
+}
+
 String buildShareInlineImageFilename({
   required int index,
   required String sourceUrl,
@@ -149,6 +267,14 @@ String _cleanupBlankLines(String content) {
       .replaceAll(RegExp(r'\n{3,}'), '\n\n')
       .replaceAll(RegExp(r'[ \t]+\n'), '\n')
       .trimRight();
+}
+
+bool _isShareInlineLocalLikeUrl(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  final scheme = uri?.scheme.toLowerCase() ?? '';
+  return scheme == 'file' || scheme == 'content';
 }
 
 Iterable<String> _shareInlineImageUrlVariants(String url) sync* {

@@ -5,25 +5,31 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'parsers/bilibili_share_page_parser.dart';
+import 'parsers/coolapk_share_page_parser.dart';
 import 'parsers/generic_share_page_parser.dart';
 import 'parsers/share_page_parser.dart';
 import 'parsers/wechat_share_page_parser.dart';
 import 'parsers/xiaohongshu_share_page_parser.dart';
 import 'share_capture_engine.dart';
 import 'share_clip_models.dart';
+import 'wechat_static_capture_strategy.dart';
 
 class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
   ShareCaptureInAppWebViewEngine({AssetBundle? assetBundle})
-    : _assetBundle = assetBundle ?? rootBundle;
+    : _assetBundle = assetBundle ?? rootBundle,
+      _wechatStaticCaptureStrategy = WechatStaticCaptureStrategy();
 
   static const _readabilityAssetPath = 'third_party/readability/Readability.js';
   static const _bridgeAssetPath = 'assets/share/share_capture_bridge.js';
   static const _pageLoadTimeout = Duration(seconds: 12);
   static const _dynamicWaitWindow = Duration(milliseconds: 2500);
   static const _dynamicPollInterval = Duration(milliseconds: 300);
+  static const _domReadTimeout = Duration(seconds: 2);
+  static const _captureScriptTimeout = Duration(seconds: 10);
   static const _maxNetworkRecords = 200;
 
   final AssetBundle _assetBundle;
+  final WechatStaticCaptureStrategy _wechatStaticCaptureStrategy;
 
   @override
   Future<ShareCaptureResult> capture(
@@ -39,6 +45,12 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
     }
 
     onStageChanged?.call(ShareCaptureStage.loadingPage);
+    final staticResult = await _wechatStaticCaptureStrategy.capture(request);
+    if (staticResult != null) {
+      onStageChanged?.call(ShareCaptureStage.buildingPreview);
+      return staticResult;
+    }
+
     final readabilitySource = await _assetBundle.loadString(
       _readabilityAssetPath,
     );
@@ -174,12 +186,14 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
       await _waitForDynamicContent(controller);
 
       onStageChanged?.call(ShareCaptureStage.detectingMedia);
-      final rawResult = await controller.evaluateJavascript(
-        source: _buildCaptureScript(
-          readabilitySource: readabilitySource,
-          bridgeSource: bridgeSource,
-        ),
-      );
+      final rawResult = await controller
+          .evaluateJavascript(
+            source: _buildCaptureScript(
+              readabilitySource: readabilitySource,
+              bridgeSource: bridgeSource,
+            ),
+          )
+          .timeout(_captureScriptTimeout);
 
       onStageChanged?.call(ShareCaptureStage.buildingPreview);
       return _parseCaptureResult(request, rawResult, networkRecords);
@@ -229,8 +243,10 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
   Future<_DomMetrics?> _readDomMetrics(
     InAppWebViewController controller,
   ) async {
-    final raw = await controller.evaluateJavascript(
-      source: '''
+    try {
+      final raw = await controller
+          .evaluateJavascript(
+            source: '''
 (() => {
   const body = document.body || document.documentElement;
   return JSON.stringify({
@@ -239,14 +255,20 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
   });
 })()
 ''',
-    );
-    if (raw is! String || raw.isEmpty) return null;
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map<String, dynamic>) return null;
-    return _DomMetrics(
-      textLength: (decoded['textLength'] as num?)?.toInt() ?? 0,
-      nodeCount: (decoded['nodeCount'] as num?)?.toInt() ?? 0,
-    );
+          )
+          .timeout(_domReadTimeout);
+      if (raw is! String || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      return _DomMetrics(
+        textLength: (decoded['textLength'] as num?)?.toInt() ?? 0,
+        nodeCount: (decoded['nodeCount'] as num?)?.toInt() ?? 0,
+      );
+    } on TimeoutException {
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   String _buildCaptureScript({
@@ -283,6 +305,7 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
     final genericParser = GenericSharePageParser();
     final specializedParsers = <SharePageParser>[
       BilibiliSharePageParser(),
+      CoolapkSharePageParser(),
       WechatSharePageParser(),
       XiaohongshuSharePageParser(),
     ];
@@ -336,6 +359,9 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
         siteName:
             normalizeShareText(merged.siteName) ??
             normalizeShareText(decoded['siteName']?.toString()),
+        sourceAvatarUrl:
+            normalizeShareText(merged.sourceAvatarUrl) ??
+            normalizeShareText(decoded['wechatAccountAvatar']?.toString()),
         excerpt:
             normalizeShareText(merged.excerpt) ??
             normalizeShareText(decoded['excerpt']?.toString()),
@@ -357,9 +383,15 @@ class ShareCaptureInAppWebViewEngine implements ShareCaptureEngine {
       siteName:
           normalizeShareText(merged.siteName) ??
           normalizeShareText(decoded['siteName']?.toString()),
+      sourceAvatarUrl:
+          normalizeShareText(merged.sourceAvatarUrl) ??
+          normalizeShareText(decoded['wechatAccountAvatar']?.toString()),
       byline:
           normalizeShareText(merged.byline) ??
           normalizeShareText(decoded['byline']?.toString()),
+      authorAvatarUrl:
+          normalizeShareText(merged.authorAvatarUrl) ??
+          normalizeShareText(decoded['wechatAuthorAvatar']?.toString()),
       excerpt:
           normalizeShareText(merged.excerpt) ??
           normalizeShareText(decoded['excerpt']?.toString()),

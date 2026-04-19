@@ -738,11 +738,16 @@ mixin _WebDavBackupExportMixin on _WebDavBackupServiceBase {
           relationCount: memo.relationCount,
           relationsJson: relationsJson,
         );
+        final clipCardRow = await _db.getMemoClipCardByUid(uid);
+        final clipCard = clipCardRow == null
+            ? null
+            : MemoClipCardMetadata.fromDb(clipCardRow);
         final sidecar = LocalLibraryMemoSidecar.fromMemo(
           memo: memo,
           hasRelations: true,
           relations: relationSnapshot.relations,
           attachments: sidecarAttachments,
+          clipCard: clipCard,
           hasAttachments: !attachmentFailed,
           relationCount: relationSnapshot.relationCount,
           relationsComplete: relationSnapshot.relationsComplete,

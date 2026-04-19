@@ -26,10 +26,12 @@ import 'core/font_loader.dart' as app_font;
 import 'core/memoflow_palette.dart';
 import 'data/models/device_preferences.dart';
 import 'data/models/local_library.dart';
+import 'data/logs/log_manager.dart';
 import 'features/home/main_home_page.dart';
 import 'features/image_editor/i18n.dart';
 import 'features/lock/app_lock_gate.dart';
 import 'features/memos/memos_list_screen.dart';
+import 'features/share/clipboard_share_detector.dart';
 import 'features/share/share_handler.dart';
 import 'application/widgets/home_widget_service.dart';
 import 'i18n/strings.g.dart';
@@ -64,7 +66,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   late final HomeWidgetsUpdater _homeWidgetsUpdater;
   late final UpdateAnnouncementRunner _updateAnnouncementRunner;
   late final SyncFeedbackPresenter _syncFeedbackPresenter;
+  late final ClipboardShareDetector _clipboardShareDetector;
   final app_font.FontLoader _fontLoader = app_font.FontLoader();
+  int _clipboardCheckBurstId = 0;
+  int? _clipboardHandledBurstId;
+  String? _lastClipboardPromptedUrl;
   ProviderSubscription<bool>? _prefsLoadedSub;
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSub;
   ProviderSubscription<LocalLibrary?>? _localLibrarySub;
@@ -160,6 +166,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           .showAutoSyncFeedbackToast(succeeded: succeeded),
       showProgressToast: _syncFeedbackPresenter.showAutoSyncProgressToast,
     );
+    _clipboardShareDetector = ClipboardShareDetector();
     _startupCoordinator = StartupCoordinator(
       bootstrapAdapter: _bootstrapAdapter,
       syncOrchestrator: _syncOrchestrator,
@@ -231,10 +238,19 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _bootstrapAdapter.readLogManager(ref);
     final privateExtensionBundle = ref.read(privateExtensionBundleProvider);
     HomeWidgetService.setLaunchHandler(_startupCoordinator.handleWidgetLaunch);
-    ShareHandlerService.setShareHandler(_startupCoordinator.handleShareLaunch);
+    ShareHandlerService.setShareHandler((payload) async {
+      _markClipboardUrlPrompted(payload);
+      _clipboardShareDetector.markSeen(payload);
+      await _startupCoordinator.handleShareLaunch(payload);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_startupCoordinator.loadPendingLaunchSources());
+      unawaited(
+        _startupCoordinator.loadPendingLaunchSources().whenComplete(() async {
+          if (!mounted) return;
+          _scheduleClipboardShareChecks(source: 'app_ready');
+        }),
+      );
       unawaited(privateExtensionBundle.onAppReady(ref));
     });
     _bootstrapController.bind(
@@ -255,12 +271,14 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     ) {
       if (!mounted || !nextValue) return;
       _startupCoordinator.onPrefsLoaded(source: 'prefs_loaded');
+      _scheduleClipboardShareChecks(source: 'prefs_loaded');
     });
     _sessionSub = _bootstrapAdapter.listenSession(ref, (previous, nextValue) {
       if (!mounted) return;
       _homeWidgetsUpdater.bindDatabaseChanges(ref);
       _scheduleHomeWidgetRefresh(force: true);
       _startupCoordinator.onSessionChanged(source: 'session');
+      _scheduleClipboardShareChecks(source: 'session');
     });
     _localLibrarySub = ref.listenManual<LocalLibrary?>(
       currentLocalLibraryProvider,
@@ -269,6 +287,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _homeWidgetsUpdater.bindDatabaseChanges(ref);
         _scheduleHomeWidgetRefresh(force: true);
         _startupCoordinator.onLocalLibraryChanged(source: 'local_library');
+        _scheduleClipboardShareChecks(source: 'local_library');
       },
     );
     _scheduleHomeWidgetRefresh(force: true);
@@ -283,6 +302,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _desktopWindowManager.bindMethodHandler();
         _triggerLifecycleSync(isResume: true);
         _bootstrapController.rescheduleRemindersIfNeeded(ref: ref);
+        _scheduleClipboardShareChecks(source: 'resumed');
         break;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
@@ -293,6 +313,239 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         _bootstrapAdapter.pauseWebDavBackupProgress(ref);
         break;
     }
+  }
+
+  void _scheduleClipboardShareChecks({required String source}) {
+    final burstId = ++_clipboardCheckBurstId;
+    const delays = <Duration>[
+      Duration.zero,
+      Duration(milliseconds: 450),
+      Duration(milliseconds: 1200),
+    ];
+    for (final delay in delays) {
+      unawaited(_runClipboardShareCheckAfterDelay(burstId, delay, source));
+    }
+  }
+
+  Future<void> _runClipboardShareCheckAfterDelay(
+    int burstId,
+    Duration delay,
+    String source,
+  ) async {
+    if (delay > Duration.zero) {
+      await Future.delayed(delay);
+    }
+    if (!mounted ||
+        burstId != _clipboardCheckBurstId ||
+        _clipboardHandledBurstId == burstId) {
+      return;
+    }
+    final attemptSource = delay == Duration.zero
+        ? source
+        : '${source}_${delay.inMilliseconds}ms';
+    await _checkClipboardShareCandidate(
+      source: attemptSource,
+      burstId: burstId,
+    );
+  }
+
+  Future<void> _checkClipboardShareCandidate({
+    required String source,
+    required int burstId,
+  }) async {
+    if (!mounted) return;
+    if (_clipboardHandledBurstId == burstId) return;
+    if (_startupCoordinator.shouldDeferHeavyStartupWork) {
+      LogManager.instance.debug(
+        'ClipboardShare: check_skip',
+        context: {'source': source, 'reason': 'share_flow_active'},
+      );
+      return;
+    }
+    if (!_bootstrapAdapter.readDevicePreferencesLoaded(ref)) {
+      LogManager.instance.debug(
+        'ClipboardShare: check_skip',
+        context: {'source': source, 'reason': 'prefs_not_loaded'},
+      );
+      return;
+    }
+    final prefs = _bootstrapAdapter.readDevicePreferences(ref);
+    if (!prefs.thirdPartyShareEnabled) {
+      LogManager.instance.debug(
+        'ClipboardShare: check_skip',
+        context: {'source': source, 'reason': 'third_party_share_disabled'},
+      );
+      return;
+    }
+    final session = _bootstrapAdapter.readSession(ref);
+    final localLibrary = _bootstrapAdapter.readCurrentLocalLibrary(ref);
+    if (session?.currentAccount == null && localLibrary == null) {
+      LogManager.instance.debug(
+        'ClipboardShare: check_skip',
+        context: {'source': source, 'reason': 'no_workspace'},
+      );
+      return;
+    }
+    final detection = await _clipboardShareDetector.detectCandidate();
+    if (!mounted) return;
+    switch (detection.status) {
+      case ClipboardShareDetectionStatus.found:
+        LogManager.instance.info(
+          'ClipboardShare: candidate_detected',
+          context: {
+            'source': source,
+            'textLength': detection.textLength,
+            'host': detection.host,
+            'workspaceMode': session?.currentAccount != null
+                ? 'remote'
+                : 'local',
+          },
+        );
+        break;
+      case ClipboardShareDetectionStatus.empty:
+        LogManager.instance.debug(
+          'ClipboardShare: candidate_skipped',
+          context: {'source': source, 'reason': 'empty'},
+        );
+        return;
+      case ClipboardShareDetectionStatus.unsupported:
+        LogManager.instance.debug(
+          'ClipboardShare: candidate_skipped',
+          context: {'source': source, 'reason': 'unsupported'},
+        );
+        return;
+      case ClipboardShareDetectionStatus.unavailable:
+        LogManager.instance.debug(
+          'ClipboardShare: candidate_skipped',
+          context: {
+            'source': source,
+            'reason': detection.status.name,
+            if (detection.textLength != null)
+              'textLength': detection.textLength,
+            if (detection.errorCode != null) 'errorCode': detection.errorCode,
+          },
+        );
+        return;
+    }
+    final payload = detection.payload;
+    if (payload == null) return;
+    final normalizedUrl = _normalizedClipboardUrl(payload);
+    if (normalizedUrl != null && normalizedUrl == _lastClipboardPromptedUrl) {
+      LogManager.instance.debug(
+        'ClipboardShare: check_skip',
+        context: {
+          'source': source,
+          'reason': 'unchanged_url',
+          'url': normalizedUrl,
+        },
+      );
+      return;
+    }
+    final context = _navigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      LogManager.instance.debug(
+        'ClipboardShare: check_skip',
+        context: {'source': source, 'reason': 'no_context'},
+      );
+      return;
+    }
+    _lastClipboardPromptedUrl = normalizedUrl;
+    _clipboardHandledBurstId = burstId;
+    LogManager.instance.info(
+      'ClipboardShare: candidate_prompted',
+      context: {
+        'source': source,
+        if (detection.host != null) 'host': detection.host,
+      },
+    );
+    final confirmed = await _confirmClipboardShareCandidate(
+      context,
+      detection: detection,
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      LogManager.instance.info(
+        'ClipboardShare: candidate_declined',
+        context: {
+          'source': source,
+          if (detection.host != null) 'host': detection.host,
+        },
+      );
+      return;
+    }
+    LogManager.instance.info(
+      'ClipboardShare: candidate_confirmed',
+      context: {
+        'source': source,
+        if (detection.host != null) 'host': detection.host,
+      },
+    );
+    await _startupCoordinator.handleShareLaunch(payload);
+  }
+
+  String? _normalizedClipboardUrl(SharePayload payload) {
+    final rawUrl = extractShareUrl((payload.text ?? '').trim());
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+    return Uri.tryParse(rawUrl)?.toString() ?? rawUrl;
+  }
+
+  void _markClipboardUrlPrompted(SharePayload payload) {
+    _lastClipboardPromptedUrl = _normalizedClipboardUrl(payload);
+  }
+
+  Future<bool> _confirmClipboardShareCandidate(
+    BuildContext context, {
+    required ClipboardShareDetection detection,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final host = (detection.host ?? '').trim();
+        final hostStyle = Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+          color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+        );
+        return AlertDialog(
+          title: Text(
+            dialogContext.tr(
+              zh: '\u68c0\u6d4b\u5230\u94fe\u63a5',
+              en: 'Link detected',
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                dialogContext.tr(
+                  zh: '\u526a\u8d34\u677f\u4e2d\u68c0\u6d4b\u5230 URL\uff0c\u662f\u5426\u73b0\u5728\u526a\u85cf\uff1f',
+                  en: 'A URL was detected in your clipboard. Clip it now?',
+                ),
+              ),
+              if (host.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(host, style: hostStyle),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(dialogContext.t.strings.legacy.msg_cancel_2),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                dialogContext.tr(
+                  zh: '\u7acb\u5373\u526a\u85cf',
+                  en: 'Clip now',
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
   }
 
   @override

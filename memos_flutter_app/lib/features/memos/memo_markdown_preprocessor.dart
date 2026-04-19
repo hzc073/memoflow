@@ -1,7 +1,5 @@
-final RegExp _tagInlinePattern = RegExp(
-  r'#(?!#|\s)([\p{L}\p{N}\p{S}_/\-]{1,100})',
-  unicode: true,
-);
+import '../../core/tags.dart';
+
 final RegExp _markdownImagePattern = RegExp(
   r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)',
 );
@@ -234,20 +232,17 @@ String _normalizeFencedCodeBlocks(String text) {
 }
 
 String _replaceTagsInLine(String line) {
-  final matches = _tagInlinePattern.allMatches(line);
+  final matches = findInlineTagMatches(line);
   if (matches.isEmpty) return line;
 
   final buffer = StringBuffer();
   var last = 0;
   for (final match in matches) {
     buffer.write(line.substring(last, match.start));
-    final tag = match.group(1);
-    if (tag == null || tag.isEmpty) {
-      buffer.write(match.group(0));
-    } else {
-      final escaped = _escapeHtmlAttribute(tag);
-      buffer.write('<span class="memotag" data-tag="$escaped">#$tag</span>');
-    }
+    final escaped = _escapeHtmlAttribute(match.tag);
+    buffer.write(
+      '<span class="memotag" data-tag="$escaped">#${match.tag}</span>',
+    );
     last = match.end;
   }
   buffer.write(line.substring(last));

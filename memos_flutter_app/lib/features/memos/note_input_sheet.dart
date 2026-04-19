@@ -32,7 +32,6 @@ import '../../state/memos/memo_composer_state.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/attachments/queued_attachment_stager_provider.dart';
 import '../../state/settings/image_compression_settings_provider.dart';
-import '../../state/settings/image_bed_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import '../../state/memos/compose_draft_provider.dart';
 import '../../state/memos/note_draft_provider.dart';
@@ -120,6 +119,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
     this.initialSelection,
     this.initialAttachmentPaths = const [],
     this.initialAttachmentSeeds = const [],
+    this.initialClipMetadataDraft,
     this.initialDeferredInlineImageAttachments = const [],
     this.initialDeferredVideoAttachments = const [],
     this.ignoreDraft = false,
@@ -133,6 +133,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
   final TextSelection? initialSelection;
   final List<String> initialAttachmentPaths;
   final List<ShareAttachmentSeed> initialAttachmentSeeds;
+  final ShareClipMetadataDraft? initialClipMetadataDraft;
   final List<ShareDeferredInlineImageAttachmentRequest>
   initialDeferredInlineImageAttachments;
   final List<ShareDeferredVideoAttachmentRequest>
@@ -149,6 +150,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
     TextSelection? initialSelection,
     List<String> initialAttachmentPaths = const [],
     List<ShareAttachmentSeed> initialAttachmentSeeds = const [],
+    ShareClipMetadataDraft? initialClipMetadataDraft,
     List<ShareDeferredInlineImageAttachmentRequest>
         initialDeferredInlineImageAttachments =
         const [],
@@ -172,6 +174,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
         initialSelection: initialSelection,
         initialAttachmentPaths: initialAttachmentPaths,
         initialAttachmentSeeds: initialAttachmentSeeds,
+        initialClipMetadataDraft: initialClipMetadataDraft,
         initialDeferredInlineImageAttachments:
             initialDeferredInlineImageAttachments,
         initialDeferredVideoAttachments: initialDeferredVideoAttachments,
@@ -2626,37 +2629,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final uid = generateUid();
       final tags = extractTags(content);
       final visibility = _normalizedVisibility();
-      final imageBedEnabled = ref.read(imageBedSettingsProvider).enabled;
-      final hasThirdPartyShareInlineImages = pendingAttachments.any(
-        (attachment) =>
-            attachment.shareInlineImage && attachment.fromThirdPartyShare,
-      );
-      var syncContent = content;
-      if (!imageBedEnabled && hasThirdPartyShareInlineImages) {
-        for (final entry in _thirdPartyShareInlineSourceByLocalUrl.entries) {
-          syncContent = replaceShareInlineLocalUrlWithRemote(
-            syncContent,
-            localUrl: entry.key,
-            remoteUrl: entry.value,
-          );
-        }
-      }
-      syncContent = buildShareInlineSyncContent(
-        syncContent,
-        pendingAttachments.map(
-          (attachment) => ShareAttachmentSeed(
-            uid: attachment.uid,
-            filePath: attachment.filePath,
-            filename: attachment.filename,
-            mimeType: attachment.mimeType,
-            size: attachment.size,
-            skipCompression: attachment.skipCompression,
-            shareInlineImage: attachment.shareInlineImage,
-            fromThirdPartyShare: attachment.fromThirdPartyShare,
-            sourceUrl: attachment.sourceUrl,
-          ),
-        ),
-      );
+      final syncContent = content;
 
       final attachments = pendingAttachments
           .map((p) {
@@ -2705,6 +2678,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             hasAttachments: hasAttachments,
             relations: relations,
             pendingAttachments: pendingUploads,
+            clipMetadataDraft: widget.initialClipMetadataDraft,
           );
 
       await _processDeferredInlineImagesAfterSubmit(

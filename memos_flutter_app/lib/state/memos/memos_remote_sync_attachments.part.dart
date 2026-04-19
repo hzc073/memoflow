@@ -45,12 +45,6 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       final String value => value.trim().toLowerCase() == 'true',
       _ => false,
     };
-    final fromThirdPartyShare = switch (payload['from_third_party_share']) {
-      final bool value => value,
-      final num value => value != 0,
-      final String value => value.trim().toLowerCase() == 'true',
-      _ => false,
-    };
     final shareInlineLocalUrl =
         (payload['share_inline_local_url'] as String? ?? '').trim();
     if (uid == null ||
@@ -119,10 +113,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       }
     }
 
-    final preserveLocalInlineReference =
-        shareInlineImage &&
-        fromThirdPartyShare &&
-        shareInlineLocalUrl.isNotEmpty;
+    const preserveLocalInlineReference = false;
     final bindAttachmentDuringCreateMemo =
         await _shouldBindAttachmentDuringCreateMemo(memoUid);
 
@@ -270,15 +261,11 @@ extension _RemoteSyncAttachments on RemoteSyncController {
   }
 
   String _resolveAttachmentExternalLink(Attachment attachment) {
-    final external = attachment.externalLink.trim();
-    if (external.isNotEmpty) return external;
-    final name = attachment.name.trim();
-    if (name.isEmpty) return '';
-    final filename = attachment.filename.trim();
-    if (name.startsWith('resources/') || name.startsWith('attachments/')) {
-      return filename.isNotEmpty ? '/file/$name/$filename' : '/file/$name';
-    }
-    return '';
+    return resolveShareInlineAttachmentRemoteUrl(
+          attachment,
+          baseUrl: serverBaseUrl,
+        ) ??
+        '';
   }
 
   Uri _resolveImageBedBaseUrl(String raw) {
@@ -466,9 +453,14 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       throw StateError('Memo not found: $memoUid');
     }
     final memo = LocalMemo.fromDb(row);
-    await api.updateMemo(
+    final rewrittenContent = await _rewriteThirdPartyShareInlineUrlsForRemoteContent(
+      controller: this,
       memoUid: memo.uid,
       content: memo.content,
+    );
+    await api.updateMemo(
+      memoUid: memo.uid,
+      content: rewrittenContent,
       visibility: memo.visibility,
       pinned: memo.pinned,
     );

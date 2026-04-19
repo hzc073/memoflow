@@ -12,14 +12,23 @@ class WechatSharePageParser implements SharePageParser {
   @override
   SharePageParserResult parse(SharePageSnapshot snapshot) {
     final bridge = snapshot.bridgeData;
+    final rawWechatHtml = bridge['wechatContentHtml']?.toString();
+    final fallbackText =
+        bridge['wechatTextContent']?.toString() ??
+        bridge['textContent']?.toString();
     final cleaned = cleanWechatArticleContent(
-      rawHtml: bridge['contentHtml']?.toString(),
-      fallbackTextContent: bridge['textContent']?.toString(),
+      rawHtml: rawWechatHtml ?? bridge['contentHtml']?.toString(),
+      fallbackTextContent: fallbackText,
       fallbackExcerpt: bridge['excerpt']?.toString(),
+      articleTitle: bridge['articleTitle']?.toString(),
     );
 
     final contentHtml = normalizeShareText(cleaned.contentHtml);
     final textContent = normalizeShareText(cleaned.textContent);
+    final excerpt = _resolveWechatExcerpt(
+      normalizeShareText(cleaned.excerpt),
+      textContent,
+    );
     final pageKind =
         ((contentHtml ?? '').isNotEmpty || (textContent ?? '').length >= 80)
         ? SharePageKind.article
@@ -30,13 +39,49 @@ class WechatSharePageParser implements SharePageParser {
       title:
           normalizeShareText(bridge['articleTitle']?.toString()) ??
           normalizeShareText(bridge['pageTitle']?.toString()),
-      excerpt: normalizeShareText(cleaned.excerpt),
+      excerpt: excerpt,
       contentHtml: contentHtml,
       textContent: textContent,
-      siteName: normalizeShareText(bridge['siteName']?.toString()) ?? '微信公众平台',
-      byline: normalizeShareText(bridge['byline']?.toString()),
+      siteName:
+          normalizeShareText(bridge['wechatAccountName']?.toString()) ??
+          normalizeShareText(bridge['siteName']?.toString()) ??
+          '\u5fae\u4fe1\u516c\u4f17\u5e73\u53f0',
+      sourceAvatarUrl: normalizeShareText(
+        bridge['wechatAccountAvatar']?.toString(),
+      ),
+      byline:
+          normalizeShareText(bridge['wechatAuthor']?.toString()) ??
+          normalizeShareText(bridge['byline']?.toString()),
+      authorAvatarUrl: normalizeShareText(
+        bridge['wechatAuthorAvatar']?.toString(),
+      ),
       leadImageUrl: normalizeShareText(bridge['leadImageUrl']?.toString()),
       parserTag: 'wechat',
     );
   }
+}
+
+String? _resolveWechatExcerpt(String? excerpt, String? textContent) {
+  final normalizedExcerpt = normalizeShareText(excerpt);
+  if (normalizedExcerpt == null) return null;
+  final normalizedText = normalizeShareText(textContent);
+  if (normalizedText == null) return normalizedExcerpt;
+
+  final excerptFingerprint = _normalizeWechatCompareText(normalizedExcerpt);
+  final textFingerprint = _normalizeWechatCompareText(normalizedText);
+  if (excerptFingerprint.isEmpty || textFingerprint.isEmpty) {
+    return normalizedExcerpt;
+  }
+  if (textFingerprint.startsWith(excerptFingerprint)) {
+    return null;
+  }
+  if (excerptFingerprint.length >= 24 &&
+      textFingerprint.contains(excerptFingerprint)) {
+    return null;
+  }
+  return normalizedExcerpt;
+}
+
+String _normalizeWechatCompareText(String value) {
+  return value.replaceAll(RegExp(r'\s+'), '');
 }

@@ -49,10 +49,13 @@ void main() {
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isTrue);
     });
 
-    testWidgets('share state clears after deferred no-account evaluation', (
+    testWidgets('share state clears after deferred local-library evaluation', (
       tester,
     ) async {
       final bootstrapAdapter = FakeBootstrapAdapter(
+        preferences: AppPreferences.defaults.copyWith(
+          thirdPartyShareEnabled: false,
+        ),
         preferencesLoaded: true,
         localLibrary: buildTestLocalLibrary(),
       );
@@ -67,7 +70,7 @@ void main() {
 
       expect(harness.coordinator.startupSharePreviewPayload, isNull);
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
-      expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 0);
+      expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
     });
 
     testWidgets('local library startup does not open explore launch action', (

@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/debug_ephemeral_storage.dart';
 import '../../core/uid.dart';
+import '../../data/logs/log_manager.dart';
 import 'share_clip_models.dart';
 import 'share_inline_image_content.dart';
 
@@ -93,29 +94,67 @@ class ShareInlineImageDownloadService {
   discoverDeferredInlineImageAttachments(ShareCaptureResult result) async {
     final rawHtml = normalizeShareText(result.contentHtml);
     if (rawHtml == null) {
+      LogManager.instance.debug(
+        'ShareInlineImage: discover_skipped',
+        context: {
+          'host': result.finalUrl.host,
+          'reason': 'missing_content_html',
+          'parserTag': result.siteParserTag,
+        },
+      );
       return const <ShareDeferredInlineImageAttachmentRequest>[];
     }
 
     final fragment = html_parser.parseFragment(rawHtml);
     final imageElements = fragment.querySelectorAll('img[src]');
     if (imageElements.isEmpty) {
+      final dataSrcCount = fragment.querySelectorAll('img[data-src]').length;
+      LogManager.instance.debug(
+        'ShareInlineImage: discover_skipped',
+        context: {
+          'host': result.finalUrl.host,
+          'reason': 'no_img_src',
+          'imgDataSrcCount': dataSrcCount,
+          'htmlLength': rawHtml.length,
+          'parserTag': result.siteParserTag,
+        },
+      );
       return const <ShareDeferredInlineImageAttachmentRequest>[];
     }
 
     final uniqueSources = <String, Uri>{};
+    var skippedMissingSrc = 0;
+    var skippedUnresolvable = 0;
     for (final element in imageElements) {
       final src = normalizeShareText(element.attributes['src']);
-      if (src == null) continue;
+      if (src == null) {
+        skippedMissingSrc++;
+        continue;
+      }
       final resolved = _resolveImageUri(result.finalUrl, src);
-      if (resolved == null) continue;
+      if (resolved == null) {
+        skippedUnresolvable++;
+        continue;
+      }
       uniqueSources.putIfAbsent(_normalizedImageKey(resolved), () => resolved);
     }
 
     if (uniqueSources.isEmpty) {
+      LogManager.instance.debug(
+        'ShareInlineImage: discover_skipped',
+        context: {
+          'host': result.finalUrl.host,
+          'reason': 'no_resolved_http_images',
+          'imgSrcCount': imageElements.length,
+          'skippedMissingSrc': skippedMissingSrc,
+          'skippedUnresolvable': skippedUnresolvable,
+          'parserTag': result.siteParserTag,
+        },
+      );
       return const <ShareDeferredInlineImageAttachmentRequest>[];
     }
 
-    return uniqueSources.values.indexed
+    final requests = uniqueSources.values.indexed
         .map(
           (entry) => ShareDeferredInlineImageAttachmentRequest(
             captureResult: result,
@@ -124,6 +163,22 @@ class ShareInlineImageDownloadService {
           ),
         )
         .toList(growable: false);
+    LogManager.instance.debug(
+      'ShareInlineImage: discover_result',
+      context: {
+        'host': result.finalUrl.host,
+        'imgSrcCount': imageElements.length,
+        'uniqueHttpImageCount': requests.length,
+        'skippedMissingSrc': skippedMissingSrc,
+        'skippedUnresolvable': skippedUnresolvable,
+        'sampleUrls': requests
+            .take(3)
+            .map((item) => item.sourceUrl)
+            .toList(growable: false),
+        'parserTag': result.siteParserTag,
+      },
+    );
+    return requests;
   }
 
   Future<ShareAttachmentSeed?> downloadDeferredInlineImageAttachment(
@@ -131,7 +186,17 @@ class ShareInlineImageDownloadService {
     void Function(double progress)? onProgress,
   }) async {
     final sourceUri = Uri.tryParse(request.sourceUrl);
-    if (sourceUri == null) return null;
+    if (sourceUri == null) {
+      LogManager.instance.warn(
+        'ShareInlineImage: download_skipped',
+        context: {
+          'sourceUrl': request.sourceUrl,
+          'reason': 'invalid_uri',
+          'host': request.captureResult.finalUrl.host,
+        },
+      );
+      return null;
+    }
 
     final directory = await _resolveDirectory();
     if (!await directory.exists()) {
@@ -151,6 +216,14 @@ class ShareInlineImageDownloadService {
       },
     );
     if (response.bytes.isEmpty) {
+      LogManager.instance.warn(
+        'ShareInlineImage: download_empty',
+        context: {
+          'sourceUrl': sourceUri.toString(),
+          'host': request.captureResult.finalUrl.host,
+          'parserTag': request.captureResult.siteParserTag,
+        },
+      );
       return null;
     }
 
@@ -170,9 +243,29 @@ class ShareInlineImageDownloadService {
       try {
         await file.delete();
       } catch (_) {}
+      LogManager.instance.warn(
+        'ShareInlineImage: download_zero_size',
+        context: {
+          'sourceUrl': sourceUri.toString(),
+          'filePath': filePath,
+          'host': request.captureResult.finalUrl.host,
+          'parserTag': request.captureResult.siteParserTag,
+        },
+      );
       return null;
     }
 
+    LogManager.instance.debug(
+      'ShareInlineImage: download_result',
+      context: {
+        'sourceUrl': sourceUri.toString(),
+        'filePath': filePath,
+        'size': size,
+        'mimeType': normalizeShareText(response.mimeType) ?? 'image/jpeg',
+        'host': request.captureResult.finalUrl.host,
+        'parserTag': request.captureResult.siteParserTag,
+      },
+    );
     return ShareAttachmentSeed(
       uid: generateUid(),
       filePath: filePath,

@@ -6,6 +6,7 @@ class RemoteSyncController extends SyncControllerBase {
     RemoteSyncMutationService? mutations,
     required this.api,
     required this.currentUserName,
+    this.serverBaseUrl,
     required this.syncStatusTracker,
     required this.syncQueueProgressTracker,
     required this.imageBedRepository,
@@ -18,6 +19,7 @@ class RemoteSyncController extends SyncControllerBase {
   final RemoteSyncMutationService _mutations;
   final MemosApi api;
   final String currentUserName;
+  final Uri? serverBaseUrl;
   final SyncStatusTracker syncStatusTracker;
   final SyncQueueProgressTracker syncQueueProgressTracker;
   final ImageBedSettingsRepository imageBedRepository;

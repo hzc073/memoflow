@@ -7,6 +7,7 @@ import '../../core/tag_colors.dart';
 import '../../core/tags.dart';
 import '../ai/ai_analysis_models.dart';
 import '../ai/ai_settings_models.dart';
+import '../models/memo_clip_card_metadata.dart';
 import '../models/memo_location.dart';
 import '../models/tag.dart';
 import '../models/tag_snapshot.dart';
@@ -2070,6 +2071,66 @@ WHERE id = ?
     return false;
   }
 
+  Future<int> updatePendingCreateMemoContent({
+    required String memoUid,
+    required String content,
+    String? visibility,
+  }) async {
+    final trimmedMemoUid = memoUid.trim();
+    if (trimmedMemoUid.isEmpty) return 0;
+
+    final sqlite = await _db.db;
+    final rows = await sqlite.query(
+      'outbox',
+      columns: const ['id', 'payload'],
+      where: 'type = ? AND state IN (?, ?, ?, ?, ?)',
+      whereArgs: const [
+        'create_memo',
+        AppDatabase.outboxStatePending,
+        AppDatabase.outboxStateRunning,
+        AppDatabase.outboxStateRetry,
+        AppDatabase.outboxStateError,
+        AppDatabase.outboxStateQuarantined,
+      ],
+    );
+
+    var updatedCount = 0;
+    for (final row in rows) {
+      final id = _readInt(row['id']);
+      final payloadRaw = row['payload'];
+      if (id == null || payloadRaw is! String) continue;
+
+      final payload = _decodeOutboxPayload(payloadRaw);
+      if (payload == null) continue;
+      final payloadUid = (payload['uid'] as String? ?? '').trim();
+      if (payloadUid != trimmedMemoUid) continue;
+
+      var changed = false;
+      if (payload['content'] != content) {
+        payload['content'] = content;
+        changed = true;
+      }
+      if (visibility != null && payload['visibility'] != visibility) {
+        payload['visibility'] = visibility;
+        changed = true;
+      }
+      if (!changed) continue;
+
+      await sqlite.update(
+        'outbox',
+        {'payload': jsonEncode(payload)},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      updatedCount++;
+    }
+
+    if (updatedCount > 0) {
+      _db.notifyDataChanged();
+    }
+    return updatedCount;
+  }
+
   Future<void> _removePendingAttachmentPlaceholder(
     DatabaseExecutor executor, {
     required String memoUid,
@@ -2217,9 +2278,10 @@ WHERE id = ?
       }
     }
 
-    await _db.replaceMemoFtsEntry(
+    await _db.refreshMemoFtsEntryForMemo(
       executor,
       rowId: rowId,
+      memoUid: uid,
       content: content,
       tags: tagsText,
     );
@@ -2345,6 +2407,90 @@ WHERE id = ?
       await _db.deleteMemoFtsEntry(executor, rowId: rowId);
     }
     await _db.applyMemoCacheDeltaPayload(executor, before: before, after: null);
+  }
+
+  Future<void> _upsertMemoClipCard(
+    DatabaseExecutor executor,
+    MemoClipCardMetadata metadata,
+  ) async {
+    final memoUid = metadata.memoUid.trim();
+    if (memoUid.isEmpty) return;
+
+    await executor.insert(
+      'memo_clip_cards',
+      metadata.toDbRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    final memoRows = await executor.query(
+      'memos',
+      columns: const ['id', 'content', 'tags'],
+      where: 'uid = ?',
+      whereArgs: [memoUid],
+      limit: 1,
+    );
+    if (memoRows.isEmpty) return;
+    final rowId = _readInt(memoRows.first['id']) ?? 0;
+    if (rowId <= 0) return;
+    await _db.refreshMemoFtsEntryForMemo(
+      executor,
+      rowId: rowId,
+      memoUid: memoUid,
+      content: (memoRows.first['content'] as String?) ?? '',
+      tags: (memoRows.first['tags'] as String?) ?? '',
+    );
+  }
+
+  Future<void> _deleteMemoClipCard(
+    DatabaseExecutor executor,
+    String memoUid,
+  ) async {
+    final normalizedUid = memoUid.trim();
+    if (normalizedUid.isEmpty) return;
+
+    await executor.delete(
+      'memo_clip_cards',
+      where: 'memo_uid = ?',
+      whereArgs: [normalizedUid],
+    );
+
+    final memoRows = await executor.query(
+      'memos',
+      columns: const ['id', 'content', 'tags'],
+      where: 'uid = ?',
+      whereArgs: [normalizedUid],
+      limit: 1,
+    );
+    if (memoRows.isEmpty) return;
+    final rowId = _readInt(memoRows.first['id']) ?? 0;
+    if (rowId <= 0) return;
+    await _db.refreshMemoFtsEntryForMemo(
+      executor,
+      rowId: rowId,
+      memoUid: normalizedUid,
+      content: (memoRows.first['content'] as String?) ?? '',
+      tags: (memoRows.first['tags'] as String?) ?? '',
+    );
+  }
+
+  Future<void> upsertMemoClipCard(MemoClipCardMetadata metadata) async {
+    final trimmedMemoUid = metadata.memoUid.trim();
+    if (trimmedMemoUid.isEmpty) return;
+    final sqlite = await _db.db;
+    await sqlite.transaction((txn) async {
+      await _upsertMemoClipCard(txn, metadata);
+    });
+    _db.notifyDataChanged();
+  }
+
+  Future<void> deleteMemoClipCard(String memoUid) async {
+    final trimmedMemoUid = memoUid.trim();
+    if (trimmedMemoUid.isEmpty) return;
+    final sqlite = await _db.db;
+    await sqlite.transaction((txn) async {
+      await _deleteMemoClipCard(txn, trimmedMemoUid);
+    });
+    _db.notifyDataChanged();
   }
 
   Future<int> _enqueueOutboxBatch(

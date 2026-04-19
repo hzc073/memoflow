@@ -176,6 +176,11 @@ class MemoReaderContent extends ConsumerWidget {
                 blockSpacing: 8,
                 renderImages: renderInlineImages,
                 tagColors: tagColors,
+                baseUrl: baseUrl,
+                authHeader: authHeader,
+                rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+                attachAuthForSameOriginAbsolute:
+                    attachAuthForSameOriginAbsolute,
               ),
           if (mediaEntries.isNotEmpty) ...[
             const SizedBox(height: 14),

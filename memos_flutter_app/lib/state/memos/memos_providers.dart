@@ -109,6 +109,7 @@ final syncControllerProvider =
         mutations: RemoteSyncMutationService(db: ref.watch(databaseProvider)),
         api: ref.watch(memosApiProvider),
         currentUserName: authContext.userName,
+        serverBaseUrl: Uri.tryParse(authContext.baseUrl),
         syncStatusTracker: ref.read(syncStatusTrackerProvider),
         syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
         imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),

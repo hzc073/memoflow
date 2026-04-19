@@ -13,6 +13,7 @@ import '../../data/local_library/local_library_naming.dart';
 import '../../data/local_library/local_library_parser.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/memo_clip_card_metadata.dart';
 import '../../data/models/memo_location.dart';
 import 'local_library_scan_mutation_service.dart';
 import 'sync_error.dart';
@@ -169,6 +170,7 @@ class LocalLibraryScanService {
             uid: uid,
             sidecar: diskMemo.sidecar,
           ),
+          existingClipCardRow: await db.getMemoClipCardByUid(uid),
         );
         if (!needsUpdate) continue;
 
@@ -252,6 +254,7 @@ class LocalLibraryScanService {
           uid: uid,
           sidecar: diskMemo.sidecar,
         ),
+        existingClipCardRow: await db.getMemoClipCardByUid(uid),
       );
       if (!needsUpdate) {
         unchangedCount++;
@@ -542,6 +545,7 @@ class LocalLibraryScanService {
             uid: uid,
             sidecar: sidecar,
           ),
+          existingClipCardRow: await db.getMemoClipCardByUid(uid),
         );
         if (!needsUpdate) {
           unchangedCount++;
@@ -776,6 +780,7 @@ class LocalLibraryScanService {
     required List<String> mergedTags,
     required LocalLibraryMemoSidecar? sidecar,
     required String? existingRelationsJson,
+    required Map<String, dynamic>? existingClipCardRow,
   }) {
     final dbUpdateSec =
         localMemo.updateTime.toUtc().millisecondsSinceEpoch ~/ 1000;
@@ -814,6 +819,12 @@ class LocalLibraryScanService {
         }
       }
     }
+    if (!_clipCardSidecarMatches(
+      existingClipCardRow: existingClipCardRow,
+      sidecar: sidecar,
+    )) {
+      return true;
+    }
     return false;
   }
 
@@ -850,6 +861,18 @@ class LocalLibraryScanService {
       relationsMode: _relationsModeForSidecar(sidecar),
       relationsJson: _relationsJsonForSidecar(sidecar),
     );
+    final clipCard = sidecar?.clipCard;
+    if (sidecar?.hasClipCard == true && clipCard != null) {
+      await _mutations.upsertMemoClipCard(
+        clipCard.copyWith(
+          memoUid: uid,
+          createdTime: parsed.createTime,
+          updatedTime: parsed.updateTime,
+        ),
+      );
+    } else {
+      await _mutations.deleteMemoClipCard(uid);
+    }
   }
 
   List<String> _mergeTags(List<String> rawTags, String content) {
@@ -876,6 +899,33 @@ class LocalLibraryScanService {
       if (a[i] != b[i]) return false;
     }
     return true;
+  }
+
+  bool _clipCardSidecarMatches({
+    required Map<String, dynamic>? existingClipCardRow,
+    required LocalLibraryMemoSidecar? sidecar,
+  }) {
+    final sidecarHasClipCard = sidecar?.hasClipCard == true;
+    final sidecarClipCard = sidecar?.clipCard;
+    if (!sidecarHasClipCard || sidecarClipCard == null) {
+      return existingClipCardRow == null;
+    }
+    if (existingClipCardRow == null) {
+      return false;
+    }
+    final existingClipCard = MemoClipCardMetadata.fromDb(existingClipCardRow);
+    return existingClipCard.clipKind == sidecarClipCard.clipKind &&
+        existingClipCard.platform == sidecarClipCard.platform &&
+        existingClipCard.sourceName.trim() == sidecarClipCard.sourceName.trim() &&
+        existingClipCard.sourceAvatarUrl.trim() ==
+            sidecarClipCard.sourceAvatarUrl.trim() &&
+        existingClipCard.authorName.trim() == sidecarClipCard.authorName.trim() &&
+        existingClipCard.authorAvatarUrl.trim() ==
+            sidecarClipCard.authorAvatarUrl.trim() &&
+        existingClipCard.sourceUrl.trim() == sidecarClipCard.sourceUrl.trim() &&
+        existingClipCard.leadImageUrl.trim() ==
+            sidecarClipCard.leadImageUrl.trim() &&
+        existingClipCard.parserTag.trim() == sidecarClipCard.parserTag.trim();
   }
 
   bool _attachmentsEqual(List<Attachment> a, List<Attachment> b) {

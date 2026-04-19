@@ -16,6 +16,7 @@ import '../../core/image_error_logger.dart';
 import '../../core/log_sanitizer.dart';
 import '../../core/memo_content_diagnostics.dart';
 import '../../core/tags.dart';
+import '../../core/url.dart';
 import '../../data/logs/log_manager.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/tags/tag_color_lookup.dart';
@@ -61,6 +62,44 @@ final MemoRenderPipeline _memoRenderPipeline = MemoRenderPipeline();
 final Set<String> _memoMarkdownDiagnosticLogKeys = <String>{};
 
 const int _markdownImageMaxDecodePx = 2048;
+
+({String url, Map<String, String>? headers})? resolveMemoMarkdownRemoteImageRequest({
+  required String rawSrc,
+  Uri? baseUrl,
+  String? authHeader,
+  bool rebaseAbsoluteFileUrlForV024 = false,
+  bool attachAuthForSameOriginAbsolute = false,
+}) {
+  final trimmed = normalizeMarkdownImageSrc(rawSrc);
+  if (trimmed.isEmpty) return null;
+
+  final parsed = Uri.tryParse(trimmed);
+  final scheme = parsed?.scheme.toLowerCase() ?? '';
+  if (scheme == 'file' || scheme == 'content') {
+    return null;
+  }
+
+  final rawWasRelative = !isAbsoluteUrl(trimmed);
+  var resolved = resolveMaybeRelativeUrl(baseUrl, trimmed);
+  if (rebaseAbsoluteFileUrlForV024) {
+    final rebased = rebaseAbsoluteFileUrlToBase(baseUrl, resolved);
+    if (rebased != null && rebased.isNotEmpty) {
+      resolved = rebased;
+    }
+  }
+
+  final sameOriginAbsolute = isSameOriginWithBase(baseUrl, resolved);
+  final shouldAttachAuth =
+      (rawWasRelative && baseUrl != null) ||
+      sameOriginAbsolute ||
+      (attachAuthForSameOriginAbsolute && sameOriginAbsolute);
+  final effectiveAuthHeader = authHeader?.trim() ?? '';
+  final headers = shouldAttachAuth && effectiveAuthHeader.isNotEmpty
+      ? <String, String>{'Authorization': effectiveAuthHeader}
+      : null;
+
+  return (url: resolved, headers: headers);
+}
 
 String _insertSoftBreaks(String text) {
   if (text.isEmpty) return text;
@@ -127,6 +166,10 @@ class MemoMarkdown extends StatelessWidget {
     this.renderImages = true,
     this.tagColors,
     this.onToggleTask,
+    this.baseUrl,
+    this.authHeader,
+    this.rebaseAbsoluteFileUrlForV024 = false,
+    this.attachAuthForSameOriginAbsolute = false,
   });
 
   final String data;
@@ -141,6 +184,10 @@ class MemoMarkdown extends StatelessWidget {
   final bool renderImages;
   final TagColorLookup? tagColors;
   final TaskToggleHandler? onToggleTask;
+  final Uri? baseUrl;
+  final String? authHeader;
+  final bool rebaseAbsoluteFileUrlForV024;
+  final bool attachAuthForSameOriginAbsolute;
 
   @override
   Widget build(BuildContext context) {
@@ -438,6 +485,7 @@ class MemoMarkdown extends StatelessWidget {
             cacheKey: cacheKey,
             src: src,
           );
+          return const SizedBox.shrink();
         }
 
         final uri = Uri.tryParse(src);
@@ -451,6 +499,18 @@ class MemoMarkdown extends StatelessWidget {
         final localFile = scheme == 'file' && uri != null
             ? File.fromUri(uri)
             : null;
+        final remoteImageRequest = localFile == null
+            ? resolveMemoMarkdownRemoteImageRequest(
+                rawSrc: src,
+                baseUrl: baseUrl,
+                authHeader: authHeader,
+                rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+                attachAuthForSameOriginAbsolute:
+                    attachAuthForSameOriginAbsolute,
+              )
+            : null;
+        final resolvedRemoteSrc = remoteImageRequest?.url ?? src;
+        final resolvedRemoteHeaders = remoteImageRequest?.headers;
 
         final widthAttr = _parseHtmlLength(element.attributes['width']);
         final heightAttr = _parseHtmlLength(element.attributes['height']);
@@ -521,28 +581,34 @@ class MemoMarkdown extends StatelessWidget {
                   },
                 ),
                 _ => Image.network(
-                  src,
+                  resolvedRemoteSrc,
                   width: targetWidth,
                   height: targetHeight,
                   fit: BoxFit.contain,
                   cacheWidth: cacheWidth,
+                  headers: resolvedRemoteHeaders,
                   loadingBuilder: (context, child, progress) {
                     if (progress == null) return child;
                     return imagePlaceholder();
                   },
                   errorBuilder: (context, error, stackTrace) {
-                    logImageError(src, error, stackTrace);
-                    if (!shouldUseSvgRenderer(url: src)) {
+                    logImageError(resolvedRemoteSrc, error, stackTrace);
+                    if (!shouldUseSvgRenderer(url: resolvedRemoteSrc)) {
                       return imageError();
                     }
                     return SvgPicture.network(
-                      src,
+                      resolvedRemoteSrc,
                       width: targetWidth,
                       height: targetHeight,
                       fit: BoxFit.contain,
+                      headers: resolvedRemoteHeaders,
                       placeholderBuilder: (_) => imagePlaceholder(),
                       errorBuilder: (_, svgError, svgStack) {
-                        logImageError(src, svgError, svgStack);
+                        logImageError(
+                          resolvedRemoteSrc,
+                          svgError,
+                          svgStack,
+                        );
                         return imageError();
                       },
                     );
@@ -790,8 +856,8 @@ void _logMemoMarkdownHtmlImageWhileDisabled(
   if (_memoMarkdownDiagnosticLogKeys.length > 240) {
     _memoMarkdownDiagnosticLogKeys.remove(_memoMarkdownDiagnosticLogKeys.first);
   }
-  LogManager.instance.warn(
-    'MemoMarkdown html image rendered while images disabled',
+  LogManager.instance.info(
+    'MemoMarkdown html image skipped while images disabled',
     context: <String, Object?>{
       ...buildMemoContentDiagnostics(content, cacheKey: cacheKey),
       'sourceFingerprint': LogSanitizer.redactWithFingerprint(

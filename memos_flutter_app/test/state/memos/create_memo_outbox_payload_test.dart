@@ -11,6 +11,7 @@ import 'package:memos_flutter_app/data/api/memo_api_facade.dart';
 import 'package:memos_flutter_app/data/api/memo_api_version.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/memo_location.dart';
+import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
 import 'package:memos_flutter_app/state/memos/create_memo_outbox_payload.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/note_input_providers.dart';
@@ -489,6 +490,75 @@ void main() {
   );
 
   test(
+    'appendDeferredThirdPartyShareInlineImage enqueues attachment-aware outbox items',
+    () async {
+      final dbName = uniqueDbName('note_input_append_inline_image_outbox');
+      final db = AppDatabase(dbName: dbName);
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final controller = container.read(noteInputControllerProvider);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+      final attachmentFile = await createAttachmentFile(
+        'note_input_append_inline_image_outbox',
+      );
+
+      await db.upsertMemo(
+        uid: 'memo-1',
+        content: '<img src="https://example.com/sample.png">',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1,
+        updateTimeSec: 1,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+
+      await controller.appendDeferredThirdPartyShareInlineImage(
+        memoUid: 'memo-1',
+        sourceUrl: 'https://example.com/sample.png',
+        attachment: NoteInputPendingAttachment(
+          uid: 'att-1',
+          filePath: attachmentFile.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+          size: await attachmentFile.length(),
+          shareInlineImage: true,
+          fromThirdPartyShare: true,
+          sourceUrl: 'https://example.com/sample.png',
+        ),
+      );
+
+      final outbox = await db.listOutboxByMemoUid('memo-1');
+      expect(outbox, hasLength(2));
+      expect(
+        outbox.map((row) => row['type']).toList(growable: false),
+        <Object?>['update_memo', 'upload_attachment'],
+      );
+
+      final updatePayload =
+          jsonDecode(outbox.first['payload'] as String) as Map<String, dynamic>;
+      final uploadPayload =
+          jsonDecode(outbox.last['payload'] as String) as Map<String, dynamic>;
+
+      expect(updatePayload['uid'], 'memo-1');
+      expect(updatePayload['has_pending_attachments'], isTrue);
+      expect(uploadPayload['memo_uid'], 'memo-1');
+      expect(uploadPayload['uid'], 'att-1');
+    },
+  );
+
+  test(
     'appendDeferredThirdPartyShareInlineImage stores source mapping',
     () async {
       final dbName = uniqueDbName('note_input_append_inline_image_source');
@@ -545,6 +615,84 @@ void main() {
         isManagedPath(Uri.parse(sources.keys.single).toFilePath()),
         isTrue,
       );
+    },
+  );
+
+  test(
+    'appendDeferredThirdPartyShareInlineImage stages already-downloaded local urls into upload queue',
+    () async {
+      final dbName = uniqueDbName('note_input_append_downloaded_local_url');
+      final db = AppDatabase(dbName: dbName);
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      final controller = container.read(noteInputControllerProvider);
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+      final attachmentFile = await createAttachmentFile(
+        'note_input_append_downloaded_local_url',
+      );
+      final originalLocalUrl = shareInlineLocalUrlFromPath(attachmentFile.path);
+
+      await db.upsertMemo(
+        uid: 'memo-1',
+        content: '<img src="$originalLocalUrl">',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1,
+        updateTimeSec: 1,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+
+      await controller.appendDeferredThirdPartyShareInlineImage(
+        memoUid: 'memo-1',
+        sourceUrl: 'https://example.com/sample.png',
+        attachment: NoteInputPendingAttachment(
+          uid: 'att-1',
+          filePath: attachmentFile.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+          size: await attachmentFile.length(),
+          shareInlineImage: true,
+          fromThirdPartyShare: true,
+          sourceUrl: 'https://example.com/sample.png',
+        ),
+      );
+
+      final row = await db.getMemoByUid('memo-1');
+      expect(row, isNotNull);
+      final updatedContent = row?['content'] as String? ?? '';
+      expect(updatedContent, isNot(contains(originalLocalUrl)));
+
+      final attachmentsJson = jsonDecode(
+        row?['attachments_json'] as String? ?? '[]',
+      ) as List<dynamic>;
+      expect(attachmentsJson, hasLength(1));
+      final stagedLocalUrl =
+          attachmentsJson.single['externalLink'] as String? ?? '';
+      expect(stagedLocalUrl, isNotEmpty);
+      expect(stagedLocalUrl, isNot(originalLocalUrl));
+      expect(updatedContent, contains(stagedLocalUrl));
+
+      final outbox = await db.listOutboxByMemoUid('memo-1');
+      expect(outbox, hasLength(2));
+      expect(
+        outbox.map((row) => row['type']).toList(growable: false),
+        <Object?>['update_memo', 'upload_attachment'],
+      );
+
+      final sources = await db.listMemoInlineImageSources('memo-1');
+      expect(sources[stagedLocalUrl], 'https://example.com/sample.png');
     },
   );
 

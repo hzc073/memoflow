@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/memo_clip_markdown.dart';
 import '../../../core/memo_content_diagnostics.dart';
 import '../../../core/url.dart';
 import '../../../data/models/app_preferences.dart';
 import '../../../data/models/local_memo.dart';
+import '../../../features/share/share_inline_image_content.dart';
+import '../../../state/memos/memo_clip_card_providers.dart';
 import '../../../state/memos/memos_list_providers.dart';
 import '../../../state/memos/memos_providers.dart';
 import '../../../state/settings/location_settings_provider.dart';
@@ -19,6 +22,7 @@ import '../../../state/tags/tag_color_lookup.dart';
 import '../memo_image_grid.dart';
 import '../memo_media_grid.dart';
 import '../memo_video_grid.dart';
+import 'memo_clip_card_header.dart';
 import 'memos_list_memo_card.dart';
 
 final DateFormat _memoDateFormatter = DateFormat('yyyy-MM-dd HH:mm');
@@ -236,6 +240,15 @@ class MemosListMemoCardContainer extends ConsumerWidget {
     final reminderText = nextReminderTime == null
         ? null
         : _formatReminderTime(context, nextReminderTime);
+    final clipCard = ref.watch(memoClipCardByUidProvider(memo.uid));
+    final clipParts = clipCard == null
+        ? null
+        : parseMemoClipMarkdown(memo.content);
+    final clipBodyText = clipCard == null
+        ? null
+        : stripMemoClipTitle(
+            memo.content,
+          ).replaceAll(buildThirdPartyShareMemoMarker(), '').trimRight();
     final trimmedSearchQuery = searchQuery.trim();
     final inSearchContext =
         searching ||
@@ -265,6 +278,19 @@ class MemosListMemoCardContainer extends ConsumerWidget {
           : audioDurationListenable,
       imageEntries: imageEntries,
       mediaEntries: effectiveMediaEntries,
+      contentTextOverride: clipBodyText,
+      contentHeader: clipCard == null
+          ? null
+          : MemoClipReadonlyHeader(
+              metadata: clipCard,
+              title: clipParts?.title,
+              compact: true,
+            ),
+      useExpandedArticleBody: clipCard != null,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
       locationProvider: locationProvider,
       onAudioSeek: removing || !isAudioActive ? null : onAudioSeek,
       onAudioTap: removing ? null : onAudioTap,

@@ -57,8 +57,11 @@ void main() {
     final result = await routeFuture;
     expect(result, isNotNull);
     expect(result!.text, contains('# Interesting Article'));
-    expect(result.text, contains('> Summary'));
     expect(result.text, contains('Hello world'));
+    expect(result.text, isNot(contains('> Summary')));
+    expect(result.clipMetadataDraft, isNotNull);
+    expect(result.clipMetadataDraft!.sourceName, 'Example');
+    expect(result.clipMetadataDraft!.authorName, isEmpty);
   });
 
   testWidgets('returns link-only compose request when capture fails', (

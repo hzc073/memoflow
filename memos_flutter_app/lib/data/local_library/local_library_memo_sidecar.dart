@@ -3,10 +3,11 @@ import 'dart:convert';
 import '../../core/memo_relations.dart';
 import '../models/attachment.dart';
 import '../models/local_memo.dart';
+import '../models/memo_clip_card_metadata.dart';
 import '../models/memo_location.dart';
 import '../models/memo_relation.dart';
 
-const int localLibraryMemoSidecarSchemaVersion = 1;
+const int localLibraryMemoSidecarSchemaVersion = 2;
 
 String memoSidecarRelativePath(String memoUid) {
   final trimmed = memoUid.trim();
@@ -89,12 +90,14 @@ class LocalLibraryMemoSidecar {
     this.location,
     this.relations = const <MemoRelation>[],
     this.attachments = const <LocalLibraryAttachmentExportMeta>[],
+    this.clipCard,
     this.relationCount,
     this.relationsComplete,
     this.hasDisplayTime = false,
     this.hasLocation = false,
     this.hasRelations = false,
     this.hasAttachments = false,
+    this.hasClipCard = false,
   });
 
   final int schemaVersion;
@@ -104,12 +107,14 @@ class LocalLibraryMemoSidecar {
   final MemoLocation? location;
   final List<MemoRelation> relations;
   final List<LocalLibraryAttachmentExportMeta> attachments;
+  final MemoClipCardMetadata? clipCard;
   final int? relationCount;
   final bool? relationsComplete;
   final bool hasDisplayTime;
   final bool hasLocation;
   final bool hasRelations;
   final bool hasAttachments;
+  final bool hasClipCard;
 
   bool get hasRelationMetadata =>
       hasRelations || relationCount != null || relationsComplete != null;
@@ -130,6 +135,7 @@ class LocalLibraryMemoSidecar {
     required bool hasRelations,
     required List<MemoRelation> relations,
     required List<LocalLibraryAttachmentExportMeta> attachments,
+    MemoClipCardMetadata? clipCard,
     bool hasAttachments = true,
     int? relationCount,
     bool? relationsComplete,
@@ -142,6 +148,7 @@ class LocalLibraryMemoSidecar {
       location: memo.location,
       relations: relations,
       attachments: attachments,
+      clipCard: clipCard,
       relationCount: hasRelations
           ? (relationCount ?? memo.relationCount)
           : null,
@@ -152,6 +159,7 @@ class LocalLibraryMemoSidecar {
       hasLocation: true,
       hasRelations: hasRelations,
       hasAttachments: hasAttachments,
+      hasClipCard: clipCard != null,
     );
   }
 
@@ -205,6 +213,26 @@ class LocalLibraryMemoSidecar {
           .toList(growable: false);
     }
 
+    MemoClipCardMetadata? readClipCard() {
+      if (!json.containsKey('clipCard')) return null;
+      final raw = json['clipCard'];
+      if (raw is Map<String, dynamic>) {
+        return MemoClipCardMetadata.fromJson(
+          raw,
+          memoUid: (json['memoUid'] as String? ?? '').trim(),
+          fallbackTime: DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      }
+      if (raw is Map) {
+        return MemoClipCardMetadata.fromJson(
+          raw.cast<String, dynamic>(),
+          memoUid: (json['memoUid'] as String? ?? '').trim(),
+          fallbackTime: DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      }
+      return null;
+    }
+
     int? readOptionalInt(String key) {
       if (!json.containsKey(key)) return null;
       final raw = json[key];
@@ -235,12 +263,14 @@ class LocalLibraryMemoSidecar {
       location: readLocation(),
       relations: readRelations(),
       attachments: readAttachments(),
+      clipCard: readClipCard(),
       relationCount: readOptionalInt('relationCount'),
       relationsComplete: readOptionalBool('relationsComplete'),
       hasDisplayTime: json.containsKey('displayTime'),
       hasLocation: json.containsKey('location'),
       hasRelations: json.containsKey('relations'),
       hasAttachments: json.containsKey('attachments'),
+      hasClipCard: json.containsKey('clipCard'),
     );
   }
 
@@ -271,6 +301,9 @@ class LocalLibraryMemoSidecar {
       payload['attachments'] = attachments
           .map((attachment) => attachment.toJson())
           .toList(growable: false);
+    }
+    if (hasClipCard) {
+      payload['clipCard'] = clipCard?.toJson();
     }
     return payload;
   }

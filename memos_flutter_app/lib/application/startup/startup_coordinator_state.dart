@@ -24,6 +24,11 @@ extension _StartupCoordinatorState on StartupCoordinator {
     _setShareFlowActive(true);
   }
 
+  void _armRuntimeShareLaunchUi(SharePayload payload) {
+    if (!_startupHandled || !_shouldOpenSharePreviewDirectly(payload)) return;
+    _setShareFlowActive(true);
+  }
+
   void _setStartupSharePreviewPayload(SharePayload? payload) {
     if (identical(_startupSharePreviewPayload, payload)) return;
     _startupSharePreviewPayload = payload;

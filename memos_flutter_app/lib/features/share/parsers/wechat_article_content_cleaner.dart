@@ -19,6 +19,7 @@ WechatArticleContentCleanupResult cleanWechatArticleContent({
   required String? rawHtml,
   String? fallbackTextContent,
   String? fallbackExcerpt,
+  String? articleTitle,
 }) {
   final normalizedHtml = normalizeShareText(rawHtml);
   if (normalizedHtml == null) {
@@ -29,11 +30,16 @@ WechatArticleContentCleanupResult cleanWechatArticleContent({
     );
   }
 
-  final fragment = html_parser.parseFragment(normalizedHtml);
+  var fragment = html_parser.parseFragment(normalizedHtml);
+  final focusedHtml = _extractPreferredWechatArticleHtml(fragment);
+  if (focusedHtml != null) {
+    fragment = html_parser.parseFragment(focusedHtml);
+  }
   _promoteWechatLazyImageSources(fragment);
   _removeBrokenWechatImageTextTails(fragment);
   _removeKnownWechatNoise(fragment);
   _unwrapRedundantInlineTags(fragment);
+  _removeLeadingRepeatedWechatTitle(fragment, articleTitle);
   _trimWechatLeadingNoise(fragment);
   _trimWechatTrailingNoise(fragment);
   _removeEmptyElements(fragment);
@@ -49,6 +55,11 @@ WechatArticleContentCleanupResult cleanWechatArticleContent({
     excerpt: _resolveExcerpt(cleanedText, fallbackExcerpt),
   );
 }
+
+const List<String> _wechatPreferredContentSelectors = [
+  '#js_content',
+  '.rich_media_content',
+];
 
 const List<String> _wechatNoiseSelectors = [
   'script',
@@ -75,6 +86,17 @@ const List<String> _wechatNoiseSelectors = [
   '#js_article_card',
   '#js_follow_card',
   '#js_copyright_info',
+  '#activity-name',
+  '.rich_media_title',
+  '#meta_content',
+  '.rich_media_meta_list',
+  '.rich_media_meta',
+  '#publish_time',
+  '#js_publish_time',
+  '#js_tag_name',
+  '#js_article_desc',
+  '.rich_media_area_extra',
+  '.rich_media_extra',
 ];
 
 const Set<String> _inlineTagsToUnwrap = {'span', 'font'};
@@ -84,6 +106,13 @@ const Set<String> _wechatLazyImageAttributes = {
   'data-lazy-src',
   'data-actualsrc',
   'data-original',
+  'data-backsrc',
+  'data-url',
+  'data-imgsrc',
+  'data-origin-src',
+  'data-cover',
+  '_src',
+  'srcs',
 };
 final RegExp _wechatBrokenImageTailPattern = RegExp(
   r'''#imgIndex=\d+(?:[^<>\s"']*)?(?:\s+(?:alt|title)=["'][^"']*["'])?\s*>?''',
@@ -128,8 +157,26 @@ const List<String> _wechatLeadingNoisePhrases = [
   '👇',
 ];
 
+String? _extractPreferredWechatArticleHtml(dom.DocumentFragment fragment) {
+  for (final selector in _wechatPreferredContentSelectors) {
+    final candidate = fragment.querySelector(selector);
+    final html = candidate?.innerHtml.trim() ?? '';
+    if (html.isNotEmpty) {
+      return html;
+    }
+  }
+  return null;
+}
+
 void _promoteWechatLazyImageSources(dom.DocumentFragment fragment) {
   for (final image in fragment.querySelectorAll('img')) {
+    final dimensions = _resolveWechatImageDimensions(image);
+    if (dimensions.width != null) {
+      image.attributes['width'] = dimensions.width!;
+    }
+    if (dimensions.height != null) {
+      image.attributes['height'] = dimensions.height!;
+    }
     final resolved = _resolveWechatImageSource(image);
     if (resolved != null) {
       image.attributes['src'] = resolved;
@@ -140,12 +187,85 @@ void _promoteWechatLazyImageSources(dom.DocumentFragment fragment) {
   }
 }
 
+class _WechatImageDimensions {
+  const _WechatImageDimensions({this.width, this.height});
+
+  final String? width;
+  final String? height;
+}
+
+_WechatImageDimensions _resolveWechatImageDimensions(dom.Element image) {
+  final width =
+      _normalizeWechatHtmlLength(image.attributes['width']) ??
+      _normalizeWechatNumericLength(image.attributes['data-width']) ??
+      _normalizeWechatNumericLength(image.attributes['data-w']);
+  final explicitHeight = _normalizeWechatHtmlLength(image.attributes['height']);
+  final dataHeight = _normalizeWechatNumericLength(
+    image.attributes['data-height'],
+  );
+  var height = explicitHeight ?? dataHeight;
+  if (height == null && width != null && !width.endsWith('%')) {
+    final ratio = _parseWechatPositiveDouble(image.attributes['data-ratio']);
+    final widthValue = double.tryParse(width);
+    if (ratio != null && widthValue != null && widthValue > 0) {
+      height = _formatWechatLength(widthValue * ratio);
+    }
+  }
+  return _WechatImageDimensions(width: width, height: height);
+}
+
+String? _normalizeWechatHtmlLength(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final match = RegExp(
+    r'^(\d+(?:\.\d+)?)(%|px)?$',
+    caseSensitive: false,
+  ).firstMatch(trimmed);
+  if (match == null) return null;
+  final parsed = double.tryParse(match.group(1)!);
+  if (parsed == null || parsed <= 0) return null;
+  final unit = (match.group(2) ?? '').toLowerCase();
+  final normalized = _formatWechatLength(parsed);
+  return unit == '%' ? '$normalized%' : normalized;
+}
+
+String? _normalizeWechatNumericLength(String? value) {
+  final parsed = _parseWechatPositiveDouble(value);
+  if (parsed == null) return null;
+  return _formatWechatLength(parsed);
+}
+
+double? _parseWechatPositiveDouble(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final parsed = double.tryParse(trimmed);
+  if (parsed == null || parsed <= 0) return null;
+  return parsed;
+}
+
+String _formatWechatLength(double value) {
+  final rounded = value.roundToDouble();
+  if ((value - rounded).abs() < 0.01) {
+    return rounded.toInt().toString();
+  }
+  return value.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+}
+
 String? _resolveWechatImageSource(dom.Element image) {
   final candidates = <String?>[
     image.attributes['data-src'],
     image.attributes['data-lazy-src'],
     image.attributes['data-actualsrc'],
     image.attributes['data-original'],
+    image.attributes['data-backsrc'],
+    image.attributes['data-url'],
+    image.attributes['data-imgsrc'],
+    image.attributes['data-origin-src'],
+    image.attributes['data-cover'],
+    image.attributes['_src'],
+    image.attributes['srcs'],
     image.attributes['src'],
   ];
   String? fallback;
@@ -247,6 +367,30 @@ void _unwrapRedundantInlineTags(dom.Node root) {
   final replacement = dom.DocumentFragment();
   root.reparentChildren(replacement);
   root.replaceWith(replacement);
+}
+
+void _removeLeadingRepeatedWechatTitle(
+  dom.DocumentFragment fragment,
+  String? articleTitle,
+) {
+  final normalizedTitle = _normalizeCompareText(articleTitle);
+  if (normalizedTitle == null) {
+    return;
+  }
+
+  final parent = _effectiveTrimParent(fragment);
+  final nodes = parent.nodes
+      .where(_containsMeaningfulContent)
+      .toList(growable: false);
+  if (nodes.isEmpty) {
+    return;
+  }
+
+  final firstNode = nodes.first;
+  final firstNodeText = _normalizeCompareText(_normalizedNodeText(firstNode));
+  if (firstNodeText == normalizedTitle) {
+    firstNode.remove();
+  }
 }
 
 void _trimWechatLeadingNoise(dom.DocumentFragment fragment) {
@@ -376,6 +520,12 @@ String _serializeNodeHtml(dom.Node node) {
   if (node is dom.Element) return node.outerHtml;
   if (node is dom.DocumentFragment) return node.outerHtml;
   return node.text ?? '';
+}
+
+String? _normalizeCompareText(String? value) {
+  final normalized = _normalizeText(value);
+  if (normalized == null) return null;
+  return normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
 }
 
 String? _normalizeText(String? value) {

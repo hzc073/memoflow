@@ -86,13 +86,79 @@ ShareTextDraft buildShareTextDraft(SharePayload payload) {
 }
 
 String? extractShareUrl(String raw) {
-  final match = RegExp(r'https?://[^\s]+').firstMatch(raw);
-  final url = match?.group(0);
+  final normalized = raw.replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '');
+  final match = RegExp(
+    r'https?://[^\s<>\u3000]+',
+    caseSensitive: false,
+  ).firstMatch(normalized);
+  final url = _trimTrailingUrlPunctuation(match?.group(0));
   if (url == null || url.isEmpty) return null;
   final uri = Uri.tryParse(url);
   if (uri == null) return null;
   if (uri.scheme != 'http' && uri.scheme != 'https') return null;
   return url;
+}
+
+String? _trimTrailingUrlPunctuation(String? rawUrl) {
+  if (rawUrl == null) return null;
+  var trimmed = rawUrl.trim();
+  if (trimmed.isEmpty) return null;
+  while (trimmed.isNotEmpty) {
+    final last = trimmed[trimmed.length - 1];
+    if (_alwaysTrimTrailingUrlPunctuation.contains(last)) {
+      trimmed = trimmed.substring(0, trimmed.length - 1);
+      continue;
+    }
+    final opening = _balancedTrailingCloserPairs[last];
+    if (opening != null &&
+        _countOccurrences(trimmed, last) >
+            _countOccurrences(trimmed, opening)) {
+      trimmed = trimmed.substring(0, trimmed.length - 1);
+      continue;
+    }
+    break;
+  }
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+const Set<String> _alwaysTrimTrailingUrlPunctuation = {
+  '.',
+  ',',
+  ';',
+  ':',
+  '!',
+  '?',
+  '\'',
+  '"',
+  '\u3001',
+  '\u3002',
+  '\uFF0C',
+  '\uFF1B',
+  '\uFF1A',
+  '\uFF01',
+  '\uFF1F',
+  '\u2019',
+  '\u201D',
+};
+
+const Map<String, String> _balancedTrailingCloserPairs = {
+  ')': '(',
+  ']': '[',
+  '}': '{',
+  '\u300D': '\u300C',
+  '\u300F': '\u300E',
+  '\u3011': '\u3010',
+  '\uFF09': '\uFF08',
+};
+
+int _countOccurrences(String value, String needle) {
+  var count = 0;
+  for (var index = 0; index < value.length; index++) {
+    if (value[index] == needle) {
+      count++;
+    }
+  }
+  return count;
 }
 
 String? _extractShareTitle({
