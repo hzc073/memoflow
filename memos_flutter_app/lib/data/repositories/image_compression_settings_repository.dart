@@ -7,7 +7,7 @@ import '../models/image_compression_settings.dart';
 class ImageCompressionSettingsRepository {
   ImageCompressionSettingsRepository(this._storage, {required this.accountKey});
 
-  static const _kPrefix = 'image_compression_settings_v1_';
+  static const _kPrefix = 'image_compression_settings_v2_';
 
   final FlutterSecureStorage _storage;
   final String accountKey;

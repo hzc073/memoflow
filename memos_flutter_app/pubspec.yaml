@@ -11,9 +11,6 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # build by specifying --build-name and --build-number, respectively.
 # In Android, build-name is used as versionName while build-number used as versionCode.
 # Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 version: 1.0.27+27
@@ -34,7 +31,6 @@ dependencies:
     sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   dio: ^5.8.0
   connectivity_plus: ^6.1.0
@@ -51,6 +47,7 @@ dependencies:
   hotkey_manager: ^0.2.3
   desktop_multi_window: ^0.2.1
   crypto: ^3.0.3
+  ffi: ^2.1.3
   cached_network_image: ^3.4.1
   flutter_markdown: ^0.7.7+1
   flutter_svg: ^2.0.10
@@ -89,7 +86,6 @@ dependencies:
   flutter_widget_from_html: ^0.17.1
   confetti: ^0.7.0
   image_gallery_saver: ^2.0.3
-  flutter_image_compress: ^2.4.0
   flutter_local_notifications: ^17.1.2
   timezone: ^0.9.3
   flutter_timezone: ^5.0.1
@@ -109,8 +105,6 @@ dependencies:
   word_cloud: ^1.0.3
   phosphor_flutter: ^2.1.0
   wechat_assets_picker: 10.1.1
-  image_compress_plus_platform_interface: ^2.0.0
-  image_compress_plus_windows: ^2.0.0
   bonsoir: ^6.0.2
   pretty_qr_code: ^3.6.0
 

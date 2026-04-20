@@ -194,6 +194,18 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+set(CAESIUM_DLL_CANDIDATES
+  "${CMAKE_CURRENT_SOURCE_DIR}/runner/caesium.dll"
+  "${CMAKE_CURRENT_SOURCE_DIR}/runner/libcaesium.dll"
+)
+foreach(CAESIUM_DLL IN LISTS CAESIUM_DLL_CANDIDATES)
+  if(EXISTS "${CAESIUM_DLL}")
+    install(FILES "${CAESIUM_DLL}"
+      DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+      COMPONENT Runtime)
+  endif()
+endforeach()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"

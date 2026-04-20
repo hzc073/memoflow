@@ -474,15 +474,15 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       final result = await (pickGalleryOverride != null
           ? pickGalleryOverride!(context)
           : () async {
-              final compressionSettings = await _ref
-                  .read(imageCompressionSettingsRepositoryProvider)
-                  .read();
               if (!context.mounted) {
                 return null;
               }
+              final compressionPolicy = _ref.read(
+                imageCompressionUiPolicyProvider,
+              );
               return gallery_picker.pickGalleryAttachments(
                 context,
-                showOriginalToggle: compressionSettings.enabled,
+                showOriginalToggle: compressionPolicy.showOriginalToggle,
               );
             }());
       // ignore: avoid_print

@@ -1,124 +1,124 @@
 import 'dart:io';
-import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image/image.dart' as img;
 
 import 'package:memos_flutter_app/application/attachments/attachment_preprocessor.dart';
-import 'package:memos_flutter_app/application/attachments/dart_image_preprocessor.dart';
-import 'package:memos_flutter_app/application/attachments/image_preprocessor.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_cache_store.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_models.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_pipeline.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_plan_builder.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_source_probe.dart';
+import 'package:memos_flutter_app/application/attachments/compression/engines/compression_engine.dart';
 import 'package:memos_flutter_app/data/models/image_compression_settings.dart';
 
 import '../test_support.dart';
 
-class _FailingPreprocessor implements ImagePreprocessor {
+class _FakeProbeService extends CompressionSourceProbeService {
+  const _FakeProbeService(this._probe);
+
+  final CompressionSourceProbe _probe;
+
+  @override
+  Future<CompressionSourceProbe> probe({
+    required String path,
+    required String filename,
+    required String mimeType,
+  }) async {
+    return _probe;
+  }
+}
+
+class _NoopEngine implements CompressionEngine {
+  const _NoopEngine(this._engineId);
+
+  final String _engineId;
+
+  @override
+  String get engineId => _engineId;
+
+  @override
+  String get libraryVersion => 'test';
+
+  @override
+  bool get isAvailable => false;
+
+  @override
+  bool get requiresMatchingInputFormat => false;
+
+  @override
+  Future<CompressionEngineResult> compress(CompressionEngineRequest request) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> convert(CompressionConversionRequest request) {
+    throw UnimplementedError();
+  }
+
+  @override
+  bool supportsOutputFormat(CompressionImageFormat format) => false;
+}
+
+class _RecordingPipeline extends CompressionPipeline {
+  _RecordingPipeline(this._result)
+    : super(
+        probeService: const CompressionSourceProbeService(),
+        planBuilder: const CompressionPlanBuilder(),
+        cacheStore: CompressionCacheStore(),
+        primaryEngine: const _NoopEngine('primary'),
+        fallbackEngine: const _NoopEngine('fallback'),
+      );
+
+  final CompressionPipelineResult _result;
   int calls = 0;
+  CompressionPipelineRequest? lastRequest;
 
   @override
-  String get engine => 'dart';
-
-  @override
-  bool get supportsWebp => true;
-
-  @override
-  bool get isAvailable => true;
-
-  @override
-  Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
+  Future<CompressionPipelineResult> process(
+    CompressionPipelineRequest request,
+  ) async {
     calls += 1;
-    throw StateError('boom');
-  }
-}
-
-class _CopyingPreprocessor implements ImagePreprocessor {
-  _CopyingPreprocessor({this.name = 'copy', this.available = true});
-
-  final String name;
-  final bool available;
-
-  @override
-  String get engine => name;
-
-  @override
-  bool get supportsWebp => true;
-
-  @override
-  bool get isAvailable => available;
-
-  @override
-  Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
-    final target = File(request.targetPath);
-    await target.parent.create(recursive: true);
-    await File(request.sourcePath).copy(target.path);
-    return ImagePreprocessResult(outputPath: target.path);
-  }
-}
-
-class _RecordingPreprocessor extends _CopyingPreprocessor {
-  _RecordingPreprocessor({super.name = 'recording'});
-
-  ImagePreprocessRequest? lastRequest;
-
-  @override
-  Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
     lastRequest = request;
-    return super.compress(request);
+    return _result;
   }
 }
 
-class _MissingPluginPreprocessor implements ImagePreprocessor {
-  _MissingPluginPreprocessor(this.name);
-
-  final String name;
-  int calls = 0;
-
-  @override
-  String get engine => name;
-
-  @override
-  bool get supportsWebp => true;
-
-  @override
-  bool get isAvailable => true;
-
-  @override
-  Future<ImagePreprocessResult> compress(ImagePreprocessRequest request) async {
-    calls += 1;
-    throw MissingPluginException('missing $name');
-  }
-}
-
-Future<File> _writeTestImage(
+Future<File> _writeTempFile(
   TestSupport support, {
   required String name,
-  required ImageCompressionFormat format,
-  bool withAlpha = false,
-  int width = 16,
-  int height = 16,
+  required List<int> bytes,
 }) async {
-  final dir = await support.createTempDir('img');
+  final dir = await support.createTempDir('preprocessor');
   final file = File('${dir.path}${Platform.pathSeparator}$name');
-  final image = img.Image(width: width, height: height);
-  image.clear(img.ColorRgba8(10, 20, 30, 255));
-  if (withAlpha) {
-    image.setPixelRgba(0, 0, 10, 20, 30, 100);
-  }
-  final bytes = switch (format) {
-    ImageCompressionFormat.webp => img.encodePng(image),
-    ImageCompressionFormat.jpeg => img.encodeJpg(image, quality: 90),
-    ImageCompressionFormat.auto => img.encodePng(image),
-  };
-  await file.writeAsBytes(Uint8List.fromList(bytes), flush: true);
+  await file.writeAsBytes(bytes, flush: true);
   return file;
 }
 
-Future<String> _sha256File(String path) async {
-  final digest = await sha256.bind(File(path).openRead()).first;
-  return digest.toString();
+CompressionSourceProbe _probeForImage(
+  File file, {
+  required String filename,
+  required String mimeType,
+}) {
+  return CompressionSourceProbe(
+    path: file.path,
+    filename: filename,
+    mimeType: mimeType,
+    fileSize: file.lengthSync(),
+    format: CompressionImageFormat.png,
+    width: 48,
+    height: 32,
+    displayWidth: 48,
+    displayHeight: 32,
+    orientation: 1,
+    hasAlpha: false,
+    isAnimated: false,
+    isImage: true,
+  );
 }
 
 void main() {
-  group('AttachmentPreprocessor', () {
+  group('DefaultAttachmentPreprocessor', () {
     late TestSupport support;
 
     setUp(() async {
@@ -129,315 +129,50 @@ void main() {
       await support.dispose();
     });
 
-    test('cache hit avoids recompress', () async {
-      final file = await _writeTestImage(
-        support,
-        name: 'sample.png',
-        format: ImageCompressionFormat.auto,
-      );
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 64,
-          quality: 80,
-          format: ImageCompressionFormat.jpeg,
-        ),
-        windowsPreprocessor: _CopyingPreprocessor(
-          name: 'windows',
-          available: false,
-        ),
-        flutterPreprocessor: _CopyingPreprocessor(
-          name: 'flutter',
-          available: false,
-        ),
-        dartPreprocessor: DartImagePreprocessor(),
-      );
-
-      final first = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-      final second = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      expect(first.fromCache, isFalse);
-      expect(second.fromCache, isTrue);
-      expect(second.filePath, first.filePath);
-    });
-
-    test('fallback cached on failure', () async {
-      final file = await _writeTestImage(
-        support,
-        name: 'sample.png',
-        format: ImageCompressionFormat.auto,
-      );
-      final failing = _FailingPreprocessor();
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 64,
-          quality: 80,
-          format: ImageCompressionFormat.jpeg,
-        ),
-        windowsPreprocessor: _CopyingPreprocessor(
-          name: 'windows',
-          available: false,
-        ),
-        flutterPreprocessor: _CopyingPreprocessor(
-          name: 'flutter',
-          available: false,
-        ),
-        dartPreprocessor: failing,
-      );
-
-      final first = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-      final second = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      expect(first.fallback, isTrue);
-      expect(second.fromCache, isTrue);
-      expect(failing.calls, 1);
-    });
-
-    test('auto format keeps png-like content on webp', () async {
-      final jpgFile = await _writeTestImage(
-        support,
-        name: 'sample.jpg',
-        format: ImageCompressionFormat.jpeg,
-      );
-      final pngFile = await _writeTestImage(
-        support,
-        name: 'sample.png',
-        format: ImageCompressionFormat.auto,
-      );
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 64,
-          quality: 80,
-          format: ImageCompressionFormat.auto,
-        ),
-        windowsPreprocessor: _CopyingPreprocessor(
-          name: 'windows',
-          available: false,
-        ),
-        flutterPreprocessor: _CopyingPreprocessor(),
-      );
-
-      final jpgResult = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: jpgFile.path,
-          filename: 'sample.jpg',
-          mimeType: 'image/jpeg',
-        ),
-      );
-
-      final pngResult = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: pngFile.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      expect(jpgResult.mimeType, 'image/jpeg');
-      expect(pngResult.mimeType, 'image/webp');
-      expect(pngResult.filename, endsWith('.webp'));
-    });
-
-    test('native preprocessors receive proportional resize targets', () async {
-      final file = await _writeTestImage(
-        support,
-        name: 'tall.png',
-        format: ImageCompressionFormat.auto,
-        width: 100,
-        height: 300,
-      );
-      final recorder = _RecordingPreprocessor(name: 'flutter');
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 75,
-          quality: 80,
-          format: ImageCompressionFormat.jpeg,
-        ),
-        windowsPreprocessor: _CopyingPreprocessor(
-          name: 'windows',
-          available: false,
-        ),
-        flutterPreprocessor: recorder,
-        dartPreprocessor: _CopyingPreprocessor(
-          name: 'dart',
-          available: false,
-        ),
-      );
-
-      await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'tall.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      expect(recorder.lastRequest, isNotNull);
-      expect(recorder.lastRequest!.targetWidth, 25);
-      expect(recorder.lastRequest!.targetHeight, 75);
-    });
-
-    test('sha256 matches final output', () async {
-      final file = await _writeTestImage(
-        support,
-        name: 'sample.png',
-        format: ImageCompressionFormat.auto,
-        withAlpha: true,
-      );
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 64,
-          quality: 80,
-          format: ImageCompressionFormat.jpeg,
-        ),
-        windowsPreprocessor: _CopyingPreprocessor(
-          name: 'windows',
-          available: false,
-        ),
-        flutterPreprocessor: _CopyingPreprocessor(
-          name: 'flutter',
-          available: false,
-        ),
-        dartPreprocessor: DartImagePreprocessor(),
-      );
-
-      final result = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      final expected = await _sha256File(result.filePath);
-      expect(result.hash, expected);
-    });
-
-    test('windows preprocessor is preferred when available', () async {
-      final file = await _writeTestImage(
-        support,
-        name: 'sample.png',
-        format: ImageCompressionFormat.auto,
-      );
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 64,
-          quality: 80,
-          format: ImageCompressionFormat.jpeg,
-        ),
-        windowsPreprocessor: _CopyingPreprocessor(name: 'windows'),
-        flutterPreprocessor: _CopyingPreprocessor(name: 'flutter'),
-        dartPreprocessor: _CopyingPreprocessor(name: 'dart'),
-      );
-
-      final result = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      expect(result.engine, 'windows');
-      expect(result.fallback, isFalse);
-    });
-
-    test('missing native plugin falls back to dart engine', () async {
-      final file = await _writeTestImage(
-        support,
-        name: 'sample.png',
-        format: ImageCompressionFormat.auto,
-      );
-      final missing = _MissingPluginPreprocessor('windows');
-      final preprocessor = DefaultAttachmentPreprocessor(
-        loadSettings: () async => ImageCompressionSettings(
-          schemaVersion: 1,
-          enabled: true,
-          maxSide: 64,
-          quality: 80,
-          format: ImageCompressionFormat.jpeg,
-        ),
-        windowsPreprocessor: missing,
-        flutterPreprocessor: _CopyingPreprocessor(
-          name: 'flutter',
-          available: false,
-        ),
-        dartPreprocessor: _CopyingPreprocessor(name: 'dart'),
-      );
-
-      final result = await preprocessor.preprocess(
-        AttachmentPreprocessRequest(
-          filePath: file.path,
-          filename: 'sample.png',
-          mimeType: 'image/png',
-        ),
-      );
-
-      expect(missing.calls, 1);
-      expect(result.engine, 'dart');
-      expect(result.fallback, isFalse);
-    });
-
     test(
-      'skipCompression keeps original image while preserving metadata',
+      'skipCompression bypasses pipeline and normalizes file uri path',
       () async {
-        final file = await _writeTestImage(
+        final file = await _writeTempFile(
           support,
           name: 'sample.png',
-          format: ImageCompressionFormat.auto,
+          bytes: Uint8List.fromList(List<int>.generate(32, (index) => index)),
+        );
+        final probe = _probeForImage(
+          file,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+        );
+        final pipeline = _RecordingPipeline(
+          const CompressionPipelineResult(
+            filePath: '/unused/out.jpg',
+            filename: 'unused.jpg',
+            mimeType: 'image/jpeg',
+            size: 10,
+            width: 10,
+            height: 10,
+            hash: 'unused',
+            sourceSignature: 'unused-sig',
+            cacheKey: 'unused-key',
+            sourceFormat: CompressionImageFormat.png,
+            effectiveOutputFormat: CompressionImageFormat.jpeg,
+            engineId: 'unused',
+            engineVersion: 'unused',
+            fromCache: false,
+            fallback: false,
+            wasConverted: true,
+            wasResized: true,
+            fallbackReason: null,
+          ),
         );
         final preprocessor = DefaultAttachmentPreprocessor(
-          loadSettings: () async => ImageCompressionSettings(
-            schemaVersion: 1,
-            enabled: true,
-            maxSide: 64,
-            quality: 80,
-            format: ImageCompressionFormat.jpeg,
-          ),
-          windowsPreprocessor: _CopyingPreprocessor(name: 'windows'),
-          flutterPreprocessor: _CopyingPreprocessor(name: 'flutter'),
-          dartPreprocessor: _CopyingPreprocessor(name: 'dart'),
+          loadSettings: () async => ImageCompressionSettings.defaults,
+          probeService: _FakeProbeService(probe),
+          pipeline: pipeline,
         );
 
-        final expectedHash = await _sha256File(file.path);
         final result = await preprocessor.preprocess(
           AttachmentPreprocessRequest(
-            filePath: file.path,
+            filePath: Uri.file(file.path).toString(),
             filename: 'sample.png',
             mimeType: 'image/png',
             skipCompression: true,
@@ -447,33 +182,67 @@ void main() {
         expect(result.filePath, file.path);
         expect(result.filename, 'sample.png');
         expect(result.mimeType, 'image/png');
-        expect(result.size, await file.length());
-        expect(result.width, 16);
-        expect(result.height, 16);
-        expect(result.hash, expectedHash);
-        expect(result.engine, isNull);
+        expect(result.size, file.lengthSync());
+        expect(result.width, 48);
+        expect(result.height, 32);
+        expect(result.sourceFormat, CompressionImageFormat.png);
+        expect(result.hash, isNotNull);
         expect(result.fallback, isFalse);
         expect(result.fromCache, isFalse);
+        expect(result.engine, isNull);
+        expect(pipeline.calls, 0);
       },
     );
 
     test(
-      'skipCompression on non-image keeps existing passthrough behavior',
+      'non-image files passthrough without hashing or pipeline work',
       () async {
-        final dir = await support.createTempDir('attachment');
-        final file = File('${dir.path}${Platform.pathSeparator}sample.txt');
-        await file.writeAsString('hello world', flush: true);
-        final preprocessor = DefaultAttachmentPreprocessor(
-          loadSettings: () async => ImageCompressionSettings(
-            schemaVersion: 1,
-            enabled: true,
-            maxSide: 64,
-            quality: 80,
-            format: ImageCompressionFormat.jpeg,
+        final file = await _writeTempFile(
+          support,
+          name: 'sample.txt',
+          bytes: 'hello world'.codeUnits,
+        );
+        final probe = CompressionSourceProbe(
+          path: file.path,
+          filename: 'sample.txt',
+          mimeType: 'text/plain',
+          fileSize: file.lengthSync(),
+          format: CompressionImageFormat.unknown,
+          width: null,
+          height: null,
+          displayWidth: null,
+          displayHeight: null,
+          orientation: 1,
+          hasAlpha: false,
+          isAnimated: false,
+          isImage: false,
+        );
+        final pipeline = _RecordingPipeline(
+          const CompressionPipelineResult(
+            filePath: '/unused',
+            filename: 'unused',
+            mimeType: 'application/octet-stream',
+            size: 0,
+            width: null,
+            height: null,
+            hash: null,
+            sourceSignature: 'unused',
+            cacheKey: 'unused',
+            sourceFormat: CompressionImageFormat.unknown,
+            effectiveOutputFormat: null,
+            engineId: 'unused',
+            engineVersion: 'unused',
+            fromCache: false,
+            fallback: false,
+            wasConverted: false,
+            wasResized: false,
+            fallbackReason: null,
           ),
-          windowsPreprocessor: _CopyingPreprocessor(name: 'windows'),
-          flutterPreprocessor: _CopyingPreprocessor(name: 'flutter'),
-          dartPreprocessor: _CopyingPreprocessor(name: 'dart'),
+        );
+        final preprocessor = DefaultAttachmentPreprocessor(
+          loadSettings: () async => ImageCompressionSettings.defaults,
+          probeService: _FakeProbeService(probe),
+          pipeline: pipeline,
         );
 
         final result = await preprocessor.preprocess(
@@ -481,19 +250,86 @@ void main() {
             filePath: file.path,
             filename: 'sample.txt',
             mimeType: 'text/plain',
-            skipCompression: true,
           ),
         );
 
         expect(result.filePath, file.path);
         expect(result.filename, 'sample.txt');
         expect(result.mimeType, 'text/plain');
-        expect(result.size, await file.length());
-        expect(result.width, isNull);
-        expect(result.height, isNull);
+        expect(result.size, file.lengthSync());
         expect(result.hash, isNull);
-        expect(result.engine, isNull);
+        expect(result.sourceFormat, CompressionImageFormat.unknown);
+        expect(pipeline.calls, 0);
       },
     );
+
+    test('maps pipeline result fields to attachment result', () async {
+      final file = await _writeTempFile(
+        support,
+        name: 'sample.png',
+        bytes: const [1, 2, 3, 4],
+      );
+      final pipeline = _RecordingPipeline(
+        const CompressionPipelineResult(
+          filePath: '/cache/sample.jpg',
+          filename: 'sample.jpg',
+          mimeType: 'image/jpeg',
+          size: 1234,
+          width: 64,
+          height: 32,
+          hash: 'hash123',
+          sourceSignature: 'sig123',
+          cacheKey: 'cache123',
+          sourceFormat: CompressionImageFormat.png,
+          effectiveOutputFormat: CompressionImageFormat.jpeg,
+          engineId: 'dart_fallback',
+          engineVersion: 'image_package',
+          fromCache: true,
+          fallback: false,
+          wasConverted: true,
+          wasResized: true,
+          fallbackReason: null,
+        ),
+      );
+      final preprocessor = DefaultAttachmentPreprocessor(
+        loadSettings: () async => ImageCompressionSettings.defaults,
+        probeService: _FakeProbeService(
+          _probeForImage(file, filename: 'sample.png', mimeType: 'image/png'),
+        ),
+        pipeline: pipeline,
+      );
+
+      final result = await preprocessor.preprocess(
+        AttachmentPreprocessRequest(
+          filePath: file.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+        ),
+      );
+
+      expect(pipeline.calls, 1);
+      expect(pipeline.lastRequest, isNotNull);
+      expect(pipeline.lastRequest!.path, file.path);
+      expect(pipeline.lastRequest!.filename, 'sample.png');
+      expect(pipeline.lastRequest!.mimeType, 'image/png');
+      expect(result.filePath, '/cache/sample.jpg');
+      expect(result.filename, 'sample.jpg');
+      expect(result.mimeType, 'image/jpeg');
+      expect(result.size, 1234);
+      expect(result.width, 64);
+      expect(result.height, 32);
+      expect(result.hash, 'hash123');
+      expect(result.sourceSig, 'sig123');
+      expect(result.compressKey, 'cache123');
+      expect(result.sourceFormat, CompressionImageFormat.png);
+      expect(result.effectiveOutputFormat, CompressionImageFormat.jpeg);
+      expect(result.engine, 'dart_fallback');
+      expect(result.engineVersion, 'image_package');
+      expect(result.fromCache, isTrue);
+      expect(result.fallback, isFalse);
+      expect(result.wasConverted, isTrue);
+      expect(result.wasResized, isTrue);
+      expect(result.fallbackReason, isNull);
+    });
   });
 }

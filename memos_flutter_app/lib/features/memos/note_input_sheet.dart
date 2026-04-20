@@ -1745,13 +1745,11 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _pickGalleryAttachments() async {
     if (_busy) return;
     try {
-      final compressionSettings = await ref
-          .read(imageCompressionSettingsRepositoryProvider)
-          .read();
+      final compressionPolicy = ref.read(imageCompressionUiPolicyProvider);
       if (!mounted) return;
       final result = await pickGalleryAttachments(
         context,
-        showOriginalToggle: compressionSettings.enabled,
+        showOriginalToggle: compressionPolicy.showOriginalToggle,
       );
       if (!mounted || result == null) return;
       if (result.attachments.isEmpty) {

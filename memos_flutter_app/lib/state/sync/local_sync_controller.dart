@@ -1091,6 +1091,12 @@ class LocalSyncController extends SyncControllerBase {
     final filename = payload['filename'] as String?;
     final mimeType =
         payload['mime_type'] as String? ?? 'application/octet-stream';
+    final skipCompression = switch (payload['skip_compression']) {
+      final bool value => value,
+      final num value => value != 0,
+      final String value => value.trim().toLowerCase() == 'true',
+      _ => false,
+    };
     if (uid == null ||
         uid.isEmpty ||
         memoUid == null ||
@@ -1105,6 +1111,7 @@ class LocalSyncController extends SyncControllerBase {
         filePath: filePath,
         filename: filename,
         mimeType: mimeType,
+        skipCompression: skipCompression,
       ),
     );
     final archiveName = attachmentArchiveNameFromPayload(

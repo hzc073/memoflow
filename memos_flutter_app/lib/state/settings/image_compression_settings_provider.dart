@@ -19,12 +19,34 @@ final imageCompressionSettingsRepositoryProvider =
       );
     });
 
-final imageCompressionSettingsProvider = StateNotifierProvider<
-    ImageCompressionSettingsController,
-    ImageCompressionSettings>((ref) {
-  return ImageCompressionSettingsController(
-    ref,
-    ref.watch(imageCompressionSettingsRepositoryProvider),
+final imageCompressionSettingsProvider =
+    StateNotifierProvider<
+      ImageCompressionSettingsController,
+      ImageCompressionSettings
+    >((ref) {
+      return ImageCompressionSettingsController(
+        ref,
+        ref.watch(imageCompressionSettingsRepositoryProvider),
+      );
+    });
+
+class ImageCompressionUiPolicy {
+  const ImageCompressionUiPolicy({
+    required this.enabled,
+    required this.showOriginalToggle,
+  });
+
+  final bool enabled;
+  final bool showOriginalToggle;
+}
+
+final imageCompressionUiPolicyProvider = Provider<ImageCompressionUiPolicy>((
+  ref,
+) {
+  final settings = ref.watch(imageCompressionSettingsProvider);
+  return ImageCompressionUiPolicy(
+    enabled: settings.enabled,
+    showOriginalToggle: settings.enabled,
   );
 });
 
@@ -43,12 +65,17 @@ class ImageCompressionSettingsController
     state = stored;
   }
 
-  void _setAndPersist(ImageCompressionSettings next, {bool triggerSync = true}) {
+  void _setAndPersist(
+    ImageCompressionSettings next, {
+    bool triggerSync = true,
+  }) {
     state = next;
     unawaited(_repo.write(next));
     if (triggerSync) {
       unawaited(
-        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+        _ref
+            .read(syncCoordinatorProvider.notifier)
+            .requestSync(
               const SyncRequest(
                 kind: SyncRequestKind.webDavSync,
                 reason: SyncRequestReason.settings,
@@ -60,13 +87,80 @@ class ImageCompressionSettingsController
 
   void setEnabled(bool value) => _setAndPersist(state.copyWith(enabled: value));
 
-  void setMaxSide(int value) => _setAndPersist(state.copyWith(maxSide: value));
+  void setMode(ImageCompressionMode value) =>
+      _setAndPersist(state.copyWith(mode: value));
 
-  void setQuality(int value) => _setAndPersist(state.copyWith(quality: value));
+  void setOutputFormat(ImageCompressionOutputFormat value) =>
+      _setAndPersist(state.copyWith(outputFormat: value));
 
-  void setFormat(ImageCompressionFormat value) {
-    _setAndPersist(state.copyWith(format: value));
-  }
+  void setLossless(bool value) =>
+      _setAndPersist(state.copyWith(lossless: value));
+
+  void setKeepMetadata(bool value) =>
+      _setAndPersist(state.copyWith(keepMetadata: value));
+
+  void setSkipIfBigger(bool value) =>
+      _setAndPersist(state.copyWith(skipIfBigger: value));
+
+  void setResizeEnabled(bool value) => _setAndPersist(
+    state.copyWith(resize: state.resize.copyWith(enabled: value)),
+  );
+
+  void setResizeMode(ImageCompressionResizeMode value) => _setAndPersist(
+    state.copyWith(resize: state.resize.copyWith(mode: value)),
+  );
+
+  void setResizeWidth(int value) => _setAndPersist(
+    state.copyWith(resize: state.resize.copyWith(width: value)),
+  );
+
+  void setResizeHeight(int value) => _setAndPersist(
+    state.copyWith(resize: state.resize.copyWith(height: value)),
+  );
+
+  void setResizeEdge(int value) => _setAndPersist(
+    state.copyWith(resize: state.resize.copyWith(edge: value)),
+  );
+
+  void setResizeDoNotEnlarge(bool value) => _setAndPersist(
+    state.copyWith(resize: state.resize.copyWith(doNotEnlarge: value)),
+  );
+
+  void setJpegQuality(int value) =>
+      _setAndPersist(state.copyWith(jpeg: state.jpeg.copyWith(quality: value)));
+
+  void setJpegChromaSubsampling(JpegChromaSubsampling value) => _setAndPersist(
+    state.copyWith(jpeg: state.jpeg.copyWith(chromaSubsampling: value)),
+  );
+
+  void setJpegProgressive(bool value) => _setAndPersist(
+    state.copyWith(jpeg: state.jpeg.copyWith(progressive: value)),
+  );
+
+  void setPngQuality(int value) =>
+      _setAndPersist(state.copyWith(png: state.png.copyWith(quality: value)));
+
+  void setPngOptimizationLevel(int value) => _setAndPersist(
+    state.copyWith(png: state.png.copyWith(optimizationLevel: value)),
+  );
+
+  void setWebpQuality(int value) =>
+      _setAndPersist(state.copyWith(webp: state.webp.copyWith(quality: value)));
+
+  void setTiffMethod(TiffCompressionMethod value) =>
+      _setAndPersist(state.copyWith(tiff: state.tiff.copyWith(method: value)));
+
+  void setTiffDeflatePreset(TiffDeflatePreset value) => _setAndPersist(
+    state.copyWith(tiff: state.tiff.copyWith(deflatePreset: value)),
+  );
+
+  void setSizeTargetValue(int value) => _setAndPersist(
+    state.copyWith(sizeTarget: state.sizeTarget.copyWith(value: value)),
+  );
+
+  void setSizeTargetUnit(ImageCompressionMaxOutputUnit value) => _setAndPersist(
+    state.copyWith(sizeTarget: state.sizeTarget.copyWith(unit: value)),
+  );
 
   Future<void> setAll(
     ImageCompressionSettings next, {
@@ -76,7 +170,9 @@ class ImageCompressionSettingsController
     await _repo.write(next);
     if (triggerSync) {
       unawaited(
-        _ref.read(syncCoordinatorProvider.notifier).requestSync(
+        _ref
+            .read(syncCoordinatorProvider.notifier)
+            .requestSync(
               const SyncRequest(
                 kind: SyncRequestKind.webDavSync,
                 reason: SyncRequestReason.settings,
