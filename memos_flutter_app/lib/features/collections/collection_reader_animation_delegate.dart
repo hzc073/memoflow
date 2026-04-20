@@ -232,9 +232,7 @@ bool isCollectionReaderSimulationSupported({
   TargetPlatform? platform,
 }) {
   final effectivePlatform = platform ?? defaultTargetPlatform;
-  return !isWeb &&
-      (effectivePlatform == TargetPlatform.android ||
-          effectivePlatform == TargetPlatform.iOS);
+  return !isWeb && effectivePlatform == TargetPlatform.android;
 }
 
 CollectionReaderPageAnimation resolveEffectiveCollectionReaderPageAnimation(

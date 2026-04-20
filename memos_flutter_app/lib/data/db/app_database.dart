@@ -65,7 +65,7 @@ class AppDatabase {
         version: _dbVersion,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON;');
-          // Native sqflite backends (Android/iOS) treat these PRAGMAs as
+          // Native sqflite backends on Android treat these PRAGMAs as
           // query-style statements, so use rawQuery for cross-platform safety.
           await db.rawQuery('PRAGMA journal_mode = WAL;');
           final busyTimeoutMs = Platform.isWindows ? 10000 : 5000;

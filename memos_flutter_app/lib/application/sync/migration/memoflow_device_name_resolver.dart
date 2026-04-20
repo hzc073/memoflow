@@ -20,11 +20,6 @@ class MemoFlowDeviceNameResolver {
         final value = info.computerName.trim();
         if (value.isNotEmpty) return value;
       }
-      if (Platform.isIOS) {
-        final info = await plugin.iosInfo;
-        final value = info.name.trim();
-        if (value.isNotEmpty) return value;
-      }
     } catch (_) {}
     final fallback = Platform.localHostname.trim();
     if (fallback.isNotEmpty) return fallback;

@@ -370,13 +370,6 @@ class LogReportGenerator {
         final os = release.isNotEmpty ? 'Android $release' : 'Android';
         return model.isNotEmpty ? '$os ($model)' : os;
       }
-      if (Platform.isIOS) {
-        final data = await info.iosInfo;
-        final version = data.systemVersion.trim();
-        final model = data.utsname.machine.trim();
-        final os = version.isNotEmpty ? 'iOS $version' : 'iOS';
-        return model.isNotEmpty ? '$os ($model)' : os;
-      }
       if (Platform.isMacOS) {
         final data = await info.macOsInfo;
         final version = data.osRelease.trim();

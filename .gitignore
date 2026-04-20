@@ -26,16 +26,11 @@
 **/.pub-cache/
 **/build/
 
-# Android/iOS build artifacts
+# Android build artifacts
 **/android/.gradle/
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 **/android/**/captures/
-**/ios/Pods/
-**/ios/Flutter/Flutter.framework/
-**/ios/Flutter/Flutter.podspec
-**/ios/Flutter/Generated.xcconfig
-**/ios/Flutter/ephemeral/
 
 # IDE/editor
 **/.idea/

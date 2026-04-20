@@ -18,7 +18,7 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 
 bool supportsMemoFlowQrScannerOnCurrentPlatform() {
-  return Platform.isAndroid || Platform.isIOS;
+  return Platform.isAndroid;
 }
 
 void showMemoFlowQrUnsupportedNotice(BuildContext context) {
@@ -119,11 +119,6 @@ Future<String> _resolveMemoFlowDeviceName() async {
       final model = info.model.trim();
       final next = [brand, model].where((it) => it.isNotEmpty).join(' ');
       if (next.isNotEmpty) return next;
-    }
-    if (Platform.isIOS) {
-      final info = await plugin.iosInfo;
-      final model = info.utsname.machine.trim();
-      if (model.isNotEmpty) return model;
     }
   } catch (_) {}
   return 'MemoFlow Mobile';

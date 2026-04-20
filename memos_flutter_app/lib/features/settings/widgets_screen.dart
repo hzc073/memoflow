@@ -152,7 +152,7 @@ class WidgetsScreen extends StatelessWidget {
     if (defaultTargetPlatform != TargetPlatform.android) {
       showTopToast(
         context,
-        context.t.strings.legacy.msg_ios_long_press_home_screen_add,
+        context.t.strings.legacy.msg_one_tap_add_not_supported_add,
       );
       return;
     }

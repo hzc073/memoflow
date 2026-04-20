@@ -13,7 +13,7 @@ This repository stays buildable as a standalone public app.
 
 ## Public vs private responsibility
 - Public repository: memo core, sync, storage, UI shell, donor acknowledgement, and general platform support.
-- Private repository: paid features, commercial iOS runtime, product policy, store configuration, and related release automation.
+- Private repository: paid features, commercial runtime, product policy, store configuration, and related release automation.
 
 ## Diagnostic-only metadata
 - `AccessDecision.source` is for diagnostics and logging only.
@@ -28,4 +28,4 @@ This repository stays buildable as a standalone public app.
 - The donation entry and QR asset remain public.
 - Crown state and crown persistence are removed from the public app.
 - Donor acknowledgement remains public.
-- `memos_flutter_app/ios/` is not created in this change set.
+- Apple platform scaffolding is absent from the public repository.

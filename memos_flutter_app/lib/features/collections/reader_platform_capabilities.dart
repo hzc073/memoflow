@@ -19,7 +19,6 @@ class ReaderPlatformCapabilities {
     bool isWeb = kIsWeb,
     TargetPlatform? platform,
   }) {
-    final effectivePlatform = platform ?? defaultTargetPlatform;
     if (isWeb) {
       return const ReaderPlatformCapabilities(
         canOverrideScreenBrightness: false,
@@ -29,37 +28,21 @@ class ReaderPlatformCapabilities {
         canUseMouseWheelPaging: true,
       );
     }
-    return switch (effectivePlatform) {
-      TargetPlatform.android => const ReaderPlatformCapabilities(
+    if ((platform ?? defaultTargetPlatform) == TargetPlatform.android) {
+      return const ReaderPlatformCapabilities(
         canOverrideScreenBrightness: true,
         canControlSystemBars: true,
         canLockOrientation: true,
         canHandleHardwareVolumePaging: true,
         canUseMouseWheelPaging: true,
-      ),
-      TargetPlatform.iOS => const ReaderPlatformCapabilities(
-        canOverrideScreenBrightness: true,
-        canControlSystemBars: true,
-        canLockOrientation: true,
-        canHandleHardwareVolumePaging: false,
-        canUseMouseWheelPaging: false,
-      ),
-      TargetPlatform.windows ||
-      TargetPlatform.macOS ||
-      TargetPlatform.linux => const ReaderPlatformCapabilities(
-        canOverrideScreenBrightness: false,
-        canControlSystemBars: false,
-        canLockOrientation: false,
-        canHandleHardwareVolumePaging: false,
-        canUseMouseWheelPaging: true,
-      ),
-      TargetPlatform.fuchsia => const ReaderPlatformCapabilities(
-        canOverrideScreenBrightness: false,
-        canControlSystemBars: false,
-        canLockOrientation: false,
-        canHandleHardwareVolumePaging: false,
-        canUseMouseWheelPaging: true,
-      ),
-    };
+      );
+    }
+    return const ReaderPlatformCapabilities(
+      canOverrideScreenBrightness: false,
+      canControlSystemBars: false,
+      canLockOrientation: false,
+      canHandleHardwareVolumePaging: false,
+      canUseMouseWheelPaging: true,
+    );
   }
 }

@@ -8,7 +8,6 @@ void main() {
           isWeb: false,
           isWindows: true,
           isAndroid: false,
-          isIOS: false,
           isMacOS: false,
           isLinux: false,
         );
@@ -16,24 +15,12 @@ void main() {
     expect(allowed, isFalse);
   });
 
-  test('keeps plugin fallback enabled on Android and iOS', () {
+  test('keeps plugin fallback enabled on Android', () {
     expect(
       VideoThumbnailCache.allowVideoThumbnailPluginFallbackForPlatform(
         isWeb: false,
         isWindows: false,
         isAndroid: true,
-        isIOS: false,
-        isMacOS: false,
-        isLinux: false,
-      ),
-      isTrue,
-    );
-    expect(
-      VideoThumbnailCache.allowVideoThumbnailPluginFallbackForPlatform(
-        isWeb: false,
-        isWindows: false,
-        isAndroid: false,
-        isIOS: true,
         isMacOS: false,
         isLinux: false,
       ),

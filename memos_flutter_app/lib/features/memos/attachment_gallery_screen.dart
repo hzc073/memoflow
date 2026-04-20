@@ -307,10 +307,6 @@ class _AttachmentGalleryScreenState
       }
       return true;
     }
-    if (Platform.isIOS) {
-      final status = await Permission.photos.request();
-      return status.isGranted;
-    }
     return true;
   }
 

@@ -29,17 +29,13 @@ const String _kMediaKitNativeReferenceHolderPrefix =
 
 void _initializeDesktopDatabaseFactory() {
   if (kIsWeb) return;
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.windows:
-    case TargetPlatform.linux:
-    case TargetPlatform.macOS:
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
-      break;
-    case TargetPlatform.android:
-    case TargetPlatform.iOS:
-    case TargetPlatform.fuchsia:
-      break;
+  final isDesktopPlatform =
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+  if (isDesktopPlatform) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
   }
 }
 

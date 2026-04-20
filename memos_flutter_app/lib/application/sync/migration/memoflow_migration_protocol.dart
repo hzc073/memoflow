@@ -57,7 +57,6 @@ MemoFlowMigrationSessionDescriptor? parseMemoFlowMigrationConnectUri(
 String resolveMigrationPlatformLabel() {
   if (Platform.isAndroid) return 'android';
   if (Platform.isWindows) return 'windows';
-  if (Platform.isIOS) return 'ios';
   if (Platform.isMacOS) return 'macos';
   if (Platform.isLinux) return 'linux';
   return 'unknown';

@@ -126,7 +126,6 @@ List<Uri> _amapCandidates({
     latitude: latitude,
     longitude: longitude,
     label: label,
-    useIosScheme: Platform.isIOS,
   );
 }
 
@@ -135,7 +134,6 @@ List<Uri> debugBuildAmapCandidates({
   required double latitude,
   required double longitude,
   required String label,
-  required bool useIosScheme,
 }) {
   return [
     debugBuildAmapWebUri(
@@ -147,7 +145,6 @@ List<Uri> debugBuildAmapCandidates({
       latitude: latitude,
       longitude: longitude,
       label: label,
-      useIosScheme: useIosScheme,
     ),
   ];
 }
@@ -157,14 +154,12 @@ Uri debugBuildAmapAppUri({
   required double latitude,
   required double longitude,
   required String label,
-  required bool useIosScheme,
 }) {
-  final scheme = useIosScheme ? 'iosamap' : 'androidamap';
   final converted = wgs84ToGcj02(
     CanonicalCoordinate(latitude: latitude, longitude: longitude),
   );
   return Uri.parse(
-    '$scheme://viewMap?sourceApplication=MemoFlow&lat=${converted.latitude.toStringAsFixed(6)}&lon=${converted.longitude.toStringAsFixed(6)}&dev=0&poiname=${Uri.encodeComponent(label)}',
+    'androidamap://viewMap?sourceApplication=MemoFlow&lat=${converted.latitude.toStringAsFixed(6)}&lon=${converted.longitude.toStringAsFixed(6)}&dev=0&poiname=${Uri.encodeComponent(label)}',
   );
 }
 
@@ -222,9 +217,9 @@ List<Uri> debugBuildGoogleCandidates({
   required String lng,
   required String label,
 }) {
-  final appUri = Platform.isIOS
-      ? Uri.parse('comgooglemaps://?q=$lat,$lng(${Uri.encodeComponent(label)})')
-      : Uri.parse('geo:$lat,$lng?q=$lat,$lng(${Uri.encodeComponent(label)})');
+  final appUri = Uri.parse(
+    'geo:$lat,$lng?q=$lat,$lng(${Uri.encodeComponent(label)})',
+  );
   return [
     Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng'),
     appUri,

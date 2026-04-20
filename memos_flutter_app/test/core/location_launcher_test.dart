@@ -10,7 +10,6 @@ void main() {
         latitude: 39.908823,
         longitude: 116.39747,
         label: 'Tiananmen',
-        useIosScheme: false,
       );
 
       expect(uris, hasLength(2));
@@ -29,7 +28,6 @@ void main() {
         latitude: coordinate.latitude,
         longitude: coordinate.longitude,
         label: 'Tiananmen',
-        useIosScheme: false,
       );
 
       expect(uri.scheme, equals('androidamap'));
@@ -65,7 +63,6 @@ void main() {
         latitude: 37.7749,
         longitude: -122.4194,
         label: 'San Francisco',
-        useIosScheme: false,
       );
 
       expect(
@@ -101,7 +98,7 @@ void main() {
 
       expect(uris, hasLength(2));
       expect(uris.first.scheme, equals('https'));
-      expect(uris.last.scheme, anyOf(equals('geo'), equals('comgooglemaps')));
+      expect(uris.last.scheme, equals('geo'));
     });
   });
 }

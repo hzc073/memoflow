@@ -97,13 +97,12 @@ class VideoThumbnailCache {
     required bool isWeb,
     required bool isWindows,
     required bool isAndroid,
-    required bool isIOS,
     required bool isMacOS,
     required bool isLinux,
   }) {
     if (isWeb) return false;
     if (isWindows) return false;
-    if (isAndroid || isIOS) return true;
+    if (isAndroid) return true;
     return isMacOS || isLinux;
   }
 
@@ -112,7 +111,6 @@ class VideoThumbnailCache {
         isWeb: kIsWeb,
         isWindows: _isWindowsDesktop,
         isAndroid: !kIsWeb && Platform.isAndroid,
-        isIOS: !kIsWeb && Platform.isIOS,
         isMacOS: !kIsWeb && Platform.isMacOS,
         isLinux: !kIsWeb && Platform.isLinux,
       );

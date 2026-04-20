@@ -88,8 +88,7 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
 
   bool _isMobileNativePlatform() {
     if (kIsWeb) return false;
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
+    return defaultTargetPlatform == TargetPlatform.android;
   }
 
   void _switchDestination(HomeRootDestination destination) {

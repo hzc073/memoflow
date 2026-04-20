@@ -46,7 +46,7 @@ class GalleryAttachmentPickResult {
 
 bool get isMemoGalleryToolbarSupportedPlatform {
   if (kIsWeb) return false;
-  return Platform.isAndroid || Platform.isIOS;
+  return Platform.isAndroid;
 }
 
 String guessLocalAttachmentMimeType(String filename) {

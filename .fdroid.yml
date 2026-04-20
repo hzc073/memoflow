@@ -26,7 +26,6 @@ Builds:
     srclibs:
       - flutter@3.38.5
     rm:
-      - ios
       - linux
       - macos
       - web

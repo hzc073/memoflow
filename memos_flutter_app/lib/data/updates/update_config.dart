@@ -460,14 +460,12 @@ Map<String, dynamic>? _readMapValue(dynamic value) {
 
 String _currentVersionInfoPlatformKey() {
   if (kIsWeb) return 'web';
-  return switch (defaultTargetPlatform) {
-    TargetPlatform.android => 'android',
-    TargetPlatform.iOS => 'ios',
-    TargetPlatform.windows => 'windows',
-    TargetPlatform.macOS => 'macos',
-    TargetPlatform.linux => 'linux',
-    TargetPlatform.fuchsia => 'fuchsia',
-  };
+  if (defaultTargetPlatform == TargetPlatform.android) return 'android';
+  if (defaultTargetPlatform == TargetPlatform.windows) return 'windows';
+  if (defaultTargetPlatform == TargetPlatform.macOS) return 'macos';
+  if (defaultTargetPlatform == TargetPlatform.linux) return 'linux';
+  if (defaultTargetPlatform == TargetPlatform.fuchsia) return 'fuchsia';
+  return 'default';
 }
 
 DebugAnnouncementSource _readDebugAnnouncementSource(dynamic value) {

@@ -4,7 +4,7 @@ This document describes how to continue private commercial development without m
 
 ## Goal
 - Keep the public repository buildable on its own.
-- Keep commercial iOS / billing / entitlement code in a private repository.
+- Keep commercial / billing / entitlement code in a private repository.
 - Connect private features only through the reserved seam in `memos_flutter_app/lib/private_hooks/active_private_extension_bundle.dart`.
 
 ## Recommended private repository layout
@@ -17,12 +17,9 @@ private-memoflow/
       lib/
         private_hooks/
           active_private_extension_bundle.dart
-      ios/
-        ...
   packages/
     private_billing/
     private_entitlements/
-    private_ios_runtime/
 ```
 
 ## What the public repository may know
@@ -58,6 +55,6 @@ private-memoflow/
 ## Things that stay private
 - Billing adapters
 - Entitlement evaluation
-- Commercial iOS runtime
+- Commercial runtime adapters
 - Store configuration and release secrets
 - Private build scripts and App Store release automation

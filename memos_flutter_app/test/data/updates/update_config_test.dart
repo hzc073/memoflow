@@ -21,12 +21,6 @@ void main() {
                 'https://play.google.com/store/apps/details?id=com.memoflow.hzc073',
             'publish_at': '2026-03-01T00:00:00Z',
           },
-          'ios': {
-            'latest_version': '1.0.9',
-            'force_update': false,
-            'update_source': 'app_store',
-            'url': 'https://apps.apple.com/app/id1234567890',
-          },
           'windows': {
             'latest_version': '1.0.8',
             'force_update': true,

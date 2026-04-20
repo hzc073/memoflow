@@ -204,7 +204,7 @@ class ShareVideoCompressionService {
   }
 
   static bool _defaultIsCompressionSupported() =>
-      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+      !kIsWeb && Platform.isAndroid;
 
   static Future<Directory> _defaultResolveDirectory() async {
     final root = await resolveAppSupportDirectory();

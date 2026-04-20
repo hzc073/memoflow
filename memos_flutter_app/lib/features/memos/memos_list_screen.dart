@@ -1096,8 +1096,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   bool _isMobileNativePlatform() {
     if (kIsWeb) return false;
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
+    return defaultTargetPlatform == TargetPlatform.android;
   }
 
   bool _isTouchPullLoadPlatform() => _isMobileNativePlatform();
