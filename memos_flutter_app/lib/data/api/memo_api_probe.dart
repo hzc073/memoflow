@@ -443,7 +443,7 @@ class MemoApiProbeService {
           MemoApiVersion.v023 ||
           MemoApiVersion.v024 => 'api/v1/auth/status',
           MemoApiVersion.v025 => 'api/v1/auth/sessions/current',
-          MemoApiVersion.v026 => 'api/v1/auth/me',
+          MemoApiVersion.v026 || MemoApiVersion.v027 => 'api/v1/auth/me',
         };
       case 'list_memos_normal':
       case 'list_memos_archived':
@@ -461,7 +461,9 @@ class MemoApiProbeService {
           MemoApiVersion.v022 ||
           MemoApiVersion.v023 ||
           MemoApiVersion.v024 => 'api/v1/resources',
-          MemoApiVersion.v025 || MemoApiVersion.v026 => 'api/v1/attachments',
+          MemoApiVersion.v025 ||
+          MemoApiVersion.v026 ||
+          MemoApiVersion.v027 => 'api/v1/attachments',
         };
       case 'attachment_bind':
       case 'attachment_list':
@@ -471,7 +473,8 @@ class MemoApiProbeService {
           MemoApiVersion.v023 ||
           MemoApiVersion.v024 => 'api/v1/memos/{uid}/resources',
           MemoApiVersion.v025 ||
-          MemoApiVersion.v026 => 'api/v1/memos/{uid}/attachments',
+          MemoApiVersion.v026 ||
+          MemoApiVersion.v027 => 'api/v1/memos/{uid}/attachments',
         };
       case 'attachment_get':
       case 'attachment_delete':
@@ -481,7 +484,8 @@ class MemoApiProbeService {
           MemoApiVersion.v023 ||
           MemoApiVersion.v024 => 'api/v1/resources/{uid}',
           MemoApiVersion.v025 ||
-          MemoApiVersion.v026 => 'api/v1/attachments/{uid}',
+          MemoApiVersion.v026 ||
+          MemoApiVersion.v027 => 'api/v1/attachments/{uid}',
         };
       case 'explore':
         return version == MemoApiVersion.v021
@@ -494,7 +498,7 @@ class MemoApiProbeService {
 
   bool _supportsForceDeleteMemo(MemoApiVersion version) {
     return switch (version) {
-      MemoApiVersion.v025 || MemoApiVersion.v026 => true,
+      MemoApiVersion.v025 || MemoApiVersion.v026 || MemoApiVersion.v027 => true,
       MemoApiVersion.v021 ||
       MemoApiVersion.v022 ||
       MemoApiVersion.v023 ||

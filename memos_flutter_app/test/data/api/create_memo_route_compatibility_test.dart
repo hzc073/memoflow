@@ -70,19 +70,31 @@ void main() {
               expect(jsonBody.containsKey('displayTime'), isFalse);
               expect(jsonBody.containsKey('relations'), isFalse);
             } else if (version == MemoApiVersion.v025 ||
-                version == MemoApiVersion.v026) {
+                version == MemoApiVersion.v026 ||
+                version == MemoApiVersion.v027) {
               expect(jsonBody['attachments'], [
                 {'name': 'resources/201'},
               ]);
               expect(jsonBody.containsKey('resources'), isFalse);
-              expect(jsonBody.containsKey('createTime'), isFalse);
-              expect(jsonBody.containsKey('displayTime'), isFalse);
+              if (version == MemoApiVersion.v027) {
+                expect(jsonBody['createTime'], isNotNull);
+                expect(jsonBody['displayTime'], isNotNull);
+              } else {
+                expect(jsonBody.containsKey('createTime'), isFalse);
+                expect(jsonBody.containsKey('displayTime'), isFalse);
+              }
             }
 
-            if (version == MemoApiVersion.v026) {
-              expect(jsonBody.containsKey('createTime'), isFalse);
-              expect(jsonBody.containsKey('displayTime'), isFalse);
+            if (version == MemoApiVersion.v026 ||
+                version == MemoApiVersion.v027) {
               expect(jsonBody['relations'], isA<List<dynamic>>());
+              if (version == MemoApiVersion.v027) {
+                expect(jsonBody['createTime'], isNotNull);
+                expect(jsonBody['displayTime'], isNotNull);
+              } else {
+                expect(jsonBody.containsKey('createTime'), isFalse);
+                expect(jsonBody.containsKey('displayTime'), isFalse);
+              }
             } else {
               expect(jsonBody.containsKey('createTime'), isFalse);
               expect(jsonBody.containsKey('displayTime'), isFalse);
@@ -193,7 +205,9 @@ class _FakeCreateMemoServer {
         'tags': const <String>[],
         if (version == MemoApiVersion.v023 || version == MemoApiVersion.v024)
           'resources': body['resources'] ?? const <Object>[],
-        if (version == MemoApiVersion.v025 || version == MemoApiVersion.v026)
+        if (version == MemoApiVersion.v025 ||
+            version == MemoApiVersion.v026 ||
+            version == MemoApiVersion.v027)
           'attachments': body['attachments'] ?? const <Object>[],
       });
       return;

@@ -142,7 +142,8 @@ class MemoTimelineService {
       MemoApiVersion.v023 ||
       MemoApiVersion.v024 ||
       MemoApiVersion.v025 ||
-      MemoApiVersion.v026 => true,
+      MemoApiVersion.v026 ||
+      MemoApiVersion.v027 => true,
       _ => false,
     };
   }

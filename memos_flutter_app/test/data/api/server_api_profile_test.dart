@@ -41,6 +41,7 @@ void main() {
       expect(MemosServerApiProfiles.defaultUseLegacyApi('0.23.0'), isFalse);
       expect(MemosServerApiProfiles.defaultUseLegacyApi('0.24.4'), isFalse);
       expect(MemosServerApiProfiles.defaultUseLegacyApi('0.25.0'), isFalse);
+      expect(MemosServerApiProfiles.defaultUseLegacyApi('0.27.0'), isFalse);
       expect(MemosServerApiProfiles.defaultUseLegacyApi(''), isFalse);
       expect(MemosServerApiProfiles.defaultUseLegacyApi('unknown'), isFalse);
     });
@@ -64,6 +65,10 @@ void main() {
       );
       expect(
         MemosServerApiProfiles.byVersionString('0.25.0').memoStateField,
+        MemosMemoStateRouteField.state,
+      );
+      expect(
+        MemosServerApiProfiles.byVersionString('0.27.0').memoStateField,
         MemosMemoStateRouteField.state,
       );
     });

@@ -339,7 +339,12 @@ mixin _MemosApiAuth on _MemosApiBase {
 
   Future<String> _resolveUserName({String? userName}) async {
     final raw = (userName ?? '').trim();
-    if (raw.isNotEmpty) {
+    if (_usesUsernameUserResourceNames()) {
+      final token = raw.contains('/') ? raw.split('/').last.trim() : raw;
+      if (token.isNotEmpty && int.tryParse(token) == null) {
+        return raw.startsWith('users/') ? raw : 'users/$token';
+      }
+    } else if (raw.isNotEmpty) {
       return raw.startsWith('users/') ? raw : 'users/$raw';
     }
     final currentUser = await getCurrentUser();
@@ -353,6 +358,11 @@ mixin _MemosApiAuth on _MemosApiBase {
   bool _usesV025AccessTokenRoutes() {
     final version = _serverVersion;
     return version != null && version.major == 0 && version.minor == 25;
+  }
+
+  bool _usesUsernameUserResourceNames() {
+    final version = _serverVersion;
+    return version != null && version.major == 0 && version.minor >= 27;
   }
 
   Future<String> createUserAccessToken({
@@ -407,9 +417,9 @@ mixin _MemosApiAuth on _MemosApiBase {
       throw ArgumentError('createPersonalAccessToken requires description');
     }
 
-    final numericUserId = await _resolveNumericUserId(userName: userName);
-
-    final parent = 'users/$numericUserId';
+    final parent = _usesUsernameUserResourceNames()
+        ? await _resolveUserName(userName: userName)
+        : 'users/${await _resolveNumericUserId(userName: userName)}';
     if (_usesV025AccessTokenRoutes()) {
       final expiresAt = expiresInDays > 0
           ? DateTime.now().toUtc().add(Duration(days: expiresInDays))
@@ -554,8 +564,9 @@ mixin _MemosApiAuth on _MemosApiBase {
   Future<List<PersonalAccessToken>> _listPersonalAccessTokensModern({
     String? userName,
   }) async {
-    final numericUserId = await _resolveNumericUserId(userName: userName);
-    final parent = 'users/$numericUserId';
+    final parent = _usesUsernameUserResourceNames()
+        ? await _resolveUserName(userName: userName)
+        : 'users/${await _resolveNumericUserId(userName: userName)}';
     if (_usesV025AccessTokenRoutes()) {
       final response = await _dio.get(
         'api/v1/$parent/accessTokens',

@@ -34,7 +34,7 @@ void main() {
           );
 
           final user = await api.getCurrentUser();
-          expect(user.name, 'users/1');
+          expect(user.name, _expectedCurrentUserName(version));
 
           final (memos, nextPageToken) = await api.listMemos(
             pageSize: 10,
@@ -99,6 +99,7 @@ void main() {
             case MemoApiVersion.v024:
             case MemoApiVersion.v025:
             case MemoApiVersion.v026:
+            case MemoApiVersion.v027:
               expect(capturedListRequest.queryParameters['state'], 'NORMAL');
               expect(
                 capturedListRequest.queryParameters.containsKey('view'),
@@ -181,7 +182,17 @@ _ExpectedRoutes _expectedRoutes(MemoApiVersion version) {
       listMemosPath: '/api/v1/memos',
       usesLegacyMemoListRoute: false,
     ),
+    MemoApiVersion.v027 => const _ExpectedRoutes(
+      currentUserMethod: 'GET',
+      currentUserPath: '/api/v1/auth/me',
+      listMemosPath: '/api/v1/memos',
+      usesLegacyMemoListRoute: false,
+    ),
   };
+}
+
+String _expectedCurrentUserName(MemoApiVersion version) {
+  return version == MemoApiVersion.v027 ? 'users/demo' : 'users/1';
 }
 
 class _CapturedRequest {
@@ -245,7 +256,7 @@ class _FakeMemosServer {
     if (isCurrentUserRoute) {
       await _writeJson(request.response, <String, Object?>{
         'user': <String, Object?>{
-          'name': 'users/1',
+          'name': _expectedCurrentUserName(version),
           'username': 'demo',
           'displayName': 'Demo User',
           'avatarUrl': '',
@@ -290,7 +301,7 @@ Object _listMemosPayload(MemoApiVersion version) {
     'memos': <Object?>[
       <String, Object?>{
         'name': 'memos/101',
-        'creator': 'users/1',
+        'creator': _expectedCurrentUserName(version),
         'content': 'modern memo',
         'visibility': 'PRIVATE',
         'pinned': false,

@@ -361,7 +361,7 @@ class AppSessionNotifier extends AppSessionController {
     final raw = profile.version.trim();
     if (raw.isNotEmpty) {
       throw FormatException(
-        'Unsupported server version "$raw". Supported: 0.21.0~0.26.0.',
+        'Unsupported server version "$raw". Supported: 0.21.0~0.27.0.',
       );
     }
     throw const FormatException(
@@ -767,7 +767,7 @@ class AppSessionNotifier extends AppSessionController {
     if (trimmed.isEmpty) return null;
     final normalized = normalizeMemoApiVersion(trimmed);
     if (normalized.isEmpty) {
-      throw const FormatException('Only API 0.21.0 ~ 0.26.0 are supported');
+      throw const FormatException('Only API 0.21.0 ~ 0.27.0 are supported');
     }
     return normalized;
   }

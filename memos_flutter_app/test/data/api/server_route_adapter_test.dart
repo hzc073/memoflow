@@ -56,5 +56,16 @@ void main() {
       expect(adapter.profile.flavor, MemosServerFlavor.v0_25Plus);
       expect(adapter.currentUserRoutes.first, MemosCurrentUserRoute.authMe);
     });
+
+    test('0.27 keeps auth me first', () {
+      final profile = MemosServerApiProfiles.byVersionString('0.27.0');
+      final adapter = MemosRouteAdapters.resolve(
+        profile: profile,
+        parsedVersion: MemosServerApiProfiles.tryParseVersion('0.27.0'),
+      );
+
+      expect(adapter.profile.flavor, MemosServerFlavor.v0_25Plus);
+      expect(adapter.currentUserRoutes.first, MemosCurrentUserRoute.authMe);
+    });
   });
 }

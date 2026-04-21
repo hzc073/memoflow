@@ -54,7 +54,9 @@ class LoginController {
     if (!cleanup.hasPending) return;
 
     try {
-      await _ref.read(syncCoordinatorProvider.notifier).requestSync(
+      await _ref
+          .read(syncCoordinatorProvider.notifier)
+          .requestSync(
             const SyncRequest(
               kind: SyncRequestKind.memos,
               reason: SyncRequestReason.manual,
@@ -88,7 +90,9 @@ class LoginController {
     }
 
     try {
-      await _ref.read(syncCoordinatorProvider.notifier).requestSync(
+      await _ref
+          .read(syncCoordinatorProvider.notifier)
+          .requestSync(
             const SyncRequest(
               kind: SyncRequestKind.memos,
               reason: SyncRequestReason.manual,
@@ -99,7 +103,7 @@ class LoginController {
 
   bool _supportsForceDeleteMemo(MemoApiVersion version) {
     return switch (version) {
-      MemoApiVersion.v025 || MemoApiVersion.v026 => true,
+      MemoApiVersion.v025 || MemoApiVersion.v026 || MemoApiVersion.v027 => true,
       MemoApiVersion.v021 ||
       MemoApiVersion.v022 ||
       MemoApiVersion.v023 ||
