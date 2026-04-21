@@ -41,6 +41,17 @@ class AttachmentPreprocessResult {
     this.effectiveOutputFormat,
     this.engine,
     this.engineVersion,
+    this.sourceSize,
+    this.sourceWidth,
+    this.sourceHeight,
+    this.sourceDisplayWidth,
+    this.sourceDisplayHeight,
+    this.sourceOrientation,
+    this.sizeDelta,
+    this.widthDelta,
+    this.heightDelta,
+    this.widthScale,
+    this.heightScale,
     this.fromCache = false,
     this.fallback = false,
     this.wasConverted = false,
@@ -61,11 +72,43 @@ class AttachmentPreprocessResult {
   final CompressionImageFormat? effectiveOutputFormat;
   final String? engine;
   final String? engineVersion;
+  final int? sourceSize;
+  final int? sourceWidth;
+  final int? sourceHeight;
+  final int? sourceDisplayWidth;
+  final int? sourceDisplayHeight;
+  final int? sourceOrientation;
+  final int? sizeDelta;
+  final int? widthDelta;
+  final int? heightDelta;
+  final double? widthScale;
+  final double? heightScale;
   final bool fromCache;
   final bool fallback;
   final bool wasConverted;
   final bool wasResized;
   final CompressionFallbackReason? fallbackReason;
+}
+
+Map<String, Object?> buildAttachmentPreprocessResultLogContext(
+  AttachmentPreprocessResult result,
+) {
+  return {
+    'sourceFileSize': result.sourceSize,
+    'sourceRawWidth': result.sourceWidth,
+    'sourceRawHeight': result.sourceHeight,
+    'sourceDisplayWidth': result.sourceDisplayWidth,
+    'sourceDisplayHeight': result.sourceDisplayHeight,
+    'sourceOrientation': result.sourceOrientation,
+    'processedSize': result.size,
+    'processedWidth': result.width,
+    'processedHeight': result.height,
+    'sizeDelta': result.sizeDelta,
+    'widthDelta': result.widthDelta,
+    'heightDelta': result.heightDelta,
+    'widthScale': result.widthScale,
+    'heightScale': result.heightScale,
+  };
 }
 
 abstract class AttachmentPreprocessor {
@@ -128,20 +171,72 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
       filename: filename,
       mimeType: mimeType,
     );
+    final sourceDisplayWidth = probe.displayWidth ?? probe.width;
+    final sourceDisplayHeight = probe.displayHeight ?? probe.height;
+    _logManager.debug(
+      'AttachmentPreprocess: input_probe',
+      context: {
+        'filePath': normalizedPath,
+        'filename': filename,
+        'mimeType': mimeType,
+        'skipCompression': request.skipCompression,
+        ..._settingsLogContext(settings),
+        ..._probeLogContext(probe),
+      },
+    );
 
     if (!probe.isImage || request.skipCompression || !settings.enabled) {
-      return AttachmentPreprocessResult(
+      final bypassReason = !probe.isImage
+          ? 'not_image'
+          : request.skipCompression
+          ? 'skip_compression'
+          : 'compression_disabled';
+      _logManager.debug(
+        'AttachmentPreprocess: bypass',
+        context: {
+          'reason': bypassReason,
+          'filePath': normalizedPath,
+          'filename': filename,
+          'mimeType': mimeType,
+          ..._probeLogContext(probe),
+        },
+      );
+      final bypassResult = AttachmentPreprocessResult(
         filePath: normalizedPath,
         filename: filename,
         mimeType: mimeType,
         size: probe.fileSize,
-        width: probe.displayWidth ?? probe.width,
-        height: probe.displayHeight ?? probe.height,
+        width: sourceDisplayWidth,
+        height: sourceDisplayHeight,
         hash: probe.isImage ? await _computeSha256(normalizedPath) : null,
         sourceFormat: probe.format,
+        sourceSize: probe.fileSize,
+        sourceWidth: probe.width,
+        sourceHeight: probe.height,
+        sourceDisplayWidth: sourceDisplayWidth,
+        sourceDisplayHeight: sourceDisplayHeight,
+        sourceOrientation: probe.orientation,
+        sizeDelta: 0,
+        widthDelta: _delta(sourceDisplayWidth, sourceDisplayWidth),
+        heightDelta: _delta(sourceDisplayHeight, sourceDisplayHeight),
+        widthScale: _scale(sourceDisplayWidth, sourceDisplayWidth),
+        heightScale: _scale(sourceDisplayHeight, sourceDisplayHeight),
         fromCache: false,
         fallback: false,
       );
+      _logManager.info(
+        'AttachmentPreprocess: bypass_result',
+        context: {
+          'reason': bypassReason,
+          'filePath': normalizedPath,
+          'filename': filename,
+          'mimeType': mimeType,
+          'resizeEnabled': settings.resize.enabled,
+          'resizeMode': settings.resize.mode.name,
+          ...buildAttachmentPreprocessResultLogContext(bypassResult),
+        },
+      );
+      return bypassResult;
     }
 
     final result = await _pipeline.process(
@@ -152,16 +247,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
         settings: settings,
       ),
     );
-    _logManager.debug(
-      'AttachmentPreprocess: pipeline_result',
-      context: {
-        'engine': result.engineId,
-        'fallback': result.fallback,
-        'fromCache': result.fromCache,
-        'outputFormat': result.effectiveOutputFormat?.name,
-      },
-    );
-    return AttachmentPreprocessResult(
+    final outputResult = AttachmentPreprocessResult(
       filePath: result.filePath,
       filename: result.filename,
       mimeType: result.mimeType,
@@ -175,12 +261,45 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
       effectiveOutputFormat: result.effectiveOutputFormat,
       engine: result.engineId,
       engineVersion: result.engineVersion,
+      sourceSize: probe.fileSize,
+      sourceWidth: probe.width,
+      sourceHeight: probe.height,
+      sourceDisplayWidth: sourceDisplayWidth,
+      sourceDisplayHeight: sourceDisplayHeight,
+      sourceOrientation: probe.orientation,
+      sizeDelta: result.size - probe.fileSize,
+      widthDelta: _delta(sourceDisplayWidth, result.width),
+      heightDelta: _delta(sourceDisplayHeight, result.height),
+      widthScale: _scale(sourceDisplayWidth, result.width),
+      heightScale: _scale(sourceDisplayHeight, result.height),
       fromCache: result.fromCache,
       fallback: result.fallback,
       wasConverted: result.wasConverted,
       wasResized: result.wasResized,
       fallbackReason: result.fallbackReason,
     );
+    _logManager.info(
+      'AttachmentPreprocess: output',
+      context: {
+        'inputPath': normalizedPath,
+        'outputPath': result.filePath,
+        'filename': result.filename,
+        'mimeType': result.mimeType,
+        'compressionMode': settings.mode.name,
+        'resizeEnabled': settings.resize.enabled,
+        'resizeMode': settings.resize.mode.name,
+        'engine': result.engineId,
+        'engineVersion': result.engineVersion,
+        'fallback': result.fallback,
+        'fromCache': result.fromCache,
+        'wasConverted': result.wasConverted,
+        'wasResized': result.wasResized,
+        'fallbackReason': result.fallbackReason?.name,
+        'outputFormat': result.effectiveOutputFormat?.name,
+        ...buildAttachmentPreprocessResultLogContext(outputResult),
+      },
+    );
+    return outputResult;
   }
 
   String _normalizePath(String raw) {
@@ -200,5 +319,47 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
     } catch (_) {
       return null;
     }
+  }
+
+  Map<String, Object?> _settingsLogContext(ImageCompressionSettings settings) {
+    return {
+      'compressionEnabled': settings.enabled,
+      'compressionMode': settings.mode.name,
+      'outputFormatSetting': settings.outputFormat.name,
+      'lossless': settings.lossless,
+      'keepMetadata': settings.keepMetadata,
+      'skipIfBigger': settings.skipIfBigger,
+      'resizeEnabled': settings.resize.enabled,
+      'resizeMode': settings.resize.mode.name,
+      'resizeWidth': settings.resize.width,
+      'resizeHeight': settings.resize.height,
+      'resizeEdge': settings.resize.edge,
+      'resizeDoNotEnlarge': settings.resize.doNotEnlarge,
+    };
+  }
+
+  Map<String, Object?> _probeLogContext(CompressionSourceProbe probe) {
+    return {
+      'sourceFormat': probe.format.name,
+      'sourceSize': probe.fileSize,
+      'sourceWidth': probe.width,
+      'sourceHeight': probe.height,
+      'sourceDisplayWidth': probe.displayWidth,
+      'sourceDisplayHeight': probe.displayHeight,
+      'sourceOrientation': probe.orientation,
+      'sourceAnimated': probe.isAnimated,
+      'sourceHasAlpha': probe.hasAlpha,
+      'sourceIsImage': probe.isImage,
+    };
+  }
+
+  int? _delta(int? source, int? target) {
+    if (source == null || target == null) return null;
+    return target - source;
+  }
+
+  double? _scale(int? source, int? target) {
+    if (source == null || target == null || source <= 0) return null;
+    return double.parse((target / source).toStringAsFixed(3));
   }
 }

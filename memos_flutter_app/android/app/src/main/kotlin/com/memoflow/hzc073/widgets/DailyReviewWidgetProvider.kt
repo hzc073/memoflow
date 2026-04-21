@@ -33,11 +33,11 @@ class DailyReviewWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_OPEN_CURRENT -> {
+            actionOpenCurrent(context) -> {
                 handleOpenCurrent(context)
                 return
             }
-            ACTION_ROTATE -> {
+            actionRotate(context) -> {
                 WidgetDailyReviewStore.rotateIfDue(context, force = true)
                 updateAllWidgets(context)
                 ensureRotation(context)
@@ -48,10 +48,14 @@ class DailyReviewWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
-        private const val ACTION_OPEN_CURRENT = "com.memoflow.hzc073.widget.dailyReview.OPEN_CURRENT"
-        private const val ACTION_ROTATE = "com.memoflow.hzc073.widget.dailyReview.ROTATE"
         private const val REQUEST_OPEN = 7001
         private const val REQUEST_ROTATE = 7002
+
+        private fun actionOpenCurrent(context: Context) =
+            "${context.packageName}.widget.dailyReview.OPEN_CURRENT"
+
+        private fun actionRotate(context: Context) =
+            "${context.packageName}.widget.dailyReview.ROTATE"
 
         fun updateAllWidgets(context: Context) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
@@ -134,7 +138,7 @@ class DailyReviewWidgetProvider : AppWidgetProvider() {
 
         private fun openCurrentPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, DailyReviewWidgetProvider::class.java).apply {
-                action = ACTION_OPEN_CURRENT
+                action = actionOpenCurrent(context)
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -147,7 +151,7 @@ class DailyReviewWidgetProvider : AppWidgetProvider() {
 
         private fun rotationPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, DailyReviewWidgetProvider::class.java).apply {
-                action = ACTION_ROTATE
+                action = actionRotate(context)
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

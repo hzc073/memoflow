@@ -1541,6 +1541,8 @@ legacy:
   msg_open_settings: Einstellungen öffnen
   msg_ordered_list: Geordnete Liste
   msg_original_image: Original
+  msg_gallery_system_picker_original_desc: Wählen Sie, ob ausgewählte Bilder vor dem Hochladen die Komprimierung überspringen sollen.
+  msg_gallery_system_picker_original_switch: Ausgewählte Bilder in Originalqualität hochladen
   msg_password_feature_placeholder: Die Passwortunterstützung ist derzeit ein Platzhalter und noch nicht durchgesetzt.
   msg_paste: Paste
   msg_press_new_shortcut: Drücken Sie die neue Verknüpfung...

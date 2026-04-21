@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,8 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 
+import '../../application/attachments/compression/compression_source_probe.dart';
+import '../../data/logs/log_manager.dart';
+import '../../i18n/strings.g.dart';
+import '../../state/settings/image_compression_settings_provider.dart';
 import 'gallery_attachment_original_picker.dart';
 import 'windows_camera_capture_screen.dart';
+
+const CompressionSourceProbeService _galleryAttachmentProbeService =
+    CompressionSourceProbeService();
 
 enum PickedLocalAttachmentSource { gallery, camera }
 
@@ -89,7 +97,77 @@ String guessLocalAttachmentMimeType(String filename) {
 Future<GalleryAttachmentPickResult?> pickGalleryAttachments(
   BuildContext context, {
   int maxAssets = 100,
-  bool showOriginalToggle = false,
+  required ImageCompressionUiPolicy compressionPolicy,
+  ImagePicker? imagePicker,
+  Future<List<XFile>> Function()? pickMultipleMediaOverride,
+  Future<bool?> Function()? confirmUploadOriginalOverride,
+}) async {
+  LogManager.instance.debug(
+    'GalleryAttachmentPicker: start',
+    context: {
+      'maxAssets': maxAssets,
+      'compressionEnabled': compressionPolicy.enabled,
+      'useSystemPhotoPicker': compressionPolicy.useSystemPhotoPicker,
+      'showOriginalToggle': compressionPolicy.showOriginalToggle,
+      'promptOriginalBeforePick':
+          compressionPolicy.shouldPromptOriginalBeforePick,
+    },
+  );
+  if (compressionPolicy.useSystemPhotoPicker) {
+    var uploadOriginalImages = false;
+    if (compressionPolicy.shouldPromptOriginalBeforePick) {
+      final legacyStrings = context.t.strings.legacy;
+      final navigator = Navigator.of(context);
+      final selection = confirmUploadOriginalOverride != null
+          ? await confirmUploadOriginalOverride()
+          : await promptForSystemPickerOriginalUpload(
+              navigator: navigator,
+              title: legacyStrings.msg_original_image,
+              description:
+                  legacyStrings.msg_gallery_system_picker_original_desc,
+              switchLabel:
+                  legacyStrings.msg_gallery_system_picker_original_switch,
+              cancelLabel: legacyStrings.msg_cancel,
+              continueLabel: legacyStrings.msg_continue,
+            );
+      if (selection == null) {
+        return null;
+      }
+      uploadOriginalImages = selection;
+    }
+    final files = pickMultipleMediaOverride != null
+        ? await pickMultipleMediaOverride()
+        : await (imagePicker ?? ImagePicker()).pickMultipleMedia(
+            limit: maxAssets,
+            requestFullMetadata: false,
+          );
+    if (files.isEmpty) {
+      return null;
+    }
+    LogManager.instance.debug(
+      'GalleryAttachmentPicker: system_picker_result',
+      context: {
+        'selectedCount': files.length,
+        'uploadOriginalImages': uploadOriginalImages,
+      },
+    );
+    return buildGalleryAttachmentPickResultFromSystemPickerFiles(
+      files: files,
+      uploadOriginalImages: uploadOriginalImages,
+    );
+  }
+
+  return _pickGalleryAttachmentsWithAssetPicker(
+    context,
+    maxAssets: maxAssets,
+    showOriginalToggle: compressionPolicy.showOriginalToggle,
+  );
+}
+
+Future<GalleryAttachmentPickResult?> _pickGalleryAttachmentsWithAssetPicker(
+  BuildContext context, {
+  required int maxAssets,
+  required bool showOriginalToggle,
 }) async {
   final originalPickResult = await pickGalleryAssetsWithOriginalToggle(
     context,
@@ -105,17 +183,23 @@ Future<GalleryAttachmentPickResult?> pickGalleryAttachments(
     selectedAssets: assets,
     originalAssetIds: originalPickResult?.originalAssetIds ?? const <String>{},
   );
+  LogManager.instance.debug(
+    'GalleryAttachmentPicker: asset_picker_result',
+    context: {
+      'selectedCount': assets.length,
+      'originalAssetCount': originalAssetIds.length,
+      'showOriginalToggle': showOriginalToggle,
+    },
+  );
 
   final attachments = <PickedLocalAttachment>[];
   var skippedCount = 0;
   for (final asset in assets) {
-    final rawFile =
-        await (shouldReadOriginalGalleryAssetFile(
-              asset: asset,
-              originalAssetIds: originalAssetIds,
-            )
-            ? asset.originFile
-            : asset.file);
+    final useOriginalFile = shouldReadOriginalGalleryAssetFile(
+      asset: asset,
+      originalAssetIds: originalAssetIds,
+    );
+    final rawFile = await (useOriginalFile ? asset.originFile : asset.file);
     final path = rawFile?.path.trim() ?? '';
     if (path.isEmpty) {
       skippedCount++;
@@ -142,12 +226,134 @@ Future<GalleryAttachmentPickResult?> pickGalleryAttachments(
             originalAssetIds.contains(asset.id),
       ),
     );
+    unawaited(
+      _logPickedLocalAttachment(
+        'GalleryAttachmentPicker: asset_attachment_ready',
+        attachments.last,
+        context: {
+          'assetId': asset.id,
+          'assetType': asset.type.name,
+          'usedOriginalAssetFile': useOriginalFile,
+          'assetMarkedOriginal': originalAssetIds.contains(asset.id),
+        },
+      ),
+    );
   }
 
   return GalleryAttachmentPickResult(
     attachments: attachments,
     skippedCount: skippedCount,
   );
+}
+
+Future<bool?> promptForSystemPickerOriginalUpload({
+  required NavigatorState navigator,
+  required String title,
+  required String description,
+  required String switchLabel,
+  required String cancelLabel,
+  required String continueLabel,
+}) async {
+  var uploadOriginalImages = false;
+  return showDialog<bool>(
+    context: navigator.context,
+    builder: (dialogContext) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(title),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(description),
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  value: uploadOriginalImages,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(switchLabel),
+                  onChanged: (value) {
+                    setState(() {
+                      uploadOriginalImages = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(cancelLabel),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(uploadOriginalImages),
+                child: Text(continueLabel),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+@visibleForTesting
+GalleryAttachmentPickResult
+buildGalleryAttachmentPickResultFromSystemPickerFiles({
+  required Iterable<XFile> files,
+  required bool uploadOriginalImages,
+}) {
+  final attachments = <PickedLocalAttachment>[];
+  var skippedCount = 0;
+  for (final pickedFile in files) {
+    final path = pickedFile.path.trim();
+    if (path.isEmpty) {
+      skippedCount++;
+      continue;
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      skippedCount++;
+      continue;
+    }
+
+    final filename = path.split(Platform.pathSeparator).last;
+    final mimeType = guessLocalAttachmentMimeType(filename);
+    attachments.add(
+      buildPickedLocalAttachment(
+        filePath: path,
+        filename: filename,
+        size: file.lengthSync(),
+        source: PickedLocalAttachmentSource.gallery,
+        skipCompression: shouldSkipCompressionForSystemPickedFile(
+          mimeType: mimeType,
+          uploadOriginalImages: uploadOriginalImages,
+        ),
+      ),
+    );
+    unawaited(
+      _logPickedLocalAttachment(
+        'GalleryAttachmentPicker: system_attachment_ready',
+        attachments.last,
+        context: {'uploadOriginalImages': uploadOriginalImages},
+      ),
+    );
+  }
+
+  return GalleryAttachmentPickResult(
+    attachments: attachments,
+    skippedCount: skippedCount,
+  );
+}
+
+@visibleForTesting
+bool shouldSkipCompressionForSystemPickedFile({
+  required String mimeType,
+  required bool uploadOriginalImages,
+}) {
+  return uploadOriginalImages && mimeType.startsWith('image/');
 }
 
 @visibleForTesting
@@ -200,12 +406,19 @@ Future<PickedLocalAttachment?> captureCameraAttachment({
   }
 
   final filename = path.split(Platform.pathSeparator).last;
-  return buildPickedLocalAttachment(
+  final attachment = buildPickedLocalAttachment(
     filePath: path,
     filename: filename,
     size: file.lengthSync(),
     source: PickedLocalAttachmentSource.camera,
   );
+  unawaited(
+    _logPickedLocalAttachment(
+      'GalleryAttachmentPicker: camera_attachment_ready',
+      attachment,
+    ),
+  );
+  return attachment;
 }
 
 @visibleForTesting
@@ -224,4 +437,93 @@ PickedLocalAttachment buildPickedLocalAttachment({
     source: source,
     skipCompression: skipCompression,
   );
+}
+
+Future<void> _logPickedLocalAttachment(
+  String event,
+  PickedLocalAttachment attachment, {
+  Map<String, Object?> context = const <String, Object?>{},
+}) async {
+  try {
+    final fileContext = await _buildAttachmentLogContext(
+      filePath: attachment.filePath,
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+    );
+    LogManager.instance.debug(
+      event,
+      context: {
+        ...fileContext,
+        'attachmentSource': attachment.source.name,
+        'skipCompression': attachment.skipCompression,
+        ...context,
+      },
+    );
+  } catch (error, stackTrace) {
+    LogManager.instance.warn(
+      'GalleryAttachmentPicker: attachment_log_failed',
+      error: error,
+      stackTrace: stackTrace,
+      context: {
+        'filePath': attachment.filePath,
+        'filename': attachment.filename,
+        'mimeType': attachment.mimeType,
+      },
+    );
+  }
+}
+
+Future<Map<String, Object?>> _buildAttachmentLogContext({
+  required String filePath,
+  required String filename,
+  required String mimeType,
+}) async {
+  final normalizedPath = _normalizeAttachmentPath(filePath);
+  final file = File(normalizedPath);
+  final exists = normalizedPath.isNotEmpty && await file.exists();
+  final context = <String, Object?>{
+    'filePath': normalizedPath,
+    'filename': filename,
+    'mimeType': mimeType,
+    'exists': exists,
+    'isContentUri': normalizedPath.startsWith('content://'),
+  };
+  if (!exists) {
+    return context;
+  }
+  context['fileSize'] = await file.length();
+  if (!mimeType.toLowerCase().startsWith('image/')) {
+    return context;
+  }
+  final probe = await _galleryAttachmentProbeService.probe(
+    path: normalizedPath,
+    filename: filename,
+    mimeType: mimeType,
+  );
+  context.addAll({
+    'imageFormat': probe.format.name,
+    'rawWidth': probe.width,
+    'rawHeight': probe.height,
+    'displayWidth': probe.displayWidth,
+    'displayHeight': probe.displayHeight,
+    'orientation': probe.orientation,
+    'isAnimated': probe.isAnimated,
+  });
+  return context;
+}
+
+String _normalizeAttachmentPath(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
+    return '';
+  }
+  if (trimmed.startsWith('file://')) {
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null) {
+      try {
+        return uri.toFilePath();
+      } catch (_) {}
+    }
+  }
+  return trimmed;
 }

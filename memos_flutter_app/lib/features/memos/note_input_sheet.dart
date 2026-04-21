@@ -20,6 +20,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
+import '../../data/logs/log_manager.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/compose_draft.dart';
 import '../../data/models/memo.dart';
@@ -1749,7 +1750,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       if (!mounted) return;
       final result = await pickGalleryAttachments(
         context,
-        showOriginalToggle: compressionPolicy.showOriginalToggle,
+        compressionPolicy: compressionPolicy,
       );
       if (!mounted || result == null) return;
       if (result.attachments.isEmpty) {
@@ -1818,11 +1819,22 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       var missingPathCount = 0;
       Directory? tempDir;
       for (final file in files) {
-        String path = (file.path ?? '').trim();
+        final pickerPath = (file.path ?? '').trim();
+        String path = pickerPath;
+        var usedTemporaryFile = false;
         if (path.isEmpty) {
           final stream = file.readStream;
           final bytes = file.bytes;
           if (stream == null && bytes == null) {
+            LogManager.instance.debug(
+              'NoteInputSheet: file_picker_missing_path',
+              context: {
+                'pickerName': file.name,
+                'pickerPath': pickerPath,
+                'hasReadStream': false,
+                'hasBytes': false,
+              },
+            );
             missingPathCount++;
             continue;
           }
@@ -1841,15 +1853,33 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             await sink.close();
           }
           path = tempFile.path;
+          usedTemporaryFile = true;
         }
 
         if (path.trim().isEmpty) {
+          LogManager.instance.debug(
+            'NoteInputSheet: file_picker_empty_resolved_path',
+            context: {
+              'pickerName': file.name,
+              'pickerPath': pickerPath,
+              'usedTemporaryFile': usedTemporaryFile,
+            },
+          );
           missingPathCount++;
           continue;
         }
 
         final handle = File(path);
         if (!handle.existsSync()) {
+          LogManager.instance.debug(
+            'NoteInputSheet: file_picker_missing_file',
+            context: {
+              'pickerName': file.name,
+              'pickerPath': pickerPath,
+              'resolvedPath': path,
+              'usedTemporaryFile': usedTemporaryFile,
+            },
+          );
           missingPathCount++;
           continue;
         }
@@ -1858,6 +1888,19 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
             ? file.name.trim()
             : path.split(Platform.pathSeparator).last;
         final mimeType = _guessMimeType(filename);
+        LogManager.instance.debug(
+          'NoteInputSheet: file_picker_attachment_ready',
+          context: {
+            'pickerName': file.name,
+            'pickerPath': pickerPath,
+            'resolvedPath': path,
+            'usedTemporaryFile': usedTemporaryFile,
+            'hasReadStream': file.readStream != null,
+            'hasBytes': file.bytes != null,
+            'size': size,
+            'mimeType': mimeType,
+          },
+        );
         added.add(
           _PendingAttachment(
             uid: generateUid(),
@@ -1868,6 +1911,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           ),
         );
       }
+      LogManager.instance.debug(
+        'NoteInputSheet: file_picker_summary',
+        context: {
+          'selectedCount': files.length,
+          'addedCount': added.length,
+          'missingPathCount': missingPathCount,
+        },
+      );
 
       if (!mounted) return;
       if (added.isEmpty) {

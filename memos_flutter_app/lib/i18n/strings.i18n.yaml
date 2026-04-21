@@ -1495,6 +1495,8 @@ legacy:
   msg_files_unavailable_from_picker: "Files unavailable from picker."
   msg_no_files_selected: "No files selected."
   msg_original_image: "Original"
+  msg_gallery_system_picker_original_desc: "Choose whether selected images should skip compression before upload."
+  msg_gallery_system_picker_original_switch: "Upload selected images in original quality"
   msg_gallery_original_selection_summary: "Selected $selectedCount · Original $originalCount"
   msg_added_files: "Added $count file(s)."
   msg_unavailable_file_count: "$count unavailable"

@@ -16,7 +16,8 @@ object WidgetIntents {
     const val ACTION_CALENDAR = "calendar"
     const val ACTION_STATS = "stats"
 
-    private const val INTENT_ACTION_WIDGET = "com.memoflow.hzc073.WIDGET_ACTION"
+    private fun intentActionWidget(context: Context) =
+        "${context.packageName}.WIDGET_ACTION"
 
     fun normalizeAction(raw: String?): String? {
         val normalized = raw?.trim().orEmpty()
@@ -43,7 +44,7 @@ object WidgetIntents {
         )
         val normalizedAction = normalizeAction(action)
         if (normalizedAction != null) {
-            intent.action = INTENT_ACTION_WIDGET
+            intent.action = intentActionWidget(context)
             intent.putExtra(EXTRA_WIDGET_ACTION, normalizedAction)
         }
         if (!memoUid.isNullOrBlank()) {

@@ -23,6 +23,8 @@ class MemoImageEntry {
     this.fullUrl,
     this.headers,
     this.isAttachment = false,
+    this.width,
+    this.height,
   });
 
   final String id;
@@ -33,6 +35,8 @@ class MemoImageEntry {
   final String? fullUrl;
   final Map<String, String>? headers;
   final bool isAttachment;
+  final int? width;
+  final int? height;
 
   AttachmentImageSource toGallerySource() {
     final url = (fullUrl ?? previewUrl ?? '').trim();
@@ -43,6 +47,8 @@ class MemoImageEntry {
       localFile: localFile,
       imageUrl: url.isEmpty ? null : url,
       headers: headers,
+      width: width,
+      height: height,
     );
   }
 }
@@ -180,6 +186,8 @@ MemoImageEntry? _entryFromAttachment(
       fullUrl: null,
       headers: null,
       isAttachment: true,
+      width: attachment.width,
+      height: attachment.height,
     );
   }
 
@@ -200,6 +208,8 @@ MemoImageEntry? _entryFromAttachment(
       fullUrl: resolved.fullUrl,
       headers: resolved.headers,
       isAttachment: true,
+      width: attachment.width,
+      height: attachment.height,
     );
   }
 
@@ -220,6 +230,8 @@ MemoImageEntry? _entryFromAttachment(
     fullUrl: fullUrl,
     headers: headers,
     isAttachment: true,
+    width: attachment.width,
+    height: attachment.height,
   );
 }
 

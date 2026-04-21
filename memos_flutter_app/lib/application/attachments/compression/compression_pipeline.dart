@@ -129,6 +129,35 @@ class CompressionPipeline {
       engineId: engine.engineId,
     );
     plan = plan.copyWith(cacheKey: cacheKey);
+    _logManager.debug(
+      'CompressionPipeline: plan',
+      context: {
+        'engine': plan.engineId,
+        'engineVersion': plan.engineVersion,
+        'sourceFormat': sourceProbe.format.name,
+        'sourceSize': sourceProbe.fileSize,
+        'sourceWidth': sourceProbe.width,
+        'sourceHeight': sourceProbe.height,
+        'sourceDisplayWidth': sourceProbe.displayWidth,
+        'sourceDisplayHeight': sourceProbe.displayHeight,
+        'sourceOrientation': sourceProbe.orientation,
+        'outputFormat': plan.outputFormat?.name,
+        'requiresInputConversion': plan.requiresInputConversion,
+        'resizeTargetWidth': plan.resizeTarget?.width,
+        'resizeTargetHeight': plan.resizeTarget?.height,
+        'maxOutputBytes': plan.maxOutputBytes,
+        'shouldPassthrough': plan.shouldPassthrough,
+        'fallbackReason': plan.fallbackReason?.name,
+        'cacheKey': plan.cacheKey,
+        ..._resizeSettingsLogContext(plan),
+        ..._dimensionDeltaContext(
+          sourceWidth: sourceProbe.displayWidth ?? sourceProbe.width,
+          sourceHeight: sourceProbe.displayHeight ?? sourceProbe.height,
+          outputWidth: plan.resizeTarget?.width,
+          outputHeight: plan.resizeTarget?.height,
+        ),
+      },
+    );
 
     final cacheHit = await _cacheStore.read(plan.cacheKey, plan.outputFormat);
     if (cacheHit != null) {
@@ -139,11 +168,52 @@ class CompressionPipeline {
         cacheHit: cacheHit,
       );
       if (cached != null) {
+        _logManager.debug(
+          'CompressionPipeline: cache_hit',
+          context: {
+            'engine': plan.engineId,
+            'outputFormat': cached.effectiveOutputFormat?.name,
+            'sourceSize': sourceProbe.fileSize,
+            'outputSize': cached.size,
+            'outputWidth': cached.width,
+            'outputHeight': cached.height,
+            'fallback': cached.fallback,
+            'wasResized': cached.wasResized,
+            'fallbackReason': cached.fallbackReason?.name,
+            ..._resizeSettingsLogContext(plan),
+            ..._dimensionDeltaContext(
+              sourceWidth: sourceProbe.displayWidth ?? sourceProbe.width,
+              sourceHeight: sourceProbe.displayHeight ?? sourceProbe.height,
+              outputWidth: cached.width,
+              outputHeight: cached.height,
+            ),
+          },
+        );
         return cached;
       }
     }
 
     if (plan.shouldPassthrough) {
+      _logManager.debug(
+        'CompressionPipeline: passthrough',
+        context: {
+          'engine': plan.engineId,
+          'sourceFormat': sourceProbe.format.name,
+          'sourceSize': sourceProbe.fileSize,
+          'sourceWidth': sourceProbe.displayWidth ?? sourceProbe.width,
+          'sourceHeight': sourceProbe.displayHeight ?? sourceProbe.height,
+          'resizeTargetWidth': plan.resizeTarget?.width,
+          'resizeTargetHeight': plan.resizeTarget?.height,
+          'fallbackReason': plan.fallbackReason?.name,
+          ..._resizeSettingsLogContext(plan),
+          ..._dimensionDeltaContext(
+            sourceWidth: sourceProbe.displayWidth ?? sourceProbe.width,
+            sourceHeight: sourceProbe.displayHeight ?? sourceProbe.height,
+            outputWidth: sourceProbe.displayWidth ?? sourceProbe.width,
+            outputHeight: sourceProbe.displayHeight ?? sourceProbe.height,
+          ),
+        },
+      );
       final passthrough = await _buildFallbackResult(
         request: request,
         sourceProbe: sourceProbe,
@@ -283,7 +353,21 @@ class CompressionPipeline {
           'engine': plan.engineId,
           'outputFormat': plan.outputFormat?.name,
           'sourceSize': sourceProbe.fileSize,
+          'sourceWidth': sourceProbe.displayWidth ?? sourceProbe.width,
+          'sourceHeight': sourceProbe.displayHeight ?? sourceProbe.height,
           'outputSize': size,
+          'outputWidth': result.width,
+          'outputHeight': result.height,
+          'wasResized': plan.wasResized,
+          'resizeTargetWidth': plan.resizeTarget?.width,
+          'resizeTargetHeight': plan.resizeTarget?.height,
+          ..._resizeSettingsLogContext(plan),
+          ..._dimensionDeltaContext(
+            sourceWidth: sourceProbe.displayWidth ?? sourceProbe.width,
+            sourceHeight: sourceProbe.displayHeight ?? sourceProbe.height,
+            outputWidth: result.width,
+            outputHeight: result.height,
+          ),
         },
       );
       return result;
@@ -295,6 +379,18 @@ class CompressionPipeline {
         context: {
           'engine': plan.engineId,
           'outputFormat': plan.outputFormat?.name,
+          'sourceSize': sourceProbe.fileSize,
+          'sourceWidth': sourceProbe.displayWidth ?? sourceProbe.width,
+          'sourceHeight': sourceProbe.displayHeight ?? sourceProbe.height,
+          'resizeTargetWidth': plan.resizeTarget?.width,
+          'resizeTargetHeight': plan.resizeTarget?.height,
+          ..._resizeSettingsLogContext(plan),
+          ..._dimensionDeltaContext(
+            sourceWidth: sourceProbe.displayWidth ?? sourceProbe.width,
+            sourceHeight: sourceProbe.displayHeight ?? sourceProbe.height,
+            outputWidth: plan.resizeTarget?.width,
+            outputHeight: plan.resizeTarget?.height,
+          ),
         },
       );
       final fallbackPlan = plan.copyWith(
@@ -417,6 +513,47 @@ class CompressionPipeline {
       CompressionFallbackReason.animatedImage =>
         CompressionCacheStatus.unsupported,
       _ => CompressionCacheStatus.fallback,
+    };
+  }
+
+  Map<String, Object?> _resizeSettingsLogContext(CompressionPlan plan) {
+    final resize = plan.settings.resize;
+    final sourceWidth = plan.sourceProbe.displayWidth ?? plan.sourceProbe.width;
+    final sourceHeight =
+        plan.sourceProbe.displayHeight ?? plan.sourceProbe.height;
+    return {
+      'resizeEnabled': resize.enabled,
+      'resizeMode': resize.mode.name,
+      'resizeSettingWidth': resize.width,
+      'resizeSettingHeight': resize.height,
+      'resizeSettingEdge': resize.edge,
+      'resizeDoNotEnlarge': resize.doNotEnlarge,
+      'resizeWillChangeDimensions':
+          plan.resizeTarget != null &&
+          !plan.resizeTarget!.sameAs(sourceWidth, sourceHeight),
+    };
+  }
+
+  Map<String, Object?> _dimensionDeltaContext({
+    required int? sourceWidth,
+    required int? sourceHeight,
+    required int? outputWidth,
+    required int? outputHeight,
+  }) {
+    double? scale(int? source, int? target) {
+      if (source == null || target == null || source <= 0) return null;
+      return double.parse((target / source).toStringAsFixed(3));
+    }
+
+    return {
+      'widthDelta': (sourceWidth != null && outputWidth != null)
+          ? outputWidth - sourceWidth
+          : null,
+      'heightDelta': (sourceHeight != null && outputHeight != null)
+          ? outputHeight - sourceHeight
+          : null,
+      'widthScale': scale(sourceWidth, outputWidth),
+      'heightScale': scale(sourceHeight, outputHeight),
     };
   }
 

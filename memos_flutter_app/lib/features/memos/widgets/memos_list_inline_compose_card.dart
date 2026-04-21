@@ -148,7 +148,9 @@ class MemosListInlineComposeCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: cardColor,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: borderColor.withValues(alpha: 0.75)),
+                  border: Border.all(
+                    color: borderColor.withValues(alpha: 0.75),
+                  ),
                   boxShadow: isDark
                       ? null
                       : [
@@ -188,12 +190,18 @@ class MemosListInlineComposeCard extends StatelessWidget {
                                   ),
                                   label: Text(
                                     memo.label,
-                                    style: TextStyle(fontSize: 12, color: chipText),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: chipText,
+                                    ),
                                   ),
                                   backgroundColor: chipBg,
-                                  deleteIconColor: chipText.withValues(alpha: 0.55),
-                                  onDeleted:
-                                      busy ? null : () => onRemoveLinkedMemo(memo.name),
+                                  deleteIconColor: chipText.withValues(
+                                    alpha: 0.55,
+                                  ),
+                                  onDeleted: busy
+                                      ? null
+                                      : () => onRemoveLinkedMemo(memo.name),
                                 ),
                               )
                               .toList(growable: false),
@@ -259,14 +267,16 @@ class MemosListInlineComposeCard extends StatelessWidget {
                               location != null,
                         );
                         final hintText = shouldShowDraftHint
-                            ? context.t.strings.legacy.msg_draft_box_pending_hint(
-                                count: pendingDraftCount,
-                              )
+                            ? context.t.strings.legacy
+                                  .msg_draft_box_pending_hint(
+                                    count: pendingDraftCount,
+                                  )
                             : context.t.strings.legacy.msg_write_thoughts;
                         final inlineActiveTagQuery = focusNode.hasFocus
                             ? detectActiveTagQuery(value)
                             : null;
-                        final inlineTagSuggestions = inlineActiveTagQuery == null
+                        final inlineTagSuggestions =
+                            inlineActiveTagQuery == null
                             ? const <TagStat>[]
                             : buildTagSuggestions(
                                 tagStats,
@@ -274,10 +284,10 @@ class MemosListInlineComposeCard extends StatelessWidget {
                               );
                         final highlightedInlineTagSuggestionIndex =
                             inlineTagSuggestions.isEmpty
-                                ? 0
-                                : composer.tagAutocompleteIndex
-                                      .clamp(0, inlineTagSuggestions.length - 1)
-                                      .toInt();
+                            ? 0
+                            : composer.tagAutocompleteIndex
+                                  .clamp(0, inlineTagSuggestions.length - 1)
+                                  .toInt();
                         Widget editorRegion = Stack(
                           clipBehavior: Clip.none,
                           children: [
@@ -333,12 +343,14 @@ class MemosListInlineComposeCard extends StatelessWidget {
                                     tagColors: tagColorLookup,
                                     highlightedIndex:
                                         highlightedInlineTagSuggestionIndex,
-                                    onHighlight: composer.setTagAutocompleteIndex,
-                                    onSelect: (tag) => composer.applyTagSuggestion(
-                                      inlineActiveTagQuery,
-                                      tag,
-                                      requestFocus: focusNode.requestFocus,
-                                    ),
+                                    onHighlight:
+                                        composer.setTagAutocompleteIndex,
+                                    onSelect: (tag) =>
+                                        composer.applyTagSuggestion(
+                                          inlineActiveTagQuery,
+                                          tag,
+                                          requestFocus: focusNode.requestFocus,
+                                        ),
                                   ),
                                 ),
                               ),
@@ -421,12 +433,13 @@ class MemosListInlineComposeCard extends StatelessWidget {
                                             duration: const Duration(
                                               milliseconds: 160,
                                             ),
-                                            transitionBuilder: (child, animation) {
-                                              return ScaleTransition(
-                                                scale: animation,
-                                                child: child,
-                                              );
-                                            },
+                                            transitionBuilder:
+                                                (child, animation) {
+                                                  return ScaleTransition(
+                                                    scale: animation,
+                                                    child: child,
+                                                  );
+                                                },
                                             child: Icon(
                                               showSend
                                                   ? Icons.send_rounded
@@ -455,10 +468,11 @@ class MemosListInlineComposeCard extends StatelessWidget {
   }
 }
 
-typedef _InlineComposeMetricsReporterBuilder = Widget Function({
-  required ValueChanged<Size> reportTotalSize,
-  required ValueChanged<Size> reportEditorSize,
-});
+typedef _InlineComposeMetricsReporterBuilder =
+    Widget Function({
+      required ValueChanged<Size> reportTotalSize,
+      required ValueChanged<Size> reportEditorSize,
+    });
 
 class _InlineComposeMetricsReporter extends StatefulWidget {
   const _InlineComposeMetricsReporter({
@@ -495,7 +509,9 @@ class _InlineComposeMetricsReporterState
     final callback = widget.onLayoutMetricsChanged;
     final totalHeight = _totalHeight;
     final editorViewportHeight = _editorViewportHeight;
-    if (callback == null || totalHeight == null || editorViewportHeight == null) {
+    if (callback == null ||
+        totalHeight == null ||
+        editorViewportHeight == null) {
       return;
     }
     callback(
@@ -849,7 +865,6 @@ class _InlineAttachmentTile extends StatelessWidget {
         height: size,
         fit: BoxFit.cover,
         cacheWidth: cacheExtent,
-        cacheHeight: cacheExtent,
         errorBuilder: (context, error, stackTrace) {
           return _InlineAttachmentFallback(
             iconColor: iconColor,

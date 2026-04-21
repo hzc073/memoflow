@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
+import '../../core/app_channel.dart';
 import '../../data/models/image_compression_settings.dart';
 import '../../data/repositories/image_compression_settings_repository.dart';
 import '../sync/sync_coordinator_provider.dart';
@@ -30,25 +32,58 @@ final imageCompressionSettingsProvider =
       );
     });
 
+enum ImageOriginalSelectionMode { hidden, inlinePerAsset, globalBeforePick }
+
 class ImageCompressionUiPolicy {
   const ImageCompressionUiPolicy({
     required this.enabled,
-    required this.showOriginalToggle,
+    required this.useSystemPhotoPicker,
+    required this.originalSelectionMode,
   });
 
   final bool enabled;
-  final bool showOriginalToggle;
+  final bool useSystemPhotoPicker;
+  final ImageOriginalSelectionMode originalSelectionMode;
+
+  bool get showOriginalToggle =>
+      originalSelectionMode == ImageOriginalSelectionMode.inlinePerAsset;
+
+  bool get shouldPromptOriginalBeforePick =>
+      originalSelectionMode == ImageOriginalSelectionMode.globalBeforePick;
 }
 
 final imageCompressionUiPolicyProvider = Provider<ImageCompressionUiPolicy>((
   ref,
 ) {
   final settings = ref.watch(imageCompressionSettingsProvider);
-  return ImageCompressionUiPolicy(
-    enabled: settings.enabled,
-    showOriginalToggle: settings.enabled,
+  final isAndroidPlatform =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  return resolveImageCompressionUiPolicy(
+    settings: settings,
+    isAndroidPlatform: isAndroidPlatform,
+    isPlayChannel: isPlayAppChannel,
   );
 });
+
+@visibleForTesting
+ImageCompressionUiPolicy resolveImageCompressionUiPolicy({
+  required ImageCompressionSettings settings,
+  required bool isAndroidPlatform,
+  required bool isPlayChannel,
+}) {
+  final useSystemPhotoPicker = isAndroidPlatform && isPlayChannel;
+  final originalSelectionMode =
+      !settings.enabled || !isAndroidPlatform
+      ? ImageOriginalSelectionMode.hidden
+      : useSystemPhotoPicker
+      ? ImageOriginalSelectionMode.globalBeforePick
+      : ImageOriginalSelectionMode.inlinePerAsset;
+  return ImageCompressionUiPolicy(
+    enabled: settings.enabled,
+    useSystemPhotoPicker: useSystemPhotoPicker,
+    originalSelectionMode: originalSelectionMode,
+  );
+}
 
 class ImageCompressionSettingsController
     extends StateNotifier<ImageCompressionSettings> {

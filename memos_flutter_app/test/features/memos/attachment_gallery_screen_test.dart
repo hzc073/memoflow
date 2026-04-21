@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:memos_flutter_app/core/scene_micro_guide_widgets.dart';
 import 'package:memos_flutter_app/data/repositories/scene_micro_guide_repository.dart';
 import 'package:memos_flutter_app/features/memos/attachment_gallery_screen.dart';
@@ -107,6 +108,59 @@ void main() {
       resolveAttachmentGalleryPreviewExtent(null, isDesktop: false),
       isNull,
     );
+  });
+
+  test('gallery decode size preserves image aspect ratio', () {
+    final portrait = resolveAttachmentGalleryDecodeSize(
+      const Size(720, 1600),
+      const Size(400, 800),
+      3,
+      isDesktop: false,
+    );
+    expect(portrait, isNotNull);
+    expect(portrait!.width, 864);
+    expect(portrait.height, 1920);
+
+    final landscape = resolveAttachmentGalleryDecodeSize(
+      const Size(1600, 720),
+      const Size(400, 800),
+      3,
+      isDesktop: false,
+    );
+    expect(landscape, isNotNull);
+    expect(landscape!.width, 1800);
+    expect(landscape.height, 810);
+  });
+
+  test('gallery preview size scales down uniformly', () {
+    final preview = resolveAttachmentGalleryPreviewSize((
+      width: 864,
+      height: 1920,
+    ), isDesktop: false);
+    expect(preview, isNotNull);
+    expect(preview!.width, 432);
+    expect(preview.height, 960);
+  });
+
+  test('gallery decode hint uses only dominant axis', () {
+    expect(resolveAttachmentGalleryDecodeHint((width: 864, height: 1920)), (
+      width: 0,
+      height: 1920,
+    ));
+    expect(resolveAttachmentGalleryDecodeHint((width: 1920, height: 864)), (
+      width: 1920,
+      height: 0,
+    ));
+  });
+
+  test('gallery display size parser swaps axes for rotated jpeg', () {
+    final image = img.Image(width: 2, height: 4);
+    image.exif.imageIfd.orientation = 6;
+    final bytes = img.encodeJpg(image);
+    expect(resolveAttachmentGalleryDisplaySizeFromBytes(bytes), (
+      width: 4,
+      height: 2,
+    ));
   });
 
   testWidgets('desktop gallery supports keyboard and click navigation', (

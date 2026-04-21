@@ -9,11 +9,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" tools:replace="android:maxSdkVersion" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <application
         android:label="@string/app_name"
@@ -91,8 +87,8 @@
             android:label="@string/widget_stats_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.memoflow.hzc073.widget.calendar.PREVIOUS_MONTH" />
-                <action android:name="com.memoflow.hzc073.widget.calendar.NEXT_MONTH" />
+                <action android:name="${applicationId}.widget.calendar.PREVIOUS_MONTH" />
+                <action android:name="${applicationId}.widget.calendar.NEXT_MONTH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

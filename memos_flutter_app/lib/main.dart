@@ -8,6 +8,8 @@ import 'package:cryptography_flutter/cryptography_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:video_player_media_kit/video_player_media_kit.dart';
@@ -16,6 +18,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app.dart';
 import 'application/desktop/desktop_tray_controller.dart';
 import 'application/desktop/single_instance_coordinator.dart';
+import 'core/app_channel.dart';
 import 'core/desktop_runtime_role.dart';
 import 'core/debug_ephemeral_storage.dart';
 import 'core/startup_timing.dart';
@@ -26,6 +29,19 @@ import 'features/settings/desktop_settings_window_app.dart';
 
 const String _kMediaKitNativeReferenceHolderPrefix =
     'com.alexmercerind.media_kit.NativeReferenceHolder.';
+
+void _configureAndroidPhotoPicker() {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    return;
+  }
+  if (!isPlayAppChannel) {
+    return;
+  }
+  final imagePickerImplementation = ImagePickerPlatform.instance;
+  if (imagePickerImplementation is ImagePickerAndroid) {
+    imagePickerImplementation.useAndroidPhotoPicker = true;
+  }
+}
 
 void _initializeDesktopDatabaseFactory() {
   if (kIsWeb) return;
@@ -108,6 +124,7 @@ void main(List<String> args) {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      _configureAndroidPhotoPicker();
       StartupTiming.bindFirstFrameTiming();
       final isMultiWindow =
           !kIsWeb && args.isNotEmpty && args.first == 'multi_window';

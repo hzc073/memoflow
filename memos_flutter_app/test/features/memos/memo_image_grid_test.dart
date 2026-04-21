@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/features/memos/memo_image_grid.dart';
 
 void main() {
@@ -53,6 +54,33 @@ void main() {
       );
 
       expect(entries, isEmpty);
+    },
+  );
+
+  test(
+    'attachment image entries preserve intrinsic dimensions for gallery',
+    () {
+      final entries = collectMemoImageEntries(
+        content: '',
+        attachments: const [
+          Attachment(
+            name: 'attachments/demo',
+            filename: 'demo.jpg',
+            type: 'image/jpeg',
+            size: 1024,
+            externalLink: '',
+            width: 1080,
+            height: 2400,
+          ),
+        ],
+        baseUrl: Uri.parse('https://example.com'),
+        authHeader: null,
+      );
+
+      expect(entries, hasLength(1));
+      final source = entries.first.toGallerySource();
+      expect(source.width, 1080);
+      expect(source.height, 2400);
     },
   );
 }

@@ -668,9 +668,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final renderInlineImages = contentHasThirdPartyShareMarker(memo.content);
     final displayContentText = clipCard == null
         ? memo.content
-        : stripMemoClipTitle(memo.content)
-              .replaceAll(buildThirdPartyShareMemoMarker(), '')
-              .trimRight();
+        : stripMemoClipTitle(
+            memo.content,
+          ).replaceAll(buildThirdPartyShareMemoMarker(), '').trimRight();
     final imageEntries =
         deferredContent?.imageEntries ?? const <MemoImageEntry>[];
     final videoEntries =
@@ -1674,6 +1674,8 @@ class _MemoEngagementSectionState
             localFile: null,
             imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
             headers: authHeader == null ? null : {'Authorization': authHeader},
+            width: attachment.width,
+            height: attachment.height,
           );
         })
         .toList(growable: false);

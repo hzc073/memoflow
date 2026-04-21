@@ -24,6 +24,7 @@ import '../../core/image_formats.dart';
 import '../../core/image_error_logger.dart';
 import '../../core/scene_micro_guide_widgets.dart';
 import '../../core/top_toast.dart';
+import '../../data/logs/log_manager.dart';
 import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/system/scene_micro_guide_provider.dart';
@@ -36,6 +37,8 @@ const int _galleryDesktopMaxDecodePx = 1920;
 const double _galleryPreviewDecodeFactor = 0.5;
 const int _galleryMobilePreviewMaxDecodePx = 960;
 const int _galleryDesktopPreviewMaxDecodePx = 1440;
+
+typedef AttachmentGalleryRasterSize = ({int width, int height});
 
 @visibleForTesting
 int? resolveAttachmentGalleryCacheExtent(
@@ -72,6 +75,96 @@ int? resolveAttachmentGalleryPreviewExtent(
   return cappedExtent > fullExtent ? fullExtent : cappedExtent;
 }
 
+@visibleForTesting
+AttachmentGalleryRasterSize? resolveAttachmentGalleryDecodeSize(
+  Size intrinsicSize,
+  Size viewportSize,
+  double devicePixelRatio, {
+  required bool isDesktop,
+}) {
+  if (!intrinsicSize.width.isFinite ||
+      !intrinsicSize.height.isFinite ||
+      intrinsicSize.width <= 0 ||
+      intrinsicSize.height <= 0 ||
+      !viewportSize.width.isFinite ||
+      !viewportSize.height.isFinite ||
+      viewportSize.width <= 0 ||
+      viewportSize.height <= 0 ||
+      devicePixelRatio <= 0) {
+    return null;
+  }
+  final fittedSize = applyBoxFit(
+    BoxFit.contain,
+    intrinsicSize,
+    viewportSize,
+  ).destination;
+  return _scaleAttachmentGallerySize(
+    fittedSize,
+    scale: devicePixelRatio * _galleryDecodeOverscan,
+    maxDimension: isDesktop
+        ? _galleryDesktopMaxDecodePx
+        : _galleryMobileMaxDecodePx,
+  );
+}
+
+@visibleForTesting
+AttachmentGalleryRasterSize? resolveAttachmentGalleryPreviewSize(
+  AttachmentGalleryRasterSize? fullSize, {
+  required bool isDesktop,
+}) {
+  if (fullSize == null) return null;
+  return _scaleAttachmentGallerySize(
+    Size(fullSize.width.toDouble(), fullSize.height.toDouble()),
+    scale: _galleryPreviewDecodeFactor,
+    maxDimension: isDesktop
+        ? _galleryDesktopPreviewMaxDecodePx
+        : _galleryMobilePreviewMaxDecodePx,
+  );
+}
+
+AttachmentGalleryRasterSize? _scaleAttachmentGallerySize(
+  Size size, {
+  required double scale,
+  required int maxDimension,
+}) {
+  if (!size.width.isFinite ||
+      !size.height.isFinite ||
+      size.width <= 0 ||
+      size.height <= 0 ||
+      !scale.isFinite ||
+      scale <= 0 ||
+      maxDimension <= 0) {
+    return null;
+  }
+
+  var scaledWidth = size.width * scale;
+  var scaledHeight = size.height * scale;
+  final largestDimension = math.max(scaledWidth, scaledHeight);
+  if (!largestDimension.isFinite || largestDimension <= 0) {
+    return null;
+  }
+  if (largestDimension > maxDimension) {
+    final downscale = maxDimension / largestDimension;
+    scaledWidth *= downscale;
+    scaledHeight *= downscale;
+  }
+
+  return (
+    width: math.max(1, scaledWidth.round()),
+    height: math.max(1, scaledHeight.round()),
+  );
+}
+
+@visibleForTesting
+AttachmentGalleryRasterSize resolveAttachmentGalleryDecodeHint(
+  AttachmentGalleryRasterSize targetSize,
+) {
+  if (targetSize.width >= targetSize.height) {
+    return (width: targetSize.width, height: 0);
+  }
+  return (width: 0, height: targetSize.height);
+}
+
 class AttachmentImageSource {
   const AttachmentImageSource({
     required this.id,
@@ -80,6 +173,8 @@ class AttachmentImageSource {
     this.localFile,
     this.imageUrl,
     this.headers,
+    this.width,
+    this.height,
   });
 
   final String id;
@@ -88,6 +183,123 @@ class AttachmentImageSource {
   final File? localFile;
   final String? imageUrl;
   final Map<String, String>? headers;
+  final int? width;
+  final int? height;
+
+  AttachmentGalleryRasterSize? get intrinsicSize {
+    final resolvedWidth = width;
+    final resolvedHeight = height;
+    if (resolvedWidth == null ||
+        resolvedHeight == null ||
+        resolvedWidth <= 0 ||
+        resolvedHeight <= 0) {
+      return null;
+    }
+    return (width: resolvedWidth, height: resolvedHeight);
+  }
+}
+
+bool _isSvgAttachmentSource(AttachmentImageSource source) =>
+    shouldUseSvgRenderer(
+      url: source.localFile?.path ?? source.imageUrl ?? '',
+      mimeType: source.mimeType,
+    );
+
+ImageProvider<Object>? _attachmentGalleryOriginalRasterProvider(
+  AttachmentImageSource source,
+) {
+  final file = source.localFile;
+  if (file != null && file.existsSync()) {
+    return FileImage(file);
+  }
+  final url = source.imageUrl?.trim() ?? '';
+  if (url.isNotEmpty) {
+    return CachedNetworkImageProvider(url, headers: source.headers);
+  }
+  return null;
+}
+
+@visibleForTesting
+AttachmentGalleryRasterSize? resolveAttachmentGalleryDisplaySizeFromBytes(
+  Uint8List bytes,
+) {
+  try {
+    final decoder = img.findDecoderForData(bytes);
+    final decoded = decoder?.decode(bytes);
+    if (decoded == null) return null;
+    final orientation = decoded.exif.imageIfd.orientation ?? 1;
+    final swapsAxes = switch (orientation) {
+      5 || 6 || 7 || 8 => true,
+      _ => false,
+    };
+    if (decoded.width <= 0 || decoded.height <= 0) return null;
+    return swapsAxes
+        ? (width: decoded.height, height: decoded.width)
+        : (width: decoded.width, height: decoded.height);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<AttachmentGalleryRasterSize?> _resolveAttachmentGalleryIntrinsicSize(
+  AttachmentImageSource source,
+) async {
+  final knownSize = source.intrinsicSize;
+  if (knownSize != null) return knownSize;
+  if (_isSvgAttachmentSource(source)) return null;
+
+  final provider = _attachmentGalleryOriginalRasterProvider(source);
+  if (provider == null) return null;
+
+  final completer = Completer<AttachmentGalleryRasterSize?>();
+  final stream = provider.resolve(const ImageConfiguration());
+  late final ImageStreamListener listener;
+  listener = ImageStreamListener(
+    (image, _) {
+      if (!completer.isCompleted) {
+        final width = image.image.width;
+        final height = image.image.height;
+        final resolved = width > 0 && height > 0
+            ? (width: width, height: height)
+            : null;
+        LogManager.instance.debug(
+          'AttachmentGallery: intrinsic_size_provider_probe',
+          context: <String, Object?>{
+            'sourceId': source.id,
+            'title': source.title,
+            'resolved': resolved != null,
+            'providerWidth': resolved?.width,
+            'providerHeight': resolved?.height,
+          },
+        );
+        completer.complete(resolved);
+      }
+      stream.removeListener(listener);
+    },
+    onError: (error, stackTrace) {
+      LogManager.instance.warn(
+        'AttachmentGallery: intrinsic_size_provider_probe_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: <String, Object?>{
+          'sourceId': source.id,
+          'title': source.title,
+        },
+      );
+      if (!completer.isCompleted) {
+        completer.complete(null);
+      }
+      stream.removeListener(listener);
+    },
+  );
+  stream.addListener(listener);
+  return completer.future.timeout(
+    const Duration(seconds: 20),
+    onTimeout: () {
+      stream.removeListener(listener);
+      return null;
+    },
+  );
 }
 
 class AttachmentGalleryItem {
@@ -156,6 +368,11 @@ class _AttachmentGalleryScreenState
   int _index = 0;
   bool _busy = false;
   final Set<int> _zoomedImageIndexes = <int>{};
+  final Map<String, AttachmentGalleryRasterSize> _resolvedImageSizes =
+      <String, AttachmentGalleryRasterSize>{};
+  final Set<String> _resolvingImageSizes = <String>{};
+  final Set<String> _failedImageSizeResolutions = <String>{};
+  final Map<String, String> _loggedRenderPlanSignatures = <String, String>{};
 
   bool get _isDesktopGallery =>
       widget.isDesktopOverride ??
@@ -240,6 +457,152 @@ class _AttachmentGalleryScreenState
 
   void _markSceneGuideSeen(SceneMicroGuideId id) {
     unawaited(ref.read(sceneMicroGuideProvider.notifier).markSeen(id));
+  }
+
+  Map<String, Object?> _galleryLogContext(
+    AttachmentImageSource source, {
+    AttachmentGalleryRasterSize? intrinsicSize,
+    Map<String, Object?>? extra,
+  }) {
+    return <String, Object?>{
+      'sourceId': source.id,
+      'title': source.title,
+      'mimeType': source.mimeType,
+      'hasLocalFile': source.localFile != null,
+      'hasImageUrl': (source.imageUrl?.trim().isNotEmpty ?? false),
+      'metadataWidth': source.width,
+      'metadataHeight': source.height,
+      if (intrinsicSize != null) 'intrinsicWidth': intrinsicSize.width,
+      if (intrinsicSize != null) 'intrinsicHeight': intrinsicSize.height,
+      ...?extra,
+    };
+  }
+
+  void _logRenderPlanIfNeeded(
+    AttachmentImageSource source, {
+    required Size viewportSize,
+    required double devicePixelRatio,
+    required AttachmentGalleryRasterSize? intrinsicSize,
+    required bool shouldWaitForIntrinsicSize,
+    required AttachmentGalleryRasterSize? cacheSize,
+    required AttachmentGalleryRasterSize? previewSize,
+    required AttachmentGalleryRasterSize? cacheHint,
+    required AttachmentGalleryRasterSize? previewHint,
+  }) {
+    final signature =
+        '${viewportSize.width.toStringAsFixed(1)}x${viewportSize.height.toStringAsFixed(1)}'
+        '|dpr=${devicePixelRatio.toStringAsFixed(2)}'
+        '|intrinsic=${intrinsicSize?.width ?? 0}x${intrinsicSize?.height ?? 0}'
+        '|wait=$shouldWaitForIntrinsicSize'
+        '|cache=${cacheSize?.width ?? 0}x${cacheSize?.height ?? 0}'
+        '|preview=${previewSize?.width ?? 0}x${previewSize?.height ?? 0}'
+        '|cacheHint=${cacheHint?.width ?? 0}x${cacheHint?.height ?? 0}'
+        '|previewHint=${previewHint?.width ?? 0}x${previewHint?.height ?? 0}';
+    final lastSignature = _loggedRenderPlanSignatures[source.id];
+    if (lastSignature == signature) return;
+    _loggedRenderPlanSignatures[source.id] = signature;
+    LogManager.instance.debug(
+      'AttachmentGallery: render_plan',
+      context: _galleryLogContext(
+        source,
+        intrinsicSize: intrinsicSize,
+        extra: <String, Object?>{
+          'viewportWidth': viewportSize.width,
+          'viewportHeight': viewportSize.height,
+          'devicePixelRatio': devicePixelRatio,
+          'waitingForIntrinsicSize': shouldWaitForIntrinsicSize,
+          'cacheWidth': cacheSize?.width,
+          'cacheHeight': cacheSize?.height,
+          'previewWidth': previewSize?.width,
+          'previewHeight': previewSize?.height,
+          'cacheHintWidth': cacheHint?.width,
+          'cacheHintHeight': cacheHint?.height,
+          'previewHintWidth': previewHint?.width,
+          'previewHintHeight': previewHint?.height,
+        },
+      ),
+    );
+  }
+
+  AttachmentGalleryRasterSize? _resolvedIntrinsicSizeFor(
+    AttachmentImageSource source,
+  ) {
+    return source.intrinsicSize ?? _resolvedImageSizes[source.id];
+  }
+
+  bool _canResolveIntrinsicSize(AttachmentImageSource source) {
+    if (_resolvedIntrinsicSizeFor(source) != null) return false;
+    if (_failedImageSizeResolutions.contains(source.id)) return false;
+    if (_isSvgAttachmentSource(source)) return false;
+    return _attachmentGalleryOriginalRasterProvider(source) != null;
+  }
+
+  void _scheduleIntrinsicSizeResolution(AttachmentImageSource source) {
+    if (!_canResolveIntrinsicSize(source)) return;
+    if (!_resolvingImageSizes.add(source.id)) return;
+    LogManager.instance.debug(
+      'AttachmentGallery: intrinsic_size_resolve_start',
+      context: _galleryLogContext(source),
+    );
+    unawaited(() async {
+      AttachmentGalleryRasterSize? fileResolved;
+      final file = source.localFile;
+      if (file != null && file.existsSync()) {
+        try {
+          final bytes = await file.readAsBytes();
+          fileResolved = await compute(
+            resolveAttachmentGalleryDisplaySizeFromBytes,
+            bytes,
+          );
+          LogManager.instance.debug(
+            'AttachmentGallery: intrinsic_size_file_probe',
+            context: _galleryLogContext(
+              source,
+              intrinsicSize: fileResolved,
+              extra: <String, Object?>{
+                'filePath': file.path,
+                'fileBytes': bytes.length,
+                'resolvedFromFileBytes': fileResolved != null,
+              },
+            ),
+          );
+        } catch (error, stackTrace) {
+          LogManager.instance.warn(
+            'AttachmentGallery: intrinsic_size_file_probe_failed',
+            error: error,
+            stackTrace: stackTrace,
+            context: _galleryLogContext(
+              source,
+              extra: <String, Object?>{'filePath': file.path},
+            ),
+          );
+        }
+      }
+      final resolved =
+          fileResolved ?? await _resolveAttachmentGalleryIntrinsicSize(source);
+      LogManager.instance.debug(
+        'AttachmentGallery: intrinsic_size_resolve_done',
+        context: _galleryLogContext(
+          source,
+          intrinsicSize: resolved,
+          extra: <String, Object?>{
+            'resolved': resolved != null,
+            'usedFileProbe': fileResolved != null,
+            'usedProviderFallback': fileResolved == null,
+          },
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _resolvingImageSizes.remove(source.id);
+        if (resolved != null) {
+          _resolvedImageSizes[source.id] = resolved;
+          _failedImageSizeResolutions.remove(source.id);
+        } else {
+          _failedImageSizeResolutions.add(source.id);
+        }
+      });
+    }());
   }
 
   KeyEventResult _handleGalleryKeyEvent(KeyEvent event) {
@@ -901,23 +1264,43 @@ class _AttachmentGalleryScreenState
               ? constraints.maxHeight
               : mediaSize.height;
           final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
-          final cacheWidth = resolveAttachmentGalleryCacheExtent(
-            viewportWidth,
-            devicePixelRatio,
+          final intrinsicSize = _resolvedIntrinsicSizeFor(source);
+          final shouldWaitForIntrinsicSize =
+              intrinsicSize == null && _canResolveIntrinsicSize(source);
+          if (shouldWaitForIntrinsicSize) {
+            _scheduleIntrinsicSizeResolution(source);
+          }
+          final cacheSize = intrinsicSize == null
+              ? null
+              : resolveAttachmentGalleryDecodeSize(
+                  Size(
+                    intrinsicSize.width.toDouble(),
+                    intrinsicSize.height.toDouble(),
+                  ),
+                  Size(viewportWidth, viewportHeight),
+                  devicePixelRatio,
+                  isDesktop: _isDesktopGallery,
+                );
+          final previewSize = resolveAttachmentGalleryPreviewSize(
+            cacheSize,
             isDesktop: _isDesktopGallery,
           );
-          final cacheHeight = resolveAttachmentGalleryCacheExtent(
-            viewportHeight,
-            devicePixelRatio,
-            isDesktop: _isDesktopGallery,
-          );
-          final previewCacheWidth = resolveAttachmentGalleryPreviewExtent(
-            cacheWidth,
-            isDesktop: _isDesktopGallery,
-          );
-          final previewCacheHeight = resolveAttachmentGalleryPreviewExtent(
-            cacheHeight,
-            isDesktop: _isDesktopGallery,
+          final cacheHint = cacheSize == null
+              ? null
+              : resolveAttachmentGalleryDecodeHint(cacheSize);
+          final previewHint = previewSize == null
+              ? null
+              : resolveAttachmentGalleryDecodeHint(previewSize);
+          _logRenderPlanIfNeeded(
+            source,
+            viewportSize: Size(viewportWidth, viewportHeight),
+            devicePixelRatio: devicePixelRatio,
+            intrinsicSize: intrinsicSize,
+            shouldWaitForIntrinsicSize: shouldWaitForIntrinsicSize,
+            cacheSize: cacheSize,
+            previewSize: previewSize,
+            cacheHint: cacheHint,
+            previewHint: previewHint,
           );
 
           return _AttachmentGalleryZoomableImage(
@@ -932,13 +1315,25 @@ class _AttachmentGalleryScreenState
               SceneMicroGuideId.attachmentGalleryControls,
             ),
             child: Center(
-              child: _buildImage(
-                source,
-                previewCacheWidth: previewCacheWidth,
-                previewCacheHeight: previewCacheHeight,
-                cacheWidth: cacheWidth,
-                cacheHeight: cacheHeight,
-              ),
+              child: shouldWaitForIntrinsicSize
+                  ? _buildLoadingIndicator(context)
+                  : _buildImage(
+                      source,
+                      previewCacheWidth:
+                          previewHint == null || previewHint.width == 0
+                          ? null
+                          : previewHint.width,
+                      previewCacheHeight:
+                          previewHint == null || previewHint.height == 0
+                          ? null
+                          : previewHint.height,
+                      cacheWidth: cacheHint == null || cacheHint.width == 0
+                          ? null
+                          : cacheHint.width,
+                      cacheHeight: cacheHint == null || cacheHint.height == 0
+                          ? null
+                          : cacheHint.height,
+                    ),
             ),
           );
         },

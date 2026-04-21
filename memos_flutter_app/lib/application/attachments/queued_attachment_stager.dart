@@ -4,6 +4,11 @@ import 'package:path/path.dart' as p;
 import 'package:saf_stream/saf_stream.dart';
 
 import '../../core/debug_ephemeral_storage.dart';
+import '../../data/logs/log_manager.dart';
+import 'compression/compression_source_probe.dart';
+
+const CompressionSourceProbeService _queuedAttachmentProbeService =
+    CompressionSourceProbeService();
 
 typedef CopyContentUriToLocalFile =
     Future<void> Function(String sourceUri, String destinationPath);
@@ -50,25 +55,59 @@ class QueuedAttachmentStager {
     required int size,
     required String scopeKey,
   }) async {
-    final stagedPath = await _stageFile(
-      uid: uid,
+    final normalizedUid = uid.trim();
+    final resolvedMimeType = mimeType.trim().isEmpty
+        ? 'application/octet-stream'
+        : mimeType.trim();
+    await _logStageStart(
+      uid: normalizedUid,
+      scopeKey: scopeKey,
       filePath: filePath,
       filename: filename,
-      scopeKey: scopeKey,
+      mimeType: resolvedMimeType,
+      requestedSize: size,
     );
-    final stagedFile = File(stagedPath);
-    final stagedSize = stagedFile.existsSync()
-        ? await stagedFile.length()
-        : size;
-    return StagedAttachment(
-      uid: uid.trim(),
-      filePath: stagedPath,
-      filename: _normalizeFilename(filename, filePath: stagedPath, uid: uid),
-      mimeType: mimeType.trim().isEmpty
-          ? 'application/octet-stream'
-          : mimeType.trim(),
-      size: stagedSize,
-    );
+    try {
+      final stagedPath = await _stageFile(
+        uid: uid,
+        filePath: filePath,
+        filename: filename,
+        scopeKey: scopeKey,
+      );
+      final stagedFile = File(stagedPath);
+      final stagedSize = stagedFile.existsSync()
+          ? await stagedFile.length()
+          : size;
+      final staged = StagedAttachment(
+        uid: normalizedUid,
+        filePath: stagedPath,
+        filename: _normalizeFilename(filename, filePath: stagedPath, uid: uid),
+        mimeType: resolvedMimeType,
+        size: stagedSize,
+      );
+      await _logStageComplete(
+        uid: normalizedUid,
+        scopeKey: scopeKey,
+        originalPath: filePath,
+        staged: staged,
+      );
+      return staged;
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'QueuedAttachmentStager: stage_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: {
+          'uid': normalizedUid,
+          'scopeKey': scopeKey,
+          'filePath': filePath,
+          'filename': filename,
+          'mimeType': resolvedMimeType,
+          'requestedSize': size,
+        },
+      );
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> stageUploadPayload(
@@ -270,5 +309,153 @@ class QueuedAttachmentStager {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value.trim()) ?? 0;
     return 0;
+  }
+
+  Future<void> _logStageStart({
+    required String uid,
+    required String scopeKey,
+    required String filePath,
+    required String filename,
+    required String mimeType,
+    required int requestedSize,
+  }) async {
+    final sourceContext = await _buildAttachmentLogContext(
+      filePath: filePath,
+      filename: filename,
+      mimeType: mimeType,
+      prefix: 'source',
+    );
+    LogManager.instance.debug(
+      'QueuedAttachmentStager: stage_start',
+      context: {
+        'uid': uid,
+        'scopeKey': scopeKey,
+        'requestedSize': requestedSize,
+        ...sourceContext,
+      },
+    );
+  }
+
+  Future<void> _logStageComplete({
+    required String uid,
+    required String scopeKey,
+    required String originalPath,
+    required StagedAttachment staged,
+  }) async {
+    final sourceContext = await _buildAttachmentLogContext(
+      filePath: originalPath,
+      filename: staged.filename,
+      mimeType: staged.mimeType,
+      prefix: 'source',
+    );
+    final stagedContext = await _buildAttachmentLogContext(
+      filePath: staged.filePath,
+      filename: staged.filename,
+      mimeType: staged.mimeType,
+      prefix: 'staged',
+    );
+    LogManager.instance.info(
+      'QueuedAttachmentStager: stage_complete',
+      context: {
+        'uid': uid,
+        'scopeKey': scopeKey,
+        'pathChanged':
+            _normalizePath(originalPath) != _normalizePath(staged.filePath),
+        ..._buildAttachmentDeltaContext(
+          sourceContext: sourceContext,
+          stagedContext: stagedContext,
+        ),
+        ...sourceContext,
+        ...stagedContext,
+      },
+    );
+  }
+
+  Future<Map<String, Object?>> _buildAttachmentLogContext({
+    required String filePath,
+    required String filename,
+    required String mimeType,
+    required String prefix,
+  }) async {
+    final normalizedPath = _normalizePath(filePath);
+    final file = File(normalizedPath);
+    final exists = normalizedPath.isNotEmpty && await file.exists();
+    final context = <String, Object?>{
+      '${prefix}Path': normalizedPath,
+      '${prefix}Exists': exists,
+      '${prefix}MimeType': mimeType,
+      '${prefix}IsContentUri': normalizedPath.startsWith('content://'),
+    };
+    if (!exists) {
+      return context;
+    }
+    context['${prefix}FileSize'] = await file.length();
+    if (!mimeType.toLowerCase().startsWith('image/')) {
+      return context;
+    }
+    final probe = await _queuedAttachmentProbeService.probe(
+      path: normalizedPath,
+      filename: filename,
+      mimeType: mimeType,
+    );
+    context.addAll({
+      '${prefix}ImageFormat': probe.format.name,
+      '${prefix}RawWidth': probe.width,
+      '${prefix}RawHeight': probe.height,
+      '${prefix}DisplayWidth': probe.displayWidth,
+      '${prefix}DisplayHeight': probe.displayHeight,
+      '${prefix}Orientation': probe.orientation,
+    });
+    return context;
+  }
+
+  Map<String, Object?> _buildAttachmentDeltaContext({
+    required Map<String, Object?> sourceContext,
+    required Map<String, Object?> stagedContext,
+  }) {
+    int? readInt(Map<String, Object?> ctx, String key) {
+      final raw = ctx[key];
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw.trim());
+      return null;
+    }
+
+    String? readString(Map<String, Object?> ctx, String key) {
+      final raw = ctx[key];
+      if (raw is! String) return null;
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    double? scale(int? source, int? target) {
+      if (source == null || target == null || source <= 0) return null;
+      return double.parse((target / source).toStringAsFixed(3));
+    }
+
+    final sourceSize = readInt(sourceContext, 'sourceFileSize');
+    final stagedSize = readInt(stagedContext, 'stagedFileSize');
+    final sourceDisplayWidth = readInt(sourceContext, 'sourceDisplayWidth');
+    final sourceDisplayHeight = readInt(sourceContext, 'sourceDisplayHeight');
+    final stagedDisplayWidth = readInt(stagedContext, 'stagedDisplayWidth');
+    final stagedDisplayHeight = readInt(stagedContext, 'stagedDisplayHeight');
+
+    return {
+      'sourceImageFormat': readString(sourceContext, 'sourceImageFormat'),
+      'stagedImageFormat': readString(stagedContext, 'stagedImageFormat'),
+      'fileSizeDelta': (stagedSize != null && sourceSize != null)
+          ? stagedSize - sourceSize
+          : null,
+      'displayWidthDelta':
+          (stagedDisplayWidth != null && sourceDisplayWidth != null)
+          ? stagedDisplayWidth - sourceDisplayWidth
+          : null,
+      'displayHeightDelta':
+          (stagedDisplayHeight != null && sourceDisplayHeight != null)
+          ? stagedDisplayHeight - sourceDisplayHeight
+          : null,
+      'displayWidthScale': scale(sourceDisplayWidth, stagedDisplayWidth),
+      'displayHeightScale': scale(sourceDisplayHeight, stagedDisplayHeight),
+    };
   }
 }

@@ -1541,6 +1541,8 @@ legacy:
   msg_open_settings: 設定を開く
   msg_ordered_list: 順序付きリスト
   msg_original_image: オリジナル
+  msg_gallery_system_picker_original_desc: 選択した画像をアップロード前に圧縮しないかどうかを選択します。
+  msg_gallery_system_picker_original_switch: 選択した画像をオリジナル画質でアップロード
   msg_password_feature_placeholder: パスワードのサポートは現在プレースホルダーであり、まだ強制されていません。
   msg_paste: ペースト
   msg_press_new_shortcut: 新しいショートカットを押します...

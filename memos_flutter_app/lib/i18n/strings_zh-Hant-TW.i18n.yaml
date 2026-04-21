@@ -1491,6 +1491,8 @@ legacy:
   msg_files_unavailable_from_picker: "選擇器中的檔案不可用。"
   msg_no_files_selected: "未選擇檔案。"
   msg_original_image: "\u539f\u5716"
+  msg_gallery_system_picker_original_desc: "選擇所選圖片在上傳前是否跳過壓縮。"
+  msg_gallery_system_picker_original_switch: "以原圖品質上傳所選圖片"
   msg_gallery_original_selection_summary: "\u5df2\u9078 $selectedCount \u00b7 \u539f\u5716 $originalCount"
   msg_added_files: "已新增 $count 個檔案"
   msg_unavailable_file_count: "$count 個不可用"

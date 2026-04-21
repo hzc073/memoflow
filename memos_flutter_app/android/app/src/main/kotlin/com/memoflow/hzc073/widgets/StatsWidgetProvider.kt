@@ -15,13 +15,13 @@ class StatsWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "onReceive action=${intent.action}")
         when (intent.action) {
-            ACTION_PREVIOUS_MONTH -> {
+            actionPreviousMonth(context) -> {
                 Log.d(TAG, "previous month requested")
                 WidgetCalendarStore.shiftDisplayedMonth(context, deltaMonths = -1)
                 updateAllWidgets(context)
                 return
             }
-            ACTION_NEXT_MONTH -> {
+            actionNextMonth(context) -> {
                 Log.d(TAG, "next month requested")
                 WidgetCalendarStore.shiftDisplayedMonth(context, deltaMonths = 1)
                 updateAllWidgets(context)
@@ -42,10 +42,14 @@ class StatsWidgetProvider : AppWidgetProvider() {
 
     companion object {
         private const val TAG = "StatsWidgetProvider"
-        private const val ACTION_PREVIOUS_MONTH = "com.memoflow.hzc073.widget.calendar.PREVIOUS_MONTH"
-        private const val ACTION_NEXT_MONTH = "com.memoflow.hzc073.widget.calendar.NEXT_MONTH"
         private const val REQUEST_PREVIOUS_MONTH = 9201
         private const val REQUEST_NEXT_MONTH = 9202
+
+        private fun actionPreviousMonth(context: Context) =
+            "${context.packageName}.widget.calendar.PREVIOUS_MONTH"
+
+        private fun actionNextMonth(context: Context) =
+            "${context.packageName}.widget.calendar.NEXT_MONTH"
 
         fun updateAllWidgets(context: Context) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
@@ -71,7 +75,11 @@ class StatsWidgetProvider : AppWidgetProvider() {
         }
 
         fun changeMonthPendingIntent(context: Context, deltaMonths: Int): PendingIntent {
-            val action = if (deltaMonths < 0) ACTION_PREVIOUS_MONTH else ACTION_NEXT_MONTH
+            val action = if (deltaMonths < 0) {
+                actionPreviousMonth(context)
+            } else {
+                actionNextMonth(context)
+            }
             val requestCode = if (deltaMonths < 0) REQUEST_PREVIOUS_MONTH else REQUEST_NEXT_MONTH
             Log.d(TAG, "create changeMonthPendingIntent deltaMonths=$deltaMonths action=$action requestCode=$requestCode")
             val intent = Intent(context, StatsWidgetProvider::class.java).apply {

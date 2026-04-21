@@ -1114,6 +1114,29 @@ class LocalSyncController extends SyncControllerBase {
         skipCompression: skipCompression,
       ),
     );
+    LogManager.instance.info(
+      'LocalSync attachment: preprocess_ready',
+      context: {
+        'memoUid': memoUid,
+        'attachmentUid': uid,
+        'sourcePath': filePath,
+        'processedPath': processed.filePath,
+        'sourceFilename': filename,
+        'processedFilename': processed.filename,
+        'sourceMimeType': mimeType,
+        'processedMimeType': processed.mimeType,
+        'skipCompression': skipCompression,
+        ...buildAttachmentPreprocessResultLogContext(processed),
+        'engine': processed.engine,
+        'engineVersion': processed.engineVersion,
+        'fromCache': processed.fromCache,
+        'fallback': processed.fallback,
+        'wasConverted': processed.wasConverted,
+        'wasResized': processed.wasResized,
+        'processedOutputFormat': processed.effectiveOutputFormat?.name,
+        'fallbackReason': processed.fallbackReason?.name,
+      },
+    );
     final archiveName = attachmentArchiveNameFromPayload(
       attachmentUid: uid,
       filename: processed.filename,

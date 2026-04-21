@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 9665 (1933 per locale)
+/// Strings: 9670 (1934 per locale)
 ///
-/// Built on 2026-04-20 at 01:06 UTC
+/// Built on 2026-04-20 at 14:35 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1528,6 +1528,8 @@ class _StringsStringsLegacyEn {
 	String get msg_files_unavailable_from_picker => 'Files unavailable from picker.';
 	String get msg_no_files_selected => 'No files selected.';
 	String get msg_original_image => 'Original';
+	String get msg_gallery_system_picker_original_desc => 'Choose whether selected images should skip compression before upload.';
+	String get msg_gallery_system_picker_original_switch => 'Upload selected images in original quality';
 	String msg_gallery_original_selection_summary({required Object selectedCount, required Object originalCount}) => 'Selected ${selectedCount} · Original ${originalCount}';
 	String msg_added_files({required Object count}) => 'Added ${count} file(s).';
 	String msg_unavailable_file_count({required Object count}) => '${count} unavailable';
@@ -4084,6 +4086,8 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_open_settings => 'Einstellungen öffnen';
 	@override String get msg_ordered_list => 'Geordnete Liste';
 	@override String get msg_original_image => 'Original';
+	@override String get msg_gallery_system_picker_original_desc => 'Wählen Sie, ob ausgewählte Bilder vor dem Hochladen die Komprimierung überspringen sollen.';
+	@override String get msg_gallery_system_picker_original_switch => 'Ausgewählte Bilder in Originalqualität hochladen';
 	@override String get msg_password_feature_placeholder => 'Die Passwortunterstützung ist derzeit ein Platzhalter und noch nicht durchgesetzt.';
 	@override String get msg_paste => 'Paste';
 	@override String get msg_press_new_shortcut => 'Drücken Sie die neue Verknüpfung...';
@@ -6516,6 +6520,8 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_open_settings => '設定を開く';
 	@override String get msg_ordered_list => '順序付きリスト';
 	@override String get msg_original_image => 'オリジナル';
+	@override String get msg_gallery_system_picker_original_desc => '選択した画像をアップロード前に圧縮しないかどうかを選択します。';
+	@override String get msg_gallery_system_picker_original_switch => '選択した画像をオリジナル画質でアップロード';
 	@override String get msg_password_feature_placeholder => 'パスワードのサポートは現在プレースホルダーであり、まだ強制されていません。';
 	@override String get msg_paste => 'ペースト';
 	@override String get msg_press_new_shortcut => '新しいショートカットを押します...';
@@ -8921,6 +8927,8 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_files_unavailable_from_picker => '选择器中的文件不可用。';
 	@override String get msg_no_files_selected => '未选择文件。';
 	@override String get msg_original_image => '原图';
+	@override String get msg_gallery_system_picker_original_desc => '选择所选图片在上传前是否跳过压缩。';
+	@override String get msg_gallery_system_picker_original_switch => '以原图质量上传所选图片';
 	@override String msg_gallery_original_selection_summary({required Object selectedCount, required Object originalCount}) => '已选 ${selectedCount} · 原图 ${originalCount}';
 	@override String msg_added_files({required Object count}) => '已添加 ${count} 个文件';
 	@override String msg_unavailable_file_count({required Object count}) => '${count} 个不可用';
@@ -11451,6 +11459,8 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_files_unavailable_from_picker => '選擇器中的檔案不可用。';
 	@override String get msg_no_files_selected => '未選擇檔案。';
 	@override String get msg_original_image => '原圖';
+	@override String get msg_gallery_system_picker_original_desc => '選擇所選圖片在上傳前是否跳過壓縮。';
+	@override String get msg_gallery_system_picker_original_switch => '以原圖品質上傳所選圖片';
 	@override String msg_gallery_original_selection_summary({required Object selectedCount, required Object originalCount}) => '已選 ${selectedCount} · 原圖 ${originalCount}';
 	@override String msg_added_files({required Object count}) => '已新增 ${count} 個檔案';
 	@override String msg_unavailable_file_count({required Object count}) => '${count} 個不可用';
@@ -13999,6 +14009,8 @@ extension on Translations {
 			case 'strings.legacy.msg_files_unavailable_from_picker': return 'Files unavailable from picker.';
 			case 'strings.legacy.msg_no_files_selected': return 'No files selected.';
 			case 'strings.legacy.msg_original_image': return 'Original';
+			case 'strings.legacy.msg_gallery_system_picker_original_desc': return 'Choose whether selected images should skip compression before upload.';
+			case 'strings.legacy.msg_gallery_system_picker_original_switch': return 'Upload selected images in original quality';
 			case 'strings.legacy.msg_gallery_original_selection_summary': return ({required Object selectedCount, required Object originalCount}) => 'Selected ${selectedCount} · Original ${originalCount}';
 			case 'strings.legacy.msg_added_files': return ({required Object count}) => 'Added ${count} file(s).';
 			case 'strings.legacy.msg_unavailable_file_count': return ({required Object count}) => '${count} unavailable';
@@ -16019,6 +16031,8 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_open_settings': return 'Einstellungen öffnen';
 			case 'strings.legacy.msg_ordered_list': return 'Geordnete Liste';
 			case 'strings.legacy.msg_original_image': return 'Original';
+			case 'strings.legacy.msg_gallery_system_picker_original_desc': return 'Wählen Sie, ob ausgewählte Bilder vor dem Hochladen die Komprimierung überspringen sollen.';
+			case 'strings.legacy.msg_gallery_system_picker_original_switch': return 'Ausgewählte Bilder in Originalqualität hochladen';
 			case 'strings.legacy.msg_password_feature_placeholder': return 'Die Passwortunterstützung ist derzeit ein Platzhalter und noch nicht durchgesetzt.';
 			case 'strings.legacy.msg_paste': return 'Paste';
 			case 'strings.legacy.msg_press_new_shortcut': return 'Drücken Sie die neue Verknüpfung...';
@@ -17911,6 +17925,8 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_open_settings': return '設定を開く';
 			case 'strings.legacy.msg_ordered_list': return '順序付きリスト';
 			case 'strings.legacy.msg_original_image': return 'オリジナル';
+			case 'strings.legacy.msg_gallery_system_picker_original_desc': return '選択した画像をアップロード前に圧縮しないかどうかを選択します。';
+			case 'strings.legacy.msg_gallery_system_picker_original_switch': return '選択した画像をオリジナル画質でアップロード';
 			case 'strings.legacy.msg_password_feature_placeholder': return 'パスワードのサポートは現在プレースホルダーであり、まだ強制されていません。';
 			case 'strings.legacy.msg_paste': return 'ペースト';
 			case 'strings.legacy.msg_press_new_shortcut': return '新しいショートカットを押します...';
@@ -19762,6 +19778,8 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_files_unavailable_from_picker': return '选择器中的文件不可用。';
 			case 'strings.legacy.msg_no_files_selected': return '未选择文件。';
 			case 'strings.legacy.msg_original_image': return '原图';
+			case 'strings.legacy.msg_gallery_system_picker_original_desc': return '选择所选图片在上传前是否跳过压缩。';
+			case 'strings.legacy.msg_gallery_system_picker_original_switch': return '以原图质量上传所选图片';
 			case 'strings.legacy.msg_gallery_original_selection_summary': return ({required Object selectedCount, required Object originalCount}) => '已选 ${selectedCount} · 原图 ${originalCount}';
 			case 'strings.legacy.msg_added_files': return ({required Object count}) => '已添加 ${count} 个文件';
 			case 'strings.legacy.msg_unavailable_file_count': return ({required Object count}) => '${count} 个不可用';
@@ -21743,6 +21761,8 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_files_unavailable_from_picker': return '選擇器中的檔案不可用。';
 			case 'strings.legacy.msg_no_files_selected': return '未選擇檔案。';
 			case 'strings.legacy.msg_original_image': return '原圖';
+			case 'strings.legacy.msg_gallery_system_picker_original_desc': return '選擇所選圖片在上傳前是否跳過壓縮。';
+			case 'strings.legacy.msg_gallery_system_picker_original_switch': return '以原圖品質上傳所選圖片';
 			case 'strings.legacy.msg_gallery_original_selection_summary': return ({required Object selectedCount, required Object originalCount}) => '已選 ${selectedCount} · 原圖 ${originalCount}';
 			case 'strings.legacy.msg_added_files': return ({required Object count}) => '已新增 ${count} 個檔案';
 			case 'strings.legacy.msg_unavailable_file_count': return ({required Object count}) => '${count} 個不可用';

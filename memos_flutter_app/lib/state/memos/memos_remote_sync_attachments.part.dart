@@ -64,6 +64,30 @@ extension _RemoteSyncAttachments on RemoteSyncController {
         skipCompression: skipCompression,
       ),
     );
+    LogManager.instance.info(
+      'AttachmentUpload: preprocess_ready',
+      context: {
+        'memoUid': memoUid,
+        'attachmentUid': uid,
+        'sourcePath': filePath,
+        'processedPath': processed.filePath,
+        'sourceFilename': filename,
+        'processedFilename': processed.filename,
+        'sourceMimeType': mimeType,
+        'processedMimeType': processed.mimeType,
+        'skipCompression': skipCompression,
+        'shareInlineImage': shareInlineImage,
+        ...buildAttachmentPreprocessResultLogContext(processed),
+        'engine': processed.engine,
+        'engineVersion': processed.engineVersion,
+        'fromCache': processed.fromCache,
+        'fallback': processed.fallback,
+        'wasConverted': processed.wasConverted,
+        'wasResized': processed.wasResized,
+        'processedOutputFormat': processed.effectiveOutputFormat?.name,
+        'fallbackReason': processed.fallbackReason?.name,
+      },
+    );
     final processedFile = File(processed.filePath);
     if (!processedFile.existsSync()) {
       throw FileSystemException('File not found', processed.filePath);
@@ -453,11 +477,12 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       throw StateError('Memo not found: $memoUid');
     }
     final memo = LocalMemo.fromDb(row);
-    final rewrittenContent = await _rewriteThirdPartyShareInlineUrlsForRemoteContent(
-      controller: this,
-      memoUid: memo.uid,
-      content: memo.content,
-    );
+    final rewrittenContent =
+        await _rewriteThirdPartyShareInlineUrlsForRemoteContent(
+          controller: this,
+          memoUid: memo.uid,
+          content: memo.content,
+        );
     await api.updateMemo(
       memoUid: memo.uid,
       content: rewrittenContent,
@@ -707,6 +732,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
     };
 
     var changed = false;
+    final updatedEntries = <Map<String, Object?>>[];
     final out = <Map<String, dynamic>>[];
     for (final item in decoded) {
       if (item is! Map) continue;
@@ -725,6 +751,24 @@ extension _RemoteSyncAttachments on RemoteSyncController {
         if (width != null) next['width'] = width;
         if (height != null) next['height'] = height;
         if (hash != null) next['hash'] = hash;
+        updatedEntries.add({
+          'matchedName': name,
+          'matchedFilename': fn,
+          'previousFilename': m['filename'],
+          'nextFilename': next['filename'],
+          'previousType': m['type'],
+          'nextType': next['type'],
+          'previousSize': m['size'],
+          'nextSize': next['size'],
+          'previousWidth': m['width'],
+          'nextWidth': next['width'],
+          'previousHeight': m['height'],
+          'nextHeight': next['height'],
+          'previousExternalLink': m['externalLink'],
+          'nextExternalLink': next['externalLink'],
+          'previousHash': m['hash'],
+          'nextHash': next['hash'],
+        });
         out.add(next);
         changed = true;
         continue;
@@ -736,6 +780,15 @@ extension _RemoteSyncAttachments on RemoteSyncController {
     await _mutations.updateMemoAttachmentsJson(
       memoUid,
       attachmentsJson: jsonEncode(out),
+    );
+    LogManager.instance.info(
+      'AttachmentUpload: local_meta_updated',
+      context: {
+        'memoUid': memoUid,
+        'localAttachmentUid': localAttachmentUid,
+        'updatedCount': updatedEntries.length,
+        'updatedEntries': updatedEntries,
+      },
     );
   }
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
@@ -7,6 +8,8 @@ import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 import 'package:memos_flutter_app/data/models/image_compression_settings.dart';
 import 'package:memos_flutter_app/features/memos/gallery_attachment_original_picker.dart';
 import 'package:memos_flutter_app/features/memos/gallery_attachment_picker.dart';
+import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/state/settings/image_compression_settings_provider.dart';
 
 AssetEntity _asset({
   required String id,
@@ -19,6 +22,17 @@ AssetEntity _asset({
     width: 16,
     height: 16,
     title: title,
+  );
+}
+
+ImageCompressionUiPolicy _compressionPolicy({
+  required bool useSystemPhotoPicker,
+  required ImageOriginalSelectionMode originalSelectionMode,
+}) {
+  return ImageCompressionUiPolicy(
+    enabled: true,
+    useSystemPhotoPicker: useSystemPhotoPicker,
+    originalSelectionMode: originalSelectionMode,
   );
 }
 
@@ -109,6 +123,64 @@ void main() {
     expect(attachment.source, PickedLocalAttachmentSource.camera);
     expect(attachment.skipCompression, isFalse);
   });
+
+  test('shouldSkipCompressionForSystemPickedFile only applies to images', () {
+    expect(
+      shouldSkipCompressionForSystemPickedFile(
+        mimeType: 'image/png',
+        uploadOriginalImages: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldSkipCompressionForSystemPickedFile(
+        mimeType: 'video/mp4',
+        uploadOriginalImages: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSkipCompressionForSystemPickedFile(
+        mimeType: 'image/jpeg',
+        uploadOriginalImages: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'buildGalleryAttachmentPickResultFromSystemPickerFiles marks only images as original',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'memo_gallery_system_picker_test',
+      );
+      addTearDown(() async {
+        if (tempDir.existsSync()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      final imageFile = File('${tempDir.path}${Platform.pathSeparator}picked.png')
+        ..writeAsBytesSync(const [1, 2, 3, 4]);
+      final videoFile = File('${tempDir.path}${Platform.pathSeparator}picked.mp4')
+        ..writeAsBytesSync(const [1, 2, 3]);
+
+      final result = buildGalleryAttachmentPickResultFromSystemPickerFiles(
+        files: [
+          XFile(imageFile.path),
+          XFile(videoFile.path),
+          XFile('${tempDir.path}${Platform.pathSeparator}missing.jpg'),
+        ],
+        uploadOriginalImages: true,
+      );
+
+      expect(result.skippedCount, 1);
+      expect(result.attachments, hasLength(2));
+      expect(result.attachments.first.skipCompression, isTrue);
+      expect(result.attachments.first.mimeType, 'image/png');
+      expect(result.attachments.last.skipCompression, isFalse);
+      expect(result.attachments.last.mimeType, 'video/mp4');
+    },
+  );
 
   test(
     'captureCameraAttachment returns a camera attachment from override',
@@ -339,5 +411,34 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  testWidgets('play picker returns null when original prompt is cancelled', (
+    tester,
+  ) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          home: Builder(
+            builder: (buildContext) {
+              context = buildContext;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+
+    final result = await pickGalleryAttachments(
+      context,
+      compressionPolicy: _compressionPolicy(
+        useSystemPhotoPicker: true,
+        originalSelectionMode: ImageOriginalSelectionMode.globalBeforePick,
+      ),
+      confirmUploadOriginalOverride: () async => null,
+    );
+
+    expect(result, isNull);
   });
 }

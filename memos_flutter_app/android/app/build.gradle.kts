@@ -39,6 +39,7 @@ android {
     namespace = "com.memoflow.hzc073"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+    flavorDimensions += "channel"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -59,6 +60,17 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    productFlavors {
+        create("play") {
+            dimension = "channel"
+        }
+        create("full") {
+            dimension = "channel"
+            applicationIdSuffix = ".pro"
+            versionNameSuffix = "-pro"
+        }
     }
 
     signingConfigs {

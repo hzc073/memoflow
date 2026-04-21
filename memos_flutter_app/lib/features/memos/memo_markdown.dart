@@ -63,7 +63,8 @@ final Set<String> _memoMarkdownDiagnosticLogKeys = <String>{};
 
 const int _markdownImageMaxDecodePx = 2048;
 
-({String url, Map<String, String>? headers})? resolveMemoMarkdownRemoteImageRequest({
+({String url, Map<String, String>? headers})?
+resolveMemoMarkdownRemoteImageRequest({
   required String rawSrc,
   Uri? baseUrl,
   String? authHeader,
@@ -521,8 +522,10 @@ class MemoMarkdown extends StatelessWidget {
             builder: (context, constraints) {
               final maxWidth = _resolveImageMaxWidth(constraints, context);
               final maxHeight = maxImageHeight;
-              double? targetWidth = _resolveHtmlLength(widthAttr, maxWidth);
-              double? targetHeight = _resolveHtmlLength(heightAttr, maxHeight);
+              final requestedWidth = _resolveHtmlLength(widthAttr, maxWidth);
+              final requestedHeight = _resolveHtmlLength(heightAttr, maxHeight);
+              double? targetWidth = requestedWidth;
+              double? targetHeight = requestedHeight;
 
               if (targetWidth != null &&
                   targetWidth > 0 &&
@@ -554,6 +557,21 @@ class MemoMarkdown extends StatelessWidget {
               final cacheWidth = _resolveCacheExtent(
                 targetWidth ?? maxWidth,
                 pixelRatio,
+              );
+              _logMemoMarkdownImageLayout(
+                contentText,
+                cacheKey: cacheKey,
+                src: src,
+                widthAttr: widthAttr,
+                heightAttr: heightAttr,
+                requestedWidth: requestedWidth,
+                requestedHeight: requestedHeight,
+                targetWidth: targetWidth,
+                targetHeight: targetHeight,
+                maxWidth: maxWidth,
+                maxHeight: maxHeight,
+                cacheWidth: cacheWidth,
+                isLocalFile: localFile != null,
               );
 
               final image = switch (localFile) {
@@ -604,11 +622,7 @@ class MemoMarkdown extends StatelessWidget {
                       headers: resolvedRemoteHeaders,
                       placeholderBuilder: (_) => imagePlaceholder(),
                       errorBuilder: (_, svgError, svgStack) {
-                        logImageError(
-                          resolvedRemoteSrc,
-                          svgError,
-                          svgStack,
-                        );
+                        logImageError(resolvedRemoteSrc, svgError, svgStack);
                         return imageError();
                       },
                     );
@@ -864,6 +878,93 @@ void _logMemoMarkdownHtmlImageWhileDisabled(
         src,
         kind: 'source',
       ),
+    },
+  );
+}
+
+void _logMemoMarkdownImageLayout(
+  String content, {
+  required String? cacheKey,
+  required String src,
+  required _HtmlLength? widthAttr,
+  required _HtmlLength? heightAttr,
+  required double? requestedWidth,
+  required double? requestedHeight,
+  required double? targetWidth,
+  required double? targetHeight,
+  required double maxWidth,
+  required double maxHeight,
+  required int? cacheWidth,
+  required bool isLocalFile,
+}) {
+  final requestedWidthChanged =
+      requestedWidth != null &&
+      targetWidth != null &&
+      (requestedWidth - targetWidth).abs() >= 0.5;
+  final requestedHeightChanged =
+      requestedHeight != null &&
+      targetHeight != null &&
+      (requestedHeight - targetHeight).abs() >= 0.5;
+  final hasExplicitDimensions = widthAttr != null || heightAttr != null;
+  final targetUsesImplicitMaxWidth =
+      isLocalFile &&
+      !hasExplicitDimensions &&
+      targetWidth == null &&
+      maxWidth > 0;
+  if (!hasExplicitDimensions &&
+      !requestedWidthChanged &&
+      !requestedHeightChanged &&
+      !targetUsesImplicitMaxWidth) {
+    return;
+  }
+
+  final key = [
+    'memo_md_img_layout',
+    cacheKey?.trim().isNotEmpty == true
+        ? cacheKey!.trim()
+        : LogSanitizer.fingerprint(content),
+    LogSanitizer.fingerprint(src),
+    widthAttr?.value.toString(),
+    widthAttr?.isPercent.toString(),
+    heightAttr?.value.toString(),
+    heightAttr?.isPercent.toString(),
+    targetWidth?.round().toString(),
+    targetHeight?.round().toString(),
+    maxWidth.round().toString(),
+    maxHeight.round().toString(),
+    isLocalFile.toString(),
+  ].join('|');
+  if (!_memoMarkdownDiagnosticLogKeys.add(key)) {
+    return;
+  }
+  if (_memoMarkdownDiagnosticLogKeys.length > 240) {
+    _memoMarkdownDiagnosticLogKeys.remove(_memoMarkdownDiagnosticLogKeys.first);
+  }
+  LogManager.instance.debug(
+    'MemoMarkdown image layout',
+    context: <String, Object?>{
+      'cacheKeyFingerprint': cacheKey?.trim().isNotEmpty == true
+          ? LogSanitizer.redactWithFingerprint(cacheKey!, kind: 'memo_md_key')
+          : null,
+      'sourceFingerprint': LogSanitizer.redactWithFingerprint(
+        src,
+        kind: 'source',
+      ),
+      'isLocalFile': isLocalFile,
+      'widthAttrValue': widthAttr?.value,
+      'widthAttrIsPercent': widthAttr?.isPercent,
+      'heightAttrValue': heightAttr?.value,
+      'heightAttrIsPercent': heightAttr?.isPercent,
+      'requestedWidth': requestedWidth,
+      'requestedHeight': requestedHeight,
+      'targetWidth': targetWidth,
+      'targetHeight': targetHeight,
+      'maxWidth': maxWidth,
+      'maxHeight': maxHeight,
+      'cacheWidth': cacheWidth,
+      'clampedByWidth': requestedWidthChanged,
+      'clampedByHeight': requestedHeightChanged,
+      'usesImplicitMaxWidth': targetUsesImplicitMaxWidth,
     },
   );
 }
