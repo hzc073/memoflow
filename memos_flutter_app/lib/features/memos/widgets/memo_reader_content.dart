@@ -14,9 +14,11 @@ import '../../../i18n/strings.g.dart';
 import '../../../state/settings/location_settings_provider.dart';
 import '../../../state/system/session_provider.dart';
 import '../../../state/tags/tag_color_lookup.dart';
+import '../../image_preview/image_preview_launcher.dart';
 import '../../share/share_inline_image_content.dart';
 import '../attachment_gallery_screen.dart';
 import '../memo_image_grid.dart';
+import '../memo_image_preview_adapters.dart';
 import '../memo_location_line.dart';
 import '../memo_markdown.dart';
 import '../memo_media_grid.dart';
@@ -106,6 +108,14 @@ class MemoReaderContent extends ConsumerWidget {
                   videos: videoEntries,
                 );
         }();
+    final imagePreviewItems = collectMemoDocumentImagePreviewItems(
+      content: memo.content,
+      attachments: memo.attachments,
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+    );
     final nonMediaAttachments =
         nonMediaAttachmentsOverride ??
         filterNonMediaAttachments(memo.attachments);
@@ -181,6 +191,9 @@ class MemoReaderContent extends ConsumerWidget {
                 rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
                 attachAuthForSameOriginAbsolute:
                     attachAuthForSameOriginAbsolute,
+                imagePreviewItems: imagePreviewItems,
+                onOpenImagePreview: (request) =>
+                    ImagePreviewLauncher.open(context, request),
               ),
           if (mediaEntries.isNotEmpty) ...[
             const SizedBox(height: 14),

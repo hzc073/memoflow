@@ -20,6 +20,8 @@ import '../../core/url.dart';
 import '../../data/logs/log_manager.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/tags/tag_color_lookup.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_open_request.dart';
 import 'memo_image_src_normalizer.dart';
 import 'memo_render_pipeline.dart';
 
@@ -102,6 +104,21 @@ resolveMemoMarkdownRemoteImageRequest({
   return (url: resolved, headers: headers);
 }
 
+@visibleForTesting
+int resolveMemoMarkdownImagePreviewIndex({
+  required List<ImagePreviewItem> items,
+  File? localFile,
+  required String resolvedRemoteSrc,
+}) {
+  return findImagePreviewItemIndex(
+    items: items,
+    localPath: localFile?.path,
+    urlCandidates: <String>[
+      if (resolvedRemoteSrc.trim().isNotEmpty) resolvedRemoteSrc.trim(),
+    ],
+  );
+}
+
 String _insertSoftBreaks(String text) {
   if (text.isEmpty) return text;
   return text.replaceAllMapped(_longWordPattern, (match) {
@@ -171,6 +188,8 @@ class MemoMarkdown extends StatelessWidget {
     this.authHeader,
     this.rebaseAbsoluteFileUrlForV024 = false,
     this.attachAuthForSameOriginAbsolute = false,
+    this.imagePreviewItems,
+    this.onOpenImagePreview,
   });
 
   final String data;
@@ -189,6 +208,8 @@ class MemoMarkdown extends StatelessWidget {
   final String? authHeader;
   final bool rebaseAbsoluteFileUrlForV024;
   final bool attachAuthForSameOriginAbsolute;
+  final List<ImagePreviewItem>? imagePreviewItems;
+  final Future<void> Function(ImagePreviewOpenRequest request)? onOpenImagePreview;
 
   @override
   Widget build(BuildContext context) {
@@ -630,7 +651,50 @@ class MemoMarkdown extends StatelessWidget {
                 ),
               };
 
-              return ConstrainedBox(
+              final previewItems = imagePreviewItems;
+              final openImagePreview = onOpenImagePreview;
+              final previewIndex =
+                  previewItems == null || previewItems.isEmpty
+                  ? -1
+                  : resolveMemoMarkdownImagePreviewIndex(
+                      items: previewItems,
+                      localFile: localFile,
+                      resolvedRemoteSrc: resolvedRemoteSrc,
+                    );
+
+              void handleOpenImagePreview() {
+                if (openImagePreview == null) {
+                  return;
+                }
+                final request = previewIndex >= 0
+                    ? ImagePreviewOpenRequest(
+                        items: previewItems!,
+                        initialIndex: previewIndex,
+                      )
+                    : ImagePreviewOpenRequest(
+                        items: <ImagePreviewItem>[
+                          ImagePreviewItem(
+                            id: localFile?.path ?? resolvedRemoteSrc,
+                            title: src,
+                            mimeType: shouldUseSvgRenderer(
+                                  url: localFile?.path ?? resolvedRemoteSrc,
+                                )
+                                ? 'image/svg+xml'
+                                : 'image/*',
+                            localFile: localFile,
+                            fullUrl: localFile == null &&
+                                    resolvedRemoteSrc.trim().isNotEmpty
+                                ? resolvedRemoteSrc.trim()
+                                : null,
+                            headers: resolvedRemoteHeaders,
+                          ),
+                        ],
+                        initialIndex: 0,
+                      );
+                unawaited(openImagePreview(request));
+              }
+
+              final constrained = ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: maxWidth,
                   maxHeight: maxHeight,
@@ -639,6 +703,14 @@ class MemoMarkdown extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   child: image,
                 ),
+              );
+              if (openImagePreview == null) {
+                return constrained;
+              }
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: handleOpenImagePreview,
+                child: constrained,
               );
             },
           ),

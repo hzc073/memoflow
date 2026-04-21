@@ -31,6 +31,10 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../state/system/session_provider.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
+import '../image_preview/widgets/image_preview_tile.dart';
 import '../share/share_inline_image_content.dart';
 import '../collections/add_to_collection_sheet.dart';
 import 'attachment_gallery_screen.dart';
@@ -687,6 +691,9 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         canEditAttachments &&
         imageEntries.any((entry) => entry.isAttachment) &&
         !imageEntries.any((entry) => !entry.isAttachment);
+    final imagePreviewItems = imageEntries
+        .map((entry) => entry.toImagePreviewItem())
+        .toList(growable: false);
     final nonImageAttachments =
         deferredContent?.nonImageAttachments ?? const <Attachment>[];
     final contentStyle = Theme.of(context).textTheme.bodyLarge;
@@ -707,6 +714,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       markdownSelectable: _routeSettled,
       renderImages: renderInlineImages,
       tagColors: tagColors,
+      imagePreviewItems: imagePreviewItems,
+      onOpenImagePreview: (request) => ImagePreviewLauncher.open(
+        context,
+        request,
+      ),
       onToggleTask: canToggleTasks
           ? (request) {
               maybeHaptic();
@@ -1655,24 +1667,30 @@ class _MemoEngagementSectionState
     return thumbnail ? appendThumbnailParam(url) : url;
   }
 
-  List<AttachmentImageSource> _buildCommentSources({
+  List<ImagePreviewItem> _buildCommentPreviewItems({
     required List<Attachment> attachments,
     required Uri? baseUrl,
     required String? authHeader,
   }) {
     return attachments
         .map((attachment) {
+          final thumbUrl = _resolveCommentAttachmentUrl(
+            baseUrl,
+            attachment,
+            thumbnail: true,
+          );
           final fullUrl = _resolveCommentAttachmentUrl(
             baseUrl,
             attachment,
             thumbnail: false,
           );
-          return AttachmentImageSource(
+          return ImagePreviewItem(
             id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
             title: attachment.filename,
             mimeType: attachment.type,
             localFile: null,
-            imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
+            thumbnailUrl: thumbUrl.isNotEmpty ? thumbUrl : null,
+            fullUrl: fullUrl.isNotEmpty ? fullUrl : null,
             headers: authHeader == null ? null : {'Authorization': authHeader},
             width: attachment.width,
             height: attachment.height,
@@ -1755,7 +1773,7 @@ class _MemoEngagementSectionState
     final displayUrl = thumbUrl.isNotEmpty ? thumbUrl : fullUrl;
     if (displayUrl.isEmpty) return const SizedBox.shrink();
     final viewUrl = fullUrl.isNotEmpty ? fullUrl : displayUrl;
-    final sources = _buildCommentSources(
+    final previewItems = _buildCommentPreviewItems(
       attachments: attachments,
       baseUrl: baseUrl,
       authHeader: authHeader,
@@ -1765,49 +1783,37 @@ class _MemoEngagementSectionState
       onTap: viewUrl.isEmpty
           ? null
           : () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => AttachmentGalleryScreen(
-                    images: sources,
+              unawaited(
+                ImagePreviewLauncher.open(
+                  context,
+                  ImagePreviewOpenRequest(
+                    items: previewItems,
                     initialIndex: index,
                     enableDownload: true,
                   ),
                 ),
               );
             },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: CachedNetworkImage(
-          imageUrl: displayUrl,
-          httpHeaders: authHeader == null
-              ? null
-              : {'Authorization': authHeader},
-          width: 110,
-          height: 80,
-          fit: BoxFit.cover,
-          placeholder: (context, _) => const SizedBox(
-            width: 110,
-            height: 80,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          ),
-          errorWidget: (context, _, error) {
-            logImageLoadError(
-              scope: 'memo_detail_comment_image',
-              source: displayUrl,
-              error: error,
-              extraContext: <String, Object?>{
-                'attachmentName': attachment.name,
-                'attachmentType': attachment.type,
-                'hasAuthHeader': authHeader?.trim().isNotEmpty ?? false,
-              },
-            );
-            return const SizedBox(
-              width: 110,
-              height: 80,
-              child: Icon(Icons.broken_image),
-            );
-          },
+      child: ImagePreviewTile(
+        item: ImagePreviewItem(
+          id: attachment.name.isNotEmpty ? attachment.name : attachment.uid,
+          title: attachment.filename,
+          mimeType: attachment.type,
+          thumbnailUrl: displayUrl,
+          fullUrl: viewUrl,
+          headers: authHeader == null ? null : {'Authorization': authHeader},
+          width: attachment.width,
+          height: attachment.height,
         ),
+        width: 110,
+        height: 80,
+        borderRadius: 10,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderColor: Colors.transparent,
+        placeholderColor:
+            Theme.of(context).colorScheme.surfaceContainerHighest,
+        iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        logScope: 'memo_detail_comment_image',
       ),
     );
   }
@@ -2600,6 +2606,8 @@ class _CollapsibleText extends StatefulWidget {
     this.markdownSelectable = true,
     this.renderImages = false,
     this.tagColors,
+    this.imagePreviewItems,
+    this.onOpenImagePreview,
     this.onToggleTask,
   });
 
@@ -2612,6 +2620,8 @@ class _CollapsibleText extends StatefulWidget {
   final bool markdownSelectable;
   final bool renderImages;
   final TagColorLookup? tagColors;
+  final List<ImagePreviewItem>? imagePreviewItems;
+  final Future<void> Function(ImagePreviewOpenRequest request)? onOpenImagePreview;
   final ValueChanged<TaskToggleRequest>? onToggleTask;
 
   @override
@@ -2679,6 +2689,8 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
           blockSpacing: 8,
           renderImages: widget.renderImages && !showCollapsed,
           tagColors: widget.tagColors,
+          imagePreviewItems: widget.imagePreviewItems,
+          onOpenImagePreview: widget.onOpenImagePreview,
           onToggleTask: showCollapsed ? null : widget.onToggleTask,
         ),
         if (shouldCollapse)

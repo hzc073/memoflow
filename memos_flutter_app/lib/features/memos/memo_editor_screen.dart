@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -45,6 +44,10 @@ import '../../state/memos/memos_providers.dart';
 import '../../state/system/session_provider.dart';
 import '../../state/system/scene_micro_guide_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
+import '../image_preview/widgets/image_preview_tile.dart';
 import 'attachment_gallery_screen.dart';
 import 'compose_toolbar_shared.dart';
 import 'gallery_attachment_picker.dart';
@@ -1613,11 +1616,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   String _existingSourceId(Attachment attachment) =>
       'existing:${attachment.name.isNotEmpty ? attachment.name : attachment.uid}';
 
-  List<AttachmentImageSource> _editorImageSources(
+  List<ImagePreviewItem> _editorImagePreviewItems(
     Uri? baseUrl,
     String? authHeader,
   ) {
-    final sources = <AttachmentImageSource>[];
+    final items = <ImagePreviewItem>[];
     for (final attachment in _existingAttachments) {
       if (!_isImageMimeType(attachment.type)) continue;
       final localFile = _localExistingAttachmentFile(attachment);
@@ -1626,13 +1629,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         thumbnail: false,
         baseUrl: baseUrl,
       );
-      sources.add(
-        AttachmentImageSource(
+      items.add(
+        ImagePreviewItem(
           id: _existingSourceId(attachment),
           title: attachment.filename,
           mimeType: attachment.type,
           localFile: localFile,
-          imageUrl: fullUrl.isNotEmpty ? fullUrl : null,
+          fullUrl: fullUrl.isNotEmpty ? fullUrl : null,
           headers: authHeader == null ? null : {'Authorization': authHeader},
           width: attachment.width,
           height: attachment.height,
@@ -1644,8 +1647,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       if (!_isImageMimeType(attachment.mimeType)) continue;
       final file = _resolvePendingAttachmentFile(attachment);
       if (file == null) continue;
-      sources.add(
-        AttachmentImageSource(
+      items.add(
+        ImagePreviewItem(
           id: _pendingSourceId(attachment.uid),
           title: attachment.filename,
           mimeType: attachment.mimeType,
@@ -1653,7 +1656,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         ),
       );
     }
-    return sources;
+    return items;
   }
 
   Future<void> _openAttachmentViewer(
@@ -1661,17 +1664,24 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     required Uri? baseUrl,
     required String? authHeader,
   }) async {
-    final sources = _editorImageSources(baseUrl, authHeader);
-    final index = sources.indexWhere((source) => source.id == sourceId);
+    final items = _editorImagePreviewItems(baseUrl, authHeader);
+    final index = items.indexWhere((item) => item.id == sourceId);
     if (index < 0) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AttachmentGalleryScreen(
-          images: sources,
-          initialIndex: index,
-          onReplace: _replaceEditedAttachment,
-          enableDownload: true,
+    await ImagePreviewLauncher.open(
+      context,
+      ImagePreviewOpenRequest(
+        items: items,
+        initialIndex: index,
+        onReplace: (result) => _replaceEditedAttachment(
+          EditedImageResult(
+            sourceId: result.sourceId,
+            filePath: result.filePath,
+            filename: result.filename,
+            mimeType: result.mimeType,
+            size: result.size,
+          ),
         ),
+        enableDownload: true,
       ),
     );
   }
@@ -1804,6 +1814,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         ? Colors.black.withValues(alpha: 0.55)
         : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
+    final tileBorderColor = borderColor.withValues(alpha: 0.7);
+    final tileRadius = BorderRadius.circular(14);
     final isImage = _isImageMimeType(attachment.mimeType);
     final isVideo = _isVideoMimeType(attachment.mimeType);
     final file = _resolvePendingAttachmentFile(attachment);
@@ -1814,20 +1826,23 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
     Widget content;
     if (isImage && file != null) {
-      content = Image.file(
-        file,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
+      content = ImagePreviewTile(
+        item: ImagePreviewItem(
+          id: _pendingSourceId(attachment.uid),
+          title: attachment.filename,
+          mimeType: attachment.mimeType,
+          localFile: file,
+        ),
+        width: double.infinity,
+        height: double.infinity,
+        borderRadius: 14,
+        backgroundColor: surfaceColor,
+        borderColor: tileBorderColor,
+        placeholderColor: surfaceColor,
+        iconColor: iconColor,
         cacheWidth: cacheExtent,
         cacheHeight: cacheExtent,
-        errorBuilder: (context, error, stackTrace) {
-          return _attachmentFallback(
-            iconColor: iconColor,
-            surfaceColor: surfaceColor,
-            isImage: true,
-          );
-        },
+        logScope: 'memo_editor_pending_tile',
       );
     } else if (isVideo && file != null) {
       final entry = MemoVideoEntry(
@@ -1856,23 +1871,44 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
     }
 
-    final tile = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: content),
-    );
+    final tile = isImage && file != null
+        ? SizedBox(
+            width: size,
+            height: size,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: tileRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: tileRadius,
+                child: Stack(fit: StackFit.expand, children: [content]),
+              ),
+            ),
+          )
+        : Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: tileRadius,
+              border: Border.all(color: tileBorderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: ClipRRect(borderRadius: tileRadius, child: content),
+          );
 
     return Stack(
       clipBehavior: Clip.none,
@@ -1957,6 +1993,8 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         ? Colors.black.withValues(alpha: 0.55)
         : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
+    final tileBorderColor = borderColor.withValues(alpha: 0.7);
+    final tileRadius = BorderRadius.circular(14);
     final isImage = _isImageMimeType(attachment.type);
     final isVideo = _isVideoMimeType(attachment.type);
     final localFile = _localExistingAttachmentFile(attachment);
@@ -1981,36 +2019,56 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
 
     Widget content;
     if (isImage && localFile != null) {
-      content = Image.file(
-        localFile,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
+      content = ImagePreviewTile(
+        item: ImagePreviewItem(
+          id: _existingSourceId(attachment),
+          title: attachment.filename,
+          mimeType: attachment.type,
+          localFile: localFile,
+          width: attachment.width,
+          height: attachment.height,
+        ),
+        width: double.infinity,
+        height: double.infinity,
+        borderRadius: 14,
+        backgroundColor: surfaceColor,
+        borderColor: tileBorderColor,
+        placeholderColor: surfaceColor,
+        iconColor: iconColor,
         cacheWidth: cacheExtent,
         cacheHeight: cacheExtent,
-        errorBuilder: (context, error, stackTrace) {
-          return _attachmentFallback(
-            iconColor: iconColor,
-            surfaceColor: surfaceColor,
-            isImage: true,
-          );
-        },
+        logScope: 'memo_editor_existing_tile',
       );
     } else if (isImage && thumbUrl.isNotEmpty) {
-      content = CachedNetworkImage(
-        imageUrl: thumbUrl,
-        httpHeaders: authHeader == null ? null : {'Authorization': authHeader},
-        fit: BoxFit.cover,
-        placeholder: (context, _) => _attachmentFallback(
-          iconColor: iconColor,
-          surfaceColor: surfaceColor,
-          isImage: true,
+      content = ImagePreviewTile(
+        item: ImagePreviewItem(
+          id: _existingSourceId(attachment),
+          title: attachment.filename,
+          mimeType: attachment.type,
+          thumbnailUrl: thumbUrl,
+          fullUrl: _existingAttachmentUrl(
+            attachment,
+            thumbnail: false,
+            baseUrl: baseUrl,
+          ).trim().isEmpty
+              ? null
+              : _existingAttachmentUrl(
+                  attachment,
+                  thumbnail: false,
+                  baseUrl: baseUrl,
+                ),
+          headers: authHeader == null ? null : {'Authorization': authHeader},
+          width: attachment.width,
+          height: attachment.height,
         ),
-        errorWidget: (context, url, error) => _attachmentFallback(
-          iconColor: iconColor,
-          surfaceColor: surfaceColor,
-          isImage: true,
-        ),
+        width: double.infinity,
+        height: double.infinity,
+        borderRadius: 14,
+        backgroundColor: surfaceColor,
+        borderColor: tileBorderColor,
+        placeholderColor: surfaceColor,
+        iconColor: iconColor,
+        logScope: 'memo_editor_existing_tile',
       );
     } else if (videoEntry != null) {
       content = AttachmentVideoThumbnail(
@@ -2030,24 +2088,45 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
     }
 
-    final tile = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: content,
-    );
+    final tile = isImage
+        ? SizedBox(
+            width: size,
+            height: size,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: tileRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: tileRadius,
+                child: Stack(fit: StackFit.expand, children: [content]),
+              ),
+            ),
+          )
+        : Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: tileRadius,
+              border: Border.all(color: tileBorderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: content,
+          );
 
     return Stack(
       clipBehavior: Clip.none,

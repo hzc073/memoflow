@@ -8,6 +8,8 @@ import '../../../core/markdown_editing.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../data/models/memo_location.dart';
 import '../../../data/models/memo_template_settings.dart';
+import '../../image_preview/image_preview_item.dart';
+import '../../image_preview/widgets/image_preview_tile.dart';
 import '../../../state/memos/memo_composer_controller.dart';
 import '../../../state/memos/memo_composer_state.dart';
 import '../../../state/tags/tag_color_lookup.dart';
@@ -849,6 +851,8 @@ class _InlineAttachmentTile extends StatelessWidget {
         ? Colors.black.withValues(alpha: 0.55)
         : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
+    final tileBorderColor = borderColor.withValues(alpha: 0.7);
+    final tileRadius = BorderRadius.circular(14);
     final isImage = _isInlineImageMimeType(attachment.mimeType);
     final isVideo = _isInlineVideoMimeType(attachment.mimeType);
     final file = _resolveInlinePendingAttachmentFile(attachment);
@@ -859,19 +863,23 @@ class _InlineAttachmentTile extends StatelessWidget {
 
     Widget content;
     if (isImage && file != null) {
-      content = Image.file(
-        file,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
+      content = ImagePreviewTile(
+        item: ImagePreviewItem(
+          id: 'inline-pending:${attachment.uid}',
+          title: attachment.filename,
+          mimeType: attachment.mimeType,
+          localFile: file,
+        ),
+        width: double.infinity,
+        height: double.infinity,
+        borderRadius: 14,
+        backgroundColor: surfaceColor,
+        borderColor: tileBorderColor,
+        placeholderColor: surfaceColor,
+        iconColor: iconColor,
         cacheWidth: cacheExtent,
-        errorBuilder: (context, error, stackTrace) {
-          return _InlineAttachmentFallback(
-            iconColor: iconColor,
-            surfaceColor: surfaceColor,
-            isImage: true,
-          );
-        },
+        cacheHeight: cacheExtent,
+        logScope: 'inline_compose_pending_tile',
       );
     } else if (isVideo && file != null) {
       final entry = MemoVideoEntry(
@@ -900,23 +908,44 @@ class _InlineAttachmentTile extends StatelessWidget {
       );
     }
 
-    final tile = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: content),
-    );
+    final tile = isImage && file != null
+        ? SizedBox(
+            width: size,
+            height: size,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: tileRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: tileRadius,
+                child: Stack(fit: StackFit.expand, children: [content]),
+              ),
+            ),
+          )
+        : Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: tileRadius,
+              border: Border.all(color: tileBorderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: ClipRRect(borderRadius: tileRadius, child: content),
+          );
 
     return Stack(
       clipBehavior: Clip.none,

@@ -41,6 +41,10 @@ import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../state/settings/user_settings_provider.dart';
 import '../../state/memos/note_input_providers.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
+import '../image_preview/widgets/image_preview_tile.dart';
 import '../share/share_clip_models.dart';
 import '../share/share_inline_image_content.dart';
 import '../share/share_inline_image_download_service.dart';
@@ -52,6 +56,7 @@ import 'compose_input_hint.dart';
 import 'compose_toolbar_shared.dart';
 import 'draft_box_screen.dart';
 import 'gallery_attachment_picker.dart';
+import 'memo_image_preview_adapters.dart';
 import 'memo_video_grid.dart';
 import 'tag_autocomplete.dart';
 import 'link_memo_sheet.dart';
@@ -2124,14 +2129,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
   String _pendingSourceId(String uid) => 'pending:$uid';
 
-  List<
-    ({AttachmentImageSource source, _PendingAttachment attachment, File file})
-  >
+  List<({ImagePreviewItem item, _PendingAttachment attachment, File file})>
   _pendingImageSources() {
     final items =
         <
           ({
-            AttachmentImageSource source,
+            ImagePreviewItem item,
             _PendingAttachment attachment,
             File file,
           })
@@ -2141,10 +2144,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final file = _resolvePendingAttachmentFile(attachment);
       if (file == null) continue;
       items.add((
-        source: AttachmentImageSource(
-          id: _pendingSourceId(attachment.uid),
-          title: attachment.filename,
-          mimeType: attachment.mimeType,
+        item: pendingAttachmentToImagePreviewItem(
+          attachment,
+          sourceId: _pendingSourceId(attachment.uid),
           localFile: file,
         ),
         attachment: attachment,
@@ -2161,15 +2163,22 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       (item) => item.attachment.uid == attachment.uid,
     );
     if (index < 0) return;
-    final sources = items.map((item) => item.source).toList(growable: false);
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AttachmentGalleryScreen(
-          images: sources,
-          initialIndex: index,
-          onReplace: _replacePendingAttachment,
-          enableDownload: true,
+    final previewItems = items.map((item) => item.item).toList(growable: false);
+    await ImagePreviewLauncher.open(
+      context,
+      ImagePreviewOpenRequest(
+        items: previewItems,
+        initialIndex: index,
+        onReplace: (result) => _replacePendingAttachment(
+          EditedImageResult(
+            sourceId: result.sourceId,
+            filePath: result.filePath,
+            filename: result.filename,
+            mimeType: result.mimeType,
+            size: result.size,
+          ),
         ),
+        enableDownload: true,
       ),
     );
   }
@@ -2413,6 +2422,8 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         ? Colors.black.withValues(alpha: 0.55)
         : Colors.black.withValues(alpha: 0.5);
     final shadowColor = Colors.black.withValues(alpha: isDark ? 0.35 : 0.12);
+    final tileBorderColor = borderColor.withValues(alpha: 0.7);
+    final tileRadius = BorderRadius.circular(14);
     final isImage = _isImageMimeType(attachment.mimeType);
     final isVideo = _isVideoMimeType(attachment.mimeType);
     final file = _resolvePendingAttachmentFile(attachment);
@@ -2423,20 +2434,22 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
     Widget content;
     if (isImage && file != null) {
-      content = Image.file(
-        file,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
+      content = ImagePreviewTile(
+        item: pendingAttachmentToImagePreviewItem(
+          attachment,
+          sourceId: _pendingSourceId(attachment.uid),
+          localFile: file,
+        ),
+        width: double.infinity,
+        height: double.infinity,
+        borderRadius: 14,
+        backgroundColor: surfaceColor,
+        borderColor: tileBorderColor,
+        placeholderColor: surfaceColor,
+        iconColor: iconColor,
         cacheWidth: cacheExtent,
         cacheHeight: cacheExtent,
-        errorBuilder: (context, error, stackTrace) {
-          return _attachmentFallback(
-            iconColor: iconColor,
-            surfaceColor: surfaceColor,
-            isImage: true,
-          );
-        },
+        logScope: 'note_input_pending_tile',
       );
     } else if (isVideo && file != null) {
       final entry = MemoVideoEntry(
@@ -2465,23 +2478,44 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       );
     }
 
-    final tile = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: content),
-    );
+    final tile = isImage && file != null
+        ? SizedBox(
+            width: size,
+            height: size,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: tileRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: tileRadius,
+                child: Stack(fit: StackFit.expand, children: [content]),
+              ),
+            ),
+          )
+        : Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: tileRadius,
+              border: Border.all(color: tileBorderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: ClipRRect(borderRadius: tileRadius, child: content),
+          );
 
     return Stack(
       clipBehavior: Clip.none,

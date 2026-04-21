@@ -1,16 +1,17 @@
+import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-
-import '../../core/image_formats.dart';
-import '../../core/image_error_logger.dart';
 import '../../core/image_thumbnail_cache.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
+import '../image_preview/widgets/image_preview_tile.dart';
 import 'attachment_gallery_screen.dart';
 import 'attachment_video_screen.dart';
 import 'memo_image_grid.dart';
 import 'memo_video_grid.dart';
+
+enum MemoMediaTapBehavior { imagePreview, mixedGallery, videoScreen }
 
 class MemoMediaEntry {
   const MemoMediaEntry.image(this.image) : video = null;
@@ -35,6 +36,35 @@ List<MemoMediaEntry> buildMemoMediaEntries({
     entries.add(MemoMediaEntry.video(video));
   }
   return entries;
+}
+
+MemoMediaTapBehavior resolveMemoMediaTapBehavior({
+  required List<MemoMediaEntry> entries,
+  required int mediaIndex,
+  required int visibleCount,
+}) {
+  if (entries.isEmpty || mediaIndex < 0 || mediaIndex >= entries.length) {
+    return MemoMediaTapBehavior.imagePreview;
+  }
+  final effectiveVisibleCount = math.min(
+    entries.length,
+    math.max(0, visibleCount),
+  );
+  final overflow = entries.length - effectiveVisibleCount;
+  final isLastVisibleTile =
+      effectiveVisibleCount > 0 && mediaIndex == effectiveVisibleCount - 1;
+  if (overflow > 0 && isLastVisibleTile) {
+    return MemoMediaTapBehavior.mixedGallery;
+  }
+
+  final target = entries[mediaIndex];
+  if (target.isVideo) {
+    return MemoMediaTapBehavior.videoScreen;
+  }
+  if (entries.any((entry) => entry.isVideo)) {
+    return MemoMediaTapBehavior.mixedGallery;
+  }
+  return MemoMediaTapBehavior.imagePreview;
 }
 
 class MemoMediaGrid extends StatelessWidget {
@@ -76,7 +106,6 @@ class MemoMediaGrid extends StatelessWidget {
     final visibleCount = maxCount == null ? total : math.min(maxCount!, total);
     final overflow = total - visibleCount;
     final visible = entries.take(visibleCount).toList(growable: false);
-
     final galleryItems = entries
         .map(
           (entry) => entry.isVideo
@@ -85,7 +114,12 @@ class MemoMediaGrid extends StatelessWidget {
         )
         .toList(growable: false);
 
-    void openGallery(int mediaIndex) {
+    final previewItems = entries
+        .where((entry) => entry.isImage)
+        .map((entry) => entry.image!.toImagePreviewItem())
+        .toList(growable: false);
+
+    void openMixedGallery(int mediaIndex) {
       if (!enablePreviewOnTap) return;
       if (galleryItems.isEmpty) return;
       Navigator.of(context).push(
@@ -95,6 +129,39 @@ class MemoMediaGrid extends StatelessWidget {
             items: galleryItems,
             initialIndex: mediaIndex,
             onReplace: onReplace,
+            enableDownload: enableDownload,
+          ),
+        ),
+      );
+    }
+
+    void openImagePreview(int mediaIndex) {
+      if (!enablePreviewOnTap) return;
+      if (previewItems.isEmpty) return;
+      final target = entries[mediaIndex];
+      if (!target.isImage) return;
+      final selectedImage = target.image!;
+      final imageIndex = previewItems.indexWhere(
+        (item) => item.id == selectedImage.id,
+      );
+      if (imageIndex < 0) return;
+      unawaited(
+        ImagePreviewLauncher.open(
+          context,
+          ImagePreviewOpenRequest(
+            items: previewItems,
+            initialIndex: imageIndex,
+            onReplace: onReplace == null
+                ? null
+                : (result) => onReplace!.call(
+                    EditedImageResult(
+                      sourceId: result.sourceId,
+                      filePath: result.filePath,
+                      filename: result.filename,
+                      mimeType: result.mimeType,
+                      size: result.size,
+                    ),
+                  ),
             enableDownload: enableDownload,
           ),
         ),
@@ -118,139 +185,45 @@ class MemoMediaGrid extends StatelessWidget {
       );
     }
 
-    Widget placeholder(IconData icon) {
-      return Container(
-        color: Colors.transparent,
-        alignment: Alignment.center,
-        child: Icon(icon, size: 18, color: textColor.withValues(alpha: 0.45)),
-      );
-    }
-
     Widget buildImageTile(
       MemoImageEntry entry,
       int index, {
       int? cacheWidth,
       int? cacheHeight,
+      required MemoMediaTapBehavior tapBehavior,
     }) {
-      final file = entry.localFile;
-      final url = (entry.previewUrl ?? entry.fullUrl ?? '').trim();
-      Widget image;
-      if (file != null) {
-        final isSvg = shouldUseSvgRenderer(
-          url: file.path,
-          mimeType: entry.mimeType,
-        );
-        if (isSvg) {
-          image = SvgPicture.file(
-            file,
-            fit: BoxFit.cover,
-            placeholderBuilder: (context) => placeholder(Icons.image_outlined),
-            errorBuilder: (context, error, stackTrace) {
-              logImageLoadError(
-                scope: 'memo_media_grid_local_svg',
-                source: file.path,
-                error: error,
-                stackTrace: stackTrace,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        } else {
-          image = Image.file(
-            file,
-            fit: BoxFit.cover,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
-            errorBuilder: (context, error, stackTrace) {
-              logImageLoadError(
-                scope: 'memo_media_grid_local',
-                source: file.path,
-                error: error,
-                stackTrace: stackTrace,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        }
-      } else if (url.isNotEmpty) {
-        final isSvg = shouldUseSvgRenderer(url: url, mimeType: entry.mimeType);
-        if (isSvg) {
-          image = SvgPicture.network(
-            url,
-            headers: entry.headers,
-            fit: BoxFit.cover,
-            placeholderBuilder: (context) => placeholder(Icons.image_outlined),
-            errorBuilder: (context, error, stackTrace) {
-              logImageLoadError(
-                scope: 'memo_media_grid_network_svg',
-                source: url,
-                error: error,
-                stackTrace: stackTrace,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                  'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ??
-                      false,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        } else {
-          image = CachedNetworkImage(
-            imageUrl: url,
-            httpHeaders: entry.headers,
-            fit: BoxFit.cover,
-            placeholder: (context, _) => placeholder(Icons.image_outlined),
-            errorWidget: (context, _, error) {
-              logImageLoadError(
-                scope: 'memo_media_grid_network',
-                source: url,
-                error: error,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                  'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ??
-                      false,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        }
-      } else {
-        image = placeholder(Icons.image_outlined);
-      }
-
       return GestureDetector(
-        onTap: () => openGallery(index),
+        onTap: () => tapBehavior == MemoMediaTapBehavior.mixedGallery
+            ? openMixedGallery(index)
+            : openImagePreview(index),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
-          child: Container(
-            decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: borderColor),
-            ),
-            child: image,
+          child: ImagePreviewTile(
+            item: entry.toImagePreviewItem(),
+            width: double.infinity,
+            height: double.infinity,
+            borderRadius: radius,
+            backgroundColor: backgroundColor,
+            borderColor: borderColor,
+            placeholderColor: Colors.transparent,
+            iconColor: textColor.withValues(alpha: 0.45),
+            cacheWidth: cacheWidth,
+            cacheHeight: cacheHeight,
+            logScope: 'memo_media_grid',
           ),
         ),
       );
     }
 
-    Widget buildVideoTile(MemoVideoEntry entry, int index) {
+    Widget buildVideoTile(
+      MemoVideoEntry entry,
+      int index, {
+      required MemoMediaTapBehavior tapBehavior,
+    }) {
       return GestureDetector(
-        onTap: () => openVideo(entry),
+        onTap: () => tapBehavior == MemoMediaTapBehavior.mixedGallery
+            ? openMixedGallery(index)
+            : openVideo(entry),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           child: Container(
@@ -275,6 +248,11 @@ class MemoMediaGrid extends StatelessWidget {
       int? cacheWidth,
       int? cacheHeight,
     }) {
+      final tapBehavior = resolveMemoMediaTapBehavior(
+        entries: entries,
+        mediaIndex: index,
+        visibleCount: visibleCount,
+      );
       final overlay = (overflow > 0 && index == visibleCount - 1)
           ? Container(
               color: Colors.black.withValues(alpha: 0.45),
@@ -291,12 +269,13 @@ class MemoMediaGrid extends StatelessWidget {
           : null;
 
       final content = entry.isVideo
-          ? buildVideoTile(entry.video!, index)
+          ? buildVideoTile(entry.video!, index, tapBehavior: tapBehavior)
           : buildImageTile(
               entry.image!,
               index,
               cacheWidth: cacheWidth,
               cacheHeight: cacheHeight,
+              tapBehavior: tapBehavior,
             );
 
       if (overlay == null) return content;

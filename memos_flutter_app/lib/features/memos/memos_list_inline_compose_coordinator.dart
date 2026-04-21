@@ -27,12 +27,16 @@ import '../../state/settings/location_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import '../../state/settings/user_settings_provider.dart';
 import '../../state/system/session_provider.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
 import '../location_picker/show_location_picker.dart';
 import '../voice/voice_record_screen.dart';
 import 'attachment_gallery_screen.dart';
 import 'compose_toolbar_shared.dart';
 import 'gallery_attachment_picker.dart' as gallery_picker;
 import 'link_memo_sheet.dart';
+import 'memo_image_preview_adapters.dart';
 
 typedef InlineComposeLocationPicker =
     Future<MemoLocation?> Function(
@@ -735,14 +739,19 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
     BuildContext context,
     MemoComposerPendingAttachment attachment,
   ) async {
-    final items = _pendingImageSources();
-    if (items.isEmpty) return;
-    final index = items.indexWhere(
+    final imageItems = _pendingImageSources();
+    if (imageItems.isEmpty) return;
+    final index = imageItems.indexWhere(
       (item) => item.attachment.uid == attachment.uid,
     );
     if (index < 0) return;
-    final sources = items.map((item) => item.source).toList(growable: false);
+    final previewItems = imageItems
+        .map((item) => item.item)
+        .toList(growable: false);
     if (openAttachmentViewerOverride != null) {
+      final sources = imageItems
+          .map((item) => item.source)
+          .toList(growable: false);
       await openAttachmentViewerOverride!(
         context,
         sources,
@@ -751,14 +760,21 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       );
       return;
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AttachmentGalleryScreen(
-          images: sources,
-          initialIndex: index,
-          onReplace: replacePendingAttachment,
-          enableDownload: true,
+    await ImagePreviewLauncher.open(
+      context,
+      ImagePreviewOpenRequest(
+        items: previewItems,
+        initialIndex: index,
+        onReplace: (result) => replacePendingAttachment(
+          EditedImageResult(
+            sourceId: result.sourceId,
+            filePath: result.filePath,
+            filename: result.filename,
+            mimeType: result.mimeType,
+            size: result.size,
+          ),
         ),
+        enableDownload: true,
       ),
     );
   }
@@ -947,13 +963,18 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
   String _pendingSourceId(String uid) => 'inline-pending:$uid';
 
   List<
-    ({AttachmentImageSource source, MemoComposerPendingAttachment attachment})
+    ({
+      AttachmentImageSource source,
+      ImagePreviewItem item,
+      MemoComposerPendingAttachment attachment,
+    })
   >
   _pendingImageSources() {
     final items =
         <
           ({
             AttachmentImageSource source,
+            ImagePreviewItem item,
             MemoComposerPendingAttachment attachment,
           })
         >[];
@@ -961,11 +982,17 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       if (!_isImageMimeType(attachment.mimeType)) continue;
       final file = _resolvePendingAttachmentFile(attachment);
       if (file == null) continue;
+      final sourceId = _pendingSourceId(attachment.uid);
       items.add((
         source: AttachmentImageSource(
-          id: _pendingSourceId(attachment.uid),
+          id: sourceId,
           title: attachment.filename,
           mimeType: attachment.mimeType,
+          localFile: file,
+        ),
+        item: pendingAttachmentToImagePreviewItem(
+          attachment,
+          sourceId: sourceId,
           localFile: file,
         ),
         attachment: attachment,

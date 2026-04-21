@@ -9,7 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:memos_flutter_app/core/scene_micro_guide_widgets.dart';
 import 'package:memos_flutter_app/data/repositories/scene_micro_guide_repository.dart';
+import 'package:memos_flutter_app/features/image_preview/widgets/image_preview_gallery_body.dart';
 import 'package:memos_flutter_app/features/memos/attachment_gallery_screen.dart';
+import 'package:memos_flutter_app/features/memos/memo_video_grid.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/system/scene_micro_guide_provider.dart';
 
@@ -153,6 +155,20 @@ void main() {
     ));
   });
 
+  test('attachment gallery direct render is enabled for very tall images', () {
+    expect(
+      shouldUseDirectAttachmentGalleryRender((width: 720, height: 3200)),
+      isTrue,
+    );
+  });
+
+  test('attachment gallery direct render stays disabled for regular images', () {
+    expect(
+      shouldUseDirectAttachmentGalleryRender((width: 720, height: 1600)),
+      isFalse,
+    );
+  });
+
   test('gallery display size parser swaps axes for rotated jpeg', () {
     final image = img.Image(width: 2, height: 4);
     image.exif.imageIfd.orientation = 6;
@@ -161,6 +177,83 @@ void main() {
       width: 4,
       height: 2,
     ));
+  });
+
+  testWidgets('attachment gallery delegates pure image mode to shared body', (
+    tester,
+  ) async {
+    final repository = SceneMicroGuideRepository(_MemorySecureStorage());
+    await tester.pumpWidget(
+      _buildTestApp(
+        const AttachmentGalleryScreen(
+          images: [
+            AttachmentImageSource(
+              id: 'first',
+              title: 'First',
+              mimeType: 'image/png',
+            ),
+          ],
+          initialIndex: 0,
+        ),
+        repository: repository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ImagePreviewGalleryBody), findsOneWidget);
+  });
+
+  testWidgets('mixed gallery constrains portrait image box by contained aspect', (
+    tester,
+  ) async {
+    final repository = SceneMicroGuideRepository(_MemorySecureStorage());
+    await tester.pumpWidget(
+      _buildTestApp(
+        AttachmentGalleryScreen(
+          images: const [
+            AttachmentImageSource(
+              id: 'portrait',
+              title: 'Portrait',
+              mimeType: 'image/png',
+              width: 720,
+              height: 1600,
+            ),
+          ],
+          items: const [
+            AttachmentGalleryItem.image(
+              AttachmentImageSource(
+                id: 'portrait',
+                title: 'Portrait',
+                mimeType: 'image/png',
+                width: 720,
+                height: 1600,
+              ),
+            ),
+            AttachmentGalleryItem.video(
+              MemoVideoEntry(
+                id: 'video',
+                title: 'Video',
+                mimeType: 'video/mp4',
+                size: 1,
+              ),
+            ),
+          ],
+          initialIndex: 0,
+          isDesktopOverride: false,
+        ),
+        repository: repository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ImagePreviewGalleryBody), findsNothing);
+    expect(find.byType(PageView), findsOneWidget);
+
+    final size = tester.getSize(
+      find.byKey(const Key('attachment_gallery_display_box_portrait')),
+    );
+    expect(size.width, closeTo(244.8, 0.2));
+    expect(size.height, closeTo(544.0, 0.2));
   });
 
   testWidgets('desktop gallery supports keyboard and click navigation', (

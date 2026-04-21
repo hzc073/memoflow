@@ -1,15 +1,16 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../core/image_formats.dart';
-import '../../core/image_error_logger.dart';
 import '../../core/image_thumbnail_cache.dart';
 import '../../core/url.dart';
 import '../../data/models/attachment.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
+import '../image_preview/widgets/image_preview_tile.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_markdown.dart';
 
@@ -46,6 +47,20 @@ class MemoImageEntry {
       mimeType: mimeType,
       localFile: localFile,
       imageUrl: url.isEmpty ? null : url,
+      headers: headers,
+      width: width,
+      height: height,
+    );
+  }
+
+  ImagePreviewItem toImagePreviewItem() {
+    return ImagePreviewItem(
+      id: id,
+      title: title,
+      mimeType: mimeType,
+      localFile: localFile,
+      thumbnailUrl: previewUrl,
+      fullUrl: fullUrl,
       headers: headers,
       width: width,
       height: height,
@@ -340,26 +355,29 @@ class MemoImageGrid extends StatelessWidget {
     final visibleCount = maxCount == null ? total : math.min(maxCount!, total);
     final overflow = total - visibleCount;
     final visible = images.take(visibleCount).toList(growable: false);
-    final gallerySources = images
-        .map((e) => e.toGallerySource())
+    final previewItems = images
+        .map((entry) => entry.toImagePreviewItem())
         .toList(growable: false);
 
-    Widget placeholder(IconData icon) {
-      return Container(
-        color: Colors.transparent,
-        alignment: Alignment.center,
-        child: Icon(icon, size: 18, color: textColor.withValues(alpha: 0.45)),
-      );
-    }
-
     void openGallery(int index) {
-      if (gallerySources.isEmpty) return;
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AttachmentGalleryScreen(
-            images: gallerySources,
+      if (previewItems.isEmpty) return;
+      unawaited(
+        ImagePreviewLauncher.open(
+          context,
+          ImagePreviewOpenRequest(
+            items: previewItems,
             initialIndex: index,
-            onReplace: onReplace,
+            onReplace: onReplace == null
+                ? null
+                : (result) => onReplace!.call(
+                    EditedImageResult(
+                      sourceId: result.sourceId,
+                      filePath: result.filePath,
+                      filename: result.filename,
+                      mimeType: result.mimeType,
+                      size: result.size,
+                    ),
+                  ),
             enableDownload: enableDownload,
           ),
         ),
@@ -372,110 +390,6 @@ class MemoImageGrid extends StatelessWidget {
       int? cacheWidth,
       int? cacheHeight,
     }) {
-      final file = entry.localFile;
-      final url = (entry.previewUrl ?? entry.fullUrl ?? '').trim();
-      Widget image;
-      if (file != null) {
-        final isSvg = shouldUseSvgRenderer(
-          url: file.path,
-          mimeType: entry.mimeType,
-        );
-        if (isSvg) {
-          image = SvgPicture.file(
-            file,
-            fit: BoxFit.cover,
-            placeholderBuilder: (context) => placeholder(Icons.image_outlined),
-            errorBuilder: (context, error, stackTrace) {
-              logImageLoadError(
-                scope: 'memo_image_grid_local_svg',
-                source: file.path,
-                error: error,
-                stackTrace: stackTrace,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                  'isAttachment': entry.isAttachment,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        } else {
-          image = Image.file(
-            file,
-            fit: BoxFit.cover,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
-            errorBuilder: (context, error, stackTrace) {
-              logImageLoadError(
-                scope: 'memo_image_grid_local',
-                source: file.path,
-                error: error,
-                stackTrace: stackTrace,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                  'isAttachment': entry.isAttachment,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        }
-      } else if (url.isNotEmpty) {
-        final isSvg = shouldUseSvgRenderer(url: url, mimeType: entry.mimeType);
-        if (isSvg) {
-          image = SvgPicture.network(
-            url,
-            headers: entry.headers,
-            fit: BoxFit.cover,
-            placeholderBuilder: (context) => placeholder(Icons.image_outlined),
-            errorBuilder: (context, error, stackTrace) {
-              logImageLoadError(
-                scope: 'memo_image_grid_network_svg',
-                source: url,
-                error: error,
-                stackTrace: stackTrace,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                  'isAttachment': entry.isAttachment,
-                  'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ??
-                      false,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        } else {
-          image = CachedNetworkImage(
-            imageUrl: url,
-            httpHeaders: entry.headers,
-            fit: BoxFit.cover,
-            placeholder: (context, _) => placeholder(Icons.image_outlined),
-            errorWidget: (context, _, error) {
-              logImageLoadError(
-                scope: 'memo_image_grid_network',
-                source: url,
-                error: error,
-                extraContext: <String, Object?>{
-                  'entryId': entry.id,
-                  'mimeType': entry.mimeType,
-                  'isAttachment': entry.isAttachment,
-                  'hasAuthHeader':
-                      entry.headers?['Authorization']?.trim().isNotEmpty ??
-                      false,
-                },
-              );
-              return placeholder(Icons.broken_image_outlined);
-            },
-          );
-        }
-      } else {
-        image = placeholder(Icons.image_outlined);
-      }
-
       final overlay = (overflow > 0 && index == visibleCount - 1)
           ? Container(
               color: Colors.black.withValues(alpha: 0.45),
@@ -495,16 +409,24 @@ class MemoImageGrid extends StatelessWidget {
         onTap: () => openGallery(index),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
-          child: Container(
-            decoration: BoxDecoration(
-              color: backgroundColor,
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: borderColor),
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [image, if (overlay != null) overlay],
-            ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ImagePreviewTile(
+                item: entry.toImagePreviewItem(),
+                width: double.infinity,
+                height: double.infinity,
+                borderRadius: radius,
+                backgroundColor: backgroundColor,
+                borderColor: borderColor,
+                placeholderColor: Colors.transparent,
+                iconColor: textColor.withValues(alpha: 0.45),
+                cacheWidth: cacheWidth,
+                cacheHeight: cacheHeight,
+                logScope: 'memo_image_grid',
+              ),
+              if (overlay != null) overlay,
+            ],
           ),
         ),
       );

@@ -18,6 +18,7 @@ import '../../../data/logs/log_manager.dart';
 import '../../../state/memos/memos_providers.dart';
 import '../../../state/memos/memos_list_providers.dart';
 import '../../../state/tags/tag_color_lookup.dart';
+import '../../image_preview/image_preview_launcher.dart';
 import '../memo_detail_screen.dart';
 import '../memo_card_preview.dart';
 import '../memo_hero_flight.dart';
@@ -657,6 +658,11 @@ class MemoListCardState extends State<MemoListCard> {
                   widget.rebaseAbsoluteFileUrlForV024,
               attachAuthForSameOriginAbsolute:
                   widget.attachAuthForSameOriginAbsolute,
+              imagePreviewItems: widget.imageEntries
+                  .map((entry) => entry.toImagePreviewItem())
+                  .toList(growable: false),
+              onOpenImagePreview: (request) =>
+                  ImagePreviewLauncher.open(context, request),
               onToggleTask: (request) => onToggleTask(request.taskIndex),
             ),
             if (showToggle) ...[
