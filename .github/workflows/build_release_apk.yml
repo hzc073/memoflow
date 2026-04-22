@@ -101,12 +101,12 @@ jobs:
       - name: Build APK packages
         working-directory: memos_flutter_app
         shell: pwsh
-        run: ./tool/build_apk.ps1 -NoPubGet -SplitPerAbi -OutDir ./dist/apk
+        run: ./tool/build_apk.ps1 -NoPubGet -Flavor full -BuildApk -SplitPerAbi -IncludeUniversalApk -OutDir ./dist/apk
 
       - name: Create release and upload APK
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "memos_flutter_app/dist/apk/MemoFlow_v*.apk"
+          artifacts: "memos_flutter_app/dist/apk/MemoFlow_v*-full*-release.apk"
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.release_meta.outputs.tag }}
           commit: ${{ github.sha }}
