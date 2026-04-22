@@ -103,23 +103,43 @@ jobs:
         shell: pwsh
         run: |
           $scriptPath = "./tool/build_apk.ps1"
-          $scriptParameters = (Get-Command $scriptPath).Parameters
-          $buildArgs = @{
-            NoPubGet = $true
-            Flavor = "full"
-            BuildApk = $true
-            SplitPerAbi = $true
-            OutDir = "./dist/apk"
-          }
-          if ($scriptParameters.ContainsKey("IncludeUniversalApk")) {
-            $buildArgs.IncludeUniversalApk = $true
-          } else {
-            Write-Warning "build_apk.ps1 does not support -IncludeUniversalApk; building split APKs only."
-          }
-          & $scriptPath @buildArgs
+
+          & $scriptPath `
+            -NoPubGet `
+            -Flavor full `
+            -BuildApk `
+            -SplitPerAbi `
+            -OutDir "./dist/apk"
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+
+          $universalOutDir = "./dist/apk-universal"
+          if (Test-Path $universalOutDir) {
+            Remove-Item $universalOutDir -Recurse -Force
+          }
+
+          & $scriptPath `
+            -NoPubGet `
+            -Flavor full `
+            -BuildApk `
+            -OutDir $universalOutDir
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $universalApk = Get-ChildItem `
+            -Path $universalOutDir `
+            -File `
+            -Filter "MemoFlow_v*-full-release.apk" |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if (-not $universalApk) {
+            throw "Universal APK not found in $universalOutDir"
+          }
+
+          Copy-Item $universalApk.FullName "./dist/apk/" -Force
+          Write-Host "Universal APK copied to ./dist/apk/$($universalApk.Name)"
 
       - name: Create release and upload APK
         uses: ncipollo/release-action@v1
