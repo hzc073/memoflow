@@ -65,12 +65,64 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+function(COPY_VERIFIED_ARCHIVE_IF_NEEDED ARCHIVE_DST EXPECTED_MD5)
+  set(ARCHIVE_VALID FALSE)
+
+  if(EXISTS "${ARCHIVE_DST}")
+    file(MD5 "${ARCHIVE_DST}" ARCHIVE_DST_MD5)
+    if(ARCHIVE_DST_MD5 STREQUAL EXPECTED_MD5)
+      set(ARCHIVE_VALID TRUE)
+    else()
+      message(STATUS "Removing invalid archive cache: ${ARCHIVE_DST}")
+      file(REMOVE "${ARCHIVE_DST}")
+    endif()
+  endif()
+
+  if(NOT ARCHIVE_VALID)
+    foreach(ARCHIVE_SRC IN LISTS ARGN)
+      if(EXISTS "${ARCHIVE_SRC}")
+        file(MD5 "${ARCHIVE_SRC}" ARCHIVE_SRC_MD5)
+        if(ARCHIVE_SRC_MD5 STREQUAL EXPECTED_MD5)
+          get_filename_component(ARCHIVE_DST_DIR "${ARCHIVE_DST}" DIRECTORY)
+          file(MAKE_DIRECTORY "${ARCHIVE_DST_DIR}")
+          message(STATUS "Seeding local archive fallback: ${ARCHIVE_SRC}")
+          configure_file("${ARCHIVE_SRC}" "${ARCHIVE_DST}" COPYONLY)
+          set(ARCHIVE_VALID TRUE)
+          break()
+        endif()
+      endif()
+    endforeach()
+  endif()
+endfunction()
+
+function(SEED_MEDIA_KIT_MPV_FALLBACK)
+  set(LIBMPV "mpv-dev-x86_64-20230924-git-652a1dd.7z")
+  set(LIBMPV_MD5 "a832ef24b3a6ff97cd2560b5b9d04cd8")
+  set(LIBMPV_ARCHIVE_DST "${CMAKE_BINARY_DIR}/${LIBMPV}")
+
+  file(GLOB LIBMPV_ARCHIVE_CANDIDATES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/${LIBMPV}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/*/${LIBMPV}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/${LIBMPV}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/*/${LIBMPV}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../参考项目/${LIBMPV}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../*/${LIBMPV}"
+  )
+
+  COPY_VERIFIED_ARCHIVE_IF_NEEDED(
+    "${LIBMPV_ARCHIVE_DST}"
+    "${LIBMPV_MD5}"
+    ${LIBMPV_ARCHIVE_CANDIDATES}
+  )
+endfunction()
+
 function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
   set(ANGLE_ARCHIVE_DST "${CMAKE_BINARY_DIR}/ANGLE.7z")
   set(ANGLE_DIR_DST "${CMAKE_BINARY_DIR}/ANGLE")
   set(ANGLE_INCLUDE_MARKER "${ANGLE_DIR_DST}/include/EGL/egl.h")
   set(ANGLE_EGL_LIB_MARKER "${ANGLE_DIR_DST}/lib/libEGL.dll.lib")
   set(ANGLE_GLES_LIB_MARKER "${ANGLE_DIR_DST}/lib/libGLESv2.dll.lib")
+  set(ANGLE_MD5 "e866f13e8d552348058afaafe869b1ed")
   set(ANGLE_REQUIRED_FILES
     "d3dcompiler_47.dll"
     "libEGL.dll"
@@ -80,20 +132,19 @@ function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
     "zlib.dll"
   )
 
-  if(NOT EXISTS "${ANGLE_ARCHIVE_DST}")
-    file(GLOB ANGLE_ARCHIVE_CANDIDATES
-      "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/ANGLE.7z"
-      "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/*/ANGLE.7z"
-      "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/ANGLE.7z"
-      "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/*/ANGLE.7z"
-      "${CMAKE_CURRENT_SOURCE_DIR}/../../*/ANGLE.7z"
-    )
-    list(LENGTH ANGLE_ARCHIVE_CANDIDATES ANGLE_ARCHIVE_CANDIDATE_COUNT)
-    if(ANGLE_ARCHIVE_CANDIDATE_COUNT GREATER 0)
-      list(GET ANGLE_ARCHIVE_CANDIDATES 0 ANGLE_ARCHIVE_SRC)
-      configure_file("${ANGLE_ARCHIVE_SRC}" "${ANGLE_ARCHIVE_DST}" COPYONLY)
-    endif()
-  endif()
+  file(GLOB ANGLE_ARCHIVE_CANDIDATES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/ANGLE.7z"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/*/ANGLE.7z"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/ANGLE.7z"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/*/ANGLE.7z"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../*/ANGLE.7z"
+  )
+
+  COPY_VERIFIED_ARCHIVE_IF_NEEDED(
+    "${ANGLE_ARCHIVE_DST}"
+    "${ANGLE_MD5}"
+    ${ANGLE_ARCHIVE_CANDIDATES}
+  )
 
   if(
     EXISTS "${ANGLE_ARCHIVE_DST}"
@@ -159,6 +210,7 @@ function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
   endif()
 endfunction()
 
+SEED_MEDIA_KIT_MPV_FALLBACK()
 SEED_MEDIA_KIT_ANGLE_FALLBACK()
 
 

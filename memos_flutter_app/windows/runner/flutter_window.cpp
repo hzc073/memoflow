@@ -13,11 +13,11 @@
 #include <flutter_timezone/flutter_timezone_plugin_c_api.h>
 #include <geolocator_windows/geolocator_windows.h>
 #include <hotkey_manager_windows/hotkey_manager_windows_plugin_c_api.h>
-#include <image_compress_plus_windows/image_compress_plus_windows_plugin.h>
 #include <local_notifier/local_notifier_plugin.h>
 #include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
 #include <record_windows/record_windows_plugin_c_api.h>
+#include <screen_brightness_windows/screen_brightness_windows_plugin.h>
 #include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
 #include <share_plus/share_plus_windows_plugin_c_api.h>
 #include <tray_manager/tray_manager_plugin.h>
@@ -46,8 +46,6 @@ void RegisterSubWindowPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("GeolocatorWindows"));
   HotkeyManagerWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("HotkeyManagerWindowsPluginCApi"));
-  ImageCompressPlusWindowsPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("ImageCompressPlusWindowsPlugin"));
   LocalNotifierPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("LocalNotifierPlugin"));
   MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
@@ -59,6 +57,8 @@ void RegisterSubWindowPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("PermissionHandlerWindowsPlugin"));
   RecordWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("RecordWindowsPluginCApi"));
+  ScreenBrightnessWindowsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("ScreenBrightnessWindowsPlugin"));
   ScreenRetrieverWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ScreenRetrieverWindowsPluginCApi"));
   SharePlusWindowsPluginCApiRegisterWithRegistrar(

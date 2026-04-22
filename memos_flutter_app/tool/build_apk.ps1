@@ -8,6 +8,7 @@ param(
   [switch]$BuildApk,
   [switch]$BuildAab,
   [switch]$SplitPerAbi,
+  [switch]$IncludeUniversalApk,
   [switch]$Clean,
   [switch]$NoPubGet
 )
@@ -199,10 +200,11 @@ function Copy-BuildOutputs(
   [string]$Version,
   [string]$Artifact,
   [string]$FlavorName,
-  [switch]$SplitBuild
+  [switch]$SplitBuild,
+  [switch]$IncludeUniversalApk
 ) {
   $files = Get-ArtifactFiles -ProjectRootPath $ProjectRootPath -Artifact $Artifact -FlavorName $FlavorName
-  if ($SplitBuild -and $Artifact -eq "apk") {
+  if ($SplitBuild -and $Artifact -eq "apk" -and -not $IncludeUniversalApk) {
     $files = @($files | Where-Object { $_.Name -ne "app-$FlavorName-release.apk" })
     if (-not $files) {
       throw "No split APK outputs found for flavor '$FlavorName'."
@@ -355,7 +357,8 @@ try {
       -Version $version `
       -Artifact $request.Artifact `
       -FlavorName $request.Flavor `
-      -SplitBuild:$splitCurrentBuild)) {
+      -SplitBuild:$splitCurrentBuild `
+      -IncludeUniversalApk:$IncludeUniversalApk)) {
       $null = $copied.Add($artifactPath)
     }
   }
