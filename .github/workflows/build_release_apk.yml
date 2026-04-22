@@ -101,7 +101,25 @@ jobs:
       - name: Build APK packages
         working-directory: memos_flutter_app
         shell: pwsh
-        run: ./tool/build_apk.ps1 -NoPubGet -Flavor full -BuildApk -SplitPerAbi -IncludeUniversalApk -OutDir ./dist/apk
+        run: |
+          $scriptPath = "./tool/build_apk.ps1"
+          $scriptParameters = (Get-Command $scriptPath).Parameters
+          $buildArgs = @{
+            NoPubGet = $true
+            Flavor = "full"
+            BuildApk = $true
+            SplitPerAbi = $true
+            OutDir = "./dist/apk"
+          }
+          if ($scriptParameters.ContainsKey("IncludeUniversalApk")) {
+            $buildArgs.IncludeUniversalApk = $true
+          } else {
+            Write-Warning "build_apk.ps1 does not support -IncludeUniversalApk; building split APKs only."
+          }
+          & $scriptPath @buildArgs
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       - name: Create release and upload APK
         uses: ncipollo/release-action@v1

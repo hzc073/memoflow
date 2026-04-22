@@ -338,7 +338,7 @@ try {
 
   $copied = New-Object 'System.Collections.Generic.List[string]'
   foreach ($request in $requests) {
-    $splitCurrentBuild = $request.Artifact -eq "apk" -and $request.Flavor -eq "full"
+    $splitCurrentBuild = $request.Artifact -eq "apk" -and $request.Flavor -eq "full" -and $SplitPerAbi.IsPresent
     Remove-StaleArtifactOutputs `
       -ProjectRootPath $projectRootResolved `
       -Artifact $request.Artifact `
