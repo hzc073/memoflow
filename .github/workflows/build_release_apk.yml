@@ -133,6 +133,7 @@ jobs:
           generateReleaseNotes: true
 
       - name: Trigger CF update-config worker
+        shell: pwsh
         env:
           CF_UPDATE_CONFIG_URL: ${{ secrets.CF_UPDATE_CONFIG_URL }}
           CF_UPDATE_CONFIG_TOKEN: ${{ secrets.CF_UPDATE_CONFIG_TOKEN }}
@@ -141,21 +142,28 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_VERSION: ${{ steps.release_meta.outputs.version }}
         run: |
-          set -euo pipefail
-          if [ -z "${CF_UPDATE_CONFIG_URL:-}" ] || [ -z "${CF_UPDATE_CONFIG_TOKEN:-}" ]; then
-            echo "CF update-config secrets not configured; skip trigger."
+          if ([string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_URL) -or [string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_TOKEN)) {
+            Write-Host "CF update-config secrets not configured; skip trigger."
             exit 0
-          fi
-          tag="${RELEASE_VERSION}"
-          payload="$(jq -n \
-            --arg tag "$tag" \
-            --arg app_repo "$GITHUB_REPOSITORY" \
-            --arg config_repo "${CF_UPDATE_CONFIG_REPO:-}" \
-            --arg config_branch "${CF_UPDATE_CONFIG_BRANCH:-}" \
-            '{tag: $tag, app_repo: $app_repo}
-            + (if ($config_repo | length) > 0 then {config_repo: $config_repo} else {} end)
-            + (if ($config_branch | length) > 0 then {config_branch: $config_branch} else {} end)')"
-          curl -fsS -X POST "$CF_UPDATE_CONFIG_URL" \
-            -H "content-type: application/json" \
-            -H "x-update-token: $CF_UPDATE_CONFIG_TOKEN" \
-            --data "$payload"
+          }
+          $tag = $env:RELEASE_VERSION
+          if ($tag.StartsWith("v")) { $tag = $tag.Substring(1) }
+          $payload = @{
+            tag = $tag
+            app_repo = $env:GITHUB_REPOSITORY
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_REPO)) {
+            $payload["config_repo"] = $env:CF_UPDATE_CONFIG_REPO
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:CF_UPDATE_CONFIG_BRANCH)) {
+            $payload["config_branch"] = $env:CF_UPDATE_CONFIG_BRANCH
+          }
+          $payloadJson = $payload | ConvertTo-Json -Compress
+          Invoke-RestMethod `
+            -Method Post `
+            -Uri $env:CF_UPDATE_CONFIG_URL `
+            -Headers @{
+              "x-update-token" = $env:CF_UPDATE_CONFIG_TOKEN
+              "content-type" = "application/json"
+            } `
+            -Body $payloadJson | Out-String | Write-Host
