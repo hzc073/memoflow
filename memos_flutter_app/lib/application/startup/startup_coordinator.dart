@@ -14,6 +14,7 @@ import '../../features/memos/note_input_sheet.dart';
 import '../../features/share/share_clip_models.dart';
 import '../../features/share/share_clip_screen.dart';
 import '../../features/share/share_handler.dart';
+import '../../features/share/share_quick_clip_models.dart';
 import '../../features/share/share_quick_clip_service.dart';
 import '../../features/share/share_quick_clip_sheet.dart';
 import '../../i18n/strings.g.dart';
@@ -31,6 +32,16 @@ part 'startup_coordinator_widget.dart';
 
 enum _StartupAction { share, widget, launchAction, none }
 
+typedef ShareQuickClipStartCallback =
+    Future<void> Function({
+      required SharePayload payload,
+      required ShareQuickClipSubmission submission,
+      required Locale locale,
+    });
+typedef ShareComposeRequestPresenter =
+    void Function(BuildContext context, ShareComposeRequest request);
+typedef TopToastPresenter = bool Function(BuildContext context, String message);
+
 class StartupCoordinator extends ChangeNotifier {
   StartupCoordinator({
     required AppBootstrapAdapter bootstrapAdapter,
@@ -42,13 +53,21 @@ class StartupCoordinator extends ChangeNotifier {
     @visibleForTesting
     Route<ShareComposeRequest> Function(SharePayload payload)?
     sharePreviewRouteBuilder,
+    @visibleForTesting ShareQuickClipStartCallback? shareQuickClipStartOverride,
+    @visibleForTesting
+    ShareComposeRequestPresenter? shareComposeRequestPresenterOverride,
+    @visibleForTesting TopToastPresenter? topToastPresenterOverride,
   }) : _bootstrapAdapter = bootstrapAdapter,
        _syncOrchestrator = syncOrchestrator,
        _appNavigator = appNavigator,
        _navigatorKey = navigatorKey,
        _ref = ref,
        _isMounted = isMounted,
-       _sharePreviewRouteBuilder = sharePreviewRouteBuilder;
+       _sharePreviewRouteBuilder = sharePreviewRouteBuilder,
+       _shareQuickClipStartOverride = shareQuickClipStartOverride,
+       _shareComposeRequestPresenterOverride =
+           shareComposeRequestPresenterOverride,
+       _topToastPresenterOverride = topToastPresenterOverride;
 
   final AppBootstrapAdapter _bootstrapAdapter;
   final AppSyncOrchestrator _syncOrchestrator;
@@ -58,6 +77,13 @@ class StartupCoordinator extends ChangeNotifier {
   final bool Function() _isMounted;
   final Route<ShareComposeRequest> Function(SharePayload payload)?
   _sharePreviewRouteBuilder;
+  final ShareQuickClipStartCallback? _shareQuickClipStartOverride;
+  final ShareComposeRequestPresenter? _shareComposeRequestPresenterOverride;
+  final TopToastPresenter? _topToastPresenterOverride;
+
+  bool _showTopToast(BuildContext context, String message) {
+    return (_topToastPresenterOverride ?? showTopToast)(context, message);
+  }
 
   HomeWidgetLaunchPayload? _pendingWidgetLaunch;
   SharePayload? _pendingSharePayload;

@@ -33,11 +33,33 @@ class StartupCoordinatorTestHarness {
   final GlobalKey<NavigatorState> navigatorKey;
 }
 
+class TestMemosAppNavigator extends AppNavigator {
+  TestMemosAppNavigator(this.navigatorKey) : super(navigatorKey);
+
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  @override
+  void openAllMemos() {
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: SizedBox.shrink()),
+      ),
+      (route) => false,
+    );
+  }
+}
+
 Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
   WidgetTester tester, {
   required FakeBootstrapAdapter bootstrapAdapter,
   Route<ShareComposeRequest> Function(SharePayload payload)?
   sharePreviewRouteBuilder,
+  ShareQuickClipStartCallback? shareQuickClipStartOverride,
+  ShareComposeRequestPresenter? shareComposeRequestPresenterOverride,
+  TopToastPresenter? topToastPresenterOverride,
+  AppNavigator? appNavigator,
+  AppNavigator Function(GlobalKey<NavigatorState> navigatorKey)?
+  appNavigatorBuilder,
 }) async {
   late WidgetRef ref;
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -53,8 +75,7 @@ Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
               navigatorKey: navigatorKey,
               locale: AppLocale.en.flutterLocale,
               supportedLocales: AppLocaleUtils.supportedLocales,
-              localizationsDelegates:
-                  GlobalMaterialLocalizations.delegates,
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
               home: const Scaffold(body: SizedBox.shrink()),
             );
           },
@@ -67,11 +88,17 @@ Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
   final coordinator = StartupCoordinator(
     bootstrapAdapter: bootstrapAdapter,
     syncOrchestrator: syncOrchestrator,
-    appNavigator: AppNavigator(navigatorKey),
+    appNavigator:
+        appNavigator ??
+        appNavigatorBuilder?.call(navigatorKey) ??
+        AppNavigator(navigatorKey),
     navigatorKey: navigatorKey,
     ref: ref,
     isMounted: () => true,
     sharePreviewRouteBuilder: sharePreviewRouteBuilder,
+    shareQuickClipStartOverride: shareQuickClipStartOverride,
+    shareComposeRequestPresenterOverride: shareComposeRequestPresenterOverride,
+    topToastPresenterOverride: topToastPresenterOverride,
   );
   addTearDown(coordinator.dispose);
   return StartupCoordinatorTestHarness(
@@ -122,7 +149,8 @@ class FakeBootstrapAdapter extends AppBootstrapAdapter {
       workspacePreferences;
 
   @override
-  ResolvedAppSettings readResolvedAppSettings(WidgetRef ref) => resolvedSettings;
+  ResolvedAppSettings readResolvedAppSettings(WidgetRef ref) =>
+      resolvedSettings;
 
   @override
   AppSessionState? readSession(WidgetRef ref) => session;
@@ -161,7 +189,10 @@ Account buildTestAccount() {
 }
 
 AppSessionState buildTestSessionWithAccount() {
-  return AppSessionState(accounts: [buildTestAccount()], currentKey: 'account-key');
+  return AppSessionState(
+    accounts: [buildTestAccount()],
+    currentKey: 'account-key',
+  );
 }
 
 LocalLibrary buildTestLocalLibrary() {

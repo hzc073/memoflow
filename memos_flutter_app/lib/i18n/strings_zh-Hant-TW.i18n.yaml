@@ -1721,6 +1721,8 @@ legacy:
   msg_attachment_type: "\u9644\u4ef6\u985e\u578b"
   msg_linked_memos: "\u96d9\u93c8"
   msg_clear_all_filters: "\u6e05\u9664\u6240\u6709\u7be9\u9078"
+shareClip:
+  localSavedPendingSync: "\u5df2\u4fdd\u5b58\u5230\u672c\u6a5f\uff0c\u5f8c\u7e8c\u540c\u6b65\u6703\u5728\u53ef\u7528\u6642\u7e7c\u7e8c\u3002"
 collections:
   drawerLabel: "\u5408\u96c6"
   title: "\u5408\u96c6"

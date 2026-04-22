@@ -1750,6 +1750,7 @@ shareClip:
   stageBuildingPreview: "\u6b63\u5728\u751f\u6210\u9884\u89c8"
   stageDownloadingVideo: "\u6b63\u5728\u4e0b\u8f7d\u89c6\u9891"
   stageCompressingVideo: "\u6b63\u5728\u538b\u7f29\u89c6\u9891"
+  localSavedPendingSync: "\u5df2\u4fdd\u5b58\u5230\u672c\u5730\uff0c\u540e\u7eed\u540c\u6b65\u4f1a\u5728\u53ef\u7528\u65f6\u7ee7\u7eed\u3002"
 collections:
   drawerLabel: "\u5408\u96c6"
   title: "\u5408\u96c6"

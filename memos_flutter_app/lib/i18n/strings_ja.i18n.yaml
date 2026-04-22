@@ -1671,6 +1671,8 @@ legacy:
   msg_attachment_type: "Attachment type"
   msg_linked_memos: "Linked memos"
   msg_clear_all_filters: "Clear all filters"
+shareClip:
+  localSavedPendingSync: "ローカルに保存しました。同期は利用可能になり次第続行されます。"
 collections:
   drawerLabel: "Collections"
   title: "Collections"

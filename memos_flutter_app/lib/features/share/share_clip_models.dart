@@ -370,6 +370,7 @@ class ShareComposeRequest {
     this.deferredVideoAttachments = const [],
     this.clipMetadataDraft,
     this.userMessage,
+    this.showLocalSaveSuccessToast = false,
   });
 
   final String text;
@@ -381,6 +382,7 @@ class ShareComposeRequest {
   final List<ShareDeferredVideoAttachmentRequest> deferredVideoAttachments;
   final ShareClipMetadataDraft? clipMetadataDraft;
   final String? userMessage;
+  final bool showLocalSaveSuccessToast;
 
   ShareComposeRequest copyWith({
     String? text,
@@ -392,6 +394,7 @@ class ShareComposeRequest {
     List<ShareDeferredVideoAttachmentRequest>? deferredVideoAttachments,
     ShareClipMetadataDraft? clipMetadataDraft,
     String? userMessage,
+    bool? showLocalSaveSuccessToast,
   }) {
     return ShareComposeRequest(
       text: text ?? this.text,
@@ -405,6 +408,8 @@ class ShareComposeRequest {
           deferredVideoAttachments ?? this.deferredVideoAttachments,
       clipMetadataDraft: clipMetadataDraft ?? this.clipMetadataDraft,
       userMessage: userMessage ?? this.userMessage,
+      showLocalSaveSuccessToast:
+          showLocalSaveSuccessToast ?? this.showLocalSaveSuccessToast,
     );
   }
 }

@@ -130,6 +130,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
     this.initialDeferredVideoAttachments = const [],
     this.ignoreDraft = false,
     this.autoFocus = true,
+    this.showLocalSaveSuccessToast = false,
     this.shareInlineImageDownloadService,
     this.shareVideoDownloadService,
     this.shareVideoCompressionService,
@@ -146,6 +147,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
   initialDeferredVideoAttachments;
   final bool ignoreDraft;
   final bool autoFocus;
+  final bool showLocalSaveSuccessToast;
   final ShareInlineImageDownloadService? shareInlineImageDownloadService;
   final ShareVideoDownloadService? shareVideoDownloadService;
   final ShareVideoCompressionService? shareVideoCompressionService;
@@ -164,6 +166,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
         const [],
     bool ignoreDraft = false,
     bool autoFocus = true,
+    bool showLocalSaveSuccessToast = false,
     ShareInlineImageDownloadService? shareInlineImageDownloadService,
     ShareVideoDownloadService? shareVideoDownloadService,
     ShareVideoCompressionService? shareVideoCompressionService,
@@ -186,6 +189,7 @@ class NoteInputSheet extends ConsumerStatefulWidget {
         initialDeferredVideoAttachments: initialDeferredVideoAttachments,
         ignoreDraft: ignoreDraft,
         autoFocus: autoFocus,
+        showLocalSaveSuccessToast: showLocalSaveSuccessToast,
         shareInlineImageDownloadService: shareInlineImageDownloadService,
         shareVideoDownloadService: shareVideoDownloadService,
         shareVideoCompressionService: shareVideoCompressionService,
@@ -2132,13 +2136,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   List<({ImagePreviewItem item, _PendingAttachment attachment, File file})>
   _pendingImageSources() {
     final items =
-        <
-          ({
-            ImagePreviewItem item,
-            _PendingAttachment attachment,
-            File file,
-          })
-        >[];
+        <({ImagePreviewItem item, _PendingAttachment attachment, File file})>[];
     for (final attachment in _pendingAttachments) {
       if (!_isImageMimeType(attachment.mimeType)) continue;
       final file = _resolvePendingAttachmentFile(attachment);
@@ -2769,16 +2767,19 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         requests: deferredInlineImageRequests,
       );
 
-      unawaited(
-        ref
-            .read(syncCoordinatorProvider.notifier)
-            .requestSync(
-              const SyncRequest(
-                kind: SyncRequestKind.memos,
-                reason: SyncRequestReason.manual,
-              ),
-            ),
-      );
+      if (widget.showLocalSaveSuccessToast) {
+        LogManager.instance.info(
+          'ShareCompose: local_save_committed',
+          context: {
+            'memoUid': uid,
+            'attachmentCount': attachments.length,
+            'pendingUploadCount': pendingUploads.length,
+            'deferredInlineImageCount': deferredInlineImageRequests.length,
+          },
+        );
+      }
+
+      unawaited(_requestSyncBestEffort(memoUid: uid));
       final submittedDraftId = _activeDraftId;
       _draftTimer?.cancel();
       _composer.replaceText('', clearHistory: true);
@@ -2799,6 +2800,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       }
 
       if (!mounted) return;
+      if (widget.showLocalSaveSuccessToast) {
+        showTopToast(
+          context,
+          context.t.strings.shareClip.localSavedPendingSync,
+        );
+      }
       context.safePop();
     } catch (e) {
       if (!mounted) return;
@@ -2809,6 +2816,33 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       );
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _requestSyncBestEffort({required String memoUid}) async {
+    if (widget.showLocalSaveSuccessToast) {
+      LogManager.instance.info(
+        'ShareCompose: background_sync_requested',
+        context: {'memoUid': memoUid},
+      );
+    }
+    try {
+      await ref
+          .read(syncCoordinatorProvider.notifier)
+          .requestSync(
+            const SyncRequest(
+              kind: SyncRequestKind.memos,
+              reason: SyncRequestReason.manual,
+            ),
+          );
+    } catch (error, stackTrace) {
+      if (!widget.showLocalSaveSuccessToast) return;
+      LogManager.instance.warn(
+        'ShareCompose: background_sync_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: {'memoUid': memoUid},
+      );
     }
   }
 

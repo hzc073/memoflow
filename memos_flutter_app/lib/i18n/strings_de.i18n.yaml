@@ -1671,6 +1671,8 @@ legacy:
   msg_attachment_type: "Attachment type"
   msg_linked_memos: "Linked memos"
   msg_clear_all_filters: "Clear all filters"
+shareClip:
+  localSavedPendingSync: "Lokal gespeichert. Die Synchronisierung wird fortgesetzt, sobald sie verfügbar ist."
 collections:
   drawerLabel: "Collections"
   title: "Collections"

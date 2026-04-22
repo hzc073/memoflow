@@ -75,12 +75,29 @@ extension _StartupCoordinatorShare on StartupCoordinator {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isMounted()) return;
       _appNavigator.openAllMemos();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_isMounted()) return;
-        unawaited(_openShareFlow(payload));
-      });
+      WidgetsBinding.instance.scheduleFrame();
+      _scheduleShareFlowAfterNavigation(payload);
     });
+    WidgetsBinding.instance.scheduleFrame();
     return true;
+  }
+
+  void _scheduleShareFlowAfterNavigation(
+    SharePayload payload, {
+    int attempt = 0,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isMounted()) return;
+      final context = _navigatorKey.currentContext;
+      final navigator = _navigatorKey.currentState;
+      if (context == null || navigator == null) {
+        if (attempt >= 2) return;
+        WidgetsBinding.instance.scheduleFrame();
+        _scheduleShareFlowAfterNavigation(payload, attempt: attempt + 1);
+        return;
+      }
+      unawaited(_openShareFlow(payload));
+    });
   }
 
   bool _shouldOpenSharePreviewDirectly(SharePayload payload) {
@@ -123,11 +140,45 @@ extension _StartupCoordinatorShare on StartupCoordinator {
         ref: _ref,
         bootstrapAdapter: _bootstrapAdapter,
       );
-      await service.start(
-        payload: payload,
-        submission: submission,
-        locale: locale,
-      );
+      try {
+        if (_shareQuickClipStartOverride != null) {
+          await _shareQuickClipStartOverride(
+            payload: payload,
+            submission: submission,
+            locale: locale,
+          );
+        } else {
+          await service.start(
+            payload: payload,
+            submission: submission,
+            locale: locale,
+          );
+        }
+        if (_isMounted() &&
+            activeContext.mounted &&
+            submission.titleAndLinkOnly) {
+          _showTopToast(
+            activeContext,
+            activeContext.t.strings.shareClip.localSavedPendingSync,
+          );
+        }
+      } catch (error, stackTrace) {
+        LogManager.instance.error(
+          'Startup: share_quick_clip_failed',
+          error: error,
+          stackTrace: stackTrace,
+          context: _buildStartupContext(
+            phase: _startupHandled ? 'runtime' : 'startup',
+            extra: _sharePayloadContext(payload),
+          ),
+        );
+        if (_isMounted() && activeContext.mounted) {
+          _showTopToast(
+            activeContext,
+            activeContext.t.strings.legacy.msg_create_failed_2(e: error),
+          );
+        }
+      }
     } finally {
       _clearStartupShareLaunchUi();
       _setShareFlowActive(false);
@@ -155,7 +206,9 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       _buildSharePreviewRoute(payload),
     );
     if (!_isMounted() || composeRequest == null) return;
-    _openComposeRequestWithCurrentContext(composeRequest);
+    _openComposeRequestWithCurrentContext(
+      composeRequest.copyWith(showLocalSaveSuccessToast: true),
+    );
   }
 
   Route<T> _buildInstantRoute<T>(Widget child) {
@@ -182,6 +235,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
           text: '',
           selectionOffset: 0,
           attachmentPaths: payload.paths,
+          showLocalSaveSuccessToast: true,
         ),
       );
       return;
@@ -193,29 +247,36 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       ShareComposeRequest(
         text: draft.text,
         selectionOffset: draft.selectionOffset,
+        showLocalSaveSuccessToast: true,
       ),
     );
   }
 
   void _openComposeRequest(BuildContext context, ShareComposeRequest request) {
-    NoteInputSheet.show(
-      context,
-      initialText: request.text,
-      initialSelection: TextSelection.collapsed(
-        offset: request.selectionOffset,
-      ),
-      initialAttachmentPaths: request.attachmentPaths,
-      initialAttachmentSeeds: request.initialAttachmentSeeds,
-      initialClipMetadataDraft: request.clipMetadataDraft,
-      initialDeferredInlineImageAttachments:
-          request.deferredInlineImageAttachments,
-      initialDeferredVideoAttachments: request.deferredVideoAttachments,
-      ignoreDraft: true,
-    );
+    final presenter = _shareComposeRequestPresenterOverride;
+    if (presenter != null) {
+      presenter(context, request);
+    } else {
+      NoteInputSheet.show(
+        context,
+        initialText: request.text,
+        initialSelection: TextSelection.collapsed(
+          offset: request.selectionOffset,
+        ),
+        initialAttachmentPaths: request.attachmentPaths,
+        initialAttachmentSeeds: request.initialAttachmentSeeds,
+        initialClipMetadataDraft: request.clipMetadataDraft,
+        initialDeferredInlineImageAttachments:
+            request.deferredInlineImageAttachments,
+        initialDeferredVideoAttachments: request.deferredVideoAttachments,
+        showLocalSaveSuccessToast: request.showLocalSaveSuccessToast,
+        ignoreDraft: true,
+      );
+    }
     if ((request.userMessage ?? '').trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_isMounted()) return;
-        showTopToast(context, request.userMessage!);
+        _showTopToast(context, request.userMessage!);
       });
     }
   }
@@ -229,7 +290,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
   void _notifyShareDisabled() {
     final context = _navigatorKey.currentContext;
     if (context == null) return;
-    showTopToast(
+    _showTopToast(
       context,
       context.t.strings.legacy.msg_third_party_share_disabled,
     );

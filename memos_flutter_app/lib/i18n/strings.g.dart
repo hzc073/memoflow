@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 9670 (1934 per locale)
+/// Strings: 9675 (1935 per locale)
 ///
-/// Built on 2026-04-20 at 14:35 UTC
+/// Built on 2026-04-22 at 01:38 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1775,6 +1775,7 @@ class _StringsStringsShareClipEn {
 	String get stageBuildingPreview => 'Building preview';
 	String get stageDownloadingVideo => 'Downloading video';
 	String get stageCompressingVideo => 'Compressing video';
+	String get localSavedPendingSync => 'Saved locally. Sync will continue when available.';
 }
 
 // Path: strings.collections
@@ -2706,6 +2707,7 @@ class _StringsStringsDe extends _StringsStringsEn {
 	@override late final _StringsStringsAiInsightDe aiInsight = _StringsStringsAiInsightDe._(_root);
 	@override late final _StringsStringsAiProxyDe aiProxy = _StringsStringsAiProxyDe._(_root);
 	@override late final _StringsStringsLegacyDe legacy = _StringsStringsLegacyDe._(_root);
+	@override late final _StringsStringsShareClipDe shareClip = _StringsStringsShareClipDe._(_root);
 	@override late final _StringsStringsCollectionsDe collections = _StringsStringsCollectionsDe._(_root);
 }
 
@@ -4211,6 +4213,16 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_clear_all_filters => 'Clear all filters';
 }
 
+// Path: strings.shareClip
+class _StringsStringsShareClipDe extends _StringsStringsShareClipEn {
+	_StringsStringsShareClipDe._(_StringsDe root) : this._root = root, super._(root);
+
+	@override final _StringsDe _root; // ignore: unused_field
+
+	// Translations
+	@override String get localSavedPendingSync => 'Lokal gespeichert. Die Synchronisierung wird fortgesetzt, sobald sie verfügbar ist.';
+}
+
 // Path: strings.collections
 class _StringsStringsCollectionsDe extends _StringsStringsCollectionsEn {
 	_StringsStringsCollectionsDe._(_StringsDe root) : this._root = root, super._(root);
@@ -5140,6 +5152,7 @@ class _StringsStringsJa extends _StringsStringsEn {
 	@override late final _StringsStringsAiInsightJa aiInsight = _StringsStringsAiInsightJa._(_root);
 	@override late final _StringsStringsAiProxyJa aiProxy = _StringsStringsAiProxyJa._(_root);
 	@override late final _StringsStringsLegacyJa legacy = _StringsStringsLegacyJa._(_root);
+	@override late final _StringsStringsShareClipJa shareClip = _StringsStringsShareClipJa._(_root);
 	@override late final _StringsStringsCollectionsJa collections = _StringsStringsCollectionsJa._(_root);
 }
 
@@ -6643,6 +6656,16 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_attachment_type => 'Attachment type';
 	@override String get msg_linked_memos => 'Linked memos';
 	@override String get msg_clear_all_filters => 'Clear all filters';
+}
+
+// Path: strings.shareClip
+class _StringsStringsShareClipJa extends _StringsStringsShareClipEn {
+	_StringsStringsShareClipJa._(_StringsJa root) : this._root = root, super._(root);
+
+	@override final _StringsJa _root; // ignore: unused_field
+
+	// Translations
+	@override String get localSavedPendingSync => 'ローカルに保存しました。同期は利用可能になり次第続行されます。';
 }
 
 // Path: strings.collections
@@ -9177,6 +9200,7 @@ class _StringsStringsShareClipZhHans extends _StringsStringsShareClipEn {
 	@override String get stageBuildingPreview => '正在生成预览';
 	@override String get stageDownloadingVideo => '正在下载视频';
 	@override String get stageCompressingVideo => '正在压缩视频';
+	@override String get localSavedPendingSync => '已保存到本地，后续同步会在可用时继续。';
 }
 
 // Path: strings.collections
@@ -10108,6 +10132,7 @@ class _StringsStringsZhHantTw extends _StringsStringsEn {
 	@override late final _StringsStringsAiInsightZhHantTw aiInsight = _StringsStringsAiInsightZhHantTw._(_root);
 	@override late final _StringsStringsAiProxyZhHantTw aiProxy = _StringsStringsAiProxyZhHantTw._(_root);
 	@override late final _StringsStringsLegacyZhHantTw legacy = _StringsStringsLegacyZhHantTw._(_root);
+	@override late final _StringsStringsShareClipZhHantTw shareClip = _StringsStringsShareClipZhHantTw._(_root);
 	@override late final _StringsStringsCollectionsZhHantTw collections = _StringsStringsCollectionsZhHantTw._(_root);
 }
 
@@ -11671,6 +11696,16 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_attachment_type => '附件類型';
 	@override String get msg_linked_memos => '雙鏈';
 	@override String get msg_clear_all_filters => '清除所有篩選';
+}
+
+// Path: strings.shareClip
+class _StringsStringsShareClipZhHantTw extends _StringsStringsShareClipEn {
+	_StringsStringsShareClipZhHantTw._(_StringsZhHantTw root) : this._root = root, super._(root);
+
+	@override final _StringsZhHantTw _root; // ignore: unused_field
+
+	// Translations
+	@override String get localSavedPendingSync => '已保存到本機，後續同步會在可用時繼續。';
 }
 
 // Path: strings.collections
@@ -14260,6 +14295,7 @@ extension on Translations {
 			case 'strings.shareClip.stageBuildingPreview': return 'Building preview';
 			case 'strings.shareClip.stageDownloadingVideo': return 'Downloading video';
 			case 'strings.shareClip.stageCompressingVideo': return 'Compressing video';
+			case 'strings.shareClip.localSavedPendingSync': return 'Saved locally. Sync will continue when available.';
 			case 'strings.collections.drawerLabel': return 'Collections';
 			case 'strings.collections.title': return 'Collections';
 			case 'strings.collections.collection': return 'Collection';
@@ -16154,6 +16190,7 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_attachment_type': return 'Attachment type';
 			case 'strings.legacy.msg_linked_memos': return 'Linked memos';
 			case 'strings.legacy.msg_clear_all_filters': return 'Clear all filters';
+			case 'strings.shareClip.localSavedPendingSync': return 'Lokal gespeichert. Die Synchronisierung wird fortgesetzt, sobald sie verfügbar ist.';
 			case 'strings.collections.drawerLabel': return 'Collections';
 			case 'strings.collections.title': return 'Collections';
 			case 'strings.collections.collection': return 'Collection';
@@ -18048,6 +18085,7 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_attachment_type': return 'Attachment type';
 			case 'strings.legacy.msg_linked_memos': return 'Linked memos';
 			case 'strings.legacy.msg_clear_all_filters': return 'Clear all filters';
+			case 'strings.shareClip.localSavedPendingSync': return 'ローカルに保存しました。同期は利用可能になり次第続行されます。';
 			case 'strings.collections.drawerLabel': return 'Collections';
 			case 'strings.collections.title': return 'Collections';
 			case 'strings.collections.collection': return 'Collection';
@@ -20032,6 +20070,7 @@ extension on _StringsZhHans {
 			case 'strings.shareClip.stageBuildingPreview': return '正在生成预览';
 			case 'strings.shareClip.stageDownloadingVideo': return '正在下载视频';
 			case 'strings.shareClip.stageCompressingVideo': return '正在压缩视频';
+			case 'strings.shareClip.localSavedPendingSync': return '已保存到本地，后续同步会在可用时继续。';
 			case 'strings.collections.drawerLabel': return '合集';
 			case 'strings.collections.title': return '合集';
 			case 'strings.collections.collection': return '合集';
@@ -21986,6 +22025,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_attachment_type': return '附件類型';
 			case 'strings.legacy.msg_linked_memos': return '雙鏈';
 			case 'strings.legacy.msg_clear_all_filters': return '清除所有篩選';
+			case 'strings.shareClip.localSavedPendingSync': return '已保存到本機，後續同步會在可用時繼續。';
 			case 'strings.collections.drawerLabel': return '合集';
 			case 'strings.collections.title': return '合集';
 			case 'strings.collections.collection': return '合集';

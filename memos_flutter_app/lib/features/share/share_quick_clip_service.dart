@@ -134,7 +134,22 @@ class ShareQuickClipService {
           'contentLength': content.length,
         },
       );
-      await _requestMemoSync();
+      LogManager.instance.info(
+        'ShareQuickClip: local_save_committed',
+        context: {
+          'memoUid': uid,
+          'host': request.url.host,
+          'mode': 'title_and_link_only',
+          'contentLength': content.length,
+        },
+      );
+      unawaited(
+        _requestMemoSyncBestEffort(
+          memoUid: uid,
+          host: request.url.host,
+          trigger: 'title_and_link_only',
+        ),
+      );
       return;
     }
 
@@ -167,6 +182,15 @@ class ShareQuickClipService {
       context: {
         'memoUid': uid,
         'host': request.url.host,
+        'contentLength': placeholderContent.length,
+      },
+    );
+    LogManager.instance.info(
+      'ShareQuickClip: local_save_committed',
+      context: {
+        'memoUid': uid,
+        'host': request.url.host,
+        'mode': 'placeholder',
         'contentLength': placeholderContent.length,
       },
     );
@@ -326,15 +350,14 @@ class ShareQuickClipService {
           'appendedInlineImages': appendedInlineImages,
         },
       );
-      await _requestMemoSync();
-      LogManager.instance.info(
-        'ShareQuickClip: sync_requested',
-        context: {
-          'memoUid': resolvedMemoUid,
-          'requestedMemoUid': memoUid,
-          'host': request.url.host,
-          'appendedInlineImages': appendedInlineImages,
-        },
+      unawaited(
+        _requestMemoSyncBestEffort(
+          memoUid: resolvedMemoUid,
+          requestedMemoUid: memoUid,
+          host: request.url.host,
+          trigger: 'capture_update',
+          extraContext: {'appendedInlineImages': appendedInlineImages},
+        ),
       );
     } on TimeoutException catch (error, stackTrace) {
       LogManager.instance.warn(
@@ -369,14 +392,41 @@ class ShareQuickClipService {
     }
   }
 
-  Future<void> _requestMemoSync() {
-    return _bootstrapAdapter.requestSync(
-      _ref,
-      const SyncRequest(
-        kind: SyncRequestKind.memos,
-        reason: SyncRequestReason.manual,
-      ),
+  Future<void> _requestMemoSyncBestEffort({
+    required String memoUid,
+    String? requestedMemoUid,
+    String? host,
+    required String trigger,
+    Map<String, Object?> extraContext = const <String, Object?>{},
+  }) async {
+    final context = <String, Object?>{
+      'memoUid': memoUid,
+      'trigger': trigger,
+      if (requestedMemoUid != null && requestedMemoUid.isNotEmpty)
+        'requestedMemoUid': requestedMemoUid,
+      if (host != null && host.isNotEmpty) 'host': host,
+      ...extraContext,
+    };
+    LogManager.instance.info(
+      'ShareQuickClip: background_sync_requested',
+      context: context,
     );
+    try {
+      await _bootstrapAdapter.requestSync(
+        _ref,
+        const SyncRequest(
+          kind: SyncRequestKind.memos,
+          reason: SyncRequestReason.manual,
+        ),
+      );
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'ShareQuickClip: background_sync_failed',
+        error: error,
+        stackTrace: stackTrace,
+        context: context,
+      );
+    }
   }
 
   Future<String?> _updateMemoContent(
@@ -573,7 +623,14 @@ class ShareQuickClipService {
         );
         return;
       }
-      await _requestMemoSync();
+      unawaited(
+        _requestMemoSyncBestEffort(
+          memoUid: resolvedMemoUid,
+          requestedMemoUid: memoUid,
+          host: request.url.host,
+          trigger: 'fallback_content',
+        ),
+      );
       LogManager.instance.info(
         'ShareQuickClip: fallback_saved',
         context: {

@@ -1751,6 +1751,7 @@ shareClip:
   stageBuildingPreview: "Building preview"
   stageDownloadingVideo: "Downloading video"
   stageCompressingVideo: "Compressing video"
+  localSavedPendingSync: "Saved locally. Sync will continue when available."
 collections:
   drawerLabel: "Collections"
   title: "Collections"
