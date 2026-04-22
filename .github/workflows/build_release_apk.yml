@@ -11,6 +11,23 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Resolve release metadata
+        id: release_meta
+        working-directory: memos_flutter_app
+        run: |
+          set -euo pipefail
+          raw_version="$(sed -nE 's/^[[:space:]]*version:[[:space:]]*([^[:space:]]+).*/\1/p' pubspec.yaml | head -n 1)"
+          if [ -z "$raw_version" ]; then
+            echo "Cannot read version from pubspec.yaml" >&2
+            exit 1
+          fi
+          version="${raw_version%%+*}"
+          tag="v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: $version"
+          echo "Resolved release tag: $tag"
+
       - uses: actions/setup-java@v3
         with:
           distribution: "temurin"
@@ -91,26 +108,27 @@ jobs:
         with:
           artifacts: "memos_flutter_app/dist/apk/MemoFlow_v*.apk"
           token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.release_meta.outputs.tag }}
+          commit: ${{ github.sha }}
           allowUpdates: true
           replacesArtifacts: true
           generateReleaseNotes: true
 
       - name: Trigger CF update-config worker
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           CF_UPDATE_CONFIG_URL: ${{ secrets.CF_UPDATE_CONFIG_URL }}
           CF_UPDATE_CONFIG_TOKEN: ${{ secrets.CF_UPDATE_CONFIG_TOKEN }}
           CF_UPDATE_CONFIG_REPO: ${{ vars.CF_UPDATE_CONFIG_REPO }}
           CF_UPDATE_CONFIG_BRANCH: ${{ vars.CF_UPDATE_CONFIG_BRANCH }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_VERSION: ${{ steps.release_meta.outputs.version }}
         run: |
           set -euo pipefail
           if [ -z "${CF_UPDATE_CONFIG_URL:-}" ] || [ -z "${CF_UPDATE_CONFIG_TOKEN:-}" ]; then
             echo "CF update-config secrets not configured; skip trigger."
             exit 0
           fi
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${RELEASE_VERSION}"
           payload="$(jq -n \
             --arg tag "$tag" \
             --arg app_repo "$GITHUB_REPOSITORY" \
