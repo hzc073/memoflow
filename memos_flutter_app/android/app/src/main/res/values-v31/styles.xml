@@ -12,6 +12,6 @@
         <item name="postSplashScreenTheme">@style/NormalTheme</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowBackground">@drawable/normal_background</item>
     </style>
 </resources>

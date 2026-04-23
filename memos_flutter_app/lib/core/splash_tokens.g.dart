@@ -7,7 +7,7 @@ class SplashTokens {
   static const Color backgroundColor = Color(0xFFF7F5F0);
   static const Color brandColor = Color(0xFFD17452);
   static const Color iconBackgroundColor = Color(0x00000000);
-  static const String logoAsset = 'assets/images/streamline--wind-flow-1-remix.png';
+  static const String logoAsset = 'assets/splash/splash_logo_native.png';
   static const String iosLogoAsset = 'assets/splash/splash_logo_native.png';
   static const String androidIconDrawable = 'splash_icon_transparent';
   static const int startupVisibleMinMs = 3000;

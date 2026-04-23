@@ -370,6 +370,12 @@ try {
     }
   }
 
+  Write-Host "Running: dart run tool/sync_splash_tokens.dart --check"
+  & dart run tool/sync_splash_tokens.dart --check
+  if ($LASTEXITCODE -ne 0) {
+    throw "Splash token outputs are out of date. Please run: dart run tool/sync_splash_tokens.dart"
+  }
+
   $copied = New-Object 'System.Collections.Generic.List[string]'
   $cleanedDestinations = [ordered]@{}
   foreach ($request in $requests) {

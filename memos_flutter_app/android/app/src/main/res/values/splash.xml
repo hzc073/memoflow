@@ -3,6 +3,5 @@
 <resources>
     <color name="splash_background">#F7F5F0</color>
     <color name="splash_icon_background">#00000000</color>
-    <item type="drawable" name="splash_icon">@drawable/android12splash</item>
+    <item type="drawable" name="splash_icon">@drawable/splash_icon_transparent</item>
 </resources>
-

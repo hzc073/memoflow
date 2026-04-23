@@ -31,6 +31,7 @@ class _StartupScreenState extends State<StartupScreen>
   static const Color primaryColor = SplashTokens.brandColor;
   static const String _logoAsset = SplashTokens.logoAsset;
   static const int _typewriterMsPerChar = startupTypewriterMsPerChar;
+  static const ValueKey<String> _logoKey = ValueKey<String>('startup-logo');
 
   AnimationController? _typewriterController;
   int? _lastSloganLength;
@@ -108,13 +109,11 @@ class _StartupScreenState extends State<StartupScreen>
   Widget build(BuildContext context) {
     final shortestSide = MediaQuery.sizeOf(context).shortestSide;
     final scale = (shortestSide / 375).clamp(0.85, 1.1).toDouble();
-    final logoSize = 96 * scale;
+    final logoSize = 144 * scale;
     final sloganSize = 14 * scale;
     final memoFlowSize = (sloganSize - (2 * scale)).clamp(10.0, sloganSize);
     final sloganPadding = 48 * scale;
     final textGap = 6 * scale;
-
-    final logoTopOffset = logoSize * 2.5;
 
     return ColoredBox(
       color: backgroundColor,
@@ -122,18 +121,14 @@ class _StartupScreenState extends State<StartupScreen>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Positioned(
-              top: logoTopOffset,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: SizedBox.square(
-                  dimension: logoSize,
-                  child: Image.asset(
-                    _logoAsset,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                  ),
+            Center(
+              child: SizedBox.square(
+                key: _logoKey,
+                dimension: logoSize,
+                child: Image.asset(
+                  _logoAsset,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
             ),
