@@ -27,7 +27,7 @@ class AppDatabase {
   final DesktopDbWriteGateway? _writeGateway;
   late final AppDatabaseWriteDao _writeDao = AppDatabaseWriteDao(db: this);
   static const Object _displayTimeUnspecified = Object();
-  static const _dbVersion = 25;
+  static const _dbVersion = 26;
   static const int outboxStatePending = 0;
   static const int outboxStateRunning = 1;
   static const int outboxStateRetry = 2;
@@ -500,6 +500,32 @@ CREATE TABLE IF NOT EXISTS outbox (
           }
           if (oldVersion < 25) {
             await _ensureMemoClipCardsTable(db);
+          }
+          if (oldVersion < 26) {
+            await _ensureColumnExists(
+              db,
+              table: 'ai_analysis_tasks',
+              column: 'template_kind',
+              definition: "template_kind TEXT NOT NULL DEFAULT 'legacy'",
+            );
+            await _ensureColumnExists(
+              db,
+              table: 'ai_analysis_tasks',
+              column: 'template_id',
+              definition: "template_id TEXT NOT NULL DEFAULT ''",
+            );
+            await _ensureColumnExists(
+              db,
+              table: 'ai_analysis_tasks',
+              column: 'template_title_snapshot',
+              definition: "template_title_snapshot TEXT NOT NULL DEFAULT ''",
+            );
+            await _ensureColumnExists(
+              db,
+              table: 'ai_analysis_tasks',
+              column: 'template_icon_key_snapshot',
+              definition: "template_icon_key_snapshot TEXT NOT NULL DEFAULT ''",
+            );
           }
         },
         onOpen: (db) async {
@@ -4756,6 +4782,10 @@ CREATE TABLE IF NOT EXISTS ai_analysis_tasks (
   include_private INTEGER NOT NULL DEFAULT 0,
   include_protected INTEGER NOT NULL DEFAULT 0,
   prompt_template TEXT NOT NULL,
+  template_kind TEXT NOT NULL DEFAULT 'legacy',
+  template_id TEXT NOT NULL DEFAULT '',
+  template_title_snapshot TEXT NOT NULL DEFAULT '',
+  template_icon_key_snapshot TEXT NOT NULL DEFAULT '',
   generation_profile_key TEXT NOT NULL,
   embedding_profile_key TEXT NOT NULL,
   retrieval_profile_json TEXT NOT NULL,
@@ -4768,6 +4798,30 @@ CREATE TABLE IF NOT EXISTS ai_analysis_tasks (
   completed_time INTEGER
 );
 ''');
+    await _ensureColumnExists(
+      db,
+      table: 'ai_analysis_tasks',
+      column: 'template_kind',
+      definition: "template_kind TEXT NOT NULL DEFAULT 'legacy'",
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'ai_analysis_tasks',
+      column: 'template_id',
+      definition: "template_id TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'ai_analysis_tasks',
+      column: 'template_title_snapshot',
+      definition: "template_title_snapshot TEXT NOT NULL DEFAULT ''",
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'ai_analysis_tasks',
+      column: 'template_icon_key_snapshot',
+      definition: "template_icon_key_snapshot TEXT NOT NULL DEFAULT ''",
+    );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_ai_analysis_tasks_status_time ON ai_analysis_tasks(status, created_time DESC);',
     );

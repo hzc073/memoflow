@@ -135,12 +135,62 @@ void main() {
     );
   });
 
+  test('analysis history preserves template metadata snapshots', () async {
+    final dbName = uniqueDbName('ai_analysis_history_template_meta');
+    final db = AppDatabase(dbName: dbName);
+    final repository = AiAnalysisRepository(db);
+
+    addTearDown(() async {
+      await db.close();
+      await deleteTestDatabase(dbName);
+    });
+
+    final taskId = await repository.createAnalysisTask(
+      taskUid: 'task-template-meta',
+      analysisType: AiAnalysisType.emotionMap,
+      status: AiTaskStatus.completed,
+      rangeStart: DateTime.utc(2026, 3, 1).millisecondsSinceEpoch ~/ 1000,
+      rangeEndExclusive:
+          DateTime.utc(2026, 3, 8).millisecondsSinceEpoch ~/ 1000,
+      includePublic: true,
+      includePrivate: true,
+      includeProtected: false,
+      promptTemplate: 'Analyze my week.',
+      templateKind: AiAnalysisTemplateKind.custom,
+      templateId: 'tpl_weekly',
+      templateTitleSnapshot: 'Weekly Lens',
+      templateIconKeySnapshot: 'star',
+      generationProfileKey: 'gen-default',
+      embeddingProfileKey: 'embed-default',
+      retrievalProfile: const <String, dynamic>{'include_public': true},
+    );
+
+    await repository.saveAnalysisResult(
+      taskId: taskId,
+      result: const AiStructuredAnalysisResult(
+        schemaVersion: 1,
+        analysisType: AiAnalysisType.emotionMap,
+        summary: 'A weekly reflection.',
+        sections: <AiAnalysisSectionData>[],
+        evidences: <AiAnalysisEvidenceData>[],
+        followUpSuggestions: <String>[],
+        rawResponseText: '{}',
+      ),
+    );
+
+    final history = await repository.listAnalysisReportHistory(
+      analysisType: AiAnalysisType.emotionMap,
+    );
+
+    expect(history.single.templateKind, AiAnalysisTemplateKind.custom);
+    expect(history.single.templateId, 'tpl_weekly');
+    expect(history.single.templateTitleSnapshot, 'Weekly Lens');
+    expect(history.single.templateIconKeySnapshot, 'star');
+  });
+
   test('createAnalysisTask uses write gateway when configured', () async {
     final dbName = uniqueDbName('ai_analysis_gateway_proxy');
-    final db = AppDatabase(
-      dbName: dbName,
-      workspaceKey: 'workspace-ai-proxy',
-    );
+    final db = AppDatabase(dbName: dbName, workspaceKey: 'workspace-ai-proxy');
     final gateway = _CapturingRemoteGateway(responseValue: 42);
     final repository = AiAnalysisRepository(db, writeGateway: gateway);
 
@@ -171,10 +221,10 @@ void main() {
     expect(gateway.commandType, aiAnalysisRepositoryWriteCommandType);
     expect(gateway.operation, 'createAnalysisTask');
     expect(gateway.payload['taskUid'], 'task-proxy');
-    expect(
-      gateway.payload['retrievalProfile'],
-      const <String, dynamic>{'sample': true},
-    );
+    expect(gateway.payload['templateKind'], 'legacy');
+    expect(gateway.payload['retrievalProfile'], const <String, dynamic>{
+      'sample': true,
+    });
 
     final rows = await (await db.db).query('ai_analysis_tasks');
     expect(rows, isEmpty);

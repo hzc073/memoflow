@@ -18,6 +18,8 @@ enum AiIndexJobReason {
 
 enum AiEmbeddingStatus { pending, ready, failed, stale }
 
+enum AiAnalysisTemplateKind { builtIn, custom, legacy }
+
 String aiAnalysisTypeToStorage(AiAnalysisType value) => switch (value) {
   AiAnalysisType.emotionMap => 'emotion_map',
 };
@@ -94,6 +96,39 @@ AiEmbeddingStatus aiEmbeddingStatusFromStorage(String value) {
     'stale' => AiEmbeddingStatus.stale,
     _ => AiEmbeddingStatus.failed,
   };
+}
+
+String aiAnalysisTemplateKindToStorage(AiAnalysisTemplateKind value) =>
+    switch (value) {
+      AiAnalysisTemplateKind.builtIn => 'built_in',
+      AiAnalysisTemplateKind.custom => 'custom',
+      AiAnalysisTemplateKind.legacy => 'legacy',
+    };
+
+AiAnalysisTemplateKind aiAnalysisTemplateKindFromStorage(String value) {
+  return switch (value.trim().toLowerCase()) {
+    'built_in' => AiAnalysisTemplateKind.builtIn,
+    'custom' => AiAnalysisTemplateKind.custom,
+    _ => AiAnalysisTemplateKind.legacy,
+  };
+}
+
+class AiAnalysisTemplateSnapshot {
+  const AiAnalysisTemplateSnapshot({
+    required this.kind,
+    this.templateId = '',
+    this.titleSnapshot = '',
+    this.iconKeySnapshot = '',
+  });
+
+  static const legacy = AiAnalysisTemplateSnapshot(
+    kind: AiAnalysisTemplateKind.legacy,
+  );
+
+  final AiAnalysisTemplateKind kind;
+  final String templateId;
+  final String titleSnapshot;
+  final String iconKeySnapshot;
 }
 
 Float32List? decodeFloat32VectorBlob(Object? rawBlob) {
@@ -443,6 +478,10 @@ class AiSavedAnalysisHistoryEntry {
     required this.includeProtected,
     required this.createdTime,
     required this.isStale,
+    this.templateKind = AiAnalysisTemplateKind.legacy,
+    this.templateId = '',
+    this.templateTitleSnapshot = '',
+    this.templateIconKeySnapshot = '',
   });
 
   final int taskId;
@@ -457,4 +496,8 @@ class AiSavedAnalysisHistoryEntry {
   final bool includeProtected;
   final int createdTime;
   final bool isStale;
+  final AiAnalysisTemplateKind templateKind;
+  final String templateId;
+  final String templateTitleSnapshot;
+  final String templateIconKeySnapshot;
 }

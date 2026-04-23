@@ -495,4 +495,73 @@ void main() {
       expect(true, isTrue);
     },
   );
+
+  test(
+    'AiSettingsController manages custom insight templates and collapsed state',
+    () async {
+      final aiRepository = _MemoryAiSettingsRepository(
+        AiSettings.defaultsFor(AppLanguage.en),
+      );
+      final prefsRepository = _MemoryAppPreferencesRepository(
+        AppPreferences.defaultsForLanguage(AppLanguage.en),
+      );
+      final devicePrefsRepository = _MemoryDevicePreferencesRepository(
+        DevicePreferences.defaultsForLanguage(AppLanguage.en),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          devicePreferencesProvider.overrideWith(
+            (ref) =>
+                _TestDevicePreferencesController(ref, devicePrefsRepository),
+          ),
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(aiSettingsProvider);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final controller = container.read(aiSettingsProvider.notifier);
+
+      await controller.addCustomInsightTemplate(
+        const AiCustomInsightTemplate(
+          title: 'Weekly Lens',
+          description: 'Focus on recurring weekly patterns.',
+          promptTemplate: 'Analyze the last week with care.',
+          iconKey: 'star',
+        ),
+      );
+
+      final created = container.read(aiSettingsProvider).customInsightTemplates;
+      expect(created, hasLength(1));
+      expect(created.single.templateId.trim(), isNotEmpty);
+
+      await controller.updateCustomInsightTemplate(
+        created.single.templateId,
+        created.single.copyWith(title: 'Weekly Reflection'),
+      );
+      expect(
+        container.read(aiSettingsProvider).customInsightTemplates.single.title,
+        'Weekly Reflection',
+      );
+
+      await controller.setDefaultInsightTemplatesCollapsed(true);
+      expect(
+        container.read(aiSettingsProvider).defaultInsightTemplatesCollapsed,
+        isTrue,
+      );
+
+      await controller.deleteCustomInsightTemplate(created.single.templateId);
+      expect(
+        container.read(aiSettingsProvider).customInsightTemplates,
+        isEmpty,
+      );
+    },
+  );
 }

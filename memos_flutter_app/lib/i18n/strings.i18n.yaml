@@ -229,6 +229,23 @@ aiInsight:
     emptyState: "No notes match the current settings. Try changing the time range or privacy scope."
     noteCount: "$count notes"
     tokenCount: "$count tokens"
+  templates:
+    defaultTitle: "Default Templates"
+    defaultSubtitle: "Start with the built-in analysis views."
+    showDefault: "Show default templates"
+    hideDefault: "Hide default templates"
+    hiddenHint: "Default templates are hidden."
+    customTitle: "Custom Templates"
+    customSubtitle: "Create up to 10 templates for different analysis goals."
+    newTemplate: "New Template"
+    emptyTitle: "No custom templates yet"
+    emptyDescription: "Create up to 10 templates for different insight angles."
+    maxTemplatesReached: "You can add up to $max templates."
+    deleteDialogTitle: "Delete custom template"
+    deleteDialogDescription: "Deleting this template will not remove existing history."
+    moreActions: "More actions"
+    editAction: "Edit"
+    deleteAction: "Delete"
   cards:
     todayClues:
       title: "Today Clues"

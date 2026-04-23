@@ -141,8 +141,7 @@ class AiProxySettings {
       port: port ?? this.port,
       username: username ?? this.username,
       password: password ?? this.password,
-      bypassLocalAddresses:
-          bypassLocalAddresses ?? this.bypassLocalAddresses,
+      bypassLocalAddresses: bypassLocalAddresses ?? this.bypassLocalAddresses,
     );
   }
 
@@ -240,12 +239,14 @@ class AiQuickPrompt {
 
 class AiCustomInsightTemplate {
   const AiCustomInsightTemplate({
+    this.templateId = '',
     this.title = '',
     this.description = '',
     this.promptTemplate = '',
     this.iconKey = AiQuickPrompt.defaultIconKey,
   });
 
+  final String templateId;
   final String title;
   final String description;
   final String promptTemplate;
@@ -257,12 +258,14 @@ class AiCustomInsightTemplate {
       promptTemplate.trim().isNotEmpty;
 
   AiCustomInsightTemplate copyWith({
+    String? templateId,
     String? title,
     String? description,
     String? promptTemplate,
     String? iconKey,
   }) {
     return AiCustomInsightTemplate(
+      templateId: templateId ?? this.templateId,
       title: title ?? this.title,
       description: description ?? this.description,
       promptTemplate: promptTemplate ?? this.promptTemplate,
@@ -271,6 +274,7 @@ class AiCustomInsightTemplate {
   }
 
   Map<String, dynamic> toJson() => {
+    'templateId': templateId,
     'title': title,
     'description': description,
     'promptTemplate': promptTemplate,
@@ -285,6 +289,7 @@ class AiCustomInsightTemplate {
     }
 
     return AiCustomInsightTemplate(
+      templateId: readString('templateId', ''),
       title: readString('title', ''),
       description: readString('description', ''),
       promptTemplate: readString('promptTemplate', ''),
@@ -525,7 +530,8 @@ class AiEmbeddingProfile {
 }
 
 class AiSettings {
-  static const int currentSchemaVersion = 4;
+  static const int currentSchemaVersion = 5;
+  static const int maxCustomInsightTemplateCount = 10;
 
   static const defaultModelOptions = <String>[
     'deepseek-chat',
@@ -571,7 +577,8 @@ class AiSettings {
     this.proxySettings = AiProxySettings.defaults,
     required this.quickPrompts,
     required this.analysisPromptTemplates,
-    this.customInsightTemplate = const AiCustomInsightTemplate(),
+    this.customInsightTemplates = const <AiCustomInsightTemplate>[],
+    this.defaultInsightTemplatesCollapsed = false,
   });
 
   final int schemaVersion;
@@ -586,7 +593,8 @@ class AiSettings {
   final AiProxySettings proxySettings;
   final List<AiQuickPrompt> quickPrompts;
   final Map<String, String> analysisPromptTemplates;
-  final AiCustomInsightTemplate customInsightTemplate;
+  final List<AiCustomInsightTemplate> customInsightTemplates;
+  final bool defaultInsightTemplatesCollapsed;
 
   AiGenerationProfile get selectedGenerationProfile {
     final normalized = selectedGenerationProfileKey.trim();
@@ -622,6 +630,19 @@ class AiSettings {
   String get embeddingBaseUrl => selectedEmbeddingProfile?.baseUrl ?? '';
   String get embeddingApiKey => selectedEmbeddingProfile?.apiKey ?? '';
   String get embeddingModel => selectedEmbeddingProfile?.model ?? '';
+  AiCustomInsightTemplate get customInsightTemplate =>
+      customInsightTemplates.firstOrNull ?? const AiCustomInsightTemplate();
+
+  AiCustomInsightTemplate? findCustomInsightTemplate(String templateId) {
+    final normalized = templateId.trim();
+    if (normalized.isEmpty) return null;
+    for (final template in customInsightTemplates) {
+      if (template.templateId.trim() == normalized) {
+        return template;
+      }
+    }
+    return null;
+  }
 
   AiSettings copyWith({
     int? schemaVersion,
@@ -637,7 +658,8 @@ class AiSettings {
     List<AiQuickPrompt>? quickPrompts,
     Map<String, String>? analysisPromptTemplates,
     Map<String, String>? insightPromptTemplates,
-    AiCustomInsightTemplate? customInsightTemplate,
+    List<AiCustomInsightTemplate>? customInsightTemplates,
+    bool? defaultInsightTemplatesCollapsed,
     String? apiUrl,
     String? apiKey,
     String? model,
@@ -735,8 +757,11 @@ class AiSettings {
           analysisPromptTemplates ??
           insightPromptTemplates ??
           this.analysisPromptTemplates,
-      customInsightTemplate:
-          customInsightTemplate ?? this.customInsightTemplate,
+      customInsightTemplates:
+          customInsightTemplates ?? this.customInsightTemplates,
+      defaultInsightTemplatesCollapsed:
+          defaultInsightTemplatesCollapsed ??
+          this.defaultInsightTemplatesCollapsed,
     );
   }
 
@@ -762,7 +787,10 @@ class AiSettings {
     'quickPrompts': quickPrompts.map((p) => p.toJson()).toList(growable: false),
     'analysisPromptTemplates': analysisPromptTemplates,
     'insightPromptTemplates': analysisPromptTemplates,
-    'customInsightTemplate': customInsightTemplate.toJson(),
+    'customInsightTemplates': customInsightTemplates
+        .map((template) => template.toJson())
+        .toList(growable: false),
+    'defaultInsightTemplatesCollapsed': defaultInsightTemplatesCollapsed,
   };
 
   Map<String, dynamic> toWebDavJson() => {
@@ -786,7 +814,10 @@ class AiSettings {
     'proxySettings': proxySettings.toJson(),
     'quickPrompts': quickPrompts.map((p) => p.toJson()).toList(growable: false),
     'analysisPromptTemplates': analysisPromptTemplates,
-    'customInsightTemplate': customInsightTemplate.toJson(),
+    'customInsightTemplates': customInsightTemplates
+        .map((template) => template.toJson())
+        .toList(growable: false),
+    'defaultInsightTemplatesCollapsed': defaultInsightTemplatesCollapsed,
   };
 
   factory AiSettings.fromJson(Map<String, dynamic> json) {
@@ -842,10 +873,30 @@ class AiSettings {
       return Map.unmodifiable(templates);
     }
 
-    AiCustomInsightTemplate readCustomInsightTemplate() {
-      final raw = json['customInsightTemplate'];
-      if (raw is! Map) return const AiCustomInsightTemplate();
-      return AiCustomInsightTemplate.fromJson(raw.cast<String, dynamic>());
+    List<AiCustomInsightTemplate> readCustomInsightTemplates() {
+      final raw = json['customInsightTemplates'];
+      if (raw is List) {
+        final templates = raw
+            .whereType<Map>()
+            .map(
+              (item) => AiCustomInsightTemplate.fromJson(
+                item.cast<String, dynamic>(),
+              ),
+            )
+            .toList(growable: false);
+        if (templates.isNotEmpty) {
+          return List.unmodifiable(templates);
+        }
+      }
+      final legacyRaw = json['customInsightTemplate'];
+      if (legacyRaw is! Map) return const <AiCustomInsightTemplate>[];
+      final legacy = AiCustomInsightTemplate.fromJson(
+        legacyRaw.cast<String, dynamic>(),
+      );
+      if (!legacy.isConfigured) {
+        return const <AiCustomInsightTemplate>[];
+      }
+      return List.unmodifiable(<AiCustomInsightTemplate>[legacy]);
     }
 
     AiProxySettings readProxySettings() {
@@ -971,7 +1022,11 @@ class AiSettings {
         AiSettings.defaults.quickPrompts,
       ),
       analysisPromptTemplates: readPromptTemplates(),
-      customInsightTemplate: readCustomInsightTemplate(),
+      customInsightTemplates: readCustomInsightTemplates(),
+      defaultInsightTemplatesCollapsed:
+          json['defaultInsightTemplatesCollapsed'] is bool
+          ? json['defaultInsightTemplatesCollapsed'] as bool
+          : false,
     );
   }
 

@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 5
-/// Strings: 9675 (1935 per locale)
+/// Strings: 9707 (1941 per locale)
 ///
-/// Built on 2026-04-22 at 01:38 UTC
+/// Built on 2026-04-23 at 08:56 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -328,6 +328,7 @@ class _StringsStringsAiInsightEn {
 	late final _StringsStringsAiInsightPrivacyScopeEn privacyScope = _StringsStringsAiInsightPrivacyScopeEn._(_root);
 	late final _StringsStringsAiInsightPromptSettingsEn promptSettings = _StringsStringsAiInsightPromptSettingsEn._(_root);
 	late final _StringsStringsAiInsightContentPreviewEn contentPreview = _StringsStringsAiInsightContentPreviewEn._(_root);
+	late final _StringsStringsAiInsightTemplatesEn templates = _StringsStringsAiInsightTemplatesEn._(_root);
 	late final _StringsStringsAiInsightCardsEn cards = _StringsStringsAiInsightCardsEn._(_root);
 }
 
@@ -2130,6 +2131,31 @@ class _StringsStringsAiInsightContentPreviewEn {
 	String get emptyState => 'No notes match the current settings. Try changing the time range or privacy scope.';
 	String noteCount({required Object count}) => '${count} notes';
 	String tokenCount({required Object count}) => '${count} tokens';
+}
+
+// Path: strings.aiInsight.templates
+class _StringsStringsAiInsightTemplatesEn {
+	_StringsStringsAiInsightTemplatesEn._(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+	String get defaultTitle => 'Default Templates';
+	String get defaultSubtitle => 'Start with the built-in analysis views.';
+	String get showDefault => 'Show default templates';
+	String get hideDefault => 'Hide default templates';
+	String get hiddenHint => 'Default templates are hidden.';
+	String get customTitle => 'Custom Templates';
+	String get customSubtitle => 'Create up to 10 templates for different analysis goals.';
+	String get newTemplate => 'New Template';
+	String get emptyTitle => 'No custom templates yet';
+	String get emptyDescription => 'Create up to 10 templates for different insight angles.';
+	String maxTemplatesReached({required Object max}) => 'You can add up to ${max} templates.';
+	String get deleteDialogTitle => 'Delete custom template';
+	String get deleteDialogDescription => 'Deleting this template will not remove existing history.';
+	String get moreActions => 'More actions';
+	String get editAction => 'Edit';
+	String get deleteAction => 'Delete';
 }
 
 // Path: strings.aiInsight.cards
@@ -7753,6 +7779,7 @@ class _StringsStringsAiInsightZhHans extends _StringsStringsAiInsightEn {
 	@override late final _StringsStringsAiInsightPrivacyScopeZhHans privacyScope = _StringsStringsAiInsightPrivacyScopeZhHans._(_root);
 	@override late final _StringsStringsAiInsightPromptSettingsZhHans promptSettings = _StringsStringsAiInsightPromptSettingsZhHans._(_root);
 	@override late final _StringsStringsAiInsightContentPreviewZhHans contentPreview = _StringsStringsAiInsightContentPreviewZhHans._(_root);
+	@override late final _StringsStringsAiInsightTemplatesZhHans templates = _StringsStringsAiInsightTemplatesZhHans._(_root);
 	@override late final _StringsStringsAiInsightCardsZhHans cards = _StringsStringsAiInsightCardsZhHans._(_root);
 }
 
@@ -9555,6 +9582,31 @@ class _StringsStringsAiInsightContentPreviewZhHans extends _StringsStringsAiInsi
 	@override String get emptyState => '当前设置下没有可发送的记录，试试调整时间范围或隐私范围。';
 	@override String noteCount({required Object count}) => '${count} 条记录';
 	@override String tokenCount({required Object count}) => '${count} 个 Token';
+}
+
+// Path: strings.aiInsight.templates
+class _StringsStringsAiInsightTemplatesZhHans extends _StringsStringsAiInsightTemplatesEn {
+	_StringsStringsAiInsightTemplatesZhHans._(_StringsZhHans root) : this._root = root, super._(root);
+
+	@override final _StringsZhHans _root; // ignore: unused_field
+
+	// Translations
+	@override String get defaultTitle => '默认模板';
+	@override String get defaultSubtitle => '使用内置分析视角快速开始。';
+	@override String get showDefault => '显示默认模板';
+	@override String get hideDefault => '隐藏默认模板';
+	@override String get hiddenHint => '默认模板已隐藏。';
+	@override String get customTitle => '自定义模板';
+	@override String get customSubtitle => '为不同分析目标创建最多 10 个模板。';
+	@override String get newTemplate => '新增模板';
+	@override String get emptyTitle => '还没有自定义模板';
+	@override String get emptyDescription => '你可以创建最多 10 个模板，用于不同的分析视角。';
+	@override String maxTemplatesReached({required Object max}) => '最多可添加 ${max} 个模板。';
+	@override String get deleteDialogTitle => '删除自定义模板';
+	@override String get deleteDialogDescription => '删除后不会影响已经生成的历史记录。';
+	@override String get moreActions => '更多操作';
+	@override String get editAction => '编辑';
+	@override String get deleteAction => '删除';
 }
 
 // Path: strings.aiInsight.cards
@@ -12800,6 +12852,22 @@ extension on Translations {
 			case 'strings.aiInsight.contentPreview.emptyState': return 'No notes match the current settings. Try changing the time range or privacy scope.';
 			case 'strings.aiInsight.contentPreview.noteCount': return ({required Object count}) => '${count} notes';
 			case 'strings.aiInsight.contentPreview.tokenCount': return ({required Object count}) => '${count} tokens';
+			case 'strings.aiInsight.templates.defaultTitle': return 'Default Templates';
+			case 'strings.aiInsight.templates.defaultSubtitle': return 'Start with the built-in analysis views.';
+			case 'strings.aiInsight.templates.showDefault': return 'Show default templates';
+			case 'strings.aiInsight.templates.hideDefault': return 'Hide default templates';
+			case 'strings.aiInsight.templates.hiddenHint': return 'Default templates are hidden.';
+			case 'strings.aiInsight.templates.customTitle': return 'Custom Templates';
+			case 'strings.aiInsight.templates.customSubtitle': return 'Create up to 10 templates for different analysis goals.';
+			case 'strings.aiInsight.templates.newTemplate': return 'New Template';
+			case 'strings.aiInsight.templates.emptyTitle': return 'No custom templates yet';
+			case 'strings.aiInsight.templates.emptyDescription': return 'Create up to 10 templates for different insight angles.';
+			case 'strings.aiInsight.templates.maxTemplatesReached': return ({required Object max}) => 'You can add up to ${max} templates.';
+			case 'strings.aiInsight.templates.deleteDialogTitle': return 'Delete custom template';
+			case 'strings.aiInsight.templates.deleteDialogDescription': return 'Deleting this template will not remove existing history.';
+			case 'strings.aiInsight.templates.moreActions': return 'More actions';
+			case 'strings.aiInsight.templates.editAction': return 'Edit';
+			case 'strings.aiInsight.templates.deleteAction': return 'Delete';
 			case 'strings.aiInsight.cards.todayClues.title': return 'Today Clues';
 			case 'strings.aiInsight.cards.todayClues.description': return 'AI highlights the recent events, tensions, and open loops that deserve your attention first.';
 			case 'strings.aiInsight.cards.emotionMap.title': return 'Emotion Map';
@@ -18575,6 +18643,22 @@ extension on _StringsZhHans {
 			case 'strings.aiInsight.contentPreview.emptyState': return '当前设置下没有可发送的记录，试试调整时间范围或隐私范围。';
 			case 'strings.aiInsight.contentPreview.noteCount': return ({required Object count}) => '${count} 条记录';
 			case 'strings.aiInsight.contentPreview.tokenCount': return ({required Object count}) => '${count} 个 Token';
+			case 'strings.aiInsight.templates.defaultTitle': return '默认模板';
+			case 'strings.aiInsight.templates.defaultSubtitle': return '使用内置分析视角快速开始。';
+			case 'strings.aiInsight.templates.showDefault': return '显示默认模板';
+			case 'strings.aiInsight.templates.hideDefault': return '隐藏默认模板';
+			case 'strings.aiInsight.templates.hiddenHint': return '默认模板已隐藏。';
+			case 'strings.aiInsight.templates.customTitle': return '自定义模板';
+			case 'strings.aiInsight.templates.customSubtitle': return '为不同分析目标创建最多 10 个模板。';
+			case 'strings.aiInsight.templates.newTemplate': return '新增模板';
+			case 'strings.aiInsight.templates.emptyTitle': return '还没有自定义模板';
+			case 'strings.aiInsight.templates.emptyDescription': return '你可以创建最多 10 个模板，用于不同的分析视角。';
+			case 'strings.aiInsight.templates.maxTemplatesReached': return ({required Object max}) => '最多可添加 ${max} 个模板。';
+			case 'strings.aiInsight.templates.deleteDialogTitle': return '删除自定义模板';
+			case 'strings.aiInsight.templates.deleteDialogDescription': return '删除后不会影响已经生成的历史记录。';
+			case 'strings.aiInsight.templates.moreActions': return '更多操作';
+			case 'strings.aiInsight.templates.editAction': return '编辑';
+			case 'strings.aiInsight.templates.deleteAction': return '删除';
 			case 'strings.aiInsight.cards.todayClues.title': return '今日线索';
 			case 'strings.aiInsight.cards.todayClues.description': return 'AI 找出最近记录中最值得关注的事件、问题和悬而未决的线索。';
 			case 'strings.aiInsight.cards.emotionMap.title': return '情绪地图';

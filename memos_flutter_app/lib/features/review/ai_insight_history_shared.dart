@@ -64,21 +64,57 @@ class AiInsightHistoryDescriptor {
 AiInsightHistoryDescriptor resolveAiInsightHistoryDescriptor(
   BuildContext context,
   WidgetRef ref,
-  String promptTemplate,
+  AiSavedAnalysisHistoryEntry entry,
 ) {
   return resolveAiInsightHistoryDescriptorWithSettings(
     context,
     settings: ref.read(aiSettingsProvider),
-    promptTemplate: promptTemplate,
+    entry: entry,
   );
 }
 
 AiInsightHistoryDescriptor resolveAiInsightHistoryDescriptorWithSettings(
   BuildContext context, {
   required AiSettings settings,
-  required String promptTemplate,
+  required AiSavedAnalysisHistoryEntry entry,
 }) {
-  final normalized = promptTemplate.trim();
+  final templateId = entry.templateId.trim();
+  final titleSnapshot = entry.templateTitleSnapshot.trim();
+  final iconKeySnapshot = entry.templateIconKeySnapshot.trim();
+
+  if (entry.templateKind == AiAnalysisTemplateKind.builtIn) {
+    final insightId = tryParseAiInsightIdStorageKey(templateId);
+    if (insightId != null && insightId != AiInsightId.customTemplate) {
+      final definition = definitionForInsight(insightId);
+      return AiInsightHistoryDescriptor(
+        insightId: insightId,
+        title: definition.title(context),
+        icon: definition.icon,
+        accent: definition.accent,
+      );
+    }
+  }
+
+  if (entry.templateKind == AiAnalysisTemplateKind.custom) {
+    final matchingTemplate = settings.findCustomInsightTemplate(templateId);
+    final resolvedTitle = titleSnapshot.isNotEmpty
+        ? titleSnapshot
+        : (matchingTemplate?.title.trim() ?? '');
+    final resolvedIconKey = iconKeySnapshot.isNotEmpty
+        ? iconKeySnapshot
+        : (matchingTemplate?.iconKey.trim() ?? '');
+    if (resolvedTitle.isNotEmpty) {
+      return AiInsightHistoryDescriptor(
+        insightId: AiInsightId.customTemplate,
+        title: resolvedTitle,
+        titleOverride: resolvedTitle,
+        icon: QuickPromptIconCatalog.resolve(resolvedIconKey),
+        accent: MemoFlowPalette.primary,
+      );
+    }
+  }
+
+  final normalized = entry.promptTemplate.trim();
   for (final definition in visibleAiInsightDefinitions) {
     final resolved = resolveInsightPromptTemplate(
       context,
@@ -94,9 +130,10 @@ AiInsightHistoryDescriptor resolveAiInsightHistoryDescriptorWithSettings(
       );
     }
   }
-  final customTemplate = settings.customInsightTemplate;
-  if (customTemplate.isConfigured &&
-      customTemplate.promptTemplate.trim() == normalized) {
+  for (final customTemplate in settings.customInsightTemplates) {
+    if (customTemplate.promptTemplate.trim() != normalized) {
+      continue;
+    }
     return AiInsightHistoryDescriptor(
       insightId: AiInsightId.customTemplate,
       title: customTemplate.title.trim(),

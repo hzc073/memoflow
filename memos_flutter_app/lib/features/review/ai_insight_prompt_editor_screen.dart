@@ -10,14 +10,16 @@ import 'quick_prompt_editor_screen.dart';
 
 class AiInsightPromptEditorScreen extends ConsumerStatefulWidget {
   const AiInsightPromptEditorScreen({super.key, required this.insightId})
-    : customTemplateMode = false;
+    : customTemplateMode = false,
+      templateId = null;
 
-  const AiInsightPromptEditorScreen.custom({super.key})
+  const AiInsightPromptEditorScreen.custom({super.key, this.templateId})
     : insightId = AiInsightId.customTemplate,
       customTemplateMode = true;
 
   final AiInsightId insightId;
   final bool customTemplateMode;
+  final String? templateId;
 
   @override
   ConsumerState<AiInsightPromptEditorScreen> createState() =>
@@ -35,6 +37,8 @@ class _AiInsightPromptEditorScreenState
   var _selectedIconKey = QuickPromptIconCatalog.defaultKey;
 
   bool get _isCustomMode => widget.customTemplateMode;
+  bool get _isCreatingCustomTemplate =>
+      _isCustomMode && (widget.templateId?.trim().isEmpty ?? true);
 
   bool get _canSave {
     if (_isCustomMode) {
@@ -119,23 +123,35 @@ class _AiInsightPromptEditorScreenState
   }
 
   AiCustomInsightTemplate _customTemplateFromSettings() {
-    return ref.read(aiSettingsProvider).customInsightTemplate;
+    final settings = ref.read(aiSettingsProvider);
+    final templateId = widget.templateId?.trim() ?? '';
+    if (templateId.isEmpty) {
+      return const AiCustomInsightTemplate();
+    }
+    return settings.findCustomInsightTemplate(templateId) ??
+        const AiCustomInsightTemplate();
   }
 
   Future<void> _save() async {
     if (_saving || !_canSave) return;
     setState(() => _saving = true);
     if (_isCustomMode) {
-      await ref
-          .read(aiSettingsProvider.notifier)
-          .setCustomInsightTemplate(
-            AiCustomInsightTemplate(
-              title: _titleController.text,
-              description: _descriptionController.text,
-              promptTemplate: _promptController.text,
-              iconKey: _selectedIconKey,
-            ),
-          );
+      final template = AiCustomInsightTemplate(
+        templateId: widget.templateId?.trim() ?? '',
+        title: _titleController.text,
+        description: _descriptionController.text,
+        promptTemplate: _promptController.text,
+        iconKey: _selectedIconKey,
+      );
+      if (_isCreatingCustomTemplate) {
+        await ref
+            .read(aiSettingsProvider.notifier)
+            .addCustomInsightTemplate(template);
+      } else {
+        await ref
+            .read(aiSettingsProvider.notifier)
+            .updateCustomInsightTemplate(widget.templateId ?? '', template);
+      }
     } else {
       await ref
           .read(aiSettingsProvider.notifier)
@@ -162,6 +178,11 @@ class _AiInsightPromptEditorScreenState
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
     if (_isCustomMode) {
+      if (_isCreatingCustomTemplate) {
+        return isZh
+            ? '\u65b0\u5efa\u81ea\u5b9a\u4e49\u6a21\u677f'
+            : 'New Custom Template';
+      }
       return isZh
           ? '\u7f16\u8f91\u81ea\u5b9a\u4e49\u6a21\u677f'
           : 'Edit Custom Template';

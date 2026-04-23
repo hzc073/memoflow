@@ -676,11 +676,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
       );
       return;
     }
-    final descriptor = resolveAiInsightHistoryDescriptor(
-      context,
-      ref,
-      entry.promptTemplate,
-    );
+    final descriptor = resolveAiInsightHistoryDescriptor(context, ref, entry);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AiSummaryScreen(

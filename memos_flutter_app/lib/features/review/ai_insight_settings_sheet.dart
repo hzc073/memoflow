@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../data/ai/ai_analysis_models.dart';
 import '../../data/ai/ai_provider_models.dart';
 import '../../data/ai/ai_route_config.dart';
 import '../../data/ai/ai_settings_models.dart';
@@ -23,6 +24,7 @@ class AiInsightSettingsSheet extends ConsumerStatefulWidget {
     super.key,
     required this.definition,
     this.customTitle,
+    this.customTemplate,
     this.customTemplateMode = false,
     this.customRangePicker,
     this.analysisLoading = false,
@@ -30,6 +32,7 @@ class AiInsightSettingsSheet extends ConsumerStatefulWidget {
 
   final AiInsightDefinition definition;
   final String? customTitle;
+  final AiCustomInsightTemplate? customTemplate;
   final bool customTemplateMode;
   final AiInsightCustomRangePicker? customRangePicker;
   final bool analysisLoading;
@@ -49,9 +52,21 @@ class _AiInsightSettingsSheetState
   var _allowProtected = false;
   var _didSeedPromptTemplate = false;
 
-  bool get _isCustomTemplateMode => widget.customTemplateMode;
+  bool get _isCustomTemplateMode =>
+      widget.customTemplate != null || widget.customTemplateMode;
+
+  AiCustomInsightTemplate? get _resolvedCustomTemplate {
+    final customTemplate = widget.customTemplate;
+    if (customTemplate == null) return null;
+    return ref
+            .read(aiSettingsProvider)
+            .findCustomInsightTemplate(customTemplate.templateId) ??
+        customTemplate;
+  }
 
   String get _displayTitle {
+    final templateTitle = _resolvedCustomTemplate?.title.trim() ?? '';
+    if (templateTitle.isNotEmpty) return templateTitle;
     final override = widget.customTitle?.trim() ?? '';
     if (override.isNotEmpty) return override;
     return widget.definition.title(context);
@@ -61,8 +76,9 @@ class _AiInsightSettingsSheetState
   void initState() {
     super.initState();
     _range = AiInsightRange.last7Days;
-    _allowPrivate =
-        ref.read(currentWorkspacePreferencesProvider).aiSummaryAllowPrivateMemos;
+    _allowPrivate = ref
+        .read(currentWorkspacePreferencesProvider)
+        .aiSummaryAllowPrivateMemos;
   }
 
   @override
@@ -89,6 +105,10 @@ class _AiInsightSettingsSheetState
   String get _promptTemplate {
     final settings = ref.read(aiSettingsProvider);
     if (_isCustomTemplateMode) {
+      final customTemplate = _resolvedCustomTemplate;
+      if (customTemplate != null) {
+        return customTemplate.promptTemplate.trim();
+      }
       return settings.customInsightTemplate.promptTemplate.trim();
     }
     return resolveInsightPromptTemplate(
@@ -185,7 +205,9 @@ class _AiInsightSettingsSheetState
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => _isCustomTemplateMode
-            ? const AiInsightPromptEditorScreen.custom()
+            ? AiInsightPromptEditorScreen.custom(
+                templateId: _resolvedCustomTemplate?.templateId,
+              )
             : AiInsightPromptEditorScreen(insightId: widget.definition.id),
       ),
     );
@@ -213,6 +235,17 @@ class _AiInsightSettingsSheetState
         allowProtected: _allowProtected,
         previewPayload: AiAnalysisPreviewPayload.empty,
         promptTemplate: _promptTemplate,
+        templateSnapshot: _isCustomTemplateMode
+            ? AiAnalysisTemplateSnapshot(
+                kind: AiAnalysisTemplateKind.custom,
+                templateId: _resolvedCustomTemplate?.templateId.trim() ?? '',
+                titleSnapshot: _displayTitle.trim(),
+                iconKeySnapshot: _resolvedCustomTemplate?.iconKey.trim() ?? '',
+              )
+            : AiAnalysisTemplateSnapshot(
+                kind: AiAnalysisTemplateKind.builtIn,
+                templateId: widget.definition.id.storageKey,
+              ),
       ),
     );
   }

@@ -229,6 +229,23 @@ aiInsight:
     emptyState: "当前设置下没有可发送的记录，试试调整时间范围或隐私范围。"
     noteCount: "$count 条记录"
     tokenCount: "$count 个 Token"
+  templates:
+    defaultTitle: "\u9ed8\u8ba4\u6a21\u677f"
+    defaultSubtitle: "\u4f7f\u7528\u5185\u7f6e\u5206\u6790\u89c6\u89d2\u5feb\u901f\u5f00\u59cb\u3002"
+    showDefault: "\u663e\u793a\u9ed8\u8ba4\u6a21\u677f"
+    hideDefault: "\u9690\u85cf\u9ed8\u8ba4\u6a21\u677f"
+    hiddenHint: "\u9ed8\u8ba4\u6a21\u677f\u5df2\u9690\u85cf\u3002"
+    customTitle: "\u81ea\u5b9a\u4e49\u6a21\u677f"
+    customSubtitle: "\u4e3a\u4e0d\u540c\u5206\u6790\u76ee\u6807\u521b\u5efa\u6700\u591a 10 \u4e2a\u6a21\u677f\u3002"
+    newTemplate: "\u65b0\u589e\u6a21\u677f"
+    emptyTitle: "\u8fd8\u6ca1\u6709\u81ea\u5b9a\u4e49\u6a21\u677f"
+    emptyDescription: "\u4f60\u53ef\u4ee5\u521b\u5efa\u6700\u591a 10 \u4e2a\u6a21\u677f\uff0c\u7528\u4e8e\u4e0d\u540c\u7684\u5206\u6790\u89c6\u89d2\u3002"
+    maxTemplatesReached: "\u6700\u591a\u53ef\u6dfb\u52a0 $max \u4e2a\u6a21\u677f\u3002"
+    deleteDialogTitle: "\u5220\u9664\u81ea\u5b9a\u4e49\u6a21\u677f"
+    deleteDialogDescription: "\u5220\u9664\u540e\u4e0d\u4f1a\u5f71\u54cd\u5df2\u7ecf\u751f\u6210\u7684\u5386\u53f2\u8bb0\u5f55\u3002"
+    moreActions: "\u66f4\u591a\u64cd\u4f5c"
+    editAction: "\u7f16\u8f91"
+    deleteAction: "\u5220\u9664"
   cards:
     todayClues:
       title: "今日线索"

@@ -2,6 +2,7 @@ import 'ai_provider_models.dart';
 import 'ai_provider_templates.dart';
 import 'ai_route_resolver.dart';
 import 'ai_settings_models.dart';
+import '../../core/uid.dart';
 
 class AiSettingsMigration {
   const AiSettingsMigration._();
@@ -35,8 +36,53 @@ class AiSettingsMigration {
       analysisPromptTemplates: Map<String, String>.unmodifiable(
         source.analysisPromptTemplates,
       ),
-      customInsightTemplate: source.customInsightTemplate,
+      customInsightTemplates: _normalizeCustomInsightTemplates(
+        source.customInsightTemplates,
+      ),
+      defaultInsightTemplatesCollapsed: source.defaultInsightTemplatesCollapsed,
     );
+  }
+
+  static List<AiCustomInsightTemplate> _normalizeCustomInsightTemplates(
+    List<AiCustomInsightTemplate> templates,
+  ) {
+    final normalized = <AiCustomInsightTemplate>[];
+    final seenTemplateIds = <String>{};
+
+    for (final template in templates) {
+      final normalizedTitle = template.title.trim();
+      final normalizedDescription = template.description.trim();
+      final normalizedPrompt = template.promptTemplate.trim();
+      if (normalizedTitle.isEmpty ||
+          normalizedDescription.isEmpty ||
+          normalizedPrompt.isEmpty) {
+        continue;
+      }
+
+      var normalizedTemplateId = template.templateId.trim();
+      if (normalizedTemplateId.isEmpty ||
+          seenTemplateIds.contains(normalizedTemplateId)) {
+        normalizedTemplateId = generateUid();
+      }
+      seenTemplateIds.add(normalizedTemplateId);
+
+      normalized.add(
+        AiCustomInsightTemplate(
+          templateId: normalizedTemplateId,
+          title: normalizedTitle,
+          description: normalizedDescription,
+          promptTemplate: normalizedPrompt,
+          iconKey: template.iconKey.trim().isEmpty
+              ? AiQuickPrompt.defaultIconKey
+              : template.iconKey.trim(),
+        ),
+      );
+      if (normalized.length >= AiSettings.maxCustomInsightTemplateCount) {
+        break;
+      }
+    }
+
+    return List<AiCustomInsightTemplate>.unmodifiable(normalized);
   }
 
   static List<AiServiceInstance> _normalizeServices(

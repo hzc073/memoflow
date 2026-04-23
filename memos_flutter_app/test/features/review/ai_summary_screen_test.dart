@@ -347,6 +347,183 @@ Future<void> main() async {
     expect(startButton.onPressed, isNull);
   });
 
+  testWidgets(
+    'shows custom templates and toggles default template visibility',
+    (tester) async {
+      final dbName = uniqueDbName('ai_summary_custom_templates');
+      final db = AppDatabase(dbName: dbName);
+      final aiRepository = _MemoryAiSettingsRepository(
+        AiSettings.defaultsFor(AppLanguage.en).copyWith(
+          customInsightTemplates: const <AiCustomInsightTemplate>[
+            AiCustomInsightTemplate(
+              templateId: 'tpl_weekly',
+              title: 'Weekly Lens',
+              description: 'Focus on recurring weekly patterns.',
+              promptTemplate: 'Analyze the last week with care.',
+              iconKey: 'star',
+            ),
+          ],
+        ),
+      );
+      final prefsRepository = _MemoryAppPreferencesRepository(
+        AppPreferences.defaultsForLanguage(AppLanguage.en),
+      );
+
+      addTearDown(() async {
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: const AiSummaryScreen(),
+          overrides: [
+            appSessionProvider.overrideWith((ref) => _TestSessionController()),
+            databaseProvider.overrideWithValue(db),
+            aiSettingsProvider.overrideWith(
+              (ref) => _TestAiSettingsController(ref, aiRepository),
+            ),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref, prefsRepository),
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Default Templates'), findsOneWidget);
+      expect(find.text('Custom Templates'), findsOneWidget);
+      expect(find.text('Weekly Lens'), findsOneWidget);
+      expect(find.byKey(const Key('aiSummaryToggleDefaultTemplatesButton')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('aiSummaryToggleDefaultTemplatesButton')));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Show default templates'), findsOneWidget);
+      expect(find.text('Letter Back'), findsNothing);
+    },
+  );
+
+  testWidgets('deletes a custom template from the overflow menu', (
+    tester,
+  ) async {
+    final dbName = uniqueDbName('ai_summary_delete_custom_template');
+    final db = AppDatabase(dbName: dbName);
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en).copyWith(
+        customInsightTemplates: const <AiCustomInsightTemplate>[
+          AiCustomInsightTemplate(
+            templateId: 'tpl_delete_me',
+            title: 'Delete Me',
+            description: 'Temporary custom template.',
+            promptTemplate: 'Delete test prompt.',
+            iconKey: 'star',
+          ),
+        ],
+      ),
+    );
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+
+    addTearDown(() async {
+      await db.close();
+      await deleteTestDatabase(dbName);
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        child: const AiSummaryScreen(),
+        overrides: [
+          appSessionProvider.overrideWith((ref) => _TestSessionController()),
+          databaseProvider.overrideWithValue(db),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('Delete Me'), findsOneWidget);
+
+    final popupMenuState = tester.state<PopupMenuButtonState<String>>(
+      find.byType(PopupMenuButton<String>),
+    );
+    popupMenuState.showButtonMenu();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete Me'), findsNothing);
+    expect(find.text('No custom templates yet'), findsOneWidget);
+  });
+
+  testWidgets('disables new template button at the 10 template limit', (
+    tester,
+  ) async {
+    final dbName = uniqueDbName('ai_summary_custom_template_limit');
+    final db = AppDatabase(dbName: dbName);
+    final templates = List<AiCustomInsightTemplate>.generate(
+      AiSettings.maxCustomInsightTemplateCount,
+      (index) => AiCustomInsightTemplate(
+        templateId: 'tpl_$index',
+        title: 'Template $index',
+        description: 'Description $index',
+        promptTemplate: 'Prompt $index',
+        iconKey: 'star',
+      ),
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en).copyWith(
+        customInsightTemplates: templates,
+      ),
+    );
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+
+    addTearDown(() async {
+      await db.close();
+      await deleteTestDatabase(dbName);
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        child: const AiSummaryScreen(),
+        overrides: [
+          appSessionProvider.overrideWith((ref) => _TestSessionController()),
+          databaseProvider.overrideWithValue(db),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final newTemplateButton = tester.widget<FilledButton>(
+      find.byKey(const Key('aiSummaryAddCustomTemplateButton')),
+    );
+    expect(newTemplateButton.onPressed, isNull);
+    expect(
+      find.text(
+        '${AiSettings.maxCustomInsightTemplateCount}/${AiSettings.maxCustomInsightTemplateCount}',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('history button opens saved insight history', (tester) async {
     final dbName = uniqueDbName('ai_summary_history');
     final db = AppDatabase(dbName: dbName);
@@ -407,10 +584,7 @@ Future<void> main() async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await _pumpUntilFound(tester, find.text('Insight History'));
-    await _pumpUntilFound(
-      tester,
-      find.text('A saved thought about the week.'),
-    );
+    await _pumpUntilFound(tester, find.text('A saved thought about the week.'));
 
     expect(find.text('Insight History'), findsAtLeastNWidgets(1));
     expect(find.text('A saved thought about the week.'), findsOneWidget);

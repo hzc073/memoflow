@@ -220,21 +220,42 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     await _runAnalysis(result);
   }
 
-  Future<void> _openCustomTemplateEditor() async {
+  Future<void> _openCustomTemplateEditor({String? templateId}) async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => const AiInsightPromptEditorScreen.custom(),
+        builder: (_) =>
+            AiInsightPromptEditorScreen.custom(templateId: templateId),
       ),
     );
     if (!mounted) return;
     setState(() {});
   }
 
-  Future<void> _openCustomInsightSettings() async {
+  void _showCustomTemplateLimitToast() {
+    showTopToast(
+      context,
+      context.t.strings.aiInsight.templates.maxTemplatesReached(
+        max: AiSettings.maxCustomInsightTemplateCount,
+      ),
+    );
+  }
+
+  Future<void> _openCreateCustomTemplateEditor() async {
+    final settings = ref.read(aiSettingsProvider);
+    if (settings.customInsightTemplates.length >=
+        AiSettings.maxCustomInsightTemplateCount) {
+      _showCustomTemplateLimitToast();
+      return;
+    }
+    await _openCustomTemplateEditor();
+  }
+
+  Future<void> _openCustomInsightSettings(
+    AiCustomInsightTemplate customTemplate,
+  ) async {
     if (_isLoading) return;
-    final customTemplate = ref.read(aiSettingsProvider).customInsightTemplate;
     if (!customTemplate.isConfigured) {
-      await _openCustomTemplateEditor();
+      await _openCustomTemplateEditor(templateId: customTemplate.templateId);
       return;
     }
     final result = await showDialog<AiInsightSettingsResult>(
@@ -246,8 +267,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         elevation: 0,
         child: AiInsightSettingsSheet(
           definition: customAiInsightDefinition,
-          customTitle: customTemplate.title,
-          customTemplateMode: true,
+          customTemplate: customTemplate,
           analysisLoading: _isLoading,
           customRangePicker: _pickCustomRange,
         ),
@@ -255,6 +275,35 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     );
     if (!mounted || result == null) return;
     await _runAnalysis(result, titleOverride: customTemplate.title);
+  }
+
+  Future<void> _deleteCustomTemplate(AiCustomInsightTemplate template) async {
+    final templateStrings = context.t.strings.aiInsight.templates;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(templateStrings.deleteDialogTitle),
+        content: Text(
+          templateStrings.deleteDialogDescription,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.t.strings.common.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(templateStrings.deleteAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await ref
+        .read(aiSettingsProvider.notifier)
+        .deleteCustomInsightTemplate(template.templateId);
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _openInsightHistory() async {
@@ -284,8 +333,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
   }) async {
     if (_isLoading) return;
     final settings = ref.read(aiSettingsProvider);
-    final isZh =
-        Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
+    final isZh = _isZhLocale();
     final hasGenerationConfig = hasConfiguredChatRoute(
       settings,
       routeId: AiTaskRouteId.analysisReport,
@@ -328,6 +376,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             includePrivate: result.allowPrivate,
             includeProtected: result.allowProtected,
             promptTemplate: result.promptTemplate.trim(),
+            templateSnapshot: result.templateSnapshot,
             onProgress: (progress) {
               if (!mounted || !_isLoading || requestId != _requestId) return;
               setState(() {
@@ -802,11 +851,15 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     required Color textMuted,
   }) {
     final settings = ref.watch(aiSettingsProvider);
-    final customTemplate = settings.customInsightTemplate;
+    final customTemplates = settings.customInsightTemplates;
+    final defaultTemplatesCollapsed = settings.defaultInsightTemplatesCollapsed;
+    final templateStrings = context.t.strings.aiInsight.templates;
     final isNarrow = MediaQuery.sizeOf(context).width < 640;
     final crossAxisCount = isNarrow ? 2 : 3;
     final width = MediaQuery.sizeOf(context).width;
     final horizontalPadding = isNarrow ? 20.0 : 28.0;
+    final canAddCustomTemplate =
+        customTemplates.length < AiSettings.maxCustomInsightTemplateCount;
 
     final hasGenerationConfig = hasConfiguredChatRoute(
       settings,
@@ -814,40 +867,178 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     );
     final hasEmbeddingConfig = hasConfiguredEmbeddingRoute(settings);
 
-    final grid = GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: visibleAiInsightDefinitions.length + 1,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        childAspectRatio: isNarrow ? 0.92 : 1.08,
-      ),
-      itemBuilder: (context, index) {
-        if (index == visibleAiInsightDefinitions.length) {
-          return _AiCustomInsightCard(
-            template: customTemplate,
+    Widget buildSectionHeader({
+      required String title,
+      String? subtitle,
+      required Widget trailing,
+    }) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: textMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(child: trailing),
+        ],
+      );
+    }
+
+    Widget buildDefaultTemplateGrid() {
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: visibleAiInsightDefinitions.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: isNarrow ? 0.92 : 1.08,
+        ),
+        itemBuilder: (context, index) {
+          final definition = visibleAiInsightDefinitions[index];
+          return _AiInsightCard(
+            definition: definition,
             cardColor: card,
             borderColor: border,
             textMain: textMain,
             textMuted: textMuted,
-            onTap: _openCustomInsightSettings,
-            onEdit: customTemplate.isConfigured
-                ? _openCustomTemplateEditor
-                : null,
+            onTap: () => _openInsightSettings(definition),
           );
-        }
-        final definition = visibleAiInsightDefinitions[index];
-        return _AiInsightCard(
-          definition: definition,
-          cardColor: card,
-          borderColor: border,
-          textMain: textMain,
-          textMuted: textMuted,
-          onTap: () => _openInsightSettings(definition),
-        );
-      },
+        },
+      );
+    }
+
+    Widget buildCustomTemplateGrid() {
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: customTemplates.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: isNarrow ? 0.92 : 1.08,
+        ),
+        itemBuilder: (context, index) {
+          final template = customTemplates[index];
+          return _AiCustomInsightCard(
+            template: template,
+            cardColor: card,
+            borderColor: border,
+            textMain: textMain,
+            textMuted: textMuted,
+            onTap: () => _openCustomInsightSettings(template),
+            onEdit: () =>
+                _openCustomTemplateEditor(templateId: template.templateId),
+            onDelete: () => _deleteCustomTemplate(template),
+          );
+        },
+      );
+    }
+
+    final defaultSectionHeader = buildSectionHeader(
+      title: templateStrings.defaultTitle,
+      trailing: IconButton.outlined(
+        key: const Key('aiSummaryToggleDefaultTemplatesButton'),
+        tooltip: defaultTemplatesCollapsed
+            ? templateStrings.showDefault
+            : templateStrings.hideDefault,
+        onPressed: () {
+          ref
+              .read(aiSettingsProvider.notifier)
+              .setDefaultInsightTemplatesCollapsed(!defaultTemplatesCollapsed);
+        },
+        icon: Icon(
+          defaultTemplatesCollapsed
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_rounded,
+        ),
+      ),
+    );
+
+    final customSectionHeader = buildSectionHeader(
+      title: templateStrings.customTitle,
+      trailing: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.end,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: card,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+            ),
+            child: Text(
+              '${customTemplates.length}/${AiSettings.maxCustomInsightTemplateCount}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: textMuted,
+              ),
+            ),
+          ),
+          Tooltip(
+            message: templateStrings.newTemplate,
+            child: FilledButton(
+              key: const Key('aiSummaryAddCustomTemplateButton'),
+              onPressed:
+                  canAddCustomTemplate ? _openCreateCustomTemplateEditor : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: MemoFlowPalette.primary,
+                disabledBackgroundColor: MemoFlowPalette.primary.withValues(
+                  alpha: 0.35,
+                ),
+                disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+                minimumSize: const Size(44, 44),
+                padding: EdgeInsets.zero,
+                shape: const CircleBorder(),
+              ),
+              child: const Icon(Icons.add_rounded),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final emptyState = _AiCustomTemplateEmptyState(
+      cardColor: card,
+      borderColor: border,
+      textMain: textMain,
+      textMuted: textMuted,
+      title: templateStrings.emptyTitle,
+      description: templateStrings.emptyDescription,
+      actionLabel: templateStrings.newTemplate,
+      canAdd: canAddCustomTemplate,
+      onAdd: canAddCustomTemplate
+          ? _openCreateCustomTemplateEditor
+          : _showCustomTemplateLimitToast,
     );
 
     return ListView(
@@ -875,14 +1066,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    context.t.strings.aiInsight.subtitle,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.6,
-                      color: textMuted,
-                    ),
-                  ),
                   if (!hasGenerationConfig || !hasEmbeddingConfig) ...[
                     const SizedBox(height: 18),
                     _AiSettingsBanner(
@@ -896,7 +1079,18 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
                     ),
                   ],
                   const SizedBox(height: 24),
-                  grid,
+                  defaultSectionHeader,
+                  if (!defaultTemplatesCollapsed) ...[
+                    const SizedBox(height: 14),
+                    buildDefaultTemplateGrid(),
+                  ],
+                  const SizedBox(height: 28),
+                  customSectionHeader,
+                  const SizedBox(height: 14),
+                  if (customTemplates.isEmpty)
+                    emptyState
+                  else
+                    buildCustomTemplateGrid(),
                 ],
               ),
             ),
@@ -1838,7 +2032,8 @@ class _AiCustomInsightCard extends StatelessWidget {
     required this.textMain,
     required this.textMuted,
     required this.onTap,
-    this.onEdit,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   final AiCustomInsightTemplate template;
@@ -1847,24 +2042,24 @@ class _AiCustomInsightCard extends StatelessWidget {
   final Color textMain;
   final Color textMuted;
   final VoidCallback onTap;
-  final VoidCallback? onEdit;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
-    final title = template.isConfigured
-        ? template.title.trim()
-        : (isZh ? '\u81ea\u5b9a\u4e49\u6a21\u677f' : 'Custom Template');
-    final description = template.isConfigured
-        ? template.description.trim()
-        : (isZh
-              ? '\u70b9\u51fb\u521b\u5efa\u4e00\u4e2a\u4f60\u81ea\u5df1\u7684\u5206\u6790\u6a21\u677f\uff0c\u53ef\u4ee5\u8bbe\u7f6e\u6807\u9898\u3001\u63d0\u793a\u8bcd\u3001\u56fe\u6807\u548c\u8bf4\u660e\u3002'
-              : 'Create your own analysis template with a title, prompt, icon, and note.');
+    final templateStrings = context.t.strings.aiInsight.templates;
+    final title = template.title.trim().isEmpty
+        ? (isZh ? '\u81ea\u5b9a\u4e49\u6a21\u677f' : 'Custom Template')
+        : template.title.trim();
+    final description = template.description.trim().isEmpty
+        ? (isZh
+              ? '\u53ef\u4ee5\u6309\u4f60\u81ea\u5df1\u7684\u5206\u6790\u76ee\u6807\u6765\u7ec4\u7ec7\u8fd9\u4e2a\u6a21\u677f\u3002'
+              : 'Shape this template around your own analysis goal.')
+        : template.description.trim();
     final accent = MemoFlowPalette.primary;
-    final icon = template.isConfigured
-        ? QuickPromptIconCatalog.resolve(template.iconKey)
-        : Icons.add_rounded;
+    final icon = QuickPromptIconCatalog.resolve(template.iconKey);
 
     return Material(
       color: Colors.transparent,
@@ -1901,26 +2096,41 @@ class _AiCustomInsightCard extends StatelessWidget {
                     child: Icon(icon, color: accent, size: 22),
                   ),
                   const Spacer(),
-                  if (template.isConfigured && onEdit != null)
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: onEdit,
-                        borderRadius: BorderRadius.circular(999),
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.edit_outlined,
-                            color: accent,
-                            size: 16,
-                          ),
-                        ),
+                  PopupMenuButton<String>(
+                    tooltip: templateStrings.moreActions,
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'edit':
+                          onEdit();
+                          break;
+                        case 'delete':
+                          onDelete();
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(
+                        value: 'edit',
+                        child: Text(templateStrings.editAction),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Text(templateStrings.deleteAction),
+                      ),
+                    ],
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.more_horiz_rounded,
+                        color: accent,
+                        size: 18,
                       ),
                     ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1959,6 +2169,77 @@ class _AiCustomInsightCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AiCustomTemplateEmptyState extends StatelessWidget {
+  const _AiCustomTemplateEmptyState({
+    required this.cardColor,
+    required this.borderColor,
+    required this.textMain,
+    required this.textMuted,
+    required this.title,
+    required this.description,
+    required this.actionLabel,
+    required this.canAdd,
+    required this.onAdd,
+  });
+
+  final Color cardColor;
+  final Color borderColor;
+  final Color textMain;
+  final Color textMuted;
+  final String title;
+  final String description;
+  final String actionLabel;
+  final bool canAdd;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: textMain,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: TextStyle(fontSize: 13, height: 1.5, color: textMuted),
+          ),
+          if (canAdd) ...[
+            const SizedBox(height: 16),
+            Tooltip(
+              message: actionLabel,
+              child: FilledButton(
+                key: const Key('aiSummaryEmptyStateAddTemplateButton'),
+                onPressed: onAdd,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  padding: EdgeInsets.zero,
+                  shape: const CircleBorder(),
+                ),
+                child: const Icon(Icons.add_rounded),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

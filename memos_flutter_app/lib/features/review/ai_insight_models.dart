@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/ai/ai_analysis_models.dart'
-    show AiRetrievalPreviewItem, AiRetrievalPreviewPayload;
+    show
+        AiAnalysisTemplateSnapshot,
+        AiRetrievalPreviewItem,
+        AiRetrievalPreviewPayload;
 import '../../i18n/strings.g.dart';
 
 enum AiInsightId {
@@ -138,6 +141,21 @@ extension AiInsightIdStorage on AiInsightId {
     AiInsightId.actionExtraction => 'action_extraction',
     AiInsightId.longTermTrajectory => 'long_term_trajectory',
     AiInsightId.customTemplate => 'custom_template',
+  };
+}
+
+AiInsightId? tryParseAiInsightIdStorageKey(String value) {
+  return switch (value.trim()) {
+    'today_clues' => AiInsightId.todayClues,
+    'emotion_map' => AiInsightId.emotionMap,
+    'theme_resonance' => AiInsightId.themeResonance,
+    'thought_trace' => AiInsightId.thoughtTrace,
+    'blind_spot_discovery' => AiInsightId.blindSpotDiscovery,
+    'relationship_view' => AiInsightId.relationshipView,
+    'action_extraction' => AiInsightId.actionExtraction,
+    'long_term_trajectory' => AiInsightId.longTermTrajectory,
+    'custom_template' => AiInsightId.customTemplate,
+    _ => null,
   };
 }
 
@@ -581,6 +599,7 @@ class AiInsightSettingsResult {
     required this.allowProtected,
     required this.previewPayload,
     required this.promptTemplate,
+    this.templateSnapshot = AiAnalysisTemplateSnapshot.legacy,
   });
 
   final AiInsightId insightId;
@@ -591,4 +610,5 @@ class AiInsightSettingsResult {
   final bool allowProtected;
   final AiAnalysisPreviewPayload previewPayload;
   final String promptTemplate;
+  final AiAnalysisTemplateSnapshot templateSnapshot;
 }

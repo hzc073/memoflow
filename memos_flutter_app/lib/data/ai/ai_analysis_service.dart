@@ -183,6 +183,8 @@ class AiAnalysisService {
     required bool includePrivate,
     bool includeProtected = false,
     String promptTemplate = '',
+    AiAnalysisTemplateSnapshot templateSnapshot =
+        AiAnalysisTemplateSnapshot.legacy,
     void Function(double progress)? onProgress,
   }) async {
     void reportProgress(double value) {
@@ -236,6 +238,10 @@ class AiAnalysisService {
       includePrivate: includePrivate,
       includeProtected: includeProtected,
       promptTemplate: promptTemplate.trim(),
+      templateKind: templateSnapshot.kind,
+      templateId: templateSnapshot.templateId,
+      templateTitleSnapshot: templateSnapshot.titleSnapshot,
+      templateIconKeySnapshot: templateSnapshot.iconKeySnapshot,
       generationProfileKey: generationProfile.profileKey,
       embeddingProfileKey: hasEmbeddingConfig
           ? embeddingProfile.profileKey

@@ -48,11 +48,7 @@ class _AiInsightHistoryScreenState
       ).showSnackBar(SnackBar(content: Text(_loadFailedText())));
       return;
     }
-    final descriptor = resolveAiInsightHistoryDescriptor(
-      context,
-      ref,
-      entry.promptTemplate,
-    );
+    final descriptor = resolveAiInsightHistoryDescriptor(context, ref, entry);
     Navigator.of(context).pop(
       AiInsightHistorySelection(
         report: report,
@@ -220,7 +216,7 @@ class _AiInsightHistoryScreenState
               final descriptor = resolveAiInsightHistoryDescriptor(
                 context,
                 ref,
-                entry.promptTemplate,
+                entry,
               );
               final isOpening = _openingTaskId == entry.taskId;
               final summary = entry.summary.trim();

@@ -72,6 +72,7 @@ class AiSettingsController extends StateNotifier<AiSettings> {
           'route_count': state.taskRouteBindings.length,
           'quick_prompt_count': state.quickPrompts.length,
           'analysis_template_count': state.analysisPromptTemplates.length,
+          'custom_insight_template_count': state.customInsightTemplates.length,
         },
       );
     } catch (error, stackTrace) {
@@ -593,30 +594,89 @@ class AiSettingsController extends StateNotifier<AiSettings> {
     await setInsightPromptTemplate(insightId, '');
   }
 
-  Future<void> setCustomInsightTemplate(
+  Future<void> addCustomInsightTemplate(
     AiCustomInsightTemplate template,
   ) async {
-    final normalizedTitle = template.title.trim();
-    final normalizedDescription = template.description.trim();
-    final normalizedPrompt = template.promptTemplate.trim();
-    final normalizedIconKey = template.iconKey.trim().isEmpty
-        ? AiQuickPrompt.defaultIconKey
-        : template.iconKey.trim();
+    if (state.customInsightTemplates.length >=
+        AiSettings.maxCustomInsightTemplateCount) {
+      return;
+    }
+    final normalizedTemplate = _normalizeCustomInsightTemplate(
+      template,
+      fallbackTemplateId: generateUid(),
+    );
+    final nextTemplates = <AiCustomInsightTemplate>[
+      normalizedTemplate,
+      ...state.customInsightTemplates,
+    ];
     await setAll(
       state.copyWith(
-        customInsightTemplate: AiCustomInsightTemplate(
-          title: normalizedTitle,
-          description: normalizedDescription,
-          promptTemplate: normalizedPrompt,
-          iconKey: normalizedIconKey,
+        customInsightTemplates: List<AiCustomInsightTemplate>.unmodifiable(
+          nextTemplates,
         ),
       ),
     );
   }
 
-  Future<void> clearCustomInsightTemplate() async {
+  Future<void> updateCustomInsightTemplate(
+    String templateId,
+    AiCustomInsightTemplate template,
+  ) async {
+    final normalizedTemplateId = templateId.trim();
+    if (normalizedTemplateId.isEmpty) return;
+    final nextTemplates = state.customInsightTemplates
+        .map((item) {
+          if (item.templateId.trim() != normalizedTemplateId) {
+            return item;
+          }
+          return _normalizeCustomInsightTemplate(
+            template,
+            fallbackTemplateId: normalizedTemplateId,
+          );
+        })
+        .toList(growable: false);
     await setAll(
-      state.copyWith(customInsightTemplate: const AiCustomInsightTemplate()),
+      state.copyWith(
+        customInsightTemplates: List<AiCustomInsightTemplate>.unmodifiable(
+          nextTemplates,
+        ),
+      ),
+    );
+  }
+
+  Future<void> deleteCustomInsightTemplate(String templateId) async {
+    final normalizedTemplateId = templateId.trim();
+    if (normalizedTemplateId.isEmpty) return;
+    final nextTemplates = state.customInsightTemplates
+        .where((item) => item.templateId.trim() != normalizedTemplateId)
+        .toList(growable: false);
+    await setAll(
+      state.copyWith(
+        customInsightTemplates: List<AiCustomInsightTemplate>.unmodifiable(
+          nextTemplates,
+        ),
+      ),
+    );
+  }
+
+  Future<void> setDefaultInsightTemplatesCollapsed(bool value) async {
+    await setAll(state.copyWith(defaultInsightTemplatesCollapsed: value));
+  }
+
+  AiCustomInsightTemplate _normalizeCustomInsightTemplate(
+    AiCustomInsightTemplate template, {
+    required String fallbackTemplateId,
+  }) {
+    return AiCustomInsightTemplate(
+      templateId: template.templateId.trim().isEmpty
+          ? fallbackTemplateId
+          : template.templateId.trim(),
+      title: template.title.trim(),
+      description: template.description.trim(),
+      promptTemplate: template.promptTemplate.trim(),
+      iconKey: template.iconKey.trim().isEmpty
+          ? AiQuickPrompt.defaultIconKey
+          : template.iconKey.trim(),
     );
   }
 

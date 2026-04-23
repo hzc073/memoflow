@@ -163,6 +163,14 @@ class AiAnalysisRepository {
             includePrivate: _readBoolPayload(payload, 'includePrivate'),
             includeProtected: _readBoolPayload(payload, 'includeProtected'),
             promptTemplate: payload['promptTemplate'] as String? ?? '',
+            templateKind: aiAnalysisTemplateKindFromStorage(
+              payload['templateKind'] as String? ?? '',
+            ),
+            templateId: payload['templateId'] as String? ?? '',
+            templateTitleSnapshot:
+                payload['templateTitleSnapshot'] as String? ?? '',
+            templateIconKeySnapshot:
+                payload['templateIconKeySnapshot'] as String? ?? '',
             generationProfileKey:
                 payload['generationProfileKey'] as String? ?? '',
             embeddingProfileKey:
@@ -608,6 +616,10 @@ LIMIT ?;
     required bool includePrivate,
     required bool includeProtected,
     required String promptTemplate,
+    AiAnalysisTemplateKind templateKind = AiAnalysisTemplateKind.legacy,
+    String templateId = '',
+    String templateTitleSnapshot = '',
+    String templateIconKeySnapshot = '',
     required String generationProfileKey,
     required String embeddingProfileKey,
     required Map<String, dynamic> retrievalProfile,
@@ -625,6 +637,10 @@ LIMIT ?;
           'includePrivate': includePrivate,
           'includeProtected': includeProtected,
           'promptTemplate': promptTemplate,
+          'templateKind': aiAnalysisTemplateKindToStorage(templateKind),
+          'templateId': templateId,
+          'templateTitleSnapshot': templateTitleSnapshot,
+          'templateIconKeySnapshot': templateIconKeySnapshot,
           'generationProfileKey': generationProfileKey,
           'embeddingProfileKey': embeddingProfileKey,
           'retrievalProfile': retrievalProfile,
@@ -642,6 +658,10 @@ LIMIT ?;
       includePrivate: includePrivate,
       includeProtected: includeProtected,
       promptTemplate: promptTemplate,
+      templateKind: templateKind,
+      templateId: templateId,
+      templateTitleSnapshot: templateTitleSnapshot,
+      templateIconKeySnapshot: templateIconKeySnapshot,
       generationProfileKey: generationProfileKey,
       embeddingProfileKey: embeddingProfileKey,
       retrievalProfile: retrievalProfile,
@@ -750,6 +770,10 @@ SELECT
   t.include_private,
   t.include_protected,
   t.prompt_template,
+  t.template_kind,
+  t.template_id,
+  t.template_title_snapshot,
+  t.template_icon_key_snapshot,
   t.created_time,
   r.summary,
   r.is_stale
@@ -783,6 +807,14 @@ ORDER BY t.created_time DESC
             includeProtected: ((row['include_protected'] as int?) ?? 0) == 1,
             createdTime: (row['created_time'] as int?) ?? 0,
             isStale: ((row['is_stale'] as int?) ?? 0) == 1,
+            templateKind: aiAnalysisTemplateKindFromStorage(
+              (row['template_kind'] as String?) ?? '',
+            ),
+            templateId: (row['template_id'] as String?) ?? '',
+            templateTitleSnapshot:
+                (row['template_title_snapshot'] as String?) ?? '',
+            templateIconKeySnapshot:
+                (row['template_icon_key_snapshot'] as String?) ?? '',
           ),
         )
         .toList(growable: false);
