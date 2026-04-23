@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -60,8 +62,10 @@ class _CollectionEditorScreenState
   late bool _showStats;
   late bool _hideWhenEmpty;
   bool _hasExplicitManualMemoSelection = false;
-  bool _hasLocalChanges = false;
   double _bottomBarHeight = 120;
+  late final MemoCollection _initialSnapshotCollection;
+  List<String>? _initialManualMemoUids;
+  ProviderSubscription<AsyncValue<List<String>>>? _manualBaselineSubscription;
 
   bool get _isEditing => widget.initialCollection != null;
 
@@ -119,10 +123,33 @@ class _CollectionEditorScreenState
             : CollectionSortMode.displayTimeDesc);
     _showStats = collection?.view.showStats ?? true;
     _hideWhenEmpty = collection?.hideWhenEmpty ?? false;
+    if (!_isEditing && _type == MemoCollectionType.manual) {
+      _initialManualMemoUids = _normalizeMemoUids(widget.initialManualMemoUids);
+    } else if (!_isEditing || collection?.type != MemoCollectionType.manual) {
+      _initialManualMemoUids = const <String>[];
+    }
+    _initialSnapshotCollection = _draftCollection;
+    if (collection?.type == MemoCollectionType.manual) {
+      _manualBaselineSubscription = ref.listenManual<AsyncValue<List<String>>>(
+        collectionManualItemUidsProvider(collection!.id),
+        (previous, next) {
+          final manualMemoUids = next.valueOrNull;
+          if (_initialManualMemoUids != null || manualMemoUids == null) return;
+          final normalized = _normalizeMemoUids(manualMemoUids);
+          if (!mounted) {
+            _initialManualMemoUids = normalized;
+            return;
+          }
+          setState(() => _initialManualMemoUids = normalized);
+        },
+        fireImmediately: true,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _manualBaselineSubscription?.close();
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -177,7 +204,10 @@ class _CollectionEditorScreenState
     );
   }
 
-  Future<void> _save({required List<LocalMemo> existingManualItems}) async {
+  Future<void> _save({
+    required List<LocalMemo> existingManualItems,
+    required List<String> persistedManualMemoUids,
+  }) async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       _showMessage(context.t.strings.collections.titleRequired);
@@ -187,7 +217,9 @@ class _CollectionEditorScreenState
       _showMessage(context.t.strings.collections.ruleRequired);
       return;
     }
-    final manualMemoUids = _effectiveManualMemoUids(existingManualItems);
+    final manualMemoUids = _effectiveManualMemoUidsFromPersisted(
+      persistedManualMemoUids,
+    );
     if (_type == MemoCollectionType.manual && manualMemoUids.isEmpty) {
       final shouldContinue = await _confirmEmptyManualSave();
       if (!shouldContinue) return;
@@ -230,14 +262,11 @@ class _CollectionEditorScreenState
   }
 
   void _markChanged() {
-    setState(() => _hasLocalChanges = true);
+    setState(() {});
   }
 
   void _updateState(VoidCallback update) {
-    setState(() {
-      update();
-      _hasLocalChanges = true;
-    });
+    setState(update);
   }
 
   void _showMessage(String message) {
@@ -319,17 +348,23 @@ class _CollectionEditorScreenState
             collectionManualItemUidsProvider(widget.initialCollection!.id),
           )
         : const AsyncValue.data(<String>[]);
+    final persistedManualMemoUids =
+        widget.initialCollection?.type == MemoCollectionType.manual
+        ? _normalizeMemoUids(
+            existingManualItemUidsAsync.valueOrNull ?? const <String>[],
+          )
+        : const <String>[];
     final existingManualItems =
         widget.initialCollection?.type == MemoCollectionType.manual
         ? resolveManualCollectionItemsInStoredOrder(
             memosAsync.valueOrNull ?? const <LocalMemo>[],
-            existingManualItemUidsAsync.valueOrNull ?? const <String>[],
+            persistedManualMemoUids,
           )
         : const <LocalMemo>[];
     final previewItems = _buildPreviewItems(
       memos: memosAsync.valueOrNull ?? const <LocalMemo>[],
       tagLookup: tagLookup,
-      existingManualItems: existingManualItems,
+      persistedManualMemoUids: persistedManualMemoUids,
     );
     final coverAttachmentOptions = _buildCoverAttachmentOptions(previewItems);
     final selectedCoverOptionKey = _selectedCoverOptionKey(
@@ -341,15 +376,15 @@ class _CollectionEditorScreenState
       resolveTagColorHexByPath: tagLookup.resolveEffectiveHexByPath,
     );
     final colors = _CollectionEditorColors.fromTheme(context);
+    final hasUnsavedChanges = _hasUnsavedChanges(
+      persistedManualMemoUids: persistedManualMemoUids,
+    );
 
     return PopScope(
-      canPop: false,
+      canPop: !hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final navigator = Navigator.of(context);
-        final allow = await _handleExitGuard();
-        if (!mounted || !allow) return;
-        navigator.maybePop();
+        if (didPop || !hasUnsavedChanges) return;
+        await _requestClose(persistedManualMemoUids: persistedManualMemoUids);
       },
       child: Scaffold(
         backgroundColor: colors.background,
@@ -361,12 +396,8 @@ class _CollectionEditorScreenState
           leading: IconButton(
             tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () async {
-              final navigator = Navigator.of(context);
-              final allow = await _handleExitGuard();
-              if (!mounted || !allow) return;
-              navigator.maybePop();
-            },
+            onPressed: () =>
+                _requestClose(persistedManualMemoUids: persistedManualMemoUids),
           ),
           title: Text(
             _isEditing
@@ -379,6 +410,7 @@ class _CollectionEditorScreenState
           colors: colors,
           preview: preview,
           existingManualItems: existingManualItems,
+          persistedManualMemoUids: persistedManualMemoUids,
         ),
         body: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -396,7 +428,7 @@ class _CollectionEditorScreenState
               _buildManualSourceSection(
                 context,
                 colors: colors,
-                existingManualItems: existingManualItems,
+                persistedManualMemoUids: persistedManualMemoUids,
                 previewItems: previewItems,
               ),
             if (_isEditing) ...[
@@ -421,6 +453,7 @@ class _CollectionEditorScreenState
     required _CollectionEditorColors colors,
     required MemoCollectionPreview preview,
     required List<LocalMemo> existingManualItems,
+    required List<String> persistedManualMemoUids,
   }) {
     final canSave = _canSave(existingManualItems);
     return SafeArea(
@@ -448,7 +481,7 @@ class _CollectionEditorScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _footerSummary(context, preview, existingManualItems),
+                      _footerSummary(context, preview, persistedManualMemoUids),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -476,7 +509,10 @@ class _CollectionEditorScreenState
               const SizedBox(width: 12),
               FilledButton(
                 onPressed: canSave
-                    ? () => _save(existingManualItems: existingManualItems)
+                    ? () => _save(
+                        existingManualItems: existingManualItems,
+                        persistedManualMemoUids: persistedManualMemoUids,
+                      )
                     : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: MemoFlowPalette.primary,
@@ -495,7 +531,7 @@ class _CollectionEditorScreenState
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: Text(_submitLabel(context, existingManualItems)),
+                child: Text(_submitLabel(context, persistedManualMemoUids)),
               ),
             ],
           ),
@@ -858,11 +894,13 @@ class _CollectionEditorScreenState
   Widget _buildManualSourceSection(
     BuildContext context, {
     required _CollectionEditorColors colors,
-    required List<LocalMemo> existingManualItems,
+    required List<String> persistedManualMemoUids,
     required List<LocalMemo> previewItems,
   }) {
     final collections = context.t.strings.collections;
-    final selectedMemoUids = _effectiveManualMemoUids(existingManualItems);
+    final selectedMemoUids = _effectiveManualMemoUidsFromPersisted(
+      persistedManualMemoUids,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -882,7 +920,7 @@ class _CollectionEditorScreenState
           children: [
             Expanded(
               child: FilledButton.tonalIcon(
-                onPressed: () => _openManualMemoPicker(existingManualItems),
+                onPressed: () => _openManualMemoPicker(persistedManualMemoUids),
                 icon: const Icon(Icons.playlist_add_rounded),
                 label: Text(collections.addMemos),
               ),
@@ -1288,18 +1326,24 @@ class _CollectionEditorScreenState
     return context.tr(zh: '已设置 $count 项', en: '$count set');
   }
 
-  List<String> _effectiveManualMemoUids(List<LocalMemo> existingManualItems) {
+  List<String> _normalizeMemoUids(Iterable<String> memoUids) {
+    final seen = <String>{};
+    return memoUids
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty && seen.add(item))
+        .toList(growable: false);
+  }
+
+  List<String> _effectiveManualMemoUidsFromPersisted(
+    List<String> persistedManualMemoUids,
+  ) {
     final source =
         !_isEditing ||
             _hasExplicitManualMemoSelection ||
             _manualMemoUids.isNotEmpty
         ? _manualMemoUids
-        : existingManualItems.map((item) => item.uid).toList(growable: false);
-    final seen = <String>{};
-    return source
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty && seen.add(item))
-        .toList(growable: false);
+        : persistedManualMemoUids;
+    return _normalizeMemoUids(source);
   }
 
   bool _canSave(List<LocalMemo> existingManualItems) {
@@ -1313,12 +1357,14 @@ class _CollectionEditorScreenState
 
   String _submitLabel(
     BuildContext context,
-    List<LocalMemo> existingManualItems,
+    List<String> persistedManualMemoUids,
   ) {
     if (_isEditing) {
       return context.tr(zh: '保存修改', en: 'Save changes');
     }
-    final manualCount = _effectiveManualMemoUids(existingManualItems).length;
+    final manualCount = _effectiveManualMemoUidsFromPersisted(
+      persistedManualMemoUids,
+    ).length;
     if (_type == MemoCollectionType.manual && manualCount > 0) {
       return context.tr(
         zh: '创建并加入 $manualCount 条 memo',
@@ -1333,10 +1379,12 @@ class _CollectionEditorScreenState
   String _footerSummary(
     BuildContext context,
     MemoCollectionPreview preview,
-    List<LocalMemo> existingManualItems,
+    List<String> persistedManualMemoUids,
   ) {
     if (_type == MemoCollectionType.manual) {
-      final count = _effectiveManualMemoUids(existingManualItems).length;
+      final count = _effectiveManualMemoUidsFromPersisted(
+        persistedManualMemoUids,
+      ).length;
       return context.tr(zh: '已选 $count 条', en: '$count selected');
     }
     return context.tr(
@@ -1346,14 +1394,14 @@ class _CollectionEditorScreenState
   }
 
   Future<void> _openManualMemoPicker(
-    List<LocalMemo> existingManualItems,
+    List<String> persistedManualMemoUids,
   ) async {
     final selected = await Navigator.of(context).push<List<String>>(
       MaterialPageRoute<List<String>>(
         fullscreenDialog: true,
         builder: (_) => _ManualMemoPickerScreen(
-          initialSelectedMemoUids: _effectiveManualMemoUids(
-            existingManualItems,
+          initialSelectedMemoUids: _effectiveManualMemoUidsFromPersisted(
+            persistedManualMemoUids,
           ),
         ),
       ),
@@ -1435,8 +1483,7 @@ class _CollectionEditorScreenState
     return confirmed ?? false;
   }
 
-  Future<bool> _handleExitGuard() async {
-    if (!_hasLocalChanges) return true;
+  Future<bool> _confirmDiscardChanges() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1462,6 +1509,42 @@ class _CollectionEditorScreenState
       ),
     );
     return confirmed ?? false;
+  }
+
+  List<String> _initialManualMemoUidsForComparison({
+    required List<String> persistedManualMemoUids,
+  }) {
+    return _initialManualMemoUids ??
+        _normalizeMemoUids(persistedManualMemoUids);
+  }
+
+  bool _hasUnsavedChanges({required List<String> persistedManualMemoUids}) {
+    final currentSnapshot = _CollectionEditorPersistedSnapshot.fromCollection(
+      collection: _draftCollection,
+      manualMemoUids: _effectiveManualMemoUidsFromPersisted(
+        persistedManualMemoUids,
+      ),
+    );
+    final initialSnapshot = _CollectionEditorPersistedSnapshot.fromCollection(
+      collection: _initialSnapshotCollection,
+      manualMemoUids: _initialManualMemoUidsForComparison(
+        persistedManualMemoUids: persistedManualMemoUids,
+      ),
+    );
+    return currentSnapshot != initialSnapshot;
+  }
+
+  Future<void> _requestClose({
+    required List<String> persistedManualMemoUids,
+  }) async {
+    if (!_hasUnsavedChanges(persistedManualMemoUids: persistedManualMemoUids)) {
+      if (!mounted) return;
+      context.safePop();
+      return;
+    }
+    final shouldDiscard = await _confirmDiscardChanges();
+    if (!mounted || !shouldDiscard) return;
+    context.safePop();
   }
 
   Future<void> _persistManualItems({
@@ -1496,13 +1579,15 @@ class _CollectionEditorScreenState
   List<LocalMemo> _buildPreviewItems({
     required List<LocalMemo> memos,
     required TagColorLookup tagLookup,
-    required List<LocalMemo> existingManualItems,
+    required List<String> persistedManualMemoUids,
   }) {
     if (_type == MemoCollectionType.manual) {
       return resolveCollectionItems(
         _draftCollection,
         memos,
-        manualMemoUids: _effectiveManualMemoUids(existingManualItems),
+        manualMemoUids: _effectiveManualMemoUidsFromPersisted(
+          persistedManualMemoUids,
+        ),
         resolveCanonicalTagPath: tagLookup.resolveCanonicalPath,
       );
     }
@@ -1565,6 +1650,106 @@ class _CollectionEditorScreenState
     ).toLocal();
     return '${formatter.format(startDate)} – ${formatter.format(endDate)}';
   }
+}
+
+class _CollectionEditorPersistedSnapshot {
+  const _CollectionEditorPersistedSnapshot({
+    required this.type,
+    required this.title,
+    required this.description,
+    required this.iconKey,
+    required this.accentColorHex,
+    required this.rulesSignature,
+    required this.coverSignature,
+    required this.viewSignature,
+    required this.hideWhenEmpty,
+    required this.manualMemoUids,
+  });
+
+  factory _CollectionEditorPersistedSnapshot.fromCollection({
+    required MemoCollection collection,
+    required List<String> manualMemoUids,
+  }) {
+    final normalizedManualMemoUids =
+        collection.type == MemoCollectionType.manual
+        ? _normalizeSnapshotManualMemoUids(manualMemoUids)
+        : const <String>[];
+    return _CollectionEditorPersistedSnapshot(
+      type: collection.type,
+      title: collection.title.trim(),
+      description: collection.description.trim(),
+      iconKey: collection.iconKey,
+      accentColorHex: _normalizeSnapshotAccentColor(collection.accentColorHex),
+      rulesSignature: jsonEncode(collection.rules.toJson()),
+      coverSignature: jsonEncode(collection.cover.toJson()),
+      viewSignature: jsonEncode(collection.view.toJson()),
+      hideWhenEmpty: collection.hideWhenEmpty,
+      manualMemoUids: normalizedManualMemoUids,
+    );
+  }
+
+  final MemoCollectionType type;
+  final String title;
+  final String description;
+  final String iconKey;
+  final String? accentColorHex;
+  final String rulesSignature;
+  final String coverSignature;
+  final String viewSignature;
+  final bool hideWhenEmpty;
+  final List<String> manualMemoUids;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _CollectionEditorPersistedSnapshot &&
+        other.type == type &&
+        other.title == title &&
+        other.description == description &&
+        other.iconKey == iconKey &&
+        other.accentColorHex == accentColorHex &&
+        other.rulesSignature == rulesSignature &&
+        other.coverSignature == coverSignature &&
+        other.viewSignature == viewSignature &&
+        other.hideWhenEmpty == hideWhenEmpty &&
+        _sameSnapshotManualMemoUids(other.manualMemoUids, manualMemoUids);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    type,
+    title,
+    description,
+    iconKey,
+    accentColorHex,
+    rulesSignature,
+    coverSignature,
+    viewSignature,
+    hideWhenEmpty,
+    Object.hashAll(manualMemoUids),
+  );
+}
+
+String? _normalizeSnapshotAccentColor(String? accentColorHex) {
+  if (accentColorHex == null) return null;
+  final trimmed = accentColorHex.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+List<String> _normalizeSnapshotManualMemoUids(Iterable<String> memoUids) {
+  final seen = <String>{};
+  return memoUids
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty && seen.add(item))
+      .toList(growable: false);
+}
+
+bool _sameSnapshotManualMemoUids(List<String> left, List<String> right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }
 
 class _CoverAttachmentOption {
