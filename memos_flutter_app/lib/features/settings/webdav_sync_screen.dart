@@ -768,11 +768,13 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     try {
       final settings = ref.read(webDavSettingsProvider);
       final accountKey = ref.read(appSessionProvider).valueOrNull?.currentKey;
-      await ref.read(desktopSyncFacadeProvider).listWebDavBackupSnapshots(
-        settings: settings,
-        accountKey: accountKey,
-        password: password,
-      );
+      await ref
+          .read(desktopSyncFacadeProvider)
+          .listWebDavBackupSnapshots(
+            settings: settings,
+            accountKey: accountKey,
+            password: password,
+          );
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -937,11 +939,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       final newRecoveryCode = await ref
           .read(desktopSyncFacadeProvider)
           .recoverWebDavBackupPassword(
-        settings: settings,
-        accountKey: accountKey,
-        recoveryCode: recoveryCode,
-        newPassword: newPassword,
-      );
+            settings: settings,
+            accountKey: accountKey,
+            recoveryCode: recoveryCode,
+            newPassword: newPassword,
+          );
       await ref.read(webDavBackupPasswordRepositoryProvider).write(newPassword);
       if (!_rememberBackupPassword) {
         setState(() => _rememberBackupPassword = true);
@@ -3493,6 +3495,21 @@ class _WebDavBackupSettingsScreenState
     return true;
   }
 
+  bool get _shouldInterceptPop =>
+      _encryptionMode == WebDavBackupEncryptionMode.encrypted &&
+      !_backupPasswordSet;
+
+  Future<void> _requestClose() async {
+    if (!_shouldInterceptPop) {
+      if (!mounted) return;
+      context.safePop();
+      return;
+    }
+    final allow = await _handleExitGuard();
+    if (!mounted || !allow) return;
+    context.safePop();
+  }
+
   Future<bool> _confirmPlainBackupRisk() async {
     final confirmed =
         await showDialog<bool>(
@@ -3637,12 +3654,10 @@ class _WebDavBackupSettingsScreenState
     final busy = backupStatus.running || widget.backupRestoring;
 
     return PopScope(
-      canPop: false,
+      canPop: !_shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final allow = await _handleExitGuard();
-        if (!mounted || !allow) return;
-        Navigator.of(context).maybePop();
+        if (didPop || !_shouldInterceptPop) return;
+        await _requestClose();
       },
       child: Scaffold(
         backgroundColor: bg,
@@ -3654,11 +3669,7 @@ class _WebDavBackupSettingsScreenState
           leading: IconButton(
             tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () async {
-              final allow = await _handleExitGuard();
-              if (!mounted || !allow) return;
-              Navigator.of(context).maybePop();
-            },
+            onPressed: _requestClose,
           ),
           title: Text(context.t.strings.legacy.msg_backup_settings),
           centerTitle: false,

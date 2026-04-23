@@ -452,6 +452,90 @@ class RecordingSyncCoordinator extends SyncCoordinator {
   }
 }
 
+class _RecordingPageRouteObserver extends NavigatorObserver {
+  int popCount = 0;
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is! PageRoute<dynamic>) {
+      super.didPop(route, previousRoute);
+      return;
+    }
+    popCount += 1;
+    super.didPop(route, previousRoute);
+  }
+}
+
+Future<AppDatabase> _pumpWebDavScreen(
+  WidgetTester tester, {
+  required WebDavSettings settings,
+  required NavigatorObserver observer,
+  FakeWebDavBackupPasswordRepository? passwordRepository,
+  LocalLibrary? localLibrary,
+}) async {
+  final webDavSyncService = FakeWebDavSyncService(const <String>[]);
+  final webDavBackupService = FakeWebDavBackupService();
+  final backupStateRepo = FakeWebDavBackupStateRepository();
+  final sessionController = FakeAppSessionController(
+    const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
+  );
+  final settingsController = FakeWebDavSettingsController(settings);
+  final progressTracker = WebDavBackupProgressTracker();
+  final db = AppDatabase(
+    dbName: 'webdav_exit_guard_${DateTime.now().microsecondsSinceEpoch}.db',
+  );
+
+  await tester.pumpWidget(
+    TranslationProvider(
+      child: ProviderScope(
+        overrides: [
+          webDavSettingsProvider.overrideWith((ref) => settingsController),
+          webDavSettingsRepositoryProvider.overrideWithValue(
+            FakeWebDavSettingsRepository(settings),
+          ),
+          webDavBackupPasswordRepositoryProvider.overrideWithValue(
+            passwordRepository ?? FakeWebDavBackupPasswordRepository(),
+          ),
+          webDavBackupProgressTrackerProvider.overrideWith(
+            (ref) => progressTracker,
+          ),
+          webDavBackupStateRepositoryProvider.overrideWithValue(
+            backupStateRepo,
+          ),
+          currentLocalLibraryProvider.overrideWithValue(localLibrary),
+          appSessionProvider.overrideWith((ref) => sessionController),
+          syncCoordinatorProvider.overrideWith((ref) {
+            return RecordingSyncCoordinator(
+              SyncDependencies(
+                webDavSyncService: webDavSyncService,
+                webDavBackupService: webDavBackupService,
+                webDavBackupStateRepository: backupStateRepo,
+                readWebDavSettings: () => settingsController.state,
+                readCurrentAccountKey: () =>
+                    sessionController.state.valueOrNull?.currentKey,
+                readCurrentAccount: () =>
+                    sessionController.state.valueOrNull?.currentAccount,
+                readCurrentLocalLibrary: () => localLibrary,
+                readDatabase: () => db,
+                runMemosSync: () async => const MemoSyncSuccess(),
+              ),
+            );
+          }),
+        ],
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          navigatorObservers: [observer],
+          home: const WebDavSyncScreen(),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return db;
+}
+
 void main() {
   testWidgets('top-right action runs manual sync and resolves conflicts', (
     WidgetTester tester,
@@ -717,4 +801,74 @@ void main() {
       await db.close();
     },
   );
+
+  testWidgets('backup settings abandon and confirm closes the screen', (
+    WidgetTester tester,
+  ) async {
+    LocaleSettings.setLocale(AppLocale.en);
+    final observer = _RecordingPageRouteObserver();
+    final settings = WebDavSettings.defaults.copyWith(
+      enabled: true,
+      serverUrl: 'https://example.com',
+      username: 'user',
+      password: 'pass',
+      backupEncryptionMode: WebDavBackupEncryptionMode.encrypted,
+    );
+    final db = await _pumpWebDavScreen(
+      tester,
+      settings: settings,
+      observer: observer,
+    );
+
+    await tester.tap(find.text('Backup strategy settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(t.strings.legacy.msg_back));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Backup password missing'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Abandon'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(FilledButton, t.strings.legacy.msg_confirm),
+    );
+    await tester.pumpAndSettle();
+
+    expect(observer.popCount, 1);
+    expect(find.text('Backup password missing'), findsNothing);
+    expect(find.text(t.strings.legacy.msg_backup_settings), findsNothing);
+    expect(find.text('Backup strategy settings'), findsOneWidget);
+
+    await db.close();
+  });
+
+  testWidgets('plain backup settings close directly without prompt', (
+    WidgetTester tester,
+  ) async {
+    LocaleSettings.setLocale(AppLocale.en);
+    final observer = _RecordingPageRouteObserver();
+    final settings = WebDavSettings.defaults.copyWith(
+      enabled: true,
+      serverUrl: 'https://example.com',
+      username: 'user',
+      password: 'pass',
+      backupEncryptionMode: WebDavBackupEncryptionMode.plain,
+    );
+    final db = await _pumpWebDavScreen(
+      tester,
+      settings: settings,
+      observer: observer,
+    );
+
+    await tester.tap(find.text('Backup strategy settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(t.strings.legacy.msg_back));
+    await tester.pumpAndSettle();
+
+    expect(observer.popCount, 1);
+    expect(find.text('Backup password missing'), findsNothing);
+    expect(find.text('Backup strategy settings'), findsOneWidget);
+
+    await db.close();
+  });
 }
