@@ -229,12 +229,21 @@ Widget _buildTestApp({
   required Widget child,
   List<Override> overrides = const [],
   bool scaffoldBody = false,
+  double? textScaleFactor,
 }) {
   LocaleSettings.setLocale(AppLocale.en);
   return TranslationProvider(
     child: ProviderScope(
       overrides: overrides,
       child: MaterialApp(
+        builder: textScaleFactor == null
+            ? null
+            : (context, appChild) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
+                child: appChild ?? const SizedBox.shrink(),
+              ),
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: const [
@@ -395,15 +404,82 @@ Future<void> main() async {
       expect(find.text('Default Templates'), findsOneWidget);
       expect(find.text('Custom Templates'), findsOneWidget);
       expect(find.text('Weekly Lens'), findsOneWidget);
-      expect(find.byKey(const Key('aiSummaryToggleDefaultTemplatesButton')), findsOneWidget);
+      expect(
+        find.byKey(const Key('aiSummaryToggleDefaultTemplatesButton')),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.byKey(const Key('aiSummaryToggleDefaultTemplatesButton')));
+      await tester.tap(
+        find.byKey(const Key('aiSummaryToggleDefaultTemplatesButton')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byTooltip('Show default templates'), findsOneWidget);
       expect(find.text('Letter Back'), findsNothing);
     },
   );
+
+  testWidgets('custom templates header avoids overflow on narrow screens', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        child: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(20),
+            child: AiSummarySectionHeader(
+              title: 'Custom Templates',
+              textMain: Colors.black,
+              textMuted: Colors.black54,
+              trailing: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: const Text('0/10'),
+                  ),
+                  FilledButton(
+                    onPressed: () {},
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(44, 44),
+                      padding: EdgeInsets.zero,
+                      shape: const CircleBorder(),
+                    ),
+                    child: const Icon(Icons.add_rounded),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        textScaleFactor: 1.8,
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Custom Templates'), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+    expect(find.text('0/10'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('deletes a custom template from the overflow menu', (
     tester,
@@ -481,9 +557,9 @@ Future<void> main() async {
       ),
     );
     final aiRepository = _MemoryAiSettingsRepository(
-      AiSettings.defaultsFor(AppLanguage.en).copyWith(
-        customInsightTemplates: templates,
-      ),
+      AiSettings.defaultsFor(
+        AppLanguage.en,
+      ).copyWith(customInsightTemplates: templates),
     );
     final prefsRepository = _MemoryAppPreferencesRepository(
       AppPreferences.defaultsForLanguage(AppLanguage.en),

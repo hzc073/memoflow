@@ -283,9 +283,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(templateStrings.deleteDialogTitle),
-        content: Text(
-          templateStrings.deleteDialogDescription,
-        ),
+        content: Text(templateStrings.deleteDialogDescription),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -867,46 +865,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     );
     final hasEmbeddingConfig = hasConfiguredEmbeddingRoute(settings);
 
-    Widget buildSectionHeader({
-      required String title,
-      String? subtitle,
-      required Widget trailing,
-    }) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: textMain,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      color: textMuted,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          trailing,
-        ],
-      );
-    }
-
     Widget buildDefaultTemplateGrid() {
       return GridView.builder(
         shrinkWrap: true,
@@ -960,8 +918,10 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       );
     }
 
-    final defaultSectionHeader = buildSectionHeader(
+    final defaultSectionHeader = AiSummarySectionHeader(
       title: templateStrings.defaultTitle,
+      textMain: textMain,
+      textMuted: textMuted,
       trailing: IconButton.outlined(
         key: const Key('aiSummaryToggleDefaultTemplatesButton'),
         tooltip: defaultTemplatesCollapsed
@@ -980,10 +940,15 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       ),
     );
 
-    final customSectionHeader = buildSectionHeader(
+    final customSectionHeader = AiSummarySectionHeader(
       title: templateStrings.customTitle,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+      textMain: textMain,
+      textMuted: textMuted,
+      trailing: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.end,
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1006,8 +971,9 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             message: templateStrings.newTemplate,
             child: FilledButton(
               key: const Key('aiSummaryAddCustomTemplateButton'),
-              onPressed:
-                  canAddCustomTemplate ? _openCreateCustomTemplateEditor : null,
+              onPressed: canAddCustomTemplate
+                  ? _openCreateCustomTemplateEditor
+                  : null,
               style: FilledButton.styleFrom(
                 backgroundColor: MemoFlowPalette.primary,
                 disabledBackgroundColor: MemoFlowPalette.primary.withValues(
@@ -2212,6 +2178,56 @@ class _AiCustomTemplateEmptyState extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class AiSummarySectionHeader extends StatelessWidget {
+  const AiSummarySectionHeader({
+    super.key,
+    required this.title,
+    required this.textMain,
+    required this.textMuted,
+    required this.trailing,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Color textMain;
+  final Color textMuted;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: textMain,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  style: TextStyle(fontSize: 13, height: 1.5, color: textMuted),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(child: trailing),
+      ],
     );
   }
 }
