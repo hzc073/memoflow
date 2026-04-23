@@ -344,6 +344,14 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
     });
   }
 
+  NotificationsScreen _buildOverlayNotificationsRoute() {
+    final overlayNavigationHost = _OverlayHomeNavigationHost(shell: this);
+    return NotificationsScreen(
+      presentation: HomeScreenPresentation.embeddedBottomNav,
+      embeddedNavigationHost: overlayNavigationHost,
+    );
+  }
+
   Widget _buildStandaloneRouteForDrawer(
     BuildContext context,
     AppDrawerDestination destination,
@@ -474,7 +482,7 @@ class _HomeBottomNavShellState extends ConsumerState<HomeBottomNavShell>
       );
       return;
     }
-    _closeDrawerThenPush(context, const NotificationsScreen());
+    _closeDrawerThenPush(context, _buildOverlayNotificationsRoute());
   }
 
   @override

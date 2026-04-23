@@ -23,6 +23,8 @@ import '../../state/system/notifications_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/home_entry_screen.dart';
+import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../../i18n/strings.g.dart';
@@ -30,24 +32,33 @@ import '../../i18n/strings.g.dart';
 enum _NotificationAction { markRead, delete }
 
 class NotificationsScreen extends ConsumerWidget {
-  const NotificationsScreen({super.key});
+  const NotificationsScreen({
+    super.key,
+    this.presentation = HomeScreenPresentation.standalone,
+    this.embeddedNavigationHost,
+  });
 
-  void _backToAllMemos(BuildContext context) {
+  final HomeScreenPresentation presentation;
+  final HomeEmbeddedNavigationHost? embeddedNavigationHost;
+
+  void _backToHome(BuildContext context) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleBackToPrimaryDestination(context);
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) => const MemosListScreen(
-          title: 'MemoFlow',
-          state: 'NORMAL',
-          showDrawer: true,
-          enableCompose: true,
-          openDrawerOnStart: true,
-        ),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const HomeEntryScreen()),
       (route) => false,
     );
   }
 
   void _navigate(BuildContext context, AppDrawerDestination dest) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleDrawerDestination(context, dest);
+      return;
+    }
     closeDrawerThenPushReplacement(
       context,
       buildDrawerDestinationScreen(context: context, destination: dest),
@@ -55,6 +66,11 @@ class NotificationsScreen extends ConsumerWidget {
   }
 
   void _openTag(BuildContext context, String tag) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleDrawerTag(context, tag);
+      return;
+    }
     closeDrawerThenPushReplacement(
       context,
       MemosListScreen(
@@ -68,6 +84,11 @@ class NotificationsScreen extends ConsumerWidget {
   }
 
   void _openNotifications(BuildContext context) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleOpenNotifications(context);
+      return;
+    }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
@@ -82,6 +103,9 @@ class NotificationsScreen extends ConsumerWidget {
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final useEmbeddedBottomNav =
+        presentation == HomeScreenPresentation.embeddedBottomNav;
+    final shouldInterceptPop = !useEmbeddedBottomNav;
     final enableWindowsDragToMove =
         Theme.of(context).platform == TargetPlatform.windows;
     final drawerPanel = AppDrawer(
@@ -176,13 +200,14 @@ class NotificationsScreen extends ConsumerWidget {
     );
 
     return PopScope(
-      canPop: false,
+      canPop: !shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        _backToAllMemos(context);
+        if (didPop || !shouldInterceptPop) return;
+        _backToHome(context);
       },
       child: Scaffold(
         drawer: useDesktopSidePane ? null : drawerPanel,
+        drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
         appBar: AppBar(
           flexibleSpace: enableWindowsDragToMove
               ? const DragToMoveArea(child: SizedBox.expand())
@@ -194,7 +219,7 @@ class NotificationsScreen extends ConsumerWidget {
           leading: IconButton(
             tooltip: context.t.strings.legacy.msg_back,
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => _backToAllMemos(context),
+            onPressed: () => _backToHome(context),
           ),
         ),
         body: useDesktopSidePane
