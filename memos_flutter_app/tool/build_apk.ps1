@@ -257,14 +257,40 @@ function Get-BuildRequests([string]$SelectedFlavor, [bool]$WantsApk, [bool]$Want
   if (-not $WantsApk -and -not $WantsAab) {
     switch ($SelectedFlavor) {
       "play" {
-        $null = $requests.Add([pscustomobject]@{ Flavor = "play"; Artifact = "appbundle" })
+        $null = $requests.Add([pscustomobject]@{
+          Flavor = "play"
+          Artifact = "appbundle"
+          SplitBuild = $false
+        })
       }
       "full" {
-        $null = $requests.Add([pscustomobject]@{ Flavor = "full"; Artifact = "apk" })
+        $null = $requests.Add([pscustomobject]@{
+          Flavor = "full"
+          Artifact = "apk"
+          SplitBuild = $true
+        })
+        $null = $requests.Add([pscustomobject]@{
+          Flavor = "full"
+          Artifact = "apk"
+          SplitBuild = $false
+        })
       }
       "all" {
-        $null = $requests.Add([pscustomobject]@{ Flavor = "play"; Artifact = "appbundle" })
-        $null = $requests.Add([pscustomobject]@{ Flavor = "full"; Artifact = "apk" })
+        $null = $requests.Add([pscustomobject]@{
+          Flavor = "play"
+          Artifact = "appbundle"
+          SplitBuild = $false
+        })
+        $null = $requests.Add([pscustomobject]@{
+          Flavor = "full"
+          Artifact = "apk"
+          SplitBuild = $true
+        })
+        $null = $requests.Add([pscustomobject]@{
+          Flavor = "full"
+          Artifact = "apk"
+          SplitBuild = $false
+        })
       }
     }
     return $requests.ToArray()
@@ -278,10 +304,18 @@ function Get-BuildRequests([string]$SelectedFlavor, [bool]$WantsApk, [bool]$Want
 
   foreach ($flavorName in $flavors) {
     if ($WantsApk) {
-      $null = $requests.Add([pscustomobject]@{ Flavor = $flavorName; Artifact = "apk" })
+      $null = $requests.Add([pscustomobject]@{
+        Flavor = $flavorName
+        Artifact = "apk"
+        SplitBuild = ($flavorName -eq "full" -and $SplitPerAbi.IsPresent)
+      })
     }
     if ($WantsAab) {
-      $null = $requests.Add([pscustomobject]@{ Flavor = $flavorName; Artifact = "appbundle" })
+      $null = $requests.Add([pscustomobject]@{
+        Flavor = $flavorName
+        Artifact = "appbundle"
+        SplitBuild = $false
+      })
     }
   }
 
@@ -337,18 +371,23 @@ try {
   }
 
   $copied = New-Object 'System.Collections.Generic.List[string]'
+  $cleanedDestinations = [ordered]@{}
   foreach ($request in $requests) {
-    $splitCurrentBuild = $request.Artifact -eq "apk" -and $request.Flavor -eq "full" -and $SplitPerAbi.IsPresent
+    $splitCurrentBuild = $request.Artifact -eq "apk" -and [bool]$request.SplitBuild
     Remove-StaleArtifactOutputs `
       -ProjectRootPath $projectRootResolved `
       -Artifact $request.Artifact `
       -FlavorName $request.Flavor
-    Remove-StaleDestinationArtifacts `
-      -DestinationDir $OutDir `
-      -BaseAppName $safeAppName `
-      -Version $version `
-      -FlavorName $request.Flavor `
-      -Artifact $request.Artifact
+    $destinationKey = "$($request.Flavor)|$($request.Artifact)"
+    if (-not $cleanedDestinations.Contains($destinationKey)) {
+      Remove-StaleDestinationArtifacts `
+        -DestinationDir $OutDir `
+        -BaseAppName $safeAppName `
+        -Version $version `
+        -FlavorName $request.Flavor `
+        -Artifact $request.Artifact
+      $cleanedDestinations[$destinationKey] = $true
+    }
     Invoke-FlutterBuild -Artifact $request.Artifact -FlavorName $request.Flavor -SplitBuild:$splitCurrentBuild
     foreach ($artifactPath in (Copy-BuildOutputs `
       -ProjectRootPath $projectRootResolved `
