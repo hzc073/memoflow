@@ -56,6 +56,9 @@ abstract class _MemosApiBase {
     flavor: _ServerApiFlavor.unknown,
     useLegacyApi: false,
   );
+  final Map<int, ({String commentMemoUid, String relatedMemoUid})>
+  _notificationRefsById =
+      <int, ({String commentMemoUid, String relatedMemoUid})>{};
 
   bool get _useLegacyMemos {
     if (_memoApiLegacy) return true;
@@ -127,8 +130,7 @@ abstract class _MemosApiBase {
   }
 
   Options _attachmentOptions() {
-    return Options(
-    );
+    return Options();
   }
 
   Future<void> _ensureServerHints() async {
@@ -385,7 +387,11 @@ abstract class _MemosApiBase {
 }
 
 class MemosApi extends _MemosApiBase
-    with _MemosApiAuth, _MemosApiNotifications, _MemosApiResources, _MemosApiMemos {
+    with
+        _MemosApiAuth,
+        _MemosApiNotifications,
+        _MemosApiResources,
+        _MemosApiMemos {
   MemosApi._(
     super.dio, {
     super.useLegacyApi,

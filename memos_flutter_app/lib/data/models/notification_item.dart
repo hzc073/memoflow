@@ -1,7 +1,4 @@
-enum NotificationSource {
-  modern,
-  legacy,
-}
+enum NotificationSource { modern, legacy }
 
 class AppNotification {
   const AppNotification({
@@ -39,13 +36,22 @@ class AppNotification {
     return _fromJson(json, NotificationSource.legacy);
   }
 
-  static AppNotification _fromJson(Map<String, dynamic> json, NotificationSource source) {
+  static AppNotification _fromJson(
+    Map<String, dynamic> json,
+    NotificationSource source,
+  ) {
     final name = _readString(json['name']);
     final sender = _readString(json['sender']);
     final status = _readString(json['status']);
     final type = _readString(json['type']);
     final createTime = _parseTime(json['createTime'] ?? json['create_time']);
     final activityId = _readInt(json['activityId'] ?? json['activity_id']);
+    final fallbackActivityId = source == NotificationSource.modern
+        ? _readNotificationId(name)
+        : 0;
+    final effectiveActivityId = activityId > 0
+        ? activityId
+        : fallbackActivityId;
 
     return AppNotification(
       name: name,
@@ -53,7 +59,7 @@ class AppNotification {
       status: status,
       type: type,
       createTime: createTime,
-      activityId: activityId > 0 ? activityId : null,
+      activityId: effectiveActivityId > 0 ? effectiveActivityId : null,
       source: source,
     );
   }
@@ -71,9 +77,17 @@ class AppNotification {
     return 0;
   }
 
+  static int _readNotificationId(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return 0;
+    final last = trimmed.contains('/') ? trimmed.split('/').last : trimmed;
+    return int.tryParse(last.trim()) ?? 0;
+  }
+
   static DateTime _parseTime(dynamic value) {
     if (value is String && value.trim().isNotEmpty) {
-      return DateTime.tryParse(value.trim()) ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      return DateTime.tryParse(value.trim()) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     }
     return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   }

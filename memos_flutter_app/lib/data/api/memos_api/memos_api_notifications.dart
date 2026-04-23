@@ -45,6 +45,9 @@ mixin _MemosApiNotifications on _MemosApiBase, _MemosApiAuth {
     final parent = await _resolveNotificationParent(userName);
     final normalizedToken = (pageToken ?? '').trim();
     final normalizedFilter = (filter ?? '').trim();
+    if (normalizedToken.isEmpty) {
+      _notificationRefsById.clear();
+    }
 
     final response = await _dio.get(
       'api/v1/$parent/notifications',
@@ -63,8 +66,13 @@ mixin _MemosApiNotifications on _MemosApiBase, _MemosApiAuth {
     if (list is List) {
       for (final item in list) {
         if (item is Map) {
-          notifications.add(
-            AppNotification.fromModernJson(item.cast<String, dynamic>()),
+          final notification = AppNotification.fromModernJson(
+            item.cast<String, dynamic>(),
+          );
+          notifications.add(notification);
+          _cacheModernNotificationRefs(
+            notification: notification,
+            json: item.cast<String, dynamic>(),
           );
         }
       }
@@ -219,9 +227,11 @@ mixin _MemosApiNotifications on _MemosApiBase, _MemosApiAuth {
 
   Future<String> _resolveNotificationParent(String? userName) async {
     final raw = (userName ?? '').trim();
+    if (_usesUsernameUserResourceNames()) {
+      return _resolveUserName(userName: raw.isEmpty ? null : raw);
+    }
     if (raw.isEmpty) {
-      final currentUser = await getCurrentUser();
-      return currentUser.name;
+      return _resolveUserName();
     }
     if (raw.startsWith('users/')) return raw;
     final numeric = _tryExtractNumericUserId(raw);
@@ -240,10 +250,67 @@ mixin _MemosApiNotifications on _MemosApiBase, _MemosApiAuth {
       return (commentMemoUid: '', relatedMemoUid: '');
     }
 
+    final cachedRefs = _notificationRefsById[activityId];
+    if (cachedRefs != null &&
+        (cachedRefs.commentMemoUid.isNotEmpty ||
+            cachedRefs.relatedMemoUid.isNotEmpty)) {
+      return cachedRefs;
+    }
+
     final activity = _serverFlavor == _ServerApiFlavor.v0_21
         ? await _getActivityLegacyV2(activityId)
         : await _getActivityModern(activityId);
     return _extractMemoCommentRefs(activity);
+  }
+
+  void _cacheModernNotificationRefs({
+    required AppNotification notification,
+    required Map<String, dynamic> json,
+  }) {
+    final notificationId = notification.activityId;
+    if (notificationId == null || notificationId <= 0) {
+      return;
+    }
+    final refs = _extractNotificationRefs(json);
+    if (refs.commentMemoUid.isEmpty && refs.relatedMemoUid.isEmpty) {
+      return;
+    }
+    _notificationRefsById[notificationId] = refs;
+  }
+
+  ({String commentMemoUid, String relatedMemoUid}) _extractNotificationRefs(
+    Map<String, dynamic> json,
+  ) {
+    final memoComment = _readMap(json['memoComment'] ?? json['memo_comment']);
+    if (memoComment != null) {
+      return _extractMemoRefsFromPayload(memoComment);
+    }
+
+    final memoMention = _readMap(json['memoMention'] ?? json['memo_mention']);
+    if (memoMention != null) {
+      return _extractMemoRefsFromPayload(memoMention);
+    }
+
+    return (commentMemoUid: '', relatedMemoUid: '');
+  }
+
+  ({String commentMemoUid, String relatedMemoUid}) _extractMemoRefsFromPayload(
+    Map<String, dynamic> payload,
+  ) {
+    final memoName = _readString(
+      payload['memo'] ?? payload['memoName'] ?? payload['memo_name'],
+    );
+    final relatedMemoName = _readString(
+      payload['relatedMemo'] ??
+          payload['relatedMemoName'] ??
+          payload['related_memo'] ??
+          payload['related_memo_name'],
+    );
+
+    return (
+      commentMemoUid: _normalizeMemoUid(memoName),
+      relatedMemoUid: _normalizeMemoUid(relatedMemoName),
+    );
   }
 
   Future<Map<String, dynamic>> _getActivityModern(int activityId) async {
