@@ -873,7 +873,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       required Widget trailing,
     }) {
       return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
@@ -902,7 +902,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Flexible(child: trailing),
+          trailing,
         ],
       );
     }
@@ -982,11 +982,8 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
 
     final customSectionHeader = buildSectionHeader(
       title: templateStrings.customTitle,
-      trailing: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        alignment: WrapAlignment.end,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1004,6 +1001,7 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
               ),
             ),
           ),
+          const SizedBox(width: 10),
           Tooltip(
             message: templateStrings.newTemplate,
             child: FilledButton(
@@ -1034,11 +1032,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
       textMuted: textMuted,
       title: templateStrings.emptyTitle,
       description: templateStrings.emptyDescription,
-      actionLabel: templateStrings.newTemplate,
-      canAdd: canAddCustomTemplate,
-      onAdd: canAddCustomTemplate
-          ? _openCreateCustomTemplateEditor
-          : _showCustomTemplateLimitToast,
     );
 
     return ListView(
@@ -2182,9 +2175,6 @@ class _AiCustomTemplateEmptyState extends StatelessWidget {
     required this.textMuted,
     required this.title,
     required this.description,
-    required this.actionLabel,
-    required this.canAdd,
-    required this.onAdd,
   });
 
   final Color cardColor;
@@ -2193,9 +2183,6 @@ class _AiCustomTemplateEmptyState extends StatelessWidget {
   final Color textMuted;
   final String title;
   final String description;
-  final String actionLabel;
-  final bool canAdd;
-  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -2223,22 +2210,6 @@ class _AiCustomTemplateEmptyState extends StatelessWidget {
             description,
             style: TextStyle(fontSize: 13, height: 1.5, color: textMuted),
           ),
-          if (canAdd) ...[
-            const SizedBox(height: 16),
-            Tooltip(
-              message: actionLabel,
-              child: FilledButton(
-                key: const Key('aiSummaryEmptyStateAddTemplateButton'),
-                onPressed: onAdd,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(44, 44),
-                  padding: EdgeInsets.zero,
-                  shape: const CircleBorder(),
-                ),
-                child: const Icon(Icons.add_rounded),
-              ),
-            ),
-          ],
         ],
       ),
     );
