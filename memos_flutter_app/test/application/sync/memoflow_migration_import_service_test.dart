@@ -18,10 +18,12 @@ import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/local_library/local_attachment_store.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_fs.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_markdown.dart';
+import 'package:memos_flutter_app/data/local_library/local_library_memo_sidecar.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/data/models/memo_clip_card_metadata.dart';
 import 'package:memos_flutter_app/state/system/database_provider.dart';
 
 import '../../test_support.dart';
@@ -136,6 +138,12 @@ void main() {
           final importedRow = await importedDb.getMemoByUid(fixture.memoUid);
           expect(importedRow, isNotNull);
           expect(importedRow?['content'], fixture.memoContent);
+          final importedClipRow = await importedDb.getMemoClipCardByUid(
+            fixture.memoUid,
+          );
+          expect(importedClipRow, isNotNull);
+          expect(importedClipRow?['source_name'], fixture.clipSourceName);
+          expect(importedClipRow?['source_url'], fixture.clipSourceUrl);
         } finally {
           await importedDb.close();
         }
@@ -202,10 +210,18 @@ void main() {
         final row = await currentDb.getMemoByUid(fixture.memoUid);
         expect(row, isNotNull);
         expect(row?['content'], fixture.memoContent);
+        final clipRow = await currentDb.getMemoClipCardByUid(fixture.memoUid);
+        expect(clipRow, isNotNull);
+        expect(clipRow?['source_name'], fixture.clipSourceName);
+        expect(clipRow?['source_url'], fixture.clipSourceUrl);
 
         final fileSystem = LocalLibraryFileSystem(library);
         expect(
           await fileSystem.fileExists('memos/${fixture.memoUid}.md'),
+          isTrue,
+        );
+        expect(
+          await fileSystem.fileExists('memos/_meta/${fixture.memoUid}.json'),
           isTrue,
         );
       } finally {
@@ -424,6 +440,8 @@ void main() {
 
 Future<
   ({
+    String clipSourceName,
+    String clipSourceUrl,
     String memoContent,
     String memoUid,
     File packageFile,
@@ -437,6 +455,8 @@ _createPackageFixture(
 }) async {
   final memoUid = 'memo-migration-import';
   final memoContent = 'imported memo content';
+  final clipSourceName = 'Migration Source';
+  final clipSourceUrl = 'https://example.com/migration';
   final createdAt = DateTime.utc(2025, 1, 1, 12);
   final memo = LocalMemo(
     uid: memoUid,
@@ -457,10 +477,36 @@ _createPackageFixture(
 
   final archive = Archive();
   final markdownBytes = utf8.encode(buildLocalLibraryMarkdown(memo));
+  final sidecarBytes = utf8.encode(
+    LocalLibraryMemoSidecar.fromMemo(
+      memo: memo,
+      hasRelations: false,
+      relations: const [],
+      attachments: const [],
+      clipCard: MemoClipCardMetadata(
+        memoUid: memoUid,
+        clipKind: MemoClipKind.article,
+        platform: MemoClipPlatform.web,
+        sourceName: clipSourceName,
+        sourceAvatarUrl: '',
+        authorName: 'Migration Author',
+        authorAvatarUrl: '',
+        sourceUrl: clipSourceUrl,
+        leadImageUrl: 'https://example.com/migration-cover.jpg',
+        parserTag: 'generic',
+        createdTime: createdAt,
+        updatedTime: createdAt,
+      ),
+    ).encodeJson(),
+  );
   final memoPath = nestedPayloadRoot
       ? 'payload/memos/$memoUid.md'
       : 'memos/$memoUid.md';
+  final sidecarPath = nestedPayloadRoot
+      ? 'payload/memos/_meta/$memoUid.json'
+      : 'memos/_meta/$memoUid.json';
   archive.addFile(ArchiveFile(memoPath, markdownBytes.length, markdownBytes));
+  archive.addFile(ArchiveFile(sidecarPath, sidecarBytes.length, sidecarBytes));
   final zipBytes = ZipEncoder().encode(archive);
 
   final packageDir = await support.createTempDir('memoflow_import_package');
@@ -468,6 +514,8 @@ _createPackageFixture(
   await packageFile.writeAsBytes(zipBytes, flush: true);
 
   return (
+    clipSourceName: clipSourceName,
+    clipSourceUrl: clipSourceUrl,
     memoContent: memoContent,
     memoUid: memoUid,
     packageFile: packageFile,

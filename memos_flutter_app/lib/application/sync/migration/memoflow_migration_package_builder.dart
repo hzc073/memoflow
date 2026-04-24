@@ -54,6 +54,15 @@ class MemoFlowMigrationPackageBuilder {
     if (includeMemos) {
       final memoEntries = await fileSystem.listMemos();
       final allFiles = await fileSystem.listAllFiles();
+      final memoMetadataEntries = allFiles
+          .where(
+            (entry) => entry.relativePath
+                .replaceAll('\\', '/')
+                .startsWith(
+                  '${LocalLibraryFileSystem.memoMetaDirRelativePath}/',
+                ),
+          )
+          .toList(growable: false);
       final attachmentEntries = allFiles
           .where(
             (entry) => entry.relativePath
@@ -64,7 +73,11 @@ class MemoFlowMigrationPackageBuilder {
       memoCount = memoEntries.length;
       attachmentCount = attachmentEntries.length;
 
-      for (final entry in [...memoEntries, ...attachmentEntries]) {
+      for (final entry in [
+        ...memoEntries,
+        ...memoMetadataEntries,
+        ...attachmentEntries,
+      ]) {
         final destination = File(p.join(stagingDir.path, entry.relativePath));
         await destination.parent.create(recursive: true);
         await fileSystem.copyToLocal(entry, destination.path);
