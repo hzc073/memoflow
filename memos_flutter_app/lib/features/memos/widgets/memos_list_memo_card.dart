@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/app_motion.dart';
 import '../../../core/app_localization.dart';
 import '../../../core/attachment_toast.dart';
 import '../../../core/location_launcher.dart';
@@ -654,8 +655,7 @@ class MemoListCardState extends State<MemoListCard> {
               tagColors: widget.tagColors,
               baseUrl: widget.baseUrl,
               authHeader: widget.authHeader,
-              rebaseAbsoluteFileUrlForV024:
-                  widget.rebaseAbsoluteFileUrlForV024,
+              rebaseAbsoluteFileUrlForV024: widget.rebaseAbsoluteFileUrlForV024,
               attachAuthForSameOriginAbsolute:
                   widget.attachAuthForSameOriginAbsolute,
               imagePreviewItems: widget.imageEntries
@@ -1645,7 +1645,12 @@ class TaskProgressBarState extends State<TaskProgressBar>
                   ),
                 ),
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
+                  duration: AppMotion.effectiveDuration(
+                    context,
+                    AppMotion.fast,
+                  ),
+                  switchInCurve: AppMotion.standardCurve,
+                  switchOutCurve: AppMotion.exitCurve,
                   child: Text(
                     '$percentage%',
                     key: ValueKey(percentage),

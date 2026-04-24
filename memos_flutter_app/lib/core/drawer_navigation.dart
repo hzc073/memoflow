@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../application/desktop/desktop_settings_window.dart';
+import 'app_motion.dart';
+import 'app_route_transitions.dart';
 import 'platform_layout.dart';
 
-const Duration kDrawerCloseNavigationDelay = Duration(milliseconds: 220);
+const Duration kDrawerCloseNavigationDelay = AppMotion.medium;
 
 void closeDrawerThenPushReplacement(
   BuildContext context,
@@ -28,13 +30,11 @@ void closeDrawerThenPushReplacement(
     final shouldSkipAnimation =
         noAnimation ||
         shouldUseDesktopSidePaneLayout(MediaQuery.sizeOf(context).width);
-    final pageRoute = shouldSkipAnimation
-        ? PageRouteBuilder<void>(
-            pageBuilder: (_, animation, secondaryAnimation) => route,
-            transitionDuration: Duration.zero,
-            reverseTransitionDuration: Duration.zero,
-          )
-        : MaterialPageRoute<void>(builder: (_) => route);
+    final pageRoute = buildFadeSlideRoute<void>(
+      context: context,
+      builder: (_) => route,
+      enabled: !shouldSkipAnimation,
+    );
     Navigator.of(context).pushReplacement(pageRoute);
   }
 

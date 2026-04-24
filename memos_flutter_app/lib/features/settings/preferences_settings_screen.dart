@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
+import '../../core/app_motion.dart';
+import '../../core/app_route_transitions.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
@@ -316,8 +318,9 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                   ),
                   _SelectRow(
                     label: context.t.strings.settings.preferences.lineHeight,
-                    value:
-                        devicePrefs.lineHeight.labelFor(devicePrefs.language),
+                    value: devicePrefs.lineHeight.labelFor(
+                      devicePrefs.language,
+                    ),
                     icon: Icons.chevron_right,
                     textMain: textMain,
                     textMuted: textMuted,
@@ -784,7 +787,8 @@ class _ThemeColorDot extends StatelessWidget {
       onTap: onTap,
       customBorder: const CircleBorder(),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
+        duration: AppMotion.effectiveDuration(context, AppMotion.fast),
+        curve: AppMotion.standardCurve,
         padding: EdgeInsets.all(ringPadding),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
@@ -834,7 +838,8 @@ class _CustomThemeColorDot extends StatelessWidget {
       onTap: onTap,
       customBorder: const CircleBorder(),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
+        duration: AppMotion.effectiveDuration(context, AppMotion.fast),
+        curve: AppMotion.standardCurve,
         padding: EdgeInsets.all(ringPadding),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
@@ -867,27 +872,13 @@ class CustomThemeDialog extends StatefulWidget {
     required BuildContext context,
     required CustomThemeSettings initial,
   }) {
-    return showGeneralDialog<CustomThemeSettings>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black.withValues(alpha: 0.35),
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          CustomThemeDialog(initial: initial),
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.95, end: 1).animate(curved),
-            child: child,
-          ),
-        );
-      },
+    return Navigator.of(context, rootNavigator: true).push<CustomThemeSettings>(
+      buildDialogScaleRoute<CustomThemeSettings>(
+        context: context,
+        barrierDismissible: true,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (_) => CustomThemeDialog(initial: initial),
+      ),
     );
   }
 
@@ -1577,7 +1568,8 @@ class _ModeToggleButton extends StatelessWidget {
         : Colors.black.withValues(alpha: 0.08);
     return Expanded(
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
+        duration: AppMotion.effectiveDuration(context, AppMotion.fast),
+        curve: AppMotion.standardCurve,
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(999),

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app_motion.dart';
 import '../../../core/memo_content_diagnostics.dart';
 import '../../../core/platform_layout.dart';
 import '../../../core/top_toast.dart';
@@ -96,7 +97,10 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final curved = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: removing ? AppMotion.exitCurve : AppMotion.standardCurve,
+    );
     if (!kIsWeb && Platform.isWindows && removing) {
       _logMemoDeleteAnimatedItemOnce(
         'Memo delete animated item build',
@@ -182,13 +186,16 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
         child: IgnorePointer(ignoring: true, child: memoCard),
       );
     }
-    return SizeTransition(
-      sizeFactor: curved,
-      axis: Axis.vertical,
-      axisAlignment: 0.0,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: memoCard,
+    return FadeTransition(
+      opacity: curved,
+      child: SizeTransition(
+        sizeFactor: curved,
+        axis: Axis.vertical,
+        axisAlignment: 0.0,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: memoCard,
+        ),
       ),
     );
   }

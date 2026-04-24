@@ -14,6 +14,7 @@ import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
 import 'package:memos_flutter_app/data/models/memo_relation.dart';
 import 'package:memos_flutter_app/features/memos/memo_detail_screen.dart';
+import 'package:memos_flutter_app/features/memos/memo_hero_flight.dart';
 import 'package:memos_flutter_app/features/memos/memo_markdown.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -96,6 +97,24 @@ void main() {
 
     expect(listener.onDoubleTap, isNull);
   });
+
+  testWidgets('detail route keeps a stable hero tag based on memo identity', (
+    tester,
+  ) async {
+    final memo = _buildMemo(uid: 'memo-hero');
+
+    await tester.pumpWidget(_buildTestApp(memo: memo));
+
+    final launcherHero = tester.widget<Hero>(find.byType(Hero));
+    expect(launcherHero.tag, memoHeroTagForMemo(memo));
+
+    await tester.tap(find.byKey(const ValueKey('open-detail')));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final detailHero = tester.widget<Hero>(find.byType(Hero).last);
+    expect(detailHero.tag, memoHeroTagForMemo(memo));
+  });
 }
 
 Widget _buildTestApp({required LocalMemo memo}) {
@@ -130,25 +149,37 @@ class _DetailRouteLauncher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final heroTag = memoHeroTagForMemo(memo);
     return Scaffold(
       body: Center(
-        child: ElevatedButton(
-          key: const ValueKey('open-detail'),
-          onPressed: () {
-            Navigator.of(context).push<void>(
-              PageRouteBuilder<void>(
-                transitionDuration: const Duration(milliseconds: 400),
-                reverseTransitionDuration: const Duration(milliseconds: 400),
-                pageBuilder: (context, animation, secondaryAnimation) =>
-                    MemoDetailScreen(initialMemo: memo),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-              ),
-            );
-          },
-          child: const Text('Open detail'),
+        child: Hero(
+          tag: heroTag,
+          child: Material(
+            color: Colors.transparent,
+            child: ElevatedButton(
+              key: const ValueKey('open-detail'),
+              onPressed: () {
+                Navigator.of(context).push<void>(
+                  PageRouteBuilder<void>(
+                    transitionDuration: const Duration(milliseconds: 400),
+                    reverseTransitionDuration: const Duration(
+                      milliseconds: 400,
+                    ),
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        MemoDetailScreen(initialMemo: memo),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          );
+                        },
+                  ),
+                );
+              },
+              child: const Text('Open detail'),
+            ),
+          ),
         ),
       ),
     );

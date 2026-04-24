@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_motion.dart';
 import '../../core/splash_tokens.g.dart';
 import '../../i18n/strings.g.dart';
 
@@ -10,6 +11,7 @@ int startupMinimumVisibleMsFor({
   required BuildContext context,
   required bool showSlogan,
 }) {
+  if (!AppMotion.isEnabled(context)) return 0;
   if (!showSlogan) return SplashTokens.startupVisibleMinMs;
   final sloganLength = context.t.strings.legacy.msg_startup_slogan.runes.length;
   return (sloganLength * startupTypewriterMsPerChar) +

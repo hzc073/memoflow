@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app_motion.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart';
 import '../../../core/scene_micro_guide_widgets.dart';
@@ -155,6 +156,43 @@ class MemosListScreenBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusTransitionDuration = AppMotion.effectiveDuration(
+      context,
+      AppMotion.medium,
+    );
+    final statusChild = data.viewState.query.showSearchLanding
+        ? null
+        : data.memosError != null
+        ? Center(
+            child: Text(
+              context.t.strings.legacy.msg_failed_load_3(
+                memosError: data.memosError ?? '',
+              ),
+            ),
+          )
+        : (data.memosLoading && data.visibleMemos.isEmpty)
+        ? const Center(child: CircularProgressIndicator())
+        : (data.visibleMemos.isEmpty)
+        ? Padding(
+            padding: const EdgeInsets.only(top: 140),
+            child: Center(
+              child: Text(
+                data.searching
+                    ? context.t.strings.legacy.msg_no_results_found
+                    : context.t.strings.legacy.msg_no_content_yet,
+              ),
+            ),
+          )
+        : null;
+    final statusKey = data.viewState.query.showSearchLanding
+        ? null
+        : data.memosError != null
+        ? 'error'
+        : (data.memosLoading && data.visibleMemos.isEmpty)
+        ? 'loading'
+        : (data.visibleMemos.isEmpty)
+        ? 'empty'
+        : null;
     final memoListBody = Stack(
       key: floatingCollapseViewportKey,
       children: [
@@ -361,37 +399,41 @@ class MemosListScreenBody extends StatelessWidget {
                         child: LinearProgressIndicator(minHeight: 2),
                       ),
                     ),
-                  if (data.memosError != null)
+                  if (statusChild != null)
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(
-                        child: Text(
-                          context.t.strings.legacy.msg_failed_load_3(
-                            memosError: data.memosError ?? '',
-                          ),
+                      child: AnimatedSwitcher(
+                        duration: statusTransitionDuration,
+                        switchInCurve: AppMotion.standardCurve,
+                        switchOutCurve: AppMotion.exitCurve,
+                        transitionBuilder: (child, animation) {
+                          if (statusTransitionDuration == Duration.zero) {
+                            return child;
+                          }
+                          final curved = CurvedAnimation(
+                            parent: animation,
+                            curve: AppMotion.standardCurve,
+                            reverseCurve: AppMotion.exitCurve,
+                          );
+                          return FadeTransition(
+                            opacity: curved,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: AppMotion.verticalEntryOffset,
+                                end: Offset.zero,
+                              ).animate(curved),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: KeyedSubtree(
+                          key: ValueKey<String>(statusKey!),
+                          child: statusChild,
                         ),
                       ),
                     )
                   else if (data.viewState.query.showSearchLanding)
                     SliverToBoxAdapter(child: searchLandingChild)
-                  else if (data.memosLoading && data.visibleMemos.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (data.visibleMemos.isEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 140),
-                        child: Center(
-                          child: Text(
-                            data.searching
-                                ? context.t.strings.legacy.msg_no_results_found
-                                : context.t.strings.legacy.msg_no_content_yet,
-                          ),
-                        ),
-                      ),
-                    )
                   else
                     SliverPadding(
                       padding: EdgeInsets.fromLTRB(

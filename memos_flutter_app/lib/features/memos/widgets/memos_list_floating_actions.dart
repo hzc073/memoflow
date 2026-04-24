@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app_motion.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../i18n/strings.g.dart';
 
@@ -150,6 +151,7 @@ class _MemoFlowFabState extends State<MemoFlowFab> {
     final bg = Theme.of(context).brightness == Brightness.dark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
+    final motionDuration = AppMotion.effectiveDuration(context, AppMotion.fast);
 
     return Listener(
       behavior: HitTestBehavior.translucent,
@@ -190,7 +192,8 @@ class _MemoFlowFabState extends State<MemoFlowFab> {
               },
         child: AnimatedScale(
           scale: _pressed ? 0.9 : 1.0,
-          duration: const Duration(milliseconds: 160),
+          duration: motionDuration,
+          curve: AppMotion.standardCurve,
           child: Container(
             width: widget.size,
             height: widget.size,
@@ -243,17 +246,22 @@ class _BackToTopButtonState extends State<BackToTopButton> {
     final bg = MemoFlowPalette.primary;
     final iconColor = Colors.white;
     final scale = widget.visible ? (_pressed ? 0.92 : 1.0) : 0.85;
+    final fadeDuration = AppMotion.effectiveDuration(context, AppMotion.fast);
+    final scaleDuration = AppMotion.effectiveDuration(
+      context,
+      AppMotion.medium,
+    );
 
     return IgnorePointer(
       ignoring: !widget.visible,
       child: AnimatedOpacity(
         opacity: widget.visible ? 1 : 0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
+        duration: fadeDuration,
+        curve: AppMotion.standardCurve,
         child: AnimatedScale(
           scale: scale,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
+          duration: scaleDuration,
+          curve: AppMotion.standardCurve,
           child: Semantics(
             button: true,
             label: context.t.strings.legacy.msg_back_top,

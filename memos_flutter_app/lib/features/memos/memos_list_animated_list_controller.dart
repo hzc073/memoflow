@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/app_motion.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/local_memo.dart';
 import 'widgets/memos_list_memo_card.dart';
@@ -57,6 +58,7 @@ class MemosListAnimatedListController extends ChangeNotifier {
 
   void removeMemoWithAnimation(
     LocalMemo memo, {
+    bool animationsEnabled = true,
     required AnimatedRemovedItemBuilder builder,
   }) {
     final index = _animatedMemos.indexWhere((m) => m.uid == memo.uid);
@@ -66,7 +68,7 @@ class MemosListAnimatedListController extends ChangeNotifier {
     _listKey.currentState?.removeItem(
       index,
       builder,
-      duration: const Duration(milliseconds: 380),
+      duration: animationsEnabled ? AppMotion.exit : Duration.zero,
     );
     notifyListeners();
   }
@@ -74,6 +76,7 @@ class MemosListAnimatedListController extends ChangeNotifier {
   void syncAnimatedMemos(
     List<LocalMemo> memos,
     String signature, {
+    bool animationsEnabled = true,
     required void Function(String event, Map<String, Object?> context) logEvent,
     required void Function({
       required int beforeLength,
@@ -116,7 +119,10 @@ class MemosListAnimatedListController extends ChangeNotifier {
         final state = _listKey.currentState;
         if (state == null) return;
         for (var i = 0; i < insertCount; i++) {
-          state.insertItem(insertStart + i, duration: Duration.zero);
+          state.insertItem(
+            insertStart + i,
+            duration: animationsEnabled ? AppMotion.medium : Duration.zero,
+          );
         }
         logEvent('animated_list_append_applied', <String, Object?>{
           'signature': signature,

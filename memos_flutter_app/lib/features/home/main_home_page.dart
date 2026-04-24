@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_motion.dart';
 import '../../core/app_localization.dart';
 import '../../core/splash_tokens.g.dart';
 import '../../core/startup_timing.dart';
@@ -61,10 +62,6 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
   int? _startupElapsedAtFirstFrameMs;
   String? _lastDestination;
   Widget? _lockedContent;
-
-  static const Duration _startupFadeDuration = Duration(
-    milliseconds: SplashTokens.startupFadeDurationMs,
-  );
 
   @override
   void initState() {
@@ -443,11 +440,35 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
     final child = showStartup
         ? StartupScreen(showSlogan: showStartupSlogan)
         : content;
+    final startupTransitionDuration = AppMotion.effectiveDuration(
+      context,
+      AppMotion.route,
+    );
 
     final animatedChild = AnimatedSwitcher(
-      duration: _startupFadeDuration,
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
+      duration: startupTransitionDuration,
+      switchInCurve: AppMotion.standardCurve,
+      switchOutCurve: AppMotion.exitCurve,
+      transitionBuilder: (child, animation) {
+        if (startupTransitionDuration == Duration.zero) {
+          return child;
+        }
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: AppMotion.standardCurve,
+          reverseCurve: AppMotion.exitCurve,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: AppMotion.verticalEntryOffset,
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
       child: KeyedSubtree(
         key: ValueKey(showStartup ? 'startup' : 'content'),
         child: child,

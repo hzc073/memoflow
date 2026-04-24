@@ -16,6 +16,7 @@ import '../../application/desktop/desktop_resizable_panel_shell.dart';
 import '../../application/sync/sync_feedback_presenter.dart';
 import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
+import '../../core/app_motion.dart';
 import '../../core/app_localization.dart';
 import '../../core/desktop/shortcuts.dart';
 import '../../core/drawer_navigation.dart';
@@ -70,6 +71,7 @@ import 'advanced_search_sheet.dart';
 import 'draft_box_screen.dart';
 import 'memo_detail_screen.dart';
 import 'memo_editor_screen.dart';
+import 'memo_hero_flight.dart';
 import 'memo_markdown.dart';
 import 'memo_versions_screen.dart';
 import 'memos_list_animated_list_controller.dart';
@@ -95,17 +97,6 @@ import 'widgets/memos_list_screen_body.dart';
 import 'widgets/memos_list_search_header.dart';
 import 'widgets/memos_list_search_widgets.dart';
 import '../../i18n/strings.g.dart';
-
-Object _memoListHeroTag({
-  required String scope,
-  required LocalMemo memo,
-  required int index,
-}) {
-  final uid = memo.uid.trim();
-  final fallback = memo.contentFingerprint.trim();
-  final identity = uid.isNotEmpty ? uid : fallback;
-  return 'memo-list:$scope:$index:$identity';
-}
 
 class MemosListScreen extends ConsumerStatefulWidget {
   const MemosListScreen({
@@ -1896,6 +1887,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         );
     _animatedListController.removeMemoWithAnimation(
       memo,
+      animationsEnabled: AppMotion.isEnabled(context),
       builder: (context, animation) => MemosListAnimatedMemoItem(
         memoCardKey: GlobalKey<MemoListCardState>(
           debugLabel: 'removing-${memo.uid}',
@@ -2130,6 +2122,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _animatedListController.syncAnimatedMemos(
         sortedMemos,
         listSignature,
+        animationsEnabled: AppMotion.isEnabled(context),
         logEvent: (event, context) => _logPaginationDebug(
           event,
           metrics: _currentScrollMetricsForLogging(),
@@ -2711,11 +2704,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         },
         animatedItemBuilder: (context, index, animation) {
           final memo = visibleMemos[index];
-          final heroTag = _memoListHeroTag(
-            scope: 'visible',
-            memo: memo,
-            index: index,
-          );
+          final heroTag = memoHeroTagForMemo(memo);
           return MemosListAnimatedMemoItem(
             memoCardKey: _animatedListController.keyFor(memo.uid),
             memo: memo,

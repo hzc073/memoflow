@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
+import 'package:memos_flutter_app/data/models/local_memo.dart';
 import 'package:memos_flutter_app/data/models/memo_template_settings.dart';
 import 'package:memos_flutter_app/features/memos/home_quick_actions.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_screen_view_state.dart';
@@ -54,10 +55,90 @@ void main() {
       expect(find.byKey(const ValueKey('drawer-menu-button')), findsNothing);
     },
   );
+
+  testWidgets(
+    'switches loading and empty placeholders through AnimatedSwitcher',
+    (tester) async {
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: _buildBodyScreen(data: _buildBodyData(memosLoading: true)),
+          ),
+        ),
+      );
+
+      expect(find.byType(AnimatedSwitcher), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: _buildBodyScreen(data: _buildBodyData()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(AnimatedSwitcher), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('No content yet'), findsOneWidget);
+    },
+  );
 }
 
-Widget _buildBodyScreen({Widget? drawerPanel}) {
-  final data = MemosListScreenBodyData(
+Widget _buildBodyScreen({Widget? drawerPanel, MemosListScreenBodyData? data}) {
+  final resolvedData = data ?? _buildBodyData();
+
+  return MemosListScreenBody(
+    scaffoldKey: GlobalKey<ScaffoldState>(),
+    scrollController: ScrollController(),
+    floatingCollapseViewportKey: GlobalKey(),
+    listKey: GlobalKey<SliverAnimatedListState>(),
+    data: resolvedData,
+    drawerPanel: drawerPanel,
+    titleChild: const Text('Title'),
+    searchFieldChild: const SizedBox.shrink(),
+    sortButton: null,
+    resolvedTagChip: null,
+    advancedFilterSliver: null,
+    inlineComposeChild: null,
+    inlineComposePadding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+    expandDesktopBodyWidth: false,
+    tagFilterBarChild: null,
+    searchLandingChild: null,
+    bootstrapOverlayChild: null,
+    floatingActionButton: null,
+    onRefresh: () async {},
+    onScrollNotification: (_) => false,
+    onPointerSignal: (PointerSignalEvent _) {},
+    onCloseSearch: () {},
+    onOpenSearch: () {},
+    onToggleWindowsHeaderSearch: () {},
+    onToggleQuickSearchKind: (_) {},
+    onDismissGuide: () {},
+    onCollapseFloatingMemo: () {},
+    onScrollToTop: () {},
+    quickActions: _buildQuickActions(),
+    onMinimize: () {},
+    onToggleMaximize: () {},
+    onClose: () {},
+    onEditTag: () async {},
+    animatedItemBuilder: (_, _, _) => const SizedBox.shrink(),
+  );
+}
+
+MemosListScreenBodyData _buildBodyData({
+  bool memosLoading = false,
+  Object? memosError,
+  List<LocalMemo> visibleMemos = const <LocalMemo>[],
+}) {
+  return MemosListScreenBodyData(
     viewState: MemosListScreenViewState(
       query: MemosListScreenQueryState(
         searchQuery: '',
@@ -121,9 +202,9 @@ Widget _buildBodyScreen({Widget? drawerPanel}) {
     debugApiVersionText: '',
     activeListGuideId: null,
     activeListGuideMessage: null,
-    memosLoading: false,
-    memosError: null,
-    visibleMemos: const [],
+    memosLoading: memosLoading,
+    memosError: memosError,
+    visibleMemos: visibleMemos,
     showLoadMoreHint: false,
     loadMoreHintDisplayText: '',
     loadMoreHintTextColor: Colors.black,
@@ -134,43 +215,6 @@ Widget _buildBodyScreen({Widget? drawerPanel}) {
     floatingCollapseVisible: false,
     floatingCollapseScrolling: false,
     enableDrawerOpenDragGesture: true,
-  );
-
-  return MemosListScreenBody(
-    scaffoldKey: GlobalKey<ScaffoldState>(),
-    scrollController: ScrollController(),
-    floatingCollapseViewportKey: GlobalKey(),
-    listKey: GlobalKey<SliverAnimatedListState>(),
-    data: data,
-    drawerPanel: drawerPanel,
-    titleChild: const Text('Title'),
-    searchFieldChild: const SizedBox.shrink(),
-    sortButton: null,
-    resolvedTagChip: null,
-    advancedFilterSliver: null,
-    inlineComposeChild: null,
-    inlineComposePadding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-    expandDesktopBodyWidth: false,
-    tagFilterBarChild: null,
-    searchLandingChild: null,
-    bootstrapOverlayChild: null,
-    floatingActionButton: null,
-    onRefresh: () async {},
-    onScrollNotification: (_) => false,
-    onPointerSignal: (PointerSignalEvent _) {},
-    onCloseSearch: () {},
-    onOpenSearch: () {},
-    onToggleWindowsHeaderSearch: () {},
-    onToggleQuickSearchKind: (_) {},
-    onDismissGuide: () {},
-    onCollapseFloatingMemo: () {},
-    onScrollToTop: () {},
-    quickActions: _buildQuickActions(),
-    onMinimize: () {},
-    onToggleMaximize: () {},
-    onClose: () {},
-    onEditTag: () async {},
-    animatedItemBuilder: (_, _, _) => const SizedBox.shrink(),
   );
 }
 

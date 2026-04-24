@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../data/models/local_memo.dart';
 
 const double memoHeroFlightBorderRadius = 22;
+
+Object memoHeroTagForMemo(LocalMemo memo) {
+  final uid = memo.uid.trim();
+  final fallback = memo.contentFingerprint.trim();
+  final identity = uid.isNotEmpty ? uid : fallback;
+  return 'memo:$identity';
+}
 
 HeroFlightShuttleBuilder memoHeroFlightShuttleBuilder({
   required bool isPinned,

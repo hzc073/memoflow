@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_motion.dart';
 import '../../core/app_localization.dart';
 import '../../core/measure_size.dart';
 import '../../core/memoflow_palette.dart';
@@ -376,6 +377,10 @@ class _CollectionEditorScreenState
       resolveTagColorHexByPath: tagLookup.resolveEffectiveHexByPath,
     );
     final colors = _CollectionEditorColors.fromTheme(context);
+    final sectionMotionDuration = AppMotion.effectiveDuration(
+      context,
+      AppMotion.medium,
+    );
     final hasUnsavedChanges = _hasUnsavedChanges(
       persistedManualMemoUids: persistedManualMemoUids,
     );
@@ -418,19 +423,51 @@ class _CollectionEditorScreenState
           children: [
             _buildBasicsSection(context, colors: colors),
             _buildSectionDivider(colors),
-            if (_type == MemoCollectionType.smart)
-              _buildSmartSourceSection(
-                context,
-                colors: colors,
-                tagsAsync: tagsAsync,
-              )
-            else
-              _buildManualSourceSection(
-                context,
-                colors: colors,
-                persistedManualMemoUids: persistedManualMemoUids,
-                previewItems: previewItems,
+            AnimatedSize(
+              duration: sectionMotionDuration,
+              curve: AppMotion.standardCurve,
+              alignment: Alignment.topCenter,
+              child: AnimatedSwitcher(
+                duration: sectionMotionDuration,
+                switchInCurve: AppMotion.standardCurve,
+                switchOutCurve: AppMotion.exitCurve,
+                transitionBuilder: (child, animation) {
+                  if (sectionMotionDuration == Duration.zero) {
+                    return child;
+                  }
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: AppMotion.standardCurve,
+                    reverseCurve: AppMotion.exitCurve,
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: AppMotion.verticalEntryOffset,
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: child,
+                    ),
+                  );
+                },
+                child: KeyedSubtree(
+                  key: ValueKey<String>('source-${_type.name}'),
+                  child: _type == MemoCollectionType.smart
+                      ? _buildSmartSourceSection(
+                          context,
+                          colors: colors,
+                          tagsAsync: tagsAsync,
+                        )
+                      : _buildManualSourceSection(
+                          context,
+                          colors: colors,
+                          persistedManualMemoUids: persistedManualMemoUids,
+                          previewItems: previewItems,
+                        ),
+                ),
               ),
+            ),
             if (_isEditing) ...[
               _buildSectionDivider(colors),
               _buildPreviewSection(context, colors: colors, preview: preview),
@@ -807,74 +844,80 @@ class _CollectionEditorScreenState
           ],
         ),
         const SizedBox(height: 12),
-        Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: EdgeInsets.zero,
-            title: Text(
-              context.tr(zh: '更多条件', en: 'More filters'),
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary,
+        AnimatedSize(
+          duration: AppMotion.effectiveDuration(context, AppMotion.medium),
+          curve: AppMotion.standardCurve,
+          alignment: Alignment.topCenter,
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: Text(
+                context.tr(zh: '更多条件', en: 'More filters'),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
               ),
+              subtitle: Text(
+                context.tr(
+                  zh: '匹配方式、公开范围、子标签、置顶',
+                  en: 'Match mode, visibility, descendants, pinned',
+                ),
+                style: TextStyle(color: colors.textMuted),
+              ),
+              children: [
+                const SizedBox(height: 8),
+                _EnumSegment<CollectionTagMatchMode>(
+                  title: collections.tagMatch,
+                  values: const [
+                    CollectionTagMatchMode.any,
+                    CollectionTagMatchMode.all,
+                  ],
+                  current: _tagMatchMode,
+                  labelBuilder: (value) => switch (value) {
+                    CollectionTagMatchMode.any => collections.anyTag,
+                    CollectionTagMatchMode.all => collections.allTags,
+                  },
+                  onChanged: (value) =>
+                      _updateState(() => _tagMatchMode = value),
+                ),
+                const SizedBox(height: 12),
+                _EnumSegment<CollectionVisibilityScope>(
+                  title: context.t.strings.legacy.msg_visibility,
+                  values: const [
+                    CollectionVisibilityScope.all,
+                    CollectionVisibilityScope.privateOnly,
+                    CollectionVisibilityScope.publicOnly,
+                  ],
+                  current: _visibility,
+                  labelBuilder: (value) => switch (value) {
+                    CollectionVisibilityScope.all =>
+                      context.t.strings.legacy.msg_all,
+                    CollectionVisibilityScope.privateOnly =>
+                      context.t.strings.legacy.msg_private,
+                    CollectionVisibilityScope.publicOnly =>
+                      context.t.strings.legacy.msg_public,
+                  },
+                  onChanged: (value) => _updateState(() => _visibility = value),
+                ),
+                SwitchListTile.adaptive(
+                  value: _includeDescendants,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(collections.includeDescendants),
+                  subtitle: Text(collections.includeDescendantsDescription),
+                  onChanged: (value) =>
+                      _updateState(() => _includeDescendants = value),
+                ),
+                SwitchListTile.adaptive(
+                  value: _pinnedOnly,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(collections.pinnedOnly),
+                  onChanged: (value) => _updateState(() => _pinnedOnly = value),
+                ),
+              ],
             ),
-            subtitle: Text(
-              context.tr(
-                zh: '匹配方式、公开范围、子标签、置顶',
-                en: 'Match mode, visibility, descendants, pinned',
-              ),
-              style: TextStyle(color: colors.textMuted),
-            ),
-            children: [
-              const SizedBox(height: 8),
-              _EnumSegment<CollectionTagMatchMode>(
-                title: collections.tagMatch,
-                values: const [
-                  CollectionTagMatchMode.any,
-                  CollectionTagMatchMode.all,
-                ],
-                current: _tagMatchMode,
-                labelBuilder: (value) => switch (value) {
-                  CollectionTagMatchMode.any => collections.anyTag,
-                  CollectionTagMatchMode.all => collections.allTags,
-                },
-                onChanged: (value) => _updateState(() => _tagMatchMode = value),
-              ),
-              const SizedBox(height: 12),
-              _EnumSegment<CollectionVisibilityScope>(
-                title: context.t.strings.legacy.msg_visibility,
-                values: const [
-                  CollectionVisibilityScope.all,
-                  CollectionVisibilityScope.privateOnly,
-                  CollectionVisibilityScope.publicOnly,
-                ],
-                current: _visibility,
-                labelBuilder: (value) => switch (value) {
-                  CollectionVisibilityScope.all =>
-                    context.t.strings.legacy.msg_all,
-                  CollectionVisibilityScope.privateOnly =>
-                    context.t.strings.legacy.msg_private,
-                  CollectionVisibilityScope.publicOnly =>
-                    context.t.strings.legacy.msg_public,
-                },
-                onChanged: (value) => _updateState(() => _visibility = value),
-              ),
-              SwitchListTile.adaptive(
-                value: _includeDescendants,
-                contentPadding: EdgeInsets.zero,
-                title: Text(collections.includeDescendants),
-                subtitle: Text(collections.includeDescendantsDescription),
-                onChanged: (value) =>
-                    _updateState(() => _includeDescendants = value),
-              ),
-              SwitchListTile.adaptive(
-                value: _pinnedOnly,
-                contentPadding: EdgeInsets.zero,
-                title: Text(collections.pinnedOnly),
-                onChanged: (value) => _updateState(() => _pinnedOnly = value),
-              ),
-            ],
           ),
         ),
         if (!_draftRules.hasAnyConstraint) ...[
@@ -1043,216 +1086,251 @@ class _CollectionEditorScreenState
     required String? selectedCoverOptionKey,
   }) {
     final collections = context.t.strings.collections;
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: EdgeInsets.zero,
-        title: Text(
-          context.tr(zh: '个性化与展示设置', en: 'Personalize & display'),
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: colors.textPrimary,
-          ),
-        ),
-        subtitle: Text(
-          _displaySummary(context),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: colors.textMuted),
-        ),
-        children: [
-          const SizedBox(height: 12),
-          Text(
-            context.t.strings.legacy.msg_icon,
+    return AnimatedSize(
+      duration: AppMotion.effectiveDuration(context, AppMotion.medium),
+      curve: AppMotion.standardCurve,
+      alignment: Alignment.topCenter,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          title: Text(
+            context.tr(zh: '个性化与展示设置', en: 'Personalize & display'),
             style: TextStyle(
               fontWeight: FontWeight.w700,
               color: colors.textPrimary,
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final iconKey in kCollectionIconKeys)
-                _IconChoice(
-                  selected: _iconKey == iconKey,
-                  icon: resolveCollectionIcon(iconKey),
-                  onTap: () => _updateState(() => _iconKey = iconKey),
-                ),
-            ],
+          subtitle: Text(
+            _displaySummary(context),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textMuted),
           ),
-          const SizedBox(height: 16),
-          Text(
-            collections.accentColor,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final colorHex in kCollectionAccentPalette)
-                _AccentChoice(
-                  selected: _accentColorHex == colorHex,
-                  colorHex: colorHex,
-                  onTap: () => _updateState(() => _accentColorHex = colorHex),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _EnumSegment<CollectionCoverMode>(
-            title: collections.cover,
-            values: const [
-              CollectionCoverMode.auto,
-              CollectionCoverMode.attachment,
-              CollectionCoverMode.icon,
-            ],
-            current: _coverMode,
-            labelBuilder: (value) => collectionCoverModeLabel(context, value),
-            onChanged: (value) {
-              _updateState(() {
-                _coverMode = value;
-                if (value == CollectionCoverMode.attachment &&
-                    selectedCoverOptionKey == null &&
-                    coverAttachmentOptions.isNotEmpty) {
-                  final first = coverAttachmentOptions.first;
-                  _coverMemoUid = first.memoUid;
-                  _coverAttachmentUid = first.attachment.uid;
-                }
-              });
-            },
-          ),
-          if (_coverMode == CollectionCoverMode.attachment) ...[
+          children: [
             const SizedBox(height: 12),
-            if (coverAttachmentOptions.isEmpty)
-              Text(
-                collections.noCoverImageAvailable,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
-              )
-            else
-              DropdownButtonFormField<String>(
-                key: ValueKey<String>(
-                  'cover-attachment-${selectedCoverOptionKey ?? 'none'}',
-                ),
-                initialValue: selectedCoverOptionKey,
-                decoration: InputDecoration(labelText: collections.coverImage),
-                items: [
-                  for (final option in coverAttachmentOptions)
-                    DropdownMenuItem(
-                      value: option.key,
-                      child: Text(option.label),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  final option = coverAttachmentOptions.firstWhere(
-                    (item) => item.key == value,
-                  );
-                  _updateState(() {
-                    _coverMemoUid = option.memoUid;
-                    _coverAttachmentUid = option.attachment.uid;
-                  });
-                },
+            Text(
+              context.t.strings.legacy.msg_icon,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
               ),
-          ],
-          const SizedBox(height: 16),
-          _EnumSegment<CollectionLayoutMode>(
-            title: collections.defaultLayout,
-            values: const [
-              CollectionLayoutMode.shelf,
-              CollectionLayoutMode.timeline,
-              CollectionLayoutMode.list,
-            ],
-            current: _layoutMode,
-            labelBuilder: (value) => collectionLayoutLabel(context, value),
-            onChanged: (value) => _updateState(() => _layoutMode = value),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<CollectionSectionMode>(
-            key: ValueKey<String>('section-${_sectionMode.name}'),
-            initialValue: _sectionMode,
-            decoration: InputDecoration(labelText: collections.groupBy),
-            items: [
-              DropdownMenuItem(
-                value: CollectionSectionMode.none,
-                child: Text(collections.noGroups),
-              ),
-              DropdownMenuItem(
-                value: CollectionSectionMode.month,
-                child: Text(collections.month),
-              ),
-              DropdownMenuItem(
-                value: CollectionSectionMode.quarter,
-                child: Text(collections.quarter),
-              ),
-              DropdownMenuItem(
-                value: CollectionSectionMode.year,
-                child: Text(collections.year),
-              ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              _updateState(() => _sectionMode = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<CollectionSortMode>(
-            key: ValueKey<String>('sort-${_sortMode.name}'),
-            initialValue: _sortMode,
-            decoration: InputDecoration(
-              labelText: context.t.strings.legacy.msg_sort,
             ),
-            items: [
-              if (_type == MemoCollectionType.manual)
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final iconKey in kCollectionIconKeys)
+                  _IconChoice(
+                    selected: _iconKey == iconKey,
+                    icon: resolveCollectionIcon(iconKey),
+                    onTap: () => _updateState(() => _iconKey = iconKey),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              collections.accentColor,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final colorHex in kCollectionAccentPalette)
+                  _AccentChoice(
+                    selected: _accentColorHex == colorHex,
+                    colorHex: colorHex,
+                    onTap: () => _updateState(() => _accentColorHex = colorHex),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _EnumSegment<CollectionCoverMode>(
+              title: collections.cover,
+              values: const [
+                CollectionCoverMode.auto,
+                CollectionCoverMode.attachment,
+                CollectionCoverMode.icon,
+              ],
+              current: _coverMode,
+              labelBuilder: (value) => collectionCoverModeLabel(context, value),
+              onChanged: (value) {
+                _updateState(() {
+                  _coverMode = value;
+                  if (value == CollectionCoverMode.attachment &&
+                      selectedCoverOptionKey == null &&
+                      coverAttachmentOptions.isNotEmpty) {
+                    final first = coverAttachmentOptions.first;
+                    _coverMemoUid = first.memoUid;
+                    _coverAttachmentUid = first.attachment.uid;
+                  }
+                });
+              },
+            ),
+            AnimatedSwitcher(
+              duration: AppMotion.effectiveDuration(context, AppMotion.medium),
+              switchInCurve: AppMotion.standardCurve,
+              switchOutCurve: AppMotion.exitCurve,
+              transitionBuilder: (child, animation) {
+                final duration = AppMotion.effectiveDuration(
+                  context,
+                  AppMotion.medium,
+                );
+                if (duration == Duration.zero) {
+                  return child;
+                }
+                final curved = CurvedAnimation(
+                  parent: animation,
+                  curve: AppMotion.standardCurve,
+                  reverseCurve: AppMotion.exitCurve,
+                );
+                return FadeTransition(
+                  opacity: curved,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: AppMotion.verticalEntryOffset,
+                      end: Offset.zero,
+                    ).animate(curved),
+                    child: child,
+                  ),
+                );
+              },
+              child: _coverMode == CollectionCoverMode.attachment
+                  ? Padding(
+                      key: ValueKey<String>(
+                        'cover-attachment-${selectedCoverOptionKey ?? 'none'}',
+                      ),
+                      padding: const EdgeInsets.only(top: 12),
+                      child: coverAttachmentOptions.isEmpty
+                          ? Text(
+                              collections.noCoverImageAvailable,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: colors.textMuted),
+                            )
+                          : DropdownButtonFormField<String>(
+                              initialValue: selectedCoverOptionKey,
+                              decoration: InputDecoration(
+                                labelText: collections.coverImage,
+                              ),
+                              items: [
+                                for (final option in coverAttachmentOptions)
+                                  DropdownMenuItem(
+                                    value: option.key,
+                                    child: Text(option.label),
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                final option = coverAttachmentOptions
+                                    .firstWhere((item) => item.key == value);
+                                _updateState(() {
+                                  _coverMemoUid = option.memoUid;
+                                  _coverAttachmentUid = option.attachment.uid;
+                                });
+                              },
+                            ),
+                    )
+                  : const SizedBox.shrink(key: ValueKey<String>('cover-none')),
+            ),
+            const SizedBox(height: 16),
+            _EnumSegment<CollectionLayoutMode>(
+              title: collections.defaultLayout,
+              values: const [
+                CollectionLayoutMode.shelf,
+                CollectionLayoutMode.timeline,
+                CollectionLayoutMode.list,
+              ],
+              current: _layoutMode,
+              labelBuilder: (value) => collectionLayoutLabel(context, value),
+              onChanged: (value) => _updateState(() => _layoutMode = value),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<CollectionSectionMode>(
+              key: ValueKey<String>('section-${_sectionMode.name}'),
+              initialValue: _sectionMode,
+              decoration: InputDecoration(labelText: collections.groupBy),
+              items: [
                 DropdownMenuItem(
-                  value: CollectionSortMode.manualOrder,
-                  child: Text(collections.manualOrder),
+                  value: CollectionSectionMode.none,
+                  child: Text(collections.noGroups),
                 ),
-              DropdownMenuItem(
-                value: CollectionSortMode.displayTimeDesc,
-                child: Text(collections.displayTimeDesc),
+                DropdownMenuItem(
+                  value: CollectionSectionMode.month,
+                  child: Text(collections.month),
+                ),
+                DropdownMenuItem(
+                  value: CollectionSectionMode.quarter,
+                  child: Text(collections.quarter),
+                ),
+                DropdownMenuItem(
+                  value: CollectionSectionMode.year,
+                  child: Text(collections.year),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                _updateState(() => _sectionMode = value);
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<CollectionSortMode>(
+              key: ValueKey<String>('sort-${_sortMode.name}'),
+              initialValue: _sortMode,
+              decoration: InputDecoration(
+                labelText: context.t.strings.legacy.msg_sort,
               ),
-              DropdownMenuItem(
-                value: CollectionSortMode.displayTimeAsc,
-                child: Text(collections.displayTimeAsc),
-              ),
-              DropdownMenuItem(
-                value: CollectionSortMode.updateTimeDesc,
-                child: Text(collections.updatedTimeDesc),
-              ),
-              DropdownMenuItem(
-                value: CollectionSortMode.updateTimeAsc,
-                child: Text(collections.updatedTimeAsc),
-              ),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              _updateState(() => _sortMode = value);
-            },
-          ),
-          const SizedBox(height: 4),
-          SwitchListTile.adaptive(
-            value: _showStats,
-            contentPadding: EdgeInsets.zero,
-            title: Text(collections.showDetailStats),
-            subtitle: Text(collections.showDetailStatsDescription),
-            onChanged: (value) => _updateState(() => _showStats = value),
-          ),
-          SwitchListTile.adaptive(
-            value: _hideWhenEmpty,
-            contentPadding: EdgeInsets.zero,
-            title: Text(collections.hideWhenEmpty),
-            subtitle: Text(collections.hideWhenEmptyDescription),
-            onChanged: (value) => _updateState(() => _hideWhenEmpty = value),
-          ),
-        ],
+              items: [
+                if (_type == MemoCollectionType.manual)
+                  DropdownMenuItem(
+                    value: CollectionSortMode.manualOrder,
+                    child: Text(collections.manualOrder),
+                  ),
+                DropdownMenuItem(
+                  value: CollectionSortMode.displayTimeDesc,
+                  child: Text(collections.displayTimeDesc),
+                ),
+                DropdownMenuItem(
+                  value: CollectionSortMode.displayTimeAsc,
+                  child: Text(collections.displayTimeAsc),
+                ),
+                DropdownMenuItem(
+                  value: CollectionSortMode.updateTimeDesc,
+                  child: Text(collections.updatedTimeDesc),
+                ),
+                DropdownMenuItem(
+                  value: CollectionSortMode.updateTimeAsc,
+                  child: Text(collections.updatedTimeAsc),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                _updateState(() => _sortMode = value);
+              },
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile.adaptive(
+              value: _showStats,
+              contentPadding: EdgeInsets.zero,
+              title: Text(collections.showDetailStats),
+              subtitle: Text(collections.showDetailStatsDescription),
+              onChanged: (value) => _updateState(() => _showStats = value),
+            ),
+            SwitchListTile.adaptive(
+              value: _hideWhenEmpty,
+              contentPadding: EdgeInsets.zero,
+              title: Text(collections.hideWhenEmpty),
+              subtitle: Text(collections.hideWhenEmptyDescription),
+              onChanged: (value) => _updateState(() => _hideWhenEmpty = value),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2062,7 +2140,9 @@ class _CollectionTypeCard extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: AppMotion.effectiveDuration(context, AppMotion.fast),
+        curve: AppMotion.standardCurve,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected ? colors.selectedBackground : colors.fieldBackground,

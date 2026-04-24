@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
+import '../../core/app_motion.dart';
 import '../../core/app_localization.dart';
 import '../../core/memo_clip_markdown.dart';
 import '../../core/memoflow_palette.dart';
@@ -107,7 +108,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   String? _pendingDeferredContentKey;
 
   Object get _heroTag =>
-      widget.heroTag ?? (_memo?.uid ?? widget.initialMemo.uid);
+      widget.heroTag ?? memoHeroTagForMemo(_memo ?? widget.initialMemo);
 
   @override
   void initState() {
@@ -715,10 +716,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       renderImages: renderInlineImages,
       tagColors: tagColors,
       imagePreviewItems: imagePreviewItems,
-      onOpenImagePreview: (request) => ImagePreviewLauncher.open(
-        context,
-        request,
-      ),
+      onOpenImagePreview: (request) =>
+          ImagePreviewLauncher.open(context, request),
       onToggleTask: canToggleTasks
           ? (request) {
               maybeHaptic();
@@ -1325,12 +1324,17 @@ class _MemoEngagementSectionState
     final inputBg = isDark
         ? MemoFlowPalette.backgroundDark
         : const Color(0xFFF7F5F1);
+    final inputMotionDuration = AppMotion.effectiveDuration(
+      context,
+      AppMotion.fast,
+    );
     return TapRegion(
       onTapOutside: _replyingCommentCreator == null
           ? null
           : (_) => _exitCommentEditing(),
       child: AnimatedPadding(
-        duration: const Duration(milliseconds: 150),
+        duration: inputMotionDuration,
+        curve: AppMotion.standardCurve,
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
@@ -1810,8 +1814,7 @@ class _MemoEngagementSectionState
         borderRadius: 10,
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderColor: Colors.transparent,
-        placeholderColor:
-            Theme.of(context).colorScheme.surfaceContainerHighest,
+        placeholderColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
         logScope: 'memo_detail_comment_image',
       ),
@@ -2621,7 +2624,8 @@ class _CollapsibleText extends StatefulWidget {
   final bool renderImages;
   final TagColorLookup? tagColors;
   final List<ImagePreviewItem>? imagePreviewItems;
-  final Future<void> Function(ImagePreviewOpenRequest request)? onOpenImagePreview;
+  final Future<void> Function(ImagePreviewOpenRequest request)?
+  onOpenImagePreview;
   final ValueChanged<TaskToggleRequest>? onToggleTask;
 
   @override

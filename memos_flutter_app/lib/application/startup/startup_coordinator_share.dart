@@ -212,10 +212,11 @@ extension _StartupCoordinatorShare on StartupCoordinator {
   }
 
   Route<T> _buildInstantRoute<T>(Widget child) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => child,
-      transitionDuration: Duration.zero,
-      reverseTransitionDuration: Duration.zero,
+    return buildFadeSlideRoute<T>(
+      context: _navigatorKey.currentContext,
+      builder: (_) => child,
+      beginOffset: Offset.zero,
+      enabled: false,
     );
   }
 
