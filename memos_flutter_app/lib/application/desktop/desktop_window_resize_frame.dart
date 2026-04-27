@@ -5,9 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 class DesktopWindowResizeFrame extends StatefulWidget {
-  const DesktopWindowResizeFrame({super.key, required this.child});
+  const DesktopWindowResizeFrame({
+    super.key,
+    required this.child,
+    this.enableResizeEdges,
+  });
 
   final Widget child;
+  final List<ResizeEdge>? enableResizeEdges;
 
   @override
   State<DesktopWindowResizeFrame> createState() =>
@@ -82,9 +87,10 @@ class _DesktopWindowResizeFrameState extends State<DesktopWindowResizeFrame>
 
   @override
   Widget build(BuildContext context) {
+    final resolvedResizeEdges = widget.enableResizeEdges ?? _allResizeEdges;
     final enableResizeEdges = (_isMaximized || _isFullScreen)
         ? const <ResizeEdge>[]
-        : _allResizeEdges;
+        : resolvedResizeEdges;
     return DragToResizeArea(
       enableResizeEdges: enableResizeEdges,
       child: widget.child,

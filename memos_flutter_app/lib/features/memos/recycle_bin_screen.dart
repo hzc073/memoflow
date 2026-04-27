@@ -15,6 +15,7 @@ import '../../state/memos/memo_timeline_provider.dart';
 import '../../i18n/strings.g.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import 'memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
 import 'recycle_bin_preview_screen.dart';
@@ -87,8 +88,9 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
     final formatter = DateFormat('yyyy-MM-dd HH:mm');
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final enableWindowsDragToMove =
+    final isWindowsDesktop =
         Theme.of(context).platform == TargetPlatform.windows;
+    final enableWindowsDragToMove = isWindowsDesktop;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.recycleBin,
@@ -171,112 +173,140 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
       }
     }
 
+    final pageBody = asyncItems.when(
+      data: (items) {
+        if (items.isEmpty) {
+          return Center(
+            child: Text(context.t.strings.legacy.msg_no_content_yet),
+          );
+        }
+        return ListView.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            final deletedLabel = formatter.format(item.deletedTime);
+            final expireLabel = formatter.format(item.expireTime);
+            return ListTile(
+              onTap: () => openPreview(item),
+              leading: Icon(
+                item.type == RecycleBinItemType.memo
+                    ? Icons.sticky_note_2_outlined
+                    : Icons.attach_file,
+              ),
+              title: Text(
+                item.summary.trim().isEmpty
+                    ? context.t.strings.legacy.msg_empty_content
+                    : item.summary,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text('$deletedLabel  |  $expireLabel'),
+              trailing: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'restore') {
+                    unawaited(handleRestore(item));
+                  } else if (value == 'delete') {
+                    unawaited(handleDelete(item));
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'restore',
+                    child: Text(context.t.strings.legacy.msg_restore),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'delete',
+                    child: Text(context.t.strings.legacy.msg_delete),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(
+        child: Text(context.t.strings.legacy.msg_failed_load_4(e: error)),
+      ),
+    );
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         _handleBack();
       },
-      child: Scaffold(
-        drawer: useDesktopSidePane ? null : drawerPanel,
-        appBar: AppBar(
-          flexibleSpace: enableWindowsDragToMove
-              ? const DragToMoveArea(child: SizedBox.expand())
-              : null,
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _handleBack,
-          ),
-          title: IgnorePointer(
-            ignoring: enableWindowsDragToMove,
-            child: Text(context.t.strings.legacy.msg_recycle_bin),
-          ),
-          actions: [
-            if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[]).isNotEmpty)
-              IconButton(
-                tooltip: context.t.strings.legacy.msg_clear,
-                onPressed: handleClearAll,
-                icon: const Icon(Icons.delete_sweep_outlined),
+      child: isWindowsDesktop
+          ? WindowsDesktopPageShell(
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.recycleBin,
+                onSelect: _navigate,
+                onSelectTag: _openTag,
+                onOpenNotifications: _openNotifications,
+                embedded: embedded,
+                viewMode: viewMode,
               ),
-          ],
-        ),
-        body: () {
-          final pageBody = asyncItems.when(
-            data: (items) {
-              if (items.isEmpty) {
-                return Center(
-                  child: Text(context.t.strings.legacy.msg_no_content_yet),
-                );
-              }
-              return ListView.separated(
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final deletedLabel = formatter.format(item.deletedTime);
-                  final expireLabel = formatter.format(item.expireTime);
-                  return ListTile(
-                    onTap: () => openPreview(item),
-                    leading: Icon(
-                      item.type == RecycleBinItemType.memo
-                          ? Icons.sticky_note_2_outlined
-                          : Icons.attach_file,
+              leadingTitle: Text(context.t.strings.legacy.msg_recycle_bin),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[])
+                      .isNotEmpty)
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_clear,
+                      onPressed: handleClearAll,
+                      icon: const Icon(Icons.delete_sweep_outlined),
                     ),
-                    title: Text(
-                      item.summary.trim().isEmpty
-                          ? context.t.strings.legacy.msg_empty_content
-                          : item.summary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                ],
+              ),
+              body: pageBody,
+            )
+          : Scaffold(
+              drawer: useDesktopSidePane ? null : drawerPanel,
+              appBar: AppBar(
+                flexibleSpace: enableWindowsDragToMove
+                    ? const DragToMoveArea(child: SizedBox.expand())
+                    : null,
+                leading: IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _handleBack,
+                ),
+                title: IgnorePointer(
+                  ignoring: enableWindowsDragToMove,
+                  child: Text(context.t.strings.legacy.msg_recycle_bin),
+                ),
+                actions: [
+                  if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[])
+                      .isNotEmpty)
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_clear,
+                      onPressed: handleClearAll,
+                      icon: const Icon(Icons.delete_sweep_outlined),
                     ),
-                    subtitle: Text('$deletedLabel  |  $expireLabel'),
-                    trailing: PopupMenuButton<String>(
-                      onSelected: (value) {
-                        if (value == 'restore') {
-                          unawaited(handleRestore(item));
-                        } else if (value == 'delete') {
-                          unawaited(handleDelete(item));
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        PopupMenuItem<String>(
-                          value: 'restore',
-                          child: Text(context.t.strings.legacy.msg_restore),
+                ],
+              ),
+              body: useDesktopSidePane
+                  ? Row(
+                      children: [
+                        SizedBox(
+                          width: kMemoFlowDesktopDrawerWidth,
+                          child: drawerPanel,
                         ),
-                        PopupMenuItem<String>(
-                          value: 'delete',
-                          child: Text(context.t.strings.legacy.msg_delete),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.08),
                         ),
+                        Expanded(child: pageBody),
                       ],
-                    ),
-                  );
-                },
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(
-              child: Text(context.t.strings.legacy.msg_failed_load_4(e: error)),
+                    )
+                  : pageBody,
             ),
-          );
-          if (!useDesktopSidePane) {
-            return pageBody;
-          }
-          return Row(
-            children: [
-              SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.black.withValues(alpha: 0.08),
-              ),
-              Expanded(child: pageBody),
-            ],
-          );
-        }(),
-      ),
     );
   }
 }

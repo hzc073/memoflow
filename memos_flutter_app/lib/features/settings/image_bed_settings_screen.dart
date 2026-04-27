@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/image_bed_url.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/models/image_bed_settings.dart';
 import '../../state/settings/image_bed_settings_provider.dart';
@@ -12,10 +13,12 @@ class ImageBedSettingsScreen extends ConsumerStatefulWidget {
   const ImageBedSettingsScreen({super.key});
 
   @override
-  ConsumerState<ImageBedSettingsScreen> createState() => _ImageBedSettingsScreenState();
+  ConsumerState<ImageBedSettingsScreen> createState() =>
+      _ImageBedSettingsScreenState();
 }
 
-class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen> {
+class _ImageBedSettingsScreenState
+    extends ConsumerState<ImageBedSettingsScreen> {
   final _baseUrlController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -34,10 +37,13 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
     super.initState();
     final settings = ref.read(imageBedSettingsProvider);
     _applySettings(settings);
-    _settingsSubscription = ref.listenManual<ImageBedSettings>(imageBedSettingsProvider, (prev, next) {
-      if (_dirty || !mounted) return;
-      _applySettings(next);
-    });
+    _settingsSubscription = ref.listenManual<ImageBedSettings>(
+      imageBedSettingsProvider,
+      (prev, next) {
+        if (_dirty || !mounted) return;
+        _applySettings(next);
+      },
+    );
   }
 
   @override
@@ -70,28 +76,49 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
   }
 
   Future<void> _selectProvider() async {
-    final selected = await showModalBottomSheet<ImageBedProvider>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                title: Text(_providerLabel(context, ImageBedProvider.lskyPro)),
-                trailing: _provider == ImageBedProvider.lskyPro ? const Icon(Icons.check) : null,
-                onTap: () => context.safePop(ImageBedProvider.lskyPro),
+    Widget buildProviderPicker(BuildContext surfaceContext) {
+      return SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: Text(
+                _providerLabel(surfaceContext, ImageBedProvider.lskyPro),
               ),
-            ],
-          ),
-        );
-      },
-    );
+              trailing: _provider == ImageBedProvider.lskyPro
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => surfaceContext.safePop(ImageBedProvider.lskyPro),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final selected = await _showProviderPicker(context, buildProviderPicker);
     if (!mounted || selected == null) return;
     setState(() => _provider = selected);
     _markDirty();
     ref.read(imageBedSettingsProvider.notifier).setProvider(selected);
+  }
+
+  Future<ImageBedProvider?> _showProviderPicker(
+    BuildContext context,
+    WidgetBuilder builder,
+  ) {
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<ImageBedProvider>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.popover,
+        maxWidth: 420,
+        builder: builder,
+      );
+    }
+    return showModalBottomSheet<ImageBedProvider>(
+      context: context,
+      showDragHandle: true,
+      builder: builder,
+    );
   }
 
   void _updateRetry(int delta) {
@@ -118,11 +145,17 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
   Widget build(BuildContext context) {
     final settings = ref.watch(imageBedSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Scaffold(
       backgroundColor: bg,
@@ -148,11 +181,7 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -165,14 +194,24 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                 textMain: textMain,
                 textMuted: textMuted,
                 label: context.t.strings.legacy.msg_enable_image_bed,
-                description: context.t.strings.legacy.msg_automatically_upload_images_append_links_memo,
+                description: context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_automatically_upload_images_append_links_memo,
                 value: settings.enabled,
-                onChanged: (value) => ref.read(imageBedSettingsProvider.notifier).setEnabled(value),
+                onChanged: (value) => ref
+                    .read(imageBedSettingsProvider.notifier)
+                    .setEnabled(value),
               ),
               const SizedBox(height: 16),
               Text(
                 context.t.strings.legacy.msg_provider,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textMuted,
+                ),
               ),
               const SizedBox(height: 10),
               _Group(
@@ -191,7 +230,11 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
               const SizedBox(height: 16),
               Text(
                 context.t.strings.legacy.msg_basics,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textMuted,
+                ),
               ),
               const SizedBox(height: 10),
               _Group(
@@ -232,19 +275,27 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
                     obscureText: true,
                     onChanged: (v) {
                       _markDirty();
-                      ref.read(imageBedSettingsProvider.notifier).setPassword(v);
+                      ref
+                          .read(imageBedSettingsProvider.notifier)
+                          .setPassword(v);
                     },
                   ),
                   _InputRow(
                     label: context.t.strings.legacy.msg_strategy_id,
-                    hint: context.t.strings.legacy.msg_optional_leave_empty_default,
+                    hint: context
+                        .t
+                        .strings
+                        .legacy
+                        .msg_optional_leave_empty_default,
                     controller: _strategyController,
                     textMain: textMain,
                     textMuted: textMuted,
                     keyboardType: TextInputType.number,
                     onChanged: (v) {
                       _markDirty();
-                      ref.read(imageBedSettingsProvider.notifier).setStrategyId(v);
+                      ref
+                          .read(imageBedSettingsProvider.notifier)
+                          .setStrategyId(v);
                     },
                   ),
                 ],
@@ -252,7 +303,11 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
               const SizedBox(height: 16),
               Text(
                 context.t.strings.legacy.msg_policy,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textMuted,
+                ),
               ),
               const SizedBox(height: 10),
               _Group(
@@ -271,7 +326,11 @@ class _ImageBedSettingsScreenState extends ConsumerState<ImageBedSettingsScreen>
               ),
               const SizedBox(height: 10),
               Text(
-                context.t.strings.legacy.msg_retry_count_controls_how_many_extra,
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_retry_count_controls_how_many_extra,
                 style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
               ),
             ],
@@ -365,7 +424,13 @@ class _ToggleCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
               ),
               Switch(value: value, onChanged: onChanged),
             ],
@@ -410,9 +475,18 @@ class _SelectRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textMain)),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
+                ),
               ),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: textMuted)),
+              Text(
+                value,
+                style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+              ),
               const SizedBox(width: 6),
               Icon(Icons.chevron_right, size: 18, color: textMuted),
             ],
@@ -453,7 +527,14 @@ class _InputRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textMuted,
+            ),
+          ),
           const SizedBox(height: 6),
           TextField(
             controller: controller,
@@ -495,8 +576,12 @@ class _StepperRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pillBg = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04);
-    final pillBorder = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final pillBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+    final pillBorder = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
 
     Widget buildButton(IconData icon, VoidCallback onTap) {
       return InkWell(
@@ -515,7 +600,10 @@ class _StepperRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: textMain)),
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+            ),
           ),
           Container(
             decoration: BoxDecoration(
@@ -529,8 +617,13 @@ class _StepperRow extends StatelessWidget {
               children: [
                 buildButton(Icons.remove, onDecrease),
                 const SizedBox(width: 6),
-                Text('$value ${context.t.strings.legacy.msg_times_2}',
-                    style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                Text(
+                  '$value ${context.t.strings.legacy.msg_times_2}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
                 const SizedBox(width: 6),
                 buildButton(Icons.add, onIncrease),
               ],

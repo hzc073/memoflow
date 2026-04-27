@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/user_setting.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
@@ -16,13 +17,19 @@ class UserGeneralSettingsScreen extends ConsumerStatefulWidget {
   const UserGeneralSettingsScreen({super.key});
 
   @override
-  ConsumerState<UserGeneralSettingsScreen> createState() => _UserGeneralSettingsScreenState();
+  ConsumerState<UserGeneralSettingsScreen> createState() =>
+      _UserGeneralSettingsScreenState();
 }
 
-class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsScreen> {
+class _UserGeneralSettingsScreenState
+    extends ConsumerState<UserGeneralSettingsScreen> {
   var _saving = false;
 
-  Future<void> _updateSetting(UserGeneralSetting current, {String? locale, String? visibility}) async {
+  Future<void> _updateSetting(
+    UserGeneralSetting current, {
+    String? locale,
+    String? visibility,
+  }) async {
     if (_saving) return;
     setState(() => _saving = true);
     try {
@@ -38,21 +45,22 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
       if (account == null) {
         throw StateError('Not authenticated');
       }
-      await ref.read(memosApiProvider).updateUserGeneralSetting(
+      await ref
+          .read(memosApiProvider)
+          .updateUserGeneralSetting(
             userName: account.user.name,
             setting: next,
             updateMask: mask,
           );
       ref.invalidate(userGeneralSettingProvider);
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_settings_updated,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_settings_updated);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_update_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_update_failed(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -64,29 +72,33 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
   Future<void> _selectLocale(UserGeneralSetting current) async {
     final currentLocale = (current.locale ?? '').trim();
     const options = ['', 'en', 'zh-Hans'];
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
+    Widget buildLocalePicker(BuildContext surfaceContext) {
+      return SafeArea(
         child: ListView(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(context.t.strings.legacy.msg_locale),
+                child: Text(surfaceContext.t.strings.legacy.msg_locale),
               ),
             ),
             for (final option in options)
               ListTile(
-                leading: Icon(option == currentLocale ? Icons.radio_button_checked : Icons.radio_button_off),
+                leading: Icon(
+                  option == currentLocale
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
                 title: Text(_localeLabel(option)),
-                onTap: () => context.safePop(option),
+                onTap: () => surfaceContext.safePop(option),
               ),
           ],
         ),
-      ),
-    );
+      );
+    }
+
+    final result = await _showStringPicker(context, buildLocalePicker);
     if (result == null) return;
     final trimmed = result.trim();
     if (trimmed == currentLocale) return;
@@ -97,31 +109,56 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
     final currentVisibility = (current.memoVisibility ?? '').trim().isNotEmpty
         ? current.memoVisibility!.trim()
         : 'PRIVATE';
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
+    Widget buildVisibilityPicker(BuildContext surfaceContext) {
+      return SafeArea(
         child: ListView(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text(context.t.strings.legacy.msg_default_visibility),
+                child: Text(
+                  surfaceContext.t.strings.legacy.msg_default_visibility,
+                ),
               ),
             ),
             for (final option in const ['PRIVATE', 'PROTECTED', 'PUBLIC'])
               ListTile(
-                leading: Icon(option == currentVisibility ? Icons.radio_button_checked : Icons.radio_button_off),
+                leading: Icon(
+                  option == currentVisibility
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
                 title: Text(_visibilityLabel(option)),
-                onTap: () => context.safePop(option),
+                onTap: () => surfaceContext.safePop(option),
               ),
           ],
         ),
-      ),
-    );
+      );
+    }
+
+    final result = await _showStringPicker(context, buildVisibilityPicker);
     if (result == null || result.trim().isEmpty) return;
     await _updateSetting(current, visibility: result.trim());
+  }
+
+  Future<String?> _showStringPicker(
+    BuildContext context,
+    WidgetBuilder builder,
+  ) {
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<String>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.popover,
+        maxWidth: 420,
+        builder: builder,
+      );
+    }
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: builder,
+    );
   }
 
   String _visibilityLabel(String value) {
@@ -143,10 +180,14 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
     if (normalized == 'en' || normalized.startsWith('en-')) {
       return context.t.strings.legacy.msg_english;
     }
-    if (normalized == 'zh-hans' || normalized == 'zh_cn' || normalized == 'zh-cn') {
+    if (normalized == 'zh-hans' ||
+        normalized == 'zh_cn' ||
+        normalized == 'zh-cn') {
       return context.t.strings.legacy.msg_chinese_simplified;
     }
-    if (normalized == 'zh-hant' || normalized == 'zh_tw' || normalized == 'zh-tw') {
+    if (normalized == 'zh-hant' ||
+        normalized == 'zh_tw' ||
+        normalized == 'zh-tw') {
       return context.t.strings.legacy.msg_chinese_traditional;
     }
     return value;
@@ -155,11 +196,17 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
     final hapticsEnabled = ref.watch(
       devicePreferencesProvider.select((p) => p.hapticsEnabled),
     );
@@ -196,11 +243,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -208,7 +251,8 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
           settingsAsync.when(
             data: (settings) {
               final locale = (settings.locale ?? '').trim();
-              final visibility = (settings.memoVisibility ?? '').trim().isNotEmpty
+              final visibility =
+                  (settings.memoVisibility ?? '').trim().isNotEmpty
                   ? settings.memoVisibility!.trim()
                   : 'PRIVATE';
               final localeLabel = _localeLabel(locale);
@@ -229,7 +273,7 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                             ? null
                             : () {
                                 maybeHaptic();
-                              _selectLocale(settings);
+                                _selectLocale(settings);
                               },
                       ),
                       _SelectRow(
@@ -248,7 +292,11 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    context.t.strings.legacy.msg_these_settings_apply_newly_created_memos,
+                    context
+                        .t
+                        .strings
+                        .legacy
+                        .msg_these_settings_apply_newly_created_memos,
                     style: TextStyle(fontSize: 12, color: textMuted),
                   ),
                 ],
@@ -263,7 +311,10 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                   children: [
                     Text(
                       context.t.strings.legacy.msg_failed_load_2,
-                      style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textMain,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -273,7 +324,8 @@ class _UserGeneralSettingsScreenState extends ConsumerState<UserGeneralSettingsS
                     ),
                     const SizedBox(height: 12),
                     FilledButton(
-                      onPressed: () => ref.invalidate(userGeneralSettingProvider),
+                      onPressed: () =>
+                          ref.invalidate(userGeneralSettingProvider),
                       child: Text(context.t.strings.legacy.msg_retry),
                     ),
                   ],
@@ -355,10 +407,16 @@ class _SelectRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
                 ),
               ),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: textMuted)),
+              Text(
+                value,
+                style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+              ),
               const SizedBox(width: 6),
               Icon(Icons.chevron_right, size: 18, color: textMuted),
             ],

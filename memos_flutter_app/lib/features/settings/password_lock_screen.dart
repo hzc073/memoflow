@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../state/settings/app_lock_provider.dart';
 import '../../i18n/strings.g.dart';
 
@@ -13,47 +14,74 @@ class PasswordLockScreen extends ConsumerWidget {
 
   final bool showBackButton;
 
-  Future<String?> _showSetPasswordDialog(BuildContext context, {required bool isChange}) async {
+  Future<String?> _showSetPasswordDialog(
+    BuildContext context, {
+    required bool isChange,
+  }) async {
     final password = await showDialog<String?>(
-          context: context,
-          builder: (context) => _PasswordDialog(isChange: isChange),
-        );
+      context: context,
+      builder: (context) => _PasswordDialog(isChange: isChange),
+    );
 
     final trimmed = password?.trim();
     if (trimmed == null || trimmed.isEmpty) return null;
     return trimmed;
   }
 
-  Future<void> _selectAutoLockTime(BuildContext context, WidgetRef ref, AutoLockTime selected) async {
+  Future<void> _selectAutoLockTime(
+    BuildContext context,
+    WidgetRef ref,
+    AutoLockTime selected, {
+    BuildContext? anchorContext,
+  }) async {
+    Widget buildAutoLockTimeContent(BuildContext surfaceContext) {
+      return SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(surfaceContext.t.strings.legacy.msg_auto_lock_time),
+              ),
+            ),
+            ...AutoLockTime.values.map((v) {
+              final isSelected = v == selected;
+              return ListTile(
+                leading: Icon(
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: Text(v.labelFor(surfaceContext.appLanguage)),
+                onTap: () {
+                  surfaceContext.safePop();
+                  ref.read(appLockProvider.notifier).setAutoLockTime(v);
+                },
+              );
+            }),
+          ],
+        ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      await showWindowsAdaptiveSurface<void>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.popover,
+        anchorContext: anchorContext,
+        fallbackAlignment: Alignment.centerRight,
+        maxWidth: 360,
+        builder: buildAutoLockTimeContent,
+      );
+      return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(context.t.strings.legacy.msg_auto_lock_time),
-                ),
-              ),
-              ...AutoLockTime.values.map((v) {
-                final isSelected = v == selected;
-                return ListTile(
-                  leading: Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off),
-                  title: Text(v.labelFor(context.appLanguage)),
-                  onTap: () {
-                    context.safePop();
-                    ref.read(appLockProvider.notifier).setAutoLockTime(v);
-                  },
-                );
-              }),
-            ],
-          ),
-        );
-      },
+      builder: buildAutoLockTimeContent,
     );
   }
 
@@ -62,11 +90,17 @@ class PasswordLockScreen extends ConsumerWidget {
     final state = ref.watch(appLockProvider);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
 
     return Scaffold(
       backgroundColor: bg,
@@ -95,11 +129,7 @@ class PasswordLockScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -112,36 +142,52 @@ class PasswordLockScreen extends ConsumerWidget {
                 divider: divider,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     child: Row(
                       children: [
                         Expanded(
                           child: Text(
                             context.t.strings.legacy.msg_enable_app_lock,
-                            style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: textMain,
+                            ),
                           ),
                         ),
                         Switch(
                           value: state.enabled,
                           onChanged: (v) async {
                             if (!v) {
-                              ref.read(appLockProvider.notifier).setEnabled(false);
+                              ref
+                                  .read(appLockProvider.notifier)
+                                  .setEnabled(false);
                               return;
                             }
                             if (!state.hasPassword) {
-                              final password = await _showSetPasswordDialog(context, isChange: false);
+                              final password = await _showSetPasswordDialog(
+                                context,
+                                isChange: false,
+                              );
                               if (password == null) return;
                               if (!context.mounted) return;
-                              await ref.read(appLockProvider.notifier).setPassword(password);
+                              await ref
+                                  .read(appLockProvider.notifier)
+                                  .setPassword(password);
                             }
                             if (!context.mounted) return;
                             ref.read(appLockProvider.notifier).setEnabled(true);
                           },
                           activeThumbColor: Colors.white,
                           activeTrackColor: MemoFlowPalette.primary,
-                          inactiveTrackColor:
-                              isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.12),
-                          inactiveThumbColor: isDark ? Colors.white.withValues(alpha: 0.6) : Colors.white,
+                          inactiveTrackColor: isDark
+                              ? Colors.white.withValues(alpha: 0.12)
+                              : Colors.black.withValues(alpha: 0.12),
+                          inactiveThumbColor: isDark
+                              ? Colors.white.withValues(alpha: 0.6)
+                              : Colors.white,
                         ),
                       ],
                     ),
@@ -162,11 +208,16 @@ class PasswordLockScreen extends ConsumerWidget {
                       enabled: state.enabled,
                       textMain: textMain,
                       textMuted: textMuted,
-                      onTap: () async {
-                        final password = await _showSetPasswordDialog(context, isChange: true);
+                      onTap: (_) async {
+                        final password = await _showSetPasswordDialog(
+                          context,
+                          isChange: true,
+                        );
                         if (password == null) return;
                         if (!context.mounted) return;
-                        await ref.read(appLockProvider.notifier).setPassword(password);
+                        await ref
+                            .read(appLockProvider.notifier)
+                            .setPassword(password);
                         if (!context.mounted) return;
                         showTopToast(
                           context,
@@ -176,11 +227,18 @@ class PasswordLockScreen extends ConsumerWidget {
                     ),
                     _ActionRow(
                       label: context.t.strings.legacy.msg_auto_lock_time,
-                      trailingText: state.autoLockTime.labelFor(context.appLanguage),
+                      trailingText: state.autoLockTime.labelFor(
+                        context.appLanguage,
+                      ),
                       enabled: state.enabled,
                       textMain: textMain,
                       textMuted: textMuted,
-                      onTap: () => _selectAutoLockTime(context, ref, state.autoLockTime),
+                      onTap: (rowContext) => _selectAutoLockTime(
+                        context,
+                        ref,
+                        state.autoLockTime,
+                        anchorContext: rowContext,
+                      ),
                     ),
                   ],
                 ),
@@ -188,7 +246,11 @@ class PasswordLockScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Text(
                 context.t.strings.legacy.msg_when_enabled_must_verify_each_app,
-                style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: textMuted.withValues(alpha: 0.7),
+                ),
               ),
             ],
           ),
@@ -284,15 +346,24 @@ class _PasswordDialogState extends State<_PasswordDialog> {
               alignment: Alignment.centerLeft,
               child: Text(
                 _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
               ),
             ),
           ],
         ],
       ),
       actions: [
-        TextButton(onPressed: () => context.safePop(null), child: Text(context.t.strings.legacy.msg_cancel_2)),
-        FilledButton(onPressed: _submit, child: Text(context.t.strings.legacy.msg_ok)),
+        TextButton(
+          onPressed: () => context.safePop(null),
+          child: Text(context.t.strings.legacy.msg_cancel_2),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(context.t.strings.legacy.msg_ok),
+        ),
       ],
     );
   }
@@ -353,14 +424,14 @@ class _ActionRow extends StatelessWidget {
   final bool enabled;
   final Color textMain;
   final Color textMuted;
-  final VoidCallback onTap;
+  final ValueChanged<BuildContext> onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: enabled ? onTap : null,
+        onTap: enabled ? () => onTap(context) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
@@ -368,11 +439,20 @@ class _ActionRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMain,
+                  ),
                 ),
               ),
               if (trailingText != null) ...[
-                Text(trailingText!, style: TextStyle(fontWeight: FontWeight.w600, color: textMuted)),
+                Text(
+                  trailingText!,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textMuted,
+                  ),
+                ),
                 const SizedBox(width: 6),
               ],
               Icon(Icons.chevron_right, size: 20, color: textMuted),

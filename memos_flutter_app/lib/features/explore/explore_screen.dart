@@ -32,6 +32,7 @@ import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import '../home/home_navigation_host.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../memos/memo_detail_screen.dart';
@@ -232,6 +233,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final _commentPreviewRequested = <String>{};
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSubscription;
   String? _activeAccountKey;
+  String? _selectedPreviewMemoUid;
   int _requestId = 0;
 
   @override
@@ -388,6 +390,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     _commentingMemoUid = null;
     _replyingMemoUid = null;
     _replyingCommentCreator = null;
+    _selectedPreviewMemoUid = null;
     _commentController.clear();
     if (!mounted) return;
     setState(() {});
@@ -1258,6 +1261,40 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
+  void _openMemoDetail(Memo memo) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoDetailScreen(
+          initialMemo: _toLocalMemo(memo),
+          readOnly: true,
+          showEngagement: true,
+        ),
+      ),
+    );
+  }
+
+  void _handleMemoTap(
+    Memo memo, {
+    required bool supportsDesktopPreviewPane,
+  }) {
+    if (supportsDesktopPreviewPane) {
+      setState(() {
+        _selectedPreviewMemoUid = memo.uid;
+      });
+      return;
+    }
+    _openMemoDetail(memo);
+  }
+
+  void _closeDesktopPreview() {
+    if (_selectedPreviewMemoUid == null) {
+      return;
+    }
+    setState(() {
+      _selectedPreviewMemoUid = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1288,6 +1325,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         (prefs) => prefs.collapseReferences,
       ),
     );
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final windowsDesktopLayout = isWindowsDesktop
+        ? resolveWindowsDesktopLayout(
+            screenWidth,
+            platform: TargetPlatform.windows,
+          )
+        : null;
+    final supportsDesktopPreviewPane =
+        useDesktopSidePane &&
+        (isWindowsDesktop
+            ? windowsDesktopLayout!.supportsSecondaryPane
+            : screenWidth >= kMemoFlowDesktopPreviewPaneBreakpoint);
+    final previewPaneWidth = isWindowsDesktop
+        ? windowsDesktopLayout!.defaultSecondaryPaneWidth
+        : kMemoFlowDesktopPreviewPaneWidth;
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final commentMemo = _commentingMemoUid == null
         ? null
@@ -1443,17 +1498,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 highlightQuery: highlightQuery,
                 collapseLongContent: collapseLongContent,
                 collapseReferences: collapseReferences,
+                selected: _selectedPreviewMemoUid == memo.uid,
                 resolveCreator: (name) => _creatorCache[name],
                 onTap: () {
                   maybeHaptic();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => MemoDetailScreen(
-                        initialMemo: _toLocalMemo(memo),
-                        readOnly: true,
-                        showEngagement: true,
-                      ),
-                    ),
+                  _handleMemoTap(
+                    memo,
+                    supportsDesktopPreviewPane: supportsDesktopPreviewPane,
                   );
                 },
                 onToggleComment: () {
@@ -1560,10 +1611,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             creatorDisplayName_commentCreator_commentMemo_creator:
                 _creatorDisplayName(commentCreator, commentMemo.creator),
           );
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final enableWindowsDragToMove =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final selectedPreviewMemo = _selectedPreviewMemoUid == null
+        ? null
+        : _findMemoByUid(_selectedPreviewMemoUid!);
+    final previewPaneVisible =
+        supportsDesktopPreviewPane && selectedPreviewMemo != null;
+    final enableWindowsDragToMove = isWindowsDesktop;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.explore,
       onSelect: (d) => _navigate(context, d),
@@ -1600,6 +1653,30 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ),
       ],
     );
+    final desktopBodyContent = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: kMemoFlowDesktopContentMaxWidth,
+            minWidth: previewPaneVisible ? kMemoFlowDesktopPreviewListMinWidth : 0,
+          ),
+          child: pageBody,
+        ),
+      ),
+    );
+    final previewPane = _ExploreDesktopPreviewPane(
+      backgroundColor: card,
+      borderColor: border,
+      previewMemo: selectedPreviewMemo == null
+          ? null
+          : _toLocalMemo(selectedPreviewMemo),
+      onOpenFullDetail: selectedPreviewMemo == null
+          ? null
+          : () => _openMemoDetail(selectedPreviewMemo),
+      onClose: _closeDesktopPreview,
+    );
 
     final shouldInterceptPop =
         widget.presentation != HomeScreenPresentation.embeddedBottomNav;
@@ -1610,68 +1687,218 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
-      child: Scaffold(
-        backgroundColor: bg,
-        drawer: useDesktopSidePane ? null : drawerPanel,
-        drawerEnableOpenDragGesture:
-            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
-        appBar: AppBar(
-          backgroundColor: bg,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          automaticallyImplyLeading: false,
-          toolbarHeight: 46,
-          iconTheme: IconThemeData(color: textMain),
-          flexibleSpace: enableWindowsDragToMove
-              ? const DragToMoveArea(child: SizedBox.expand())
-              : null,
-          leading: useDesktopSidePane
-              ? null
-              : AppDrawerMenuButton(
-                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                  iconColor: textMain,
-                  badgeBorderColor: bg,
+      child: isWindowsDesktop
+          ? WindowsDesktopPageShell(
+              backgroundColor: bg,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.explore,
+                onSelect: (d) => _navigate(context, d),
+                onSelectTag: (t) => _openTag(context, t),
+                onOpenNotifications: () => _openNotifications(context),
+                embedded: embedded,
+                viewMode: viewMode,
+              ),
+              leadingTitle: Text(
+                context.t.strings.legacy.msg_explore,
+                style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: showSearchBar
+                        ? context.t.strings.legacy.msg_close_search
+                        : context.t.strings.legacy.msg_search,
+                    icon: Icon(
+                      showSearchBar ? Icons.close : Icons.search,
+                      color: textMain,
+                    ),
+                    onPressed: _toggleSearch,
+                  ),
+                ],
+              ),
+              body: desktopBodyContent,
+              secondaryPane: supportsDesktopPreviewPane ? previewPane : null,
+              secondaryPaneVisible: previewPaneVisible,
+              secondaryPaneWidth: previewPaneWidth,
+            )
+          : Scaffold(
+              backgroundColor: bg,
+              drawer: useDesktopSidePane ? null : drawerPanel,
+              drawerEnableOpenDragGesture:
+                  widget.presentation !=
+                  HomeScreenPresentation.embeddedBottomNav,
+              appBar: AppBar(
+                backgroundColor: bg,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                surfaceTintColor: Colors.transparent,
+                automaticallyImplyLeading: false,
+                toolbarHeight: 46,
+                iconTheme: IconThemeData(color: textMain),
+                flexibleSpace: enableWindowsDragToMove
+                    ? const DragToMoveArea(child: SizedBox.expand())
+                    : null,
+                leading: useDesktopSidePane
+                    ? null
+                    : AppDrawerMenuButton(
+                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                        iconColor: textMain,
+                        badgeBorderColor: bg,
+                      ),
+                title: IgnorePointer(
+                  ignoring: enableWindowsDragToMove,
+                  child: Text(
+                    context.t.strings.legacy.msg_explore,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: textMain,
+                    ),
+                  ),
                 ),
-          title: IgnorePointer(
-            ignoring: enableWindowsDragToMove,
-            child: Text(
-              context.t.strings.legacy.msg_explore,
-              style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+                actions: [
+                  IconButton(
+                    tooltip: showSearchBar
+                        ? context.t.strings.legacy.msg_close_search
+                        : context.t.strings.legacy.msg_search,
+                    icon: Icon(
+                      showSearchBar ? Icons.close : Icons.search,
+                      color: textMain,
+                    ),
+                    onPressed: _toggleSearch,
+                  ),
+                  if (enableWindowsDragToMove) const DesktopWindowControls(),
+                ],
+              ),
+              body: useDesktopSidePane
+                  ? Row(
+                      children: [
+                        SizedBox(
+                          width: kMemoFlowDesktopDrawerWidth,
+                          child: drawerPanel,
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.08),
+                        ),
+                        Expanded(child: desktopBodyContent),
+                        if (previewPaneVisible) ...[
+                          VerticalDivider(
+                            width: 1,
+                            thickness: 1,
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : Colors.black.withValues(alpha: 0.08),
+                          ),
+                          SizedBox(width: previewPaneWidth, child: previewPane),
+                        ],
+                      ],
+                    )
+                  : pageBody,
+            ),
+    );
+  }
+}
+
+class _ExploreDesktopPreviewPane extends StatelessWidget {
+  const _ExploreDesktopPreviewPane({
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.previewMemo,
+    required this.onClose,
+    required this.onOpenFullDetail,
+  });
+
+  final Color backgroundColor;
+  final Color borderColor;
+  final LocalMemo? previewMemo;
+  final VoidCallback onClose;
+  final VoidCallback? onOpenFullDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    final headerShadow = [
+      BoxShadow(
+        blurRadius: 10,
+        offset: const Offset(0, 2),
+        color: Colors.black.withValues(alpha: 0.04),
+      ),
+    ];
+
+    return ColoredBox(
+      color: backgroundColor,
+      child: Column(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              border: Border(bottom: BorderSide(color: borderColor)),
+              boxShadow: headerShadow,
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        context.t.strings.legacy.msg_preview,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_open_memo,
+                      onPressed: onOpenFullDetail,
+                      icon: const Icon(Icons.open_in_new_rounded),
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_close,
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          actions: [
-            IconButton(
-              tooltip: showSearchBar
-                  ? context.t.strings.legacy.msg_close_search
-                  : context.t.strings.legacy.msg_search,
-              icon: Icon(
-                showSearchBar ? Icons.close : Icons.search,
-                color: textMain,
-              ),
-              onPressed: _toggleSearch,
-            ),
-            if (enableWindowsDragToMove) const DesktopWindowControls(),
-          ],
-        ),
-        body: useDesktopSidePane
-            ? Row(
-                children: [
-                  SizedBox(
-                    width: kMemoFlowDesktopDrawerWidth,
-                    child: drawerPanel,
+          Expanded(
+            child: previewMemo == null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.preview_outlined,
+                          size: 32,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.48),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          context.t.strings.legacy.msg_preview,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  )
+                : MemoDetailScreen(
+                    key: ValueKey<String>(
+                      'explore-preview:${previewMemo!.uid}:${previewMemo!.contentFingerprint}:${previewMemo!.updateTime.microsecondsSinceEpoch}',
+                    ),
+                    initialMemo: previewMemo!,
+                    readOnly: true,
+                    showEngagement: true,
+                    embedded: true,
                   ),
-                  VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.08),
-                  ),
-                  Expanded(child: pageBody),
-                ],
-              )
-            : pageBody,
+          ),
+        ],
       ),
     );
   }
@@ -1704,6 +1931,7 @@ class _ExploreMemoCard extends StatefulWidget {
     required this.highlightQuery,
     required this.collapseLongContent,
     required this.collapseReferences,
+    required this.selected,
     required this.resolveCreator,
     required this.onTap,
     required this.onToggleComment,
@@ -1737,6 +1965,7 @@ class _ExploreMemoCard extends StatefulWidget {
   final String? highlightQuery;
   final bool collapseLongContent;
   final bool collapseReferences;
+  final bool selected;
   final User? Function(String name) resolveCreator;
   final VoidCallback onTap;
   final VoidCallback onToggleComment;
@@ -2817,8 +3046,11 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
               color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
             ),
           ];
+    final resolvedBorderColor = widget.selected
+        ? MemoFlowPalette.primary
+        : borderColor;
 
-    final card = Material(
+    Widget card = Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
@@ -2828,7 +3060,10 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
           decoration: BoxDecoration(
             color: cardColor,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: borderColor),
+            border: Border.all(
+              color: resolvedBorderColor,
+              width: widget.selected ? 1.5 : 1,
+            ),
             boxShadow: shadow,
           ),
           child: Column(
@@ -3141,6 +3376,17 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
         ),
       ),
     );
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      card = Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: kMemoFlowDesktopMemoCardMaxWidth,
+          ),
+          child: card,
+        ),
+      );
+    }
 
     final heroTag = memo.uid.isNotEmpty ? memo.uid : memo.name;
     if (heroTag.isEmpty) return card;

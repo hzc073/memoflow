@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,8 +25,10 @@ import '../../core/log_sanitizer.dart';
 import '../../core/memo_content_diagnostics.dart';
 import '../../core/memo_template_renderer.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/platform_layout.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
+import '../../data/logs/log_manager.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/compose_draft.dart';
 import '../../data/models/device_preferences.dart';
@@ -35,6 +38,8 @@ import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../state/memos/memo_composer_controller.dart';
 import '../../state/memos/memo_composer_state.dart';
 import '../../state/memos/compose_draft_provider.dart';
+import '../../state/memos/desktop_home_pane_state.dart';
+import '../../state/memos/desktop_memo_preview_session.dart';
 import '../../state/memos/memos_list_providers.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/memos/note_draft_provider.dart';
@@ -78,6 +83,7 @@ import 'memos_list_animated_list_controller.dart';
 import 'memos_list_audio_playback_coordinator.dart';
 import 'memos_list_desktop_shortcut_delegate.dart';
 import 'memos_list_diagnostics.dart';
+import 'memos_list_floating_collapse_controller.dart';
 import 'memos_list_header_controller.dart';
 import 'home_quick_actions.dart';
 import 'memos_list_inline_compose_coordinator.dart';
@@ -90,6 +96,7 @@ import 'memos_list_screen_view_state.dart';
 import 'memos_list_viewport_coordinator.dart';
 import 'widgets/memos_list_animated_memo_item.dart';
 import 'widgets/memos_list_bootstrap_import_overlay.dart';
+import 'widgets/memos_list_desktop_preview_pane.dart';
 import 'widgets/memos_list_floating_actions.dart';
 import 'widgets/memos_list_inline_compose_card.dart';
 import 'widgets/memos_list_memo_card.dart';
@@ -163,6 +170,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _floatingCollapseViewportKey = GlobalKey();
+  final GlobalKey _homeInlineComposeCardKey = GlobalKey();
   final FocusNode _inlineComposeFocusNode = FocusNode();
   final GlobalKey _inlineEditorFieldKey = GlobalKey();
   final GlobalKey _inlineTagMenuKey = GlobalKey();
@@ -179,10 +187,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   late final MemosListLocalLibraryCoordinator _localLibraryCoordinator;
   late final MemosListMutationCoordinator _mutationCoordinator;
   late final MemosListViewportCoordinator _viewportCoordinator;
+  late final MemosListFloatingCollapseController _floatingCollapseController;
   late final MemosListRouteDelegate _routeDelegate;
   late final MemosListMemoActionDelegate _memoActionDelegate;
   late final MemosListAnimatedListController _animatedListController;
   late final MemosListDiagnostics _diagnostics;
+  late final LogManager _logManager;
 
   Timer? _inlineComposeDraftTimer;
   String? _inlineComposeActiveDraftId;
@@ -203,6 +213,41 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   double _homeInlineAvailableHeight = 0;
   bool _homeInlinePanelMetricsReady = false;
   bool _homeInlinePanelRestored = false;
+  bool _viewportDerivedMetricsSyncScheduled = false;
+  int _previewTransitionKey = 0;
+  int _composeTransitionKey = 0;
+  Timer? _desktopPreviewPressTimer;
+  int _desktopPreviewPressSequence = 0;
+  int? _activeDesktopPreviewPressSequence;
+  LocalMemo? _desktopPreviewPressMemo;
+  DesktopHomePaneState? _desktopPreviewRollbackPaneState;
+  bool? _desktopPreviewRollbackSecondaryPaneVisible;
+  bool _desktopPreviewPressOpened = false;
+  int _ignoredDesktopPreviewTapCount = 0;
+  String? _desktopComposeInitialText;
+  List<String> _desktopComposeInitialAttachmentPaths = const <String>[];
+  bool _desktopComposeIgnoreDraft = false;
+  String _floatingCollapseVisibleMemoSignature = '';
+  Timer? _scrollPerfIdleTimer;
+  _MemosScrollPerfSession? _scrollPerfSession;
+  late final VoidCallback _audioPlaybackCoordinatorListener;
+  late final VoidCallback _mutationCoordinatorListener;
+  late final VoidCallback _viewportCoordinatorListener;
+  late final VoidCallback _headerControllerListener;
+  late final VoidCallback _inlineComposeUiControllerListener;
+  late final VoidCallback _localLibraryCoordinatorListener;
+  late final VoidCallback _routeDelegateListener;
+  late final VoidCallback _animatedListControllerListener;
+  late final VoidCallback _showBackToTopDiagnosticsListener;
+  late final VoidCallback _floatingCollapseDiagnosticsListener;
+  late final TimingsCallback _frameTimingsCallback;
+  bool _lastShowBackToTopDiagnosticsValue = false;
+  MemosListFloatingCollapseState _lastFloatingCollapseDiagnosticsState =
+      const MemosListFloatingCollapseState(memoUid: null, scrolling: false);
+
+  @visibleForTesting
+  MemosListFloatingCollapseController get debugFloatingCollapseController =>
+      _floatingCollapseController;
 
   TextEditingController get _searchController =>
       _headerController.searchController;
@@ -234,11 +279,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _viewportCoordinator.activeLoadMoreRequestId;
   String? get _activeLoadMoreSource =>
       _viewportCoordinator.activeLoadMoreSource;
-  bool get _showBackToTop => _viewportCoordinator.showBackToTop;
-  bool get _floatingCollapseScrolling =>
-      _viewportCoordinator.floatingCollapseScrolling;
-  String? get _floatingCollapseMemoUid =>
-      _viewportCoordinator.floatingCollapseMemoUid;
   bool get _scrollToTopAnimating => _viewportCoordinator.scrollToTopAnimating;
   GlobalKey<SliverAnimatedListState> get _listKey =>
       _animatedListController.listKey;
@@ -250,10 +290,483 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     return widget.state == 'NORMAL' && (tag == null || tag.isEmpty);
   }
 
+  bool get _enableScrollPerfDiagnostics =>
+      !kReleaseMode &&
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.windows;
+
   bool get _enableResizableHomeInlineCompose =>
       !kIsWeb &&
       defaultTargetPlatform == TargetPlatform.windows &&
       widget.enableDesktopResizableHomeInlineCompose;
+
+  DesktopHomeLayoutPreference get _desktopHomeLayoutPreference =>
+      ref.read(devicePreferencesProvider).desktopHomeLayoutPreference;
+
+  void _persistDesktopHomeLayoutPreference(DesktopHomeLayoutPreference value) {
+    ref
+        .read(devicePreferencesProvider.notifier)
+        .setDesktopHomeLayoutPreference(value);
+  }
+
+  void _setDesktopPreviewPaneVisiblePreference(bool visible) {
+    final current = _desktopHomeLayoutPreference;
+    if (current.secondaryPaneVisible == visible) return;
+    _persistDesktopHomeLayoutPreference(
+      DesktopHomeLayoutPreference(
+        navMode: current.navMode,
+        secondaryPaneVisible: visible,
+        secondaryPaneWidth: current.secondaryPaneWidth,
+      ),
+    );
+  }
+
+  void _setDesktopPreviewPaneWidthPreference(double width) {
+    final resolvedWidth = width
+        .clamp(
+          kWindowsDesktopSecondaryPaneMinWidth,
+          kWindowsDesktopSecondaryPaneMaxWidth,
+        )
+        .toDouble();
+    final current = _desktopHomeLayoutPreference;
+    if ((current.secondaryPaneWidth - resolvedWidth).abs() < 0.5) return;
+    _persistDesktopHomeLayoutPreference(
+      DesktopHomeLayoutPreference(
+        navMode: current.navMode,
+        secondaryPaneVisible: current.secondaryPaneVisible,
+        secondaryPaneWidth: resolvedWidth,
+      ),
+    );
+  }
+
+  WindowsDesktopLayoutSpec _resolveCurrentWindowsDesktopLayout() {
+    final width = MediaQuery.maybeOf(context)?.size.width ?? 0;
+    return resolveWindowsDesktopLayout(width, platform: defaultTargetPlatform);
+  }
+
+  void _resetDesktopComposeSeed() {
+    _desktopComposeInitialText = null;
+    _desktopComposeInitialAttachmentPaths = const <String>[];
+    _desktopComposeIgnoreDraft = false;
+  }
+
+  LocalMemo? _findMemoByUid(List<LocalMemo> memos, String? memoUid) {
+    final selectedUid = memoUid?.trim() ?? '';
+    if (selectedUid.isEmpty) return null;
+    for (final memo in memos) {
+      if (memo.uid == selectedUid) {
+        return memo;
+      }
+    }
+    return null;
+  }
+
+  bool _isTextInputFocused() {
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    final focusedWidget = focusedContext?.widget;
+    return focusedWidget is EditableText;
+  }
+
+  void _selectDesktopMemo(LocalMemo memo, {required bool showPreview}) {
+    final memoUid = memo.uid.trim();
+    if (memoUid.isEmpty) return;
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    if (paneState.selectedMemoUid != memoUid) {
+      _setStateWithDiagnostics(
+        'desktop_preview_transition',
+        () => _previewTransitionKey += 1,
+      );
+    }
+    final controller = ref.read(desktopHomePaneStateProvider.notifier);
+    if (showPreview) {
+      controller.showPreview(memoUid);
+      _setDesktopPreviewPaneVisiblePreference(true);
+      return;
+    }
+    controller.selectMemo(memoUid);
+  }
+
+  void _openDesktopPreview(LocalMemo memo, {bool requestMemo = true}) {
+    if (kDebugMode) {
+      final paneState = ref.read(desktopHomePaneStateProvider);
+      _logManager.info(
+        'Desktop preview: open_request',
+        context: <String, Object?>{
+          ...buildMemoContentDiagnostics(memo.content, memoUid: memo.uid),
+          'previewVisible': paneState.previewVisible,
+          'secondaryPaneMode': paneState.secondaryPaneMode.name,
+          'alreadySelected': paneState.selectedMemoUid == memo.uid,
+          'transitionKey': _previewTransitionKey,
+        },
+      );
+    }
+    _selectDesktopMemo(memo, showPreview: true);
+    if (!requestMemo) {
+      return;
+    }
+    unawaited(
+      ref.read(desktopMemoPreviewSessionProvider.notifier).requestMemo(memo),
+    );
+  }
+
+  Duration _desktopPreviewPressThresholdDuration() {
+    if (!AppMotion.isEnabled(context)) {
+      return Duration.zero;
+    }
+    return AppMotion.desktopPressDown;
+  }
+
+  bool _isSameDesktopPreviewPressMemo(LocalMemo memo, LocalMemo? other) {
+    final memoUid = memo.uid.trim();
+    final otherUid = other?.uid.trim() ?? '';
+    return memoUid.isNotEmpty && memoUid == otherUid;
+  }
+
+  bool _matchesDesktopPreviewPressSequence(int sequence, LocalMemo memo) {
+    return mounted &&
+        _activeDesktopPreviewPressSequence == sequence &&
+        _isSameDesktopPreviewPressMemo(memo, _desktopPreviewPressMemo);
+  }
+
+  void _clearDesktopPreviewPressState({bool resetTapIgnore = false}) {
+    _desktopPreviewPressTimer?.cancel();
+    _desktopPreviewPressTimer = null;
+    _activeDesktopPreviewPressSequence = null;
+    _desktopPreviewPressMemo = null;
+    _desktopPreviewRollbackPaneState = null;
+    _desktopPreviewRollbackSecondaryPaneVisible = null;
+    _desktopPreviewPressOpened = false;
+    if (resetTapIgnore) {
+      _ignoredDesktopPreviewTapCount = 0;
+    }
+  }
+
+  void _restoreDesktopPreviewPaneState(
+    DesktopHomePaneState paneState, {
+    required bool secondaryPaneVisible,
+  }) {
+    ref.read(desktopHomePaneStateProvider.notifier).restore(paneState);
+    _setDesktopPreviewPaneVisiblePreference(secondaryPaneVisible);
+  }
+
+  void _cancelPendingDesktopPreviewPress({required bool rollbackIfOpened}) {
+    final rollbackPaneState = _desktopPreviewRollbackPaneState;
+    final rollbackSecondaryPaneVisible =
+        _desktopPreviewRollbackSecondaryPaneVisible;
+    final shouldRollback =
+        rollbackIfOpened &&
+        _desktopPreviewPressOpened &&
+        rollbackPaneState != null &&
+        rollbackSecondaryPaneVisible != null;
+    if (shouldRollback) {
+      _restoreDesktopPreviewPaneState(
+        rollbackPaneState,
+        secondaryPaneVisible: rollbackSecondaryPaneVisible,
+      );
+    }
+    _clearDesktopPreviewPressState();
+  }
+
+  void _handleDesktopPreviewTapDown(LocalMemo memo) {
+    final memoUid = memo.uid.trim();
+    if (memoUid.isEmpty) return;
+    _cancelPendingDesktopPreviewPress(rollbackIfOpened: true);
+    final sequence = ++_desktopPreviewPressSequence;
+    _activeDesktopPreviewPressSequence = sequence;
+    _desktopPreviewPressMemo = memo;
+    _desktopPreviewRollbackPaneState = ref.read(desktopHomePaneStateProvider);
+    _desktopPreviewRollbackSecondaryPaneVisible =
+        _desktopHomeLayoutPreference.secondaryPaneVisible;
+    _desktopPreviewPressOpened = false;
+    unawaited(
+      ref.read(desktopMemoPreviewSessionProvider.notifier).requestMemo(memo),
+    );
+    final threshold = _desktopPreviewPressThresholdDuration();
+    if (threshold <= Duration.zero) {
+      if (_matchesDesktopPreviewPressSequence(sequence, memo)) {
+        _desktopPreviewPressOpened = true;
+        _openDesktopPreview(memo, requestMemo: false);
+      }
+      return;
+    }
+    _desktopPreviewPressTimer = Timer(threshold, () {
+      _desktopPreviewPressTimer = null;
+      if (!_matchesDesktopPreviewPressSequence(sequence, memo)) {
+        return;
+      }
+      _desktopPreviewPressOpened = true;
+      _openDesktopPreview(memo, requestMemo: false);
+    });
+  }
+
+  void _handleDesktopPreviewTapUp(LocalMemo memo) {
+    if (!_isSameDesktopPreviewPressMemo(memo, _desktopPreviewPressMemo)) {
+      return;
+    }
+    _ignoredDesktopPreviewTapCount += 1;
+    _desktopPreviewPressTimer?.cancel();
+    _desktopPreviewPressTimer = null;
+    if (!_desktopPreviewPressOpened) {
+      _desktopPreviewPressOpened = true;
+      _openDesktopPreview(memo, requestMemo: false);
+    }
+    _clearDesktopPreviewPressState(resetTapIgnore: false);
+  }
+
+  void _handleDesktopPreviewTapCancel() {
+    _cancelPendingDesktopPreviewPress(rollbackIfOpened: true);
+  }
+
+  void _handleDesktopPreviewTap(LocalMemo memo) {
+    if (_ignoredDesktopPreviewTapCount > 0) {
+      _ignoredDesktopPreviewTapCount -= 1;
+      return;
+    }
+    _cancelPendingDesktopPreviewPress(rollbackIfOpened: true);
+    _openDesktopPreview(memo);
+  }
+
+  void _openDesktopPreviewPane() {
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    ref
+        .read(desktopHomePaneStateProvider.notifier)
+        .openPreviewPane(selectedMemoUid: paneState.selectedMemoUid);
+    _setDesktopPreviewPaneVisiblePreference(true);
+  }
+
+  void _closeDesktopPreview({bool persistHidden = true}) {
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    if (paneState.secondaryPaneMode == DesktopHomeSecondaryPaneMode.none) {
+      return;
+    }
+    ref.read(desktopHomePaneStateProvider.notifier).closeSecondaryPane();
+    if (persistHidden) {
+      _setDesktopPreviewPaneVisiblePreference(false);
+    }
+  }
+
+  void _openDesktopComposeNew({
+    String? initialText,
+    List<String> initialAttachmentPaths = const <String>[],
+    bool ignoreDraft = false,
+  }) {
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    _setStateWithDiagnostics('desktop_compose_new', () {
+      _composeTransitionKey += 1;
+      _desktopComposeInitialText = initialText;
+      _desktopComposeInitialAttachmentPaths = List<String>.from(
+        initialAttachmentPaths,
+      );
+      _desktopComposeIgnoreDraft = ignoreDraft;
+    });
+    ref
+        .read(desktopHomePaneStateProvider.notifier)
+        .showComposeNew(selectedMemoUid: paneState.selectedMemoUid);
+  }
+
+  void _openDesktopComposeEdit(LocalMemo memo) {
+    _setStateWithDiagnostics('desktop_compose_edit', () {
+      _composeTransitionKey += 1;
+      _resetDesktopComposeSeed();
+    });
+    ref.read(desktopHomePaneStateProvider.notifier).showComposeEdit(memo.uid);
+  }
+
+  void _closeDesktopCompose() {
+    _setStateWithDiagnostics('desktop_compose_close', () {
+      _resetDesktopComposeSeed();
+    });
+    ref.read(desktopHomePaneStateProvider.notifier).closeCompose();
+  }
+
+  void _toggleDesktopComposeFullscreen() {
+    final controller = ref.read(desktopHomePaneStateProvider.notifier);
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    if (!paneState.editorVisible) return;
+    if (paneState.isEditorFullscreen) {
+      controller.restoreComposeToCentered();
+      return;
+    }
+    controller.expandComposeToFullscreen();
+  }
+
+  void _handleDesktopComposeSaved() {
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    final selectedMemoUid = paneState.selectedMemoUid;
+    final isEdit = paneState.composeDraftTarget is DesktopHomeComposeEditMemo;
+    _setStateWithDiagnostics('desktop_compose_saved', () {
+      _resetDesktopComposeSeed();
+      if (isEdit) {
+        _previewTransitionKey += 1;
+      }
+    });
+    ref.read(desktopHomePaneStateProvider.notifier).closeCompose();
+    if (isEdit && selectedMemoUid != null && selectedMemoUid.isNotEmpty) {
+      ref.invalidate(memoRelationsProvider(selectedMemoUid));
+    }
+  }
+
+  Future<void> _showDesktopComposeDialog({
+    LocalMemo? existing,
+    String? initialText,
+    List<String> initialAttachmentPaths = const <String>[],
+    bool ignoreDraft = false,
+    bool fullscreen = false,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final editor = MemoEditorScreen(
+          existing: existing,
+          initialText: initialText,
+          initialAttachmentPaths: initialAttachmentPaths,
+          ignoreDraft: ignoreDraft,
+          onSaved: () => Navigator.of(dialogContext).pop(),
+          onCloseRequested: () => Navigator.of(dialogContext).pop(),
+        );
+        if (fullscreen) {
+          return Dialog.fullscreen(child: editor);
+        }
+        return Dialog(
+          clipBehavior: Clip.antiAlias,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 32,
+            vertical: 24,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 920,
+              maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.88,
+            ),
+            child: editor,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showWindowsDesktopComposeSurface(
+    BuildContext _, {
+    String? initialText,
+    List<String> initialAttachmentPaths = const <String>[],
+    bool ignoreDraft = false,
+  }) async {
+    final layoutSpec = _resolveCurrentWindowsDesktopLayout();
+    if (layoutSpec.tier != WindowsDesktopLayoutTier.narrow) {
+      _openDesktopComposeNew(
+        initialText: initialText,
+        initialAttachmentPaths: initialAttachmentPaths,
+        ignoreDraft: ignoreDraft,
+      );
+      return;
+    }
+    await _showDesktopComposeDialog(
+      initialText: initialText,
+      initialAttachmentPaths: initialAttachmentPaths,
+      ignoreDraft: ignoreDraft,
+      fullscreen: layoutSpec.tier == WindowsDesktopLayoutTier.narrow,
+    );
+  }
+
+  void _clearDesktopPaneSelection() {
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    if (!paneState.hasSelection &&
+        paneState.secondaryPaneMode == DesktopHomeSecondaryPaneMode.none &&
+        !paneState.editorVisible) {
+      return;
+    }
+    ref.read(desktopHomePaneStateProvider.notifier).clear();
+  }
+
+  void _toggleDesktopSecondaryPane() {
+    final layoutSpec = _resolveCurrentWindowsDesktopLayout();
+    if (!layoutSpec.supportsSecondaryPane) return;
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    if (paneState.previewVisible) {
+      _closeDesktopPreview();
+      return;
+    }
+    _openDesktopPreviewPane();
+  }
+
+  Future<void> _copyMemoContent(LocalMemo memo) async {
+    if (ref.read(devicePreferencesProvider).hapticsEnabled) {
+      HapticFeedback.selectionClick();
+    }
+    await Clipboard.setData(ClipboardData(text: memo.content));
+    if (!mounted) return;
+    showTopToast(
+      context,
+      context.t.strings.legacy.msg_memo_copied,
+      duration: const Duration(milliseconds: 1200),
+    );
+  }
+
+  Future<void> _showMemoContextMenu(
+    LocalMemo memo,
+    Offset globalPosition, {
+    required bool showPreviewOnSelect,
+  }) async {
+    _selectDesktopMemo(memo, showPreview: showPreviewOnSelect);
+    final action = await showMemoCardContextMenu(
+      context: context,
+      memo: memo,
+      globalPosition: globalPosition,
+    );
+    if (!mounted || action == null) return;
+    await _memoActionDelegate.handleMemoAction(memo, action);
+  }
+
+  void _syncDesktopPreviewSelection({
+    required MemosListScreenLayoutState layout,
+    required List<LocalMemo> visibleMemos,
+  }) {
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    if (paneState.editorVisible) {
+      return;
+    }
+    final previewEnabled = layout.supportsDesktopPreviewPane;
+    if (!previewEnabled) {
+      if (paneState.hasSelection ||
+          paneState.secondaryPaneMode != DesktopHomeSecondaryPaneMode.none) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _clearDesktopPaneSelection();
+        });
+      }
+      return;
+    }
+
+    final selectedUid = paneState.selectedMemoUid;
+    if (selectedUid == null || selectedUid.isEmpty) return;
+    final stillVisible = visibleMemos.any((memo) => memo.uid == selectedUid);
+    if (stillVisible) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _clearDesktopPaneSelection();
+    });
+  }
+
+  void _openMemoDetailRoute(LocalMemo memo, {Object? heroTag}) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MemoDetailScreen(
+          initialMemo: memo,
+          heroTag: heroTag,
+          onRequestEditExisting: (detailMemo) async {
+            final isWideWindowsLayout =
+                _resolveCurrentWindowsDesktopLayout().tier ==
+                WindowsDesktopLayoutTier.wide;
+            await _openMemoEditor(detailMemo);
+            if (isWideWindowsLayout && mounted) {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+      ),
+    );
+  }
 
   double _effectiveHomeInlineAvailableHeight(BuildContext context) {
     if (_homeInlineAvailableHeight > 0) {
@@ -301,7 +814,37 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final next = size?.height ?? 0;
     if (!mounted || next <= 0) return;
     if ((_homeInlineAvailableHeight - next).abs() < 0.5) return;
-    setState(() => _homeInlineAvailableHeight = next);
+    _setStateWithDiagnostics(
+      'home_inline_available_height',
+      () => _homeInlineAvailableHeight = next,
+    );
+  }
+
+  void _scheduleViewportDerivedMetricsSync() {
+    if (_viewportDerivedMetricsSyncScheduled) return;
+    _viewportDerivedMetricsSyncScheduled = true;
+    _recordScrollPerfViewportDerivedMetricsSyncScheduled();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _viewportDerivedMetricsSyncScheduled = false;
+      if (!mounted) return;
+      _recordScrollPerfViewportDerivedMetricsSyncApplied();
+      _syncHomeInlineAvailableHeight();
+      final metrics = _currentViewportMetrics();
+      if (metrics != null) {
+        _floatingCollapseController.updateViewportMetrics(metrics);
+      }
+    });
+  }
+
+  void _scheduleFloatingCollapseVisibleMemoPrune(List<LocalMemo> visibleMemos) {
+    final nextSignature = visibleMemos.map((memo) => memo.uid).join('|');
+    if (nextSignature == _floatingCollapseVisibleMemoSignature) return;
+    _floatingCollapseVisibleMemoSignature = nextSignature;
+    final visibleUids = visibleMemos.map((memo) => memo.uid).toSet();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _floatingCollapseController.pruneToVisibleMemoUids(visibleUids);
+    });
   }
 
   void _handleHomeInlineLayoutMetrics(InlineComposeLayoutMetrics metrics) {
@@ -315,7 +858,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         _homeInlinePanelMetricsReady) {
       return;
     }
-    setState(() {
+    _setStateWithDiagnostics('home_inline_layout_metrics', () {
       _homeInlinePanelChromeHeight = chromeHeight;
       _homeInlinePanelEditorHeight = nextEditorHeight;
       _homeInlinePanelMetricsReady = true;
@@ -359,7 +902,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       restoredWidth,
     );
     final freeHeight = math.max(0, availableHeight - panelHeight);
-    setState(() {
+    _setStateWithDiagnostics('home_inline_restore_layout', () {
       _homeInlinePanelWidth = restoredWidth;
       _homeInlinePanelEditorHeight = restoredEditorHeight;
       _homeInlinePanelXRatio = _clampRatio(saved?.xRatio ?? 0);
@@ -421,12 +964,41 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
+  double? _readHomeInlineComposeGlobalTop() {
+    final context = _homeInlineComposeCardKey.currentContext;
+    if (context == null) return null;
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return null;
+    return renderObject.localToGlobal(Offset.zero).dy;
+  }
+
+  void _restoreHomeInlineComposeViewportAnchor(double? previousGlobalTop) {
+    if (previousGlobalTop == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final nextGlobalTop = _readHomeInlineComposeGlobalTop();
+      if (nextGlobalTop == null) return;
+      final delta = nextGlobalTop - previousGlobalTop;
+      if (delta.abs() < 0.5) return;
+      final position = _scrollController.position;
+      final target = (position.pixels + delta)
+          .clamp(0.0, position.maxScrollExtent)
+          .toDouble();
+      if ((target - position.pixels).abs() < 0.5) return;
+      _scrollController.jumpTo(target);
+    });
+  }
+
   void _applyHomeInlinePanelRect(
     DesktopResizablePanelRect rect, {
     required double availableWidth,
     required double availableHeight,
     bool persist = false,
   }) {
+    final previousRect = _buildHomeInlinePanelRect(
+      availableWidth: availableWidth,
+      availableHeight: availableHeight,
+    );
     final maxWidth = _resolveHomeInlineMaxWidth(availableWidth);
     final maxEditorHeight = _resolveHomeInlineMaxEditorHeight(availableHeight);
     final minWidth = math.min(_homeInlineComposeMinWidth, maxWidth);
@@ -434,6 +1006,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _homeInlineComposeMinEditorHeight,
       maxEditorHeight,
     );
+    final shouldMaintainViewportAnchor =
+        previousRect != null && (rect.top - previousRect.top).abs() < 0.5;
+    final previousGlobalTop = shouldMaintainViewportAnchor
+        ? _readHomeInlineComposeGlobalTop()
+        : null;
     final nextWidth = rect.width.clamp(minWidth, maxWidth).toDouble();
     final nextEditorHeight = (rect.height - _homeInlinePanelChromeHeight)
         .clamp(minEditorHeight, maxEditorHeight)
@@ -455,12 +1032,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         .toDouble();
     final nextXRatio = _ratioFromOffset(nextLeft, freeWidth);
     final nextYRatio = _ratioFromOffset(nextTop, freeHeight);
-    setState(() {
+    _setStateWithDiagnostics('home_inline_panel_rect', () {
       _homeInlinePanelWidth = nextWidth;
       _homeInlinePanelEditorHeight = nextEditorHeight;
       _homeInlinePanelXRatio = nextXRatio;
       _homeInlinePanelYRatio = nextYRatio;
     });
+    _restoreHomeInlineComposeViewportAnchor(previousGlobalTop);
     if (!persist) return;
     ref
         .read(devicePreferencesProvider.notifier)
@@ -493,6 +1071,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       initialPageSize: _initialPageSize,
       pageStep: _pageStep,
     );
+    _floatingCollapseController = MemosListFloatingCollapseController();
     _inlineComposeUiController = MemosListInlineComposeUiController(
       composer: _inlineComposer,
       focusNode: _inlineComposeFocusNode,
@@ -550,6 +1129,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       markSceneGuideSeen: _markSceneGuideSeen,
       embeddedNavigationHost: widget.embeddedNavigationHost,
       showNoteInputSheet: widget.showNoteInputSheet,
+      showWindowsDesktopNoteInput: _showWindowsDesktopComposeSurface,
       showVoiceRecordOverlay: widget.showVoiceRecordOverlay,
     );
     _memoActionDelegate = MemosListMemoActionDelegate(
@@ -560,6 +1140,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       removeMemoWithAnimation: _removeMemoWithAnimation,
       invalidateMemoRenderCache: invalidateMemoRenderCacheForUid,
       invalidateMemoMarkdownCache: invalidateMemoMarkdownCacheForUid,
+      copyMemoContent: _copyMemoContent,
       openEditor: _openMemoEditor,
       openHistory: _openMemoHistory,
       openReminder: _openMemoReminder,
@@ -596,26 +1177,23 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       },
     );
     _animatedListController = MemosListAnimatedListController();
+    _logManager = ref.read(logManagerProvider);
     _diagnostics = MemosListDiagnostics(
       debugLog: (message, {error, stackTrace, context}) {
-        ref
-            .read(logManagerProvider)
-            .debug(
-              message,
-              error: error,
-              stackTrace: stackTrace,
-              context: context,
-            );
+        _logManager.debug(
+          message,
+          error: error,
+          stackTrace: stackTrace,
+          context: context,
+        );
       },
       infoLog: (message, {error, stackTrace, context}) {
-        ref
-            .read(logManagerProvider)
-            .info(
-              message,
-              error: error,
-              stackTrace: stackTrace,
-              context: context,
-            );
+        _logManager.info(
+          message,
+          error: error,
+          stackTrace: stackTrace,
+          context: context,
+        );
       },
       logEmptyViewDiagnostics:
           ({
@@ -701,27 +1279,56 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             unawaited(_routeDelegate.toggleMemoFlowVisibilityFromShortcut()),
       ),
     );
+    _audioPlaybackCoordinatorListener = _buildStateListener(
+      'audio_playback_coordinator',
+    );
+    _mutationCoordinatorListener = _buildStateListener('mutation_coordinator');
+    _viewportCoordinatorListener = _buildStateListener('viewport_coordinator');
+    _headerControllerListener = _buildStateListener('header_controller');
+    _inlineComposeUiControllerListener = _buildStateListener(
+      'inline_compose_ui_controller',
+    );
+    _localLibraryCoordinatorListener = _buildStateListener(
+      'local_library_coordinator',
+    );
+    _routeDelegateListener = _buildStateListener('route_delegate');
+    _animatedListControllerListener = _buildStateListener(
+      'animated_list_controller',
+    );
 
     _inlineComposeCoordinator.addListener(
       _handleInlineComposeCoordinatorChanged,
     );
-    _audioPlaybackCoordinator.addListener(_handleCoordinatorChanged);
-    _mutationCoordinator.addListener(_handleCoordinatorChanged);
-    _viewportCoordinator.addListener(_handleCoordinatorChanged);
-    _headerController.addListener(_handleCoordinatorChanged);
-    _inlineComposeUiController.addListener(_handleCoordinatorChanged);
-    _localLibraryCoordinator.addListener(_handleCoordinatorChanged);
-    _routeDelegate.addListener(_handleCoordinatorChanged);
-    _animatedListController.addListener(_handleCoordinatorChanged);
+    _audioPlaybackCoordinator.addListener(_audioPlaybackCoordinatorListener);
+    _mutationCoordinator.addListener(_mutationCoordinatorListener);
+    _viewportCoordinator.addListener(_viewportCoordinatorListener);
+    _headerController.addListener(_headerControllerListener);
+    _inlineComposeUiController.addListener(_inlineComposeUiControllerListener);
+    _localLibraryCoordinator.addListener(_localLibraryCoordinatorListener);
+    _routeDelegate.addListener(_routeDelegateListener);
+    _animatedListController.addListener(_animatedListControllerListener);
     _inlineComposer.addListener(_handleInlineComposeStateChanged);
     _scrollController.addListener(_handleViewportScrollChanged);
     _inlineComposer.textController.addListener(_handleInlineComposeChanged);
     _inlineComposeFocusNode.addListener(_handleInlineComposeFocusChanged);
+    _showBackToTopDiagnosticsListener = _handleShowBackToTopDiagnosticsChanged;
+    _viewportCoordinator.showBackToTopListenable.addListener(
+      _showBackToTopDiagnosticsListener,
+    );
+    _floatingCollapseDiagnosticsListener =
+        _handleFloatingCollapseDiagnosticsChanged;
+    _floatingCollapseController.addListener(
+      _floatingCollapseDiagnosticsListener,
+    );
+    _lastShowBackToTopDiagnosticsValue = _viewportCoordinator.showBackToTop;
+    _lastFloatingCollapseDiagnosticsState = _floatingCollapseController.value;
+    _frameTimingsCallback = _handleFrameTimings;
+    SchedulerBinding.instance.addTimingsCallback(_frameTimingsCallback);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleViewportScrollChanged();
       _openDrawerIfNeeded();
-      _syncHomeInlineAvailableHeight();
+      _scheduleViewportDerivedMetricsSync();
       if (!mounted) return;
       final message = widget.toastMessage;
       if (message == null || message.trim().isEmpty) return;
@@ -753,6 +1360,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       HardwareKeyboard.instance.removeHandler(_handleDesktopShortcuts);
     }
     _inlineComposeDraftTimer?.cancel();
+    _desktopPreviewPressTimer?.cancel();
     _scrollController.removeListener(_handleViewportScrollChanged);
     _inlineComposer.removeListener(_handleInlineComposeStateChanged);
     _inlineComposer.textController.removeListener(_handleInlineComposeChanged);
@@ -760,14 +1368,26 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _inlineComposeCoordinator.removeListener(
       _handleInlineComposeCoordinatorChanged,
     );
-    _audioPlaybackCoordinator.removeListener(_handleCoordinatorChanged);
-    _mutationCoordinator.removeListener(_handleCoordinatorChanged);
-    _viewportCoordinator.removeListener(_handleCoordinatorChanged);
-    _headerController.removeListener(_handleCoordinatorChanged);
-    _inlineComposeUiController.removeListener(_handleCoordinatorChanged);
-    _localLibraryCoordinator.removeListener(_handleCoordinatorChanged);
-    _routeDelegate.removeListener(_handleCoordinatorChanged);
-    _animatedListController.removeListener(_handleCoordinatorChanged);
+    _audioPlaybackCoordinator.removeListener(_audioPlaybackCoordinatorListener);
+    _mutationCoordinator.removeListener(_mutationCoordinatorListener);
+    _viewportCoordinator.removeListener(_viewportCoordinatorListener);
+    _headerController.removeListener(_headerControllerListener);
+    _inlineComposeUiController.removeListener(
+      _inlineComposeUiControllerListener,
+    );
+    _localLibraryCoordinator.removeListener(_localLibraryCoordinatorListener);
+    _routeDelegate.removeListener(_routeDelegateListener);
+    _animatedListController.removeListener(_animatedListControllerListener);
+    _viewportCoordinator.showBackToTopListenable.removeListener(
+      _showBackToTopDiagnosticsListener,
+    );
+    _floatingCollapseController.removeListener(
+      _floatingCollapseDiagnosticsListener,
+    );
+    SchedulerBinding.instance.removeTimingsCallback(_frameTimingsCallback);
+    _flushScrollPerfSession('dispose');
+    _scrollPerfIdleTimer?.cancel();
+    _scrollPerfIdleTimer = null;
     _voiceOverlayDragSession?.dispose();
     unawaited(_saveInlineComposeDraft(triggerSync: false));
     _inlineComposeCoordinator.dispose();
@@ -778,6 +1398,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _localLibraryCoordinator.dispose();
     _routeDelegate.dispose();
     _animatedListController.dispose();
+    _floatingCollapseController.dispose();
     _inlineComposeFocusNode.dispose();
     _inlineComposer.dispose();
     _headerController.dispose();
@@ -785,16 +1406,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     super.dispose();
   }
 
-  void _handleCoordinatorChanged() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
   void _handleInlineComposeCoordinatorChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    _setStateWithDiagnostics('inline_compose_coordinator', () {});
     _scheduleInlineComposeDraftSave();
   }
 
@@ -882,9 +1495,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           .toList(growable: false),
     );
     _suppressInlineComposeDraftSave = false;
-    if (mounted) {
-      setState(() {});
-    }
+    _setStateWithDiagnostics('restore_inline_compose_draft', () {});
   }
 
   void _clearInlineComposeState() {
@@ -895,9 +1506,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _inlineComposeCoordinator.resetDraftStateToDefault();
     _suppressInlineComposeDraftSave = false;
     unawaited(ref.read(noteDraftProvider.notifier).clear());
-    if (mounted) {
-      setState(() {});
-    }
+    _setStateWithDiagnostics('clear_inline_compose_state', () {});
   }
 
   List<MemoComposerLinkedMemo> _inlineLinkedMemosFromRelations(
@@ -1113,6 +1722,109 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
+  VoidCallback _buildStateListener(String source) {
+    return () => _setStateWithDiagnostics(source, () {});
+  }
+
+  void _setStateWithDiagnostics(String source, VoidCallback fn) {
+    if (!mounted) return;
+    _recordScrollPerfStateTrigger(source);
+    setState(fn);
+  }
+
+  void _handleFrameTimings(List<FrameTiming> timings) {
+    if (!_enableScrollPerfDiagnostics) return;
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    for (final timing in timings) {
+      session.recordFrameTiming(timing);
+    }
+  }
+
+  void _handleShowBackToTopDiagnosticsChanged() {
+    final next = _viewportCoordinator.showBackToTop;
+    if (next == _lastShowBackToTopDiagnosticsValue) return;
+    _lastShowBackToTopDiagnosticsValue = next;
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    session.showBackToTopToggleCount += 1;
+  }
+
+  void _handleFloatingCollapseDiagnosticsChanged() {
+    final next = _floatingCollapseController.value;
+    final previous = _lastFloatingCollapseDiagnosticsState;
+    if (next == previous) return;
+    _lastFloatingCollapseDiagnosticsState = next;
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    session.floatingStateChangeCount += 1;
+    if (previous.memoUid != next.memoUid) {
+      session.floatingMemoSwitchCount += 1;
+    }
+    if (previous.scrolling != next.scrolling) {
+      session.floatingScrollingToggleCount += 1;
+    }
+  }
+
+  void _ensureScrollPerfSession(String source, {double? pixels}) {
+    if (!_enableScrollPerfDiagnostics) return;
+    final initialPixels = pixels ?? _currentViewportMetrics()?.pixels ?? 0.0;
+    final session = _scrollPerfSession ??= _MemosScrollPerfSession(
+      startedAt: DateTime.now(),
+      initialPixels: initialPixels,
+    );
+    session.recordActivity(source, pixels: pixels);
+    _scrollPerfIdleTimer?.cancel();
+    _scrollPerfIdleTimer = Timer(
+      const Duration(milliseconds: 420),
+      () => _flushScrollPerfSession('idle'),
+    );
+  }
+
+  void _flushScrollPerfSession(String reason) {
+    if (!_enableScrollPerfDiagnostics) return;
+    final session = _scrollPerfSession;
+    if (session == null || !session.hasMeaningfulData) {
+      _scrollPerfSession = null;
+      return;
+    }
+    _scrollPerfSession = null;
+    _scrollPerfIdleTimer?.cancel();
+    _scrollPerfIdleTimer = null;
+    _logManager.info(
+      'Memos scroll perf: session',
+      context: session.toContext(reason: reason),
+    );
+  }
+
+  void _recordScrollPerfStateTrigger(String source) {
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    session.recordStateTrigger(source);
+  }
+
+  void _recordScrollPerfViewportDerivedMetricsSyncScheduled() {
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    session.viewportDerivedSyncScheduleCount += 1;
+  }
+
+  void _recordScrollPerfViewportDerivedMetricsSyncApplied() {
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    session.viewportDerivedSyncApplyCount += 1;
+  }
+
+  void _recordScrollPerfFloatingGeometryChange({required bool removed}) {
+    final session = _scrollPerfSession;
+    if (session == null) return;
+    if (removed) {
+      session.floatingGeometryRemoveCount += 1;
+      return;
+    }
+    session.floatingGeometryUpsertCount += 1;
+  }
+
   MemosListViewportMetrics _viewportMetricsFromScrollMetrics(
     ScrollMetrics metrics,
   ) {
@@ -1169,7 +1881,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   void _handleViewportScrollChanged() {
     final metrics = _currentViewportMetrics();
     if (metrics == null) return;
+    _ensureScrollPerfSession('scroll_listener', pixels: metrics.pixels);
+    _scrollPerfSession?.recordScrollListenerTick(pixels: metrics.pixels);
     final effect = _viewportCoordinator.handleScroll(metrics);
+    _floatingCollapseController.updateViewportMetrics(metrics);
     if (effect.jumpedToTopUnexpectedly) {
       _logPaginationDebug(
         'scroll_jump_to_top_detected',
@@ -1177,17 +1892,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         context: <String, Object?>{'previousOffset': effect.previousOffset},
       );
     }
-    _requestFloatingCollapseRecompute();
-  }
-
-  void _requestFloatingCollapseRecompute() {
-    _viewportCoordinator.requestFloatingCollapseRecompute(
-      schedulePostFrame: (callback) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => callback());
-      },
-      resolveMemoUid: () => _animatedListController
-          .resolveFloatingCollapseMemoUid(_floatingCollapseViewportKey),
-    );
   }
 
   MemosListViewportScrollEvent? _viewportScrollEventFromNotification(
@@ -1245,23 +1949,35 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   bool _handleViewportScrollNotification(ScrollNotification notification) {
     final event = _viewportScrollEventFromNotification(notification);
     if (event == null) return false;
-    _viewportCoordinator.handleFloatingCollapseScrollEvent(event);
+    if ((event.kind == MemosListViewportScrollEventKind.start ||
+            event.kind == MemosListViewportScrollEventKind.update ||
+            event.kind == MemosListViewportScrollEventKind.overscroll) &&
+        _activeDesktopPreviewPressSequence != null) {
+      _cancelPendingDesktopPreviewPress(rollbackIfOpened: true);
+    }
+    _ensureScrollPerfSession(
+      'scroll_notification_${event.kind.name}',
+      pixels: event.metrics.pixels,
+    );
+    _scrollPerfSession?.recordScrollNotification(
+      event.kind.name,
+      pixels: event.metrics.pixels,
+    );
+    _floatingCollapseController.handleScrollEvent(event);
     final effect = _viewportCoordinator.handleLoadMoreScrollEvent(
       event,
       touchPullEnabled: _isTouchPullLoadPlatform(),
     );
     _logLoadMoreEffect(effect, metrics: notification.metrics);
-    _requestFloatingCollapseRecompute();
     return false;
   }
 
   void _collapseActiveMemoFromFloatingButton() {
-    final memoUid = _floatingCollapseMemoUid;
+    final memoUid = _floatingCollapseController.value.memoUid;
     if (memoUid == null) return;
     final memoState = _animatedListController.currentStateFor(memoUid);
     if (memoState == null) return;
     memoState.collapseFromFloating();
-    _requestFloatingCollapseRecompute();
   }
 
   bool _handlePageNavigationShortcut({
@@ -1281,6 +1997,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   void _handleViewportPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
+    final pixels = _currentViewportMetrics()?.pixels;
+    _ensureScrollPerfSession('pointer_signal', pixels: pixels);
+    _scrollPerfSession?.recordPointerSignal(
+      event.scrollDelta.dy,
+      pixels: pixels,
+    );
     final effect = _viewportCoordinator.handleDesktopWheel(
       deltaY: event.scrollDelta.dy,
       touchPullEnabled: _isTouchPullLoadPlatform(),
@@ -1383,7 +2105,63 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   bool _handleDesktopShortcuts(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
+
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final paneState = ref.read(desktopHomePaneStateProvider);
+    final selectedMemo = _findMemoByUid(
+      _animatedMemos,
+      paneState.selectedMemoUid,
+    );
+    final isWideWindowsLayout =
+        !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.windows &&
+        resolveWindowsDesktopLayout(
+              MediaQuery.sizeOf(context).width,
+              platform: TargetPlatform.windows,
+            ).tier ==
+            WindowsDesktopLayoutTier.wide;
+    final primaryPressed = isPrimaryShortcutModifierPressed(pressed);
+    final shiftPressed = isShiftModifierPressed(pressed);
+    final altPressed = isAltModifierPressed(pressed);
+    final textInputFocused = _isTextInputFocused();
+
+    if (event.logicalKey == LogicalKeyboardKey.escape &&
+        paneState.secondaryPaneMode != DesktopHomeSecondaryPaneMode.none) {
+      _closeDesktopPreview();
+      return true;
+    }
+
+    if (!textInputFocused && selectedMemo != null) {
+      if (!primaryPressed &&
+          !shiftPressed &&
+          !altPressed &&
+          event.logicalKey == LogicalKeyboardKey.enter &&
+          isWideWindowsLayout) {
+        _openMemoDetailRoute(
+          selectedMemo,
+          heroTag: memoHeroTagForMemo(selectedMemo),
+        );
+        return true;
+      }
+
+      if (primaryPressed && !shiftPressed && !altPressed) {
+        if (event.logicalKey == LogicalKeyboardKey.keyE &&
+            isWideWindowsLayout) {
+          unawaited(
+            _memoActionDelegate.handleMemoAction(
+              selectedMemo,
+              MemoCardAction.edit,
+            ),
+          );
+          return true;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.keyC) {
+          unawaited(_copyMemoContent(selectedMemo));
+          return true;
+        }
+      }
+    }
+
     final dispatch = _desktopShortcutDelegate.handle(event, pressed);
     if (dispatch.shouldLog) {
       final stage = switch (dispatch.stage) {
@@ -1407,13 +2185,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   @override
   void onWindowMaximize() {
     _routeDelegate.onWindowMaximize();
-    _syncHomeInlineAvailableHeight();
+    _scheduleViewportDerivedMetricsSync();
   }
 
   @override
   void onWindowUnmaximize() {
     _routeDelegate.onWindowUnmaximize();
-    _syncHomeInlineAvailableHeight();
+    _scheduleViewportDerivedMetricsSync();
   }
 
   String _formatDuration(Duration? value) {
@@ -1600,6 +2378,19 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   Future<void> _openMemoEditor(LocalMemo memo) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      final layoutSpec = _resolveCurrentWindowsDesktopLayout();
+      if (layoutSpec.tier != WindowsDesktopLayoutTier.narrow) {
+        _openDesktopComposeEdit(memo);
+        return;
+      }
+      await _showDesktopComposeDialog(
+        existing: memo,
+        fullscreen: layoutSpec.tier == WindowsDesktopLayoutTier.narrow,
+      );
+      ref.invalidate(memoRelationsProvider(memo.uid));
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
     );
@@ -1894,6 +2685,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         ),
         memo: memo,
         heroTag: null,
+        selected: false,
         animation: animation,
         prefs: prefs,
         outboxStatus: outboxStatus,
@@ -1925,7 +2717,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         onDoubleTapEdit: () {},
         onLongPressCopy: () =>
             _markSceneGuideSeen(SceneMicroGuideId.memoListGestures),
-        onFloatingStateChanged: _requestFloatingCollapseRecompute,
+        onFloatingGeometryChanged: (geometry) {
+          if (!mounted) return;
+          _recordScrollPerfFloatingGeometryChange(removed: geometry == null);
+          if (geometry == null) {
+            _floatingCollapseController.removeGeometry(memo.uid);
+            return;
+          }
+          _floatingCollapseController.upsertGeometry(memo.uid, geometry);
+        },
         onAction: (action) =>
             unawaited(_memoActionDelegate.handleMemoAction(memo, action)),
       ),
@@ -2156,10 +2956,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     }
 
     final visibleMemos = _animatedMemos;
+    _scrollPerfSession?.recordBuild(visibleMemos.length);
     _animatedListController.syncMemoCardKeys(visibleMemos);
-    _requestFloatingCollapseRecompute();
+    _scheduleFloatingCollapseVisibleMemoPrune(visibleMemos);
 
     final devicePrefs = ref.watch(devicePreferencesProvider);
+    final desktopHomePaneState = ref.watch(desktopHomePaneStateProvider);
+    final previewSession = ref.watch(desktopMemoPreviewSessionProvider);
+    final desktopHomeLayoutPreference = devicePrefs.desktopHomeLayoutPreference;
     final resolvedSettings = ref.watch(resolvedAppSettingsProvider);
     final prefs = resolvedSettings.toLegacyAppPreferences();
     final workspacePrefs = ref.watch(currentWorkspacePreferencesProvider);
@@ -2189,18 +2993,58 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       tagColorLookup: tagColorLookup,
       templateSettings: templateSettings,
     );
+    _syncDesktopPreviewSelection(
+      layout: viewState.layout,
+      visibleMemos: visibleMemos,
+    );
+    final previewMemo = desktopHomePaneState.previewVisible
+        ? _findMemoByUid(visibleMemos, desktopHomePaneState.selectedMemoUid)
+        : null;
+    final previewWarmupMemo =
+        previewMemo ?? (visibleMemos.isNotEmpty ? visibleMemos.first : null);
+    if (viewState.layout.supportsDesktopPreviewPane &&
+        previewWarmupMemo != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(desktopMemoPreviewSessionProvider.notifier)
+            .prewarmMemo(previewWarmupMemo);
+      });
+    }
+    if (viewState.layout.supportsDesktopPreviewPane &&
+        desktopHomePaneState.previewVisible &&
+        previewMemo != null) {
+      final requestedMemo = previewSession.requestedMemo;
+      final previewChanged =
+          requestedMemo?.uid != previewMemo.uid ||
+          requestedMemo?.contentFingerprint != previewMemo.contentFingerprint ||
+          requestedMemo?.updateTime != previewMemo.updateTime;
+      if (previewChanged) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(
+            ref
+                .read(desktopMemoPreviewSessionProvider.notifier)
+                .requestMemo(previewMemo),
+          );
+        });
+      }
+    }
     if (_enableResizableHomeInlineCompose &&
         viewState.layout.useInlineCompose) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _syncHomeInlineAvailableHeight();
+        _scheduleViewportDerivedMetricsSync();
       });
     }
     final activeListGuideId = viewState.guide.activeListGuideId;
     if (_presentedListGuideId == null && activeListGuideId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _presentedListGuideId != null) return;
-        setState(() => _presentedListGuideId = activeListGuideId);
+        _setStateWithDiagnostics(
+          'scene_guide_presented',
+          () => _presentedListGuideId = activeListGuideId,
+        );
       });
     }
 
@@ -2296,6 +3140,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _ => null,
     };
     final debugApiVersionText = ref.watch(memosListDebugApiVersionTextProvider);
+    final resolvedTagPath = (resolvedTag ?? '').trim();
     final drawerPanel = widget.showDrawer
         ? AppDrawer(
             selected: widget.state == 'ARCHIVED'
@@ -2305,9 +3150,20 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             onSelectTag: _openTagFromDrawer,
             onOpenNotifications: _routeDelegate.openNotifications,
             embedded: viewState.layout.useDesktopSidePane,
-            selectedTagPath: (resolvedTag ?? '').trim().isEmpty
-                ? null
-                : resolvedTag!.trim(),
+            selectedTagPath: resolvedTagPath.isEmpty ? null : resolvedTagPath,
+          )
+        : null;
+    final desktopDrawerPanelBuilder = widget.showDrawer
+        ? (AppDrawerViewMode viewMode, bool embedded) => AppDrawer(
+            selected: widget.state == 'ARCHIVED'
+                ? AppDrawerDestination.archived
+                : AppDrawerDestination.memos,
+            onSelect: _routeDelegate.navigateDrawer,
+            onSelectTag: _openTagFromDrawer,
+            onOpenNotifications: _routeDelegate.openNotifications,
+            embedded: embedded,
+            viewMode: viewMode,
+            selectedTagPath: resolvedTagPath.isEmpty ? null : resolvedTagPath,
           )
         : null;
 
@@ -2369,11 +3225,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           )
         : null;
     final resolvedTagChip =
-        widget.showFilterTagChip && (resolvedTag?.trim().isNotEmpty ?? false)
+        widget.showFilterTagChip && resolvedTagPath.isNotEmpty
         ? MemosListFilterTagChip(
-            label: '#${resolvedTag!.trim()}',
+            label: '#$resolvedTagPath',
             colors: tagColorLookup.resolveChipColorsByPath(
-              resolvedTag.trim(),
+              resolvedTagPath,
               surfaceColor: Theme.of(context).colorScheme.surface,
               isDark: isDark,
             ),
@@ -2401,74 +3257,86 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final devicePreferencesLoaded = ref.watch(devicePreferencesLoadedProvider);
     final shouldEnableResizableHomeInlineCompose =
         _enableResizableHomeInlineCompose && viewState.layout.useInlineCompose;
+    final windowsDesktopLayout = _resolveCurrentWindowsDesktopLayout();
+    final supportsDesktopSecondaryPane =
+        viewState.layout.supportsDesktopPreviewPane &&
+        windowsDesktopLayout.supportsSecondaryPane;
+    final enableDesktopPreviewInteraction =
+        supportsDesktopSecondaryPane &&
+        (viewState.layout.useDesktopPreviewPane ||
+            desktopHomePaneState.secondaryPaneMode !=
+                DesktopHomeSecondaryPaneMode.none);
     Widget buildInlineComposeCard({
       double? desktopEditorViewportHeight,
       ValueChanged<InlineComposeLayoutMetrics>? onLayoutMetricsChanged,
     }) {
-      return MemosListInlineComposeCard(
-        composer: _inlineComposer,
-        focusNode: _inlineComposeFocusNode,
-        pendingDraftCount: ref.watch(composeDraftCountProvider),
-        busy: _inlineComposeBusy,
-        locating: _inlineComposeCoordinator.locating,
-        location: _inlineComposeCoordinator.location,
-        visibility: inlineVisibility,
-        visibilityTouched: _inlineComposeCoordinator.visibilityTouched,
-        visibilityLabel: inlineVisibilityPresentation.label,
-        visibilityIcon: inlineVisibilityPresentation.icon,
-        visibilityColor: inlineVisibilityPresentation.color,
-        isDark: isDark,
-        tagStats: tagStats,
-        availableTemplates: viewState.availableTemplates,
-        tagColorLookup: tagColorLookup,
-        toolbarPreferences: toolbarPreferences,
-        editorFieldKey: _inlineEditorFieldKey,
-        tagMenuKey: _inlineTagMenuKey,
-        templateMenuKey: _inlineTemplateMenuKey,
-        todoMenuKey: _inlineTodoMenuKey,
-        visibilityMenuKey: _inlineVisibilityMenuKey,
-        onSubmit: () => unawaited(_submitInlineCompose()),
-        onRemoveAttachment: _inlineComposeCoordinator.removePendingAttachment,
-        onOpenAttachment: (attachment) => unawaited(
-          _inlineComposeCoordinator.openAttachmentViewer(context, attachment),
-        ),
-        onRemoveLinkedMemo: _inlineComposeCoordinator.removeLinkedMemo,
-        onRequestLocation: () =>
-            unawaited(_inlineComposeCoordinator.requestLocation(context)),
-        onClearLocation: _inlineComposeCoordinator.clearLocation,
-        onOpenTemplateMenu: () => unawaited(
-          _inlineComposeCoordinator.openTemplateMenuFromKey(
-            context,
-            _inlineTemplateMenuKey,
-            viewState.availableTemplates,
+      return KeyedSubtree(
+        key: _homeInlineComposeCardKey,
+        child: MemosListInlineComposeCard(
+          composer: _inlineComposer,
+          focusNode: _inlineComposeFocusNode,
+          pendingDraftCount: ref.watch(composeDraftCountProvider),
+          busy: _inlineComposeBusy,
+          locating: _inlineComposeCoordinator.locating,
+          location: _inlineComposeCoordinator.location,
+          visibility: inlineVisibility,
+          visibilityTouched: _inlineComposeCoordinator.visibilityTouched,
+          visibilityLabel: inlineVisibilityPresentation.label,
+          visibilityIcon: inlineVisibilityPresentation.icon,
+          visibilityColor: inlineVisibilityPresentation.color,
+          isDark: isDark,
+          tagStats: tagStats,
+          availableTemplates: viewState.availableTemplates,
+          tagColorLookup: tagColorLookup,
+          toolbarPreferences: toolbarPreferences,
+          editorFieldKey: _inlineEditorFieldKey,
+          tagMenuKey: _inlineTagMenuKey,
+          templateMenuKey: _inlineTemplateMenuKey,
+          todoMenuKey: _inlineTodoMenuKey,
+          visibilityMenuKey: _inlineVisibilityMenuKey,
+          onSubmit: () => unawaited(_submitInlineCompose()),
+          onRemoveAttachment: _inlineComposeCoordinator.removePendingAttachment,
+          onOpenAttachment: (attachment) => unawaited(
+            _inlineComposeCoordinator.openAttachmentViewer(context, attachment),
           ),
-        ),
-        onPickGallery: () => unawaited(
-          _inlineComposeCoordinator.pickGalleryAttachments(context),
-        ),
-        onPickFile: () =>
-            unawaited(_inlineComposeCoordinator.pickAttachments(context)),
-        onOpenLinkMemo: () =>
-            unawaited(_inlineComposeCoordinator.openLinkMemoSheet(context)),
-        onCaptureCamera: () =>
-            unawaited(_inlineComposeCoordinator.capturePhoto(context)),
-        onOpenDraftBox: () => unawaited(_openInlineComposeDraftBox()),
-        onOpenTodoMenu: () => unawaited(
-          _inlineComposeCoordinator.openTodoShortcutMenuFromKey(
-            context,
-            _inlineTodoMenuKey,
+          onRemoveLinkedMemo: _inlineComposeCoordinator.removeLinkedMemo,
+          onRequestLocation: () =>
+              unawaited(_inlineComposeCoordinator.requestLocation(context)),
+          onClearLocation: _inlineComposeCoordinator.clearLocation,
+          onOpenTemplateMenu: () => unawaited(
+            _inlineComposeCoordinator.openTemplateMenuFromKey(
+              context,
+              _inlineTemplateMenuKey,
+              viewState.availableTemplates,
+            ),
           ),
-        ),
-        onOpenVisibilityMenu: () => unawaited(
-          _inlineComposeCoordinator.openVisibilityMenuFromKey(
-            context,
-            _inlineVisibilityMenuKey,
+          onPickGallery: () => unawaited(
+            _inlineComposeCoordinator.pickGalleryAttachments(context),
           ),
+          onPickFile: () =>
+              unawaited(_inlineComposeCoordinator.pickAttachments(context)),
+          onOpenLinkMemo: () =>
+              unawaited(_inlineComposeCoordinator.openLinkMemoSheet(context)),
+          onCaptureCamera: () =>
+              unawaited(_inlineComposeCoordinator.capturePhoto(context)),
+          onOpenDraftBox: () => unawaited(_openInlineComposeDraftBox()),
+          onOpenTodoMenu: () => unawaited(
+            _inlineComposeCoordinator.openTodoShortcutMenuFromKey(
+              context,
+              _inlineTodoMenuKey,
+            ),
+          ),
+          onOpenVisibilityMenu: () => unawaited(
+            _inlineComposeCoordinator.openVisibilityMenuFromKey(
+              context,
+              _inlineVisibilityMenuKey,
+            ),
+          ),
+          onCutParagraphs: () =>
+              unawaited(_inlineComposeUiController.cutCurrentParagraphs()),
+          desktopEditorViewportHeight: desktopEditorViewportHeight,
+          onLayoutMetricsChanged: onLayoutMetricsChanged,
         ),
-        onCutParagraphs: () =>
-            unawaited(_inlineComposeUiController.cutCurrentParagraphs()),
-        desktopEditorViewportHeight: desktopEditorViewportHeight,
-        onLayoutMetricsChanged: onLayoutMetricsChanged,
       );
     }
 
@@ -2489,12 +3357,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                         devicePreferencesLoaded &&
                         _homeInlinePanelMetricsReady &&
                         availableWidth > 0 &&
-                        measuredAvailableHeight > 0) {
+                        availableHeight > 0) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) return;
                         _maybeRestoreHomeInlinePanelLayout(
                           availableWidth: availableWidth,
-                          availableHeight: measuredAvailableHeight,
+                          availableHeight: availableHeight,
                         );
                       });
                     }
@@ -2603,6 +3471,92 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             hapticsEnabled: hapticsEnabled,
           )
         : null;
+    final resolvedPreviewMemo = previewMemo;
+    Widget? desktopPreviewPane;
+    if (viewState.layout.supportsDesktopPreviewPane) {
+      desktopPreviewPane = MemosListDesktopPreviewPane(
+        selectedMemo: resolvedPreviewMemo,
+        isVisible: desktopHomePaneState.previewVisible,
+        onClose: _closeDesktopPreview,
+        onEditMemo: () {
+          final activeMemo =
+              ref.read(desktopMemoPreviewSessionProvider).data?.memo ??
+              resolvedPreviewMemo;
+          if (activeMemo == null) return;
+          unawaited(_openMemoEditor(activeMemo));
+        },
+      );
+    }
+    Widget? desktopEditorModalSurface;
+    final composeTarget = desktopHomePaneState.composeDraftTarget;
+    if (desktopHomePaneState.editorVisible) {
+      final presentation = desktopHomePaneState.isEditorFullscreen
+          ? MemoEditorPresentation.desktopFullscreen
+          : MemoEditorPresentation.desktopModal;
+      if (composeTarget is DesktopHomeComposeEditMemo) {
+        final composeMemo = _findMemoByUid(visibleMemos, composeTarget.memoUid);
+        if (composeMemo != null) {
+          desktopEditorModalSurface = KeyedSubtree(
+            key: ValueKey<String>(
+              'desktop-memo-editor-surface:${composeMemo.uid}:$_composeTransitionKey',
+            ),
+            child: MemoEditorScreen(
+              existing: composeMemo,
+              presentation: presentation,
+              onSaved: _handleDesktopComposeSaved,
+              onCloseRequested: _closeDesktopCompose,
+              onToggleFullscreen: _toggleDesktopComposeFullscreen,
+            ),
+          );
+        }
+      } else {
+        desktopEditorModalSurface = KeyedSubtree(
+          key: ValueKey<String>(
+            'desktop-memo-editor-surface:new:$_composeTransitionKey',
+          ),
+          child: MemoEditorScreen(
+            initialText: _desktopComposeInitialText,
+            initialAttachmentPaths: _desktopComposeInitialAttachmentPaths,
+            ignoreDraft: _desktopComposeIgnoreDraft,
+            presentation: presentation,
+            onSaved: _handleDesktopComposeSaved,
+            onCloseRequested: _closeDesktopCompose,
+            onToggleFullscreen: _toggleDesktopComposeFullscreen,
+          ),
+        );
+      }
+    }
+    final desktopSecondaryPaneVisible =
+        desktopHomePaneState.previewVisible && desktopPreviewPane != null;
+    final windowsDesktopTrailingActions = <Widget>[
+      if (sortButton != null) sortButton,
+      if (supportsDesktopSecondaryPane)
+        IconButton(
+          key: const ValueKey<String>('desktop-preview-pane-toggle'),
+          tooltip: context.t.strings.legacy.msg_preview,
+          onPressed: _toggleDesktopSecondaryPane,
+          icon: Icon(
+            desktopSecondaryPaneVisible
+                ? Icons.visibility
+                : Icons.visibility_outlined,
+          ),
+        ),
+      IconButton(
+        tooltip: context.t.strings.legacy.msg_create_memo,
+        onPressed: _routeDelegate.openNoteInput,
+        icon: const Icon(Icons.add_rounded),
+      ),
+      IconButton(
+        tooltip: context.t.strings.legacy.msg_notifications,
+        onPressed: _routeDelegate.openNotifications,
+        icon: const Icon(Icons.notifications_none_rounded),
+      ),
+      IconButton(
+        tooltip: context.t.strings.legacy.msg_settings,
+        onPressed: () => unawaited(_routeDelegate.openSettings()),
+        icon: const Icon(Icons.settings_outlined),
+      ),
+    ];
 
     final shouldInterceptPop =
         widget.presentation != HomeScreenPresentation.embeddedBottomNav ||
@@ -2651,10 +3605,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           loadMoreHintTextColor: loadMoreHintTextColor,
           headerBackgroundColor: headerBg,
           bottomInset: bottomInset,
-          showBackToTop: _showBackToTop,
           hapticsEnabled: hapticsEnabled,
-          floatingCollapseVisible: _floatingCollapseMemoUid != null,
-          floatingCollapseScrolling: _floatingCollapseScrolling,
+          desktopPreviewVisible: desktopSecondaryPaneVisible,
           enableDrawerOpenDragGesture: widget.enableDrawerOpenDragGesture,
         ),
         drawerPanel: drawerPanel,
@@ -2671,6 +3623,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         bootstrapOverlayChild: _localLibraryCoordinator.bootstrapImportActive
             ? bootstrapOverlayChild
             : null,
+        desktopPreviewPane: desktopPreviewPane,
+        desktopEditorModalSurface: desktopEditorModalSurface,
+        desktopEditorModalVisible:
+            desktopHomePaneState.editorVisible &&
+            desktopEditorModalSurface != null,
+        desktopPreviewPaneWidth: desktopHomeLayoutPreference.secondaryPaneWidth,
+        onDesktopPreviewPaneWidthChanged: _setDesktopPreviewPaneWidthPreference,
         floatingActionButton: floatingActionButton,
         onRefresh: () => _handleRefresh(
           useShortcutFilter: useShortcutFilter,
@@ -2680,6 +3639,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         ),
         onScrollNotification: _handleViewportScrollNotification,
         onPointerSignal: _handleViewportPointerSignal,
+        showBackToTopListenable: _viewportCoordinator.showBackToTopListenable,
+        floatingCollapseListenable: _floatingCollapseController,
         onCloseSearch: _closeSearch,
         onOpenSearch: _openSearch,
         onToggleWindowsHeaderSearch: _toggleWindowsHeaderSearch,
@@ -2688,9 +3649,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           if (activeListGuideId == null) return;
           _markSceneGuideSeen(activeListGuideId);
         },
+        onViewportLayoutChanged: _scheduleViewportDerivedMetricsSync,
         onCollapseFloatingMemo: _collapseActiveMemoFromFloatingButton,
         onScrollToTop: () => unawaited(_handleScrollToTop()),
         quickActions: quickActions,
+        desktopDrawerPanelBuilder: desktopDrawerPanelBuilder,
+        windowsDesktopTrailingActions: windowsDesktopTrailingActions,
         onMinimize: () => unawaited(_routeDelegate.minimizeDesktopWindow()),
         onToggleMaximize: () =>
             unawaited(_routeDelegate.toggleDesktopWindowMaximize()),
@@ -2709,6 +3673,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             memoCardKey: _animatedListController.keyFor(memo.uid),
             memo: memo,
             heroTag: heroTag,
+            selected: desktopHomePaneState.selectedMemoUid == memo.uid,
             animation: animation,
             prefs: prefs,
             outboxStatus: outboxStatus,
@@ -2739,26 +3704,66 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
               ),
             ),
             onTap: () {
+              if (enableDesktopPreviewInteraction) {
+                _handleDesktopPreviewTap(memo);
+                return;
+              }
               if (prefs.hapticsEnabled) {
                 HapticFeedback.selectionClick();
               }
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      MemoDetailScreen(initialMemo: memo, heroTag: heroTag),
-                ),
-              );
+              _openMemoDetailRoute(memo, heroTag: heroTag);
             },
+            onTapDown: enableDesktopPreviewInteraction
+                ? (_) {
+                    if (prefs.hapticsEnabled) {
+                      HapticFeedback.selectionClick();
+                    }
+                    _handleDesktopPreviewTapDown(memo);
+                  }
+                : null,
+            onTapUp: enableDesktopPreviewInteraction
+                ? (_) => _handleDesktopPreviewTapUp(memo)
+                : null,
+            onTapCancel: enableDesktopPreviewInteraction
+                ? _handleDesktopPreviewTapCancel
+                : null,
             onDoubleTapEdit: () {
               _markSceneGuideSeen(SceneMicroGuideId.memoListGestures);
+              if (enableDesktopPreviewInteraction) {
+                _openMemoDetailRoute(memo, heroTag: heroTag);
+                return;
+              }
               unawaited(
                 _memoActionDelegate.handleMemoAction(memo, MemoCardAction.edit),
               );
             },
-            onLongPressCopy: () {
-              _markSceneGuideSeen(SceneMicroGuideId.memoListGestures);
+            onLongPressCopy: Platform.isWindows
+                ? null
+                : () {
+                    _markSceneGuideSeen(SceneMicroGuideId.memoListGestures);
+                  },
+            onSecondaryTapDown: Platform.isWindows
+                ? (details) => unawaited(
+                    _showMemoContextMenu(
+                      memo,
+                      details.globalPosition,
+                      showPreviewOnSelect:
+                          enableDesktopPreviewInteraction &&
+                          desktopHomePaneState.previewVisible,
+                    ),
+                  )
+                : null,
+            onFloatingGeometryChanged: (geometry) {
+              if (!mounted) return;
+              _recordScrollPerfFloatingGeometryChange(
+                removed: geometry == null,
+              );
+              if (geometry == null) {
+                _floatingCollapseController.removeGeometry(memo.uid);
+                return;
+              }
+              _floatingCollapseController.upsertGeometry(memo.uid, geometry);
             },
-            onFloatingStateChanged: _requestFloatingCollapseRecompute,
             onAction: (action) =>
                 unawaited(_memoActionDelegate.handleMemoAction(memo, action)),
           );
@@ -2799,6 +3804,173 @@ class _ScreenViewportScrollAdapter implements MemosListViewportScrollAdapter {
   @override
   void jumpTo(double offset) {
     _controller.jumpTo(offset);
+  }
+}
+
+class _MemosScrollPerfSession {
+  _MemosScrollPerfSession({
+    required this.startedAt,
+    required double initialPixels,
+  }) : startPixels = initialPixels,
+       lastPixels = initialPixels,
+       endPixels = initialPixels;
+
+  final DateTime startedAt;
+  final double startPixels;
+  double lastPixels;
+  double endPixels;
+  double absoluteScrollDistance = 0;
+  double maxTickDelta = 0;
+  double totalWheelDeltaAbs = 0;
+  int pointerSignalCount = 0;
+  int scrollListenerTickCount = 0;
+  int scrollNotificationCount = 0;
+  int viewportDerivedSyncScheduleCount = 0;
+  int viewportDerivedSyncApplyCount = 0;
+  int rootBuildCount = 0;
+  int maxVisibleMemoCount = 0;
+  int floatingGeometryUpsertCount = 0;
+  int floatingGeometryRemoveCount = 0;
+  int floatingStateChangeCount = 0;
+  int floatingMemoSwitchCount = 0;
+  int floatingScrollingToggleCount = 0;
+  int showBackToTopToggleCount = 0;
+  int frameCount = 0;
+  int buildOver8MsCount = 0;
+  int rasterOver8MsCount = 0;
+  int frameOver16MsCount = 0;
+  int frameOver33MsCount = 0;
+  double worstFrameTotalMs = 0;
+  double worstBuildMs = 0;
+  double worstRasterMs = 0;
+  final Map<String, int> activityCounts = <String, int>{};
+  final Map<String, int> scrollNotificationKindCounts = <String, int>{};
+  final Map<String, int> stateTriggerCounts = <String, int>{};
+
+  bool get hasMeaningfulData =>
+      pointerSignalCount > 0 ||
+      scrollListenerTickCount > 0 ||
+      scrollNotificationCount > 0 ||
+      frameCount > 0;
+
+  void recordActivity(String source, {double? pixels}) {
+    activityCounts[source] = (activityCounts[source] ?? 0) + 1;
+    if (pixels != null) {
+      updatePixels(pixels);
+    }
+  }
+
+  void updatePixels(double pixels) {
+    final delta = (pixels - lastPixels).abs();
+    if (delta > 0) {
+      absoluteScrollDistance += delta;
+      if (delta > maxTickDelta) {
+        maxTickDelta = delta;
+      }
+    }
+    lastPixels = pixels;
+    endPixels = pixels;
+  }
+
+  void recordPointerSignal(double deltaY, {double? pixels}) {
+    pointerSignalCount += 1;
+    totalWheelDeltaAbs += deltaY.abs();
+    if (pixels != null) {
+      updatePixels(pixels);
+    }
+  }
+
+  void recordScrollListenerTick({double? pixels}) {
+    scrollListenerTickCount += 1;
+    if (pixels != null) {
+      updatePixels(pixels);
+    }
+  }
+
+  void recordScrollNotification(String kind, {double? pixels}) {
+    scrollNotificationCount += 1;
+    scrollNotificationKindCounts[kind] =
+        (scrollNotificationKindCounts[kind] ?? 0) + 1;
+    if (pixels != null) {
+      updatePixels(pixels);
+    }
+  }
+
+  void recordStateTrigger(String source) {
+    stateTriggerCounts[source] = (stateTriggerCounts[source] ?? 0) + 1;
+  }
+
+  void recordBuild(int visibleMemoCount) {
+    rootBuildCount += 1;
+    if (visibleMemoCount > maxVisibleMemoCount) {
+      maxVisibleMemoCount = visibleMemoCount;
+    }
+  }
+
+  void recordFrameTiming(FrameTiming timing) {
+    frameCount += 1;
+    final buildMs = timing.buildDuration.inMicroseconds / 1000.0;
+    final rasterMs = timing.rasterDuration.inMicroseconds / 1000.0;
+    final totalMs = timing.totalSpan.inMicroseconds / 1000.0;
+    if (buildMs > 8) {
+      buildOver8MsCount += 1;
+    }
+    if (rasterMs > 8) {
+      rasterOver8MsCount += 1;
+    }
+    if (totalMs > 16) {
+      frameOver16MsCount += 1;
+    }
+    if (totalMs > 33) {
+      frameOver33MsCount += 1;
+    }
+    if (totalMs > worstFrameTotalMs) {
+      worstFrameTotalMs = totalMs;
+    }
+    if (buildMs > worstBuildMs) {
+      worstBuildMs = buildMs;
+    }
+    if (rasterMs > worstRasterMs) {
+      worstRasterMs = rasterMs;
+    }
+  }
+
+  Map<String, Object?> toContext({required String reason}) {
+    return <String, Object?>{
+      'reason': reason,
+      'durationMs': DateTime.now().difference(startedAt).inMilliseconds,
+      'startPixels': startPixels,
+      'endPixels': endPixels,
+      'absoluteScrollDistance': absoluteScrollDistance,
+      'maxTickDelta': maxTickDelta,
+      'pointerSignalCount': pointerSignalCount,
+      'totalWheelDeltaAbs': totalWheelDeltaAbs,
+      'scrollListenerTickCount': scrollListenerTickCount,
+      'scrollNotificationCount': scrollNotificationCount,
+      if (activityCounts.isNotEmpty) 'activityCounts': activityCounts,
+      if (scrollNotificationKindCounts.isNotEmpty)
+        'scrollNotificationKinds': scrollNotificationKindCounts,
+      'rootBuildCount': rootBuildCount,
+      'maxVisibleMemoCount': maxVisibleMemoCount,
+      if (stateTriggerCounts.isNotEmpty)
+        'stateTriggerCounts': stateTriggerCounts,
+      'viewportDerivedSyncScheduleCount': viewportDerivedSyncScheduleCount,
+      'viewportDerivedSyncApplyCount': viewportDerivedSyncApplyCount,
+      'floatingGeometryUpsertCount': floatingGeometryUpsertCount,
+      'floatingGeometryRemoveCount': floatingGeometryRemoveCount,
+      'floatingStateChangeCount': floatingStateChangeCount,
+      'floatingMemoSwitchCount': floatingMemoSwitchCount,
+      'floatingScrollingToggleCount': floatingScrollingToggleCount,
+      'showBackToTopToggleCount': showBackToTopToggleCount,
+      'frameCount': frameCount,
+      'buildOver8MsCount': buildOver8MsCount,
+      'rasterOver8MsCount': rasterOver8MsCount,
+      'frameOver16MsCount': frameOver16MsCount,
+      'frameOver33MsCount': frameOver33MsCount,
+      'worstFrameTotalMs': worstFrameTotalMs,
+      'worstBuildMs': worstBuildMs,
+      'worstRasterMs': worstRasterMs,
+    };
   }
 }
 

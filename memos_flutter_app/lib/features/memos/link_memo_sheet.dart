@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/memo.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/memos/link_memo_providers.dart';
@@ -20,6 +21,15 @@ class LinkMemoSheet extends ConsumerStatefulWidget {
     BuildContext context, {
     required Set<String> existingNames,
   }) {
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<Memo>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.largeDialog,
+        maxWidth: 820,
+        backgroundColor: Colors.transparent,
+        builder: (context) => LinkMemoSheet(existingNames: existingNames),
+      );
+    }
     return showModalBottomSheet<Memo>(
       context: context,
       isScrollControlled: true,

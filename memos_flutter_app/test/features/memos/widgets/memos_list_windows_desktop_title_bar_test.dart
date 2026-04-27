@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
+import 'package:memos_flutter_app/features/home/desktop/windows_desktop_command_bar.dart';
 import 'package:memos_flutter_app/features/memos/home_quick_actions.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_search_widgets.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_windows_desktop_title_bar.dart';
@@ -15,6 +16,7 @@ void main() {
   ) async {
     await tester.pumpWidget(_buildHarness(child: _buildTitleBar()));
 
+    expect(find.byType(WindowsDesktopCommandBar), findsOneWidget);
     expect(find.byType(MemosListPillRow), findsOneWidget);
     expect(find.byKey(const Key('search-field')), findsNothing);
     expect(find.byIcon(Icons.search), findsOneWidget);

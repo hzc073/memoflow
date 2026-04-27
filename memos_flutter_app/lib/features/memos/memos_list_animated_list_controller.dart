@@ -38,24 +38,6 @@ class MemosListAnimatedListController extends ChangeNotifier {
     _memoCardKeys.removeWhere((uid, _) => !keepUids.contains(uid));
   }
 
-  String? resolveFloatingCollapseMemoUid(GlobalKey viewportKey) {
-    final viewportRect = globalRectForKey(viewportKey);
-    if (viewportRect == null) return null;
-
-    MemoFloatingCollapseCandidate? nextCandidate;
-    for (final key in _memoCardKeys.values) {
-      final candidate = key.currentState?.resolveFloatingCollapseCandidate(
-        viewportRect,
-      );
-      if (candidate == null) continue;
-      if (nextCandidate == null ||
-          candidate.visibleHeight > nextCandidate.visibleHeight) {
-        nextCandidate = candidate;
-      }
-    }
-    return nextCandidate?.memoUid;
-  }
-
   void removeMemoWithAnimation(
     LocalMemo memo, {
     bool animationsEnabled = true,

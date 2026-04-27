@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
@@ -134,10 +135,7 @@ class MemosListViewportCoordinator extends ChangeNotifier {
   final DateTime Function() _now;
   final Timer Function(Duration, void Function(Timer)) _periodicTimerFactory;
 
-  bool _showBackToTop = false;
-  bool _floatingCollapseScrolling = false;
-  bool _floatingCollapseRecomputeScheduled = false;
-  String? _floatingCollapseMemoUid;
+  final ValueNotifier<bool> _showBackToTopNotifier = ValueNotifier<bool>(false);
   bool _scrollToTopAnimating = false;
   Timer? _scrollToTopTimer;
   double _lastObservedScrollOffset = 0;
@@ -159,9 +157,8 @@ class MemosListViewportCoordinator extends ChangeNotifier {
   int? get activeLoadMoreRequestId =>
       _loadMoreController.activeLoadMoreRequestId;
   String? get activeLoadMoreSource => _loadMoreController.activeLoadMoreSource;
-  bool get showBackToTop => _showBackToTop;
-  bool get floatingCollapseScrolling => _floatingCollapseScrolling;
-  String? get floatingCollapseMemoUid => _floatingCollapseMemoUid;
+  bool get showBackToTop => _showBackToTopNotifier.value;
+  ValueListenable<bool> get showBackToTopListenable => _showBackToTopNotifier;
   bool get scrollToTopAnimating => _scrollToTopAnimating;
 
   bool syncQueryKey(String queryKey, {required int previousVisibleCount}) {
@@ -204,48 +201,14 @@ class MemosListViewportCoordinator extends ChangeNotifier {
     }
 
     final nextShowBackToTop = metrics.pixels >= (metrics.viewportDimension * 2);
-    if (nextShowBackToTop != _showBackToTop) {
-      _showBackToTop = nextShowBackToTop;
-      _notifyChanged();
+    if (nextShowBackToTop != _showBackToTopNotifier.value) {
+      _showBackToTopNotifier.value = nextShowBackToTop;
     }
 
     return MemosListViewportScrollEffect(
       jumpedToTopUnexpectedly: jumpedToTopUnexpectedly,
       previousOffset: previousOffset,
     );
-  }
-
-  bool requestFloatingCollapseRecompute({
-    required void Function(VoidCallback callback) schedulePostFrame,
-    required String? Function() resolveMemoUid,
-  }) {
-    if (_disposed || _floatingCollapseRecomputeScheduled) return false;
-    _floatingCollapseRecomputeScheduled = true;
-    schedulePostFrame(() {
-      _floatingCollapseRecomputeScheduled = false;
-      if (_disposed) return;
-      final nextMemoUid = resolveMemoUid();
-      if (nextMemoUid == _floatingCollapseMemoUid) return;
-      _floatingCollapseMemoUid = nextMemoUid;
-      _notifyChanged();
-    });
-    return true;
-  }
-
-  void handleFloatingCollapseScrollEvent(MemosListViewportScrollEvent event) {
-    if (event.metrics.axis != Axis.vertical) return;
-
-    final nextValue = switch (event.kind) {
-      MemosListViewportScrollEventKind.start ||
-      MemosListViewportScrollEventKind.update ||
-      MemosListViewportScrollEventKind.overscroll => true,
-      MemosListViewportScrollEventKind.user =>
-        event.userDirection != ScrollDirection.idle,
-      MemosListViewportScrollEventKind.end => false,
-    };
-    if (nextValue == _floatingCollapseScrolling) return;
-    _floatingCollapseScrolling = nextValue;
-    _notifyChanged();
   }
 
   MemosListViewportLoadMoreEffect handleLoadMoreScrollEvent(
@@ -437,6 +400,7 @@ class MemosListViewportCoordinator extends ChangeNotifier {
     _disposed = true;
     _scrollToTopTimer?.cancel();
     _scrollToTopTimer = null;
+    _showBackToTopNotifier.dispose();
     super.dispose();
   }
 

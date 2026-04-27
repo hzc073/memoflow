@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,7 +61,6 @@ const Set<String> _htmlBlockTags = {
 };
 
 const double _defaultLineHeight = 1.4;
-final MemoRenderPipeline _memoRenderPipeline = MemoRenderPipeline();
 final Set<String> _memoMarkdownDiagnosticLogKeys = <String>{};
 
 const int _markdownImageMaxDecodePx = 2048;
@@ -157,7 +157,7 @@ class _MemoMarkdownWidgetFactory extends WidgetFactory {
 }
 
 void invalidateMemoMarkdownCacheForUid(String memoUid) {
-  _memoRenderPipeline.invalidateByMemoUid(memoUid);
+  invalidateMemoRenderArtifactCacheForUid(memoUid);
 }
 
 typedef TaskToggleHandler = void Function(TaskToggleRequest request);
@@ -173,6 +173,7 @@ class MemoMarkdown extends StatelessWidget {
   const MemoMarkdown({
     super.key,
     required this.data,
+    this.artifact,
     this.cacheKey,
     this.highlightQuery,
     this.textStyle,
@@ -193,6 +194,7 @@ class MemoMarkdown extends StatelessWidget {
   });
 
   final String data;
+  final MemoRenderArtifact? artifact;
   final String? cacheKey;
   final String? highlightQuery;
   final TextStyle? textStyle;
@@ -213,13 +215,15 @@ class MemoMarkdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final artifact = _memoRenderPipeline.build(
-      data: data,
-      renderImages: renderImages,
-      highlightQuery: highlightQuery,
-      cacheKey: cacheKey,
-    );
-    final contentText = artifact.content;
+    final effectiveArtifact =
+        artifact ??
+        buildMemoRenderArtifact(
+          data: data,
+          renderImages: renderImages,
+          highlightQuery: highlightQuery,
+          cacheKey: cacheKey,
+        );
+    final contentText = effectiveArtifact.content;
     if (contentText.trim().isEmpty) return const SizedBox.shrink();
     _logMemoMarkdownDiagnostics(
       contentText,
@@ -270,7 +274,7 @@ class MemoMarkdown extends StatelessWidget {
     final maxImageHeight = _resolveImageMaxHeight(context);
     final maxImageHeightPx = _formatCssPx(maxImageHeight);
 
-    if (artifact.mode == MemoRenderMode.codeBlock) {
+    if (effectiveArtifact.mode == MemoRenderMode.codeBlock) {
       Widget content = _buildHtmlCodeBlock(
         code: contentText,
         language: 'html',
@@ -579,6 +583,10 @@ class MemoMarkdown extends StatelessWidget {
                 targetWidth ?? maxWidth,
                 pixelRatio,
               );
+              final cacheHeight = _resolveCacheExtent(
+                targetHeight ?? maxHeight,
+                pixelRatio,
+              );
               _logMemoMarkdownImageLayout(
                 contentText,
                 cacheKey: cacheKey,
@@ -592,6 +600,7 @@ class MemoMarkdown extends StatelessWidget {
                 maxWidth: maxWidth,
                 maxHeight: maxHeight,
                 cacheWidth: cacheWidth,
+                cacheHeight: cacheHeight,
                 isLocalFile: localFile != null,
               );
 
@@ -619,34 +628,33 @@ class MemoMarkdown extends StatelessWidget {
                     return imageError();
                   },
                 ),
-                _ => Image.network(
-                  resolvedRemoteSrc,
+                _ when shouldUseSvgRenderer(url: resolvedRemoteSrc) =>
+                  SvgPicture.network(
+                    resolvedRemoteSrc,
+                    width: targetWidth,
+                    height: targetHeight,
+                    fit: BoxFit.contain,
+                    headers: resolvedRemoteHeaders,
+                    placeholderBuilder: (_) => imagePlaceholder(),
+                    errorBuilder: (_, svgError, svgStack) {
+                      logImageError(resolvedRemoteSrc, svgError, svgStack);
+                      return imageError();
+                    },
+                  ),
+                _ => CachedNetworkImage(
+                  imageUrl: resolvedRemoteSrc,
+                  httpHeaders: resolvedRemoteHeaders,
                   width: targetWidth,
                   height: targetHeight,
                   fit: BoxFit.contain,
-                  cacheWidth: cacheWidth,
-                  headers: resolvedRemoteHeaders,
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return imagePlaceholder();
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    logImageError(resolvedRemoteSrc, error, stackTrace);
-                    if (!shouldUseSvgRenderer(url: resolvedRemoteSrc)) {
-                      return imageError();
-                    }
-                    return SvgPicture.network(
-                      resolvedRemoteSrc,
-                      width: targetWidth,
-                      height: targetHeight,
-                      fit: BoxFit.contain,
-                      headers: resolvedRemoteHeaders,
-                      placeholderBuilder: (_) => imagePlaceholder(),
-                      errorBuilder: (_, svgError, svgStack) {
-                        logImageError(resolvedRemoteSrc, svgError, svgStack);
-                        return imageError();
-                      },
-                    );
+                  memCacheWidth: cacheWidth,
+                  memCacheHeight: cacheHeight,
+                  maxWidthDiskCache: cacheWidth,
+                  maxHeightDiskCache: cacheHeight,
+                  placeholder: (context, url) => imagePlaceholder(),
+                  errorWidget: (context, url, error) {
+                    logImageError(resolvedRemoteSrc, error, null);
+                    return imageError();
                   },
                 ),
               };
@@ -967,6 +975,7 @@ void _logMemoMarkdownImageLayout(
   required double maxWidth,
   required double maxHeight,
   required int? cacheWidth,
+  required int? cacheHeight,
   required bool isLocalFile,
 }) {
   final requestedWidthChanged =
@@ -1034,6 +1043,7 @@ void _logMemoMarkdownImageLayout(
       'maxWidth': maxWidth,
       'maxHeight': maxHeight,
       'cacheWidth': cacheWidth,
+      'cacheHeight': cacheHeight,
       'clampedByWidth': requestedWidthChanged,
       'clampedByHeight': requestedHeightChanged,
       'usesImplicitMaxWidth': targetUsesImplicitMaxWidth,

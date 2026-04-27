@@ -299,6 +299,46 @@ void main() {
   });
 
   testWidgets(
+    'windows settings fallback uses desktop shell rail on compact widths',
+    (tester) async {
+      await tester.pumpWidget(
+        buildTestApp(
+          home: Theme(
+            data: ThemeData(platform: TargetPlatform.windows),
+            child: MediaQuery(
+              data: MediaQueryData(size: Size(1100, 900)),
+              child: SettingsScreen(
+                presentation: HomeScreenPresentation.embeddedBottomNav,
+                embeddedNavigationHost: _TestEmbeddedNavigationHost(),
+              ),
+            ),
+          ),
+          overrides: [
+            unreadNotificationCountProvider.overrideWith((ref) => 0),
+            syncQueuePendingCountProvider.overrideWith(
+              (ref) => Stream<int>.value(0),
+            ),
+            syncQueueAttentionCountProvider.overrideWith(
+              (ref) => Stream<int>.value(0),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('desktop-navigation-rail')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('drawer-menu-button')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('windows-desktop-command-bar')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'standalone settings close returns to home entry respecting bottom nav mode',
     (tester) async {
       HomeEntryScreen.debugClassicScreenBuilderOverride = (_) =>

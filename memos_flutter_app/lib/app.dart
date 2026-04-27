@@ -194,6 +194,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           },
       onWindowIdChanged: (windowId) =>
           _desktopWindowManager.updateQuickInputWindowId(windowId),
+      onQuickInputRequested: (source) =>
+          _desktopWindowManager.markQuickInputWarmPathUsed(source: source),
       isMounted: () => mounted,
     );
     _desktopWindowManager = DesktopWindowManager(
@@ -209,6 +211,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         setState(() {});
       },
     );
+    _startupCoordinator.onQuickInputRequested = (source) =>
+        _desktopWindowManager.markQuickInputWarmPathUsed(source: source);
     _exitCoordinator = DesktopExitCoordinator.init(
       ref: ref,
       quickInputController: _desktopQuickInputController,
@@ -263,7 +267,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           _desktopQuickInputController.registerHotKey,
       applyDebugScreenshotMode: _applyDebugScreenshotMode,
       reminderTapHandler: ReminderTapHandlerImpl(_navigatorKey).handle,
-      scheduleDesktopSubWindowPrewarm: _desktopWindowManager.schedulePrewarm,
+      scheduleDesktopQuickInputIdlePrewarm:
+          _desktopWindowManager.scheduleQuickInputIdlePrewarmOnce,
     );
     _prefsLoadedSub = ref.listenManual<bool>(devicePreferencesLoadedProvider, (
       previous,
@@ -644,9 +649,20 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
           final media = MediaQuery.of(context);
           final appContent = MediaQuery(
             data: media.copyWith(textScaler: TextScaler.linear(scale)),
-            child: AppLockGate(
-              navigatorKey: _navigatorKey,
-              child: child ?? const SizedBox.shrink(),
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => _desktopWindowManager.notifyUserInteraction(
+                source: 'pointer_down',
+              ),
+              onPointerMove: (_) => _desktopWindowManager.notifyUserInteraction(
+                source: 'pointer_move',
+              ),
+              onPointerSignal: (_) => _desktopWindowManager
+                  .notifyUserInteraction(source: 'pointer_signal'),
+              child: AppLockGate(
+                navigatorKey: _navigatorKey,
+                child: child ?? const SizedBox.shrink(),
+              ),
             ),
           );
           final windowContent = !blurDesktopMainWindow
@@ -715,6 +731,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _startupCoordinator.removeListener(_handleStartupCoordinatorChanged);
     _startupCoordinator.dispose();
     _desktopWindowManager.unbindMethodHandler();
+    _desktopWindowManager.dispose();
     unawaited(_desktopQuickInputController.unregisterHotKey());
     _homeWidgetsUpdater.dispose();
     unawaited(_exitCoordinator?.dispose());

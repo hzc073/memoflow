@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo_collection.dart';
@@ -16,12 +17,19 @@ Future<void> showAddMemoToCollectionSheet({
   required WidgetRef ref,
   required LocalMemo memo,
 }) async {
-  final action = await showModalBottomSheet<_AddToCollectionAction>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (_) => _AddMemoToCollectionSheet(memo: memo),
-  );
+  final action = shouldUseWindowsAdaptiveSurface(context)
+      ? await showWindowsAdaptiveSurface<_AddToCollectionAction>(
+          context: context,
+          kind: WindowsAdaptiveSurfaceKind.largeDialog,
+          maxWidth: 820,
+          builder: (_) => _AddMemoToCollectionSheet(memo: memo),
+        )
+      : await showModalBottomSheet<_AddToCollectionAction>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => _AddMemoToCollectionSheet(memo: memo),
+        );
   if (!context.mounted) return;
   if (action == _AddToCollectionAction.added) {
     showTopToast(

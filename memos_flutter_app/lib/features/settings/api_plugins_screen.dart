@@ -6,31 +6,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/personal_access_token.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/personal_access_token_repository_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../../i18n/strings.g.dart';
 
-enum _TokenExpiration {
-  h8,
-  d30,
-  never,
-}
+enum _TokenExpiration { h8, d30, never }
 
 extension on _TokenExpiration {
   String label(BuildContext context) => switch (this) {
-        _TokenExpiration.h8 => '8h',
-        _TokenExpiration.d30 => context.t.strings.legacy.msg_v_30_days,
-        _TokenExpiration.never => context.t.strings.legacy.msg_never,
-      };
+    _TokenExpiration.h8 => '8h',
+    _TokenExpiration.d30 => context.t.strings.legacy.msg_v_30_days,
+    _TokenExpiration.never => context.t.strings.legacy.msg_never,
+  };
 
   int get expiresInDays => switch (this) {
-        // Memos API uses days. "8h" is approximated as 1 day.
-        _TokenExpiration.h8 => 1,
-        _TokenExpiration.d30 => 30,
-        _TokenExpiration.never => 0,
-      };
+    // Memos API uses days. "8h" is approximated as 1 day.
+    _TokenExpiration.h8 => 1,
+    _TokenExpiration.d30 => 30,
+    _TokenExpiration.never => 0,
+  };
 }
 
 class ApiPluginsScreen extends ConsumerStatefulWidget {
@@ -123,7 +120,9 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     final api = ref.read(memosApiProvider);
     final repo = ref.read(personalAccessTokenRepositoryProvider);
     try {
-      final tokens = await api.listPersonalAccessTokens(userName: account.user.name);
+      final tokens = await api.listPersonalAccessTokens(
+        userName: account.user.name,
+      );
       final values = await repo.readAll(accountKey: account.key);
       if (!mounted) return;
       setState(() {
@@ -140,38 +139,49 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
 
   Future<void> _selectExpiration() async {
     if (_creating) return;
-    final selected = await showModalBottomSheet<_TokenExpiration>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              for (final v in _TokenExpiration.values)
-                ListTile(
-                  title: Text(v.label(context)),
-                  trailing: v == _expiration ? const Icon(Icons.check) : null,
-                  onTap: () => context.safePop(v),
-                ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
+    final selected = await _showExpirationPicker(context);
     if (selected == null) return;
     if (!mounted) return;
     setState(() => _expiration = selected);
   }
 
-  Future<void> _showTokenSheet(String token) async {
-    await showModalBottomSheet<void>(
+  Future<_TokenExpiration?> _showExpirationPicker(BuildContext context) {
+    Widget expirationContent(BuildContext context) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            for (final v in _TokenExpiration.values)
+              ListTile(
+                title: Text(v.label(context)),
+                trailing: v == _expiration ? const Icon(Icons.check) : null,
+                onTap: () => context.safePop(v),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<_TokenExpiration>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.popover,
+        maxWidth: 420,
+        builder: expirationContent,
+      );
+    }
+    return showModalBottomSheet<_TokenExpiration>(
       context: context,
       showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
+      builder: expirationContent,
+    );
+  }
+
+  Future<void> _showTokenSheet(String token) {
+    Widget tokenContent(BuildContext context) {
+      return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
@@ -181,12 +191,17 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
               const SizedBox(height: 8),
               Text(
                 context.t.strings.legacy.msg_token_created,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
                 context.t.strings.legacy.msg_shown_only_once_copy_keep_safe,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 12),
               Container(
@@ -227,7 +242,21 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
             ],
           ),
         ),
-      ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<void>(
+        context: context,
+        maxWidth: 560,
+        builder: tokenContent,
+      );
+    }
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: tokenContent,
     );
   }
 
@@ -255,7 +284,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
       final token = response.token;
       final tokenName = response.personalAccessToken.name.trim();
       if (tokenName.isNotEmpty) {
-        await repo.saveTokenValue(accountKey: account.key, tokenName: tokenName, tokenValue: token);
+        await repo.saveTokenValue(
+          accountKey: account.key,
+          tokenName: tokenName,
+          tokenValue: token,
+        );
       }
 
       await Clipboard.setData(ClipboardData(text: token));
@@ -269,7 +302,13 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_create_failed(formatError_e_context: _formatError(e, context)))),
+        SnackBar(
+          content: Text(
+            context.t.strings.legacy.msg_create_failed(
+              formatError_e_context: _formatError(e, context),
+            ),
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _creating = false);
@@ -287,10 +326,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
     }
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) return;
-    showTopToast(
-      context,
-      context.t.strings.legacy.msg_copied_clipboard,
-    );
+    showTopToast(context, context.t.strings.legacy.msg_copied_clipboard);
   }
 
   ({String label, Color bg, Color fg}) _statusBadge(PersonalAccessToken token) {
@@ -330,12 +366,20 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final fieldBg = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final fieldBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
 
     return Scaffold(
       backgroundColor: bg,
@@ -364,11 +408,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -381,7 +421,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
               children: [
                 Text(
                   context.t.strings.legacy.msg_create_token,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: textMuted,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Container(
@@ -413,19 +457,33 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                       children: [
                         Text(
                           context.t.strings.legacy.msg_token_name,
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: textMuted,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _descriptionController,
                           enabled: !_creating,
-                          style: TextStyle(color: textMain, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: textMain,
+                            fontWeight: FontWeight.w600,
+                          ),
                           decoration: InputDecoration(
-                            hintText: context.t.strings.legacy.msg_enter_token_description,
+                            hintText: context
+                                .t
+                                .strings
+                                .legacy
+                                .msg_enter_token_description,
                             hintStyle: TextStyle(color: textMuted),
                             filled: true,
                             fillColor: fieldBg,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
                               borderSide: BorderSide.none,
@@ -433,7 +491,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                           ),
                           validator: (v) {
                             if ((v ?? '').trim().isEmpty) {
-                              return context.t.strings.legacy.msg_enter_token_name;
+                              return context
+                                  .t
+                                  .strings
+                                  .legacy
+                                  .msg_enter_token_name;
                             }
                             return null;
                           },
@@ -441,7 +503,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                         const SizedBox(height: 14),
                         Text(
                           context.t.strings.legacy.msg_expiration,
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textMuted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: textMuted,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Material(
@@ -454,16 +520,25 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                                 color: fieldBg,
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
                                     child: Text(
                                       _expiration.label(context),
-                                      style: TextStyle(color: textMain, fontWeight: FontWeight.w700),
+                                      style: TextStyle(
+                                        color: textMain,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
-                                  Icon(Icons.keyboard_arrow_down_rounded, color: textMuted),
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: textMuted,
+                                  ),
                                 ],
                               ),
                             ),
@@ -471,8 +546,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                         ),
                         const SizedBox(height: 14),
                         GestureDetector(
-                          onTapDown: _creating ? null : (_) => setState(() => _pressedCreate = true),
-                          onTapCancel: () => setState(() => _pressedCreate = false),
+                          onTapDown: _creating
+                              ? null
+                              : (_) => setState(() => _pressedCreate = true),
+                          onTapCancel: () =>
+                              setState(() => _pressedCreate = false),
                           onTapUp: _creating
                               ? null
                               : (_) async {
@@ -493,11 +571,21 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                                 child: _creating
                                     ? const SizedBox.square(
                                         dimension: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
                                       )
                                     : Text(
-                                        context.t.strings.legacy.msg_create_token_2,
-                                        style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                                        context
+                                            .t
+                                            .strings
+                                            .legacy
+                                            .msg_create_token_2,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
                                       ),
                               ),
                             ),
@@ -510,7 +598,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                 const SizedBox(height: 18),
                 Text(
                   context.t.strings.legacy.msg_existing_tokens,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textMuted),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: textMuted,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 if (_listError != null)
@@ -523,7 +615,12 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                     ),
                     child: Row(
                       children: [
-                        Expanded(child: Text(_listError!, style: TextStyle(color: textMain))),
+                        Expanded(
+                          child: Text(
+                            _listError!,
+                            style: TextStyle(color: textMain),
+                          ),
+                        ),
                         TextButton(
                           onPressed: _refreshTokens,
                           child: Text(context.t.strings.legacy.msg_retry),
@@ -535,13 +632,20 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     child: Center(
-                      child: CircularProgressIndicator(color: MemoFlowPalette.primary.withValues(alpha: 0.9)),
+                      child: CircularProgressIndicator(
+                        color: MemoFlowPalette.primary.withValues(alpha: 0.9),
+                      ),
                     ),
                   )
                 else if (_tokens.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    child: Center(child: Text(context.t.strings.legacy.msg_no_tokens_yet, style: TextStyle(color: textMuted))),
+                    child: Center(
+                      child: Text(
+                        context.t.strings.legacy.msg_no_tokens_yet,
+                        style: TextStyle(color: textMuted),
+                      ),
+                    ),
                   )
                 else
                   Column(
@@ -567,7 +671,11 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
                   child: Text(
                     context.t.strings.legacy.msg_keep_token_safe_not_share_api,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, height: 1.35, color: textMuted),
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: textMuted,
+                    ),
                   ),
                 ),
               ],
@@ -638,24 +746,44 @@ class _TokenItemState extends State<_TokenItem> {
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: widget.textMain),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: widget.textMain,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: badgeBg,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: badgeFg)),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: badgeFg,
+                        ),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  context.t.strings.legacy.msg_created(widget_createdAtLabel: widget.createdAtLabel),
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: widget.textMuted),
+                  context.t.strings.legacy.msg_created(
+                    widget_createdAtLabel: widget.createdAtLabel,
+                  ),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: widget.textMuted,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -685,10 +813,18 @@ class _TokenItemState extends State<_TokenItem> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.06 : 0.04),
+                  color: Colors.white.withValues(
+                    alpha: Theme.of(context).brightness == Brightness.dark
+                        ? 0.06
+                        : 0.04,
+                  ),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.copy_rounded, size: 18, color: widget.textMuted),
+                child: Icon(
+                  Icons.copy_rounded,
+                  size: 18,
+                  color: widget.textMuted,
+                ),
               ),
             ),
           ),

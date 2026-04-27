@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 enum DesktopResizeHandle {
@@ -54,6 +55,7 @@ class DesktopResizablePanelShell extends StatefulWidget {
     required this.maxHeight,
     required this.hitZoneExtent,
     this.boundaryInsets = EdgeInsets.zero,
+    this.enabledHandles,
     required this.onChanged,
     required this.onChangeEnd,
     required this.child,
@@ -67,6 +69,7 @@ class DesktopResizablePanelShell extends StatefulWidget {
   final double maxHeight;
   final double hitZoneExtent;
   final EdgeInsets boundaryInsets;
+  final Set<DesktopResizeHandle>? enabledHandles;
   final ValueChanged<DesktopResizablePanelRect> onChanged;
   final ValueChanged<DesktopResizablePanelRect> onChangeEnd;
   final Widget child;
@@ -179,6 +182,10 @@ class _DesktopResizablePanelShellState
     required double width,
     required double height,
   }) {
+    final enabledHandles = widget.enabledHandles;
+    if (enabledHandles != null && !enabledHandles.contains(handle)) {
+      return const SizedBox.shrink();
+    }
     if (width <= 0 || height <= 0) {
       return const SizedBox.shrink();
     }
@@ -190,16 +197,26 @@ class _DesktopResizablePanelShellState
       child: MouseRegion(
         cursor: cursor,
         opaque: false,
-        child: Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: (event) => _handlePointerDown(handle, event),
-          onPointerMove: _handlePointerMove,
-          onPointerUp: _handlePointerUp,
-          onPointerCancel: _handlePointerCancel,
-          child: SizedBox(
-            key: ValueKey<String>('desktop-resizable-panel-${handle.name}'),
-            width: width,
-            height: height,
+        child: RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: {
+            EagerGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+                  EagerGestureRecognizer.new,
+                  (recognizer) {},
+                ),
+          },
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (event) => _handlePointerDown(handle, event),
+            onPointerMove: _handlePointerMove,
+            onPointerUp: _handlePointerUp,
+            onPointerCancel: _handlePointerCancel,
+            child: SizedBox(
+              key: ValueKey<String>('desktop-resizable-panel-${handle.name}'),
+              width: width,
+              height: height,
+            ),
           ),
         ),
       ),

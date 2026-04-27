@@ -23,6 +23,7 @@ typedef DesktopSubWindowVisibilityUpdater =
     void Function({required int windowId, required bool visible});
 
 typedef DesktopQuickInputWindowIdListener = void Function(int? windowId);
+typedef DesktopQuickInputRequestedListener = void Function(String source);
 
 class DesktopQuickInputController {
   DesktopQuickInputController({
@@ -33,6 +34,7 @@ class DesktopQuickInputController {
     required VoidCallback ensureMethodHandlerBound,
     required DesktopSubWindowVisibilityUpdater onSubWindowVisibilityChanged,
     required DesktopQuickInputWindowIdListener onWindowIdChanged,
+    required DesktopQuickInputRequestedListener onQuickInputRequested,
     required bool Function() isMounted,
   }) : _bootstrapAdapter = bootstrapAdapter,
        _quickInputService = quickInputService,
@@ -41,6 +43,7 @@ class DesktopQuickInputController {
        _ensureMethodHandlerBound = ensureMethodHandlerBound,
        _onSubWindowVisibilityChanged = onSubWindowVisibilityChanged,
        _onWindowIdChanged = onWindowIdChanged,
+       _onQuickInputRequested = onQuickInputRequested,
        _isMounted = isMounted;
 
   final AppBootstrapAdapter _bootstrapAdapter;
@@ -50,6 +53,7 @@ class DesktopQuickInputController {
   final VoidCallback _ensureMethodHandlerBound;
   final DesktopSubWindowVisibilityUpdater _onSubWindowVisibilityChanged;
   final DesktopQuickInputWindowIdListener _onWindowIdChanged;
+  final DesktopQuickInputRequestedListener _onQuickInputRequested;
   final bool Function() _isMounted;
 
   HotKey? _desktopQuickInputHotKey;
@@ -130,6 +134,7 @@ class DesktopQuickInputController {
   Future<void> handleHotKey() async {
     if (!_isMounted() || !isDesktopShortcutEnabled()) return;
     if (_desktopQuickInputWindowOpening) return;
+    _onQuickInputRequested('explicit_open');
     _ensureMethodHandlerBound();
 
     final session = _bootstrapAdapter.readSession(_ref);

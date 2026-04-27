@@ -137,7 +137,8 @@ Widget buildHomeRootScreen({
         state: 'NORMAL',
         showDrawer: true,
         enableCompose: true,
-        enableDesktopResizableHomeInlineCompose: true,
+        enableDesktopResizableHomeInlineCompose:
+            presentation == HomeScreenPresentation.standalone,
         presentation: presentation,
         embeddedNavigationHost: navigationHost,
         hidePrimaryComposeFab:

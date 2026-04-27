@@ -42,7 +42,7 @@ class AppBootstrapController {
     registerDesktopQuickInputHotKey,
     required Future<void> Function(bool enabled) applyDebugScreenshotMode,
     required ReminderTapHandler reminderTapHandler,
-    required VoidCallback scheduleDesktopSubWindowPrewarm,
+    required VoidCallback scheduleDesktopQuickInputIdlePrewarm,
   }) {
     if (_bound) return;
     _bound = true;
@@ -58,35 +58,37 @@ class AppBootstrapController {
       );
     });
 
-    _devicePreferencesSubscription = _adapter.listenDevicePreferences(
-      ref,
-      (prev, next) {
-        _handleDevicePreferencesChanged(
-          prev: prev,
-          next: next,
-          scheduleStatsWidgetUpdate: scheduleStatsWidgetUpdate,
-          ensureFontLoaded: ensureFontLoaded,
-          registerDesktopQuickInputHotKey: registerDesktopQuickInputHotKey,
-        );
-      },
-    );
+    _devicePreferencesSubscription = _adapter.listenDevicePreferences(ref, (
+      prev,
+      next,
+    ) {
+      _handleDevicePreferencesChanged(
+        prev: prev,
+        next: next,
+        scheduleStatsWidgetUpdate: scheduleStatsWidgetUpdate,
+        ensureFontLoaded: ensureFontLoaded,
+        registerDesktopQuickInputHotKey: registerDesktopQuickInputHotKey,
+      );
+    });
 
-    _resolvedSettingsSubscription = _adapter.listenResolvedAppSettings(
-      ref,
-      (prev, next) {
-        _handleResolvedSettingsChanged(
-          prev: prev,
-          next: next,
-          scheduleStatsWidgetUpdate: scheduleStatsWidgetUpdate,
-        );
-      },
-    );
+    _resolvedSettingsSubscription = _adapter.listenResolvedAppSettings(ref, (
+      prev,
+      next,
+    ) {
+      _handleResolvedSettingsChanged(
+        prev: prev,
+        next: next,
+        scheduleStatsWidgetUpdate: scheduleStatsWidgetUpdate,
+      );
+    });
 
     final reminderScheduler = _adapter.readReminderScheduler(ref);
-    final initialDebugScreenshotMode =
-        kDebugMode ? _adapter.readDebugScreenshotMode(ref) : false;
-    final initialDevicePreferences =
-        isDesktopShortcutEnabled() ? _adapter.readDevicePreferences(ref) : null;
+    final initialDebugScreenshotMode = kDebugMode
+        ? _adapter.readDebugScreenshotMode(ref)
+        : false;
+    final initialDevicePreferences = isDesktopShortcutEnabled()
+        ? _adapter.readDevicePreferences(ref)
+        : null;
 
     reminderScheduler.setTapHandler(reminderTapHandler);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -123,7 +125,7 @@ class AppBootstrapController {
         if (prefs != null) {
           unawaited(registerDesktopQuickInputHotKey(prefs));
         }
-        scheduleDesktopSubWindowPrewarm();
+        scheduleDesktopQuickInputIdlePrewarm();
       });
     }
   }

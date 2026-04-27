@@ -52,6 +52,7 @@ import 'attachment_gallery_screen.dart';
 import 'compose_toolbar_shared.dart';
 import 'gallery_attachment_picker.dart';
 import 'link_memo_sheet.dart';
+import 'memo_compose_surface.dart';
 import 'memo_video_grid.dart';
 import 'tag_autocomplete.dart';
 import '../location_picker/show_location_picker.dart';
@@ -60,10 +61,36 @@ import '../../i18n/strings.g.dart';
 typedef _PendingAttachment = MemoComposerPendingAttachment;
 typedef _LinkedMemo = MemoComposerLinkedMemo;
 
+enum MemoEditorPresentation {
+  page,
+  embeddedPane,
+  desktopModal,
+  desktopFullscreen,
+}
+
 class MemoEditorScreen extends ConsumerStatefulWidget {
-  const MemoEditorScreen({super.key, this.existing});
+  const MemoEditorScreen({
+    super.key,
+    this.existing,
+    this.initialText,
+    this.initialAttachmentPaths = const [],
+    this.ignoreDraft = false,
+    this.autoFocus = true,
+    this.onSaved,
+    this.onCloseRequested,
+    this.onToggleFullscreen,
+    this.presentation = MemoEditorPresentation.page,
+  });
 
   final LocalMemo? existing;
+  final String? initialText;
+  final List<String> initialAttachmentPaths;
+  final bool ignoreDraft;
+  final bool autoFocus;
+  final VoidCallback? onSaved;
+  final VoidCallback? onCloseRequested;
+  final VoidCallback? onToggleFullscreen;
+  final MemoEditorPresentation presentation;
 
   @override
   ConsumerState<MemoEditorScreen> createState() => _MemoEditorScreenState();
@@ -73,6 +100,7 @@ enum _TodoShortcutAction { checkbox, codeBlock }
 
 class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   late final MemoComposerController _composer;
+  late final MemoEditorDraftRepository _draftRepository;
   late final TextEditingController _contentController;
   late final FocusNode _editorFocusNode;
   final _editorFieldKey = GlobalKey();
@@ -86,12 +114,15 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   List<_PendingAttachment> get _pendingAttachments =>
       _composer.pendingAttachments;
   final _attachmentsToDelete = <Attachment>[];
+  static const String _newDraftMemoUid = '__memo_editor_new__';
+
   final _imagePicker = ImagePicker();
   final _templateRenderer = MemoTemplateRenderer();
   final _pickedImages = <XFile>[];
   List<TagStat> _tagStatsCache = const [];
   Timer? _draftTimer;
   bool _relationsLoaded = false;
+  bool _didSeedInitialAttachmentPaths = false;
   bool _relationsLoading = false;
   bool _relationsDirty = false;
   bool _skipDraftPersistOnDispose = false;
@@ -104,11 +135,26 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   final _locating = false;
   int get _tagAutocompleteIndex => _composer.tagAutocompleteIndex;
 
+  bool get _isDesktopModalPresentation =>
+      widget.presentation == MemoEditorPresentation.desktopModal;
+
+  bool get _isDesktopFullscreenPresentation =>
+      widget.presentation == MemoEditorPresentation.desktopFullscreen;
+
+  bool get _isEmbeddedPresentation =>
+      widget.presentation == MemoEditorPresentation.embeddedPane;
+
+  bool get _supportsDesktopSurfaceChrome =>
+      _isDesktopModalPresentation || _isDesktopFullscreenPresentation;
+
   @override
   void initState() {
     super.initState();
     final existing = widget.existing;
-    _composer = MemoComposerController(initialText: existing?.content ?? '');
+    _draftRepository = ref.read(memoEditorDraftRepositoryProvider);
+    _composer = MemoComposerController(
+      initialText: existing?.content ?? (widget.initialText ?? ''),
+    );
     _contentController = _composer.textController;
     _editorFocusNode = FocusNode();
     _contentController.addListener(_handleContentChanged);
@@ -125,8 +171,22 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     _initialLocation = existing?.location;
     if (existing != null) {
       _loadExistingRelations();
+    }
+    if (!widget.ignoreDraft) {
       unawaited(_restoreEditorDraftIfNeeded());
     }
+    if (widget.autoFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _editorFocusNode.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    unawaited(_seedInitialAttachmentPathsIfNeeded());
   }
 
   @override
@@ -187,6 +247,25 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final shiftPressed = isShiftModifierPressed(pressed);
     final altPressed = isAltModifierPressed(pressed);
     final key = event.logicalKey;
+    if (event is KeyDownEvent && key == LogicalKeyboardKey.escape) {
+      if (_isDesktopFullscreenPresentation) {
+        widget.onToggleFullscreen?.call();
+        return KeyEventResult.handled;
+      }
+      if (_supportsDesktopSurfaceChrome) {
+        widget.onCloseRequested?.call();
+        return KeyEventResult.handled;
+      }
+    }
+    if (event is KeyDownEvent &&
+        primaryPressed &&
+        !shiftPressed &&
+        !altPressed &&
+        (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter)) {
+      unawaited(_save());
+      return KeyEventResult.handled;
+    }
     if (event is KeyDownEvent &&
         !primaryPressed &&
         !shiftPressed &&
@@ -203,9 +282,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   }
 
   String? get _draftMemoUid {
-    final uid = widget.existing?.uid.trim() ?? '';
-    if (uid.isEmpty) return null;
-    return uid;
+    final existingUid = widget.existing?.uid.trim() ?? '';
+    if (existingUid.isNotEmpty) return existingUid;
+    return _newDraftMemoUid;
   }
 
   void _scheduleDraftSave() {
@@ -244,6 +323,14 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     return true;
   }
 
+  bool _isNewEditorBaseState() {
+    return _contentController.text.trim().isEmpty &&
+        _visibility == 'PRIVATE' &&
+        _location == null &&
+        _existingAttachments.isEmpty &&
+        _pendingAttachments.isEmpty;
+  }
+
   bool _isEditorBaseState(LocalMemo existing) {
     if (_contentController.text != existing.content) return false;
     if (_visibility != existing.visibility) return false;
@@ -271,6 +358,42 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value.trim()) ?? 0;
     return 0;
+  }
+
+  Future<void> _seedInitialAttachmentPathsIfNeeded() async {
+    if (_didSeedInitialAttachmentPaths) return;
+    _didSeedInitialAttachmentPaths = true;
+    if (widget.existing != null) return;
+    final paths = widget.initialAttachmentPaths
+        .map((path) => path.trim())
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+    if (paths.isEmpty) return;
+
+    final pending = <_PendingAttachment>[];
+    for (final path in paths) {
+      final file = File(path);
+      if (!file.existsSync()) continue;
+      final filename = file.uri.pathSegments.isEmpty
+          ? path.split(Platform.pathSeparator).last
+          : file.uri.pathSegments.last;
+      pending.add(
+        _PendingAttachment(
+          uid: generateUid(),
+          filePath: path,
+          filename: filename,
+          mimeType: _guessMimeType(filename),
+          size: file.lengthSync(),
+        ),
+      );
+    }
+    if (pending.isEmpty) return;
+
+    final staged = await _stagePendingAttachments(pending);
+    if (!mounted || staged.isEmpty) return;
+    setState(() {
+      _composer.addPendingAttachments(staged);
+    });
   }
 
   Future<_PendingAttachment> _stagePendingAttachment(
@@ -392,24 +515,27 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Future<void> _restoreEditorDraftIfNeeded() async {
     final existing = widget.existing;
     final memoUid = _draftMemoUid;
-    if (existing == null || memoUid == null) return;
+    if (memoUid == null) return;
 
     try {
-      final repo = ref.read(memoEditorDraftRepositoryProvider);
+      final repo = _draftRepository;
       final raw = await repo.read(memoUid: memoUid);
       if (!mounted) return;
 
       final payload = _decodeEditorDraftPayload(raw);
       if (payload == null) return;
-      // If user has started editing in this session, don't overwrite edits.
-      if (!_isEditorBaseState(existing)) return;
+      if (existing != null) {
+        if (!_isEditorBaseState(existing)) return;
+      } else if (!_isNewEditorBaseState()) {
+        return;
+      }
 
       final restoredContent = (payload['content'] as String?) ?? '';
       final restoredVisibility =
           (payload['visibility'] as String?)?.trim().isNotEmpty == true
           ? (payload['visibility'] as String).trim()
-          : existing.visibility;
-      MemoLocation? restoredLocation = existing.location;
+          : (existing?.visibility ?? 'PRIVATE');
+      MemoLocation? restoredLocation = existing?.location;
       if (payload.containsKey('location')) {
         final restoredLocationRaw = payload['location'];
         if (restoredLocationRaw is Map) {
@@ -418,31 +544,34 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
               restoredLocationRaw.cast<String, dynamic>(),
             );
           } catch (_) {
-            restoredLocation = existing.location;
+            restoredLocation = existing?.location;
           }
         } else {
           restoredLocation = null;
         }
-      } else {
-        restoredLocation = existing.location;
       }
       final restoredExistingAttachments = _decodeDraftExistingAttachments(
         payload['existing_attachments'],
-        fallback: existing.attachments,
+        fallback: existing?.attachments ?? const <Attachment>[],
       );
       final restoredPendingAttachments = await _stagePendingAttachments(
         _decodeDraftPendingAttachments(payload['pending_attachments']),
       );
 
-      final hasDiff =
-          restoredContent != existing.content ||
-          restoredVisibility != existing.visibility ||
-          !_sameLocation(restoredLocation, existing.location) ||
-          !_sameStringSet(
-            _attachmentKeySet(restoredExistingAttachments),
-            _attachmentKeySet(existing.attachments),
-          ) ||
-          restoredPendingAttachments.isNotEmpty;
+      final hasDiff = existing != null
+          ? restoredContent != existing.content ||
+                restoredVisibility != existing.visibility ||
+                !_sameLocation(restoredLocation, existing.location) ||
+                !_sameStringSet(
+                  _attachmentKeySet(restoredExistingAttachments),
+                  _attachmentKeySet(existing.attachments),
+                ) ||
+                restoredPendingAttachments.isNotEmpty
+          : restoredContent.trim().isNotEmpty ||
+                restoredVisibility != 'PRIVATE' ||
+                restoredLocation != null ||
+                restoredExistingAttachments.isNotEmpty ||
+                restoredPendingAttachments.isNotEmpty;
 
       if (!hasDiff) {
         await repo.clear(memoUid: memoUid);
@@ -474,7 +603,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       final restoredExistingKeys = _attachmentKeySet(
         restoredExistingAttachments,
       );
-      final deleted = existing.attachments
+      final deleted = (existing?.attachments ?? const <Attachment>[])
           .where(
             (attachment) =>
                 !restoredExistingKeys.contains(_attachmentKey(attachment)),
@@ -506,10 +635,17 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Future<void> _persistEditorDraftNow() async {
     final existing = widget.existing;
     final memoUid = _draftMemoUid;
-    if (existing == null || memoUid == null) return;
+    if (memoUid == null) return;
 
-    final repo = ref.read(memoEditorDraftRepositoryProvider);
-    if (!_hasUnsavedEditorState(existing)) {
+    final repo = _draftRepository;
+    final hasUnsavedEditorState = existing != null
+        ? _hasUnsavedEditorState(existing)
+        : _contentController.text.trim().isNotEmpty ||
+              _visibility != 'PRIVATE' ||
+              _location != null ||
+              _existingAttachments.isNotEmpty ||
+              _pendingAttachments.isNotEmpty;
+    if (!hasUnsavedEditorState) {
       await repo.clear(memoUid: memoUid);
       return;
     }
@@ -532,7 +668,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   Future<void> _clearEditorDraft() async {
     final memoUid = _draftMemoUid;
     if (memoUid == null) return;
-    await ref.read(memoEditorDraftRepositoryProvider).clear(memoUid: memoUid);
+    await _draftRepository.clear(memoUid: memoUid);
   }
 
   Future<void> _loadTagStats() async {
@@ -738,6 +874,11 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       } catch (_) {}
 
       if (!mounted) return;
+      final onSaved = widget.onSaved;
+      if (onSaved != null) {
+        onSaved();
+        return;
+      }
       context.safePop();
     } catch (e) {
       if (!mounted) return;
@@ -2046,11 +2187,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           title: attachment.filename,
           mimeType: attachment.type,
           thumbnailUrl: thumbUrl,
-          fullUrl: _existingAttachmentUrl(
-            attachment,
-            thumbnail: false,
-            baseUrl: baseUrl,
-          ).trim().isEmpty
+          fullUrl:
+              _existingAttachmentUrl(
+                attachment,
+                thumbnail: false,
+                baseUrl: baseUrl,
+              ).trim().isEmpty
               ? null
               : _existingAttachmentUrl(
                   attachment,
@@ -2423,6 +2565,369 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final availableTemplates = templateSettings.enabled
         ? templateSettings.templates
         : const <MemoTemplate>[];
+    final mediaSize = MediaQuery.sizeOf(context);
+    final modalHorizontalInset = mediaSize.width >= 1400 ? 40.0 : 24.0;
+    final modalVerticalInset = mediaSize.height >= 900 ? 28.0 : 20.0;
+    final titleText = existing == null
+        ? context.t.strings.legacy.msg_memo_2
+        : context.t.strings.legacy.msg_edit_memo;
+    final saveAction = IconButton(
+      tooltip: context.t.strings.legacy.msg_save,
+      onPressed: _saving ? null : _save,
+      icon: _saving
+          ? SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: MemoFlowPalette.primary,
+              ),
+            )
+          : Icon(Icons.check_rounded, color: MemoFlowPalette.primary),
+    );
+    final composeContent = Column(
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAttachmentPreview(
+                  isDark,
+                  baseUrl,
+                  authHeader,
+                  rebaseAbsoluteFileUrlForV024,
+                  attachAuthForSameOriginAbsolute,
+                ),
+                if (showTagAutocompleteGuide) ...[
+                  SceneMicroGuideBanner(
+                    message: tagAutocompleteGuideMessage,
+                    onDismiss: () => _markSceneGuideSeen(
+                      SceneMicroGuideId.memoEditorTagAutocomplete,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Expanded(
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: KeyedSubtree(
+                          key: _editorFieldKey,
+                          child: Focus(
+                            canRequestFocus: false,
+                            onKeyEvent: _handleTagAutocompleteKeyEvent,
+                            child: TextField(
+                              controller: _contentController,
+                              focusNode: _editorFocusNode,
+                              autofocus: widget.autoFocus,
+                              enabled: !_saving,
+                              inputFormatters: const [
+                                SmartEnterTextInputFormatter(),
+                              ],
+                              keyboardType: TextInputType.multiline,
+                              maxLines: null,
+                              expands: true,
+                              style: editorTextStyle,
+                              decoration: InputDecoration(
+                                hintText: context
+                                    .t
+                                    .strings
+                                    .legacy
+                                    .msg_write_something_supports_tag_tasks_x,
+                                hintStyle: TextStyle(color: hintColor),
+                                border: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_editorFocusNode.hasFocus &&
+                          activeTagQuery != null &&
+                          tagSuggestions.isNotEmpty)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: TagAutocompleteOverlay(
+                              editorKey: _editorFieldKey,
+                              value: _contentController.value,
+                              textStyle: editorTextStyle,
+                              tags: tagSuggestions,
+                              tagColors: tagColorLookup,
+                              highlightedIndex: highlightedTagSuggestionIndex,
+                              onHighlight: (index) {
+                                if (_tagAutocompleteIndex == index) {
+                                  return;
+                                }
+                                setState(() {
+                                  _composer.setTagAutocompleteIndex(index);
+                                });
+                              },
+                              onSelect: (tag) =>
+                                  _applyTagSuggestion(activeTagQuery, tag),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Divider(height: 1, color: borderColor),
+        if (_linkedMemos.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: _linkedMemos
+                  .map(
+                    (memo) => InputChip(
+                      label: Text(
+                        memo.label,
+                        style: TextStyle(fontSize: 12, color: chipText),
+                      ),
+                      backgroundColor: chipBg,
+                      deleteIconColor: chipDelete,
+                      onDeleted: _saving
+                          ? null
+                          : () => _removeLinkedMemo(memo.name),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        if (_locating)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  context.t.strings.legacy.msg_locating,
+                  style: TextStyle(fontSize: 12, color: chipText),
+                ),
+              ],
+            ),
+          ),
+        if (_location != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                avatar: Icon(Icons.place_outlined, size: 16, color: chipText),
+                label: Text(
+                  _location!.displayText(fractionDigits: 6),
+                  style: TextStyle(fontSize: 12, color: chipText),
+                ),
+                backgroundColor: chipBg,
+                deleteIconColor: chipDelete,
+                onPressed: _saving ? null : _requestLocation,
+                onDeleted: _saving ? null : _clearLocation,
+              ),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildComposeToolbar(
+                  context: context,
+                  isDark: isDark,
+                  preferences: toolbarPreferences,
+                  availableTemplates: availableTemplates,
+                  visibilityLabel: visibilityLabel,
+                  visibilityIcon: visibilityIcon,
+                  visibilityColor: visibilityColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _saving ? null : _save,
+                child: AnimatedScale(
+                  duration: const Duration(milliseconds: 120),
+                  scale: _saving ? 0.98 : 1.0,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: MemoFlowPalette.primary,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: MemoFlowPalette.primary.withValues(
+                            alpha: isDark ? 0.3 : 0.4,
+                          ),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: _saving
+                          ? const SizedBox.square(
+                              dimension: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final embeddedHeader =
+        !_isEmbeddedPresentation || widget.onCloseRequested == null
+        ? null
+        : Container(
+            height: 56,
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: background,
+              border: Border(bottom: BorderSide(color: borderColor)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    titleText,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                saveAction,
+                IconButton(
+                  tooltip: context.t.strings.legacy.msg_close,
+                  onPressed: widget.onCloseRequested,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          );
+    final desktopHeader = !_supportsDesktopSurfaceChrome
+        ? null
+        : Container(
+            key: const ValueKey<String>('memo-editor-desktop-header'),
+            height: 56,
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: cardColor,
+              border: Border(bottom: BorderSide(color: borderColor)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    titleText,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                saveAction,
+                IconButton(
+                  key: const ValueKey<String>('memo-editor-fullscreen-toggle'),
+                  tooltip: _isDesktopFullscreenPresentation
+                      ? context.t.strings.legacy.msg_restore_window
+                      : context.t.strings.legacy.msg_maximize,
+                  onPressed: widget.onToggleFullscreen,
+                  icon: Icon(
+                    _isDesktopFullscreenPresentation
+                        ? Icons.fullscreen_exit_rounded
+                        : Icons.fullscreen_rounded,
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey<String>('memo-editor-close-button'),
+                  tooltip: context.t.strings.legacy.msg_close,
+                  onPressed: widget.onCloseRequested,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          );
+    final composeSurface = MemoComposeSurface(
+      backgroundColor: background,
+      cardColor: cardColor,
+      borderColor: borderColor,
+      embedded: _isEmbeddedPresentation,
+      embeddedHeader: embeddedHeader,
+      header: desktopHeader,
+      surfacePadding: _isDesktopFullscreenPresentation
+          ? EdgeInsets.zero
+          : _supportsDesktopSurfaceChrome
+          ? EdgeInsets.fromLTRB(
+              modalHorizontalInset,
+              modalVerticalInset,
+              modalHorizontalInset,
+              modalVerticalInset,
+            )
+          : null,
+      maxCardWidth: _isDesktopModalPresentation ? 1040 : null,
+      contentMaxWidth: _supportsDesktopSurfaceChrome ? 920 : null,
+      borderRadius: _isDesktopFullscreenPresentation
+          ? 0
+          : (_supportsDesktopSurfaceChrome ? 24 : 16),
+      showShadow: _isDesktopModalPresentation,
+      centerContentColumn: _supportsDesktopSurfaceChrome,
+      child: composeContent,
+    );
+    final wrappedComposeSurface = _supportsDesktopSurfaceChrome
+        ? CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.escape): () {
+                if (_isDesktopFullscreenPresentation) {
+                  widget.onToggleFullscreen?.call();
+                  return;
+                }
+                widget.onCloseRequested?.call();
+              },
+              const SingleActivator(
+                LogicalKeyboardKey.enter,
+                control: true,
+              ): () =>
+                  unawaited(_save()),
+              const SingleActivator(
+                LogicalKeyboardKey.numpadEnter,
+                control: true,
+              ): () =>
+                  unawaited(_save()),
+              const SingleActivator(LogicalKeyboardKey.enter, meta: true): () =>
+                  unawaited(_save()),
+              const SingleActivator(
+                LogicalKeyboardKey.numpadEnter,
+                meta: true,
+              ): () =>
+                  unawaited(_save()),
+            },
+            child: composeSurface,
+          )
+        : composeSurface;
+
+    if (_isEmbeddedPresentation || _supportsDesktopSurfaceChrome) {
+      return wrappedComposeSurface;
+    }
 
     return Scaffold(
       backgroundColor: background,
@@ -2431,278 +2936,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: Text(
-          existing == null
-              ? context.t.strings.legacy.msg_memo_2
-              : context.t.strings.legacy.msg_edit_memo,
-        ),
-        actions: [
-          IconButton(
-            tooltip: context.t.strings.legacy.msg_save,
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: MemoFlowPalette.primary,
-                    ),
-                  )
-                : Icon(Icons.check_rounded, color: MemoFlowPalette.primary),
-          ),
-        ],
+        title: Text(titleText),
+        actions: [saveAction],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildAttachmentPreview(
-                                isDark,
-                                baseUrl,
-                                authHeader,
-                                rebaseAbsoluteFileUrlForV024,
-                                attachAuthForSameOriginAbsolute,
-                              ),
-                              if (showTagAutocompleteGuide) ...[
-                                SceneMicroGuideBanner(
-                                  message: tagAutocompleteGuideMessage,
-                                  onDismiss: () => _markSceneGuideSeen(
-                                    SceneMicroGuideId.memoEditorTagAutocomplete,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                              ],
-                              Expanded(
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Positioned.fill(
-                                      child: KeyedSubtree(
-                                        key: _editorFieldKey,
-                                        child: Focus(
-                                          canRequestFocus: false,
-                                          onKeyEvent:
-                                              _handleTagAutocompleteKeyEvent,
-                                          child: TextField(
-                                            controller: _contentController,
-                                            focusNode: _editorFocusNode,
-                                            enabled: !_saving,
-                                            inputFormatters: const [
-                                              SmartEnterTextInputFormatter(),
-                                            ],
-                                            keyboardType:
-                                                TextInputType.multiline,
-                                            maxLines: null,
-                                            expands: true,
-                                            style: editorTextStyle,
-                                            decoration: InputDecoration(
-                                              hintText: context
-                                                  .t
-                                                  .strings
-                                                  .legacy
-                                                  .msg_write_something_supports_tag_tasks_x,
-                                              hintStyle: TextStyle(
-                                                color: hintColor,
-                                              ),
-                                              border: InputBorder.none,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (_editorFocusNode.hasFocus &&
-                                        activeTagQuery != null &&
-                                        tagSuggestions.isNotEmpty)
-                                      Positioned.fill(
-                                        child: IgnorePointer(
-                                          child: TagAutocompleteOverlay(
-                                            editorKey: _editorFieldKey,
-                                            value: _contentController.value,
-                                            textStyle: editorTextStyle,
-                                            tags: tagSuggestions,
-                                            tagColors: tagColorLookup,
-                                            highlightedIndex:
-                                                highlightedTagSuggestionIndex,
-                                            onHighlight: (index) {
-                                              if (_tagAutocompleteIndex ==
-                                                  index) {
-                                                return;
-                                              }
-                                              setState(() {
-                                                _composer
-                                                    .setTagAutocompleteIndex(
-                                                      index,
-                                                    );
-                                              });
-                                            },
-                                            onSelect: (tag) =>
-                                                _applyTagSuggestion(
-                                                  activeTagQuery,
-                                                  tag,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Divider(height: 1, color: borderColor),
-                      if (_linkedMemos.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: _linkedMemos
-                                .map(
-                                  (memo) => InputChip(
-                                    label: Text(
-                                      memo.label,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: chipText,
-                                      ),
-                                    ),
-                                    backgroundColor: chipBg,
-                                    deleteIconColor: chipDelete,
-                                    onDeleted: _saving
-                                        ? null
-                                        : () => _removeLinkedMemo(memo.name),
-                                  ),
-                                )
-                                .toList(growable: false),
-                          ),
-                        ),
-                      if (_locating)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                context.t.strings.legacy.msg_locating,
-                                style: TextStyle(fontSize: 12, color: chipText),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (_location != null)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: InputChip(
-                              avatar: Icon(
-                                Icons.place_outlined,
-                                size: 16,
-                                color: chipText,
-                              ),
-                              label: Text(
-                                _location!.displayText(fractionDigits: 6),
-                                style: TextStyle(fontSize: 12, color: chipText),
-                              ),
-                              backgroundColor: chipBg,
-                              deleteIconColor: chipDelete,
-                              onPressed: _saving ? null : _requestLocation,
-                              onDeleted: _saving ? null : _clearLocation,
-                            ),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _buildComposeToolbar(
-                                context: context,
-                                isDark: isDark,
-                                preferences: toolbarPreferences,
-                                availableTemplates: availableTemplates,
-                                visibilityLabel: visibilityLabel,
-                                visibilityIcon: visibilityIcon,
-                                visibilityColor: visibilityColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: _saving ? null : _save,
-                              child: AnimatedScale(
-                                duration: const Duration(milliseconds: 120),
-                                scale: _saving ? 0.98 : 1.0,
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: MemoFlowPalette.primary,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: MemoFlowPalette.primary
-                                            .withValues(
-                                              alpha: isDark ? 0.3 : 0.4,
-                                            ),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Center(
-                                    child: _saving
-                                        ? const SizedBox.square(
-                                            dimension: 22,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.check_rounded,
-                                            color: Colors.white,
-                                            size: 24,
-                                          ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      body: wrappedComposeSurface,
     );
   }
 }

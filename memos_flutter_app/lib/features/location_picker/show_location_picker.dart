@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/windows_adaptive_surface.dart';
 import '../../data/location/location_provider_bundle_factory.dart';
 import '../../data/location/location_provider_requirements_validator.dart';
 import '../../data/location/models/canonical_coordinate.dart';
@@ -140,8 +141,12 @@ Future<MemoLocation?> showLocationPickerSheetOrDialog({
 
   try {
     if (Platform.isWindows) {
-      final result = await showDialog<MemoLocation>(
+      final result = await showWindowsAdaptiveSurface<MemoLocation>(
         context: context,
+        kind: WindowsAdaptiveSurfaceKind.largeDialog,
+        maxWidth: 960,
+        maxHeightFactor: 0.92,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
         builder: (_) => LocationPickerDialog(
           controller: controller,
           mapHostController: mapHostController,

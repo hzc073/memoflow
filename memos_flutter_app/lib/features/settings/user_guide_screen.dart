@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 
@@ -15,7 +16,10 @@ class UserGuideScreen extends ConsumerWidget {
   Future<void> _openBackendDocs(BuildContext context) async {
     final uri = Uri.parse('https://usememos.com/docs');
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
       if (!launched && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -26,38 +30,66 @@ class UserGuideScreen extends ConsumerWidget {
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_failed_open_try),
-        ),
+        SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_try)),
       );
     }
   }
 
-  Future<void> _showInfo(BuildContext context, {required String title, required String body}) async {
+  Future<void> _showInfo(
+    BuildContext context, {
+    required String title,
+    required String body,
+  }) async {
+    Widget buildInfoContent(BuildContext surfaceContext) {
+      return SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+          children: [
+            Text(title, style: Theme.of(surfaceContext).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Text(
+              body,
+              style: Theme.of(
+                surfaceContext,
+              ).textTheme.bodyMedium?.copyWith(height: 1.5),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      await showWindowsAdaptiveSurface<void>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.dialog,
+        maxWidth: 560,
+        builder: buildInfoContent,
+      );
+      return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Text(body, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5)),
-          ],
-        ),
-      ),
+      builder: buildInfoContent,
     );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
     final hapticsEnabled = ref.watch(
       devicePreferencesProvider.select((p) => p.hapticsEnabled),
     );
@@ -95,11 +127,7 @@ class UserGuideScreen extends ConsumerWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -133,14 +161,19 @@ class UserGuideScreen extends ConsumerWidget {
                       await _showInfo(
                         context,
                         title: context.t.strings.legacy.msg_pull_refresh,
-                        body: context.t.strings.legacy.msg_pull_memo_list_refresh_sync_sync,
+                        body: context
+                            .t
+                            .strings
+                            .legacy
+                            .msg_pull_memo_list_refresh_sync_sync,
                       );
                     },
                   ),
                   _GuideRow(
                     icon: Icons.cloud_off_outlined,
                     title: context.t.strings.legacy.msg_offline_ready,
-                    subtitle: context.t.strings.legacy.msg_local_db_pending_queue,
+                    subtitle:
+                        context.t.strings.legacy.msg_local_db_pending_queue,
                     textMain: textMain,
                     textMuted: textMuted,
                     onTap: () async {
@@ -148,7 +181,11 @@ class UserGuideScreen extends ConsumerWidget {
                       await _showInfo(
                         context,
                         title: context.t.strings.legacy.msg_offline_ready,
-                        body: context.t.strings.legacy.msg_create_edit_delete_actions_offline_stored,
+                        body: context
+                            .t
+                            .strings
+                            .legacy
+                            .msg_create_edit_delete_actions_offline_stored,
                       );
                     },
                   ),
@@ -163,7 +200,11 @@ class UserGuideScreen extends ConsumerWidget {
                       await _showInfo(
                         context,
                         title: context.t.strings.legacy.msg_full_text_search,
-                        body: context.t.strings.legacy.msg_enter_keywords_search_box_query_local,
+                        body: context
+                            .t
+                            .strings
+                            .legacy
+                            .msg_enter_keywords_search_box_query_local,
                       );
                     },
                   ),
@@ -178,7 +219,11 @@ class UserGuideScreen extends ConsumerWidget {
                       await _showInfo(
                         context,
                         title: context.t.strings.legacy.msg_voice_memos,
-                        body: context.t.strings.legacy.msg_after_recording_audio_added_current_draft,
+                        body: context
+                            .t
+                            .strings
+                            .legacy
+                            .msg_after_recording_audio_added_current_draft,
                       );
                     },
                   ),
@@ -186,8 +231,16 @@ class UserGuideScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                context.t.strings.legacy.msg_note_most_features_offline_stats_ai,
-                style: TextStyle(fontSize: 12, height: 1.4, color: textMuted.withValues(alpha: 0.7)),
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_note_most_features_offline_stats_ai,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: textMuted.withValues(alpha: 0.7),
+                ),
               ),
             ],
           ),
@@ -270,9 +323,18 @@ class _GuideRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: textMain,
+                      ),
+                    ),
                     const SizedBox(height: 3),
-                    Text(subtitle, style: TextStyle(fontSize: 12, color: textMuted)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: textMuted),
+                    ),
                   ],
                 ),
               ),

@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously
+﻿// ignore_for_file: use_build_context_synchronously
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -23,6 +23,7 @@ import '../../state/system/notifications_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
@@ -106,8 +107,9 @@ class NotificationsScreen extends ConsumerWidget {
     final useEmbeddedBottomNav =
         presentation == HomeScreenPresentation.embeddedBottomNav;
     final shouldInterceptPop = !useEmbeddedBottomNav;
-    final enableWindowsDragToMove =
+    final isWindowsDesktop =
         Theme.of(context).platform == TargetPlatform.windows;
+    final enableWindowsDragToMove = isWindowsDesktop;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.memos,
       onSelect: (d) => _navigate(context, d),
@@ -205,42 +207,56 @@ class NotificationsScreen extends ConsumerWidget {
         if (didPop || !shouldInterceptPop) return;
         _backToHome(context);
       },
-      child: Scaffold(
-        drawer: useDesktopSidePane ? null : drawerPanel,
-        drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
-        appBar: AppBar(
-          flexibleSpace: enableWindowsDragToMove
-              ? const DragToMoveArea(child: SizedBox.expand())
-              : null,
-          title: IgnorePointer(
-            ignoring: enableWindowsDragToMove,
-            child: Text(context.t.strings.legacy.msg_notifications),
-          ),
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => _backToHome(context),
-          ),
-        ),
-        body: useDesktopSidePane
-            ? Row(
-                children: [
-                  SizedBox(
-                    width: kMemoFlowDesktopDrawerWidth,
-                    child: drawerPanel,
-                  ),
-                  VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.08),
-                  ),
-                  Expanded(child: pageBody),
-                ],
-              )
-            : pageBody,
-      ),
+      child: isWindowsDesktop
+          ? WindowsDesktopPageShell(
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.memos,
+                onSelect: (destination) => _navigate(context, destination),
+                onSelectTag: (tag) => _openTag(context, tag),
+                onOpenNotifications: () => _openNotifications(context),
+                embedded: embedded,
+                viewMode: viewMode,
+              ),
+              leadingTitle: Text(context.t.strings.legacy.msg_notifications),
+              body: pageBody,
+            )
+          : Scaffold(
+              drawer: useDesktopSidePane ? null : drawerPanel,
+              drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
+              appBar: AppBar(
+                flexibleSpace: enableWindowsDragToMove
+                    ? const DragToMoveArea(child: SizedBox.expand())
+                    : null,
+                title: IgnorePointer(
+                  ignoring: enableWindowsDragToMove,
+                  child: Text(context.t.strings.legacy.msg_notifications),
+                ),
+                leading: IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => _backToHome(context),
+                ),
+              ),
+              body: useDesktopSidePane
+                  ? Row(
+                      children: [
+                        SizedBox(
+                          width: kMemoFlowDesktopDrawerWidth,
+                          child: drawerPanel,
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.08),
+                        ),
+                        Expanded(child: pageBody),
+                      ],
+                    )
+                  : pageBody,
+            ),
     );
   }
 
@@ -258,7 +274,7 @@ class NotificationsScreen extends ConsumerWidget {
       );
     }
     parts.add(dateFmt.format(item.createTime.toLocal()));
-    return parts.join(' · ');
+    return parts.join(' 路 ');
   }
 
   String _shortUserName(String raw) {

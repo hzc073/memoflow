@@ -5,6 +5,56 @@ import '../../core/theme_colors.dart';
 import 'app_preferences.dart';
 import 'collection_reader.dart';
 
+enum DesktopHomeNavPreference { rail, expanded }
+
+class DesktopHomeLayoutPreference {
+  const DesktopHomeLayoutPreference({
+    required this.navMode,
+    required this.secondaryPaneVisible,
+    required this.secondaryPaneWidth,
+  });
+
+  static const defaults = DesktopHomeLayoutPreference(
+    navMode: DesktopHomeNavPreference.expanded,
+    secondaryPaneVisible: true,
+    secondaryPaneWidth: 420,
+  );
+
+  final DesktopHomeNavPreference navMode;
+  final bool secondaryPaneVisible;
+  final double secondaryPaneWidth;
+
+  Map<String, dynamic> toJson() => {
+    'navMode': navMode.name,
+    'secondaryPaneVisible': secondaryPaneVisible,
+    'secondaryPaneWidth': secondaryPaneWidth,
+  };
+
+  static DesktopHomeLayoutPreference fromJson(Map<String, dynamic> json) {
+    double? parseDouble(Object? raw) {
+      if (raw is num) return raw.toDouble();
+      return null;
+    }
+
+    final rawNavMode = (json['navMode'] as String? ?? '').trim();
+    final navMode = DesktopHomeNavPreference.values.where(
+      (value) => value.name == rawNavMode,
+    );
+    final secondaryPaneVisible =
+        json['secondaryPaneVisible'] as bool? ?? defaults.secondaryPaneVisible;
+    final secondaryPaneWidth =
+        (parseDouble(json['secondaryPaneWidth']) ?? defaults.secondaryPaneWidth)
+            .clamp(360, 560)
+            .toDouble();
+
+    return DesktopHomeLayoutPreference(
+      navMode: navMode.isEmpty ? defaults.navMode : navMode.first,
+      secondaryPaneVisible: secondaryPaneVisible,
+      secondaryPaneWidth: secondaryPaneWidth,
+    );
+  }
+}
+
 class HomeInlineComposePanelLayoutPreference {
   const HomeInlineComposePanelLayoutPreference({
     required this.width,
@@ -83,6 +133,7 @@ class DevicePreferences {
     lastSeenAnnouncementVersion: '',
     lastSeenAnnouncementId: 0,
     lastSeenNoticeHash: '',
+    desktopHomeLayoutPreference: DesktopHomeLayoutPreference.defaults,
     homeInlineComposePanelLayout: null,
     collectionReaderPreferences: CollectionReaderPreferences.defaults,
   );
@@ -122,6 +173,7 @@ class DevicePreferences {
     required this.lastSeenAnnouncementVersion,
     required this.lastSeenAnnouncementId,
     required this.lastSeenNoticeHash,
+    required this.desktopHomeLayoutPreference,
     required this.homeInlineComposePanelLayout,
     required this.collectionReaderPreferences,
   });
@@ -153,6 +205,7 @@ class DevicePreferences {
   final String lastSeenAnnouncementVersion;
   final int lastSeenAnnouncementId;
   final String lastSeenNoticeHash;
+  final DesktopHomeLayoutPreference desktopHomeLayoutPreference;
   final HomeInlineComposePanelLayoutPreference? homeInlineComposePanelLayout;
   final CollectionReaderPreferences collectionReaderPreferences;
 
@@ -189,6 +242,7 @@ class DevicePreferences {
     'lastSeenAnnouncementVersion': lastSeenAnnouncementVersion,
     'lastSeenAnnouncementId': lastSeenAnnouncementId,
     'lastSeenNoticeHash': lastSeenNoticeHash,
+    'desktopHomeLayoutPreference': desktopHomeLayoutPreference.toJson(),
     'homeInlineComposePanelLayout': homeInlineComposePanelLayout?.toJson(),
     'collectionReaderPreferences': collectionReaderPreferences.toJson(),
     'collectionReaderMode': collectionReaderPreferences.mode.name,
@@ -223,10 +277,16 @@ class DevicePreferences {
       'lastSeenAnnouncementId': json['lastSeenAnnouncementId'],
       'lastSeenNoticeHash': json['lastSeenNoticeHash'],
     });
+    final desktopHomeLayoutRaw = json['desktopHomeLayoutPreference'];
     final layoutRaw = json['homeInlineComposePanelLayout'];
     final readerPreferencesRaw = json['collectionReaderPreferences'];
     final readerModeRaw = json['collectionReaderMode'];
     return DevicePreferences.fromLegacy(legacy).copyWith(
+      desktopHomeLayoutPreference: desktopHomeLayoutRaw is Map
+          ? DesktopHomeLayoutPreference.fromJson(
+              desktopHomeLayoutRaw.cast<String, dynamic>(),
+            )
+          : DesktopHomeLayoutPreference.defaults,
       homeInlineComposePanelLayout: layoutRaw is Map
           ? HomeInlineComposePanelLayoutPreference.tryFromJson(
               layoutRaw.cast<String, dynamic>(),
@@ -277,6 +337,7 @@ class DevicePreferences {
       lastSeenAnnouncementVersion: legacy.lastSeenAnnouncementVersion,
       lastSeenAnnouncementId: legacy.lastSeenAnnouncementId,
       lastSeenNoticeHash: legacy.lastSeenNoticeHash,
+      desktopHomeLayoutPreference: DesktopHomeLayoutPreference.defaults,
       homeInlineComposePanelLayout: null,
       collectionReaderPreferences:
           DevicePreferences.defaults.collectionReaderPreferences,
@@ -341,6 +402,7 @@ class DevicePreferences {
     String? lastSeenAnnouncementVersion,
     int? lastSeenAnnouncementId,
     String? lastSeenNoticeHash,
+    DesktopHomeLayoutPreference? desktopHomeLayoutPreference,
     Object? homeInlineComposePanelLayout = _unset,
     CollectionReaderPreferences? collectionReaderPreferences,
     CollectionReaderMode? collectionReaderMode,
@@ -386,6 +448,8 @@ class DevicePreferences {
       lastSeenAnnouncementId:
           lastSeenAnnouncementId ?? this.lastSeenAnnouncementId,
       lastSeenNoticeHash: lastSeenNoticeHash ?? this.lastSeenNoticeHash,
+      desktopHomeLayoutPreference:
+          desktopHomeLayoutPreference ?? this.desktopHomeLayoutPreference,
       homeInlineComposePanelLayout:
           identical(homeInlineComposePanelLayout, _unset)
           ? this.homeInlineComposePanelLayout

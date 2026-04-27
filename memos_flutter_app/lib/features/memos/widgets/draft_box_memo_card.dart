@@ -210,7 +210,7 @@ class _DraftBoxMemoCardState extends State<DraftBoxMemoCard> {
               else
                 MemoMarkdown(
                   cacheKey: 'draft-box-${widget.draft.uid}',
-                  data: previewText,
+                  data: showCollapsed ? preview.text : previewText,
                   maxLines: showCollapsed ? kMemoCardPreviewMaxLines : null,
                   textStyle: Theme.of(
                     context,

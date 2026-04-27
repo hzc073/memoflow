@@ -65,7 +65,6 @@ class DesktopWindowManager {
   final VoidCallback _onVisibilityChanged;
 
   final Set<int> _desktopVisibleSubWindowIds = <int>{};
-  bool _desktopSubWindowsPrewarmScheduled = false;
   bool _desktopSubWindowVisibilitySyncInProgress = false;
   bool _desktopSubWindowVisibilitySyncQueued = false;
   bool _desktopSubWindowVisibilitySyncScheduled = false;
@@ -75,10 +74,22 @@ class DesktopWindowManager {
   WebDavBackupProgressTracker? _boundBackupProgressTracker;
   VoidCallback? _backupProgressListener;
   bool _syncBridgeBound = false;
+  Timer? _quickInputIdlePrewarmTimer;
+  bool _quickInputIdlePrewarmArmed = false;
+  bool _quickInputIdlePrewarmCompleted = false;
+  bool _quickInputIdleKeyboardHandlerBound = false;
 
   static const Duration _desktopSubWindowVisibilitySyncDebounce = Duration(
     milliseconds: 360,
   );
+  static const Duration _desktopQuickInputIdlePrewarmDelay = Duration(
+    seconds: 2,
+  );
+
+  bool get _supportsQuickInputIdlePrewarm =>
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.windows &&
+      isDesktopShortcutEnabled();
 
   void configureTrayActions() {
     if (!DesktopTrayController.instance.supported) return;
@@ -99,6 +110,12 @@ class DesktopWindowManager {
     if (kIsWeb) return;
     DesktopMultiWindow.setMethodHandler(null);
     _unbindDesktopSyncBridge();
+  }
+
+  void dispose() {
+    _quickInputIdlePrewarmTimer?.cancel();
+    _quickInputIdlePrewarmTimer = null;
+    _unbindQuickInputIdleKeyboardHandler();
   }
 
   void updateQuickInputWindowId(int? windowId) {
@@ -155,15 +172,58 @@ class DesktopWindowManager {
     }
   }
 
-  void schedulePrewarm() {
-    if (!isDesktopShortcutEnabled() || _desktopSubWindowsPrewarmScheduled) {
+  void scheduleQuickInputIdlePrewarmOnce() {
+    if (!_supportsQuickInputIdlePrewarm || _quickInputIdlePrewarmCompleted) {
       return;
     }
-    _desktopSubWindowsPrewarmScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_prewarmDesktopSubWindows());
-    });
+    if (_quickInputIdlePrewarmArmed) return;
+    _quickInputIdlePrewarmArmed = true;
+    _bootstrapAdapter
+        .readLogManager(_ref)
+        .info(
+          'desktop_idle_prewarm_armed',
+          context: const <String, Object?>{'target': 'quick_input'},
+        );
+    _ensureQuickInputIdleKeyboardHandlerBound();
+    _resetQuickInputIdlePrewarmTimer(source: 'armed');
   }
+
+  void notifyUserInteraction({String source = 'pointer'}) {
+    if (!_quickInputIdlePrewarmArmed || _quickInputIdlePrewarmCompleted) {
+      return;
+    }
+    if (source != 'pointer_move') {
+      _bootstrapAdapter
+          .readLogManager(_ref)
+          .debug(
+            'desktop_idle_prewarm_reset_by_input',
+            context: <String, Object?>{'source': source},
+          );
+    }
+    _resetQuickInputIdlePrewarmTimer(source: source);
+  }
+
+  void markQuickInputWarmPathUsed({String source = 'explicit_open'}) {
+    if (_quickInputIdlePrewarmCompleted) return;
+    _quickInputIdlePrewarmCompleted = true;
+    _quickInputIdlePrewarmArmed = false;
+    _quickInputIdlePrewarmTimer?.cancel();
+    _quickInputIdlePrewarmTimer = null;
+    _unbindQuickInputIdleKeyboardHandler();
+    _bootstrapAdapter
+        .readLogManager(_ref)
+        .info(
+          'desktop_idle_prewarm_skipped',
+          context: <String, Object?>{'reason': source},
+        );
+  }
+
+  @visibleForTesting
+  bool get quickInputIdlePrewarmArmedForTest => _quickInputIdlePrewarmArmed;
+
+  @visibleForTesting
+  bool get quickInputIdlePrewarmCompletedForTest =>
+      _quickInputIdlePrewarmCompleted;
 
   @visibleForTesting
   Future<dynamic> handleMethodCallForTest(
@@ -1045,22 +1105,70 @@ class DesktopWindowManager {
     return false;
   }
 
-  Future<void> _prewarmDesktopSubWindows() async {
-    await Future<void>.delayed(const Duration(milliseconds: 420));
-    if (!_isMounted() || !isDesktopShortcutEnabled()) return;
+  void _resetQuickInputIdlePrewarmTimer({required String source}) {
+    _quickInputIdlePrewarmTimer?.cancel();
+    _quickInputIdlePrewarmTimer = Timer(
+      _desktopQuickInputIdlePrewarmDelay,
+      () => unawaited(_runQuickInputIdlePrewarm(source: source)),
+    );
+  }
+
+  void _ensureQuickInputIdleKeyboardHandlerBound() {
+    if (_quickInputIdleKeyboardHandlerBound) return;
+    HardwareKeyboard.instance.addHandler(_handleQuickInputIdleKeyboardEvent);
+    _quickInputIdleKeyboardHandlerBound = true;
+  }
+
+  void _unbindQuickInputIdleKeyboardHandler() {
+    if (!_quickInputIdleKeyboardHandlerBound) return;
+    HardwareKeyboard.instance.removeHandler(_handleQuickInputIdleKeyboardEvent);
+    _quickInputIdleKeyboardHandlerBound = false;
+  }
+
+  bool _handleQuickInputIdleKeyboardEvent(KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      notifyUserInteraction(source: 'keyboard');
+    }
+    return false;
+  }
+
+  Future<void> _runQuickInputIdlePrewarm({required String source}) async {
+    if (_quickInputIdlePrewarmCompleted || !_quickInputIdlePrewarmArmed) {
+      return;
+    }
+    if (!_isMounted() || !_supportsQuickInputIdlePrewarm) {
+      markQuickInputWarmPathUsed(source: 'unsupported');
+      return;
+    }
+    _quickInputIdlePrewarmCompleted = true;
+    _quickInputIdlePrewarmArmed = false;
+    _quickInputIdlePrewarmTimer?.cancel();
+    _quickInputIdlePrewarmTimer = null;
+    _unbindQuickInputIdleKeyboardHandler();
     bindMethodHandler();
+    _bootstrapAdapter
+        .readLogManager(_ref)
+        .info(
+          'desktop_idle_prewarm_started',
+          context: <String, Object?>{'target': 'quick_input', 'source': source},
+        );
     try {
       await _quickInputController.prewarm();
+      _bootstrapAdapter
+          .readLogManager(_ref)
+          .info(
+            'desktop_idle_prewarm_completed',
+            context: const <String, Object?>{'target': 'quick_input'},
+          );
     } catch (error, stackTrace) {
       _bootstrapAdapter
           .readLogManager(_ref)
           .warn(
-            'Desktop sub-window prewarm failed',
+            'Desktop quick input idle prewarm failed',
             error: error,
             stackTrace: stackTrace,
           );
     }
-    prewarmDesktopSettingsWindowIfSupported();
   }
 
   Future<void> _handleOpenSettingsFromTray() async {

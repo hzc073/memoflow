@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/memoflow_palette.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/memos/memos_providers.dart';
 
@@ -24,6 +25,18 @@ class AdvancedSearchSheet extends StatefulWidget {
     required AdvancedSearchFilters initial,
     required bool showCreatedDateFilter,
   }) {
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<AdvancedSearchFilters>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.largeDialog,
+        maxWidth: 860,
+        maxHeightFactor: 0.9,
+        builder: (context) => AdvancedSearchSheet(
+          initial: initial,
+          showCreatedDateFilter: showCreatedDateFilter,
+        ),
+      );
+    }
     return showModalBottomSheet<AdvancedSearchFilters>(
       context: context,
       showDragHandle: true,

@@ -13,6 +13,7 @@ import '../../application/desktop/desktop_tray_controller.dart';
 import '../../core/desktop/shortcuts.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/platform_layout.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../core/top_toast.dart';
 import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../state/memos/memos_list_providers.dart';
@@ -168,6 +169,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
     MemosListRouteToastPresenter? showToast,
     MemosListRouteSettingsFallbackOpener? openSettingsFallback,
     MemosListRouteNoteInputPresenter? showNoteInputSheet,
+    MemosListRouteNoteInputPresenter? showWindowsDesktopNoteInput,
     MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
   }) : _contextResolver = contextResolver,
        _read = read,
@@ -198,6 +200,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
        _openSettingsFallback =
            openSettingsFallback ?? _defaultOpenSettingsFallback,
        _showNoteInputSheet = showNoteInputSheet ?? _defaultShowNoteInputSheet,
+       _showWindowsDesktopNoteInput = showWindowsDesktopNoteInput,
        _showVoiceRecordOverlay =
            showVoiceRecordOverlay ?? _defaultShowVoiceRecordOverlay;
 
@@ -227,6 +230,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
   final MemosListRouteToastPresenter _showToast;
   final MemosListRouteSettingsFallbackOpener _openSettingsFallback;
   final MemosListRouteNoteInputPresenter _showNoteInputSheet;
+  final MemosListRouteNoteInputPresenter? _showWindowsDesktopNoteInput;
   final MemosListRouteVoiceRecordOverlayPresenter _showVoiceRecordOverlay;
 
   final GlobalKey titleAnchorKey = GlobalKey();
@@ -358,7 +362,14 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<void> openNoteInput() async {
     if (!_enableCompose()) return;
-    await _showNoteInputSheet(_context);
+    final context = _context;
+    final windowsDesktopNoteInput = _showWindowsDesktopNoteInput;
+    if (Theme.of(context).platform == TargetPlatform.windows &&
+        windowsDesktopNoteInput != null) {
+      await windowsDesktopNoteInput(context);
+      return;
+    }
+    await _showNoteInputSheet(context);
   }
 
   Future<void> openVoiceNoteInput({
@@ -373,6 +384,16 @@ class MemosListRouteDelegate extends ChangeNotifier {
       mode: VoiceRecordMode.quickFabCompose,
     );
     if (!context.mounted || result == null) return;
+    final windowsDesktopNoteInput = _showWindowsDesktopNoteInput;
+    if (Theme.of(context).platform == TargetPlatform.windows &&
+        windowsDesktopNoteInput != null) {
+      await windowsDesktopNoteInput(
+        context,
+        initialAttachmentPaths: [result.filePath],
+        ignoreDraft: true,
+      );
+      return;
+    }
     await _showNoteInputSheet(
       context,
       initialAttachmentPaths: [result.filePath],
@@ -388,10 +409,8 @@ class MemosListRouteDelegate extends ChangeNotifier {
     final total = accounts.length + localLibraries.length;
     if (total < 2) return;
 
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
+    Widget buildAccountSwitcherContent(BuildContext surfaceContext) {
+      return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -409,28 +428,28 @@ class MemosListRouteDelegate extends ChangeNotifier {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     context.t.strings.legacy.msg_accounts,
-                    style: Theme.of(context).textTheme.labelMedium,
+                    style: Theme.of(surfaceContext).textTheme.labelMedium,
                   ),
                 ),
               ),
               ...accounts.map(
-                (a) => ListTile(
+                (account) => ListTile(
                   leading: Icon(
-                    a.key == session?.currentKey
+                    account.key == session?.currentKey
                         ? Icons.radio_button_checked
                         : Icons.radio_button_off,
                   ),
                   title: Text(
-                    a.user.displayName.isNotEmpty
-                        ? a.user.displayName
-                        : a.user.name,
+                    account.user.displayName.isNotEmpty
+                        ? account.user.displayName
+                        : account.user.name,
                   ),
-                  subtitle: Text(a.baseUrl.toString()),
+                  subtitle: Text(account.baseUrl.toString()),
                   onTap: () async {
-                    await Navigator.of(context).maybePop();
+                    await Navigator.of(surfaceContext).maybePop();
                     await _read(
                       appSessionProvider.notifier,
-                    ).switchAccount(a.key);
+                    ).switchAccount(account.key);
                   },
                 ),
               ),
@@ -442,28 +461,28 @@ class MemosListRouteDelegate extends ChangeNotifier {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     context.t.strings.legacy.msg_local_libraries,
-                    style: Theme.of(context).textTheme.labelMedium,
+                    style: Theme.of(surfaceContext).textTheme.labelMedium,
                   ),
                 ),
               ),
               ...localLibraries.map(
-                (l) => ListTile(
+                (library) => ListTile(
                   leading: Icon(
-                    l.key == session?.currentKey
+                    library.key == session?.currentKey
                         ? Icons.radio_button_checked
                         : Icons.radio_button_off,
                   ),
                   title: Text(
-                    l.name.isNotEmpty
-                        ? l.name
+                    library.name.isNotEmpty
+                        ? library.name
                         : context.t.strings.legacy.msg_local_library,
                   ),
-                  subtitle: Text(l.locationLabel),
+                  subtitle: Text(library.locationLabel),
                   onTap: () async {
-                    await Navigator.of(context).maybePop();
+                    await Navigator.of(surfaceContext).maybePop();
                     await _read(
                       appSessionProvider.notifier,
-                    ).switchWorkspace(l.key);
+                    ).switchWorkspace(library.key);
                     await WidgetsBinding.instance.endOfFrame;
                     await _maybeScanLocalLibrary();
                   },
@@ -473,7 +492,25 @@ class MemosListRouteDelegate extends ChangeNotifier {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      await showWindowsAdaptiveSurface<void>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.popover,
+        anchorContext: titleAnchorKey.currentContext,
+        fallbackAlignment: Alignment.topLeft,
+        maxWidth: 480,
+        builder: buildAccountSwitcherContent,
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: buildAccountSwitcherContent,
     );
   }
 

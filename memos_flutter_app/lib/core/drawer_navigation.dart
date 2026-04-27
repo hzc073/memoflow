@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../application/desktop/desktop_settings_window.dart';
@@ -27,14 +28,22 @@ void closeDrawerThenPushReplacement(
         openDesktopSettingsWindowIfSupported(feedbackContext: context)) {
       return;
     }
-    final shouldSkipAnimation =
-        noAnimation ||
-        shouldUseDesktopSidePaneLayout(MediaQuery.sizeOf(context).width);
-    final pageRoute = buildFadeSlideRoute<void>(
-      context: context,
-      builder: (_) => route,
-      enabled: !shouldSkipAnimation,
-    );
+    final width = MediaQuery.sizeOf(context).width;
+    final useDesktopSidePane = shouldUseDesktopSidePaneLayout(width);
+    final isWindowsDesktop =
+        defaultTargetPlatform == TargetPlatform.windows && useDesktopSidePane;
+    final shouldSkipAnimation = noAnimation || useDesktopSidePane;
+    final pageRoute = isWindowsDesktop
+        ? buildDesktopSharedAxisRoute<void>(
+            context: context,
+            builder: (_) => route,
+            enabled: !noAnimation,
+          )
+        : buildFadeSlideRoute<void>(
+            context: context,
+            builder: (_) => route,
+            enabled: !shouldSkipAnimation,
+          );
     Navigator.of(context).pushReplacement(pageRoute);
   }
 

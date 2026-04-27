@@ -2,26 +2,40 @@ import 'package:flutter/material.dart';
 
 import '../../../core/memoflow_palette.dart';
 
-bool shouldShowFloatingCollapseForToggle({
-  required Rect viewportRect,
-  required Rect toggleRect,
+bool shouldShowFloatingCollapseForOffsets({
+  required double viewportTop,
+  required double viewportBottom,
+  required double toggleTop,
+  required double toggleBottom,
 }) {
-  if (toggleRect.overlaps(viewportRect)) return false;
+  if (toggleBottom > viewportTop && toggleTop < viewportBottom) return false;
 
-  final graceDistance = viewportRect.height;
+  final graceDistance = viewportBottom - viewportTop;
   if (graceDistance <= 0) return true;
 
-  if (toggleRect.top >= viewportRect.bottom) {
-    final distanceBelow = toggleRect.top - viewportRect.bottom;
+  if (toggleTop >= viewportBottom) {
+    final distanceBelow = toggleTop - viewportBottom;
     return distanceBelow > graceDistance;
   }
 
-  if (toggleRect.bottom <= viewportRect.top) {
-    final distanceAbove = viewportRect.top - toggleRect.bottom;
+  if (toggleBottom <= viewportTop) {
+    final distanceAbove = viewportTop - toggleBottom;
     return distanceAbove > graceDistance;
   }
 
   return false;
+}
+
+bool shouldShowFloatingCollapseForToggle({
+  required Rect viewportRect,
+  required Rect toggleRect,
+}) {
+  return shouldShowFloatingCollapseForOffsets(
+    viewportTop: viewportRect.top,
+    viewportBottom: viewportRect.bottom,
+    toggleTop: toggleRect.top,
+    toggleBottom: toggleRect.bottom,
+  );
 }
 
 class MemoFloatingCollapseButton extends StatelessWidget {

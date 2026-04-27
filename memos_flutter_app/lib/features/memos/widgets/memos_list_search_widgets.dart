@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app_motion_widgets.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/tag_badge.dart';
 import '../../../core/tag_colors.dart';
@@ -569,35 +570,37 @@ class MemosListPillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-            color: Colors.black.withValues(
-              alpha: Theme.of(context).brightness == Brightness.dark
-                  ? 0.2
-                  : 0.05,
+    return AppPressScale(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+              color: Colors.black.withValues(
+                alpha: Theme.of(context).brightness == Brightness.dark
+                    ? 0.2
+                    : 0.05,
+              ),
             ),
-          ),
-        ],
-      ),
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 18, color: iconColor),
-        label: Text(
-          label,
-          style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
+          ],
         ),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: textColor,
-          side: BorderSide(color: borderColor),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: const StadiumBorder(),
-          visualDensity: VisualDensity.compact,
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 18, color: iconColor),
+          label: Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
+          ),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: backgroundColor,
+            foregroundColor: textColor,
+            side: BorderSide(color: borderColor),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: const StadiumBorder(),
+            visualDensity: VisualDensity.compact,
+          ),
         ),
       ),
     );

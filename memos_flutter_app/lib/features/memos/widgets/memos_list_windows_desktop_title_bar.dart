@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:window_manager/window_manager.dart';
 
+import '../../../core/app_motion_widgets.dart';
 import '../../../core/memoflow_palette.dart';
+import '../../home/desktop/windows_desktop_command_bar.dart';
 import '../home_quick_actions.dart';
 import 'memos_list_search_widgets.dart';
-import 'memos_list_title_menu.dart';
 
 class MemosListWindowsDesktopTitleBar extends StatelessWidget {
   const MemosListWindowsDesktopTitleBar({
@@ -59,153 +59,100 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final barBg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final divider = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.08);
     final textColor = isDark
         ? MemoFlowPalette.textDark
         : MemoFlowPalette.textLight;
 
-    return Container(
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: barBg,
-        border: Border(bottom: BorderSide(color: divider)),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
+    return WindowsDesktopCommandBar(
+      leading: Row(
         children: [
-          const DragToMoveArea(child: SizedBox.expand()),
-          Row(
-            children: [
-              SizedBox(
-                width: 260,
-                child: Row(
-                  children: [
-                    IgnorePointer(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Image.asset(
-                            'assets/splash/splash_logo.png',
-                            fit: BoxFit.cover,
-                            filterQuality: FilterQuality.high,
-                            errorBuilder: (_, _, _) => Icon(
-                              Icons.auto_stories_rounded,
-                              size: 22,
-                              color: textColor.withValues(alpha: 0.9),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DefaultTextStyle.merge(
-                        style: TextStyle(color: textColor, fontSize: 14),
-                        child: titleChild,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.center,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: windowsHeaderSearchExpanded
-                          ? searchFieldChild
-                          : (showPillActions && quickActions.isNotEmpty
-                                ? MemosListPillRow(quickActions: quickActions)
-                                : const SizedBox.shrink()),
-                    ),
+          IgnorePointer(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/splash/splash_logo.png',
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (_, _, _) => Icon(
+                    Icons.auto_stories_rounded,
+                    size: 22,
+                    color: textColor.withValues(alpha: 0.9),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              if (enableHomeSort && sortButton != null) ...[
-                sortButton!,
-                const SizedBox(width: 2),
-              ],
-              if (enableSearch)
-                IconButton(
-                  tooltip: windowsHeaderSearchExpanded
-                      ? cancelTooltip
-                      : searchTooltip,
-                  onPressed: onToggleSearch,
-                  icon: Icon(
-                    windowsHeaderSearchExpanded ? Icons.close : Icons.search,
-                  ),
-                ),
-              if (kDebugMode && !screenshotModeEnabled) ...[
-                IgnorePointer(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 130),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: MemoFlowPalette.primary.withValues(
-                          alpha: isDark ? 0.24 : 0.12,
-                        ),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: MemoFlowPalette.primary.withValues(
-                            alpha: isDark ? 0.45 : 0.25,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        debugApiVersionText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: MemoFlowPalette.primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              DesktopWindowIconButton(
-                tooltip: minimizeTooltip,
-                onPressed: onMinimize,
-                icon: Icons.minimize_rounded,
-              ),
-              DesktopWindowIconButton(
-                tooltip: desktopWindowMaximized
-                    ? restoreTooltip
-                    : maximizeTooltip,
-                onPressed: onToggleMaximize,
-                icon: desktopWindowMaximized
-                    ? Icons.filter_none_rounded
-                    : Icons.crop_square_rounded,
-              ),
-              DesktopWindowIconButton(
-                tooltip: closeTooltip,
-                onPressed: onClose,
-                icon: Icons.close_rounded,
-                destructive: true,
-              ),
-            ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DefaultTextStyle.merge(
+              style: TextStyle(color: textColor, fontSize: 14),
+              child: titleChild,
+            ),
           ),
         ],
       ),
+      center: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: AppSharedAxisSwitcher(
+          duration: const Duration(milliseconds: 260),
+          reverseDuration: const Duration(milliseconds: 200),
+          axis: Axis.horizontal,
+          offset: 0.024,
+          scaleBegin: 0.985,
+          animateSize: true,
+          child: KeyedSubtree(
+            key: ValueKey<String>(
+              windowsHeaderSearchExpanded
+                  ? 'windows-desktop-search'
+                  : (showPillActions && quickActions.isNotEmpty
+                        ? 'windows-desktop-quick-actions'
+                        : 'windows-desktop-center-empty'),
+            ),
+            child: windowsHeaderSearchExpanded
+                ? searchFieldChild
+                : (showPillActions && quickActions.isNotEmpty
+                      ? MemosListPillRow(quickActions: quickActions)
+                      : const SizedBox.shrink()),
+          ),
+        ),
+      ),
+      trailing: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (enableHomeSort && sortButton != null) ...[
+              sortButton!,
+              const SizedBox(width: 2),
+            ],
+            if (enableSearch)
+              IconButton(
+                tooltip: windowsHeaderSearchExpanded
+                    ? cancelTooltip
+                    : searchTooltip,
+                onPressed: onToggleSearch,
+                icon: Icon(
+                  windowsHeaderSearchExpanded ? Icons.close : Icons.search,
+                ),
+              ),
+          ],
+        ),
+      ),
+      debugBadgeText: kDebugMode && !screenshotModeEnabled
+          ? debugApiVersionText
+          : null,
+      desktopWindowMaximized: desktopWindowMaximized,
+      onMinimize: onMinimize,
+      onToggleMaximize: onToggleMaximize,
+      onClose: onClose,
+      minimizeTooltip: minimizeTooltip,
+      maximizeTooltip: maximizeTooltip,
+      restoreTooltip: restoreTooltip,
+      closeTooltip: closeTooltip,
     );
   }
 }

@@ -245,6 +245,10 @@ class DevicePreferencesController extends StateNotifier<DevicePreferences> {
     _setAndPersist(_queuedState.copyWith(homeInlineComposePanelLayout: value));
   }
 
+  void setDesktopHomeLayoutPreference(DesktopHomeLayoutPreference value) {
+    _setAndPersist(_queuedState.copyWith(desktopHomeLayoutPreference: value));
+  }
+
   void setCollectionReaderMode(CollectionReaderMode value) {
     _setAndPersist(
       _queuedState.copyWith(collectionReaderMode: value),

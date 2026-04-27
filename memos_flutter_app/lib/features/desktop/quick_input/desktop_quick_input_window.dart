@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../../application/desktop/desktop_window_resize_frame.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../core/app_localization.dart';
 import '../../../core/app_theme.dart';
@@ -74,11 +75,18 @@ class DesktopQuickInputWindowApp extends ConsumerWidget {
         ],
         builder: (context, child) {
           final media = MediaQuery.of(context);
-          return MediaQuery(
+          final appContent = MediaQuery(
             data: media.copyWith(
               textScaler: TextScaler.linear(textScaleFor(devicePrefs.fontSize)),
             ),
             child: child ?? const SizedBox.shrink(),
+          );
+          if (!Platform.isWindows) {
+            return appContent;
+          }
+          return DesktopWindowResizeFrame(
+            enableResizeEdges: const <ResizeEdge>[ResizeEdge.bottom],
+            child: appContent,
           );
         },
         home: DesktopQuickInputWindowScreen(windowId: windowId),
@@ -99,6 +107,9 @@ class DesktopQuickInputWindowScreen extends ConsumerStatefulWidget {
 
 class _DesktopQuickInputWindowScreenState
     extends ConsumerState<DesktopQuickInputWindowScreen> {
+  static const Size _quickInputMinWindowSize = Size(420, 440);
+  static const Size _quickInputMaxWindowSize = Size(420, 960);
+
   late final TextEditingController _controller;
   late final SmartEnterController _smartEnterController;
   late final FocusNode _focusNode;
@@ -162,6 +173,8 @@ class _DesktopQuickInputWindowScreenState
         await windowManager.setAsFrameless();
         await windowManager.setHasShadow(false);
         await windowManager.setBackgroundColor(const Color(0x00000000));
+        await windowManager.setMinimumSize(_quickInputMinWindowSize);
+        await windowManager.setMaximumSize(_quickInputMaxWindowSize);
       }
       if (!mounted) return;
       await _syncAlwaysOnTop();

@@ -25,7 +25,12 @@ void main() {
       state: 'NORMAL',
       pageSize: 40,
       shortcuts: const <Shortcut>[
-        Shortcut(name: 's1', id: 'shortcut-1', title: 'S1', filter: 'tag in []'),
+        Shortcut(
+          name: 's1',
+          id: 'shortcut-1',
+          title: 'S1',
+          filter: 'tag in []',
+        ),
       ],
       selectedShortcutId: 'shortcut-1',
       selectedQuickSearchKind: QuickSearchKind.voice,
@@ -274,6 +279,71 @@ void main() {
     expect(layoutState.headerBottomHeight, 0);
   });
 
+  test('windows wide layout enables desktop preview pane at 1360', () {
+    final queryState = buildMemosListScreenQueryState(
+      searchQuery: '',
+      filterDay: null,
+      state: 'NORMAL',
+      pageSize: 40,
+      shortcuts: const <Shortcut>[],
+      selectedShortcutId: null,
+      selectedQuickSearchKind: null,
+      resolvedTag: null,
+      advancedFilters: AdvancedSearchFilters.empty,
+      searching: false,
+      showDrawer: true,
+    );
+    final layoutState = buildMemosListScreenLayoutState(
+      query: queryState,
+      state: 'NORMAL',
+      showDrawer: true,
+      showPillActions: true,
+      showFilterTagChip: true,
+      enableCompose: true,
+      hidePrimaryComposeFab: false,
+      searching: false,
+      screenWidth: 1360,
+      isWindowsDesktop: true,
+    );
+
+    expect(layoutState.supportsDesktopPreviewPane, isTrue);
+    expect(layoutState.useDesktopPreviewPane, isTrue);
+  });
+
+  test(
+    'windows expanded layout supports pane without default preview mode',
+    () {
+      final queryState = buildMemosListScreenQueryState(
+        searchQuery: '',
+        filterDay: null,
+        state: 'NORMAL',
+        pageSize: 40,
+        shortcuts: const <Shortcut>[],
+        selectedShortcutId: null,
+        selectedQuickSearchKind: null,
+        resolvedTag: null,
+        advancedFilters: AdvancedSearchFilters.empty,
+        searching: false,
+        showDrawer: true,
+      );
+      final layoutState = buildMemosListScreenLayoutState(
+        query: queryState,
+        state: 'NORMAL',
+        showDrawer: true,
+        showPillActions: true,
+        showFilterTagChip: true,
+        enableCompose: true,
+        hidePrimaryComposeFab: false,
+        searching: false,
+        screenWidth: 1280,
+        isWindowsDesktop: true,
+      );
+
+      expect(layoutState.supportsDesktopPreviewPane, isTrue);
+      expect(layoutState.useDesktopPreviewPane, isFalse);
+    },
+  );
+
   test('guide state follows candidate order and visibility rules', () {
     final guideState = buildMemosListScreenGuideState(
       isAllMemos: true,
@@ -374,6 +444,9 @@ void main() {
     expect(viewState.recommendedTags[1].tag, 'gamma');
     expect(viewState.activeTagStat?.tag, 'beta');
     expect(viewState.tagPresentationSignature, contains('beta|'));
-    expect(viewState.guide.activeListGuideId, SceneMicroGuideId.memoListGestures);
+    expect(
+      viewState.guide.activeListGuideId,
+      SceneMicroGuideId.memoListGestures,
+    );
   });
 }

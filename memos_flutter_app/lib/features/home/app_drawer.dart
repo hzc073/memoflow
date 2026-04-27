@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,10 @@ import '../../state/system/notifications_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../../state/memos/stats_providers.dart';
+import 'app_drawer_model.dart';
+import 'desktop/desktop_navigation_rail.dart';
+import 'desktop/desktop_navigation_sidebar.dart';
+import 'desktop/desktop_overlay_navigation_panel.dart';
 import '../settings/quick_qr_action.dart';
 import '../tags/tag_edit_sheet.dart';
 import '../tags/tag_tree.dart';
@@ -38,6 +43,8 @@ enum AppDrawerDestination {
   settings,
   about,
 }
+
+enum AppDrawerViewMode { expandedSidebar, rail, overlayPanel }
 
 enum _DrawerTagFilter { all, frequent, recent, pinned }
 
@@ -63,6 +70,7 @@ class AppDrawer extends ConsumerStatefulWidget {
     this.onOpenNotifications,
     this.embedded = false,
     this.selectedTagPath,
+    this.viewMode = AppDrawerViewMode.expandedSidebar,
   });
 
   final AppDrawerDestination selected;
@@ -71,6 +79,7 @@ class AppDrawer extends ConsumerStatefulWidget {
   final VoidCallback? onOpenNotifications;
   final bool embedded;
   final String? selectedTagPath;
+  final AppDrawerViewMode viewMode;
 
   static final Future<PackageInfo> _packageInfoFuture =
       PackageInfo.fromPlatform();
@@ -281,6 +290,9 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
         ),
       ),
     );
+    final pendingOutboxCount =
+        ref.watch(_pendingOutboxCountProvider).valueOrNull ?? 0;
+    final unreadNotificationCount = ref.watch(unreadNotificationCountProvider);
 
     final bg = isDark
         ? const Color(0xFF181818)
@@ -321,6 +333,404 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     final showScanAction =
         kIsWeb || defaultTargetPlatform != TargetPlatform.windows;
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
+
+    AppDrawerModel buildDrawerModel() {
+      final stats = statsAsync.valueOrNull;
+      final destinations = <AppDrawerDestinationItem>[
+        AppDrawerDestinationItem(
+          id: AppDrawerDestination.memos.name,
+          label: context.t.strings.legacy.msg_all_memos,
+          icon: Icons.grid_view,
+          selected: selected == AppDrawerDestination.memos,
+          onTap: () => onSelect(AppDrawerDestination.memos),
+        ),
+        if (drawerPrefs.showDrawerExplore)
+          AppDrawerDestinationItem(
+            id: AppDrawerDestination.explore.name,
+            label: context.t.strings.legacy.msg_explore,
+            icon: Icons.public,
+            selected: selected == AppDrawerDestination.explore,
+            onTap: () => onSelect(AppDrawerDestination.explore),
+          ),
+        if (drawerPrefs.showDrawerDailyReview)
+          AppDrawerDestinationItem(
+            id: AppDrawerDestination.dailyReview.name,
+            label: context.t.strings.legacy.msg_random_review,
+            icon: Icons.explore,
+            selected: selected == AppDrawerDestination.dailyReview,
+            onTap: () => onSelect(AppDrawerDestination.dailyReview),
+          ),
+        if (drawerPrefs.showDrawerAiSummary)
+          AppDrawerDestinationItem(
+            id: AppDrawerDestination.aiSummary.name,
+            label: context.t.strings.legacy.msg_ai_summary,
+            icon: Icons.track_changes,
+            selected: selected == AppDrawerDestination.aiSummary,
+            onTap: () => onSelect(AppDrawerDestination.aiSummary),
+          ),
+        if (drawerPrefs.showDrawerCollections)
+          AppDrawerDestinationItem(
+            id: AppDrawerDestination.collections.name,
+            label: context.t.strings.collections.drawerLabel,
+            icon: Icons.auto_stories_rounded,
+            selected: selected == AppDrawerDestination.collections,
+            onTap: () => onSelect(AppDrawerDestination.collections),
+          ),
+        AppDrawerDestinationItem(
+          id: AppDrawerDestination.tags.name,
+          label: context.t.strings.legacy.msg_tags,
+          icon: Icons.sell_outlined,
+          selected: selected == AppDrawerDestination.tags,
+          onTap: () => onSelect(AppDrawerDestination.tags),
+        ),
+        if (drawerPrefs.showDrawerResources)
+          AppDrawerDestinationItem(
+            id: AppDrawerDestination.resources.name,
+            label: context.t.strings.legacy.msg_attachments,
+            icon: Icons.attach_file,
+            selected: selected == AppDrawerDestination.resources,
+            onTap: () => onSelect(AppDrawerDestination.resources),
+          ),
+        if (drawerPrefs.showDrawerArchive)
+          AppDrawerDestinationItem(
+            id: AppDrawerDestination.archived.name,
+            label: context.t.strings.legacy.msg_archive,
+            icon: Icons.archive,
+            selected: selected == AppDrawerDestination.archived,
+            onTap: () => onSelect(AppDrawerDestination.archived),
+          ),
+        AppDrawerDestinationItem(
+          id: AppDrawerDestination.recycleBin.name,
+          label: context.t.strings.legacy.msg_recycle_bin,
+          icon: Icons.delete,
+          selected: selected == AppDrawerDestination.recycleBin,
+          onTap: () => onSelect(AppDrawerDestination.recycleBin),
+        ),
+        AppDrawerDestinationItem(
+          id: AppDrawerDestination.about.name,
+          label: context.t.strings.legacy.msg_about,
+          icon: Icons.info,
+          selected: selected == AppDrawerDestination.about,
+          onTap: () => onSelect(AppDrawerDestination.about),
+        ),
+      ];
+
+      final quickActions = <AppDrawerQuickActionItem>[
+        if (showScanAction)
+          AppDrawerQuickActionItem(
+            id: 'scan',
+            label: context.t.strings.legacy.msg_scan,
+            tooltip: context.t.strings.legacy.msg_scan,
+            icon: Icons.qr_code_scanner,
+            iconColor: textMuted,
+            onTap: () {
+              unawaited(
+                startUniversalQuickQrAction(context: context, ref: ref),
+              );
+            },
+          ),
+        AppDrawerQuickActionItem(
+          id: 'sync_queue',
+          label: context.t.strings.legacy.msg_sync_queue,
+          tooltip: context.t.strings.legacy.msg_sync_queue,
+          icon: Icons.sync,
+          iconColor: textMuted,
+          showBadge: pendingOutboxCount > 0,
+          onTap: () => onSelect(AppDrawerDestination.syncQueue),
+        ),
+        AppDrawerQuickActionItem(
+          id: 'notifications',
+          label: context.t.strings.legacy.msg_notifications,
+          tooltip: context.t.strings.legacy.msg_notifications,
+          icon: Icons.notifications,
+          iconColor: textMuted,
+          showBadge: unreadNotificationCount > 0,
+          onTap: () {
+            final handler = onOpenNotifications;
+            if (handler == null) {
+              showTopToast(
+                context,
+                context.t.strings.legacy.msg_notifications_coming_soon,
+              );
+              return;
+            }
+            handler();
+          },
+        ),
+        AppDrawerQuickActionItem(
+          id: 'settings',
+          label: context.t.strings.legacy.msg_settings,
+          tooltip: context.t.strings.legacy.msg_settings,
+          icon: Icons.settings,
+          iconColor: textMuted,
+          onTap: () => onSelect(AppDrawerDestination.settings),
+        ),
+      ];
+
+      final tags = filteredTags
+          .map(
+            (tag) => AppDrawerTagItem(
+              label: tag.tag.split('/').last,
+              path: tag.path,
+              count: tag.count,
+              selected: selectedTagPath == tag.path,
+              onTap: () {
+                final callback = onSelectTag;
+                if (callback != null) {
+                  callback(tag.path);
+                  return;
+                }
+                onSelect(AppDrawerDestination.tags);
+              },
+            ),
+          )
+          .toList(growable: false);
+
+      final statsItems = <AppDrawerStatItem>[
+        AppDrawerStatItem(
+          value: (stats?.totalMemos ?? 0).toString(),
+          label: context.t.strings.legacy.msg_memos,
+        ),
+        AppDrawerStatItem(
+          value: (stats?.activeDays ?? 0).toString(),
+          label: context.t.strings.legacy.msg_days_2,
+        ),
+      ];
+
+      return AppDrawerModel(
+        title: title,
+        selected: selected.name,
+        selectedTagPath: selectedTagPath,
+        destinations: destinations,
+        quickActions: quickActions,
+        tags: tags,
+        stats: AppDrawerStatsModel(items: statsItems),
+        versionText: '',
+        hasUnreadNotifications: unreadNotificationCount > 0,
+        isLocalLibraryMode: localLibrary != null,
+      );
+    }
+
+    final drawerModel = buildDrawerModel();
+    final tagDividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.08);
+
+    PopupMenuButton<_DrawerTagFilter> buildTagFilterButton() {
+      return PopupMenuButton<_DrawerTagFilter>(
+        tooltip: context.t.strings.legacy.msg_sort,
+        initialValue: tagFilter,
+        onSelected: (value) {
+          if (value == tagFilter) return;
+          ref
+              .read(currentWorkspacePreferencesProvider.notifier)
+              .setTagListMode(_modeFromDrawerTagFilter(value));
+        },
+        itemBuilder: (context) => [
+          CheckedPopupMenuItem<_DrawerTagFilter>(
+            value: _DrawerTagFilter.all,
+            checked: tagFilter == _DrawerTagFilter.all,
+            child: Text(_tagFilterLabel(context, _DrawerTagFilter.all)),
+          ),
+          CheckedPopupMenuItem<_DrawerTagFilter>(
+            value: _DrawerTagFilter.frequent,
+            checked: tagFilter == _DrawerTagFilter.frequent,
+            child: Text(_tagFilterLabel(context, _DrawerTagFilter.frequent)),
+          ),
+          CheckedPopupMenuItem<_DrawerTagFilter>(
+            value: _DrawerTagFilter.recent,
+            checked: tagFilter == _DrawerTagFilter.recent,
+            child: Text(_tagFilterLabel(context, _DrawerTagFilter.recent)),
+          ),
+          CheckedPopupMenuItem<_DrawerTagFilter>(
+            value: _DrawerTagFilter.pinned,
+            checked: tagFilter == _DrawerTagFilter.pinned,
+            child: Text(_tagFilterLabel(context, _DrawerTagFilter.pinned)),
+          ),
+        ],
+        icon: Icon(_tagFilterIcon(tagFilter), color: textMuted, size: 20),
+      );
+    }
+
+    void openTagsPage({BuildContext? closeContext}) {
+      if (closeContext != null) {
+        Navigator.of(closeContext).pop();
+      }
+      onSelect(AppDrawerDestination.tags);
+    }
+
+    void selectTagPath(String path, {BuildContext? closeContext}) {
+      if (closeContext != null) {
+        Navigator.of(closeContext).pop();
+      }
+      final callback = onSelectTag;
+      if (callback != null) {
+        callback(path);
+        return;
+      }
+      onSelect(AppDrawerDestination.tags);
+    }
+
+    Widget buildTagTreeContent({
+      bool constrainHeight = false,
+      BuildContext? popoverContext,
+    }) {
+      return tagsAsync.when(
+        data: (tags) {
+          if (tagTreeResult.nodes.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                context.t.strings.legacy.msg_no_tags_yet,
+                style: TextStyle(color: textMuted),
+              ),
+            );
+          }
+          final tagTree = TagTreeList(
+            nodes: tagTreeResult.nodes,
+            expandedPaths: drawerExpandedPaths,
+            onToggleExpanded: _toggleTagExpanded,
+            onSelect: (path) =>
+                selectTagPath(path, closeContext: popoverContext),
+            onMenuAction: (node, action) =>
+                _handleTagMenuAction(context, tagsByPath, node, action),
+            showMenu: true,
+            compact: true,
+            selectedPath: selectedTagPath,
+            showSelectedLeadingCheck: true,
+            textMain: textMain,
+            textMuted: textMuted,
+          );
+
+          if (!constrainHeight) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: tagTree,
+            );
+          }
+
+          final showViewMore =
+              _measuredTagSectionHeight > _drawerTagSectionMaxHeight + 0.5;
+          return Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRect(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxHeight: _drawerTagSectionMaxHeight,
+                    ),
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: tagTree,
+                    ),
+                  ),
+                ),
+                if (showViewMore)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: openTagsPage,
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: Text(context.t.strings.legacy.msg_more),
+                      style: TextButton.styleFrom(
+                        foregroundColor: textMuted,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 4,
+                        ),
+                      ),
+                    ),
+                  ),
+                Offstage(
+                  offstage: true,
+                  child: IgnorePointer(
+                    child: MeasureSize(
+                      onChange: _updateMeasuredTagSectionHeight,
+                      child: tagTree,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        loading: () => Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            context.t.strings.legacy.msg_loading_2,
+            style: TextStyle(color: textMuted),
+          ),
+        ),
+        error: (e, _) => Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            context.t.strings.legacy.msg_failed_load_tags(e: e),
+            style: TextStyle(color: textMuted),
+          ),
+        ),
+      );
+    }
+
+    Widget buildRailTagsPanel(BuildContext dialogContext) {
+      return ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 320,
+          maxHeight: MediaQuery.sizeOf(dialogContext).height - 16,
+        ),
+        child: Material(
+          key: const ValueKey<String>('desktop-navigation-rail-tags-popover'),
+          color: bg,
+          elevation: 18,
+          shadowColor: Colors.black.withValues(alpha: isDark ? 0.3 : 0.14),
+          borderRadius: BorderRadius.circular(20),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          context.t.strings.legacy.msg_tags,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      buildTagFilterButton(),
+                      IconButton(
+                        tooltip: context.t.strings.legacy.msg_open_memo,
+                        onPressed: () =>
+                            openTagsPage(closeContext: dialogContext),
+                        icon: const Icon(Icons.open_in_new_rounded),
+                      ),
+                      IconButton(
+                        tooltip: context.t.strings.legacy.msg_close,
+                        onPressed: () => Navigator.of(dialogContext).maybePop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: tagDividerColor),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: buildTagTreeContent(popoverContext: dialogContext),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     final content = SafeArea(
       child: Column(
@@ -620,160 +1030,12 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                         ),
                       ),
                     ),
-                    PopupMenuButton<_DrawerTagFilter>(
-                      tooltip: context.t.strings.legacy.msg_sort,
-                      initialValue: tagFilter,
-                      onSelected: (value) {
-                        if (value == tagFilter) return;
-                        ref
-                            .read(currentWorkspacePreferencesProvider.notifier)
-                            .setTagListMode(_modeFromDrawerTagFilter(value));
-                      },
-                      itemBuilder: (context) => [
-                        CheckedPopupMenuItem<_DrawerTagFilter>(
-                          value: _DrawerTagFilter.all,
-                          checked: tagFilter == _DrawerTagFilter.all,
-                          child: Text(
-                            _tagFilterLabel(context, _DrawerTagFilter.all),
-                          ),
-                        ),
-                        CheckedPopupMenuItem<_DrawerTagFilter>(
-                          value: _DrawerTagFilter.frequent,
-                          checked: tagFilter == _DrawerTagFilter.frequent,
-                          child: Text(
-                            _tagFilterLabel(context, _DrawerTagFilter.frequent),
-                          ),
-                        ),
-                        CheckedPopupMenuItem<_DrawerTagFilter>(
-                          value: _DrawerTagFilter.recent,
-                          checked: tagFilter == _DrawerTagFilter.recent,
-                          child: Text(
-                            _tagFilterLabel(context, _DrawerTagFilter.recent),
-                          ),
-                        ),
-                        CheckedPopupMenuItem<_DrawerTagFilter>(
-                          value: _DrawerTagFilter.pinned,
-                          checked: tagFilter == _DrawerTagFilter.pinned,
-                          child: Text(
-                            _tagFilterLabel(context, _DrawerTagFilter.pinned),
-                          ),
-                        ),
-                      ],
-                      icon: Icon(
-                        _tagFilterIcon(tagFilter),
-                        color: textMuted,
-                        size: 20,
-                      ),
-                    ),
+                    buildTagFilterButton(),
                   ],
                 ),
-                tagsAsync.when(
-                  data: (tags) {
-                    if (tagTreeResult.nodes.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          context.t.strings.legacy.msg_no_tags_yet,
-                          style: TextStyle(color: textMuted),
-                        ),
-                      );
-                    }
-                    final tagTree = TagTreeList(
-                      nodes: tagTreeResult.nodes,
-                      expandedPaths: drawerExpandedPaths,
-                      onToggleExpanded: _toggleTagExpanded,
-                      onSelect: (path) {
-                        final cb = onSelectTag;
-                        if (cb != null) {
-                          cb(path);
-                        } else {
-                          onSelect(AppDrawerDestination.tags);
-                        }
-                      },
-                      onMenuAction: (node, action) => _handleTagMenuAction(
-                        context,
-                        tagsByPath,
-                        node,
-                        action,
-                      ),
-                      showMenu: true,
-                      compact: true,
-                      selectedPath: selectedTagPath,
-                      showSelectedLeadingCheck: true,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                    );
-                    final showViewMore =
-                        _measuredTagSectionHeight >
-                        _drawerTagSectionMaxHeight + 0.5;
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ClipRect(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxHeight: _drawerTagSectionMaxHeight,
-                              ),
-                              child: SingleChildScrollView(
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: tagTree,
-                              ),
-                            ),
-                          ),
-                          if (showViewMore)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () =>
-                                    onSelect(AppDrawerDestination.tags),
-                                icon: const Icon(Icons.open_in_new, size: 16),
-                                label: Text(context.t.strings.legacy.msg_more),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: textMuted,
-                                  visualDensity: VisualDensity.compact,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 4,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          Offstage(
-                            offstage: true,
-                            child: IgnorePointer(
-                              child: MeasureSize(
-                                onChange: _updateMeasuredTagSectionHeight,
-                                child: tagTree,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  loading: () => Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      context.t.strings.legacy.msg_loading_2,
-                      style: TextStyle(color: textMuted),
-                    ),
-                  ),
-                  error: (e, _) => Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      context.t.strings.legacy.msg_failed_load_tags(e: e),
-                      style: TextStyle(color: textMuted),
-                    ),
-                  ),
-                ),
+                buildTagTreeContent(constrainHeight: true),
                 const SizedBox(height: 4),
-                Divider(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : Colors.black.withValues(alpha: 0.08),
-                ),
+                Divider(color: tagDividerColor),
                 const SizedBox(height: 2),
                 _BottomNavRow(
                   label: context.t.strings.legacy.msg_recycle_bin,
@@ -829,11 +1091,30 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       ),
     );
 
+    final renderedContent = switch (widget.viewMode) {
+      AppDrawerViewMode.expandedSidebar => DesktopNavigationSidebar(
+        model: drawerModel,
+        backgroundColor: bg,
+        child: content,
+      ),
+      AppDrawerViewMode.rail => DesktopNavigationRail(
+        model: drawerModel,
+        tagsPanelBuilder: buildRailTagsPanel,
+      ),
+      AppDrawerViewMode.overlayPanel => DesktopOverlayNavigationPanel(
+        model: drawerModel,
+      ),
+    };
+
     if (embedded) {
-      return Material(color: bg, child: content);
+      return renderedContent;
     }
 
-    return Drawer(width: width, backgroundColor: bg, child: content);
+    if (widget.viewMode == AppDrawerViewMode.expandedSidebar) {
+      return Drawer(width: width, backgroundColor: bg, child: renderedContent);
+    }
+
+    return Material(color: bg, child: renderedContent);
   }
 }
 

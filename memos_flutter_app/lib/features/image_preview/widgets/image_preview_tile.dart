@@ -126,6 +126,10 @@ class ImagePreviewTile extends StatelessWidget {
       imageUrl: url,
       httpHeaders: item.headers,
       fit: fit,
+      memCacheWidth: cacheWidth,
+      memCacheHeight: cacheHeight,
+      maxWidthDiskCache: cacheWidth,
+      maxHeightDiskCache: cacheHeight,
       placeholder: (context, _) => _placeholder(Icons.image_outlined),
       errorWidget: (context, _, error) {
         logImageLoadError(

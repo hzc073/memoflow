@@ -270,75 +270,43 @@ void main() {
     },
   );
 
-  test('floating collapse scrolling state follows scroll events', () {
+  test('showBackToTopListenable emits only when threshold changes', () {
     final coordinator = MemosListViewportCoordinator(
       initialPageSize: 200,
       pageStep: 100,
     );
     addTearDown(coordinator.dispose);
-    final metrics = _metrics(pixels: 120, maxScrollExtent: 1000, viewport: 300);
+    final values = <bool>[];
+    void record() => values.add(coordinator.showBackToTopListenable.value);
 
-    coordinator.handleFloatingCollapseScrollEvent(
-      _event(MemosListViewportScrollEventKind.start, metrics: metrics),
-    );
-    expect(coordinator.floatingCollapseScrolling, isTrue);
+    coordinator.showBackToTopListenable.addListener(record);
+    addTearDown(() {
+      coordinator.showBackToTopListenable.removeListener(record);
+    });
 
-    coordinator.handleFloatingCollapseScrollEvent(
-      _event(
-        MemosListViewportScrollEventKind.user,
-        metrics: metrics,
-        userDirection: ScrollDirection.idle,
-      ),
+    coordinator.handleScroll(
+      _metrics(pixels: 100, maxScrollExtent: 1000, viewport: 300),
     );
-    expect(coordinator.floatingCollapseScrolling, isFalse);
+    expect(values, isEmpty);
+    expect(coordinator.showBackToTop, isFalse);
 
-    coordinator.handleFloatingCollapseScrollEvent(
-      _event(MemosListViewportScrollEventKind.update, metrics: metrics),
+    coordinator.handleScroll(
+      _metrics(pixels: 650, maxScrollExtent: 1000, viewport: 300),
     );
-    expect(coordinator.floatingCollapseScrolling, isTrue);
+    expect(values, <bool>[true]);
+    expect(coordinator.showBackToTop, isTrue);
 
-    coordinator.handleFloatingCollapseScrollEvent(
-      _event(MemosListViewportScrollEventKind.end, metrics: metrics),
+    coordinator.handleScroll(
+      _metrics(pixels: 700, maxScrollExtent: 1000, viewport: 300),
     );
-    expect(coordinator.floatingCollapseScrolling, isFalse);
+    expect(values, <bool>[true]);
+
+    coordinator.handleScroll(
+      _metrics(pixels: 10, maxScrollExtent: 1000, viewport: 300),
+    );
+    expect(values, <bool>[true, false]);
+    expect(coordinator.showBackToTop, isFalse);
   });
-
-  test(
-    'floating collapse recompute is debounced to one post-frame callback',
-    () {
-      final coordinator = MemosListViewportCoordinator(
-        initialPageSize: 200,
-        pageStep: 100,
-      );
-      addTearDown(coordinator.dispose);
-      final callbacks = <VoidCallback>[];
-      var scheduleCount = 0;
-
-      final first = coordinator.requestFloatingCollapseRecompute(
-        schedulePostFrame: (callback) {
-          scheduleCount++;
-          callbacks.add(callback);
-        },
-        resolveMemoUid: () => 'memo-1',
-      );
-      final second = coordinator.requestFloatingCollapseRecompute(
-        schedulePostFrame: (callback) {
-          scheduleCount++;
-          callbacks.add(callback);
-        },
-        resolveMemoUid: () => 'memo-2',
-      );
-
-      expect(first, isTrue);
-      expect(second, isFalse);
-      expect(scheduleCount, 1);
-      expect(coordinator.floatingCollapseMemoUid, isNull);
-
-      callbacks.single();
-
-      expect(coordinator.floatingCollapseMemoUid, 'memo-1');
-    },
-  );
 
   test('scrollToTop animates by timer-driven jumps until top', () {
     fakeAsync((async) {

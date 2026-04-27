@@ -17,6 +17,7 @@ import 'package:memos_flutter_app/data/models/memo_clip_card_metadata.dart';
 import 'package:memos_flutter_app/data/models/location_settings.dart';
 import 'package:memos_flutter_app/data/models/memo_reminder.dart';
 import 'package:memos_flutter_app/data/repositories/location_settings_repository.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_floating_collapse_controller.dart';
 import 'package:memos_flutter_app/features/memos/memo_markdown.dart';
 import 'package:memos_flutter_app/features/memos/memo_image_grid.dart';
 import 'package:memos_flutter_app/features/memos/memo_media_grid.dart';
@@ -287,6 +288,9 @@ void main() {
       expect(find.byType(MemoMediaGrid), findsOneWidget);
       var markdown = tester.widget<MemoMarkdown>(find.byType(MemoMarkdown));
       expect(markdown.renderImages, isFalse);
+      expect(markdown.data, contains('Intro paragraph.'));
+      expect(markdown.data, isNot(contains('<img')));
+      expect(markdown.data.trimRight(), endsWith('...'));
 
       await tester.tap(find.text('Expand'));
       await tester.pumpAndSettle();
@@ -299,6 +303,78 @@ void main() {
         contains('<img src="https://example.com/clip.jpg">'),
       );
       expect(markdown.data, contains('Detailed body paragraph.'));
+    },
+  );
+
+  testWidgets(
+    'MemosListMemoCardContainer publishes floating geometry and clears it after floating collapse',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(900, 2200));
+
+      final memo = _buildMemo(content: _buildLongMemoContent());
+      final memoCardKey = GlobalKey<MemoListCardState>();
+      final publishedGeometries = <MemoFloatingCollapseGeometry?>[];
+
+      await tester.pumpWidget(
+        _buildHarness(
+          memo: memo,
+          memoCardKey: memoCardKey,
+          wrapInScrollView: true,
+          onFloatingGeometryChanged: publishedGeometries.add,
+        ),
+      );
+      await _pumpTestFrames(tester);
+
+      expect(publishedGeometries.whereType<MemoFloatingCollapseGeometry>(), isEmpty);
+
+      await tester.tap(find.text('Expand'));
+      await _pumpTestFrames(tester);
+
+      expect(
+        publishedGeometries.whereType<MemoFloatingCollapseGeometry>().isNotEmpty,
+        isTrue,
+      );
+
+      memoCardKey.currentState!.collapseFromFloating();
+      await _pumpTestFrames(tester);
+
+      expect(publishedGeometries.last, isNull);
+      expect(find.text('Expand'), findsOneWidget);
+      expect(find.text('Collapse'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'MemosListMemoCardContainer clears floating geometry when the card is removed',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(900, 2200));
+
+      final memo = _buildMemo(content: _buildLongMemoContent());
+      final publishedGeometries = <MemoFloatingCollapseGeometry?>[];
+
+      await tester.pumpWidget(
+        _buildHarness(
+          memo: memo,
+          wrapInScrollView: true,
+          onFloatingGeometryChanged: publishedGeometries.add,
+        ),
+      );
+      await _pumpTestFrames(tester);
+
+      await tester.tap(find.text('Expand'));
+      await _pumpTestFrames(tester);
+
+      expect(
+        publishedGeometries.whereType<MemoFloatingCollapseGeometry>().isNotEmpty,
+        isTrue,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      expect(publishedGeometries.last, isNull);
     },
   );
 }
@@ -315,6 +391,9 @@ Widget _buildHarness({
   VoidCallback? onTap,
   ValueChanged<MemoCardAction>? onAction,
   ValueChanged<int>? onToggleTask,
+  GlobalKey<MemoListCardState>? memoCardKey,
+  ValueChanged<MemoFloatingCollapseGeometry?>? onFloatingGeometryChanged,
+  bool wrapInScrollView = false,
 }) {
   LocaleSettings.setLocale(AppLocale.en);
   final prefs = AppPreferences.defaultsForLanguage(AppLanguage.en);
@@ -349,12 +428,12 @@ Widget _buildHarness({
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: Scaffold(
-          body: Center(
+        home: Scaffold(body: Builder(builder: (context) {
+          Widget body = Center(
             child: SizedBox(
               width: 420,
               child: MemosListMemoCardContainer(
-                memoCardKey: GlobalKey<MemoListCardState>(),
+                memoCardKey: memoCardKey ?? GlobalKey<MemoListCardState>(),
                 memo: memo,
                 heroTag: removing ? null : (heroTag ?? memo.uid),
                 prefs: prefs,
@@ -381,15 +460,35 @@ Widget _buildHarness({
                 onTap: onTap ?? () {},
                 onDoubleTap: () {},
                 onLongPress: () {},
-                onFloatingStateChanged: () {},
+                onFloatingGeometryChanged:
+                    onFloatingGeometryChanged ?? (_) {},
                 onAction: onAction ?? (_) {},
               ),
             ),
-          ),
-        ),
+          );
+          if (wrapInScrollView) {
+            body = SingleChildScrollView(child: body);
+          }
+          return body;
+        })),
       ),
     ),
   );
+}
+
+String _buildLongMemoContent() {
+  return List<String>.generate(
+    320,
+    (index) => 'Long memo paragraph $index with enough words to keep the '
+        'expanded article body tall for floating collapse coverage.',
+  ).join('\n\n');
+}
+
+Future<void> _pumpTestFrames(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 120));
+  await tester.pump(const Duration(milliseconds: 120));
+  await tester.pump(const Duration(milliseconds: 120));
 }
 
 MemoClipCardMetadata _buildClipCardMetadata(String memoUid) {

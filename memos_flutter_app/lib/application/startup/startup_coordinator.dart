@@ -51,6 +51,7 @@ class StartupCoordinator extends ChangeNotifier {
     required GlobalKey<NavigatorState> navigatorKey,
     required WidgetRef ref,
     required bool Function() isMounted,
+    ValueChanged<String>? onQuickInputRequested,
     @visibleForTesting
     Route<ShareComposeRequest> Function(SharePayload payload)?
     sharePreviewRouteBuilder,
@@ -64,6 +65,7 @@ class StartupCoordinator extends ChangeNotifier {
        _navigatorKey = navigatorKey,
        _ref = ref,
        _isMounted = isMounted,
+       _onQuickInputRequested = onQuickInputRequested,
        _sharePreviewRouteBuilder = sharePreviewRouteBuilder,
        _shareQuickClipStartOverride = shareQuickClipStartOverride,
        _shareComposeRequestPresenterOverride =
@@ -76,11 +78,16 @@ class StartupCoordinator extends ChangeNotifier {
   final GlobalKey<NavigatorState> _navigatorKey;
   final WidgetRef _ref;
   final bool Function() _isMounted;
+  ValueChanged<String>? _onQuickInputRequested;
   final Route<ShareComposeRequest> Function(SharePayload payload)?
   _sharePreviewRouteBuilder;
   final ShareQuickClipStartCallback? _shareQuickClipStartOverride;
   final ShareComposeRequestPresenter? _shareComposeRequestPresenterOverride;
   final TopToastPresenter? _topToastPresenterOverride;
+
+  set onQuickInputRequested(ValueChanged<String>? value) {
+    _onQuickInputRequested = value;
+  }
 
   bool _showTopToast(BuildContext context, String message) {
     return (_topToastPresenterOverride ?? showTopToast)(context, message);
@@ -273,6 +280,7 @@ class StartupCoordinator extends ChangeNotifier {
   Future<void> openQuickInput({required bool autoFocus}) async {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
+    _onQuickInputRequested?.call('explicit_open');
     _appNavigator.openAllMemos();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final sheetContext = _navigatorKey.currentContext;

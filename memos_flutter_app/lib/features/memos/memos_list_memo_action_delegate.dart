@@ -15,6 +15,7 @@ class MemosListMemoActionDelegate {
     required void Function(LocalMemo memo) removeMemoWithAnimation,
     required void Function(String memoUid) invalidateMemoRenderCache,
     required void Function(String memoUid) invalidateMemoMarkdownCache,
+    required Future<void> Function(LocalMemo memo) copyMemoContent,
     required Future<void> Function(LocalMemo memo) openEditor,
     required Future<void> Function(LocalMemo memo) openHistory,
     required Future<void> Function(LocalMemo memo) openReminder,
@@ -29,6 +30,7 @@ class MemosListMemoActionDelegate {
        _removeMemoWithAnimation = removeMemoWithAnimation,
        _invalidateMemoRenderCache = invalidateMemoRenderCache,
        _invalidateMemoMarkdownCache = invalidateMemoMarkdownCache,
+       _copyMemoContent = copyMemoContent,
        _openEditor = openEditor,
        _openHistory = openHistory,
        _openReminder = openReminder,
@@ -44,6 +46,7 @@ class MemosListMemoActionDelegate {
   final void Function(LocalMemo memo) _removeMemoWithAnimation;
   final void Function(String memoUid) _invalidateMemoRenderCache;
   final void Function(String memoUid) _invalidateMemoMarkdownCache;
+  final Future<void> Function(LocalMemo memo) _copyMemoContent;
   final Future<void> Function(LocalMemo memo) _openEditor;
   final Future<void> Function(LocalMemo memo) _openHistory;
   final Future<void> Function(LocalMemo memo) _openReminder;
@@ -189,6 +192,9 @@ class MemosListMemoActionDelegate {
 
   Future<void> handleMemoAction(LocalMemo memo, MemoCardAction action) async {
     switch (action) {
+      case MemoCardAction.copy:
+        await _copyMemoContent(memo);
+        return;
       case MemoCardAction.togglePinned:
         await updateMemo(memo, pinned: !memo.pinned);
         return;

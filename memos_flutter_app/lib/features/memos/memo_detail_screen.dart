@@ -12,6 +12,7 @@ import '../../core/app_motion.dart';
 import '../../core/app_localization.dart';
 import '../../core/memo_clip_markdown.dart';
 import '../../core/memoflow_palette.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../core/pointer_double_tap_listener.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
@@ -19,10 +20,12 @@ import '../../core/tags.dart';
 import '../../core/uid.dart';
 import '../../core/url.dart';
 import '../../core/image_error_logger.dart';
+import '../../data/models/app_preferences.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/content_fingerprint.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
+import '../../data/models/memo_clip_card_metadata.dart';
 import '../../data/models/reaction.dart';
 import '../../data/models/user.dart';
 import '../../state/memos/memo_detail_providers.dart';
@@ -40,9 +43,12 @@ import '../share/share_inline_image_content.dart';
 import '../collections/add_to_collection_sheet.dart';
 import 'attachment_gallery_screen.dart';
 import 'memo_editor_screen.dart';
+import 'memo_detail_view.dart';
 import 'memo_image_grid.dart';
+import 'memo_image_preview_adapters.dart';
 import 'memo_media_grid.dart';
 import 'memo_markdown.dart';
+import 'memo_render_pipeline.dart';
 import 'memo_hero_flight.dart';
 import 'memo_versions_screen.dart';
 import 'memos_list_screen.dart';
@@ -61,20 +67,177 @@ String memoDetailMarkdownCacheKey(
   return 'detail|${memo.uid}|${memo.contentFingerprint}|renderImages=$renderFlag|clip=$stripFlag|highlight=';
 }
 
+String buildMemoDocumentMarkdownCacheKey(
+  LocalMemo memo, {
+  required bool renderImages,
+  bool stripClipTitle = false,
+}) {
+  return memoDetailMarkdownCacheKey(
+    memo,
+    renderImages: renderImages,
+    stripClipTitle: stripClipTitle,
+  );
+}
+
 const _likeReactionType = '❤️';
 
-class _MemoDetailDeferredContent {
-  const _MemoDetailDeferredContent({
+class MemoDocumentResolvedData {
+  const MemoDocumentResolvedData({
+    required this.memo,
+    required this.displayContentText,
+    required this.markdownArtifact,
+    required this.markdownCacheKey,
+    required this.clipCard,
+    required this.clipParts,
     required this.imageEntries,
     required this.videoEntries,
     required this.mediaEntries,
+    required this.imagePreviewItems,
     required this.nonImageAttachments,
+    required this.memoErrorText,
+    required this.baseUrl,
+    required this.authHeader,
+    required this.rebaseAbsoluteFileUrlForV024,
+    required this.attachAuthForSameOriginAbsolute,
+    required this.richContentEnabled,
+    required this.effectiveRenderInlineImages,
   });
 
+  final LocalMemo memo;
+  final String displayContentText;
+  final MemoRenderArtifact markdownArtifact;
+  final String markdownCacheKey;
+  final MemoClipCardMetadata? clipCard;
+  final MemoClipMarkdownParts? clipParts;
   final List<MemoImageEntry> imageEntries;
   final List<MemoVideoEntry> videoEntries;
   final List<MemoMediaEntry> mediaEntries;
+  final List<ImagePreviewItem> imagePreviewItems;
   final List<Attachment> nonImageAttachments;
+  final String? memoErrorText;
+  final Uri? baseUrl;
+  final String? authHeader;
+  final bool rebaseAbsoluteFileUrlForV024;
+  final bool attachAuthForSameOriginAbsolute;
+  final bool richContentEnabled;
+  final bool effectiveRenderInlineImages;
+}
+
+MemoDocumentResolvedData buildMemoDocumentResolvedData({
+  required LocalMemo memo,
+  required AppLanguage appLanguage,
+  required MemoClipCardMetadata? clipCard,
+  required Uri? baseUrl,
+  required String? authHeader,
+  required bool rebaseAbsoluteFileUrlForV024,
+  required bool attachAuthForSameOriginAbsolute,
+  required bool richContentEnabled,
+}) {
+  final clipParts = clipCard == null ? null : parseMemoClipMarkdown(memo.content);
+  final renderInlineImages = contentHasThirdPartyShareMarker(memo.content);
+  final effectiveRenderInlineImages =
+      renderInlineImages && richContentEnabled;
+  final displayContentText = clipCard == null
+      ? memo.content
+      : stripMemoClipTitle(
+          memo.content,
+        ).replaceAll(buildThirdPartyShareMemoMarker(), '').trimRight();
+  final imageEntries = !richContentEnabled
+      ? const <MemoImageEntry>[]
+      : collectMemoImageEntries(
+          content: memo.content,
+          attachments: memo.attachments,
+          baseUrl: baseUrl,
+          authHeader: authHeader,
+          rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        );
+  final videoEntries = !richContentEnabled
+      ? const <MemoVideoEntry>[]
+      : collectMemoVideoEntries(
+          attachments: memo.attachments,
+          baseUrl: baseUrl,
+          authHeader: authHeader,
+          rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        );
+  final mediaEntries = !richContentEnabled
+      ? const <MemoMediaEntry>[]
+      : renderInlineImages
+      ? buildMemoMediaEntries(
+          images: imageEntries
+              .where((entry) => entry.isAttachment)
+              .toList(growable: false),
+          videos: videoEntries,
+        )
+      : buildMemoMediaEntries(images: imageEntries, videos: videoEntries);
+  final imagePreviewItems = !richContentEnabled
+      ? const <ImagePreviewItem>[]
+      : collectMemoDocumentImagePreviewItems(
+          content: memo.content,
+          attachments: memo.attachments,
+          baseUrl: baseUrl,
+          authHeader: authHeader,
+          rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+          attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        );
+  final nonImageAttachments = memo.attachments
+      .where(
+        (attachment) =>
+            !attachment.type.startsWith('image/') &&
+            !attachment.type.startsWith('video/'),
+      )
+      .toList(growable: false);
+  final memoErrorText =
+      (memo.lastError == null || memo.lastError!.trim().isEmpty)
+      ? null
+      : presentSyncErrorText(
+          language: appLanguage,
+          raw: memo.lastError!.trim(),
+        );
+  final markdownCacheKey = buildMemoDocumentMarkdownCacheKey(
+    memo,
+    renderImages: effectiveRenderInlineImages,
+    stripClipTitle: clipCard != null,
+  );
+
+  return MemoDocumentResolvedData(
+    memo: memo,
+    displayContentText: displayContentText,
+    markdownArtifact: buildMemoRenderArtifact(
+      data: displayContentText,
+      renderImages: effectiveRenderInlineImages,
+      cacheKey: markdownCacheKey,
+    ),
+    markdownCacheKey: markdownCacheKey,
+    clipCard: clipCard,
+    clipParts: clipParts,
+    imageEntries: imageEntries,
+    videoEntries: videoEntries,
+    mediaEntries: mediaEntries,
+    imagePreviewItems: imagePreviewItems,
+    nonImageAttachments: nonImageAttachments,
+    memoErrorText: memoErrorText,
+    baseUrl: baseUrl,
+    authHeader: authHeader,
+    rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+    attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+    richContentEnabled: richContentEnabled,
+    effectiveRenderInlineImages: effectiveRenderInlineImages,
+  );
+}
+
+class MemoDocumentAudioHandle {
+  const MemoDocumentAudioHandle({
+    required this.isPlayingForUrl,
+    this.playerStateStream,
+    this.onTogglePlayAudio,
+  });
+
+  final bool Function(String url) isPlayingForUrl;
+  final Stream<PlayerState>? playerStateStream;
+  final Future<void> Function(String url, {Map<String, String>? headers})?
+  onTogglePlayAudio;
 }
 
 class MemoDetailScreen extends ConsumerStatefulWidget {
@@ -83,13 +246,23 @@ class MemoDetailScreen extends ConsumerStatefulWidget {
     required this.initialMemo,
     this.readOnly = false,
     this.showEngagement = false,
+    this.richContentEnabled = true,
     this.heroTag,
+    this.embedded = false,
+    this.embeddedHeader,
+    this.scrollController,
+    this.onRequestEditExisting,
   });
 
   final LocalMemo initialMemo;
   final bool readOnly;
   final bool showEngagement;
+  final bool richContentEnabled;
   final Object? heroTag;
+  final bool embedded;
+  final Widget? embeddedHeader;
+  final ScrollController? scrollController;
+  final Future<void> Function(LocalMemo memo)? onRequestEditExisting;
 
   @override
   ConsumerState<MemoDetailScreen> createState() => _MemoDetailScreenState();
@@ -97,18 +270,21 @@ class MemoDetailScreen extends ConsumerStatefulWidget {
 
 class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   final _player = AudioPlayer();
-  final _scrollController = ScrollController();
+  final _ownedScrollController = ScrollController();
 
   LocalMemo? _memo;
   String? _currentAudioUrl;
   Animation<double>? _routeAnimation;
   bool _routeSettled = false;
-  _MemoDetailDeferredContent? _deferredContent;
+  MemoDocumentResolvedData? _resolvedData;
   String? _preparedDeferredContentKey;
   String? _pendingDeferredContentKey;
 
   Object get _heroTag =>
       widget.heroTag ?? memoHeroTagForMemo(_memo ?? widget.initialMemo);
+
+  ScrollController get _scrollController =>
+      widget.scrollController ?? _ownedScrollController;
 
   @override
   void initState() {
@@ -131,9 +307,22 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant MemoDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final memoChanged =
+        oldWidget.initialMemo.uid != widget.initialMemo.uid ||
+        oldWidget.initialMemo.contentFingerprint !=
+            widget.initialMemo.contentFingerprint ||
+        oldWidget.initialMemo.updateTime != widget.initialMemo.updateTime;
+    if (memoChanged) {
+      setState(() => _setMemo(widget.initialMemo));
+    }
+  }
+
+  @override
   void dispose() {
     _routeAnimation?.removeStatusListener(_handleRouteAnimationStatusChanged);
-    _scrollController.dispose();
+    _ownedScrollController.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -155,7 +344,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
   void _setMemo(LocalMemo memo) {
     _memo = memo;
-    _deferredContent = null;
+    _currentAudioUrl = null;
+    _resolvedData = null;
     _preparedDeferredContentKey = null;
     _pendingDeferredContentKey = null;
   }
@@ -177,47 +367,29 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         '${attachAuthForSameOriginAbsolute ? 1 : 0}';
   }
 
-  _MemoDetailDeferredContent _buildDeferredDetailContent({
+  MemoDocumentResolvedData _buildDeferredDetailContent({
     required LocalMemo memo,
+    required AppLanguage appLanguage,
     required Uri? baseUrl,
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
     required bool attachAuthForSameOriginAbsolute,
   }) {
-    final imageEntries = collectMemoImageEntries(
-      content: memo.content,
-      attachments: memo.attachments,
+    return buildMemoDocumentResolvedData(
+      memo: memo,
+      appLanguage: appLanguage,
+      clipCard: ref.read(memoClipCardByUidProvider(memo.uid)),
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
-    );
-    final videoEntries = collectMemoVideoEntries(
-      attachments: memo.attachments,
-      baseUrl: baseUrl,
-      authHeader: authHeader,
-      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
-      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
-    );
-    return _MemoDetailDeferredContent(
-      imageEntries: imageEntries,
-      videoEntries: videoEntries,
-      mediaEntries: buildMemoMediaEntries(
-        images: imageEntries,
-        videos: videoEntries,
-      ),
-      nonImageAttachments: memo.attachments
-          .where(
-            (attachment) =>
-                !attachment.type.startsWith('image/') &&
-                !attachment.type.startsWith('video/'),
-          )
-          .toList(growable: false),
+      richContentEnabled: widget.richContentEnabled,
     );
   }
 
   void _scheduleDeferredDetailContentPreparation({
     required LocalMemo memo,
+    required AppLanguage appLanguage,
     required Uri? baseUrl,
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
@@ -239,6 +411,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       if (_pendingDeferredContentKey != key) return;
       final content = _buildDeferredDetailContent(
         memo: memo,
+        appLanguage: appLanguage,
         baseUrl: baseUrl,
         authHeader: authHeader,
         rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
@@ -248,7 +421,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       setState(() {
         _pendingDeferredContentKey = null;
         _preparedDeferredContentKey = key;
-        _deferredContent = content;
+        _resolvedData = content;
       });
     });
   }
@@ -316,6 +489,13 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     if (widget.readOnly || _isArchivedMemo()) return;
     final memo = _memo;
     if (memo == null) return;
+    final onRequestEditExisting = widget.onRequestEditExisting;
+    if (onRequestEditExisting != null) {
+      await onRequestEditExisting(memo);
+      ref.invalidate(memoRelationsProvider(memo.uid));
+      await _reload();
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => MemoEditorScreen(existing: memo)),
     );
@@ -474,19 +654,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     }
   }
 
-  String _attachmentUrl(Uri baseUrl, Attachment a, {required bool thumbnail}) {
-    final external = a.externalLink.trim();
-    if (external.isNotEmpty) {
-      final isRelative = !isAbsoluteUrl(external);
-      final resolved = resolveMaybeRelativeUrl(baseUrl, external);
-      return (thumbnail && isRelative)
-          ? appendThumbnailParam(resolved)
-          : resolved;
-    }
-    final url = joinBaseUrl(baseUrl, 'file/${a.name}/${a.filename}');
-    return thumbnail ? appendThumbnailParam(url) : url;
-  }
-
   Future<void> _replaceMemoAttachment(EditedImageResult result) async {
     final memo = _memo;
     if (memo == null) return;
@@ -594,6 +761,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final memo = _memo;
+    final appLanguage = context.appLanguage;
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
     final sessionController = ref.read(appSessionProvider.notifier);
@@ -608,11 +776,6 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final hapticsEnabled = ref.watch(
       devicePreferencesProvider.select((prefs) => prefs.hapticsEnabled),
-    );
-    final collapseLongContent = ref.watch(
-      currentWorkspacePreferencesProvider.select(
-        (prefs) => prefs.collapseLongContent,
-      ),
     );
     final collapseReferences = ref.watch(
       currentWorkspacePreferencesProvider.select(
@@ -647,6 +810,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
             maybeHaptic();
             unawaited(_edit());
           };
+    final richContentEnabled = widget.richContentEnabled;
     final deferredContentKey = _buildDeferredContentKey(
       memo: memo,
       baseUrl: baseUrl,
@@ -654,70 +818,40 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
     );
-    if (_routeSettled) {
+    if (_routeSettled && richContentEnabled) {
       _scheduleDeferredDetailContentPreparation(
         memo: memo,
+        appLanguage: appLanguage,
         baseUrl: baseUrl,
         authHeader: authHeader,
         rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
         attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
       );
     }
-    final deferredContent = _preparedDeferredContentKey == deferredContentKey
-        ? _deferredContent
+    final deferredContent =
+        richContentEnabled && _preparedDeferredContentKey == deferredContentKey
+        ? _resolvedData
         : null;
-    final clipCard = ref.watch(memoClipCardByUidProvider(memo.uid));
-    final clipParts = clipCard == null
-        ? null
-        : parseMemoClipMarkdown(memo.content);
-    final renderInlineImages = contentHasThirdPartyShareMarker(memo.content);
-    final displayContentText = clipCard == null
-        ? memo.content
-        : stripMemoClipTitle(
-            memo.content,
-          ).replaceAll(buildThirdPartyShareMemoMarker(), '').trimRight();
-    final imageEntries =
-        deferredContent?.imageEntries ?? const <MemoImageEntry>[];
-    final videoEntries =
-        deferredContent?.videoEntries ?? const <MemoVideoEntry>[];
-    final mediaEntries = renderInlineImages
-        ? buildMemoMediaEntries(
-            images: imageEntries
-                .where((entry) => entry.isAttachment)
-                .toList(growable: false),
-            videos: videoEntries,
-          )
-        : (deferredContent?.mediaEntries ?? const <MemoMediaEntry>[]);
-    final allowImageEdit =
-        canEditAttachments &&
-        imageEntries.any((entry) => entry.isAttachment) &&
-        !imageEntries.any((entry) => !entry.isAttachment);
-    final imagePreviewItems = imageEntries
-        .map((entry) => entry.toImagePreviewItem())
-        .toList(growable: false);
-    final nonImageAttachments =
-        deferredContent?.nonImageAttachments ?? const <Attachment>[];
-    final contentStyle = Theme.of(context).textTheme.bodyLarge;
+    final immediateResolvedData = buildMemoDocumentResolvedData(
+      memo: memo,
+      appLanguage: appLanguage,
+      clipCard: ref.watch(memoClipCardByUidProvider(memo.uid)),
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+      rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
+      attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+      richContentEnabled: richContentEnabled && _routeSettled,
+    );
+    final resolvedData = deferredContent ?? immediateResolvedData;
     final canToggleTasks = !widget.readOnly && !isArchived;
-    final tagColors = ref.watch(tagColorLookupProvider);
-
-    final contentWidget = _CollapsibleText(
-      text: displayContentText,
-      collapseEnabled: collapseLongContent,
-      initiallyExpanded: true,
-      style: contentStyle,
+    final header = MemoDocumentPrimaryContent(
+      resolvedData: resolvedData,
+      readOnly: widget.readOnly,
+      isArchived: isArchived,
       hapticsEnabled: hapticsEnabled,
-      markdownCacheKey: memoDetailMarkdownCacheKey(
-        memo,
-        renderImages: renderInlineImages,
-        stripClipTitle: clipCard != null,
-      ),
       markdownSelectable: _routeSettled,
-      renderImages: renderInlineImages,
-      tagColors: tagColors,
-      imagePreviewItems: imagePreviewItems,
-      onOpenImagePreview: (request) =>
-          ImagePreviewLauncher.open(context, request),
+      onDoubleTapEdit: onDoubleTapEdit,
+      onReplaceAttachment: canEditAttachments ? _replaceMemoAttachment : null,
       onToggleTask: canToggleTasks
           ? (request) {
               maybeHaptic();
@@ -728,295 +862,419 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
           : null,
     );
 
-    final memoErrorText =
-        (memo.lastError == null || memo.lastError!.trim().isEmpty)
-        ? null
-        : presentSyncErrorText(
-            language: context.appLanguage,
-            raw: memo.lastError!.trim(),
-          );
-    final header = PointerDoubleTapListener(
-      key: const ValueKey('memo-detail-edit-hit-area'),
-      behavior: HitTestBehavior.translucent,
-      onDoubleTap: onDoubleTapEdit,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (clipCard != null) ...[
-            MemoClipReadonlyHeader(
-              metadata: clipCard,
-              title: clipParts?.title,
-              onSourceTap: clipCard.sourceUrl.trim().isEmpty
-                  ? null
-                  : () async {
-                      final uri = Uri.tryParse(clipCard.sourceUrl.trim());
-                      if (uri == null) return;
-                      await launchUrl(
-                        uri,
-                        mode: LaunchMode.externalApplication,
-                      );
-                    },
-            ),
-            const SizedBox(height: 16),
-          ],
-          MemoReaderContent(
-            memo: memo,
-            padding: EdgeInsets.zero,
-            contentTextStyle: contentStyle,
-            metaTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            mediaMaxHeightFactor: 0.4,
-            mediaMaxCount: 9,
-            contentOverride: contentWidget,
-            mediaEntriesOverride: mediaEntries,
-            nonMediaAttachmentsOverride: nonImageAttachments,
-            showAttachmentsSection: false,
-            onReplaceAttachment: allowImageEdit ? _replaceMemoAttachment : null,
-          ),
-          if (mediaEntries.isNotEmpty) const SizedBox(height: 12),
-          if (memoErrorText != null && memoErrorText.trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.errorContainer.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.error.withValues(alpha: 0.22),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SelectableText(
-                    memoErrorText,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: () {
-                          maybeHaptic();
-                          unawaited(
-                            ref
-                                .read(syncCoordinatorProvider.notifier)
-                                .requestSync(
-                                  const SyncRequest(
-                                    kind: SyncRequestKind.memos,
-                                    reason: SyncRequestReason.manual,
-                                  ),
-                                ),
-                          );
-                          showTopToast(
-                            context,
-                            context.t.strings.legacy.msg_retry_started,
-                          );
-                        },
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: Text(context.t.strings.legacy.msg_retry_sync),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: () async {
-                          maybeHaptic();
-                          await Clipboard.setData(
-                            ClipboardData(text: memoErrorText),
-                          );
-                          if (!context.mounted) return;
-                          showTopToast(
-                            context,
-                            context.t.strings.legacy.msg_error_copied,
-                          );
-                        },
-                        icon: const Icon(Icons.copy, size: 18),
-                        label: Text(context.t.strings.legacy.msg_copy),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
+    final detailContent = MemoDocumentBody(
+      resolvedData: resolvedData,
+      header: header,
+      scrollController: _scrollController,
+      showSupplementarySections: _routeSettled,
+      shouldShowEngagement: shouldShowEngagement,
+      audioHandle: MemoDocumentAudioHandle(
+        isPlayingForUrl: (url) =>
+            _player.playing && _currentAudioUrl == url,
+        playerStateStream: _player.playerStateStream,
+        onTogglePlayAudio: _togglePlayAudio,
       ),
     );
 
-    return Scaffold(
+    return MemoDetailView(
       backgroundColor: cardColor,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: Text(
-          isArchived
-              ? context.t.strings.legacy.msg_archived
-              : context.t.strings.legacy.msg_memo,
-        ),
-        actions: widget.readOnly
-            ? null
-            : [
-                if (!isArchived)
-                  IconButton(
-                    tooltip: context.t.strings.legacy.msg_edit,
-                    onPressed: () {
-                      maybeHaptic();
-                      unawaited(_edit());
-                    },
-                    icon: const Icon(Icons.edit),
-                  ),
-                IconButton(
-                  tooltip: context.t.strings.settings.preferences.history,
-                  onPressed: () {
-                    maybeHaptic();
-                    unawaited(_openVersionHistory());
-                  },
-                  icon: const Icon(Icons.history),
-                ),
-                if (!isArchived)
-                  IconButton(
-                    tooltip: memo.pinned
-                        ? context.t.strings.legacy.msg_unpin
-                        : context.t.strings.legacy.msg_pin,
-                    onPressed: () {
-                      maybeHaptic();
-                      unawaited(_togglePinned());
-                    },
-                    icon: Icon(
-                      memo.pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                    ),
-                  ),
-                if (!isArchived)
-                  IconButton(
-                    tooltip: context.t.strings.collections.addToCollection,
-                    onPressed: () {
-                      maybeHaptic();
-                      unawaited(
-                        showAddMemoToCollectionSheet(
-                          context: context,
-                          ref: ref,
-                          memo: memo,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.library_add_rounded),
-                  ),
-                IconButton(
-                  tooltip: isArchived
-                      ? context.t.strings.legacy.msg_restore
-                      : context.t.strings.legacy.msg_archive,
-                  onPressed: () {
-                    maybeHaptic();
-                    unawaited(_toggleArchived());
-                  },
-                  icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
-                ),
-                IconButton(
-                  tooltip: context.t.strings.legacy.msg_delete,
-                  onPressed: () {
-                    maybeHaptic();
-                    unawaited(_delete());
-                  },
-                  icon: const Icon(Icons.delete_outline),
-                ),
-              ],
+      embedded: widget.embedded,
+      embeddedHeader: widget.embeddedHeader,
+      title: Text(
+        isArchived
+            ? context.t.strings.legacy.msg_archived
+            : context.t.strings.legacy.msg_memo,
       ),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Hero(
-              tag: _heroTag,
-              createRectTween: (begin, end) =>
-                  MaterialRectArcTween(begin: begin, end: end),
-              flightShuttleBuilder: memoHeroFlightShuttleBuilder(
-                isPinned: memo.pinned,
+      actions: widget.readOnly
+          ? null
+          : [
+              if (!isArchived)
+                IconButton(
+                  tooltip: context.t.strings.legacy.msg_edit,
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_edit());
+                  },
+                  icon: const Icon(Icons.edit),
+                ),
+              IconButton(
+                tooltip: context.t.strings.settings.preferences.history,
+                onPressed: () {
+                  maybeHaptic();
+                  unawaited(_openVersionHistory());
+                },
+                icon: const Icon(Icons.history),
               ),
-              child: RepaintBoundary(child: Container(color: cardColor)),
-            ),
+              if (!isArchived)
+                IconButton(
+                  tooltip: memo.pinned
+                      ? context.t.strings.legacy.msg_unpin
+                      : context.t.strings.legacy.msg_pin,
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(_togglePinned());
+                  },
+                  icon: Icon(
+                    memo.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  ),
+                ),
+              if (!isArchived)
+                IconButton(
+                  tooltip: context.t.strings.collections.addToCollection,
+                  onPressed: () {
+                    maybeHaptic();
+                    unawaited(
+                      showAddMemoToCollectionSheet(
+                        context: context,
+                        ref: ref,
+                        memo: memo,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.library_add_rounded),
+                ),
+              IconButton(
+                tooltip: isArchived
+                    ? context.t.strings.legacy.msg_restore
+                    : context.t.strings.legacy.msg_archive,
+                onPressed: () {
+                  maybeHaptic();
+                  unawaited(_toggleArchived());
+                },
+                icon: Icon(isArchived ? Icons.unarchive : Icons.archive),
+              ),
+              IconButton(
+                tooltip: context.t.strings.legacy.msg_delete,
+                onPressed: () {
+                  maybeHaptic();
+                  unawaited(_delete());
+                },
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+      backgroundChild: Hero(
+        tag: _heroTag,
+        createRectTween: (begin, end) =>
+            MaterialRectArcTween(begin: begin, end: end),
+        flightShuttleBuilder: memoHeroFlightShuttleBuilder(
+          isPinned: memo.pinned,
+        ),
+        child: RepaintBoundary(child: Container(color: cardColor)),
+      ),
+      child: detailContent,
+    );
+  }
+}
+
+class MemoDocumentBody extends StatelessWidget {
+  const MemoDocumentBody({
+    super.key,
+    required this.scrollController,
+    required this.header,
+    required this.showSupplementarySections,
+    required this.shouldShowEngagement,
+    required this.resolvedData,
+    this.audioHandle,
+  });
+
+  final ScrollController scrollController;
+  final Widget header;
+  final bool showSupplementarySections;
+  final bool shouldShowEngagement;
+  final MemoDocumentResolvedData resolvedData;
+  final MemoDocumentAudioHandle? audioHandle;
+
+  @override
+  Widget build(BuildContext context) {
+    final memo = resolvedData.memo;
+    final nonImageAttachments = resolvedData.nonImageAttachments;
+    final baseUrl = resolvedData.baseUrl;
+    final authHeader = resolvedData.authHeader;
+    String resolveAttachmentUrl(
+      Uri baseUrl,
+      Attachment attachment, {
+      required bool thumbnail,
+    }) {
+      final external = attachment.externalLink.trim();
+      if (external.isNotEmpty) {
+        final isRelative = !isAbsoluteUrl(external);
+        final resolved = resolveMaybeRelativeUrl(baseUrl, external);
+        return (thumbnail && isRelative)
+            ? appendThumbnailParam(resolved)
+            : resolved;
+      }
+      final url = joinBaseUrl(
+        baseUrl,
+        'file/${attachment.name}/${attachment.filename}',
+      );
+      return thumbnail ? appendThumbnailParam(url) : url;
+    }
+
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.all(16),
+      children: [
+        header,
+        if (showSupplementarySections && shouldShowEngagement)
+          _MemoEngagementSection(
+            memoUid: memo.uid,
+            memoVisibility: memo.visibility,
           ),
-          SafeArea(
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
+        if (showSupplementarySections) _MemoRelationsSection(memoUid: memo.uid),
+        if (showSupplementarySections && nonImageAttachments.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            context.t.strings.legacy.msg_attachments,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final attachment in nonImageAttachments)
+                Builder(
+                  builder: (context) {
+                    final isAudio = attachment.type.startsWith('audio');
+                    final fullUrl = (baseUrl == null)
+                        ? ''
+                        : resolveAttachmentUrl(
+                            baseUrl,
+                            attachment,
+                            thumbnail: false,
+                          );
+
+                    if (isAudio && baseUrl != null && fullUrl.isNotEmpty) {
+                      final handle = audioHandle;
+                      final stream = handle?.playerStateStream;
+                      final togglePlayAudio = handle?.onTogglePlayAudio;
+                      if (stream == null) {
+                        return ListTile(
+                          leading: const Icon(Icons.play_arrow),
+                          title: Text(attachment.filename),
+                          subtitle: Text(attachment.type),
+                          onTap: togglePlayAudio == null
+                              ? null
+                              : () => togglePlayAudio(
+                                  fullUrl,
+                                  headers: authHeader == null
+                                      ? null
+                                      : {'Authorization': authHeader},
+                                ),
+                        );
+                      }
+                      return StreamBuilder<PlayerState>(
+                        stream: stream,
+                        builder: (context, snap) {
+                          final playing =
+                              handle?.isPlayingForUrl(fullUrl) ?? false;
+                          return ListTile(
+                            leading: Icon(
+                              playing ? Icons.pause : Icons.play_arrow,
+                            ),
+                            title: Text(attachment.filename),
+                            subtitle: Text(attachment.type),
+                            onTap: togglePlayAudio == null
+                                ? null
+                                : () => togglePlayAudio(
+                                    fullUrl,
+                                    headers: authHeader == null
+                                        ? null
+                                        : {'Authorization': authHeader},
+                                  ),
+                          );
+                        },
+                      );
+                    }
+
+                    return ListTile(
+                      leading: const Icon(Icons.attach_file),
+                      title: Text(attachment.filename),
+                      subtitle: Text(attachment.type),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class MemoDocumentPrimaryContent extends ConsumerWidget {
+  const MemoDocumentPrimaryContent({
+    super.key,
+    required this.resolvedData,
+    this.readOnly = true,
+    this.isArchived = false,
+    this.hapticsEnabled = false,
+    this.markdownSelectable = true,
+    this.mediaMaxHeightFactor = 0.4,
+    this.onDoubleTapEdit,
+    this.onToggleTask,
+    this.onReplaceAttachment,
+  });
+
+  final MemoDocumentResolvedData resolvedData;
+  final bool readOnly;
+  final bool isArchived;
+  final bool hapticsEnabled;
+  final bool markdownSelectable;
+  final double mediaMaxHeightFactor;
+  final VoidCallback? onDoubleTapEdit;
+  final TaskToggleHandler? onToggleTask;
+  final Future<void> Function(EditedImageResult result)? onReplaceAttachment;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final memo = resolvedData.memo;
+    final clipCard = resolvedData.clipCard;
+    final clipParts = resolvedData.clipParts;
+    final imageEntries = resolvedData.imageEntries;
+    final mediaEntries = resolvedData.mediaEntries;
+    final collapseLongContent = ref.watch(
+      currentWorkspacePreferencesProvider.select(
+        (prefs) => prefs.collapseLongContent,
+      ),
+    );
+    final contentStyle = Theme.of(context).textTheme.bodyLarge;
+    final canEditAttachments = !readOnly && !isArchived;
+    final allowImageEdit =
+        resolvedData.richContentEnabled &&
+        canEditAttachments &&
+        onReplaceAttachment != null &&
+        imageEntries.any((entry) => entry.isAttachment) &&
+        !imageEntries.any((entry) => !entry.isAttachment);
+    final tagColors = ref.watch(tagColorLookupProvider);
+
+    final contentWidget = _CollapsibleText(
+      text: resolvedData.displayContentText,
+      collapseEnabled: collapseLongContent,
+      initiallyExpanded: true,
+      style: contentStyle,
+      hapticsEnabled: hapticsEnabled,
+      markdownCacheKey: resolvedData.markdownCacheKey,
+      markdownArtifact: resolvedData.markdownArtifact,
+      markdownSelectable: markdownSelectable && resolvedData.richContentEnabled,
+      renderImages: resolvedData.effectiveRenderInlineImages,
+      tagColors: tagColors,
+      imagePreviewItems: resolvedData.imagePreviewItems,
+      onOpenImagePreview: (request) => ImagePreviewLauncher.open(context, request),
+      onToggleTask: onToggleTask,
+    );
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (clipCard != null) ...[
+          MemoClipReadonlyHeader(
+            metadata: clipCard,
+            title: clipParts?.title,
+            showRemoteImages: resolvedData.richContentEnabled,
+            onSourceTap: clipCard.sourceUrl.trim().isEmpty
+                ? null
+                : () async {
+                    final uri = Uri.tryParse(clipCard.sourceUrl.trim());
+                    if (uri == null) return;
+                    await launchUrl(
+                      uri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
+          ),
+          const SizedBox(height: 16),
+        ],
+        MemoReaderContent(
+          memo: memo,
+          padding: EdgeInsets.zero,
+          contentTextStyle: contentStyle,
+          metaTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          mediaMaxHeightFactor: mediaMaxHeightFactor,
+          mediaMaxCount: 9,
+          contentOverride: contentWidget,
+          mediaEntriesOverride: mediaEntries,
+          nonMediaAttachmentsOverride: resolvedData.nonImageAttachments,
+          showAttachmentsSection: false,
+          onReplaceAttachment: allowImageEdit ? onReplaceAttachment : null,
+        ),
+        if (mediaEntries.isNotEmpty) const SizedBox(height: 12),
+        if (resolvedData.memoErrorText != null &&
+            resolvedData.memoErrorText!.trim().isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.errorContainer.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Theme.of(
+                  context,
+                ).colorScheme.error.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                header,
-                if (_routeSettled && shouldShowEngagement)
-                  _MemoEngagementSection(
-                    memoUid: memo.uid,
-                    memoVisibility: memo.visibility,
+                SelectableText(
+                  resolvedData.memoErrorText!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
                   ),
-                if (_routeSettled) _MemoRelationsSection(memoUid: memo.uid),
-                if (_routeSettled && nonImageAttachments.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    context.t.strings.legacy.msg_attachments,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final attachment in nonImageAttachments)
-                        Builder(
-                          builder: (context) {
-                            final isAudio = attachment.type.startsWith('audio');
-                            final fullUrl = (baseUrl == null)
-                                ? ''
-                                : _attachmentUrl(
-                                    baseUrl,
-                                    attachment,
-                                    thumbnail: false,
-                                  );
-
-                            if (isAudio &&
-                                baseUrl != null &&
-                                fullUrl.isNotEmpty) {
-                              return StreamBuilder<PlayerState>(
-                                stream: _player.playerStateStream,
-                                builder: (context, snap) {
-                                  final playing =
-                                      _player.playing &&
-                                      _currentAudioUrl == fullUrl;
-                                  return ListTile(
-                                    leading: Icon(
-                                      playing ? Icons.pause : Icons.play_arrow,
-                                    ),
-                                    title: Text(attachment.filename),
-                                    subtitle: Text(attachment.type),
-                                    onTap: () => _togglePlayAudio(
-                                      fullUrl,
-                                      headers: authHeader == null
-                                          ? null
-                                          : {'Authorization': authHeader},
-                                    ),
-                                  );
-                                },
-                              );
-                            }
-
-                            return ListTile(
-                              leading: const Icon(Icons.attach_file),
-                              title: Text(attachment.filename),
-                              subtitle: Text(attachment.type),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: () {
+                        unawaited(
+                          ref.read(syncCoordinatorProvider.notifier).requestSync(
+                                const SyncRequest(
+                                  kind: SyncRequestKind.memos,
+                                  reason: SyncRequestReason.manual,
+                                ),
+                              ),
+                        );
+                        showTopToast(
+                          context,
+                          context.t.strings.legacy.msg_retry_started,
+                        );
+                      },
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(context.t.strings.legacy.msg_retry_sync),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: resolvedData.memoErrorText!),
+                        );
+                        if (!context.mounted) return;
+                        showTopToast(
+                          context,
+                          context.t.strings.legacy.msg_error_copied,
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 18),
+                      label: Text(context.t.strings.legacy.msg_copy),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ],
-      ),
+      ],
+    );
+
+    return PointerDoubleTapListener(
+      key: const ValueKey('memo-detail-edit-hit-area'),
+      behavior: HitTestBehavior.translucent,
+      onDoubleTap: onDoubleTapEdit,
+      child: content,
     );
   }
 }
@@ -1059,6 +1317,7 @@ class _MemoEngagementSectionState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _loadEngagement();
     });
   }
@@ -1091,6 +1350,7 @@ class _MemoEngagementSectionState
   }
 
   void _loadEngagement() {
+    if (!mounted) return;
     final uid = widget.memoUid.trim();
     if (uid.isEmpty) return;
     unawaited(_loadReactions(uid));
@@ -1098,7 +1358,7 @@ class _MemoEngagementSectionState
   }
 
   Future<void> _loadReactions(String uid) async {
-    if (_reactionsLoading) return;
+    if (!mounted || _reactionsLoading) return;
     setState(() {
       _reactionsLoading = true;
       _reactionsError = null;
@@ -1201,7 +1461,7 @@ class _MemoEngagementSectionState
   }
 
   Future<void> _loadComments(String uid) async {
-    if (_commentsLoading) return;
+    if (!mounted || _commentsLoading) return;
     setState(() {
       _commentsLoading = true;
       _commentsError = null;
@@ -1574,68 +1834,85 @@ class _MemoEngagementSectionState
   void _showLikersSheet({required Color textMuted, required Uri? baseUrl}) {
     final likers = _uniqueReactions(_likeReactions());
     if (likers.isEmpty) return;
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.65,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: Text(
-                    '${sheetContext.t.strings.legacy.msg_like_2} $_reactionTotal',
-                    style: Theme.of(sheetContext).textTheme.titleMedium,
-                  ),
-                ),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: likers.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final reaction = likers[index];
-                      final creator = reaction.creator;
-                      final user = _creatorCache[creator];
-                      final displayName = _creatorDisplayName(
-                        user,
-                        creator,
-                        context,
-                      );
-                      return Row(
-                        children: [
-                          _buildAvatar(
-                            creator: user,
-                            fallback: creator,
-                            textMuted: textMuted,
-                            baseUrl: baseUrl,
-                            size: 32,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              displayName,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
+
+    Widget buildLikersContent(BuildContext surfaceContext) {
+      return SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(surfaceContext).height * 0.65,
           ),
-        );
-      },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Text(
+                  '${surfaceContext.t.strings.legacy.msg_like_2} $_reactionTotal',
+                  style: Theme.of(surfaceContext).textTheme.titleMedium,
+                ),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  itemCount: likers.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final reaction = likers[index];
+                    final creator = reaction.creator;
+                    final user = _creatorCache[creator];
+                    final displayName = _creatorDisplayName(
+                      user,
+                      creator,
+                      context,
+                    );
+                    return Row(
+                      children: [
+                        _buildAvatar(
+                          creator: user,
+                          fallback: creator,
+                          textMuted: textMuted,
+                          baseUrl: baseUrl,
+                          size: 32,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            displayName,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      unawaited(
+        showWindowsAdaptiveSurface<void>(
+          context: context,
+          kind: WindowsAdaptiveSurfaceKind.dialog,
+          maxWidth: 520,
+          builder: buildLikersContent,
+        ),
+      );
+      return;
+    }
+
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: buildLikersContent,
+      ),
     );
   }
 
@@ -2405,15 +2682,18 @@ class _MemoRelationsSection extends ConsumerWidget {
           children: [
             Icon(Icons.link, size: 14, color: textMuted),
             const SizedBox(width: 6),
-            Text(
-              context.t.strings.legacy.msg_loading_links,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: textMuted,
+            Expanded(
+              child: Text(
+                context.t.strings.legacy.msg_loading_links,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textMuted,
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             SizedBox.square(
               dimension: 12,
               child: CircularProgressIndicator(
@@ -2606,6 +2886,7 @@ class _CollapsibleText extends StatefulWidget {
     required this.hapticsEnabled,
     this.initiallyExpanded = false,
     this.markdownCacheKey,
+    this.markdownArtifact,
     this.markdownSelectable = true,
     this.renderImages = false,
     this.tagColors,
@@ -2620,6 +2901,7 @@ class _CollapsibleText extends StatefulWidget {
   final bool hapticsEnabled;
   final bool initiallyExpanded;
   final String? markdownCacheKey;
+  final MemoRenderArtifact? markdownArtifact;
   final bool markdownSelectable;
   final bool renderImages;
   final TagColorLookup? tagColors;
@@ -2687,6 +2969,7 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
       children: [
         MemoMarkdown(
           cacheKey: widget.markdownCacheKey,
+          artifact: showCollapsed ? null : widget.markdownArtifact,
           data: displayText,
           textStyle: widget.style,
           selectable: widget.markdownSelectable && !showCollapsed,

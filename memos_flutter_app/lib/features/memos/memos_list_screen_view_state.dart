@@ -62,6 +62,8 @@ class MemosListScreenLayoutState {
     required this.listVisualOffset,
     required this.supportsDesktopSidePane,
     required this.useDesktopSidePane,
+    required this.supportsDesktopPreviewPane,
+    required this.useDesktopPreviewPane,
     required this.useInlineCompose,
     required this.useWindowsDesktopHeader,
     required this.headerToolbarHeight,
@@ -76,6 +78,8 @@ class MemosListScreenLayoutState {
   final double listVisualOffset;
   final bool supportsDesktopSidePane;
   final bool useDesktopSidePane;
+  final bool supportsDesktopPreviewPane;
+  final bool useDesktopPreviewPane;
   final bool useInlineCompose;
   final bool useWindowsDesktopHeader;
   final double headerToolbarHeight;
@@ -137,8 +141,7 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
   final selectedShortcut = _findShortcutById(shortcuts, selectedShortcutId);
   final shortcutFilter = selectedShortcut?.filter ?? '';
   final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
-  final useQuickSearch =
-      !useShortcutFilter && selectedQuickSearchKind != null;
+  final useQuickSearch = !useShortcutFilter && selectedQuickSearchKind != null;
   final trimmedSearchQuery = searchQuery.trim();
   final useRemoteSearch =
       !useShortcutFilter && !useQuickSearch && trimmedSearchQuery.isNotEmpty;
@@ -235,6 +238,21 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
   final supportsDesktopSidePane =
       showDrawer && shouldUseDesktopSidePaneLayout(screenWidth);
   final useDesktopSidePane = supportsDesktopSidePane;
+  final windowsDesktopLayout = isWindowsDesktop
+      ? resolveWindowsDesktopLayout(
+          screenWidth,
+          platform: TargetPlatform.windows,
+        )
+      : null;
+  final supportsDesktopPreviewPane =
+      showDrawer &&
+      supportsDesktopSidePane &&
+      (isWindowsDesktop
+          ? windowsDesktopLayout!.supportsSecondaryPane
+          : shouldUseDesktopPreviewPaneLayout(screenWidth));
+  final useDesktopPreviewPane = isWindowsDesktop
+      ? windowsDesktopLayout!.tier == WindowsDesktopLayoutTier.wide
+      : supportsDesktopPreviewPane;
   final useInlineCompose =
       enableCompose &&
       !hidePrimaryComposeFab &&
@@ -273,6 +291,8 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
     listVisualOffset: listVisualOffset,
     supportsDesktopSidePane: supportsDesktopSidePane,
     useDesktopSidePane: useDesktopSidePane,
+    supportsDesktopPreviewPane: supportsDesktopPreviewPane,
+    useDesktopPreviewPane: useDesktopPreviewPane,
     useInlineCompose: useInlineCompose,
     useWindowsDesktopHeader: useWindowsDesktopHeader,
     headerToolbarHeight: headerToolbarHeight,
@@ -361,7 +381,10 @@ String buildMemosListTagPresentationSignature(List<TagStat> tagStats) {
       .join(',');
 }
 
-Shortcut? _findShortcutById(List<Shortcut> shortcuts, String? selectedShortcutId) {
+Shortcut? _findShortcutById(
+  List<Shortcut> shortcuts,
+  String? selectedShortcutId,
+) {
   final id = selectedShortcutId;
   if (id == null || id.isEmpty) return null;
   for (final shortcut in shortcuts) {

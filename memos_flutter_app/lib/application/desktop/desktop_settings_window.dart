@@ -51,11 +51,6 @@ bool openDesktopSettingsWindowIfSupported({BuildContext? feedbackContext}) {
   return true;
 }
 
-void prewarmDesktopSettingsWindowIfSupported() {
-  if (!supportsDesktopSettingsWindow()) return;
-  unawaited(_prewarmDesktopSettingsWindow());
-}
-
 Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
   if (_desktopSettingsWindowOpening) return;
   _desktopSettingsWindowOpening = true;
@@ -111,12 +106,6 @@ Future<void> _openDesktopSettingsWindow({BuildContext? feedbackContext}) async {
   } finally {
     _desktopSettingsWindowOpening = false;
   }
-}
-
-Future<void> _prewarmDesktopSettingsWindow() async {
-  try {
-    await _ensureDesktopSettingsWindowReady();
-  } catch (_) {}
 }
 
 Future<WindowController> _ensureDesktopSettingsWindowReady() async {

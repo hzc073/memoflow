@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_motion.dart';
+import '../../core/app_motion_widgets.dart';
 import '../../core/app_localization.dart';
 import '../../core/splash_tokens.g.dart';
 import '../../core/startup_timing.dart';
@@ -440,35 +441,12 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
     final child = showStartup
         ? StartupScreen(showSlogan: showStartupSlogan)
         : content;
-    final startupTransitionDuration = AppMotion.effectiveDuration(
-      context,
-      AppMotion.route,
-    );
-
-    final animatedChild = AnimatedSwitcher(
-      duration: startupTransitionDuration,
-      switchInCurve: AppMotion.standardCurve,
-      switchOutCurve: AppMotion.exitCurve,
-      transitionBuilder: (child, animation) {
-        if (startupTransitionDuration == Duration.zero) {
-          return child;
-        }
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: AppMotion.standardCurve,
-          reverseCurve: AppMotion.exitCurve,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: AppMotion.verticalEntryOffset,
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
-        );
-      },
+    final animatedChild = AppSharedAxisSwitcher(
+      duration: AppMotion.desktopOverlayEnter,
+      reverseDuration: AppMotion.desktopOverlayExit,
+      axis: Axis.vertical,
+      offset: 0.024,
+      scaleBegin: 0.985,
       child: KeyedSubtree(
         key: ValueKey(showStartup ? 'startup' : 'content'),
         child: child,

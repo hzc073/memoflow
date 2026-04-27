@@ -22,6 +22,7 @@ import '../../../state/tags/tag_color_lookup.dart';
 import '../memo_image_grid.dart';
 import '../memo_media_grid.dart';
 import '../memo_video_grid.dart';
+import '../memos_list_floating_collapse_controller.dart';
 import 'memo_clip_card_header.dart';
 import 'memos_list_memo_card.dart';
 
@@ -91,6 +92,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
     required this.memoCardKey,
     required this.memo,
     required this.heroTag,
+    this.selected = false,
     required this.prefs,
     required this.outboxStatus,
     required this.tagColors,
@@ -109,15 +111,20 @@ class MemosListMemoCardContainer extends ConsumerWidget {
     required this.onSyncStatusTap,
     required this.onToggleTask,
     required this.onTap,
+    this.onTapDown,
+    this.onTapUp,
+    this.onTapCancel,
     this.onLongPress,
     this.onDoubleTap,
-    this.onFloatingStateChanged,
+    this.onSecondaryTapDown,
+    this.onFloatingGeometryChanged,
     required this.onAction,
   });
 
   final GlobalKey<MemoListCardState> memoCardKey;
   final LocalMemo memo;
   final Object? heroTag;
+  final bool selected;
   final AppPreferences prefs;
   final OutboxMemoStatus outboxStatus;
   final TagColorLookup tagColors;
@@ -136,9 +143,13 @@ class MemosListMemoCardContainer extends ConsumerWidget {
   final ValueChanged<MemoSyncStatus>? onSyncStatusTap;
   final ValueChanged<int> onToggleTask;
   final VoidCallback onTap;
+  final GestureTapDownCallback? onTapDown;
+  final GestureTapUpCallback? onTapUp;
+  final VoidCallback? onTapCancel;
   final VoidCallback? onLongPress;
   final VoidCallback? onDoubleTap;
-  final VoidCallback? onFloatingStateChanged;
+  final ValueChanged<TapDownDetails>? onSecondaryTapDown;
+  final ValueChanged<MemoFloatingCollapseGeometry?>? onFloatingGeometryChanged;
   final ValueChanged<MemoCardAction> onAction;
 
   @override
@@ -261,6 +272,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
       memo: memo,
       heroTag: heroTag,
       debugRemoving: removing,
+      selected: selected,
       dateText: _memoDateFormatter.format(displayTime),
       reminderText: reminderText,
       tagColors: tagColors,
@@ -300,9 +312,13 @@ class MemosListMemoCardContainer extends ConsumerWidget {
           : () => onSyncStatusTap?.call(syncStatus),
       onToggleTask: removing ? (_) {} : onToggleTask,
       onTap: removing ? () {} : onTap,
+      onTapDown: removing ? null : onTapDown,
+      onTapUp: removing ? null : onTapUp,
+      onTapCancel: removing ? null : onTapCancel,
       onDoubleTap: removing || memo.state == 'ARCHIVED' ? () {} : onDoubleTap,
       onLongPress: removing ? () {} : onLongPress,
-      onFloatingStateChanged: onFloatingStateChanged,
+      onSecondaryTapDown: removing ? null : onSecondaryTapDown,
+      onFloatingGeometryChanged: onFloatingGeometryChanged,
       onAction: removing ? (_) {} : onAction,
     );
   }

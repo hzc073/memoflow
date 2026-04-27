@@ -114,6 +114,45 @@ void main() {
     expect(find.byKey(const ValueKey('drawer-menu-badge')), findsOneWidget);
   });
 
+  testWidgets('uses custom tap handler when provided', (tester) async {
+    var tapped = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unreadNotificationCountProvider.overrideWith((ref) => 0),
+          syncQueuePendingCountProvider.overrideWith(
+            (ref) => Stream<int>.value(0),
+          ),
+          syncQueueAttentionCountProvider.overrideWith(
+            (ref) => Stream<int>.value(0),
+          ),
+        ],
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: Scaffold(
+              appBar: AppBar(
+                leading: AppDrawerMenuButton(
+                  tooltip: 'Toggle sidebar',
+                  iconColor: Colors.black,
+                  badgeBorderColor: Colors.white,
+                  onPressed: () => tapped = true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('drawer-menu-button')));
+    await tester.pump();
+
+    expect(tapped, isTrue);
+  });
   testWidgets('opens the scaffold drawer when tapped', (tester) async {
     await pumpButton(
       tester,

@@ -9,6 +9,8 @@ import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
+import '../../core/app_motion.dart';
+import '../../core/app_motion_widgets.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
@@ -21,7 +23,9 @@ import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/memos/stats_providers.dart';
 import '../../state/settings/user_settings_provider.dart';
-import '../memos/memos_list_screen.dart';
+import '../../data/models/home_navigation_preferences.dart';
+import 'home_navigation_host.dart';
+import 'home_root_destination_registry.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -148,7 +152,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     _logOverlayLifecycle('request_sync_now');
     unawaited(
-      ref.read(syncCoordinatorProvider.notifier).requestSync(
+      ref
+          .read(syncCoordinatorProvider.notifier)
+          .requestSync(
             const SyncRequest(
               kind: SyncRequestKind.memos,
               reason: SyncRequestReason.launch,
@@ -157,10 +163,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _handleSyncStateChanged(
-    SyncFlowStatus? previous,
-    SyncFlowStatus next,
-  ) {
+  void _handleSyncStateChanged(SyncFlowStatus? previous, SyncFlowStatus next) {
     _maybeShowAttentionToast(previous, next);
     _logOverlayLifecycle(
       'sync_state_changed',
@@ -187,10 +190,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _completeSyncTracking(success: next.lastError == null);
   }
 
-  void _maybeShowAttentionToast(
-    SyncFlowStatus? previous,
-    SyncFlowStatus next,
-  ) {
+  void _maybeShowAttentionToast(SyncFlowStatus? previous, SyncFlowStatus next) {
     if (!mounted) return;
     if (previous?.running != true || next.running) return;
     final attention = next.attention;
@@ -203,16 +203,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final maxChars = tryParseRemoteMemoLengthLimit(attention.message ?? '');
     final message = maxChars != null
         ? context.tr(
-            zh:
-                '\u670d\u52a1\u5668\u5f53\u524d\u9650\u5236\u4e3a $maxChars \u4e2a\u5b57\u7b26\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5',
-            en:
-                'Server limit is $maxChars characters. Increase the server memo length limit and retry.',
+            zh: '\u670d\u52a1\u5668\u5f53\u524d\u9650\u5236\u4e3a $maxChars \u4e2a\u5b57\u7b26\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5',
+            en: 'Server limit is $maxChars characters. Increase the server memo length limit and retry.',
           )
         : context.tr(
-            zh:
-                '\u670d\u52a1\u5668\u9650\u5236\u4e86\u5355\u6761\u7b14\u8bb0\u957f\u5ea6\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5',
-            en:
-                'This server limits memo length. Increase the server memo length limit and retry.',
+            zh: '\u670d\u52a1\u5668\u9650\u5236\u4e86\u5355\u6761\u7b14\u8bb0\u957f\u5ea6\uff0c\u8bf7\u5148\u8c03\u6574\u670d\u52a1\u7aef\u957f\u5ea6\u4e0a\u9650\u540e\u518d\u91cd\u8bd5',
+            en: 'This server limits memo length. Increase the server memo length limit and retry.',
           );
     if (showTopToast(context, message)) {
       _lastAttentionToastOutboxId = attention.outboxId;
@@ -331,21 +327,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Stack(
       children: [
-        const MemosListScreen(
-          title: 'MemoFlow',
-          state: 'NORMAL',
-          showDrawer: true,
-          enableCompose: true,
-          enableDesktopResizableHomeInlineCompose: true,
+        Builder(
+          builder: (context) => buildHomeRootScreen(
+            context: context,
+            destination: HomeRootDestination.memos,
+            presentation: HomeScreenPresentation.standalone,
+            navigationHost: null,
+          ),
         ),
-        if (_overlayVisible)
-          Positioned.fill(
-            child: _HomeLoadingOverlay(
-              progress: progress,
-              showCloseAction: _showCloseAction,
-              onClose: _closeOverlayManually,
+        Positioned.fill(
+          child: IgnorePointer(
+            ignoring: !_overlayVisible,
+            child: AppSharedAxisSwitcher(
+              duration: AppMotion.desktopOverlayEnter,
+              reverseDuration: AppMotion.desktopOverlayExit,
+              axis: Axis.vertical,
+              offset: 0.02,
+              scaleBegin: 0.96,
+              child: _overlayVisible
+                  ? KeyedSubtree(
+                      key: const ValueKey<String>(
+                        'home-loading-overlay-visible',
+                      ),
+                      child: _HomeLoadingOverlay(
+                        progress: progress,
+                        showCloseAction: _showCloseAction,
+                        onClose: _closeOverlayManually,
+                      ),
+                    )
+                  : const ColoredBox(
+                      key: ValueKey<String>('home-loading-overlay-hidden'),
+                      color: Colors.transparent,
+                    ),
             ),
           ),
+        ),
       ],
     );
   }

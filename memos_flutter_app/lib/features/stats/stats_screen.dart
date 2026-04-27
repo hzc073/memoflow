@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -103,6 +104,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       removeMemoWithAnimation: (_) {},
       invalidateMemoRenderCache: invalidateMemoRenderCacheForUid,
       invalidateMemoMarkdownCache: invalidateMemoMarkdownCacheForUid,
+      copyMemoContent: (memo) async {
+        await Clipboard.setData(ClipboardData(text: memo.content));
+        if (!mounted) return;
+        showTopToast(context, context.t.strings.legacy.msg_memo_copied);
+      },
       openEditor: _openMemoEditor,
       openHistory: _openMemoHistory,
       openReminder: _openMemoReminder,

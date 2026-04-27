@@ -74,6 +74,26 @@ class MemoRenderPipeline {
   }
 }
 
+final MemoRenderPipeline _sharedMemoRenderPipeline = MemoRenderPipeline();
+
+MemoRenderArtifact buildMemoRenderArtifact({
+  required String data,
+  required bool renderImages,
+  String? highlightQuery,
+  String? cacheKey,
+}) {
+  return _sharedMemoRenderPipeline.build(
+    data: data,
+    renderImages: renderImages,
+    highlightQuery: highlightQuery,
+    cacheKey: cacheKey,
+  );
+}
+
+void invalidateMemoRenderArtifactCacheForUid(String memoUid) {
+  _sharedMemoRenderPipeline.invalidateByMemoUid(memoUid);
+}
+
 class _LruCache<K, V> {
   _LruCache({required int capacity}) : _capacity = capacity;
 

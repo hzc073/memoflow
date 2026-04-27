@@ -15,6 +15,7 @@ import '../../../state/memos/memos_list_providers.dart';
 import '../../../state/memos/memos_providers.dart';
 import '../../../state/tags/tag_color_lookup.dart';
 import '../../../i18n/strings.g.dart';
+import '../memos_list_floating_collapse_controller.dart';
 import 'memos_list_memo_card.dart';
 import 'memos_list_memo_card_container.dart';
 
@@ -43,6 +44,7 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
     required this.memoCardKey,
     required this.memo,
     required this.heroTag,
+    this.selected = false,
     required this.animation,
     required this.prefs,
     required this.outboxStatus,
@@ -62,15 +64,20 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
     required this.onSyncStatusTap,
     required this.onToggleTask,
     required this.onTap,
+    this.onTapDown,
+    this.onTapUp,
+    this.onTapCancel,
     required this.onDoubleTapEdit,
-    required this.onLongPressCopy,
-    required this.onFloatingStateChanged,
+    this.onLongPressCopy,
+    this.onSecondaryTapDown,
+    required this.onFloatingGeometryChanged,
     required this.onAction,
   });
 
   final GlobalKey<MemoListCardState> memoCardKey;
   final LocalMemo memo;
   final Object? heroTag;
+  final bool selected;
   final Animation<double> animation;
   final AppPreferences prefs;
   final OutboxMemoStatus outboxStatus;
@@ -90,9 +97,13 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
   final ValueChanged<MemoSyncStatus> onSyncStatusTap;
   final ValueChanged<int> onToggleTask;
   final VoidCallback onTap;
+  final GestureTapDownCallback? onTapDown;
+  final GestureTapUpCallback? onTapUp;
+  final VoidCallback? onTapCancel;
   final VoidCallback onDoubleTapEdit;
-  final VoidCallback onLongPressCopy;
-  final VoidCallback onFloatingStateChanged;
+  final VoidCallback? onLongPressCopy;
+  final ValueChanged<TapDownDetails>? onSecondaryTapDown;
+  final ValueChanged<MemoFloatingCollapseGeometry?> onFloatingGeometryChanged;
   final ValueChanged<MemoCardAction> onAction;
 
   @override
@@ -118,6 +129,7 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
       memoCardKey: memoCardKey,
       memo: memo,
       heroTag: heroTag,
+      selected: selected,
       prefs: prefs,
       outboxStatus: outboxStatus,
       tagColors: tagColors,
@@ -136,26 +148,32 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
       onSyncStatusTap: onSyncStatusTap,
       onToggleTask: onToggleTask,
       onTap: onTap,
+      onTapDown: onTapDown,
+      onTapUp: onTapUp,
+      onTapCancel: onTapCancel,
       onDoubleTap: () {
         if (prefs.hapticsEnabled) {
           HapticFeedback.selectionClick();
         }
         onDoubleTapEdit();
       },
-      onLongPress: () async {
-        if (prefs.hapticsEnabled) {
-          HapticFeedback.selectionClick();
-        }
-        await Clipboard.setData(ClipboardData(text: memo.content));
-        if (!context.mounted) return;
-        showTopToast(
-          context,
-          context.t.strings.legacy.msg_memo_copied,
-          duration: const Duration(milliseconds: 1200),
-        );
-        onLongPressCopy();
-      },
-      onFloatingStateChanged: onFloatingStateChanged,
+      onLongPress: onLongPressCopy == null
+          ? null
+          : () async {
+              if (prefs.hapticsEnabled) {
+                HapticFeedback.selectionClick();
+              }
+              await Clipboard.setData(ClipboardData(text: memo.content));
+              if (!context.mounted) return;
+              showTopToast(
+                context,
+                context.t.strings.legacy.msg_memo_copied,
+                duration: const Duration(milliseconds: 1200),
+              );
+              onLongPressCopy?.call();
+            },
+      onSecondaryTapDown: onSecondaryTapDown,
+      onFloatingGeometryChanged: onFloatingGeometryChanged,
       onAction: onAction,
     );
     if (Platform.isWindows) {

@@ -9,11 +9,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/attachment_toast.dart';
-import '../../core/desktop_window_controls.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
@@ -37,6 +35,7 @@ import '../../state/tags/tag_color_lookup.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
@@ -1366,8 +1365,8 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
         _selectedSource != RandomWalkSourceScope.allMemos ||
         (_sourceSupportsTagFilter && _selectedTags.isNotEmpty) ||
         _selectedDateRange != null;
-    final enableWindowsDragToMove =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final isWindowsDesktop =
+        Theme.of(context).platform == TargetPlatform.windows;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
     final tagStats =
@@ -1404,413 +1403,442 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     final shouldInterceptPop =
         widget.presentation != HomeScreenPresentation.embeddedBottomNav;
 
+    final pageBody = () {
+      final canUseCachedDeck =
+          _activeQueryKey == _resolvedQueryKey && _deck.isNotEmpty;
+      final showRefreshChip =
+          canUseCachedDeck &&
+          (deckAsync.isLoading ||
+              syncState.memos.running ||
+              syncState.localScan.running);
+
+      Widget buildDeckBody(List<RandomWalkDeckEntry> entries) {
+        if (entries.isEmpty) {
+          return Center(
+            child: Text(
+              context.t.strings.legacy.msg_no_content_yet,
+              style: TextStyle(color: textMuted),
+            ),
+          );
+        }
+
+        final deck = entries;
+        final total = deck.length;
+        final displayIndex = total == 0 ? 0 : (_cursor + 1).clamp(1, total);
+        final canLoopCards = deck.length > 1;
+        final backgroundCardCount = deck.length <= 2
+            ? 0
+            : math.min(3, deck.length - 2);
+        final avatarBorderColor = isDark
+            ? MemoFlowPalette.borderDark
+            : MemoFlowPalette.borderLight;
+
+        return Column(
+          children: [
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      context.t.strings.legacy.msg_randomly_draw_memo_cards,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: textMuted,
+                      ),
+                    ),
+                  ),
+                  if (showRefreshChip) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: MemoFlowPalette.primary.withValues(
+                          alpha: isDark ? 0.2 : 0.1,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        context.t.strings.legacy.msg_syncing_2,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: MemoFlowPalette.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Text(
+                    '$displayIndex / $total',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (hasActiveFilter)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (_selectedSource != RandomWalkSourceScope.allMemos)
+                      _ActiveFilterChip(
+                        label: _sourceLabel(_selectedSource, context),
+                        isDark: isDark,
+                        surfaceColor: bg,
+                      ),
+                    for (final tag in selectedTags)
+                      _ActiveFilterChip(
+                        label: '#$tag',
+                        isDark: isDark,
+                        surfaceColor: bg,
+                        colors: tagColors.resolveChipColorsByPath(
+                          tag,
+                          surfaceColor: card,
+                          isDark: isDark,
+                        ),
+                      ),
+                    if (_selectedDateRange != null)
+                      _ActiveFilterChip(
+                        label: _formatRangeLabel(_selectedDateRange, context),
+                        isDark: isDark,
+                        surfaceColor: bg,
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 60, 24, 140),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final maxCardWidth = useDesktopSidePane
+                        ? math.min(
+                            kMemoFlowDesktopMemoCardMaxWidth,
+                            constraints.maxWidth,
+                          )
+                        : constraints.maxWidth;
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxCardWidth),
+                        child: _HomeSwipeExclusionReporter(
+                          key: _deckSwipeExclusionKey,
+                          destination: HomeRootDestination.dailyReview,
+                          navigationHost: widget.embeddedNavigationHost,
+                          child: AppinioSwiper(
+                            key: ValueKey(_deckVersion),
+                            cardCount: deck.length,
+                            backgroundCardCount: backgroundCardCount,
+                            backgroundCardScale: 0.92,
+                            backgroundCardOffset: const Offset(0, 24),
+                            initialIndex: 0,
+                            loop: canLoopCards,
+                            isDisabled: !canLoopCards,
+                            swipeOptions: const SwipeOptions.symmetric(
+                              horizontal: true,
+                            ),
+                            maxAngle: 14,
+                            onSwipeEnd: (previousIndex, targetIndex, activity) {
+                              if (!mounted) return;
+                              unawaited(_stopAudioPlayback());
+                              setState(() {
+                                _cursor = deck.isEmpty
+                                    ? 0
+                                    : targetIndex % deck.length;
+                              });
+                            },
+                            cardBuilder: (context, index) {
+                              final entry = deck[index];
+                              if (entry.isAiHistory) {
+                                final history = entry.historyEntry!;
+                                final createdAt =
+                                    DateTime.fromMillisecondsSinceEpoch(
+                                      history.createdTime,
+                                      isUtc: true,
+                                    ).toLocal();
+                                final headerPrimaryText =
+                                    '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
+                                final headerSecondaryText = _formatDateYmd(
+                                  createdAt,
+                                );
+                                final headerAvatar = _buildHeaderAvatar(
+                                  rawAvatarUrl: currentUser?.avatarUrl ?? '',
+                                  baseUrl: baseUrl,
+                                  fallback: _currentUserFallbackLabel(
+                                    currentUser,
+                                    localLibrary,
+                                  ),
+                                  borderColor: avatarBorderColor,
+                                  textColor: textMain,
+                                  isDark: isDark,
+                                );
+                                return KeyedSubtree(
+                                  key: ValueKey(entry.key),
+                                  child: RepaintBoundary(
+                                    child: _RandomWalkAiHistoryCard(
+                                      entry: history,
+                                      bodyText:
+                                          entry.fullBodyText
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? entry.fullBodyText!.trim()
+                                          : history.summary.trim(),
+                                      headerPrimaryText: headerPrimaryText,
+                                      headerSecondaryText: headerSecondaryText,
+                                      headerAvatar: headerAvatar,
+                                      card: card,
+                                      textMain: textMain,
+                                      textMuted: textMuted,
+                                      isDark: isDark,
+                                      onTap: () => unawaited(
+                                        _openAiHistoryEntry(history),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              final memo = entry.memo!;
+                              final createdAt = memo.createTime;
+                              final headerPrimaryText =
+                                  '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
+                              final headerSecondaryText = _formatDateYmd(
+                                createdAt,
+                              );
+                              final creator =
+                                  _creatorCache[entry.creatorRef?.trim() ?? ''];
+                              final avatarFallback =
+                                  entry.memoOrigin ==
+                                      RandomWalkMemoOrigin.explore
+                                  ? (creator?.displayName.trim().isNotEmpty ==
+                                            true
+                                        ? creator!.displayName.trim()
+                                        : creator?.username.trim().isNotEmpty ==
+                                              true
+                                        ? creator!.username.trim()
+                                        : entry.creatorFallback)
+                                  : _currentUserFallbackLabel(
+                                      currentUser,
+                                      localLibrary,
+                                    );
+                              final avatarUrl =
+                                  entry.memoOrigin ==
+                                      RandomWalkMemoOrigin.explore
+                                  ? creator?.avatarUrl ?? ''
+                                  : currentUser?.avatarUrl ?? '';
+                              final headerAvatar = _buildHeaderAvatar(
+                                rawAvatarUrl: avatarUrl,
+                                baseUrl: baseUrl,
+                                fallback: avatarFallback,
+                                borderColor: avatarBorderColor,
+                                textColor: textMain,
+                                isDark: isDark,
+                              );
+                              final isAudioActive = _playingMemoUid == memo.uid;
+                              final canToggleTasks =
+                                  entry.memoOrigin ==
+                                  RandomWalkMemoOrigin.localAll;
+                              return KeyedSubtree(
+                                key: ValueKey(entry.key),
+                                child: RepaintBoundary(
+                                  child: _RandomWalkCard(
+                                    memo: memo,
+                                    heroTag: 'daily-review:${entry.key}:$index',
+                                    headerPrimaryText: headerPrimaryText,
+                                    headerSecondaryText: headerSecondaryText,
+                                    headerAvatar: headerAvatar,
+                                    card: card,
+                                    textMain: textMain,
+                                    textMuted: textMuted,
+                                    isDark: isDark,
+                                    baseUrl: baseUrl,
+                                    authHeader: authHeader,
+                                    rebaseAbsoluteFileUrlForV024:
+                                        rebaseAbsoluteFileUrlForV024,
+                                    attachAuthForSameOriginAbsolute:
+                                        attachAuthForSameOriginAbsolute,
+                                    audioPlaying:
+                                        isAudioActive && _audioPlayer.playing,
+                                    audioLoading:
+                                        isAudioActive && _audioLoading,
+                                    audioPositionListenable: isAudioActive
+                                        ? _audioPositionNotifier
+                                        : null,
+                                    audioDurationListenable: isAudioActive
+                                        ? _audioDurationNotifier
+                                        : null,
+                                    onAudioTap: () =>
+                                        unawaited(_toggleAudioPlayback(memo)),
+                                    onToggleTask: canToggleTasks
+                                        ? (request) => unawaited(
+                                            _toggleMemoCheckbox(
+                                              memo,
+                                              request.taskIndex,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+          ],
+        );
+      }
+
+      final pageBody = deckAsync.when(
+        data: buildDeckBody,
+        loading: () => canUseCachedDeck
+            ? buildDeckBody(_deck)
+            : const Center(child: CircularProgressIndicator()),
+        error: (e, _) {
+          if (canUseCachedDeck) {
+            return buildDeckBody(_deck);
+          }
+          final message = e is RandomWalkSignInRequiredException
+              ? context.t.strings.legacy.msg_not_signed
+              : context.t.strings.legacy.msg_failed_load_4(e: e);
+          return Center(child: Text(message));
+        },
+      );
+      if (!useDesktopSidePane || isWindowsDesktop) {
+        return pageBody;
+      }
+      return Row(
+        children: [
+          SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.08),
+          ),
+          Expanded(child: pageBody),
+        ],
+      );
+    }();
+
     return PopScope(
       canPop: !shouldInterceptPop,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop || !shouldInterceptPop) return;
         _back();
       },
-      child: Scaffold(
-        backgroundColor: bg,
-        drawer: useDesktopSidePane ? null : drawerPanel,
-        drawerEnableOpenDragGesture:
-            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
-        appBar: AppBar(
-          backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          automaticallyImplyLeading: !useDesktopSidePane,
-          toolbarHeight: 46,
-          iconTheme: IconThemeData(color: textMain),
-          flexibleSpace: enableWindowsDragToMove
-              ? const DragToMoveArea(child: SizedBox.expand())
-              : null,
-          leading: useDesktopSidePane
-              ? null
-              : widget.presentation == HomeScreenPresentation.embeddedBottomNav
-              ? AppDrawerMenuButton(
-                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                  iconColor: textMain,
-                  badgeBorderColor: bg,
-                )
-              : IconButton(
-                  tooltip: context.t.strings.legacy.msg_back,
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: _back,
-                ),
-          title: IgnorePointer(
-            ignoring: enableWindowsDragToMove,
-            child: Text(
-              context.t.strings.legacy.msg_random_review,
-              style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
-            ),
-          ),
-          centerTitle: !useDesktopSidePane,
-          actions: [
-            IconButton(
-              tooltip: context.t.strings.legacy.msg_filter,
-              icon: Icon(
-                Icons.tune_rounded,
-                color: hasActiveFilter ? MemoFlowPalette.primary : null,
+      child: isWindowsDesktop
+          ? WindowsDesktopPageShell(
+              backgroundColor: bg,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.dailyReview,
+                onSelect: _navigate,
+                onSelectTag: _openTag,
+                onOpenNotifications: _openNotifications,
+                embedded: embedded,
+                viewMode: viewMode,
               ),
-              onPressed: _openFilterSheet,
-            ),
-            if (enableWindowsDragToMove) const DesktopWindowControls(),
-          ],
-        ),
-        body: () {
-          final canUseCachedDeck =
-              _activeQueryKey == _resolvedQueryKey && _deck.isNotEmpty;
-          final showRefreshChip =
-              canUseCachedDeck &&
-              (deckAsync.isLoading ||
-                  syncState.memos.running ||
-                  syncState.localScan.running);
-
-          Widget buildDeckBody(List<RandomWalkDeckEntry> entries) {
-            if (entries.isEmpty) {
-              return Center(
-                child: Text(
-                  context.t.strings.legacy.msg_no_content_yet,
-                  style: TextStyle(color: textMuted),
-                ),
-              );
-            }
-
-            final deck = entries;
-            final total = deck.length;
-            final displayIndex = total == 0 ? 0 : (_cursor + 1).clamp(1, total);
-            final canLoopCards = deck.length > 1;
-            final backgroundCardCount = deck.length <= 2
-                ? 0
-                : math.min(3, deck.length - 2);
-            final avatarBorderColor = isDark
-                ? MemoFlowPalette.borderDark
-                : MemoFlowPalette.borderLight;
-
-            return Column(
-              children: [
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          context.t.strings.legacy.msg_randomly_draw_memo_cards,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: textMuted,
-                          ),
-                        ),
+              leadingTitle: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.presentation !=
+                      HomeScreenPresentation.embeddedBottomNav) ...[
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_back,
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: _back,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Flexible(
+                    child: Text(
+                      context.t.strings.legacy.msg_random_review,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
-                      if (showRefreshChip) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MemoFlowPalette.primary.withValues(
-                              alpha: isDark ? 0.2 : 0.1,
-                            ),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            context.t.strings.legacy.msg_syncing_2,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: MemoFlowPalette.primary,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      Text(
-                        '$displayIndex / $total',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (hasActiveFilter)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (_selectedSource != RandomWalkSourceScope.allMemos)
-                          _ActiveFilterChip(
-                            label: _sourceLabel(_selectedSource, context),
-                            isDark: isDark,
-                            surfaceColor: bg,
-                          ),
-                        for (final tag in selectedTags)
-                          _ActiveFilterChip(
-                            label: '#$tag',
-                            isDark: isDark,
-                            surfaceColor: bg,
-                            colors: tagColors.resolveChipColorsByPath(
-                              tag,
-                              surfaceColor: card,
-                              isDark: isDark,
-                            ),
-                          ),
-                        if (_selectedDateRange != null)
-                          _ActiveFilterChip(
-                            label: _formatRangeLabel(
-                              _selectedDateRange,
-                              context,
-                            ),
-                            isDark: isDark,
-                            surfaceColor: bg,
-                          ),
-                      ],
                     ),
                   ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 60, 24, 140),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final maxCardWidth = useDesktopSidePane
-                            ? math.min(
-                                kMemoFlowDesktopMemoCardMaxWidth,
-                                constraints.maxWidth,
-                              )
-                            : constraints.maxWidth;
-                        return Align(
-                          alignment: Alignment.topCenter,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: maxCardWidth),
-                            child: _HomeSwipeExclusionReporter(
-                              key: _deckSwipeExclusionKey,
-                              destination: HomeRootDestination.dailyReview,
-                              navigationHost: widget.embeddedNavigationHost,
-                              child: AppinioSwiper(
-                                key: ValueKey(_deckVersion),
-                                cardCount: deck.length,
-                                backgroundCardCount: backgroundCardCount,
-                                backgroundCardScale: 0.92,
-                                backgroundCardOffset: const Offset(0, 24),
-                                initialIndex: 0,
-                                loop: canLoopCards,
-                                isDisabled: !canLoopCards,
-                                swipeOptions: const SwipeOptions.symmetric(
-                                  horizontal: true,
-                                ),
-                                maxAngle: 14,
-                                onSwipeEnd:
-                                    (previousIndex, targetIndex, activity) {
-                                      if (!mounted) return;
-                                      unawaited(_stopAudioPlayback());
-                                      setState(() {
-                                        _cursor = deck.isEmpty
-                                            ? 0
-                                            : targetIndex % deck.length;
-                                      });
-                                    },
-                                cardBuilder: (context, index) {
-                                  final entry = deck[index];
-                                  if (entry.isAiHistory) {
-                                    final history = entry.historyEntry!;
-                                    final createdAt =
-                                        DateTime.fromMillisecondsSinceEpoch(
-                                          history.createdTime,
-                                          isUtc: true,
-                                        ).toLocal();
-                                    final headerPrimaryText =
-                                        '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
-                                    final headerSecondaryText = _formatDateYmd(
-                                      createdAt,
-                                    );
-                                    final headerAvatar = _buildHeaderAvatar(
-                                      rawAvatarUrl:
-                                          currentUser?.avatarUrl ?? '',
-                                      baseUrl: baseUrl,
-                                      fallback: _currentUserFallbackLabel(
-                                        currentUser,
-                                        localLibrary,
-                                      ),
-                                      borderColor: avatarBorderColor,
-                                      textColor: textMain,
-                                      isDark: isDark,
-                                    );
-                                    return KeyedSubtree(
-                                      key: ValueKey(entry.key),
-                                      child: RepaintBoundary(
-                                        child: _RandomWalkAiHistoryCard(
-                                          entry: history,
-                                          bodyText:
-                                              entry.fullBodyText
-                                                      ?.trim()
-                                                      .isNotEmpty ==
-                                                  true
-                                              ? entry.fullBodyText!.trim()
-                                              : history.summary.trim(),
-                                          headerPrimaryText: headerPrimaryText,
-                                          headerSecondaryText:
-                                              headerSecondaryText,
-                                          headerAvatar: headerAvatar,
-                                          card: card,
-                                          textMain: textMain,
-                                          textMuted: textMuted,
-                                          isDark: isDark,
-                                          onTap: () => unawaited(
-                                            _openAiHistoryEntry(history),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  final memo = entry.memo!;
-                                  final createdAt = memo.createTime;
-                                  final headerPrimaryText =
-                                      '${formatExactDaysAgo(exactDaysAgo(createdAt, DateTime.now()), context.appLanguage)} \u00B7 ${resolveDayPeriod(createdAt, context)}';
-                                  final headerSecondaryText = _formatDateYmd(
-                                    createdAt,
-                                  );
-                                  final creator =
-                                      _creatorCache[entry.creatorRef?.trim() ??
-                                          ''];
-                                  final avatarFallback =
-                                      entry.memoOrigin ==
-                                          RandomWalkMemoOrigin.explore
-                                      ? (creator?.displayName
-                                                    .trim()
-                                                    .isNotEmpty ==
-                                                true
-                                            ? creator!.displayName.trim()
-                                            : creator?.username
-                                                      .trim()
-                                                      .isNotEmpty ==
-                                                  true
-                                            ? creator!.username.trim()
-                                            : entry.creatorFallback)
-                                      : _currentUserFallbackLabel(
-                                          currentUser,
-                                          localLibrary,
-                                        );
-                                  final avatarUrl =
-                                      entry.memoOrigin ==
-                                          RandomWalkMemoOrigin.explore
-                                      ? creator?.avatarUrl ?? ''
-                                      : currentUser?.avatarUrl ?? '';
-                                  final headerAvatar = _buildHeaderAvatar(
-                                    rawAvatarUrl: avatarUrl,
-                                    baseUrl: baseUrl,
-                                    fallback: avatarFallback,
-                                    borderColor: avatarBorderColor,
-                                    textColor: textMain,
-                                    isDark: isDark,
-                                  );
-                                  final isAudioActive =
-                                      _playingMemoUid == memo.uid;
-                                  final canToggleTasks =
-                                      entry.memoOrigin ==
-                                      RandomWalkMemoOrigin.localAll;
-                                  return KeyedSubtree(
-                                    key: ValueKey(entry.key),
-                                    child: RepaintBoundary(
-                                      child: _RandomWalkCard(
-                                        memo: memo,
-                                        heroTag:
-                                            'daily-review:${entry.key}:$index',
-                                        headerPrimaryText: headerPrimaryText,
-                                        headerSecondaryText:
-                                            headerSecondaryText,
-                                        headerAvatar: headerAvatar,
-                                        card: card,
-                                        textMain: textMain,
-                                        textMuted: textMuted,
-                                        isDark: isDark,
-                                        baseUrl: baseUrl,
-                                        authHeader: authHeader,
-                                        rebaseAbsoluteFileUrlForV024:
-                                            rebaseAbsoluteFileUrlForV024,
-                                        attachAuthForSameOriginAbsolute:
-                                            attachAuthForSameOriginAbsolute,
-                                        audioPlaying:
-                                            isAudioActive &&
-                                            _audioPlayer.playing,
-                                        audioLoading:
-                                            isAudioActive && _audioLoading,
-                                        audioPositionListenable: isAudioActive
-                                            ? _audioPositionNotifier
-                                            : null,
-                                        audioDurationListenable: isAudioActive
-                                            ? _audioDurationNotifier
-                                            : null,
-                                        onAudioTap: () => unawaited(
-                                          _toggleAudioPlayback(memo),
-                                        ),
-                                        onToggleTask: canToggleTasks
-                                            ? (request) => unawaited(
-                                                _toggleMemoCheckbox(
-                                                  memo,
-                                                  request.taskIndex,
-                                                ),
-                                              )
-                                            : null,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                ],
+              ),
+              trailing: IconButton(
+                tooltip: context.t.strings.legacy.msg_filter,
+                icon: Icon(
+                  Icons.tune_rounded,
+                  color: hasActiveFilter ? MemoFlowPalette.primary : null,
+                ),
+                onPressed: _openFilterSheet,
+              ),
+              body: pageBody,
+            )
+          : Scaffold(
+              backgroundColor: bg,
+              drawer: useDesktopSidePane ? null : drawerPanel,
+              drawerEnableOpenDragGesture:
+                  widget.presentation !=
+                  HomeScreenPresentation.embeddedBottomNav,
+              appBar: AppBar(
+                backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                surfaceTintColor: Colors.transparent,
+                automaticallyImplyLeading: !useDesktopSidePane,
+                toolbarHeight: 46,
+                iconTheme: IconThemeData(color: textMain),
+                leading: useDesktopSidePane
+                    ? null
+                    : widget.presentation ==
+                          HomeScreenPresentation.embeddedBottomNav
+                    ? AppDrawerMenuButton(
+                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                        iconColor: textMain,
+                        badgeBorderColor: bg,
+                      )
+                    : IconButton(
+                        tooltip: context.t.strings.legacy.msg_back,
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: _back,
+                      ),
+                title: Text(
+                  context.t.strings.legacy.msg_random_review,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
                   ),
                 ),
-                const SizedBox(height: 22),
-              ],
-            );
-          }
-
-          final pageBody = deckAsync.when(
-            data: buildDeckBody,
-            loading: () => canUseCachedDeck
-                ? buildDeckBody(_deck)
-                : const Center(child: CircularProgressIndicator()),
-            error: (e, _) {
-              if (canUseCachedDeck) {
-                return buildDeckBody(_deck);
-              }
-              final message = e is RandomWalkSignInRequiredException
-                  ? context.t.strings.legacy.msg_not_signed
-                  : context.t.strings.legacy.msg_failed_load_4(e: e);
-              return Center(child: Text(message));
-            },
-          );
-          if (!useDesktopSidePane) {
-            return pageBody;
-          }
-          return Row(
-            children: [
-              SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.black.withValues(alpha: 0.08),
+                centerTitle: !useDesktopSidePane,
+                actions: [
+                  IconButton(
+                    tooltip: context.t.strings.legacy.msg_filter,
+                    icon: Icon(
+                      Icons.tune_rounded,
+                      color: hasActiveFilter ? MemoFlowPalette.primary : null,
+                    ),
+                    onPressed: _openFilterSheet,
+                  ),
+                ],
               ),
-              Expanded(child: pageBody),
-            ],
-          );
-        }(),
-      ),
+              body: pageBody,
+            ),
     );
   }
 }

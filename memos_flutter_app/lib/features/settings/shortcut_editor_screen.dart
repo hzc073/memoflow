@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/app_localization.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/shortcut.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/tags/tag_color_lookup.dart';
@@ -59,18 +60,34 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
   }
 
   Future<void> _openTagPicker(List<TagStat> tags) async {
-    final selected = await showModalBottomSheet<Set<String>>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => _TagPickerSheet(tags: tags, initial: _selectedTags),
-    );
+    final selected = await _showTagPickerSurface(context, tags);
     if (selected == null) return;
     setState(() {
       _selectedTags
         ..clear()
         ..addAll(selected);
     });
+  }
+
+  Future<Set<String>?> _showTagPickerSurface(
+    BuildContext context,
+    List<TagStat> tags,
+  ) {
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      return showWindowsAdaptiveSurface<Set<String>>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.largeDialog,
+        maxWidth: 720,
+        builder: (context) =>
+            _TagPickerSheet(tags: tags, initial: _selectedTags),
+      );
+    }
+    return showModalBottomSheet<Set<String>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => _TagPickerSheet(tags: tags, initial: _selectedTags),
+    );
   }
 
   Future<void> _openDateRangePicker() async {

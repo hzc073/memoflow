@@ -31,4 +31,22 @@ void main() {
 
     expect(previewText, 'Main line\n\nQuoted 2 lines');
   });
+
+  test('normalizes html-heavy preview content into lightweight text', () {
+    final previewText = buildMemoCardPreviewText(
+      '# Clip title\n\n'
+      'Intro <img src="https://example.com/clip.jpg"> tail\n\n'
+      '- [x] done\n\n'
+      '[OpenAI](https://openai.com)',
+      collapseReferences: false,
+      language: AppLanguage.en,
+    );
+
+    expect(previewText, contains('Clip title'));
+    expect(previewText, contains('Intro tail'));
+    expect(previewText, contains('☑ done'));
+    expect(previewText, contains('OpenAI'));
+    expect(previewText, isNot(contains('<img')));
+    expect(previewText, isNot(contains('https://example.com/clip.jpg')));
+  });
 }

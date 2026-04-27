@@ -10,6 +10,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/system_fonts.dart';
 import '../../core/theme_colors.dart';
+import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/device_preferences.dart';
 import '../../i18n/strings.g.dart';
@@ -32,39 +33,48 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     required T selected,
     required ValueChanged<T> onSelect,
   }) async {
+    Widget selectionContent(BuildContext context) {
+      return SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(alignment: Alignment.centerLeft, child: Text(title)),
+            ),
+            ...values.map((v) {
+              final isSelected = v == selected;
+              return ListTile(
+                leading: Icon(
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: Text(label(v)),
+                onTap: () {
+                  context.safePop();
+                  onSelect(v);
+                },
+              );
+            }),
+          ],
+        ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      await showWindowsAdaptiveSurface<void>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.popover,
+        maxWidth: 440,
+        builder: selectionContent,
+      );
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(title),
-                ),
-              ),
-              ...values.map((v) {
-                final isSelected = v == selected;
-                return ListTile(
-                  leading: Icon(
-                    isSelected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                  ),
-                  title: Text(label(v)),
-                  onTap: () {
-                    context.safePop();
-                    onSelect(v);
-                  },
-                );
-              }),
-            ],
-          ),
-        );
-      },
+      builder: selectionContent,
     );
   }
 
@@ -119,58 +129,70 @@ class PreferencesSettingsScreen extends ConsumerWidget {
       displayName: context.t.strings.settings.preferences.systemDefault,
     );
     final selectedFamily = prefs.fontFamily?.trim() ?? '';
+    Widget fontContent(BuildContext context) {
+      return SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(context.t.strings.settings.preferences.font),
+              ),
+            ),
+            for (final font in [systemDefault, ...fonts])
+              ListTile(
+                leading: Icon(
+                  font.family == selectedFamily
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                ),
+                title: Text(font.displayName),
+                onTap: () async {
+                  context.safePop();
+                  if (font.isSystemDefault) {
+                    ref
+                        .read(devicePreferencesProvider.notifier)
+                        .setFontFamily(family: null, filePath: null);
+                    return;
+                  }
+                  await SystemFonts.ensureLoaded(font);
+                  if (!context.mounted) return;
+                  ref
+                      .read(devicePreferencesProvider.notifier)
+                      .setFontFamily(
+                        family: font.family,
+                        filePath: font.filePath,
+                      );
+                },
+              ),
+            if (fonts.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Text(
+                  context.t.strings.settings.preferences.noSystemFonts,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    if (shouldUseWindowsAdaptiveSurface(context)) {
+      await showWindowsAdaptiveSurface<void>(
+        context: context,
+        kind: WindowsAdaptiveSurfaceKind.largeDialog,
+        maxWidth: 720,
+        builder: fontContent,
+      );
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(context.t.strings.settings.preferences.font),
-                ),
-              ),
-              for (final font in [systemDefault, ...fonts])
-                ListTile(
-                  leading: Icon(
-                    font.family == selectedFamily
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                  ),
-                  title: Text(font.displayName),
-                  onTap: () async {
-                    context.safePop();
-                    if (font.isSystemDefault) {
-                      ref
-                          .read(devicePreferencesProvider.notifier)
-                          .setFontFamily(family: null, filePath: null);
-                      return;
-                    }
-                    await SystemFonts.ensureLoaded(font);
-                    if (!context.mounted) return;
-                    ref
-                        .read(devicePreferencesProvider.notifier)
-                        .setFontFamily(
-                          family: font.family,
-                          filePath: font.filePath,
-                        );
-                  },
-                ),
-              if (fonts.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: Text(
-                    context.t.strings.settings.preferences.noSystemFonts,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+      builder: fontContent,
     );
   }
 

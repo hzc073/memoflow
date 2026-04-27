@@ -1,3 +1,6 @@
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
+
 import '../../core/app_localization.dart';
 import '../../data/models/app_preferences.dart';
 import 'memo_task_list_service.dart';
@@ -5,8 +8,74 @@ import 'memo_task_list_service.dart';
 const int kMemoCardPreviewMaxLines = 6;
 const int kMemoCardPreviewMaxCompactRunes = 220;
 
+final RegExp _markdownImagePattern = RegExp(
+  r'!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)',
+);
 final RegExp _markdownLinkPattern = RegExp(r'\[([^\]]*)\]\(([^)]+)\)');
+final RegExp _markdownHeadingPattern = RegExp(
+  r'^\s{0,3}#{1,6}\s+',
+  multiLine: true,
+);
+final RegExp _markdownBlockquotePattern = RegExp(r'^\s*>\s?', multiLine: true);
+final RegExp _markdownTaskPattern = RegExp(
+  r'^(\s*(?:[-*+]|\d+\.)?\s*)\[( |x|X)\]\s+',
+  multiLine: true,
+);
+final RegExp _markdownInlineCodePattern = RegExp(r'`([^`\n]+)`');
 final RegExp _whitespaceCollapsePattern = RegExp(r'\s+');
+final RegExp _multipleBlankLinesPattern = RegExp(r'\n{3,}');
+
+const Set<String> _previewBlockTags = <String>{
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'div',
+  'dl',
+  'fieldset',
+  'figcaption',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hr',
+  'li',
+  'main',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'section',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'tr',
+  'ul',
+};
+
+const Set<String> _previewSkippedTags = <String>{
+  'audio',
+  'canvas',
+  'embed',
+  'figure',
+  'iframe',
+  'img',
+  'object',
+  'picture',
+  'script',
+  'source',
+  'style',
+  'svg',
+  'video',
+};
 
 class MemoCardPreviewResult {
   const MemoCardPreviewResult({required this.text, required this.truncated});
@@ -21,8 +90,18 @@ String buildMemoCardPreviewText(
   required AppLanguage language,
 }) {
   final trimmed = stripTaskListToggleHint(content).trim();
-  if (!collapseReferences) return trimmed;
+  if (trimmed.isEmpty) return '';
 
+  final previewSource = collapseReferences
+      ? _collapseQuotedPreviewLines(trimmed, language: language)
+      : trimmed;
+  return _normalizeMemoCardPreviewText(previewSource);
+}
+
+String _collapseQuotedPreviewLines(
+  String trimmed, {
+  required AppLanguage language,
+}) {
   final lines = trimmed.split('\n');
   final keep = <String>[];
   var quoteLines = 0;
@@ -44,6 +123,100 @@ String buildMemoCardPreviewText(
     return cleaned.isEmpty ? trimmed : cleaned;
   }
   return '$main\n\n${trByLanguageKey(language: language, key: 'legacy.msg_quoted_lines', params: {'quoteLines': quoteLines})}';
+}
+
+String _normalizeMemoCardPreviewText(String text) {
+  var normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+  if (normalized.isEmpty) return '';
+
+  normalized = normalized.replaceAllMapped(_markdownImagePattern, (_) => '');
+  normalized = normalized.replaceAllMapped(_markdownLinkPattern, (match) {
+    final label = match.group(1)?.trim() ?? '';
+    if (label.isNotEmpty) {
+      return label;
+    }
+    return match.group(2)?.trim() ?? '';
+  });
+
+  if (normalized.contains('<') || normalized.contains('&')) {
+    final buffer = StringBuffer();
+    final fragment = html_parser.parseFragment(normalized);
+    for (final node in fragment.nodes) {
+      _writePreviewNodeText(buffer, node);
+    }
+    normalized = buffer.toString();
+  }
+
+  normalized = normalized.replaceAllMapped(
+    _markdownInlineCodePattern,
+    (match) => match.group(1) ?? '',
+  );
+  normalized = normalized.replaceAll(_markdownHeadingPattern, '');
+  normalized = normalized.replaceAll(_markdownBlockquotePattern, '');
+  normalized = normalized.replaceAllMapped(_markdownTaskPattern, (match) {
+    final checked = (match.group(2) ?? '').toLowerCase() == 'x';
+    return checked ? '☑ ' : '☐ ';
+  });
+  normalized = normalized.replaceAll('\u00A0', ' ');
+
+  final lines = normalized
+      .split('\n')
+      .map((line) => line.replaceAll(RegExp(r'[ \t]+'), ' ').trimRight())
+      .toList(growable: false);
+
+  normalized = lines.join('\n');
+  normalized = normalized.replaceAll(_multipleBlankLinesPattern, '\n\n').trim();
+  return normalized;
+}
+
+void _writePreviewNodeText(StringBuffer buffer, dom.Node node) {
+  if (node is dom.Text) {
+    buffer.write(node.text);
+    return;
+  }
+  if (node is! dom.Element) return;
+
+  final localName = node.localName?.toLowerCase();
+  if (localName == null) return;
+  if (_previewSkippedTags.contains(localName)) return;
+  if (localName == 'br') {
+    _appendPreviewNewline(buffer);
+    return;
+  }
+
+  final isBlock = _previewBlockTags.contains(localName);
+  if (isBlock && buffer.isNotEmpty && !_bufferEndsWithNewline(buffer)) {
+    _appendPreviewNewline(buffer);
+  }
+  if (localName == 'li') {
+    buffer.write('• ');
+  }
+
+  final hasHrefText =
+      localName == 'a' &&
+      node.text.trim().isEmpty &&
+      (node.attributes['href']?.trim().isNotEmpty ?? false);
+  if (hasHrefText) {
+    buffer.write(node.attributes['href']!.trim());
+  } else {
+    for (final child in node.nodes) {
+      _writePreviewNodeText(buffer, child);
+    }
+  }
+
+  if (isBlock && buffer.isNotEmpty && !_bufferEndsWithNewline(buffer)) {
+    _appendPreviewNewline(buffer);
+  }
+}
+
+void _appendPreviewNewline(StringBuffer buffer) {
+  if (_bufferEndsWithNewline(buffer)) return;
+  buffer.write('\n');
+}
+
+bool _bufferEndsWithNewline(StringBuffer buffer) {
+  final value = buffer.toString();
+  return value.endsWith('\n');
 }
 
 MemoCardPreviewResult truncateMemoCardPreview(

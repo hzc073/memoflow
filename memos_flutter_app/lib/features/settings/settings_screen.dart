@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
 import '../../application/desktop/desktop_settings_window.dart';
+import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/url.dart';
 import '../../private_hooks/private_extension_bundle_provider.dart';
@@ -16,9 +17,13 @@ import '../../state/system/local_library_provider.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
+import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
+import '../memos/memos_list_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../stats/stats_screen.dart';
 import 'about_us_screen.dart';
 import 'account_security_screen.dart';
@@ -89,6 +94,45 @@ class SettingsScreen extends ConsumerWidget
     return joinBaseUrl(baseUrl, trimmed);
   }
 
+  void _navigate(BuildContext context, AppDrawerDestination destination) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleDrawerDestination(context, destination);
+      return;
+    }
+    closeDrawerThenPushReplacement(
+      context,
+      buildDrawerDestinationScreen(context: context, destination: destination),
+    );
+  }
+
+  void _openTag(BuildContext context, String tag) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleDrawerTag(context, tag);
+      return;
+    }
+    closeDrawerThenPushReplacement(
+      context,
+      MemosListScreen(
+        title: '#$tag',
+        state: 'NORMAL',
+        tag: tag,
+        showDrawer: true,
+        enableCompose: true,
+      ),
+    );
+  }
+
+  void _openNotifications(BuildContext context) {
+    final host = embeddedNavigationHost;
+    if (host != null) {
+      host.handleOpenNotifications(context);
+      return;
+    }
+    closeDrawerThenPushReplacement(context, const NotificationsScreen());
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -122,18 +166,9 @@ class SettingsScreen extends ConsumerWidget
     final drawerPanel = useEmbeddedBottomNav
         ? AppDrawer(
             selected: AppDrawerDestination.settings,
-            onSelect: (destination) {
-              embeddedNavigationHost?.handleDrawerDestination(
-                context,
-                destination,
-              );
-            },
-            onSelectTag: (tag) {
-              embeddedNavigationHost?.handleDrawerTag(context, tag);
-            },
-            onOpenNotifications: () {
-              embeddedNavigationHost?.handleOpenNotifications(context);
-            },
+            onSelect: (destination) => _navigate(context, destination),
+            onSelectTag: (tag) => _openTag(context, tag),
+            onOpenNotifications: () => _openNotifications(context),
             embedded: false,
           )
         : null;
@@ -163,67 +198,128 @@ class SettingsScreen extends ConsumerWidget
         ? ''
         : _resolveAvatarUrl((account?.user.avatarUrl ?? ''), account?.baseUrl);
 
-    return PopScope(
-      canPop: useEmbeddedBottomNav,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop || useEmbeddedBottomNav) return;
-        _close(context);
-      },
-      child: Scaffold(
-        backgroundColor: bg,
-        drawer: drawerPanel,
-        drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
-        appBar: showAppBar
-            ? AppBar(
-                flexibleSpace: enableAppBarDragToMove
-                    ? const DragToMoveArea(child: SizedBox.expand())
-                    : null,
-                leading: useEmbeddedBottomNav
-                    ? AppDrawerMenuButton(
-                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                        iconColor: textMain,
-                        badgeBorderColor: bg,
-                      )
-                    : IconButton(
-                        tooltip: context.t.strings.legacy.msg_close,
-                        icon: const Icon(Icons.close),
-                        onPressed: () => _close(context),
-                      ),
-                title: IgnorePointer(
-                  ignoring: enableAppBarDragToMove,
-                  child: Text(context.t.strings.legacy.msg_settings),
-                ),
-                centerTitle: false,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-              )
-            : null,
-        body: Stack(
-          children: [
-            if (isDark)
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [const Color(0xFF0B0B0B), bg, bg],
-                    ),
-                  ),
+    final pageBody = Stack(
+      children: [
+        if (isDark)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [const Color(0xFF0B0B0B), bg, bg],
                 ),
               ),
-            ListView(
-              padding: EdgeInsets.fromLTRB(16, showAppBar ? 8 : 16, 16, 88),
+            ),
+          ),
+        ListView(
+          padding: EdgeInsets.fromLTRB(16, showAppBar ? 8 : 16, 16, 88),
+          children: [
+            _ProfileCard(
+              card: card,
+              textMain: textMain,
+              textMuted: textMuted,
+              name: name,
+              subtitle: subtitle,
+              avatarUrl: avatarUrl,
+              onTap: () {
+                haptic();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AccountSecurityScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            Row(
               children: [
-                _ProfileCard(
-                  card: card,
+                Expanded(
+                  child: _ShortcutTile(
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    icon: Icons.calendar_month_outlined,
+                    label: context.t.strings.legacy.msg_stats,
+                    onTap: () {
+                      haptic();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const StatsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ShortcutTile(
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    icon: Icons.widgets_outlined,
+                    label: context.t.strings.legacy.msg_widgets,
+                    onTap: () {
+                      haptic();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WidgetsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ShortcutTile(
+                    card: card,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    icon: Icons.code,
+                    label: context.t.strings.legacy.msg_api_plugins,
+                    onTap: () {
+                      haptic();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ApiPluginsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _CardGroup(
+              card: card,
+              divider: divider,
+              children: [
+                _SettingRow(
+                  icon: Icons.menu_book_outlined,
+                  label: context.t.strings.legacy.msg_user_guide,
                   textMain: textMain,
                   textMuted: textMuted,
-                  name: name,
-                  subtitle: subtitle,
-                  avatarUrl: avatarUrl,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const UserGuideScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _CardGroup(
+              card: card,
+              divider: divider,
+              children: [
+                _SettingRow(
+                  icon: Icons.person_outline,
+                  label: context.t.strings.legacy.msg_account_security,
+                  textMain: textMain,
+                  textMuted: textMuted,
                   onTap: () {
                     haptic();
                     Navigator.of(context).push(
@@ -233,311 +329,281 @@ class SettingsScreen extends ConsumerWidget
                     );
                   },
                 ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ShortcutTile(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        icon: Icons.calendar_month_outlined,
-                        label: context.t.strings.legacy.msg_stats,
-                        onTap: () {
-                          haptic();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const StatsScreen(),
-                            ),
-                          );
-                        },
+                _SettingRow(
+                  icon: Icons.tune,
+                  label: context.t.strings.legacy.msg_preferences,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PreferencesSettingsScreen(),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ShortcutTile(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        icon: Icons.widgets_outlined,
-                        label: context.t.strings.legacy.msg_widgets,
-                        onTap: () {
-                          haptic();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const WidgetsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ShortcutTile(
-                        card: card,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        icon: Icons.code,
-                        label: context.t.strings.legacy.msg_api_plugins,
-                        onTap: () {
-                          haptic();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const ApiPluginsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-                const SizedBox(height: 14),
-                _CardGroup(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    _SettingRow(
-                      icon: Icons.menu_book_outlined,
-                      label: context.t.strings.legacy.msg_user_guide,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const UserGuideScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _CardGroup(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    _SettingRow(
-                      icon: Icons.person_outline,
-                      label: context.t.strings.legacy.msg_account_security,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const AccountSecurityScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _SettingRow(
-                      icon: Icons.tune,
-                      label: context.t.strings.legacy.msg_preferences,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PreferencesSettingsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    if (isWindowsDesktop)
-                      _SettingRow(
-                        icon: Icons.desktop_windows_outlined,
-                        label: context
-                            .t
-                            .strings
-                            .legacy
-                            .msg_windows_related_settings,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        onTap: () {
-                          haptic();
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) =>
-                                  const WindowsRelatedSettingsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    _SettingRow(
-                      icon: Icons.smart_toy_outlined,
-                      label: context.t.strings.legacy.msg_ai_settings,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const AiSettingsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _SettingRow(
-                      icon: Icons.lock_outline,
-                      label: context.t.strings.legacy.msg_app_lock,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PasswordLockScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _CardGroup(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    _SettingRow(
-                      icon: Icons.science_outlined,
-                      label: context.t.strings.legacy.msg_laboratory,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const LaboratoryScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _SettingRow(
-                      icon: Icons.extension_outlined,
-                      label: context.t.strings.legacy.msg_components,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const ComponentsSettingsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _CardGroup(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    _SettingRow(
-                      icon: Icons.chat_bubble_outline,
-                      label: context.t.strings.legacy.msg_feedback,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const FeedbackScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _SettingRow(
-                      icon: Icons.bolt_outlined,
-                      label: context.t.strings.legacy.msg_charging_station,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        DonationDialog.show(context);
-                      },
-                    ),
-                    _SettingRow(
-                      icon: Icons.import_export,
-                      label: context.t.strings.legacy.msg_import_export,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const ImportExportScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _SettingRow(
-                      icon: Icons.info_outline,
-                      label: context.t.strings.legacy.msg_about,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const AboutUsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                if (extensionEntries.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _CardGroup(
-                    card: card,
-                    divider: divider,
-                    children: [
-                      ...extensionEntries.map(
-                        (entry) => _SettingRow(
-                          icon: entry.icon,
-                          label: entry.titleBuilder(context),
-                          subtitle: entry.subtitleBuilder?.call(context),
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () {
-                            haptic();
-                            entry.onTap();
-                          },
+                if (isWindowsDesktop)
+                  _SettingRow(
+                    icon: Icons.desktop_windows_outlined,
+                    label:
+                        context.t.strings.legacy.msg_windows_related_settings,
+                    textMain: textMain,
+                    textMuted: textMuted,
+                    onTap: () {
+                      haptic();
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WindowsRelatedSettingsScreen(),
                         ),
+                      );
+                    },
+                  ),
+                _SettingRow(
+                  icon: Icons.smart_toy_outlined,
+                  label: context.t.strings.legacy.msg_ai_settings,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AiSettingsScreen(),
                       ),
-                    ],
+                    );
+                  },
+                ),
+                _SettingRow(
+                  icon: Icons.lock_outline,
+                  label: context.t.strings.legacy.msg_app_lock,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PasswordLockScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _CardGroup(
+              card: card,
+              divider: divider,
+              children: [
+                _SettingRow(
+                  icon: Icons.science_outlined,
+                  label: context.t.strings.legacy.msg_laboratory,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const LaboratoryScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _SettingRow(
+                  icon: Icons.extension_outlined,
+                  label: context.t.strings.legacy.msg_components,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ComponentsSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _CardGroup(
+              card: card,
+              divider: divider,
+              children: [
+                _SettingRow(
+                  icon: Icons.chat_bubble_outline,
+                  label: context.t.strings.legacy.msg_feedback,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const FeedbackScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _SettingRow(
+                  icon: Icons.bolt_outlined,
+                  label: context.t.strings.legacy.msg_charging_station,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    DonationDialog.show(context);
+                  },
+                ),
+                _SettingRow(
+                  icon: Icons.import_export,
+                  label: context.t.strings.legacy.msg_import_export,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ImportExportScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _SettingRow(
+                  icon: Icons.info_outline,
+                  label: context.t.strings.legacy.msg_about,
+                  textMain: textMain,
+                  textMuted: textMuted,
+                  onTap: () {
+                    haptic();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AboutUsScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            if (extensionEntries.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _CardGroup(
+                card: card,
+                divider: divider,
+                children: [
+                  ...extensionEntries.map(
+                    (entry) => _SettingRow(
+                      icon: entry.icon,
+                      label: entry.titleBuilder(context),
+                      subtitle: entry.subtitleBuilder?.call(context),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        entry.onTap();
+                      },
+                    ),
                   ),
                 ],
-                const SizedBox(height: 18),
-                Column(
-                  children: [
-                    FutureBuilder<PackageInfo>(
-                      future: _packageInfoFuture,
-                      builder: (context, snapshot) {
-                        final version = snapshot.data?.version.trim() ?? '';
-                        final label = version.isEmpty
-                            ? context.t.strings.legacy.msg_version
-                            : context.t.strings.legacy.msg_version_v(
-                                version: version,
-                              );
-                        return Text(label, style: versionStyle);
-                      },
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      context.t.strings.legacy.msg_made_love_note_taking,
-                      style: versionStyle,
-                    ),
-                  ],
+              ),
+            ],
+            const SizedBox(height: 18),
+            Column(
+              children: [
+                FutureBuilder<PackageInfo>(
+                  future: _packageInfoFuture,
+                  builder: (context, snapshot) {
+                    final version = snapshot.data?.version.trim() ?? '';
+                    final label = version.isEmpty
+                        ? context.t.strings.legacy.msg_version
+                        : context.t.strings.legacy.msg_version_v(
+                            version: version,
+                          );
+                    return Text(label, style: versionStyle);
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  context.t.strings.legacy.msg_made_love_note_taking,
+                  style: versionStyle,
                 ),
               ],
             ),
           ],
         ),
-      ),
+      ],
+    );
+
+    return PopScope(
+      canPop: useEmbeddedBottomNav,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop || useEmbeddedBottomNav) return;
+        _close(context);
+      },
+      child: isWindowsDesktop && showAppBar
+          ? WindowsDesktopPageShell(
+              backgroundColor: bg,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.settings,
+                onSelect: (destination) => _navigate(context, destination),
+                onSelectTag: (tag) => _openTag(context, tag),
+                onOpenNotifications: () => _openNotifications(context),
+                embedded: embedded,
+                viewMode: viewMode,
+              ),
+              leadingTitle: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!useEmbeddedBottomNav) ...[
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_close,
+                      icon: const Icon(Icons.close),
+                      onPressed: () => _close(context),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Flexible(
+                    child: Text(
+                      context.t.strings.legacy.msg_settings,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              body: pageBody,
+            )
+          : Scaffold(
+              backgroundColor: bg,
+              drawer: drawerPanel,
+              drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
+              appBar: showAppBar
+                  ? AppBar(
+                      flexibleSpace: enableAppBarDragToMove
+                          ? const DragToMoveArea(child: SizedBox.expand())
+                          : null,
+                      leading: useEmbeddedBottomNav
+                          ? AppDrawerMenuButton(
+                              tooltip:
+                                  context.t.strings.legacy.msg_toggle_sidebar,
+                              iconColor: textMain,
+                              badgeBorderColor: bg,
+                            )
+                          : IconButton(
+                              tooltip: context.t.strings.legacy.msg_close,
+                              icon: const Icon(Icons.close),
+                              onPressed: () => _close(context),
+                            ),
+                      title: IgnorePointer(
+                        ignoring: enableAppBarDragToMove,
+                        child: Text(context.t.strings.legacy.msg_settings),
+                      ),
+                      centerTitle: false,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      backgroundColor: Colors.transparent,
+                      surfaceTintColor: Colors.transparent,
+                    )
+                  : null,
+              body: pageBody,
+            ),
     );
   }
 }

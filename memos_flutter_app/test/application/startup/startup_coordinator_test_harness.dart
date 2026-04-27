@@ -52,6 +52,7 @@ class TestMemosAppNavigator extends AppNavigator {
 Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
   WidgetTester tester, {
   required FakeBootstrapAdapter bootstrapAdapter,
+  ValueChanged<String>? onQuickInputRequested,
   Route<ShareComposeRequest> Function(SharePayload payload)?
   sharePreviewRouteBuilder,
   ShareQuickClipStartCallback? shareQuickClipStartOverride,
@@ -95,6 +96,7 @@ Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
     navigatorKey: navigatorKey,
     ref: ref,
     isMounted: () => true,
+    onQuickInputRequested: onQuickInputRequested,
     sharePreviewRouteBuilder: sharePreviewRouteBuilder,
     shareQuickClipStartOverride: shareQuickClipStartOverride,
     shareComposeRequestPresenterOverride: shareComposeRequestPresenterOverride,

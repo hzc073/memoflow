@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
-
+import 'package:flutter/material.dart';
 import '../../core/drawer_navigation.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../settings/about_us_screen.dart';
@@ -58,10 +58,11 @@ class AboutScreen extends StatelessWidget {
     final bg = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
+    final platform = Theme.of(context).platform;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final enableWindowsDragToMove =
-        Theme.of(context).platform == TargetPlatform.windows;
+    final isWindowsDesktop = platform == TargetPlatform.windows;
+    final enableWindowsDragToMove = isWindowsDesktop;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.about,
       onSelect: (d) => _navigate(context, d),
@@ -76,47 +77,67 @@ class AboutScreen extends StatelessWidget {
         if (didPop) return;
         _backToAllMemos(context);
       },
-      child: Scaffold(
-        backgroundColor: bg,
-        drawer: useDesktopSidePane ? null : drawerPanel,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          flexibleSpace: enableWindowsDragToMove
-              ? const DragToMoveArea(child: SizedBox.expand())
-              : null,
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => _backToAllMemos(context),
-          ),
-          title: IgnorePointer(
-            ignoring: enableWindowsDragToMove,
-            child: Text(context.t.strings.legacy.msg_about),
-          ),
-          centerTitle: false,
-        ),
-        body: useDesktopSidePane
-            ? Row(
-                children: [
-                  SizedBox(
-                    width: kMemoFlowDesktopDrawerWidth,
-                    child: drawerPanel,
-                  ),
-                  VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.08),
-                  ),
-                  Expanded(child: pageBody),
-                ],
-              )
-            : pageBody,
-      ),
+      child: isWindowsDesktop
+          ? WindowsDesktopPageShell(
+              backgroundColor: bg,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.about,
+                onSelect: (d) => _navigate(context, d),
+                onSelectTag: (t) => _openTag(context, t),
+                onOpenNotifications: () => _openNotifications(context),
+                embedded: embedded,
+                viewMode: viewMode,
+              ),
+              leadingTitle: Text(
+                context.t.strings.legacy.msg_about,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              body: pageBody,
+            )
+          : Scaffold(
+              backgroundColor: bg,
+              drawer: useDesktopSidePane ? null : drawerPanel,
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                surfaceTintColor: Colors.transparent,
+                flexibleSpace: enableWindowsDragToMove
+                    ? const DragToMoveArea(child: SizedBox.expand())
+                    : null,
+                leading: IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => _backToAllMemos(context),
+                ),
+                title: IgnorePointer(
+                  ignoring: enableWindowsDragToMove,
+                  child: Text(context.t.strings.legacy.msg_about),
+                ),
+                centerTitle: false,
+              ),
+              body: useDesktopSidePane
+                  ? Row(
+                      children: [
+                        SizedBox(
+                          width: kMemoFlowDesktopDrawerWidth,
+                          child: drawerPanel,
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : Colors.black.withValues(alpha: 0.08),
+                        ),
+                        Expanded(child: pageBody),
+                      ],
+                    )
+                  : pageBody,
+            ),
     );
   }
 }

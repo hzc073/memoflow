@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,7 +8,10 @@ import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
 import 'package:memos_flutter_app/data/models/memo_template_settings.dart';
 import 'package:memos_flutter_app/features/memos/home_quick_actions.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_floating_collapse_controller.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_screen_view_state.dart';
+import 'package:memos_flutter_app/features/memos/widgets/floating_collapse_button.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_screen_body.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -90,10 +94,73 @@ void main() {
       expect(find.text('No content yet'), findsOneWidget);
     },
   );
+
+  testWidgets('overlay buttons react to listenable changes', (tester) async {
+    final showBackToTop = ValueNotifier<bool>(false);
+    final floatingCollapse = ValueNotifier<MemosListFloatingCollapseState>(
+      const MemosListFloatingCollapseState(memoUid: null, scrolling: false),
+    );
+    addTearDown(showBackToTop.dispose);
+    addTearDown(floatingCollapse.dispose);
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: _buildBodyScreen(
+            showBackToTopListenable: showBackToTop,
+            floatingCollapseListenable: floatingCollapse,
+          ),
+        ),
+      ),
+    );
+
+    var floatingButton = tester.widget<MemoFloatingCollapseButton>(
+      find.byType(MemoFloatingCollapseButton),
+    );
+    expect(floatingButton.visible, isFalse);
+    expect(find.byType(BackToTopButton), findsOneWidget);
+    var backToTopButton = tester.widget<BackToTopButton>(
+      find.byType(BackToTopButton),
+    );
+    expect(backToTopButton.visible, isFalse);
+
+    showBackToTop.value = true;
+    floatingCollapse.value = const MemosListFloatingCollapseState(
+      memoUid: 'memo-1',
+      scrolling: true,
+    );
+    await tester.pump();
+
+    floatingButton = tester.widget<MemoFloatingCollapseButton>(
+      find.byType(MemoFloatingCollapseButton),
+    );
+    expect(floatingButton.visible, isTrue);
+    expect(floatingButton.scrolling, isTrue);
+    backToTopButton = tester.widget<BackToTopButton>(
+      find.byType(BackToTopButton),
+    );
+    expect(backToTopButton.visible, isTrue);
+  });
 }
 
-Widget _buildBodyScreen({Widget? drawerPanel, MemosListScreenBodyData? data}) {
+Widget _buildBodyScreen({
+  Widget? drawerPanel,
+  MemosListScreenBodyData? data,
+  MemosListAnimatedItemBuilder? animatedItemBuilder,
+  ValueListenable<bool>? showBackToTopListenable,
+  ValueListenable<MemosListFloatingCollapseState>? floatingCollapseListenable,
+}) {
   final resolvedData = data ?? _buildBodyData();
+  final resolvedShowBackToTopListenable =
+      showBackToTopListenable ?? ValueNotifier<bool>(false);
+  final resolvedFloatingCollapseListenable =
+      floatingCollapseListenable ??
+      ValueNotifier<MemosListFloatingCollapseState>(
+        const MemosListFloatingCollapseState(memoUid: null, scrolling: false),
+      );
 
   return MemosListScreenBody(
     scaffoldKey: GlobalKey<ScaffoldState>(),
@@ -113,15 +180,23 @@ Widget _buildBodyScreen({Widget? drawerPanel, MemosListScreenBodyData? data}) {
     tagFilterBarChild: null,
     searchLandingChild: null,
     bootstrapOverlayChild: null,
+    desktopPreviewPane: null,
+    desktopEditorModalSurface: null,
+    desktopEditorModalVisible: false,
+    desktopPreviewPaneWidth: 420,
+    onDesktopPreviewPaneWidthChanged: null,
     floatingActionButton: null,
     onRefresh: () async {},
     onScrollNotification: (_) => false,
     onPointerSignal: (PointerSignalEvent _) {},
+    showBackToTopListenable: resolvedShowBackToTopListenable,
+    floatingCollapseListenable: resolvedFloatingCollapseListenable,
     onCloseSearch: () {},
     onOpenSearch: () {},
     onToggleWindowsHeaderSearch: () {},
     onToggleQuickSearchKind: (_) {},
     onDismissGuide: () {},
+    onViewportLayoutChanged: () {},
     onCollapseFloatingMemo: () {},
     onScrollToTop: () {},
     quickActions: _buildQuickActions(),
@@ -129,7 +204,8 @@ Widget _buildBodyScreen({Widget? drawerPanel, MemosListScreenBodyData? data}) {
     onToggleMaximize: () {},
     onClose: () {},
     onEditTag: () async {},
-    animatedItemBuilder: (_, _, _) => const SizedBox.shrink(),
+    animatedItemBuilder:
+        animatedItemBuilder ?? (_, _, _) => const SizedBox.shrink(),
   );
 }
 
@@ -174,6 +250,8 @@ MemosListScreenBodyData _buildBodyData({
         listVisualOffset: 0,
         supportsDesktopSidePane: false,
         useDesktopSidePane: false,
+        supportsDesktopPreviewPane: false,
+        useDesktopPreviewPane: false,
         useInlineCompose: false,
         useWindowsDesktopHeader: false,
         headerToolbarHeight: kToolbarHeight,
@@ -210,10 +288,8 @@ MemosListScreenBodyData _buildBodyData({
     loadMoreHintTextColor: Colors.black,
     headerBackgroundColor: Colors.white,
     bottomInset: 0,
-    showBackToTop: false,
     hapticsEnabled: false,
-    floatingCollapseVisible: false,
-    floatingCollapseScrolling: false,
+    desktopPreviewVisible: false,
     enableDrawerOpenDragGesture: true,
   );
 }

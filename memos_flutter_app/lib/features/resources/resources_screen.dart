@@ -22,6 +22,7 @@ import '../../state/memos/memos_providers.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/desktop/windows_desktop_page_shell.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/attachment_video_screen.dart';
@@ -792,9 +793,11 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
 
     final entriesAsync = ref.watch(resourcesProvider);
     final dateFmt = DateFormat('yyyy-MM-dd');
+    final platform = Theme.of(context).platform;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final enableWindowsDragToMove = Platform.isWindows;
+    final isWindowsDesktop = platform == TargetPlatform.windows;
+    final enableWindowsDragToMove = isWindowsDesktop;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final drawerPanel = AppDrawer(
@@ -803,6 +806,57 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
       onSelectTag: (t) => _openTag(context, t),
       onOpenNotifications: () => _openNotifications(context),
       embedded: useDesktopSidePane,
+    );
+    final pageBody = entriesAsync.when(
+      data: (entries) {
+        if (entries.isEmpty) {
+          return Center(
+            child: Text(context.t.strings.legacy.msg_no_attachments),
+          );
+        }
+
+        final sections = _groupEntries(entries);
+        return Scrollbar(
+          child: CustomScrollView(
+            slivers: [
+              for (final section in sections) ...[
+                SliverToBoxAdapter(
+                  child: _buildSectionHeader(context, section),
+                ),
+                if (!_isSectionCollapsed(section.kind))
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                    sliver: SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 220,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            mainAxisExtent: 214,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        return _buildAttachmentCard(
+                          context,
+                          entry: section.entries[index],
+                          baseUrl: baseUrl,
+                          authHeader: authHeader,
+                          rebaseAbsoluteFileUrlForV024:
+                              rebaseAbsoluteFileUrlForV024,
+                          attachAuthForSameOriginAbsolute:
+                              attachAuthForSameOriginAbsolute,
+                          dateFmt: dateFmt,
+                        );
+                      }, childCount: section.entries.length),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) =>
+          Center(child: Text(context.t.strings.legacy.msg_failed_load_4(e: e))),
     );
 
     final shouldInterceptPop =
@@ -814,127 +868,111 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
         if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
-      child: Scaffold(
-        drawer: useDesktopSidePane ? null : drawerPanel,
-        drawerEnableOpenDragGesture:
-            widget.presentation != HomeScreenPresentation.embeddedBottomNav,
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          surfaceTintColor: Colors.transparent,
-          automaticallyImplyLeading: false,
-          toolbarHeight: 46,
-          leading: useDesktopSidePane
-              ? null
-              : AppDrawerMenuButton(
-                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                  iconColor: colorScheme.onSurface,
-                  badgeBorderColor: Theme.of(context).scaffoldBackgroundColor,
-                ),
-          flexibleSpace: enableWindowsDragToMove
-              ? const DragToMoveArea(child: SizedBox.expand())
-              : null,
-          title: IgnorePointer(
-            ignoring: enableWindowsDragToMove,
-            child: Text(
-              context.t.strings.legacy.msg_attachments,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
+      child: isWindowsDesktop
+          ? WindowsDesktopPageShell(
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              navigationBuilder: (viewMode, embedded) => AppDrawer(
+                selected: AppDrawerDestination.resources,
+                onSelect: (d) => _navigate(context, d),
+                onSelectTag: (t) => _openTag(context, t),
+                onOpenNotifications: () => _openNotifications(context),
+                embedded: embedded,
+                viewMode: viewMode,
               ),
-            ),
-          ),
-          actions: [if (enableWindowsDragToMove) const DesktopWindowControls()],
-        ),
-        body: (() {
-          final pageBody = entriesAsync.when(
-            data: (entries) {
-              if (entries.isEmpty) {
-                return Center(
-                  child: Text(context.t.strings.legacy.msg_no_attachments),
-                );
-              }
-
-              final sections = _groupEntries(entries);
-              return Scrollbar(
-                child: CustomScrollView(
-                  slivers: [
-                    for (final section in sections) ...[
-                      SliverToBoxAdapter(
-                        child: _buildSectionHeader(context, section),
+              leadingTitle: Text(
+                context.t.strings.legacy.msg_attachments,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              body: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: kMemoFlowDesktopContentMaxWidth,
+                    ),
+                    child: pageBody,
+                  ),
+                ),
+              ),
+            )
+          : Scaffold(
+              drawer: useDesktopSidePane ? null : drawerPanel,
+              drawerEnableOpenDragGesture:
+                  widget.presentation !=
+                  HomeScreenPresentation.embeddedBottomNav,
+              appBar: AppBar(
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                surfaceTintColor: Colors.transparent,
+                automaticallyImplyLeading: false,
+                toolbarHeight: 46,
+                leading: useDesktopSidePane
+                    ? null
+                    : AppDrawerMenuButton(
+                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                        iconColor: colorScheme.onSurface,
+                        badgeBorderColor: Theme.of(
+                          context,
+                        ).scaffoldBackgroundColor,
                       ),
-                      if (!_isSectionCollapsed(section.kind))
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                          sliver: SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                                  maxCrossAxisExtent: 220,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  mainAxisExtent: 214,
-                                ),
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              return _buildAttachmentCard(
-                                context,
-                                entry: section.entries[index],
-                                baseUrl: baseUrl,
-                                authHeader: authHeader,
-                                rebaseAbsoluteFileUrlForV024:
-                                    rebaseAbsoluteFileUrlForV024,
-                                attachAuthForSameOriginAbsolute:
-                                    attachAuthForSameOriginAbsolute,
-                                dateFmt: dateFmt,
-                              );
-                            }, childCount: section.entries.length),
-                          ),
-                        ),
-                    ],
+                flexibleSpace: enableWindowsDragToMove
+                    ? const DragToMoveArea(child: SizedBox.expand())
+                    : null,
+                title: IgnorePointer(
+                  ignoring: enableWindowsDragToMove,
+                  child: Text(
+                    context.t.strings.legacy.msg_attachments,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                actions: [
+                  if (enableWindowsDragToMove) const DesktopWindowControls(),
+                ],
+              ),
+              body: (() {
+                if (!useDesktopSidePane) {
+                  return pageBody;
+                }
+
+                final desktopContent = Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: kMemoFlowDesktopContentMaxWidth,
+                      ),
+                      child: pageBody,
+                    ),
+                  ),
+                );
+
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: desktopContent),
                   ],
-                ),
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-              child: Text(context.t.strings.legacy.msg_failed_load_4(e: e)),
+                );
+              })(),
             ),
-          );
-          if (!useDesktopSidePane) {
-            return pageBody;
-          }
-
-          final desktopContent = Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: kMemoFlowDesktopContentMaxWidth,
-                ),
-                child: pageBody,
-              ),
-            ),
-          );
-
-          return Row(
-            children: [
-              SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.black.withValues(alpha: 0.08),
-              ),
-              Expanded(child: desktopContent),
-            ],
-          );
-        })(),
-      ),
     );
   }
 }

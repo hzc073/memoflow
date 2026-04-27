@@ -51,6 +51,57 @@ Route<T> buildFadeSlideRoute<T>({
   );
 }
 
+Route<T> buildDesktopSharedAxisRoute<T>({
+  BuildContext? context,
+  required WidgetBuilder builder,
+  RouteSettings? settings,
+  bool enabled = true,
+  bool maintainState = true,
+  bool fullscreenDialog = false,
+}) {
+  final transitionDuration = enabled && context != null
+      ? AppMotion.effectiveDuration(context, AppMotion.route)
+      : (enabled ? AppMotion.route : Duration.zero);
+  final reverseTransitionDuration = enabled && context != null
+      ? AppMotion.effectiveDuration(context, AppMotion.desktopOverlayExit)
+      : (enabled ? AppMotion.desktopOverlayExit : Duration.zero);
+
+  return PageRouteBuilder<T>(
+    settings: settings,
+    maintainState: maintainState,
+    fullscreenDialog: fullscreenDialog,
+    transitionDuration: transitionDuration,
+    reverseTransitionDuration: reverseTransitionDuration,
+    pageBuilder: (routeContext, animation, secondaryAnimation) {
+      return builder(routeContext);
+    },
+    transitionsBuilder: (routeContext, animation, secondaryAnimation, child) {
+      if (transitionDuration == Duration.zero &&
+          reverseTransitionDuration == Duration.zero) {
+        return child;
+      }
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: AppMotion.emphasizedEnterCurve,
+        reverseCurve: AppMotion.emphasizedExitCurve,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.02, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+            child: child,
+          ),
+        ),
+      );
+    },
+  );
+}
+
 Route<T> buildDialogScaleRoute<T>({
   required BuildContext context,
   required WidgetBuilder builder,

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/memoflow_palette.dart';
@@ -11,12 +12,14 @@ class MemoClipReadonlyHeader extends StatelessWidget {
     required this.metadata,
     required this.title,
     this.compact = false,
+    this.showRemoteImages = true,
     this.onSourceTap,
   });
 
   final MemoClipCardMetadata metadata;
   final String? title;
   final bool compact;
+  final bool showRemoteImages;
   final VoidCallback? onSourceTap;
 
   @override
@@ -51,6 +54,7 @@ class MemoClipReadonlyHeader extends StatelessWidget {
               ? metadata.sourceAvatarUrl.trim()
               : metadata.authorAvatarUrl.trim());
     final showLeadImage =
+        showRemoteImages &&
         metadata.platform != MemoClipPlatform.wechat &&
         metadata.leadImageUrl.trim().isNotEmpty;
     final identityTextStyle = theme.textTheme.bodySmall?.copyWith(
@@ -88,7 +92,7 @@ class MemoClipReadonlyHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _ClipAvatar(
-              imageUrl: primaryAvatarUrl,
+              imageUrl: showRemoteImages ? primaryAvatarUrl : '',
               fallbackLabel: primaryName,
               backgroundColor: platformColor.withValues(alpha: 0.14),
               foregroundColor: platformColor,
@@ -113,7 +117,9 @@ class MemoClipReadonlyHeader extends StatelessWidget {
                       children: [
                         if (metadata.authorAvatarUrl.trim().isNotEmpty) ...[
                           _MiniAvatar(
-                            imageUrl: metadata.authorAvatarUrl.trim(),
+                            imageUrl: showRemoteImages
+                                ? metadata.authorAvatarUrl.trim()
+                                : '',
                             fallbackLabel: authorName,
                             backgroundColor:
                                 colorScheme.surfaceContainerHighest,
@@ -267,13 +273,13 @@ class _ClipAvatar extends StatelessWidget {
     final fallbackText = _avatarFallbackLabel(fallbackLabel);
     if (normalizedUrl.isNotEmpty) {
       return ClipOval(
-        child: Image.network(
-          normalizedUrl,
+        child: CachedNetworkImage(
+          imageUrl: normalizedUrl,
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              _fallbackAvatar(fallbackText),
+          placeholder: (context, url) => _fallbackAvatar(fallbackText),
+          errorWidget: (context, url, error) => _fallbackAvatar(fallbackText),
         ),
       );
     }
@@ -367,22 +373,25 @@ class _ClipLeadImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(compact ? 14 : 16),
       child: AspectRatio(
         aspectRatio: compact ? 1.8 : 2.1,
-        child: Image.network(
-          imageUrl,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? MemoFlowPalette.audioSurfaceDark
-                  : MemoFlowPalette.audioSurfaceLight,
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.image_not_supported_outlined,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            );
-          },
+          placeholder: (context, url) => _imageFallback(context),
+          errorWidget: (context, url, error) => _imageFallback(context),
         ),
+      ),
+    );
+  }
+
+  Widget _imageFallback(BuildContext context) {
+    return Container(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? MemoFlowPalette.audioSurfaceDark
+          : MemoFlowPalette.audioSurfaceLight,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_not_supported_outlined,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );
   }
