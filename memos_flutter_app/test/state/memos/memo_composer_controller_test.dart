@@ -666,6 +666,43 @@ void main() {
       expect(controller.pendingAttachments.single.filePath, '/tmp/1.png');
     });
 
+    test('tracks pending attachment readiness status', () {
+      final controller = MemoComposerController();
+      addTearDown(controller.dispose);
+      const ready = MemoComposerPendingAttachment(
+        uid: 'ready',
+        filePath: '/tmp/ready.png',
+        filename: 'ready.png',
+        mimeType: 'image/png',
+        size: 10,
+      );
+      const staging = MemoComposerPendingAttachment(
+        uid: 'staging',
+        filePath: '/tmp/staging.png',
+        filename: 'staging.png',
+        mimeType: 'image/png',
+        size: 20,
+        processingStatus: AttachmentProcessingStatus.staging,
+      );
+
+      controller.addPendingAttachments(const [ready, staging]);
+
+      expect(controller.readyPendingAttachmentCount, 1);
+      expect(controller.hasUnreadyPendingAttachments, isTrue);
+      expect(controller.unreadyPendingAttachments.single.uid, 'staging');
+
+      final updated = controller.updatePendingAttachment(
+        'staging',
+        (current) => current.copyWith(
+          processingStatus: AttachmentProcessingStatus.ready,
+        ),
+      );
+
+      expect(updated, isTrue);
+      expect(controller.readyPendingAttachmentCount, 2);
+      expect(controller.hasUnreadyPendingAttachments, isFalse);
+    });
+
     test('manages linked memos without duplicates', () {
       final controller = MemoComposerController();
       addTearDown(controller.dispose);

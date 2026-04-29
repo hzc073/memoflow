@@ -59,8 +59,8 @@ class DartFallbackCompressionEngine implements CompressionEngine {
       mode: ImageCompressionMode.quality.name,
       jpegQuality: JpegCompressionSettings.defaults.quality,
       pngOptimizationLevel: PngCompressionSettings.defaults.optimizationLevel,
-      resizeWidth: request.resizeTarget?.width,
-      resizeHeight: request.resizeTarget?.height,
+      resizeWidth: request.resizeTarget?.displayWidth,
+      resizeHeight: request.resizeTarget?.displayHeight,
     );
     final result = await compute(_runFallbackCompression, job);
     if (result == null) {
@@ -93,8 +93,8 @@ class _FallbackJob {
       mode: request.settings.mode.name,
       jpegQuality: request.settings.jpeg.quality,
       pngOptimizationLevel: request.settings.png.optimizationLevel,
-      resizeWidth: request.resizeTarget?.width,
-      resizeHeight: request.resizeTarget?.height,
+      resizeWidth: request.resizeTarget?.displayWidth,
+      resizeHeight: request.resizeTarget?.displayHeight,
       maxOutputBytes: request.maxOutputBytes,
     );
   }

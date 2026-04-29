@@ -16,6 +16,7 @@ import '../../../state/tags/tag_color_lookup.dart';
 import '../../../state/memos/memos_providers.dart';
 import '../compose_toolbar_shared.dart';
 import '../compose_input_hint.dart';
+import 'attachment_processing_overlay.dart';
 import '../memo_video_grid.dart';
 import '../tag_autocomplete.dart';
 import '../../../i18n/strings.g.dart';
@@ -957,6 +958,15 @@ class _InlineAttachmentTile extends StatelessWidget {
               : null,
           child: tile,
         ),
+        if (!attachment.isReadyForSubmit)
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: tileRadius,
+              child: AttachmentProcessingOverlay(
+                status: attachment.processingStatus,
+              ),
+            ),
+          ),
         Positioned(
           top: 4,
           right: 4,

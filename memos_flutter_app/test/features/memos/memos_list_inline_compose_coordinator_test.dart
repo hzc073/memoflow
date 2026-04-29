@@ -93,9 +93,7 @@ void main() {
     expect(composer.linkedMemos, isEmpty);
   });
 
-  testWidgets('gallery attachments append to composer', (
-    tester,
-  ) async {
+  testWidgets('gallery attachments append to composer', (tester) async {
     final composer = MemoComposerController();
     addTearDown(composer.dispose);
     final tempDir = Directory.systemTemp.createTempSync(
@@ -114,18 +112,19 @@ void main() {
     final handle = await _pumpCoordinatorHarness(
       tester,
       composer: composer,
-      pickGalleryOverride: (_) async => gallery_picker.GalleryAttachmentPickResult(
-        attachments: [
-          gallery_picker.PickedLocalAttachment(
-            filePath: galleryFile.path,
-            filename: 'gallery.png',
-            mimeType: 'image/png',
-            size: galleryFile.lengthSync(),
-            skipCompression: true,
+      pickGalleryOverride: (_) async =>
+          gallery_picker.GalleryAttachmentPickResult(
+            attachments: [
+              gallery_picker.PickedLocalAttachment(
+                filePath: galleryFile.path,
+                filename: 'gallery.png',
+                mimeType: 'image/png',
+                size: galleryFile.lengthSync(),
+                skipCompression: true,
+              ),
+            ],
+            skippedCount: 0,
           ),
-        ],
-        skippedCount: 0,
-      ),
     );
 
     await handle.coordinator.pickGalleryAttachments(handle.context);
@@ -173,7 +172,9 @@ void main() {
     expect(composer.pendingAttachments.single.size, 5);
   });
 
-  testWidgets('voice attachment appends and ignores missing file', (tester) async {
+  testWidgets('voice attachment appends and ignores missing file', (
+    tester,
+  ) async {
     final composer = MemoComposerController();
     addTearDown(composer.dispose);
     final tempDir = Directory.systemTemp.createTempSync(
@@ -184,9 +185,8 @@ void main() {
         tempDir.deleteSync(recursive: true);
       }
     });
-    final voiceFile = File(
-      '${tempDir.path}${Platform.pathSeparator}voice.m4a',
-    )..writeAsBytesSync(const [5, 6, 7]);
+    final voiceFile = File('${tempDir.path}${Platform.pathSeparator}voice.m4a')
+      ..writeAsBytesSync(const [5, 6, 7]);
 
     final handle = await _pumpCoordinatorHarness(tester, composer: composer);
 
@@ -221,37 +221,39 @@ void main() {
     expect(composer.pendingAttachments, hasLength(1));
   });
 
-  testWidgets('capture photo adds pending attachment on Windows override', (
-    tester,
-  ) async {
-    final composer = MemoComposerController();
-    addTearDown(composer.dispose);
-    final tempDir = Directory.systemTemp.createTempSync(
-      'inline-compose-coordinator-camera',
-    );
-    addTearDown(() {
-      if (tempDir.existsSync()) {
-        tempDir.deleteSync(recursive: true);
-      }
-    });
-    final photoFile = File(
-      '${tempDir.path}${Platform.pathSeparator}camera.jpg',
-    )..writeAsBytesSync(const [9, 8, 7]);
+  testWidgets(
+    'capture photo adds pending attachment on Windows override',
+    (tester) async {
+      final composer = MemoComposerController();
+      addTearDown(composer.dispose);
+      final tempDir = Directory.systemTemp.createTempSync(
+        'inline-compose-coordinator-camera',
+      );
+      addTearDown(() {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      });
+      final photoFile = File(
+        '${tempDir.path}${Platform.pathSeparator}camera.jpg',
+      )..writeAsBytesSync(const [9, 8, 7]);
 
-    final handle = await _pumpCoordinatorHarness(
-      tester,
-      composer: composer,
-      captureWindowsPhotoOverride: () async => XFile(photoFile.path),
-    );
+      final handle = await _pumpCoordinatorHarness(
+        tester,
+        composer: composer,
+        captureWindowsPhotoOverride: () async => XFile(photoFile.path),
+      );
 
-    await handle.coordinator.capturePhoto(handle.context);
-    dismissTopToast();
-    await tester.pump();
+      await handle.coordinator.capturePhoto(handle.context);
+      dismissTopToast();
+      await tester.pump();
 
-    expect(composer.pendingAttachments, hasLength(1));
-    expect(composer.pendingAttachments.single.filename, 'camera.jpg');
-    expect(composer.pendingAttachments.single.mimeType, 'image/jpeg');
-  }, skip: !Platform.isWindows);
+      expect(composer.pendingAttachments, hasLength(1));
+      expect(composer.pendingAttachments.single.filename, 'camera.jpg');
+      expect(composer.pendingAttachments.single.mimeType, 'image/jpeg');
+    },
+    skip: !Platform.isWindows,
+  );
 
   testWidgets('prepareSubmissionDraft builds payload from current state', (
     tester,
@@ -310,15 +312,65 @@ void main() {
     expect(draft.location, location);
     expect(draft.pendingAttachments, hasLength(1));
     expect(draft.relations, hasLength(1));
-    expect(
-      draft.relations.single,
-      containsPair('type', 'REFERENCE'),
-    );
+    expect(draft.relations.single, containsPair('type', 'REFERENCE'));
     expect(draft.attachmentsPayload, hasLength(1));
     expect(
       draft.attachmentsPayload.single,
       containsPair('externalLink', Uri.file(attachmentFile.path).toString()),
     );
+  });
+
+  testWidgets('prepareSubmissionDraft blocks while attachment is staging', (
+    tester,
+  ) async {
+    final composer = MemoComposerController(initialText: 'Hello');
+    addTearDown(composer.dispose);
+    composer.addPendingAttachments(const [
+      MemoComposerPendingAttachment(
+        uid: 'att-staging',
+        filePath: '/tmp/staging.png',
+        filename: 'staging.png',
+        mimeType: 'image/png',
+        size: 10,
+        processingStatus: AttachmentProcessingStatus.staging,
+      ),
+    ]);
+
+    final handle = await _pumpCoordinatorHarness(tester, composer: composer);
+
+    final draft = await handle.coordinator.prepareSubmissionDraft(
+      handle.context,
+    );
+    await tester.pump();
+
+    expect(draft, isNull);
+  });
+
+  testWidgets('prepareSubmissionDraft blocks failed staged attachments', (
+    tester,
+  ) async {
+    final composer = MemoComposerController(initialText: 'Hello');
+    addTearDown(composer.dispose);
+    composer.addPendingAttachments(const [
+      MemoComposerPendingAttachment(
+        uid: 'att-failed',
+        filePath: '/tmp/failed.png',
+        filename: 'failed.png',
+        mimeType: 'image/png',
+        size: 10,
+        processingStatus: AttachmentProcessingStatus.failed,
+        processingError: 'boom',
+      ),
+    ]);
+
+    final handle = await _pumpCoordinatorHarness(tester, composer: composer);
+
+    final draft = await handle.coordinator.prepareSubmissionDraft(
+      handle.context,
+    );
+    await tester.pump();
+
+    expect(draft, isNull);
   });
 
   testWidgets('relation only submission is blocked without voice flow', (
@@ -363,9 +415,8 @@ void main() {
         tempDir.deleteSync(recursive: true);
       }
     });
-    final voiceFile = File(
-      '${tempDir.path}${Platform.pathSeparator}voice.m4a',
-    )..writeAsBytesSync(const [5, 4, 3]);
+    final voiceFile = File('${tempDir.path}${Platform.pathSeparator}voice.m4a')
+      ..writeAsBytesSync(const [5, 4, 3]);
     var voiceCallCount = 0;
 
     final handle = await _pumpCoordinatorHarness(
@@ -576,10 +627,7 @@ class _CoordinatorHarnessState extends ConsumerState<_CoordinatorHarness> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.onReady(
-        _CoordinatorHarnessHandle(
-          coordinator: coordinator,
-          context: context,
-        ),
+        _CoordinatorHarnessHandle(coordinator: coordinator, context: context),
       );
     });
   }

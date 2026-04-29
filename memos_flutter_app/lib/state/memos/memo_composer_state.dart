@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+enum AttachmentProcessingStatus { staging, ready, failed }
+
 class MemoComposerPendingAttachment {
   const MemoComposerPendingAttachment({
     required this.uid,
@@ -11,6 +13,8 @@ class MemoComposerPendingAttachment {
     this.shareInlineImage = false,
     this.fromThirdPartyShare = false,
     this.sourceUrl,
+    this.processingStatus = AttachmentProcessingStatus.ready,
+    this.processingError,
   });
 
   final String uid;
@@ -22,6 +26,17 @@ class MemoComposerPendingAttachment {
   final bool shareInlineImage;
   final bool fromThirdPartyShare;
   final String? sourceUrl;
+  final AttachmentProcessingStatus processingStatus;
+  final String? processingError;
+
+  bool get isReadyForSubmit =>
+      processingStatus == AttachmentProcessingStatus.ready;
+
+  bool get isProcessing =>
+      processingStatus == AttachmentProcessingStatus.staging;
+
+  bool get hasProcessingFailure =>
+      processingStatus == AttachmentProcessingStatus.failed;
 
   MemoComposerPendingAttachment copyWith({
     String? uid,
@@ -33,6 +48,8 @@ class MemoComposerPendingAttachment {
     bool? shareInlineImage,
     bool? fromThirdPartyShare,
     Object? sourceUrl = memoComposerStateNoChange,
+    AttachmentProcessingStatus? processingStatus,
+    Object? processingError = memoComposerStateNoChange,
   }) {
     return MemoComposerPendingAttachment(
       uid: uid ?? this.uid,
@@ -46,6 +63,10 @@ class MemoComposerPendingAttachment {
       sourceUrl: identical(sourceUrl, memoComposerStateNoChange)
           ? this.sourceUrl
           : sourceUrl as String?,
+      processingStatus: processingStatus ?? this.processingStatus,
+      processingError: identical(processingError, memoComposerStateNoChange)
+          ? this.processingError
+          : processingError as String?,
     );
   }
 }

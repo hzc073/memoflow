@@ -8,6 +8,10 @@ class CompressionPlanBuilder {
   const CompressionPlanBuilder();
 
   static const int maxCompressibleBytes = 500 * 1024 * 1024;
+  static const double longImageAspectRatioThreshold = 1.8;
+  static const int longImagePixelThreshold = 2400;
+  static const int minimumReadableShortEdge = 1080;
+  static const double maximumLongImageShortEdgeShrink = 0.85;
 
   CompressionPlan build({
     required CompressionSourceProbe sourceProbe,
@@ -118,62 +122,129 @@ class CompressionPlanBuilder {
       return null;
     }
 
-    final originalWidth = sourceProbe.displayWidth!;
-    final originalHeight = sourceProbe.displayHeight!;
-    var outputWidth = originalWidth;
-    var outputHeight = originalHeight;
+    final originalDisplayWidth = sourceProbe.displayWidth!;
+    final originalDisplayHeight = sourceProbe.displayHeight!;
+    var outputDisplayWidth = originalDisplayWidth;
+    var outputDisplayHeight = originalDisplayHeight;
 
     switch (settings.mode) {
       case ImageCompressionResizeMode.noResize:
         return null;
       case ImageCompressionResizeMode.dimensions:
-        outputWidth = settings.width;
-        outputHeight = settings.height;
+        outputDisplayWidth = settings.width;
+        outputDisplayHeight = settings.height;
       case ImageCompressionResizeMode.percentage:
-        outputWidth = (originalWidth * settings.width / 100).round();
-        outputHeight = (originalHeight * settings.height / 100).round();
+        outputDisplayWidth = (originalDisplayWidth * settings.width / 100)
+            .round();
+        outputDisplayHeight = (originalDisplayHeight * settings.height / 100)
+            .round();
       case ImageCompressionResizeMode.shortEdge:
       case ImageCompressionResizeMode.longEdge:
         final useWidth = settings.mode == ImageCompressionResizeMode.longEdge
-            ? originalWidth >= originalHeight
-            : originalWidth <= originalHeight;
+            ? originalDisplayWidth >= originalDisplayHeight
+            : originalDisplayWidth <= originalDisplayHeight;
         if (useWidth) {
-          outputWidth = settings.edge;
-          outputHeight = 0;
+          outputDisplayWidth = settings.edge;
+          outputDisplayHeight = 0;
         } else {
-          outputWidth = 0;
-          outputHeight = settings.edge;
+          outputDisplayWidth = 0;
+          outputDisplayHeight = settings.edge;
         }
       case ImageCompressionResizeMode.fixedWidth:
-        outputWidth = settings.width;
-        outputHeight = 0;
+        outputDisplayWidth = settings.width;
+        outputDisplayHeight = 0;
       case ImageCompressionResizeMode.fixedHeight:
-        outputWidth = 0;
-        outputHeight = settings.height;
+        outputDisplayWidth = 0;
+        outputDisplayHeight = settings.height;
     }
 
     if (settings.doNotEnlarge) {
-      final wouldEnlargeWidth = outputWidth > 0 && outputWidth >= originalWidth;
+      final wouldEnlargeWidth =
+          outputDisplayWidth > 0 && outputDisplayWidth >= originalDisplayWidth;
       final wouldEnlargeHeight =
-          outputHeight > 0 && outputHeight >= originalHeight;
+          outputDisplayHeight > 0 &&
+          outputDisplayHeight >= originalDisplayHeight;
       if (wouldEnlargeWidth || wouldEnlargeHeight) {
-        return CompressionResizeTarget(
-          width: originalWidth,
-          height: originalHeight,
+        return _buildResizeTarget(
+          sourceProbe: sourceProbe,
+          displayWidth: originalDisplayWidth,
+          displayHeight: originalDisplayHeight,
         );
       }
     }
 
-    if (outputWidth == 0 && outputHeight > 0) {
-      outputWidth = (originalWidth * outputHeight / originalHeight).round();
-    } else if (outputHeight == 0 && outputWidth > 0) {
-      outputHeight = (originalHeight * outputWidth / originalWidth).round();
+    if (outputDisplayWidth == 0 && outputDisplayHeight > 0) {
+      outputDisplayWidth =
+          (originalDisplayWidth * outputDisplayHeight / originalDisplayHeight)
+              .round();
+    } else if (outputDisplayHeight == 0 && outputDisplayWidth > 0) {
+      outputDisplayHeight =
+          (originalDisplayHeight * outputDisplayWidth / originalDisplayWidth)
+              .round();
     }
 
-    return CompressionResizeTarget(
-      width: math.max(1, outputWidth),
-      height: math.max(1, outputHeight),
+    final safeTarget = _protectReadableLongImage(
+      originalDisplayWidth: originalDisplayWidth,
+      originalDisplayHeight: originalDisplayHeight,
+      targetDisplayWidth: math.max(1, outputDisplayWidth),
+      targetDisplayHeight: math.max(1, outputDisplayHeight),
     );
+    return _buildResizeTarget(
+      sourceProbe: sourceProbe,
+      displayWidth: safeTarget.width,
+      displayHeight: safeTarget.height,
+    );
+  }
+
+  CompressionResizeTarget _buildResizeTarget({
+    required CompressionSourceProbe sourceProbe,
+    required int displayWidth,
+    required int displayHeight,
+  }) {
+    final swapsAxes = switch (sourceProbe.orientation) {
+      5 || 6 || 7 || 8 => true,
+      _ => false,
+    };
+    final encodedWidth = swapsAxes ? displayHeight : displayWidth;
+    final encodedHeight = swapsAxes ? displayWidth : displayHeight;
+    return CompressionResizeTarget(
+      width: math.max(1, encodedWidth),
+      height: math.max(1, encodedHeight),
+      displayWidth: math.max(1, displayWidth),
+      displayHeight: math.max(1, displayHeight),
+    );
+  }
+
+  ({int width, int height}) _protectReadableLongImage({
+    required int originalDisplayWidth,
+    required int originalDisplayHeight,
+    required int targetDisplayWidth,
+    required int targetDisplayHeight,
+  }) {
+    final originalShort = math.min(originalDisplayWidth, originalDisplayHeight);
+    final originalLong = math.max(originalDisplayWidth, originalDisplayHeight);
+    if (originalShort <= 0) {
+      return (width: targetDisplayWidth, height: targetDisplayHeight);
+    }
+
+    final aspectRatio = originalLong / originalShort;
+    final isLongImage =
+        originalLong >= longImagePixelThreshold &&
+        aspectRatio >= longImageAspectRatioThreshold;
+    if (!isLongImage) {
+      return (width: targetDisplayWidth, height: targetDisplayHeight);
+    }
+
+    final targetShort = math.min(targetDisplayWidth, targetDisplayHeight);
+    final minimumShortEdge = math.min(originalShort, minimumReadableShortEdge);
+    final shrinksReadableEdgeTooFar =
+        targetShort < minimumShortEdge ||
+        targetShort < originalShort * maximumLongImageShortEdgeShrink;
+    if (!shrinksReadableEdgeTooFar) {
+      return (width: targetDisplayWidth, height: targetDisplayHeight);
+    }
+
+    return (width: originalDisplayWidth, height: originalDisplayHeight);
   }
 
   int _resolveMaxOutputBytes(

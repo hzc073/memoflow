@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -6,9 +7,6 @@ import 'package:saf_stream/saf_stream.dart';
 import '../../core/debug_ephemeral_storage.dart';
 import '../../data/logs/log_manager.dart';
 import 'compression/compression_source_probe.dart';
-
-const CompressionSourceProbeService _queuedAttachmentProbeService =
-    CompressionSourceProbeService();
 
 typedef CopyContentUriToLocalFile =
     Future<void> Function(String sourceUri, String destinationPath);
@@ -29,22 +27,45 @@ class StagedAttachment {
   final int size;
 }
 
+class DraftAttachmentStageRequest {
+  const DraftAttachmentStageRequest({
+    required this.uid,
+    required this.filePath,
+    required this.filename,
+    required this.mimeType,
+    required this.size,
+    required this.scopeKey,
+  });
+
+  final String uid;
+  final String filePath;
+  final String filename;
+  final String mimeType;
+  final int size;
+  final String scopeKey;
+}
+
 class QueuedAttachmentStager {
   QueuedAttachmentStager({
     Future<Directory> Function()? resolveSupportDirectory,
     CopyContentUriToLocalFile? copyContentUriToLocalFile,
+    CompressionSourceProbeService? imageProbeService,
   }) : _resolveSupportDirectory =
            resolveSupportDirectory ?? resolveAppSupportDirectory,
        _copyContentUriToLocalFile =
            copyContentUriToLocalFile ??
            ((sourceUri, destinationPath) {
              return SafStream().copyToLocalFile(sourceUri, destinationPath);
-           });
+           }),
+       _imageProbeService =
+           imageProbeService ?? const CompressionSourceProbeService();
 
   static const String managedRootDirName = 'queued_attachment_uploads';
+  static const int _maxConcurrentStageJobs = 2;
 
   final Future<Directory> Function() _resolveSupportDirectory;
   final CopyContentUriToLocalFile _copyContentUriToLocalFile;
+  final CompressionSourceProbeService _imageProbeService;
   Directory? _managedRootDir;
 
   Future<StagedAttachment> stageDraftAttachment({
@@ -59,6 +80,8 @@ class QueuedAttachmentStager {
     final resolvedMimeType = mimeType.trim().isEmpty
         ? 'application/octet-stream'
         : mimeType.trim();
+    final normalizedSourcePath = _normalizePath(filePath);
+    final sourceAlreadyManaged = isManagedPath(normalizedSourcePath);
     await _logStageStart(
       uid: normalizedUid,
       scopeKey: scopeKey,
@@ -91,6 +114,17 @@ class QueuedAttachmentStager {
         originalPath: filePath,
         staged: staged,
       );
+      if (!sourceAlreadyManaged &&
+          normalizedSourcePath != _normalizePath(staged.filePath)) {
+        unawaited(
+          _logStageImageDiagnostics(
+            uid: normalizedUid,
+            scopeKey: scopeKey,
+            originalPath: filePath,
+            staged: staged,
+          ),
+        );
+      }
       return staged;
     } catch (error, stackTrace) {
       LogManager.instance.warn(
@@ -122,6 +156,32 @@ class QueuedAttachmentStager {
       throw const FormatException('upload_attachment missing fields');
     }
 
+    final normalizedPath = _normalizePath(filePath);
+    if (isManagedPath(normalizedPath)) {
+      final managedFile = File(normalizedPath);
+      if (await managedFile.exists()) {
+        final next = Map<String, dynamic>.from(payload);
+        next['file_path'] = managedFile.path;
+        next['filename'] = _normalizeFilename(
+          filename,
+          filePath: managedFile.path,
+          uid: uid,
+        );
+        next['mime_type'] = mimeType.isEmpty
+            ? 'application/octet-stream'
+            : mimeType;
+        next['file_size'] = await managedFile.length();
+        final shareInlineLocalUrl =
+            (next['share_inline_local_url'] as String? ?? '').trim();
+        if (shareInlineLocalUrl.isNotEmpty) {
+          next['share_inline_local_url'] = Uri.file(
+            managedFile.path,
+          ).toString();
+        }
+        return next;
+      }
+    }
+
     final staged = await stageDraftAttachment(
       uid: uid,
       filePath: filePath,
@@ -147,15 +207,30 @@ class QueuedAttachmentStager {
     return next;
   }
 
+  Future<List<StagedAttachment>> stageDraftAttachments(
+    Iterable<DraftAttachmentStageRequest> requests,
+  ) {
+    return _mapConcurrentInOrder<DraftAttachmentStageRequest, StagedAttachment>(
+      requests.toList(growable: false),
+      (request) => stageDraftAttachment(
+        uid: request.uid,
+        filePath: request.filePath,
+        filename: request.filename,
+        mimeType: request.mimeType,
+        size: request.size,
+        scopeKey: request.scopeKey,
+      ),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> stageUploadPayloads(
     Iterable<Map<String, dynamic>> payloads, {
     required String scopeKey,
   }) async {
-    final staged = <Map<String, dynamic>>[];
-    for (final payload in payloads) {
-      staged.add(await stageUploadPayload(payload, scopeKey: scopeKey));
-    }
-    return staged;
+    return _mapConcurrentInOrder<Map<String, dynamic>, Map<String, dynamic>>(
+      payloads.toList(growable: false),
+      (payload) => stageUploadPayload(payload, scopeKey: scopeKey),
+    );
   }
 
   bool isManagedPath(String path) {
@@ -324,6 +399,7 @@ class QueuedAttachmentStager {
       filename: filename,
       mimeType: mimeType,
       prefix: 'source',
+      probeImages: false,
     );
     LogManager.instance.debug(
       'QueuedAttachmentStager: stage_start',
@@ -347,12 +423,14 @@ class QueuedAttachmentStager {
       filename: staged.filename,
       mimeType: staged.mimeType,
       prefix: 'source',
+      probeImages: false,
     );
     final stagedContext = await _buildAttachmentLogContext(
       filePath: staged.filePath,
       filename: staged.filename,
       mimeType: staged.mimeType,
       prefix: 'staged',
+      probeImages: false,
     );
     LogManager.instance.info(
       'QueuedAttachmentStager: stage_complete',
@@ -376,6 +454,7 @@ class QueuedAttachmentStager {
     required String filename,
     required String mimeType,
     required String prefix,
+    required bool probeImages,
   }) async {
     final normalizedPath = _normalizePath(filePath);
     final file = File(normalizedPath);
@@ -390,10 +469,10 @@ class QueuedAttachmentStager {
       return context;
     }
     context['${prefix}FileSize'] = await file.length();
-    if (!mimeType.toLowerCase().startsWith('image/')) {
+    if (!probeImages || !mimeType.toLowerCase().startsWith('image/')) {
       return context;
     }
-    final probe = await _queuedAttachmentProbeService.probe(
+    final probe = await _imageProbeService.probe(
       path: normalizedPath,
       filename: filename,
       mimeType: mimeType,
@@ -407,6 +486,43 @@ class QueuedAttachmentStager {
       '${prefix}Orientation': probe.orientation,
     });
     return context;
+  }
+
+  Future<void> _logStageImageDiagnostics({
+    required String uid,
+    required String scopeKey,
+    required String originalPath,
+    required StagedAttachment staged,
+  }) async {
+    try {
+      final sourceContext = await _buildAttachmentLogContext(
+        filePath: originalPath,
+        filename: staged.filename,
+        mimeType: staged.mimeType,
+        prefix: 'source',
+        probeImages: true,
+      );
+      final stagedContext = await _buildAttachmentLogContext(
+        filePath: staged.filePath,
+        filename: staged.filename,
+        mimeType: staged.mimeType,
+        prefix: 'staged',
+        probeImages: true,
+      );
+      LogManager.instance.debug(
+        'QueuedAttachmentStager: stage_image_diagnostics',
+        context: {
+          'uid': uid,
+          'scopeKey': scopeKey,
+          ..._buildAttachmentDeltaContext(
+            sourceContext: sourceContext,
+            stagedContext: stagedContext,
+          ),
+          ...sourceContext,
+          ...stagedContext,
+        },
+      );
+    } catch (_) {}
   }
 
   Map<String, Object?> _buildAttachmentDeltaContext({
@@ -457,5 +573,31 @@ class QueuedAttachmentStager {
       'displayWidthScale': scale(sourceDisplayWidth, stagedDisplayWidth),
       'displayHeightScale': scale(sourceDisplayHeight, stagedDisplayHeight),
     };
+  }
+
+  Future<List<R>> _mapConcurrentInOrder<T, R>(
+    List<T> items,
+    Future<R> Function(T item) task,
+  ) async {
+    if (items.isEmpty) return <R>[];
+    final results = List<R?>.filled(items.length, null);
+    var nextIndex = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final index = nextIndex;
+        if (index >= items.length) return;
+        nextIndex++;
+        results[index] = await task(items[index]);
+      }
+    }
+
+    final workerCount = items.length < _maxConcurrentStageJobs
+        ? items.length
+        : _maxConcurrentStageJobs;
+    await Future.wait(
+      List<Future<void>>.generate(workerCount, (_) => worker()),
+    );
+    return results.cast<R>();
   }
 }

@@ -245,6 +245,7 @@ class DefaultAttachmentPreprocessor implements AttachmentPreprocessor {
         filename: filename,
         mimeType: mimeType,
         settings: settings,
+        sourceProbe: probe,
       ),
     );
     final outputResult = AttachmentPreprocessResult(

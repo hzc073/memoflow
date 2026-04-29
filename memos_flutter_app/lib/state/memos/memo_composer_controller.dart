@@ -37,6 +37,14 @@ class MemoComposerController extends ChangeNotifier {
   MemoComposerState get state => _state;
   List<MemoComposerPendingAttachment> get pendingAttachments =>
       _state.pendingAttachments;
+  List<MemoComposerPendingAttachment> get unreadyPendingAttachments => _state
+      .pendingAttachments
+      .where((attachment) => !attachment.isReadyForSubmit)
+      .toList(growable: false);
+  bool get hasUnreadyPendingAttachments => unreadyPendingAttachments.isNotEmpty;
+  int get readyPendingAttachmentCount => _state.pendingAttachments
+      .where((attachment) => attachment.isReadyForSubmit)
+      .length;
   List<MemoComposerLinkedMemo> get linkedMemos => _state.linkedMemos;
   int get tagAutocompleteIndex => _state.tagAutocompleteIndex;
   String? get tagAutocompleteToken => _state.tagAutocompleteToken;
@@ -491,6 +499,25 @@ class MemoComposerController extends ChangeNotifier {
       _state.pendingAttachments,
     );
     next[index] = attachment;
+    _updateState(pendingAttachments: next);
+    return true;
+  }
+
+  bool updatePendingAttachment(
+    String uid,
+    MemoComposerPendingAttachment Function(
+      MemoComposerPendingAttachment current,
+    )
+    update,
+  ) {
+    final index = _state.pendingAttachments.indexWhere(
+      (item) => item.uid == uid,
+    );
+    if (index < 0) return false;
+    final next = List<MemoComposerPendingAttachment>.from(
+      _state.pendingAttachments,
+    );
+    next[index] = update(next[index]);
     _updateState(pendingAttachments: next);
     return true;
   }

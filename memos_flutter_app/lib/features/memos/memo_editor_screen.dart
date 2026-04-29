@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../application/attachments/queued_attachment_stager.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
 import '../../core/app_localization.dart';
@@ -55,6 +56,7 @@ import 'link_memo_sheet.dart';
 import 'memo_compose_surface.dart';
 import 'memo_video_grid.dart';
 import 'tag_autocomplete.dart';
+import 'widgets/attachment_processing_overlay.dart';
 import '../location_picker/show_location_picker.dart';
 import '../../i18n/strings.g.dart';
 
@@ -389,11 +391,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     }
     if (pending.isEmpty) return;
 
-    final staged = await _stagePendingAttachments(pending);
-    if (!mounted || staged.isEmpty) return;
-    setState(() {
-      _composer.addPendingAttachments(staged);
-    });
+    await _addPendingAttachmentsStaged(pending);
   }
 
   Future<_PendingAttachment> _stagePendingAttachment(
@@ -414,27 +412,116 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       filename: staged.filename,
       mimeType: staged.mimeType,
       size: staged.size,
+      processingStatus: AttachmentProcessingStatus.ready,
+      processingError: null,
     );
   }
 
   Future<List<_PendingAttachment>> _stagePendingAttachments(
     Iterable<_PendingAttachment> attachments,
   ) async {
-    final staged = <_PendingAttachment>[];
-    for (final attachment in attachments) {
-      staged.add(await _stagePendingAttachment(attachment));
-    }
-    return staged;
+    final pending = attachments.toList(growable: false);
+    if (pending.isEmpty) return <_PendingAttachment>[];
+    final staged = await ref
+        .read(queuedAttachmentStagerProvider)
+        .stageDraftAttachments(
+          pending
+              .map(
+                (attachment) => DraftAttachmentStageRequest(
+                  uid: attachment.uid,
+                  filePath: attachment.filePath,
+                  filename: attachment.filename,
+                  mimeType: attachment.mimeType,
+                  size: attachment.size,
+                  scopeKey: _draftMemoUid ?? 'memo_editor_draft',
+                ),
+              )
+              .toList(growable: false),
+        );
+    return [
+      for (var i = 0; i < pending.length; i++)
+        pending[i].copyWith(
+          filePath: staged[i].filePath,
+          filename: staged[i].filename,
+          mimeType: staged[i].mimeType,
+          size: staged[i].size,
+          processingStatus: AttachmentProcessingStatus.ready,
+          processingError: null,
+        ),
+    ];
   }
 
   Future<void> _addPendingAttachmentsStaged(
     Iterable<_PendingAttachment> attachments,
   ) async {
-    final staged = await _stagePendingAttachments(attachments);
-    if (!mounted || staged.isEmpty) return;
+    final pending = attachments.toList(growable: false);
+    if (!mounted || pending.isEmpty) return;
+    final admitted = pending
+        .map(
+          (attachment) => attachment.copyWith(
+            processingStatus: AttachmentProcessingStatus.staging,
+            processingError: null,
+          ),
+        )
+        .toList(growable: false);
     setState(() {
-      _composer.addPendingAttachments(staged);
+      _composer.addPendingAttachments(admitted);
     });
+    unawaited(_stageAndReplacePendingAttachments(admitted));
+  }
+
+  Future<void> _stageAndReplacePendingAttachments(
+    List<_PendingAttachment> attachments,
+  ) async {
+    try {
+      final staged = await _stagePendingAttachments(attachments);
+      if (!mounted) return;
+      setState(() {
+        for (final attachment in staged) {
+          _composer.replacePendingAttachment(attachment.uid, attachment);
+        }
+      });
+      _scheduleDraftSave();
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'MemoEditor: stage_pending_attachments_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      setState(() {
+        for (final attachment in attachments) {
+          _composer.updatePendingAttachment(
+            attachment.uid,
+            (current) => current.copyWith(
+              processingStatus: AttachmentProcessingStatus.failed,
+              processingError: error.toString(),
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  bool _ensurePendingAttachmentsReady() {
+    final unready = _composer.unreadyPendingAttachments;
+    if (unready.isEmpty) return true;
+    final hasFailures = unready.any(
+      (attachment) => attachment.hasProcessingFailure,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          hasFailures
+              ? context.t.strings.legacy.msg_save_failed_check_content_retry
+              : context.t.strings.legacy.msg_processing(
+                  processed: _composer.readyPendingAttachmentCount,
+                  total: _composer.pendingAttachments.length,
+                ),
+        ),
+      ),
+    );
+    return false;
   }
 
   Map<String, dynamic>? _decodeEditorDraftPayload(String raw) {
@@ -784,6 +871,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       );
       return;
     }
+    if (!_ensurePendingAttachmentsReady()) return;
 
     setState(() => _saving = true);
     try {
@@ -1592,20 +1680,18 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         imagePicker: _imagePicker,
       );
       if (!mounted || attachment == null) return;
-      final stagedAttachments = await _stagePendingAttachments([
-        _PendingAttachment(
-          uid: generateUid(),
-          filePath: attachment.filePath,
-          filename: attachment.filename,
-          mimeType: attachment.mimeType,
-          size: attachment.size,
-          skipCompression: attachment.skipCompression,
-        ),
-      ]);
-      if (!mounted || stagedAttachments.isEmpty) return;
+      final pendingAttachment = _PendingAttachment(
+        uid: generateUid(),
+        filePath: attachment.filePath,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        skipCompression: attachment.skipCompression,
+      );
+      await _addPendingAttachmentsStaged([pendingAttachment]);
+      if (!mounted) return;
       setState(() {
-        _composer.addPendingAttachments(stagedAttachments);
-        _pickedImages.add(XFile(stagedAttachments.first.filePath));
+        _pickedImages.add(XFile(pendingAttachment.filePath));
       });
       _scheduleDraftSave();
       showTopToast(
@@ -2069,6 +2155,15 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
             left: 4,
             bottom: 4,
             child: IgnorePointer(child: _buildOriginalBadge()),
+          ),
+        if (!attachment.isReadyForSubmit)
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: tileRadius,
+              child: AttachmentProcessingOverlay(
+                status: attachment.processingStatus,
+              ),
+            ),
           ),
         Positioned(
           top: 4,

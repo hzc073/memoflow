@@ -334,6 +334,9 @@ void main() {
       expect(pipeline.lastRequest!.path, file.path);
       expect(pipeline.lastRequest!.filename, 'sample.png');
       expect(pipeline.lastRequest!.mimeType, 'image/png');
+      expect(pipeline.lastRequest!.sourceProbe, isNotNull);
+      expect(pipeline.lastRequest!.sourceProbe!.path, file.path);
+      expect(pipeline.lastRequest!.sourceProbe!.displayWidth, 48);
       expect(result.filePath, '/cache/sample.jpg');
       expect(result.filename, 'sample.jpg');
       expect(result.mimeType, 'image/jpeg');

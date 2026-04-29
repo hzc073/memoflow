@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 
 import '../../../../data/models/image_compression_settings.dart';
+import '../compression_executor.dart';
 import '../compression_models.dart';
 import 'compression_engine.dart';
 
@@ -99,7 +100,10 @@ final class _CCSParameters extends ffi.Struct {
 }
 
 class CaesiumFfiCompressionEngine implements CompressionEngine {
-  CaesiumFfiCompressionEngine();
+  CaesiumFfiCompressionEngine({CompressionExecutor? compressionExecutor})
+    : _compressionExecutor =
+          compressionExecutor ??
+          BoundedCompressionExecutor(maxConcurrentJobs: 1);
 
   static const String ffiLibraryVersion = '0.17.4';
 
@@ -108,6 +112,7 @@ class CaesiumFfiCompressionEngine implements CompressionEngine {
   _CompressToSizeDart? _compressToSize;
   _ConvertDart? _convert;
   bool _loadAttempted = false;
+  final CompressionExecutor _compressionExecutor;
 
   @override
   String get engineId => 'libcaesium_ffi';
@@ -139,6 +144,17 @@ class CaesiumFfiCompressionEngine implements CompressionEngine {
   Future<CompressionEngineResult> compress(
     CompressionEngineRequest request,
   ) async {
+    _ensureLoaded();
+    if (_compress == null || _compressToSize == null) {
+      throw UnsupportedError('libcaesium ffi not available');
+    }
+    return _compressionExecutor.runIsolated<CompressionEngineResult>(
+      key: _compressionJobKey(request),
+      work: () => _compressCaesiumOnWorker(request),
+    );
+  }
+
+  CompressionEngineResult _compressSync(CompressionEngineRequest request) {
     _ensureLoaded();
     final compress = _compress;
     final compressToSize = _compressToSize;
@@ -178,8 +194,42 @@ class CaesiumFfiCompressionEngine implements CompressionEngine {
     }
   }
 
+  static CompressionEngineResult _compressCaesiumOnWorker(
+    CompressionEngineRequest request,
+  ) {
+    return CaesiumFfiCompressionEngine(
+      compressionExecutor: const ImmediateCompressionExecutor(),
+    )._compressSync(request);
+  }
+
+  String _compressionJobKey(CompressionEngineRequest request) {
+    return [
+      engineId,
+      libraryVersion,
+      request.sourcePath,
+      request.outputPath,
+      request.inputFormat.name,
+      request.outputFormat.name,
+      request.settings.toJson().toString(),
+      request.resizeTarget?.width,
+      request.resizeTarget?.height,
+      request.maxOutputBytes,
+    ].join('|');
+  }
+
   @override
   Future<void> convert(CompressionConversionRequest request) async {
+    _ensureLoaded();
+    if (_convert == null) {
+      throw UnsupportedError('libcaesium ffi convert not available');
+    }
+    return _compressionExecutor.runIsolated<void>(
+      key: _conversionJobKey(request),
+      work: () => _convertCaesiumOnWorker(request),
+    );
+  }
+
+  void _convertSync(CompressionConversionRequest request) {
     _ensureLoaded();
     final convert = _convert;
     if (convert == null) {
@@ -213,6 +263,27 @@ class CaesiumFfiCompressionEngine implements CompressionEngine {
       calloc.free(outputPtr);
       calloc.free(paramsPtr);
     }
+  }
+
+  static void _convertCaesiumOnWorker(CompressionConversionRequest request) {
+    CaesiumFfiCompressionEngine(
+      compressionExecutor: const ImmediateCompressionExecutor(),
+    )._convertSync(request);
+  }
+
+  String _conversionJobKey(CompressionConversionRequest request) {
+    return [
+      engineId,
+      libraryVersion,
+      'convert',
+      request.sourcePath,
+      request.outputPath,
+      request.inputFormat.name,
+      request.outputFormat.name,
+      request.keepMetadata,
+      request.resizeTarget?.width,
+      request.resizeTarget?.height,
+    ].join('|');
   }
 
   void _ensureLoaded() {

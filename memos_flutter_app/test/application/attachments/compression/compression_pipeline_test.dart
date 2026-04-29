@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
 import 'package:memos_flutter_app/application/attachments/compression/compression_cache_store.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_executor.dart';
 import 'package:memos_flutter_app/application/attachments/compression/compression_models.dart';
 import 'package:memos_flutter_app/application/attachments/compression/compression_pipeline.dart';
 import 'package:memos_flutter_app/application/attachments/compression/compression_plan_builder.dart';
@@ -108,6 +110,98 @@ class _BiggerOutputEngine implements CompressionEngine {
       flush: true,
     );
     return CompressionEngineResult(outputPath: output.path);
+  }
+
+  @override
+  Future<void> convert(CompressionConversionRequest request) async {
+    throw StateError('convert should not be called');
+  }
+
+  @override
+  bool supportsOutputFormat(CompressionImageFormat format) => true;
+}
+
+class _SlowValidOutputEngine implements CompressionEngine {
+  _SlowValidOutputEngine(this.release);
+
+  final Completer<void> release;
+  int compressCalls = 0;
+
+  @override
+  String get engineId => 'slow_valid_engine';
+
+  @override
+  String get libraryVersion => 'test';
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  bool get requiresMatchingInputFormat => false;
+
+  @override
+  Future<CompressionEngineResult> compress(
+    CompressionEngineRequest request,
+  ) async {
+    compressCalls += 1;
+    await release.future;
+    final output = File(request.outputPath);
+    await output.parent.create(recursive: true);
+    final width = request.resizeTarget?.displayWidth ?? 64;
+    final height = request.resizeTarget?.displayHeight ?? 32;
+    final image = img.Image(width: width, height: height);
+    await output.writeAsBytes(
+      Uint8List.fromList(img.encodePng(image)),
+      flush: true,
+    );
+    return CompressionEngineResult(
+      outputPath: output.path,
+      width: width,
+      height: height,
+    );
+  }
+
+  @override
+  Future<void> convert(CompressionConversionRequest request) async {
+    throw StateError('convert should not be called');
+  }
+
+  @override
+  bool supportsOutputFormat(CompressionImageFormat format) => true;
+}
+
+class _BadAspectOutputEngine implements CompressionEngine {
+  int compressCalls = 0;
+
+  @override
+  String get engineId => 'bad_aspect_engine';
+
+  @override
+  String get libraryVersion => 'test';
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  bool get requiresMatchingInputFormat => false;
+
+  @override
+  Future<CompressionEngineResult> compress(
+    CompressionEngineRequest request,
+  ) async {
+    compressCalls += 1;
+    final output = File(request.outputPath);
+    await output.parent.create(recursive: true);
+    final image = img.Image(width: 100, height: 100);
+    await output.writeAsBytes(
+      Uint8List.fromList(img.encodePng(image)),
+      flush: true,
+    );
+    return CompressionEngineResult(
+      outputPath: output.path,
+      width: 100,
+      height: 100,
+    );
   }
 
   @override
@@ -293,6 +387,48 @@ void main() {
       },
     );
 
+    test('safe long-edge policy keeps long screenshots readable', () async {
+      final file = await _writePng(
+        support,
+        name: 'long_screenshot.png',
+        width: 720,
+        height: 2400,
+      );
+      final pipeline = _buildPipeline(
+        primaryEngine: const _UnavailableEngine('ffi'),
+        fallbackEngine: DartFallbackCompressionEngine(),
+      );
+      final settings = ImageCompressionSettings.defaults.copyWith(
+        skipIfBigger: false,
+        outputFormat: ImageCompressionOutputFormat.jpeg,
+        resize: ImageCompressionSettings.defaults.resize.copyWith(
+          enabled: true,
+          mode: ImageCompressionResizeMode.longEdge,
+          edge: 1200,
+        ),
+      );
+
+      final result = await pipeline.process(
+        CompressionPipelineRequest(
+          path: file.path,
+          filename: 'long_screenshot.png',
+          mimeType: 'image/png',
+          settings: settings,
+        ),
+      );
+
+      final decoded = img.decodeImage(
+        await File(result.filePath).readAsBytes(),
+      );
+      expect(result.fallback, isFalse);
+      expect(result.wasResized, isFalse);
+      expect(result.width, 720);
+      expect(result.height, 2400);
+      expect(decoded, isNotNull);
+      expect(decoded!.width, 720);
+      expect(decoded.height, 2400);
+    });
+
     test('caches fallback results when compression throws', () async {
       final file = await _writePng(
         support,
@@ -344,6 +480,47 @@ void main() {
       );
     });
 
+    test('coalesces equivalent in-flight compression requests', () async {
+      final file = await _writePng(
+        support,
+        name: 'sample.png',
+        width: 64,
+        height: 32,
+      );
+      final release = Completer<void>();
+      final slowEngine = _SlowValidOutputEngine(release);
+      final pipeline = _buildPipeline(
+        primaryEngine: slowEngine,
+        fallbackEngine: DartFallbackCompressionEngine(),
+      );
+      final settings = ImageCompressionSettings.defaults.copyWith(
+        skipIfBigger: false,
+        outputFormat: ImageCompressionOutputFormat.sameAsInput,
+      );
+      final request = CompressionPipelineRequest(
+        path: file.path,
+        filename: 'sample.png',
+        mimeType: 'image/png',
+        settings: settings,
+      );
+
+      final first = pipeline.process(request);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final second = pipeline.process(request);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(slowEngine.compressCalls, 1);
+      release.complete();
+
+      final firstResult = await first;
+      final secondResult = await second;
+
+      expect(slowEngine.compressCalls, 1);
+      expect(secondResult.filePath, firstResult.filePath);
+      expect(firstResult.fromCache, isFalse);
+      expect(secondResult.fromCache, isFalse);
+    });
+
     test('skipIfBigger falls back to original file', () async {
       final file = await _writePng(
         support,
@@ -378,6 +555,94 @@ void main() {
         CompressionFallbackReason.outputBiggerThanInput,
       );
       expect(result.effectiveOutputFormat, isNull);
+    });
+
+    test('unsafe output aspect ratio falls back to original file', () async {
+      final file = await _writePng(
+        support,
+        name: 'sample.png',
+        width: 200,
+        height: 100,
+      );
+      final badAspectEngine = _BadAspectOutputEngine();
+      final pipeline = _buildPipeline(
+        primaryEngine: badAspectEngine,
+        fallbackEngine: DartFallbackCompressionEngine(),
+      );
+      final settings = ImageCompressionSettings.defaults.copyWith(
+        skipIfBigger: false,
+        outputFormat: ImageCompressionOutputFormat.sameAsInput,
+      );
+
+      final result = await pipeline.process(
+        CompressionPipelineRequest(
+          path: file.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+          settings: settings,
+        ),
+      );
+
+      expect(badAspectEngine.compressCalls, 1);
+      expect(result.fallback, isTrue);
+      expect(result.filePath, file.path);
+      expect(
+        result.fallbackReason,
+        CompressionFallbackReason.aspectRatioMismatch,
+      );
+    });
+  });
+
+  group('BoundedCompressionExecutor', () {
+    test('limits concurrent jobs', () async {
+      final executor = BoundedCompressionExecutor(maxConcurrentJobs: 2);
+      var running = 0;
+      var maxRunning = 0;
+
+      await Future.wait(
+        List<Future<int>>.generate(5, (index) {
+          return executor.run<int>(
+            work: () async {
+              running += 1;
+              if (running > maxRunning) {
+                maxRunning = running;
+              }
+              await Future<void>.delayed(const Duration(milliseconds: 20));
+              running -= 1;
+              return index;
+            },
+          );
+        }),
+      );
+
+      expect(maxRunning, 2);
+    });
+
+    test('coalesces in-flight jobs by key', () async {
+      final executor = BoundedCompressionExecutor(maxConcurrentJobs: 2);
+      final completer = Completer<int>();
+      var calls = 0;
+
+      final first = executor.run<int>(
+        key: 'same-job',
+        work: () async {
+          calls += 1;
+          return completer.future;
+        },
+      );
+      final second = executor.run<int>(
+        key: 'same-job',
+        work: () async {
+          calls += 1;
+          return 2;
+        },
+      );
+
+      completer.complete(1);
+
+      expect(await first, 1);
+      expect(await second, 1);
+      expect(calls, 1);
     });
   });
 }

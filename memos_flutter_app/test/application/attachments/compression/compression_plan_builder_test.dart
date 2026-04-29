@@ -48,6 +48,7 @@ CompressionSourceProbe _probe({
   int? height = 200,
   int? displayWidth,
   int? displayHeight,
+  int orientation = 1,
   bool isAnimated = false,
   bool isImage = true,
 }) {
@@ -61,7 +62,7 @@ CompressionSourceProbe _probe({
     height: height,
     displayWidth: displayWidth ?? width,
     displayHeight: displayHeight ?? height,
-    orientation: 1,
+    orientation: orientation,
     hasAlpha: format == CompressionImageFormat.png,
     isAnimated: isAnimated,
     isImage: isImage,
@@ -255,6 +256,7 @@ void main() {
           height: 500,
           displayWidth: 500,
           displayHeight: 300,
+          orientation: 6,
         ),
         settings: settings,
         engine: engine,
@@ -263,8 +265,64 @@ void main() {
       );
 
       expect(plan.resizeTarget, isNotNull);
-      expect(plan.resizeTarget!.height, 150);
-      expect(plan.resizeTarget!.width, 250);
+      expect(plan.resizeTarget!.displayHeight, 150);
+      expect(plan.resizeTarget!.displayWidth, 250);
+      expect(plan.resizeTarget!.width, 150);
+      expect(plan.resizeTarget!.height, 250);
+    });
+
+    test('regular photos allow long-edge resize', () {
+      final settings = ImageCompressionSettings.defaults.copyWith(
+        resize: ImageCompressionSettings.defaults.resize.copyWith(
+          enabled: true,
+          mode: ImageCompressionResizeMode.longEdge,
+          edge: 1920,
+        ),
+      );
+      final plan = builder.build(
+        sourceProbe: _probe(
+          format: CompressionImageFormat.jpeg,
+          fileSize: 1024 * 1024,
+          width: 4000,
+          height: 3000,
+        ),
+        settings: settings,
+        engine: engine,
+        sourceSignature: 'sig',
+        cacheKey: 'cache',
+      );
+
+      expect(plan.resizeTarget, isNotNull);
+      expect(plan.resizeTarget!.displayWidth, 1920);
+      expect(plan.resizeTarget!.displayHeight, 1440);
+      expect(plan.wasResized, isTrue);
+    });
+
+    test('long screenshots keep readable short edge', () {
+      final settings = ImageCompressionSettings.defaults.copyWith(
+        resize: ImageCompressionSettings.defaults.resize.copyWith(
+          enabled: true,
+          mode: ImageCompressionResizeMode.longEdge,
+          edge: 1920,
+        ),
+      );
+      final plan = builder.build(
+        sourceProbe: _probe(
+          format: CompressionImageFormat.png,
+          fileSize: 1024 * 1024,
+          width: 1440,
+          height: 3120,
+        ),
+        settings: settings,
+        engine: engine,
+        sourceSignature: 'sig',
+        cacheKey: 'cache',
+      );
+
+      expect(plan.resizeTarget, isNotNull);
+      expect(plan.resizeTarget!.displayWidth, 1440);
+      expect(plan.resizeTarget!.displayHeight, 3120);
+      expect(plan.wasResized, isFalse);
     });
   });
 }

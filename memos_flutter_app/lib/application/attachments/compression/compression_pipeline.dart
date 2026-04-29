@@ -20,12 +20,14 @@ class CompressionPipelineRequest {
     required this.filename,
     required this.mimeType,
     required this.settings,
+    this.sourceProbe,
   });
 
   final String path;
   final String filename;
   final String mimeType;
   final ImageCompressionSettings settings;
+  final CompressionSourceProbe? sourceProbe;
 }
 
 class CompressionPipelineResult {
@@ -97,15 +99,19 @@ class CompressionPipeline {
   final LogManager _logManager;
   final CompressionJobKeyFactory _jobKeyFactory =
       const CompressionJobKeyFactory();
+  final Map<String, Future<CompressionPipelineResult>> _inFlightJobs =
+      <String, Future<CompressionPipelineResult>>{};
 
   Future<CompressionPipelineResult> process(
     CompressionPipelineRequest request,
   ) async {
-    final sourceProbe = await _probeService.probe(
-      path: request.path,
-      filename: request.filename,
-      mimeType: request.mimeType,
-    );
+    final sourceProbe =
+        request.sourceProbe ??
+        await _probeService.probe(
+          path: request.path,
+          filename: request.filename,
+          mimeType: request.mimeType,
+        );
     final engine = _primaryEngine.isAvailable
         ? _primaryEngine
         : _fallbackEngine;
@@ -239,6 +245,33 @@ class CompressionPipeline {
       return passthrough;
     }
 
+    final inFlight = _inFlightJobs[plan.cacheKey];
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final job = _processCompressionCacheMiss(
+      request: request,
+      sourceProbe: sourceProbe,
+      plan: plan,
+      engine: engine,
+    );
+    _inFlightJobs[plan.cacheKey] = job;
+    unawaited(
+      job.then(
+        (_) => _removeInFlightJob(plan.cacheKey, job),
+        onError: (_, _) => _removeInFlightJob(plan.cacheKey, job),
+      ),
+    );
+    return job;
+  }
+
+  Future<CompressionPipelineResult> _processCompressionCacheMiss({
+    required CompressionPipelineRequest request,
+    required CompressionSourceProbe sourceProbe,
+    required CompressionPlan plan,
+    required CompressionEngine engine,
+  }) async {
     final outputPath = await _cacheStore.resolveOutputPath(
       plan.cacheKey,
       plan.outputFormat!,
@@ -261,13 +294,68 @@ class CompressionPipeline {
         resizeTarget: plan.resizeTarget,
         maxOutputBytes: plan.maxOutputBytes,
       );
-      await engine.compress(compressRequest);
+      final engineResult = await engine.compress(compressRequest);
       final outputFile = File(outputPath);
       if (!outputFile.existsSync()) {
         throw FileSystemException('Compression output missing', outputPath);
       }
 
       final size = await outputFile.length();
+      final outputProbe = await _probeOutput(
+        outputPath: outputPath,
+        filename: request.filename,
+        outputFormat: plan.outputFormat!,
+      );
+      final outputWidth =
+          outputProbe?.displayWidth ??
+          outputProbe?.width ??
+          engineResult.width ??
+          plan.resizeTarget?.displayWidth ??
+          sourceProbe.displayWidth ??
+          sourceProbe.width;
+      final outputHeight =
+          outputProbe?.displayHeight ??
+          outputProbe?.height ??
+          engineResult.height ??
+          plan.resizeTarget?.displayHeight ??
+          sourceProbe.displayHeight ??
+          sourceProbe.height;
+      if (_hasUnsafeAspectRatio(
+        plan: plan,
+        sourceProbe: sourceProbe,
+        outputWidth: outputWidth,
+        outputHeight: outputHeight,
+      )) {
+        if (outputFile.existsSync()) {
+          await outputFile.delete();
+        }
+        final fallbackPlan = plan.copyWith(
+          fallbackReason: CompressionFallbackReason.aspectRatioMismatch,
+        );
+        final fallback = await _buildFallbackResult(
+          request: request,
+          sourceProbe: sourceProbe,
+          plan: fallbackPlan,
+          fromCache: false,
+        );
+        await _cacheStore.writeManifest(
+          plan.cacheKey,
+          CompressionCacheManifest(
+            status: CompressionCacheStatus.fallback,
+            engine: plan.engineId,
+            libraryVersion: plan.engineVersion,
+            mode: request.settings.mode,
+            sourceFormat: sourceProbe.format,
+            outputFormat: null,
+            size: fallback.size,
+            width: fallback.width,
+            height: fallback.height,
+            hash: fallback.hash,
+            fallbackReason: CompressionFallbackReason.aspectRatioMismatch,
+          ),
+        );
+        return fallback;
+      }
       if (request.settings.skipIfBigger && size >= sourceProbe.fileSize) {
         if (outputFile.existsSync()) {
           await outputFile.delete();
@@ -310,16 +398,10 @@ class CompressionPipeline {
         filename: filename,
         mimeType: _mimeTypeFor(plan.outputFormat!),
         size: size,
-        width:
-            plan.resizeTarget?.width ??
-            sourceProbe.displayWidth ??
-            sourceProbe.width,
-        height:
-            plan.resizeTarget?.height ??
-            sourceProbe.displayHeight ??
-            sourceProbe.height,
+        width: outputWidth,
+        height: outputHeight,
         hash: hash,
-        sourceSignature: sourceSignature,
+        sourceSignature: plan.sourceSignature,
         cacheKey: plan.cacheKey,
         sourceFormat: sourceProbe.format,
         effectiveOutputFormat: plan.outputFormat,
@@ -426,6 +508,75 @@ class CompressionPipeline {
         await cleanup();
       }
     }
+  }
+
+  void _removeInFlightJob(
+    String cacheKey,
+    Future<CompressionPipelineResult> job,
+  ) {
+    if (identical(_inFlightJobs[cacheKey], job)) {
+      _inFlightJobs.remove(cacheKey);
+    }
+  }
+
+  Future<CompressionSourceProbe?> _probeOutput({
+    required String outputPath,
+    required String filename,
+    required CompressionImageFormat outputFormat,
+  }) async {
+    try {
+      return await _probeService.probe(
+        path: outputPath,
+        filename: _replaceFilenameExtension(
+          filename,
+          _cacheStore.extensionForFormat(outputFormat),
+        ),
+        mimeType: _mimeTypeFor(outputFormat),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _hasUnsafeAspectRatio({
+    required CompressionPlan plan,
+    required CompressionSourceProbe sourceProbe,
+    required int? outputWidth,
+    required int? outputHeight,
+  }) {
+    if (!_shouldValidateAspectRatio(plan)) return false;
+    final sourceWidth = sourceProbe.displayWidth ?? sourceProbe.width;
+    final sourceHeight = sourceProbe.displayHeight ?? sourceProbe.height;
+    if (sourceWidth == null ||
+        sourceHeight == null ||
+        outputWidth == null ||
+        outputHeight == null ||
+        sourceWidth <= 0 ||
+        sourceHeight <= 0 ||
+        outputWidth <= 0 ||
+        outputHeight <= 0) {
+      return false;
+    }
+
+    final sourceRatio = sourceWidth / sourceHeight;
+    final outputRatio = outputWidth / outputHeight;
+    final delta = (outputRatio - sourceRatio).abs() / sourceRatio;
+    return delta > 0.02;
+  }
+
+  bool _shouldValidateAspectRatio(CompressionPlan plan) {
+    final resize = plan.settings.resize;
+    if (!resize.enabled || resize.mode == ImageCompressionResizeMode.noResize) {
+      return true;
+    }
+    if (resize.mode == ImageCompressionResizeMode.dimensions) {
+      return false;
+    }
+    if (resize.mode == ImageCompressionResizeMode.percentage &&
+        resize.width != resize.height) {
+      return false;
+    }
+    return true;
   }
 
   Future<CompressionPipelineResult?> _resolveCachedResult({

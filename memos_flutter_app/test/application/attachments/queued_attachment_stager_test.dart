@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/application/attachments/compression/compression_models.dart';
+import 'package:memos_flutter_app/application/attachments/compression/compression_source_probe.dart';
 import 'package:memos_flutter_app/application/attachments/queued_attachment_stager.dart';
 
 import '../../test_support.dart';
@@ -19,11 +22,13 @@ void main() {
 
   Future<QueuedAttachmentStager> createStager({
     CopyContentUriToLocalFile? copyContentUriToLocalFile,
+    CompressionSourceProbeService? imageProbeService,
   }) async {
     final supportDir = await support.createTempDir('queued_stager_support');
     return QueuedAttachmentStager(
       resolveSupportDirectory: () async => supportDir,
       copyContentUriToLocalFile: copyContentUriToLocalFile,
+      imageProbeService: imageProbeService,
     );
   }
 
@@ -112,6 +117,134 @@ void main() {
     expect(second.size, first.size);
   });
 
+  test('managed content uri is not copied again when restaged', () async {
+    var copyCount = 0;
+    final stager = await createStager(
+      copyContentUriToLocalFile: (sourceUri, destinationPath) async {
+        copyCount += 1;
+        await File(destinationPath).writeAsString(sourceUri);
+      },
+    );
+
+    final first = await stager.stageDraftAttachment(
+      uid: 'att-1',
+      filePath: 'content://media/external/file/1',
+      filename: 'sample.txt',
+      mimeType: 'text/plain',
+      size: 0,
+      scopeKey: 'memo-1',
+    );
+    final second = await stager.stageDraftAttachment(
+      uid: 'att-1',
+      filePath: first.filePath,
+      filename: first.filename,
+      mimeType: first.mimeType,
+      size: first.size,
+      scopeKey: 'memo-1',
+    );
+
+    expect(copyCount, 1);
+    expect(second.filePath, first.filePath);
+  });
+
+  test('stageUploadPayload returns managed files without re-staging', () async {
+    var copyCount = 0;
+    final stager = await createStager(
+      copyContentUriToLocalFile: (sourceUri, destinationPath) async {
+        copyCount += 1;
+        await File(destinationPath).writeAsString(sourceUri);
+      },
+    );
+    final staged = await stager.stageDraftAttachment(
+      uid: 'att-1',
+      filePath: 'content://media/external/file/1',
+      filename: 'sample.txt',
+      mimeType: 'text/plain',
+      size: 0,
+      scopeKey: 'memo-1',
+    );
+
+    final payload = await stager.stageUploadPayload({
+      'uid': staged.uid,
+      'memo_uid': 'memo-1',
+      'file_path': staged.filePath,
+      'filename': staged.filename,
+      'mime_type': staged.mimeType,
+      'file_size': staged.size,
+    }, scopeKey: 'memo-1');
+
+    expect(copyCount, 1);
+    expect(payload['file_path'], staged.filePath);
+    expect(payload['file_size'], staged.size);
+  });
+
+  test('image diagnostics are not required for stage completion', () async {
+    final sourceFile = await createSourceFile('queued_stager_probe_async');
+    final probeService = _BlockingProbeService();
+    final stager = await createStager(imageProbeService: probeService);
+
+    final staged = await stager
+        .stageDraftAttachment(
+          uid: 'att-1',
+          filePath: sourceFile.path,
+          filename: 'sample.png',
+          mimeType: 'image/png',
+          size: await sourceFile.length(),
+          scopeKey: 'memo-1',
+        )
+        .timeout(const Duration(seconds: 2));
+
+    expect(File(staged.filePath).existsSync(), isTrue);
+    probeService.complete();
+  });
+
+  test('stageDraftAttachments preserves input order', () async {
+    final completions = <String>[];
+    final stager = await createStager(
+      copyContentUriToLocalFile: (sourceUri, destinationPath) async {
+        if (sourceUri.endsWith('/1')) {
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        }
+        if (sourceUri.endsWith('/2')) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        completions.add(sourceUri);
+        await File(destinationPath).writeAsString(sourceUri);
+      },
+    );
+
+    final results = await stager.stageDraftAttachments(const [
+      DraftAttachmentStageRequest(
+        uid: 'att-1',
+        filePath: 'content://media/external/file/1',
+        filename: '1.txt',
+        mimeType: 'text/plain',
+        size: 0,
+        scopeKey: 'memo-1',
+      ),
+      DraftAttachmentStageRequest(
+        uid: 'att-2',
+        filePath: 'content://media/external/file/2',
+        filename: '2.txt',
+        mimeType: 'text/plain',
+        size: 0,
+        scopeKey: 'memo-1',
+      ),
+      DraftAttachmentStageRequest(
+        uid: 'att-3',
+        filePath: 'content://media/external/file/3',
+        filename: '3.txt',
+        mimeType: 'text/plain',
+        size: 0,
+        scopeKey: 'memo-1',
+      ),
+    ]);
+
+    expect(completions.first, isNot('content://media/external/file/1'));
+    expect(results.map((item) => item.uid), ['att-1', 'att-2', 'att-3']);
+    expect(results.map((item) => item.filename), ['1.txt', '2.txt', '3.txt']);
+  });
+
   test('stageDraftAttachment fails when source file is missing', () async {
     final stager = await createStager();
     final missingPath =
@@ -153,4 +286,38 @@ void main() {
     await stager.deleteManagedFile(staged.filePath);
     expect(File(staged.filePath).existsSync(), isFalse);
   });
+}
+
+class _BlockingProbeService extends CompressionSourceProbeService {
+  final Completer<void> _completer = Completer<void>();
+
+  void complete() {
+    if (!_completer.isCompleted) {
+      _completer.complete();
+    }
+  }
+
+  @override
+  Future<CompressionSourceProbe> probe({
+    required String path,
+    required String filename,
+    required String mimeType,
+  }) async {
+    await _completer.future;
+    return CompressionSourceProbe(
+      path: path,
+      filename: filename,
+      mimeType: mimeType,
+      fileSize: 0,
+      format: CompressionImageFormat.png,
+      width: null,
+      height: null,
+      displayWidth: null,
+      displayHeight: null,
+      orientation: 1,
+      hasAlpha: false,
+      isAnimated: false,
+      isImage: true,
+    );
+  }
 }

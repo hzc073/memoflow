@@ -14,6 +14,7 @@ import '../../core/memo_template_renderer.dart';
 import '../../core/tags.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
+import '../../data/logs/log_manager.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
@@ -381,8 +382,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
   Future<MemoComposerPendingAttachment> _stagePendingAttachment(
     MemoComposerPendingAttachment attachment,
   ) async {
-    // ignore: avoid_print
-    print('inline-compose: stage start ${attachment.filename}');
     final resolvedWorkspaceKey =
         workspaceKeyOverride?.call()?.trim() ??
         _ref.read(appSessionProvider).valueOrNull?.currentKey ??
@@ -400,32 +399,121 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
           ? 'default'
           : resolvedWorkspaceKey,
     );
-    // ignore: avoid_print
-    print('inline-compose: stage done ${attachment.filename}');
     return attachment.copyWith(
       filePath: staged.filePath,
       filename: staged.filename,
       mimeType: staged.mimeType,
       size: staged.size,
+      processingStatus: AttachmentProcessingStatus.ready,
+      processingError: null,
     );
   }
 
   Future<List<MemoComposerPendingAttachment>> _stagePendingAttachments(
     Iterable<MemoComposerPendingAttachment> attachments,
   ) async {
-    final staged = <MemoComposerPendingAttachment>[];
-    for (final attachment in attachments) {
-      staged.add(await _stagePendingAttachment(attachment));
-    }
-    return staged;
+    final pending = attachments.toList(growable: false);
+    if (pending.isEmpty) return <MemoComposerPendingAttachment>[];
+    final resolvedWorkspaceKey =
+        workspaceKeyOverride?.call()?.trim() ??
+        _ref.read(appSessionProvider).valueOrNull?.currentKey ??
+        'default';
+    final scopeKey = resolvedWorkspaceKey.trim().isEmpty
+        ? 'default'
+        : resolvedWorkspaceKey;
+    final QueuedAttachmentStager attachmentStager =
+        queuedAttachmentStagerOverride ??
+        _ref.read(queuedAttachmentStagerProvider);
+    final staged = await attachmentStager.stageDraftAttachments(
+      pending
+          .map(
+            (attachment) => DraftAttachmentStageRequest(
+              uid: attachment.uid,
+              filePath: attachment.filePath,
+              filename: attachment.filename,
+              mimeType: attachment.mimeType,
+              size: attachment.size,
+              scopeKey: scopeKey,
+            ),
+          )
+          .toList(growable: false),
+    );
+    return [
+      for (var i = 0; i < pending.length; i++)
+        pending[i].copyWith(
+          filePath: staged[i].filePath,
+          filename: staged[i].filename,
+          mimeType: staged[i].mimeType,
+          size: staged[i].size,
+          processingStatus: AttachmentProcessingStatus.ready,
+          processingError: null,
+        ),
+    ];
   }
 
   Future<void> _addPendingAttachmentsStaged(
     Iterable<MemoComposerPendingAttachment> attachments,
   ) async {
-    final staged = await _stagePendingAttachments(attachments);
-    if (staged.isEmpty) return;
-    composer.addPendingAttachments(staged);
+    final pending = attachments.toList(growable: false);
+    if (pending.isEmpty) return;
+    final admitted = pending
+        .map(
+          (attachment) => attachment.copyWith(
+            processingStatus: AttachmentProcessingStatus.staging,
+            processingError: null,
+          ),
+        )
+        .toList(growable: false);
+    composer.addPendingAttachments(admitted);
+    unawaited(_stageAndReplacePendingAttachments(admitted));
+  }
+
+  Future<void> _stageAndReplacePendingAttachments(
+    List<MemoComposerPendingAttachment> attachments,
+  ) async {
+    try {
+      final staged = await _stagePendingAttachments(attachments);
+      for (final attachment in staged) {
+        composer.replacePendingAttachment(attachment.uid, attachment);
+      }
+    } catch (error, stackTrace) {
+      LogManager.instance.warn(
+        'InlineCompose: stage_pending_attachments_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      for (final attachment in attachments) {
+        composer.updatePendingAttachment(
+          attachment.uid,
+          (current) => current.copyWith(
+            processingStatus: AttachmentProcessingStatus.failed,
+            processingError: error.toString(),
+          ),
+        );
+      }
+    }
+  }
+
+  bool _ensurePendingAttachmentsReady(BuildContext context) {
+    final unready = composer.unreadyPendingAttachments;
+    if (unready.isEmpty) return true;
+    final hasFailures = unready.any(
+      (attachment) => attachment.hasProcessingFailure,
+    );
+    _showSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          hasFailures
+              ? context.t.strings.legacy.msg_save_failed_check_content_retry
+              : context.t.strings.legacy.msg_processing(
+                  processed: composer.readyPendingAttachmentCount,
+                  total: composer.pendingAttachments.length,
+                ),
+        ),
+      ),
+    );
+    return false;
   }
 
   void restoreDraftState({
@@ -473,8 +561,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
     }
 
     try {
-      // ignore: avoid_print
-      print('inline-compose: pickGallery before result');
       final result = await (pickGalleryOverride != null
           ? pickGalleryOverride!(context)
           : () async {
@@ -489,8 +575,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
                 compressionPolicy: compressionPolicy,
               );
             }());
-      // ignore: avoid_print
-      print('inline-compose: pickGallery after result');
       if (!context.mounted || result == null) return;
       if (result.attachments.isEmpty) {
         final message = result.skippedCount > 0
@@ -514,8 +598,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
             )
             .toList(growable: false),
       );
-      // ignore: avoid_print
-      print('inline-compose: pickGallery after stage');
 
       final skipped = [
         if (result.skippedCount > 0)
@@ -547,8 +629,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
 
   Future<void> pickAttachments(BuildContext context) async {
     try {
-      // ignore: avoid_print
-      print('inline-compose: pickFiles before result');
       final result = await (pickFilesOverride != null
           ? pickFilesOverride!()
           : FilePicker.platform.pickFiles(
@@ -556,8 +636,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
               type: FileType.any,
               withReadStream: true,
             ));
-      // ignore: avoid_print
-      print('inline-compose: pickFiles after result');
       if (!context.mounted) return;
       final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
@@ -627,8 +705,6 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       }
 
       await _addPendingAttachmentsStaged(added);
-      // ignore: avoid_print
-      print('inline-compose: pickFiles after stage');
       final skipped = [
         if (missingPathCount > 0)
           context.t.strings.legacy.msg_unavailable_file_count(
@@ -886,6 +962,7 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
       await addVoiceAttachment(context, result);
       return null;
     }
+    if (!_ensurePendingAttachmentsReady(context)) return null;
 
     final attachmentsPayload = pendingAttachments
         .map((attachment) {

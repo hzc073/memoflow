@@ -25,6 +25,7 @@ enum CompressionFallbackReason {
   outputBiggerThanInput,
   conversionFailed,
   invalidInput,
+  aspectRatioMismatch,
 }
 
 enum CompressionCacheStatus { ok, fallback, unsupported, error }
@@ -62,13 +63,21 @@ class CompressionSourceProbe {
 }
 
 class CompressionResizeTarget {
-  const CompressionResizeTarget({required this.width, required this.height});
+  const CompressionResizeTarget({
+    required this.width,
+    required this.height,
+    int? displayWidth,
+    int? displayHeight,
+  }) : displayWidth = displayWidth ?? width,
+       displayHeight = displayHeight ?? height;
 
   final int width;
   final int height;
+  final int displayWidth;
+  final int displayHeight;
 
   bool sameAs(int? sourceWidth, int? sourceHeight) =>
-      sourceWidth == width && sourceHeight == height;
+      sourceWidth == displayWidth && sourceHeight == displayHeight;
 }
 
 class CompressionPlan {
