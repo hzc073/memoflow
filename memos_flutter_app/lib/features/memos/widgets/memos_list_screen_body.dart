@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../../../core/app_motion.dart';
 import '../../../core/memoflow_palette.dart';
@@ -45,8 +46,36 @@ const WindowsDesktopSecondaryPaneMotionSpec _desktopMemoPreviewPaneMotionSpec =
     );
 
 const double _memoListFloatingActionGap = 12;
+const double _memoListFloatingActionHorizontalInset = 16;
+const SpringDescription _memoListFloatingActionSideSpring = SpringDescription(
+  mass: 1,
+  stiffness: 480,
+  damping: 36,
+);
+const Tolerance _memoListFloatingActionSideTolerance = Tolerance(
+  distance: 0.00001,
+  velocity: 0.0001,
+);
+const double _memoListFloatingActionTravelScaleDelta = 0.025;
+const double _memoListFloatingActionTravelOpacityDelta = 0.04;
 
 enum _MemoListFloatingActionSide { left, right }
+
+extension _MemoListFloatingActionSideLayout on _MemoListFloatingActionSide {
+  double get springValue {
+    return switch (this) {
+      _MemoListFloatingActionSide.left => 0,
+      _MemoListFloatingActionSide.right => 1,
+    };
+  }
+
+  CrossAxisAlignment get crossAxisAlignment {
+    return switch (this) {
+      _MemoListFloatingActionSide.left => CrossAxisAlignment.start,
+      _MemoListFloatingActionSide.right => CrossAxisAlignment.end,
+    };
+  }
+}
 
 typedef _MemoListBodyBuilder =
     Widget Function(
@@ -202,6 +231,121 @@ class _MemoListFloatingActionSideScopeState
       context,
       _resolvedSide(context),
       _handleScrollNotification,
+    );
+  }
+}
+
+class _MemoListFloatingActionSideSpringTransition extends StatefulWidget {
+  const _MemoListFloatingActionSideSpringTransition({
+    required this.side,
+    required this.child,
+  });
+
+  final _MemoListFloatingActionSide side;
+  final Widget child;
+
+  @override
+  State<_MemoListFloatingActionSideSpringTransition> createState() =>
+      _MemoListFloatingActionSideSpringTransitionState();
+}
+
+class _MemoListFloatingActionSideSpringTransitionState
+    extends State<_MemoListFloatingActionSideSpringTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  double get _targetValue => widget.side.springValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController.unbounded(
+      vsync: this,
+      value: widget.side.springValue,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!AppMotion.isEnabled(context)) {
+      _jumpToTarget();
+    }
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant _MemoListFloatingActionSideSpringTransition oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.side != widget.side) {
+      _animateToTarget();
+      return;
+    }
+    if (!AppMotion.isEnabled(context) && _controller.value != _targetValue) {
+      _jumpToTarget();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _animateToTarget() {
+    if (!AppMotion.isEnabled(context)) {
+      _jumpToTarget();
+      return;
+    }
+    _controller.animateWith(
+      SpringSimulation(
+        _memoListFloatingActionSideSpring,
+        _controller.value,
+        _targetValue,
+        _controller.velocity,
+        tolerance: _memoListFloatingActionSideTolerance,
+      ),
+    );
+  }
+
+  void _jumpToTarget() {
+    _controller.stop();
+    _controller.value = _targetValue;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final motionEnabled = AppMotion.isEnabled(context);
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        final value = motionEnabled ? _controller.value : _targetValue;
+        final sideDistance = (value - _targetValue).abs().clamp(0.0, 1.0);
+        final velocitySoftness = motionEnabled
+            ? (_controller.velocity.abs() / 6).clamp(0.0, 1.0)
+            : 0.0;
+        final travelSoftness = (sideDistance + velocitySoftness * 0.08)
+            .clamp(0.0, 1.0)
+            .toDouble();
+        final scale =
+            1 - travelSoftness * _memoListFloatingActionTravelScaleDelta;
+        final opacity =
+            1 - travelSoftness * _memoListFloatingActionTravelOpacityDelta;
+
+        return Align(
+          alignment: Alignment(value * 2 - 1, 1),
+          child: Opacity(
+            opacity: opacity,
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.center,
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -692,12 +836,8 @@ class MemosListScreenBody extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  left: floatingActionSide == _MemoListFloatingActionSide.left
-                      ? 16
-                      : null,
-                  right: floatingActionSide == _MemoListFloatingActionSide.right
-                      ? 16
-                      : null,
+                  left: _memoListFloatingActionHorizontalInset,
+                  right: _memoListFloatingActionHorizontalInset,
                   bottom:
                       data.viewState.layout.backToTopBaseOffset +
                       data.bottomInset,
@@ -707,29 +847,29 @@ class MemosListScreenBody extends StatelessWidget {
                       return ValueListenableBuilder<bool>(
                         valueListenable: showBackToTopListenable,
                         builder: (context, showBackToTop, _) {
-                          return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment:
-                                floatingActionSide ==
-                                    _MemoListFloatingActionSide.left
-                                ? CrossAxisAlignment.start
-                                : CrossAxisAlignment.end,
-                            children: [
-                              MemoFloatingCollapseButton(
-                                visible: floatingCollapseState.visible,
-                                scrolling: floatingCollapseState.scrolling,
-                                label: context.t.strings.legacy.msg_collapse,
-                                onPressed: onCollapseFloatingMemo,
-                              ),
-                              const SizedBox(
-                                height: _memoListFloatingActionGap,
-                              ),
-                              BackToTopButton(
-                                visible: showBackToTop,
-                                hapticsEnabled: data.hapticsEnabled,
-                                onPressed: onScrollToTop,
-                              ),
-                            ],
+                          return _MemoListFloatingActionSideSpringTransition(
+                            side: floatingActionSide,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment:
+                                  floatingActionSide.crossAxisAlignment,
+                              children: [
+                                MemoFloatingCollapseButton(
+                                  visible: floatingCollapseState.visible,
+                                  scrolling: floatingCollapseState.scrolling,
+                                  label: context.t.strings.legacy.msg_collapse,
+                                  onPressed: onCollapseFloatingMemo,
+                                ),
+                                const SizedBox(
+                                  height: _memoListFloatingActionGap,
+                                ),
+                                BackToTopButton(
+                                  visible: showBackToTop,
+                                  hapticsEnabled: data.hapticsEnabled,
+                                  onPressed: onScrollToTop,
+                                ),
+                              ],
+                            ),
                           );
                         },
                       );

@@ -216,17 +216,54 @@ void main() {
       platform: TargetPlatform.android,
     );
 
+    final initialRightRect = _collapseButtonRect(tester);
+    expect(initialRightRect.right, closeTo(800 - 16, 0.1));
+
+    await tester.dragFrom(const Offset(80, 420), const Offset(0, -80));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final movingLeftRect = _collapseButtonRect(tester);
+    expect(movingLeftRect.left, greaterThan(16));
+    expect(movingLeftRect.left, lessThan(initialRightRect.left));
+
+    await tester.pumpAndSettle();
+
+    final settledLeftRect = _collapseButtonRect(tester);
+    expect(settledLeftRect.left, closeTo(16, 0.1));
+
+    await tester.dragFrom(const Offset(720, 420), const Offset(0, -80));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final movingRightRect = _collapseButtonRect(tester);
+    expect(movingRightRect.right, lessThan(800 - 16));
+    expect(movingRightRect.right, greaterThan(settledLeftRect.right));
+
+    await tester.pumpAndSettle();
+
+    expect(_collapseButtonRect(tester).right, closeTo(800 - 16, 0.1));
+  });
+
+  testWidgets('reduced motion skips floating action side spring travel', (
+    tester,
+  ) async {
+    await _pumpBodyWithVisibleFloatingActions(
+      tester,
+      platform: TargetPlatform.android,
+      disableAnimations: true,
+    );
+
     expect(_collapseButtonRect(tester).right, closeTo(800 - 16, 0.1));
 
     await tester.dragFrom(const Offset(80, 420), const Offset(0, -80));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(_collapseButtonRect(tester).left, closeTo(16, 0.1));
 
-    await tester.dragFrom(const Offset(720, 420), const Offset(0, -80));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 16));
 
-    expect(_collapseButtonRect(tester).right, closeTo(800 - 16, 0.1));
+    expect(_collapseButtonRect(tester).left, closeTo(16, 0.1));
   });
 
   testWidgets('mobile plain taps do not move floating actions', (tester) async {
@@ -536,6 +573,8 @@ Widget _buildBodyScreen({
 Future<void> _pumpBodyWithVisibleFloatingActions(
   WidgetTester tester, {
   required TargetPlatform platform,
+  bool disableAnimations = false,
+  bool accessibleNavigation = false,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(800, 1000);
@@ -558,6 +597,16 @@ Future<void> _pumpBodyWithVisibleFloatingActions(
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         theme: ThemeData(platform: platform),
+        builder: (context, child) {
+          final mediaQuery = MediaQuery.of(context);
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              disableAnimations: disableAnimations,
+              accessibleNavigation: accessibleNavigation,
+            ),
+            child: child!,
+          );
+        },
         home: _buildBodyScreen(
           showBackToTopListenable: showBackToTop,
           floatingCollapseListenable: floatingCollapse,
