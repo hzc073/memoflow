@@ -370,16 +370,22 @@ try {
     }
   }
 
-  Write-Host "Running: dart run tool/sync_splash_tokens.dart --check"
-  & dart run tool/sync_splash_tokens.dart --check
-  if ($LASTEXITCODE -ne 0) {
-    throw @"
+  $splashTokenScriptPath = Join-Path $projectRootResolved "tool/sync_splash_tokens.dart"
+  $splashTokenSourcePath = Join-Path $projectRootResolved "tool/splash_tokens.yaml"
+  if ((Test-Path $splashTokenScriptPath) -and (Test-Path $splashTokenSourcePath)) {
+    Write-Host "Running: dart run tool/sync_splash_tokens.dart --check"
+    & dart run tool/sync_splash_tokens.dart --check
+    if ($LASTEXITCODE -ne 0) {
+      throw @"
 Splash token outputs are out of date.
 Source of truth: tool/splash_tokens.yaml
 Regenerate outputs from memos_flutter_app:
   dart run tool/sync_splash_tokens.dart
 Then commit the updated generated files before packaging.
 "@
+    }
+  } else {
+    Write-Host "Skipping splash token output check because local splash token tooling is not present."
   }
 
   $copied = New-Object 'System.Collections.Generic.List[string]'
