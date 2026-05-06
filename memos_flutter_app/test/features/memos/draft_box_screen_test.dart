@@ -44,7 +44,9 @@ void main() {
 
     expect(find.text('Protected'), findsOneWidget);
     expect(
-      find.text(DateFormat('yyyy-MM-dd HH:mm').format(draft.updatedTime.toLocal())),
+      find.text(
+        DateFormat('yyyy-MM-dd HH:mm').format(draft.updatedTime.toLocal()),
+      ),
       findsOneWidget,
     );
   });
@@ -59,7 +61,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey<String>('draft-box-open-draft-1')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('draft-box-open-draft-1')),
+    );
     await tester.pumpAndSettle();
 
     expect(tapCount, 1);
@@ -98,6 +102,7 @@ void main() {
 
     expect(observer.pushCount, initialPushCount + 1);
     expect(tapCount, 0);
+    await tester.pump(const Duration(seconds: 21));
   });
 
   testWidgets('delete button shows confirmation dialog', (tester) async {

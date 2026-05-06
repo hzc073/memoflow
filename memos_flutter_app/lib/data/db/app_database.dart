@@ -505,6 +505,7 @@ CREATE TABLE IF NOT EXISTS outbox (
             await _ensureMemoClipCardsTable(db);
           }
           if (oldVersion < 26) {
+            await _ensureAiTables(db);
             await _ensureColumnExists(
               db,
               table: 'ai_analysis_tasks',
@@ -4656,7 +4657,7 @@ LEFT JOIN memo_clip_cards c ON c.memo_uid = m.uid;
   }) async {
     await _ensureMemoSearchIndexTables(db);
     if (rebuild) {
-      await db.transaction((txn) async {
+      await AppDatabaseWriteDao.runTransaction(db, (txn) async {
         await txn.delete('memo_search_substrings');
         await txn.delete('memo_search_documents');
         await txn.delete('memo_search_dirty');
@@ -4725,7 +4726,7 @@ CREATE TABLE IF NOT EXISTS memo_search_dirty (
   }) async {
     final rows = await db.query('memos', columns: const ['id', 'uid']);
     if (rows.isEmpty) return;
-    await db.transaction((txn) async {
+    await AppDatabaseWriteDao.runTransaction(db, (txn) async {
       if (replace) {
         await txn.delete('memo_search_dirty');
       }
@@ -4858,7 +4859,7 @@ CREATE TABLE IF NOT EXISTS memo_search_dirty (
       limit: limit,
     );
     if (dirtyRows.isEmpty) return;
-    await db.transaction((txn) async {
+    await AppDatabaseWriteDao.runTransaction(db, (txn) async {
       for (final dirtyRow in dirtyRows) {
         final memoUid = (dirtyRow['memo_uid'] as String? ?? '').trim();
         if (memoUid.isEmpty) continue;

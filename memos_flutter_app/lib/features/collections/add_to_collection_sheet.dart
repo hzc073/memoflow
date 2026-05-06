@@ -17,25 +17,25 @@ Future<void> showAddMemoToCollectionSheet({
   required WidgetRef ref,
   required LocalMemo memo,
 }) async {
-  final action = shouldUseWindowsAdaptiveSurface(context)
-      ? await showWindowsAdaptiveSurface<_AddToCollectionAction>(
-          context: context,
-          kind: WindowsAdaptiveSurfaceKind.largeDialog,
-          maxWidth: 820,
-          builder: (_) => _AddMemoToCollectionSheet(memo: memo),
-        )
-      : await showModalBottomSheet<_AddToCollectionAction>(
-          context: context,
-          isScrollControlled: true,
-          showDragHandle: true,
-          builder: (_) => _AddMemoToCollectionSheet(memo: memo),
-        );
+  final _AddToCollectionAction? action;
+  if (shouldUseWindowsAdaptiveSurface(context)) {
+    action = await showWindowsAdaptiveSurface<_AddToCollectionAction>(
+      context: context,
+      kind: WindowsAdaptiveSurfaceKind.largeDialog,
+      maxWidth: 820,
+      builder: (_) => _AddMemoToCollectionSheet(memo: memo),
+    );
+  } else {
+    action = await showModalBottomSheet<_AddToCollectionAction>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _AddMemoToCollectionSheet(memo: memo),
+    );
+  }
   if (!context.mounted) return;
   if (action == _AddToCollectionAction.added) {
-    showTopToast(
-      context,
-      context.tr(zh: '已加入合集', en: 'Added to collection'),
-    );
+    showTopToast(context, context.tr(zh: '已加入合集', en: 'Added to collection'));
     return;
   }
   if (action != _AddToCollectionAction.createManual) {
