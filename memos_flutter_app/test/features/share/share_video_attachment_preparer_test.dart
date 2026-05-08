@@ -7,6 +7,8 @@ import 'package:memos_flutter_app/features/share/share_clip_models.dart';
 import 'package:memos_flutter_app/features/share/share_video_attachment_preparer.dart';
 import 'package:memos_flutter_app/features/share/share_video_compression_service.dart';
 import 'package:memos_flutter_app/features/share/share_video_download_service.dart';
+import 'package:memos_flutter_app/features/share/share_video_limit_messages.dart';
+import 'package:memos_flutter_app/i18n/strings.g.dart';
 
 import '../../test_support.dart';
 
@@ -20,6 +22,46 @@ void main() {
   tearDownAll(() async {
     await support.dispose();
   });
+
+  test('video upload limit messages use known non-default backend limit', () {
+    final translations = AppLocale.en.translations;
+    final maxBytes = 96 * 1024 * 1024;
+    final fileSizeBytes = 120 * 1024 * 1024;
+
+    final title = shareVideoAttachmentTooLargeTitle(translations, maxBytes);
+    final body = shareVideoAttachmentTooLargeBody(
+      translations,
+      fileSizeBytes: fileSizeBytes,
+      maxBytes: maxBytes,
+    );
+    final failure = shareVideoAttachmentStillTooLargeMessage(
+      translations,
+      maxBytes: maxBytes,
+    );
+
+    expect(title, 'Video is larger than 96.0 MB');
+    expect(
+      body,
+      'This video is 120.0 MB, which exceeds the server attachment limit of 96.0 MB.',
+    );
+    expect(
+      failure,
+      'Compressed video is still larger than 96.0 MB, so the app saved the link only.',
+    );
+    expect('$title\n$body\n$failure', isNot(contains('30 MB')));
+  });
+
+  test(
+    'unknown still-too-large limit falls back to generic compression failure',
+    () {
+      final translations = AppLocale.en.translations;
+
+      expect(
+        shareVideoAttachmentStillTooLargeMessage(translations, maxBytes: null),
+        'Video compression failed, so the app saved the link only.',
+      );
+    },
+  );
 
   test(
     'unknown upload limit does not trigger hard 30 MiB compression',

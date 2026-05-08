@@ -250,6 +250,36 @@ void main() {
     },
   );
 
+  testWidgets('memo card press feedback uses fixed one pixel offset', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildHarness(memo: _buildMemo()));
+    await tester.pump();
+
+    final pressOffset = find.byKey(memoListCardPressOffsetKey);
+    expect(pressOffset, findsOneWidget);
+    expect(
+      find.ancestor(of: pressOffset, matching: find.byType(AnimatedScale)),
+      findsNothing,
+    );
+    expect(_pressOffsetY(tester), 0);
+
+    final gesture = await tester.startGesture(tester.getCenter(pressOffset));
+    await tester.pump();
+
+    expect(_pressOffsetY(tester), 1);
+
+    await gesture.moveBy(const Offset(32, 0));
+    await tester.pump();
+
+    expect(_pressOffsetY(tester), 0);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_pressOffsetY(tester), 0);
+  });
+
   testWidgets('failed outbox status overrides memo sync state', (tester) async {
     final memo = _buildMemo(syncState: SyncState.pending);
 
@@ -1201,6 +1231,13 @@ Future<void> _pumpTestFrames(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 120));
   await tester.pump(const Duration(milliseconds: 120));
   await tester.pump(const Duration(milliseconds: 120));
+}
+
+double _pressOffsetY(WidgetTester tester) {
+  final pressOffset = tester.widget<AnimatedContainer>(
+    find.byKey(memoListCardPressOffsetKey),
+  );
+  return pressOffset.transform?.getTranslation().y ?? 0;
 }
 
 MemoClipCardMetadata _buildClipCardMetadata(String memoUid) {

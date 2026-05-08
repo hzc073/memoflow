@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/application/desktop/desktop_exit_coordinator.dart';
+import 'package:memos_flutter_app/core/desktop_runtime_role.dart';
+import 'package:memos_flutter_app/features/desktop/quick_input/desktop_quick_input_capabilities.dart';
 
 void main() {
   test('desktop exit closes databases before main window termination', () {
@@ -85,5 +87,29 @@ void main() {
 
     expect(body, isNot(contains('FlutterInappwebviewWindowsPlugin')));
     expect(body, isNot(contains('WebviewWindowsPlugin')));
+  });
+
+  test('Windows quick input sub-window does not expose location picker', () {
+    expect(
+      desktopQuickInputCanUseLocationPicker(
+        runtimeRole: DesktopRuntimeRole.desktopQuickInput,
+        isWindows: true,
+      ),
+      isFalse,
+    );
+    expect(
+      desktopQuickInputCanUseLocationPicker(
+        runtimeRole: DesktopRuntimeRole.mainApp,
+        isWindows: true,
+      ),
+      isTrue,
+    );
+    expect(
+      desktopQuickInputCanUseLocationPicker(
+        runtimeRole: DesktopRuntimeRole.desktopQuickInput,
+        isWindows: false,
+      ),
+      isTrue,
+    );
   });
 }
