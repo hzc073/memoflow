@@ -1,5 +1,8 @@
 // ignore_for_file: deprecated_member_use_from_same_package
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,24 +12,33 @@ import 'package:memos_flutter_app/access_boundary/access_boundary.dart';
 import 'package:memos_flutter_app/access_boundary/access_decision.dart';
 import 'package:memos_flutter_app/access_boundary/app_capability.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
+import 'package:memos_flutter_app/data/api/memos_api.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
+import 'package:memos_flutter_app/data/models/local_library.dart';
+import 'package:memos_flutter_app/data/models/server_setting.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
+import 'package:memos_flutter_app/data/models/user_setting.dart';
 import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
 import 'package:memos_flutter_app/features/home/home_entry_screen.dart';
 import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
 import 'package:memos_flutter_app/features/settings/customize_home_shortcuts_screen.dart';
 import 'package:memos_flutter_app/features/settings/laboratory_screen.dart';
 import 'package:memos_flutter_app/features/settings/navigation_mode_screen.dart';
+import 'package:memos_flutter_app/features/settings/server_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/user_general_settings_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/module_boundary/settings_entry_contribution.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle_provider.dart';
+import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
+import 'package:memos_flutter_app/state/settings/server_settings_provider.dart';
+import 'package:memos_flutter_app/state/settings/user_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
 import 'package:memos_flutter_app/state/system/local_library_provider.dart';
 import 'package:memos_flutter_app/state/system/notifications_provider.dart';
@@ -60,6 +72,7 @@ void main() {
   Widget buildTestApp({
     PrivateExtensionBundle? bundle,
     Widget home = const SettingsScreen(),
+    LocalLibrary? currentLocalLibrary,
     List<Override> overrides = const [],
   }) {
     LocaleSettings.setLocale(AppLocale.en);
@@ -72,7 +85,7 @@ void main() {
         currentWorkspacePreferencesProvider.overrideWith(
           (ref) => _TestWorkspacePreferencesController(ref),
         ),
-        currentLocalLibraryProvider.overrideWith((ref) => null),
+        currentLocalLibraryProvider.overrideWith((ref) => currentLocalLibrary),
         if (bundle != null)
           privateExtensionBundleProvider.overrideWithValue(bundle),
         ...overrides,
@@ -272,6 +285,374 @@ void main() {
     expect(find.byType(NavigationModeScreen), findsOneWidget);
   });
 
+  testWidgets('server settings screen disables unavailable fields', (
+    tester,
+  ) async {
+    late _FakeServerSettingsController controller;
+
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const ServerSettingsScreen(),
+        overrides: [
+          serverSettingsProvider.overrideWith((ref) {
+            controller = _FakeServerSettingsController(
+              ref,
+              const ServerSettingsState(
+                snapshot: AsyncValue.data(
+                  ServerSettingsSnapshot(
+                    memoContentLimitBytes: ServerSettingValue<int>.known(
+                      value: 2048,
+                      source: ServerSettingSource.instanceMemoRelatedSetting,
+                    ),
+                    attachmentUploadLimitMiB:
+                        ServerSettingValue<int>.unavailable(
+                          unavailableReason:
+                              ServerSettingUnavailableReason.permissionDenied,
+                        ),
+                  ),
+                ),
+              ),
+            );
+            return controller;
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Memo maximum bytes'), findsOneWidget);
+    expect(find.text('Attachment maximum capacity'), findsOneWidget);
+    expect(
+      find.text(
+        'The current account does not have permission for this setting.',
+      ),
+      findsOneWidget,
+    );
+
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(fields, hasLength(2));
+    expect(fields[0].enabled, isTrue);
+    expect(fields[0].decoration?.hintText, 'Allowed range: 1-2147483647 bytes');
+    expect(fields[1].enabled, isFalse);
+    expect(fields[1].decoration?.hintText, isNull);
+    expect(controller.memoSaveCount, 0);
+    expect(controller.attachmentSaveCount, 0);
+  });
+
+  testWidgets('server settings screen shows empty-field hints', (tester) async {
+    late _FakeServerSettingsController controller;
+
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const ServerSettingsScreen(),
+        overrides: [
+          serverSettingsProvider.overrideWith((ref) {
+            controller = _FakeServerSettingsController(
+              ref,
+              const ServerSettingsState(
+                snapshot: AsyncValue.data(
+                  ServerSettingsSnapshot(
+                    memoContentLimitBytes: ServerSettingValue<int>.known(
+                      value: 2048,
+                      source: ServerSettingSource.instanceMemoRelatedSetting,
+                    ),
+                    attachmentUploadLimitMiB: ServerSettingValue<int>.known(
+                      value: 64,
+                      source: ServerSettingSource.instanceStorageSetting,
+                    ),
+                  ),
+                ),
+              ),
+            );
+            return controller;
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final memoField = find.byType(TextField).at(0);
+    final attachmentField = find.byType(TextField).at(1);
+
+    await tester.enterText(memoField, '');
+    await tester.pump();
+
+    expect(find.text('Allowed range: 1-2147483647 bytes'), findsOneWidget);
+    expect(controller.memoSaveCount, 0);
+    expect(controller.attachmentSaveCount, 0);
+
+    await tester.enterText(memoField, '3000');
+    await tester.pump();
+
+    expect(tester.widget<TextField>(memoField).controller?.text, '3000');
+    expect(controller.memoSaveCount, 0);
+    expect(controller.attachmentSaveCount, 0);
+
+    await tester.enterText(attachmentField, '');
+    await tester.pump();
+
+    expect(find.text('Current server limit: 64 MiB'), findsOneWidget);
+
+    await tester.enterText(attachmentField, '128');
+    await tester.pump();
+
+    expect(tester.widget<TextField>(attachmentField).controller?.text, '128');
+    expect(controller.memoSaveCount, 0);
+    expect(controller.attachmentSaveCount, 0);
+  });
+
+  testWidgets('server settings screen restores empty focused fields on blur', (
+    tester,
+  ) async {
+    late _FakeServerSettingsController controller;
+
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const ServerSettingsScreen(),
+        overrides: [
+          serverSettingsProvider.overrideWith((ref) {
+            controller = _FakeServerSettingsController(
+              ref,
+              const ServerSettingsState(
+                snapshot: AsyncValue.data(
+                  ServerSettingsSnapshot(
+                    memoContentLimitBytes: ServerSettingValue<int>.known(
+                      value: 2048,
+                      source: ServerSettingSource.instanceMemoRelatedSetting,
+                    ),
+                    attachmentUploadLimitMiB: ServerSettingValue<int>.known(
+                      value: 64,
+                      source: ServerSettingSource.instanceStorageSetting,
+                    ),
+                  ),
+                ),
+              ),
+            );
+            return controller;
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final memoField = find.byType(TextField).at(0);
+    await tester.enterText(memoField, '');
+    await tester.pump();
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(fields.first.controller?.text, '2048');
+    expect(controller.memoSaveCount, 0);
+    expect(controller.attachmentSaveCount, 0);
+  });
+
+  testWidgets('server settings screen rejects non-positive input locally', (
+    tester,
+  ) async {
+    late _FakeServerSettingsController controller;
+
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const ServerSettingsScreen(),
+        overrides: [
+          serverSettingsProvider.overrideWith((ref) {
+            controller = _FakeServerSettingsController(
+              ref,
+              const ServerSettingsState(
+                snapshot: AsyncValue.data(
+                  ServerSettingsSnapshot(
+                    memoContentLimitBytes: ServerSettingValue<int>.known(
+                      value: 2048,
+                      source: ServerSettingSource.instanceMemoRelatedSetting,
+                    ),
+                    attachmentUploadLimitMiB: ServerSettingValue<int>.known(
+                      value: 64,
+                      source: ServerSettingSource.instanceStorageSetting,
+                    ),
+                  ),
+                ),
+              ),
+            );
+            return controller;
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '0');
+    await tester.tap(find.text('Save').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter an integer greater than 0.'), findsOneWidget);
+    expect(controller.memoSaveCount, 0);
+    expect(controller.attachmentSaveCount, 0);
+  });
+
+  test(
+    'server settings provider reloads and saves against current account after switch',
+    () async {
+      final serverA = await _ScopedServerSettingsServer.start(
+        memoContentLimitBytes: 2048,
+        attachmentUploadLimitMiB: 64,
+      );
+      final serverB = await _ScopedServerSettingsServer.start(
+        memoContentLimitBytes: 4096,
+        attachmentUploadLimitMiB: 128,
+      );
+
+      await HttpOverrides.runWithHttpOverrides(() async {
+        final accountA = _serverSettingsAccount('account-a', serverA.baseUrl);
+        final accountB = _serverSettingsAccount('account-b', serverB.baseUrl);
+        final sessionController = _TestSessionController(
+          accounts: [accountA, accountB],
+          currentKey: accountA.key,
+        );
+        final container = ProviderContainer(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            currentLocalLibraryProvider.overrideWith((ref) => null),
+            memosApiProvider.overrideWith((ref) {
+              final account = ref.watch(
+                appSessionProvider.select(
+                  (state) => state.valueOrNull?.currentAccount,
+                ),
+              );
+              if (account == null) {
+                throw StateError('Not authenticated');
+              }
+              return MemosApi.authenticated(
+                baseUrl: account.baseUrl,
+                personalAccessToken: account.personalAccessToken,
+                strictRouteLock: true,
+                strictServerVersion: '0.27.0',
+                instanceProfile: account.instanceProfile,
+              );
+            }),
+          ],
+        );
+        final subscription = container.listen<ServerSettingsState>(
+          serverSettingsProvider,
+          (_, _) {},
+          fireImmediately: true,
+        );
+
+        try {
+          await _waitForServerSettingsMemoLimit(container, 2048);
+
+          await sessionController.switchAccount(accountB.key);
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            container
+                .read(serverSettingsProvider)
+                .snapshot
+                .valueOrNull
+                ?.memoContentLimitBytes
+                .value,
+            isNot(2048),
+          );
+          await _waitForServerSettingsMemoLimit(container, 4096);
+
+          final saveResult = await container
+              .read(serverSettingsProvider.notifier)
+              .updateMemoContentLimitBytes(5000);
+
+          expect(saveResult.isSaved, isTrue);
+          expect(serverA.memoPatchCount, 0);
+          expect(serverB.memoPatchCount, 1);
+          expect(serverB.memoContentLimitBytes, 5000);
+        } finally {
+          subscription.close();
+          container.dispose();
+        }
+      }, _PassthroughHttpOverrides());
+
+      await serverA.close();
+      await serverB.close();
+    },
+  );
+
+  test(
+    'server settings local library mode does not read the remote API',
+    () async {
+      var apiRead = false;
+      final account = _serverSettingsAccount(
+        'account-local',
+        Uri.parse('http://127.0.0.1:1/'),
+      );
+      final sessionController = _TestSessionController(
+        accounts: [account],
+        currentKey: account.key,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appSessionProvider.overrideWith((ref) => sessionController),
+          currentLocalLibraryProvider.overrideWith(
+            (ref) => const LocalLibrary(
+              key: 'local-test',
+              name: 'Local',
+              storageKind: LocalLibraryStorageKind.managedPrivate,
+              rootPath: 'local-test',
+            ),
+          ),
+          memosApiProvider.overrideWith((ref) {
+            apiRead = true;
+            throw StateError('memosApiProvider should not be read');
+          }),
+        ],
+      );
+      final subscription = container.listen<ServerSettingsState>(
+        serverSettingsProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+
+      try {
+        await _waitUntil(() {
+          final snapshot = container
+              .read(serverSettingsProvider)
+              .snapshot
+              .valueOrNull;
+          return snapshot?.memoContentLimitBytes.unavailableReason ==
+                  ServerSettingUnavailableReason.localLibrary &&
+              snapshot?.attachmentUploadLimitMiB.unavailableReason ==
+                  ServerSettingUnavailableReason.localLibrary;
+        });
+
+        expect(apiRead, isFalse);
+      } finally {
+        subscription.close();
+        container.dispose();
+      }
+    },
+  );
+
+  testWidgets('user general settings does not render server-wide controls', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const UserGeneralSettingsScreen(),
+        overrides: [
+          userGeneralSettingProvider.overrideWith(
+            (ref) async => const UserGeneralSetting(),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Memo maximum bytes'), findsNothing);
+    expect(find.text('Attachment maximum capacity'), findsNothing);
+    expect(find.text('Server Settings'), findsNothing);
+  });
+
   testWidgets('embedded settings uses drawer menu instead of close button', (
     tester,
   ) async {
@@ -373,6 +754,214 @@ void main() {
   );
 }
 
+Account _serverSettingsAccount(String key, Uri baseUrl) {
+  return Account(
+    key: key,
+    baseUrl: baseUrl,
+    personalAccessToken: 'token-$key',
+    user: User(
+      name: 'users/$key',
+      username: key,
+      displayName: key,
+      avatarUrl: '',
+      description: '',
+    ),
+    instanceProfile: const InstanceProfile(
+      version: '0.27.0',
+      mode: '',
+      instanceUrl: '',
+      owner: '',
+    ),
+    serverVersionOverride: '0.27.0',
+  );
+}
+
+Future<void> _waitUntil(bool Function() predicate) async {
+  for (var i = 0; i < 40; i++) {
+    if (predicate()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  expect(predicate(), isTrue);
+}
+
+Future<void> _waitForServerSettingsMemoLimit(
+  ProviderContainer container,
+  int bytes,
+) async {
+  await _waitUntil(() {
+    return container
+            .read(serverSettingsProvider)
+            .snapshot
+            .valueOrNull
+            ?.memoContentLimitBytes
+            .value ==
+        bytes;
+  });
+}
+
+class _CapturedScopedServerSettingsRequest {
+  const _CapturedScopedServerSettingsRequest({
+    required this.method,
+    required this.path,
+    required this.body,
+  });
+
+  final String method;
+  final String path;
+  final Map<String, dynamic> body;
+}
+
+class _ScopedServerSettingsServer {
+  _ScopedServerSettingsServer._({
+    required HttpServer server,
+    required this.memoContentLimitBytes,
+    required this.attachmentUploadLimitMiB,
+  }) : _server = server;
+
+  final HttpServer _server;
+  int memoContentLimitBytes;
+  int attachmentUploadLimitMiB;
+  final requests = <_CapturedScopedServerSettingsRequest>[];
+
+  Uri get baseUrl => Uri.parse('http://127.0.0.1:${_server.port}');
+
+  int get memoPatchCount => requests
+      .where(
+        (request) =>
+            request.method == 'PATCH' &&
+            request.path == '/api/v1/instance/settings/MEMO_RELATED',
+      )
+      .length;
+
+  static Future<_ScopedServerSettingsServer> start({
+    required int memoContentLimitBytes,
+    required int attachmentUploadLimitMiB,
+  }) async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.idleTimeout = null;
+    final harness = _ScopedServerSettingsServer._(
+      server: server,
+      memoContentLimitBytes: memoContentLimitBytes,
+      attachmentUploadLimitMiB: attachmentUploadLimitMiB,
+    );
+    server.listen(harness._handleRequest);
+    return harness;
+  }
+
+  Future<void> close() => _server.close(force: true);
+
+  Future<void> _handleRequest(HttpRequest request) async {
+    final rawBody = await utf8.decoder.bind(request).join();
+    final body = _decodeJsonMap(rawBody);
+    requests.add(
+      _CapturedScopedServerSettingsRequest(
+        method: request.method,
+        path: request.uri.path,
+        body: body,
+      ),
+    );
+
+    if (request.uri.path == '/api/v1/instance/settings/MEMO_RELATED') {
+      if (request.method == 'GET') {
+        await _writeJson(request.response, _memoPayload());
+        return;
+      }
+      if (request.method == 'PATCH') {
+        final setting = _readMap(
+          body['memoRelatedSetting'] ?? body['memo_related_setting'],
+        );
+        final value = _readInt(
+          setting?['contentLengthLimit'] ??
+              setting?['content_length_limit'] ??
+              memoContentLimitBytes,
+        );
+        memoContentLimitBytes = value;
+        await _writeJson(request.response, body);
+        return;
+      }
+    }
+
+    if (request.uri.path == '/api/v1/instance/settings/STORAGE') {
+      if (request.method == 'GET') {
+        await _writeJson(request.response, _storagePayload());
+        return;
+      }
+      if (request.method == 'PATCH') {
+        final setting = _readMap(
+          body['storageSetting'] ?? body['storage_setting'],
+        );
+        attachmentUploadLimitMiB = _readInt(
+          setting?['uploadSizeLimitMb'] ??
+              setting?['upload_size_limit_mb'] ??
+              attachmentUploadLimitMiB,
+        );
+        await _writeJson(request.response, body);
+        return;
+      }
+    }
+
+    await _writeJson(request.response, const <String, Object?>{
+      'error': 'Unhandled route',
+    }, statusCode: HttpStatus.notFound);
+  }
+
+  Map<String, Object?> _memoPayload() {
+    return <String, Object?>{
+      'name': 'instance/settings/MEMO_RELATED',
+      'memoRelatedSetting': <String, Object?>{
+        'contentLengthLimit': memoContentLimitBytes,
+        'displayWithUpdateTime': false,
+        'enableDoubleClickEdit': true,
+      },
+    };
+  }
+
+  Map<String, Object?> _storagePayload() {
+    return <String, Object?>{
+      'name': 'instance/settings/STORAGE',
+      'storageSetting': <String, Object?>{
+        'storageType': 'DATABASE',
+        'filepathTemplate': '{{filename}}',
+        'uploadSizeLimitMb': attachmentUploadLimitMiB,
+      },
+    };
+  }
+}
+
+Map<String, dynamic> _decodeJsonMap(String raw) {
+  if (raw.trim().isEmpty) return <String, dynamic>{};
+  final decoded = jsonDecode(raw);
+  if (decoded is Map<String, dynamic>) return decoded;
+  if (decoded is Map) return decoded.cast<String, dynamic>();
+  return <String, dynamic>{};
+}
+
+Map<String, dynamic>? _readMap(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return value.cast<String, dynamic>();
+  return null;
+}
+
+int _readInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? 0;
+  return 0;
+}
+
+Future<void> _writeJson(
+  HttpResponse response,
+  Object payload, {
+  int statusCode = HttpStatus.ok,
+}) async {
+  response.statusCode = statusCode;
+  response.headers.contentType = ContentType.json;
+  response.write(jsonEncode(payload));
+  await response.close();
+}
+
+class _PassthroughHttpOverrides extends HttpOverrides {}
+
 class _FakePrivateExtensionBundle implements PrivateExtensionBundle {
   _FakePrivateExtensionBundle({required this.onTap});
 
@@ -412,16 +1001,65 @@ class _DisabledAccessBoundary implements AccessBoundary {
   }
 }
 
+class _FakeServerSettingsController extends ServerSettingsController {
+  _FakeServerSettingsController(super.ref, ServerSettingsState initial)
+    : super(api: null) {
+    state = initial;
+  }
+
+  int memoSaveCount = 0;
+  int attachmentSaveCount = 0;
+
+  @override
+  Future<void> load() async {}
+
+  @override
+  Future<void> refresh() async {}
+
+  @override
+  Future<ServerSettingSaveResult> updateMemoContentLimitBytes(int bytes) async {
+    memoSaveCount++;
+    return const ServerSettingSaveResult.saved();
+  }
+
+  @override
+  Future<ServerSettingSaveResult> updateAttachmentUploadLimitMiB(
+    int mebibytes,
+  ) async {
+    attachmentSaveCount++;
+    return const ServerSettingSaveResult.saved();
+  }
+}
+
 class _TestSessionController extends AppSessionController {
-  _TestSessionController({bool hasAccount = false})
-    : super(
-        AsyncValue.data(
-          AppSessionState(
-            accounts: hasAccount ? [_testAccount] : const [],
-            currentKey: hasAccount ? _testAccountKey : null,
-          ),
-        ),
-      );
+  _TestSessionController({
+    bool hasAccount = false,
+    List<Account>? accounts,
+    String? currentKey,
+  }) : super(
+         AsyncValue.data(
+           _initialState(
+             hasAccount: hasAccount,
+             accounts: accounts,
+             currentKey: currentKey,
+           ),
+         ),
+       );
+
+  static AppSessionState _initialState({
+    required bool hasAccount,
+    required List<Account>? accounts,
+    required String? currentKey,
+  }) {
+    final resolvedAccounts =
+        accounts ?? (hasAccount ? [_testAccount] : const <Account>[]);
+    return AppSessionState(
+      accounts: resolvedAccounts,
+      currentKey:
+          currentKey ??
+          (resolvedAccounts.isNotEmpty ? resolvedAccounts.first.key : null),
+    );
+  }
 
   @override
   Future<void> addAccountWithPat({
@@ -444,13 +1082,30 @@ class _TestSessionController extends AppSessionController {
   Future<void> removeAccount(String accountKey) async {}
 
   @override
-  Future<void> switchAccount(String accountKey) async {}
+  Future<void> switchAccount(String accountKey) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    if (!current.accounts.any((account) => account.key == accountKey)) {
+      return;
+    }
+    state = AsyncValue.data(
+      AppSessionState(accounts: current.accounts, currentKey: accountKey),
+    );
+  }
 
   @override
-  Future<void> setCurrentKey(String? key) async {}
+  Future<void> setCurrentKey(String? key) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncValue.data(
+      AppSessionState(accounts: current.accounts, currentKey: key),
+    );
+  }
 
   @override
-  Future<void> switchWorkspace(String workspaceKey) async {}
+  Future<void> switchWorkspace(String workspaceKey) async {
+    await setCurrentKey(workspaceKey);
+  }
 
   @override
   Future<void> refreshCurrentUser({bool ignoreErrors = true}) async {}

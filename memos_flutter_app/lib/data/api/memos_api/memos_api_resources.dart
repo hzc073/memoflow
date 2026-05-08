@@ -2,107 +2,484 @@ part of '../memos_api.dart';
 
 mixin _MemosApiResources on _MemosApiBase {
   Future<AttachmentUploadSizeLimit> getAttachmentUploadSizeLimit() async {
+    final limit = await getServerAttachmentUploadLimitMiB();
+    if (limit.isKnown) {
+      return AttachmentUploadSizeLimit.known(
+        bytes: limit.value! * 1024 * 1024,
+        source: _attachmentUploadSizeLimitSource(limit.source),
+      );
+    }
+    return AttachmentUploadSizeLimit.unknown(
+      _attachmentUploadSizeLimitUnknownReason(limit.unavailableReason),
+    );
+  }
+
+  Future<ServerSettingsSnapshot> getServerSettings() async {
+    final memoLimit = await getServerMemoContentLimitBytes();
+    final attachmentLimit = await getServerAttachmentUploadLimitMiB();
+    return ServerSettingsSnapshot(
+      memoContentLimitBytes: memoLimit,
+      attachmentUploadLimitMiB: attachmentLimit,
+    );
+  }
+
+  Future<ServerSettingValue<int>> getServerMemoContentLimitBytes() async {
     await _ensureServerHints();
     return switch (_serverFlavor) {
-      _ServerApiFlavor.v0_21 => _getLegacyStatusUploadSizeLimit(),
+      _ServerApiFlavor.v0_21 => const ServerSettingValue<int>.unsupported(),
       _ServerApiFlavor.v0_22 ||
       _ServerApiFlavor.v0_23 ||
-      _ServerApiFlavor.v0_24 => _getWorkspaceStorageUploadSizeLimit(),
+      _ServerApiFlavor.v0_24 => _getMemoRelatedContentLimitBytes(
+        path: 'api/v1/workspace/settings/MEMO_RELATED',
+        source: ServerSettingSource.workspaceMemoRelatedSetting,
+      ),
       _ServerApiFlavor.v0_25Plus ||
-      _ServerApiFlavor.unknown => _getInstanceStorageUploadSizeLimit(),
+      _ServerApiFlavor.unknown => _getMemoRelatedContentLimitBytes(
+        path: 'api/v1/instance/settings/MEMO_RELATED',
+        source: ServerSettingSource.instanceMemoRelatedSetting,
+      ),
     };
   }
 
-  Future<AttachmentUploadSizeLimit> _getLegacyStatusUploadSizeLimit() async {
+  Future<ServerSettingValue<int>> getServerAttachmentUploadLimitMiB() async {
+    await _ensureServerHints();
+    return switch (_serverFlavor) {
+      _ServerApiFlavor.v0_21 => _getLegacyStatusAttachmentUploadLimitMiB(),
+      _ServerApiFlavor.v0_22 ||
+      _ServerApiFlavor.v0_23 ||
+      _ServerApiFlavor.v0_24 => _getStorageUploadLimitMiB(
+        path: 'api/v1/workspace/settings/STORAGE',
+        source: ServerSettingSource.workspaceStorageSetting,
+      ),
+      _ServerApiFlavor.v0_25Plus ||
+      _ServerApiFlavor.unknown => _getStorageUploadLimitMiB(
+        path: 'api/v1/instance/settings/STORAGE',
+        source: ServerSettingSource.instanceStorageSetting,
+      ),
+    };
+  }
+
+  Future<ServerSettingValue<int>> updateServerMemoContentLimitBytes(
+    int bytes,
+  ) async {
+    if (bytes <= 0) {
+      throw ArgumentError.value(
+        bytes,
+        'bytes',
+        'Memo content length limit must be positive.',
+      );
+    }
+    await _ensureServerHints();
+    return switch (_serverFlavor) {
+      _ServerApiFlavor.v0_21 => const ServerSettingValue<int>.unsupported(),
+      _ServerApiFlavor.v0_22 ||
+      _ServerApiFlavor.v0_23 ||
+      _ServerApiFlavor.v0_24 => _updateMemoRelatedContentLimitBytes(
+        path: 'api/v1/workspace/settings/MEMO_RELATED',
+        name: 'settings/MEMO_RELATED',
+        source: ServerSettingSource.workspaceMemoRelatedSetting,
+        bytes: bytes,
+      ),
+      _ServerApiFlavor.v0_25Plus ||
+      _ServerApiFlavor.unknown => _updateMemoRelatedContentLimitBytes(
+        path: 'api/v1/instance/settings/MEMO_RELATED',
+        name: 'instance/settings/MEMO_RELATED',
+        source: ServerSettingSource.instanceMemoRelatedSetting,
+        bytes: bytes,
+        updateMask: 'memo_related_setting.content_length_limit',
+      ),
+    };
+  }
+
+  Future<ServerSettingValue<int>> updateServerAttachmentUploadLimitMiB(
+    int mebibytes,
+  ) async {
+    if (mebibytes <= 0) {
+      throw ArgumentError.value(
+        mebibytes,
+        'mebibytes',
+        'Attachment upload size limit must be positive.',
+      );
+    }
+    await _ensureServerHints();
+    return switch (_serverFlavor) {
+      _ServerApiFlavor.v0_21 => _updateLegacySystemAttachmentUploadLimitMiB(
+        mebibytes,
+      ),
+      _ServerApiFlavor.v0_22 ||
+      _ServerApiFlavor.v0_23 ||
+      _ServerApiFlavor.v0_24 => _updateStorageUploadLimitMiB(
+        path: 'api/v1/workspace/settings/STORAGE',
+        name: 'settings/STORAGE',
+        source: ServerSettingSource.workspaceStorageSetting,
+        mebibytes: mebibytes,
+      ),
+      _ServerApiFlavor.v0_25Plus ||
+      _ServerApiFlavor.unknown => _updateStorageUploadLimitMiB(
+        path: 'api/v1/instance/settings/STORAGE',
+        name: 'instance/settings/STORAGE',
+        source: ServerSettingSource.instanceStorageSetting,
+        mebibytes: mebibytes,
+        updateMask: 'storage_setting.upload_size_limit_mb',
+      ),
+    };
+  }
+
+  Future<ServerSettingValue<int>>
+  _getLegacyStatusAttachmentUploadLimitMiB() async {
     try {
       final response = await _dio.get('api/v1/status');
       final body = _expectJsonMap(response.data);
-      return _uploadSizeLimitFromMiBValue(
+      return _serverSettingFromPositiveInt(
         body['maxUploadSizeMiB'] ?? body['max_upload_size_mib'],
-        source: AttachmentUploadSizeLimitSource.systemStatus,
+        source: ServerSettingSource.legacySystemStatus,
       );
     } on DioException catch (error) {
-      return _unknownAttachmentUploadSizeLimit(error);
+      return _unknownServerSettingValue(error);
     } on FormatException {
-      return const AttachmentUploadSizeLimit.unknown(
-        AttachmentUploadSizeLimitUnknownReason.invalidResponse,
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
       );
     }
   }
 
-  Future<AttachmentUploadSizeLimit> _getWorkspaceStorageUploadSizeLimit() {
-    return _getStorageSettingUploadSizeLimit(
-      path: 'api/v1/workspace/settings/STORAGE',
-      source: AttachmentUploadSizeLimitSource.workspaceStorageSetting,
-    );
-  }
-
-  Future<AttachmentUploadSizeLimit> _getInstanceStorageUploadSizeLimit() {
-    return _getStorageSettingUploadSizeLimit(
-      path: 'api/v1/instance/settings/STORAGE',
-      source: AttachmentUploadSizeLimitSource.instanceStorageSetting,
-    );
-  }
-
-  Future<AttachmentUploadSizeLimit> _getStorageSettingUploadSizeLimit({
+  Future<ServerSettingValue<int>> _getStorageUploadLimitMiB({
     required String path,
-    required AttachmentUploadSizeLimitSource source,
+    required ServerSettingSource source,
   }) async {
     try {
       final response = await _dio.get(path);
       final body = _expectJsonMap(response.data);
-      final storageSetting = _readMap(
-        body['storageSetting'] ??
-            body['storage_setting'] ??
-            _readMap(body['value'])?['value'],
+      final storageSetting = _extractServerSettingValue(
+        body,
+        camelKey: 'storageSetting',
+        snakeKey: 'storage_setting',
       );
-      return _uploadSizeLimitFromMiBValue(
+      return _serverSettingFromPositiveInt(
         storageSetting?['uploadSizeLimitMb'] ??
             storageSetting?['upload_size_limit_mb'],
         source: source,
       );
     } on DioException catch (error) {
-      return _unknownAttachmentUploadSizeLimit(error);
+      return _unknownServerSettingValue(error);
     } on FormatException {
-      return const AttachmentUploadSizeLimit.unknown(
-        AttachmentUploadSizeLimitUnknownReason.invalidResponse,
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
       );
     }
   }
 
-  AttachmentUploadSizeLimit _uploadSizeLimitFromMiBValue(
+  Future<ServerSettingValue<int>> _getMemoRelatedContentLimitBytes({
+    required String path,
+    required ServerSettingSource source,
+  }) async {
+    try {
+      final response = await _dio.get(path);
+      final body = _expectJsonMap(response.data);
+      final memoRelatedSetting = _extractServerSettingValue(
+        body,
+        camelKey: 'memoRelatedSetting',
+        snakeKey: 'memo_related_setting',
+      );
+      return _serverSettingFromPositiveInt(
+        memoRelatedSetting?['contentLengthLimit'] ??
+            memoRelatedSetting?['content_length_limit'],
+        source: source,
+      );
+    } on DioException catch (error) {
+      return _unknownServerSettingValue(error);
+    } on FormatException {
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
+      );
+    }
+  }
+
+  Future<ServerSettingValue<int>> _updateLegacySystemAttachmentUploadLimitMiB(
+    int mebibytes,
+  ) async {
+    try {
+      final response = await _dio.post(
+        'api/v1/system/setting',
+        data: <String, Object?>{
+          'name': 'max-upload-size-mib',
+          'value': mebibytes.toString(),
+          'description': '',
+        },
+      );
+      final body = _expectJsonMap(response.data);
+      final value = body['value'] ?? body['maxUploadSizeMiB'] ?? mebibytes;
+      return _serverSettingFromPositiveInt(
+        value,
+        source: ServerSettingSource.legacySystemSetting,
+      );
+    } on DioException catch (error) {
+      return _unknownServerSettingValue(error);
+    } on FormatException {
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
+      );
+    }
+  }
+
+  Future<ServerSettingValue<int>> _updateStorageUploadLimitMiB({
+    required String path,
+    required String name,
+    required ServerSettingSource source,
+    required int mebibytes,
+    String? updateMask,
+  }) async {
+    try {
+      final response = await _dio.get(path);
+      final body = _expectJsonMap(response.data);
+      final payload = _serverSettingPayload(body);
+      final storageSetting = Map<String, Object?>.from(
+        _extractServerSettingValue(
+              body,
+              camelKey: 'storageSetting',
+              snakeKey: 'storage_setting',
+            ) ??
+            const <String, Object?>{},
+      );
+      _setIntFieldPreservingStyle(
+        storageSetting,
+        camelKey: 'uploadSizeLimitMb',
+        snakeKey: 'upload_size_limit_mb',
+        value: mebibytes,
+      );
+      final data = Map<String, Object?>.from(payload);
+      data['name'] = _readString(payload['name']).isNotEmpty
+          ? payload['name']
+          : name;
+      _putServerSettingValue(
+        data,
+        camelKey: 'storageSetting',
+        snakeKey: 'storage_setting',
+        value: storageSetting,
+      );
+      final updated = await _dio.patch(
+        path,
+        queryParameters: _updateMaskQuery(updateMask),
+        data: data,
+      );
+      final updatedBody = _expectJsonMap(updated.data);
+      final updatedStorageSetting = _extractServerSettingValue(
+        updatedBody,
+        camelKey: 'storageSetting',
+        snakeKey: 'storage_setting',
+      );
+      return _serverSettingFromPositiveInt(
+        updatedStorageSetting?['uploadSizeLimitMb'] ??
+            updatedStorageSetting?['upload_size_limit_mb'] ??
+            mebibytes,
+        source: source,
+      );
+    } on DioException catch (error) {
+      return _unknownServerSettingValue(error);
+    } on FormatException {
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
+      );
+    }
+  }
+
+  Future<ServerSettingValue<int>> _updateMemoRelatedContentLimitBytes({
+    required String path,
+    required String name,
+    required ServerSettingSource source,
+    required int bytes,
+    String? updateMask,
+  }) async {
+    try {
+      final response = await _dio.get(path);
+      final body = _expectJsonMap(response.data);
+      final payload = _serverSettingPayload(body);
+      final memoRelatedSetting = Map<String, Object?>.from(
+        _extractServerSettingValue(
+              body,
+              camelKey: 'memoRelatedSetting',
+              snakeKey: 'memo_related_setting',
+            ) ??
+            const <String, Object?>{},
+      );
+      _setIntFieldPreservingStyle(
+        memoRelatedSetting,
+        camelKey: 'contentLengthLimit',
+        snakeKey: 'content_length_limit',
+        value: bytes,
+      );
+      final data = Map<String, Object?>.from(payload);
+      data['name'] = _readString(payload['name']).isNotEmpty
+          ? payload['name']
+          : name;
+      _putServerSettingValue(
+        data,
+        camelKey: 'memoRelatedSetting',
+        snakeKey: 'memo_related_setting',
+        value: memoRelatedSetting,
+      );
+      final updated = await _dio.patch(
+        path,
+        queryParameters: _updateMaskQuery(updateMask),
+        data: data,
+      );
+      final updatedBody = _expectJsonMap(updated.data);
+      final updatedMemoRelatedSetting = _extractServerSettingValue(
+        updatedBody,
+        camelKey: 'memoRelatedSetting',
+        snakeKey: 'memo_related_setting',
+      );
+      return _serverSettingFromPositiveInt(
+        updatedMemoRelatedSetting?['contentLengthLimit'] ??
+            updatedMemoRelatedSetting?['content_length_limit'] ??
+            bytes,
+        source: source,
+      );
+    } on DioException catch (error) {
+      return _unknownServerSettingValue(error);
+    } on FormatException {
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
+      );
+    }
+  }
+
+  ServerSettingValue<int> _serverSettingFromPositiveInt(
     Object? value, {
-    required AttachmentUploadSizeLimitSource source,
+    required ServerSettingSource source,
   }) {
-    final mebibytes = _readInt(value);
-    if (mebibytes <= 0) {
-      return const AttachmentUploadSizeLimit.unknown(
-        AttachmentUploadSizeLimitUnknownReason.nonPositiveLimit,
+    final normalized = _tryReadServerSettingInt(value);
+    if (normalized == null) {
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.invalidResponse,
       );
     }
-    return AttachmentUploadSizeLimit.known(
-      bytes: mebibytes * 1024 * 1024,
-      source: source,
-    );
+    if (normalized <= 0) {
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.nonPositiveLimit,
+      );
+    }
+    return ServerSettingValue<int>.known(value: normalized, source: source);
   }
 
-  AttachmentUploadSizeLimit _unknownAttachmentUploadSizeLimit(
-    DioException error,
-  ) {
+  int? _tryReadServerSettingInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return int.tryParse(trimmed);
+    }
+    return null;
+  }
+
+  ServerSettingValue<int> _unknownServerSettingValue(DioException error) {
     final status = error.response?.statusCode;
     if (status == 401 || status == 403) {
-      return const AttachmentUploadSizeLimit.unknown(
-        AttachmentUploadSizeLimitUnknownReason.permissionDenied,
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.permissionDenied,
       );
     }
     if (status == 404 || status == 405) {
-      return const AttachmentUploadSizeLimit.unknown(
-        AttachmentUploadSizeLimitUnknownReason.endpointUnavailable,
+      return const ServerSettingValue<int>.unavailable(
+        unavailableReason: ServerSettingUnavailableReason.endpointUnavailable,
       );
     }
-    return const AttachmentUploadSizeLimit.unknown(
-      AttachmentUploadSizeLimitUnknownReason.requestFailed,
+    return const ServerSettingValue<int>.unavailable(
+      unavailableReason: ServerSettingUnavailableReason.requestFailed,
     );
+  }
+
+  Map<String, dynamic> _serverSettingPayload(Map<String, dynamic> body) {
+    return _readMap(body['setting']) ?? body;
+  }
+
+  Map<String, dynamic>? _extractServerSettingValue(
+    Map<String, dynamic> body, {
+    required String camelKey,
+    required String snakeKey,
+  }) {
+    final payload = _serverSettingPayload(body);
+    final direct = _readMap(payload[camelKey]) ?? _readMap(payload[snakeKey]);
+    if (direct != null) return direct;
+
+    final value = _readMap(payload['value']);
+    final nested = _readMap(value?[camelKey]) ?? _readMap(value?[snakeKey]);
+    if (nested != null) return nested;
+    return _readMap(value?['value']);
+  }
+
+  void _setIntFieldPreservingStyle(
+    Map<String, Object?> map, {
+    required String camelKey,
+    required String snakeKey,
+    required int value,
+  }) {
+    if (map.containsKey(snakeKey) && !map.containsKey(camelKey)) {
+      map[snakeKey] = value;
+      return;
+    }
+    map[camelKey] = value;
+  }
+
+  void _putServerSettingValue(
+    Map<String, Object?> payload, {
+    required String camelKey,
+    required String snakeKey,
+    required Map<String, Object?> value,
+  }) {
+    if (payload.containsKey(snakeKey) && !payload.containsKey(camelKey)) {
+      payload[snakeKey] = value;
+      return;
+    }
+    payload[camelKey] = value;
+  }
+
+  Map<String, Object?>? _updateMaskQuery(String? updateMask) {
+    final normalized = (updateMask ?? '').trim();
+    if (normalized.isEmpty) return null;
+    return <String, Object?>{
+      'updateMask': normalized,
+      'update_mask': normalized,
+    };
+  }
+
+  AttachmentUploadSizeLimitSource _attachmentUploadSizeLimitSource(
+    ServerSettingSource? source,
+  ) {
+    return switch (source) {
+      ServerSettingSource.legacySystemStatus ||
+      ServerSettingSource.legacySystemSetting ||
+      null => AttachmentUploadSizeLimitSource.systemStatus,
+      ServerSettingSource.workspaceStorageSetting =>
+        AttachmentUploadSizeLimitSource.workspaceStorageSetting,
+      ServerSettingSource.instanceStorageSetting =>
+        AttachmentUploadSizeLimitSource.instanceStorageSetting,
+      ServerSettingSource.workspaceMemoRelatedSetting ||
+      ServerSettingSource.instanceMemoRelatedSetting =>
+        AttachmentUploadSizeLimitSource.instanceStorageSetting,
+    };
+  }
+
+  AttachmentUploadSizeLimitUnknownReason
+  _attachmentUploadSizeLimitUnknownReason(
+    ServerSettingUnavailableReason? reason,
+  ) {
+    return switch (reason) {
+      ServerSettingUnavailableReason.localLibrary =>
+        AttachmentUploadSizeLimitUnknownReason.localLibrary,
+      ServerSettingUnavailableReason.permissionDenied =>
+        AttachmentUploadSizeLimitUnknownReason.permissionDenied,
+      ServerSettingUnavailableReason.endpointUnavailable ||
+      ServerSettingUnavailableReason.unsupportedVersion =>
+        AttachmentUploadSizeLimitUnknownReason.endpointUnavailable,
+      ServerSettingUnavailableReason.invalidResponse =>
+        AttachmentUploadSizeLimitUnknownReason.invalidResponse,
+      ServerSettingUnavailableReason.nonPositiveLimit =>
+        AttachmentUploadSizeLimitUnknownReason.nonPositiveLimit,
+      ServerSettingUnavailableReason.requestFailed ||
+      null => AttachmentUploadSizeLimitUnknownReason.requestFailed,
+    };
   }
 
   Future<Attachment> createAttachment({

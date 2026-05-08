@@ -21,6 +21,7 @@ import '../../state/settings/personal_access_token_repository_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../auth/login_screen.dart';
 import 'local_mode_setup_screen.dart';
+import 'server_settings_screen.dart';
 import 'user_general_settings_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -491,6 +492,24 @@ class AccountSecurityScreen extends ConsumerWidget {
                       );
                     },
                   ),
+                  if (currentAccount != null && currentLocalLibrary == null)
+                    _SettingRow(
+                      icon: Icons.admin_panel_settings_outlined,
+                      label: context.tr(
+                        zh: '\u670D\u52A1\u5668\u8BBE\u7F6E',
+                        en: 'Server Settings',
+                      ),
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      onTap: () {
+                        haptic();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ServerSettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   if (currentKey != null)
                     _SettingRow(
                       icon: Icons.logout,

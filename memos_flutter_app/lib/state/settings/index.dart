@@ -7,4 +7,5 @@ export 'memoflow_bridge_settings_provider.dart';
 export 'personal_access_token_repository_provider.dart';
 export 'preferences_provider.dart';
 export 'reminder_settings_provider.dart';
+export 'server_settings_provider.dart';
 export 'user_settings_provider.dart';

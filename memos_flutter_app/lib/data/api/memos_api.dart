@@ -21,6 +21,7 @@ import '../models/notification_item.dart';
 import '../models/personal_access_token.dart';
 import '../models/reaction.dart';
 import '../models/shortcut.dart';
+import '../models/server_setting.dart';
 import '../models/user.dart';
 import '../models/user_setting.dart';
 import '../models/user_stats.dart';
