@@ -17,6 +17,7 @@ import '../../../core/app_theme.dart';
 import '../../../core/desktop/shortcuts.dart';
 import '../../../core/desktop_db_write_channel.dart';
 import '../../../core/desktop_quick_input_channel.dart';
+import '../../../core/desktop_runtime_role.dart';
 import '../../../core/markdown_editing.dart';
 import '../../../core/memo_template_renderer.dart';
 import '../../../core/memoflow_palette.dart';
@@ -39,6 +40,7 @@ import '../../memos/link_memo_sheet.dart';
 import '../../location_picker/show_location_picker.dart';
 import '../../memos/memo_video_grid.dart';
 import '../../memos/windows_camera_capture_screen.dart';
+import 'desktop_quick_input_capabilities.dart';
 
 class DesktopQuickInputWindowApp extends ConsumerWidget {
   const DesktopQuickInputWindowApp({super.key, required this.windowId});
@@ -619,6 +621,7 @@ class _DesktopQuickInputWindowScreenState
     required String visibilityLabel,
     required IconData visibilityIcon,
     required Color visibilityColor,
+    required bool canUseLocationPicker,
   }) {
     final actions = <MemoComposeToolbarActionSpec>[
       MemoComposeToolbarActionSpec.builtin(
@@ -767,12 +770,13 @@ class _DesktopQuickInputWindowScreenState
         enabled: !_submitting,
         onPressed: () => unawaited(_capturePhoto()),
       ),
-      MemoComposeToolbarActionSpec.builtin(
-        id: MemoToolbarActionId.location,
-        icon: _locating ? Icons.my_location : null,
-        enabled: !_submitting && !_locating,
-        onPressed: () => unawaited(_requestLocation()),
-      ),
+      if (canUseLocationPicker)
+        MemoComposeToolbarActionSpec.builtin(
+          id: MemoToolbarActionId.location,
+          icon: _locating ? Icons.my_location : null,
+          enabled: !_submitting && !_locating,
+          onPressed: () => unawaited(_requestLocation()),
+        ),
       ...preferences.customButtons.map(
         (button) => MemoComposeToolbarActionSpec.custom(
           button: button,
@@ -1563,6 +1567,12 @@ class _DesktopQuickInputWindowScreenState
 
   Future<void> _requestLocation() async {
     if (_submitting || _locating) return;
+    if (!desktopQuickInputCanUseLocationPicker(
+      runtimeRole: ref.read(desktopRuntimeRoleProvider),
+      isWindows: Platform.isWindows,
+    )) {
+      return;
+    }
     final next = await showLocationPickerSheetOrDialog(
       context: context,
       ref: ref,
@@ -1699,6 +1709,10 @@ class _DesktopQuickInputWindowScreenState
     final availableTemplates = templateSettings.enabled
         ? templateSettings.templates
         : const <MemoTemplate>[];
+    final canUseLocationPicker = desktopQuickInputCanUseLocationPicker(
+      runtimeRole: ref.watch(desktopRuntimeRoleProvider),
+      isWindows: Platform.isWindows,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1875,6 +1889,7 @@ class _DesktopQuickInputWindowScreenState
                           visibilityLabel: visibilityLabel,
                           visibilityIcon: visibilityIcon,
                           visibilityColor: visibilityColor,
+                          canUseLocationPicker: canUseLocationPicker,
                         ),
                       ),
                       const SizedBox(width: 8),
