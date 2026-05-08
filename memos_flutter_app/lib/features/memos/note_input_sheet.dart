@@ -53,6 +53,7 @@ import '../share/share_inline_image_download_service.dart';
 import '../share/share_video_attachment_preparer.dart';
 import '../share/share_video_compression_service.dart';
 import '../share/share_video_download_service.dart';
+import '../share/share_video_limit_messages.dart';
 import 'attachment_gallery_screen.dart';
 import 'attachment_video_screen.dart';
 import 'compose_input_hint.dart';
@@ -103,6 +104,7 @@ class _DeferredShareVideoTask {
   final ShareDeferredVideoAttachmentRequest request;
   Map<String, String> headers = const <String, String>{};
   int? remoteSize;
+  int? uploadSizeLimitBytes;
   double progress = 0;
   _DeferredShareVideoPhase phase = _DeferredShareVideoPhase.preparing;
   bool cancelled = false;
@@ -749,6 +751,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       final uploadSizeLimit = await ref
           .read(attachmentUploadSizeLimitResolverProvider)
           .resolve();
+      task.uploadSizeLimitBytes = uploadSizeLimit.bytes;
       final prepared = await _shareVideoAttachmentPreparer.prepare(
         result: task.request.captureResult,
         candidate: task.request.candidate,
@@ -784,6 +787,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
           });
           final shouldCompress = await _confirmDeferredVideoCompression(
             fileSize,
+            maxBytes,
           );
           final compressionTask = _findDeferredShareVideoTask(id);
           if (!mounted ||
@@ -845,6 +849,7 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       await _removeDeferredShareVideoTask(id);
       _showDeferredVideoFailure(
         _DeferredShareVideoFailure.compressionStillTooLarge,
+        uploadSizeLimitBytes: task.uploadSizeLimitBytes,
       );
     } catch (_) {
       final failedTask = _findDeferredShareVideoTask(id);
@@ -879,15 +884,20 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     } catch (_) {}
   }
 
-  Future<bool> _confirmDeferredVideoCompression(int fileSize) async {
+  Future<bool> _confirmDeferredVideoCompression(
+    int fileSize,
+    int maxBytes,
+  ) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(context.t.strings.shareClip.fileTooLargeTitle),
+          title: Text(shareVideoAttachmentTooLargeTitle(context.t, maxBytes)),
           content: Text(
-            context.t.strings.shareClip.fileTooLargeBody(
-              size: _formatFileSize(fileSize),
+            shareVideoAttachmentTooLargeBody(
+              context.t,
+              fileSizeBytes: fileSize,
+              maxBytes: maxBytes,
             ),
           ),
           actions: [
@@ -906,19 +916,34 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     return result ?? false;
   }
 
-  void _showDeferredVideoFailure(_DeferredShareVideoFailure failure) {
+  void _showDeferredVideoFailure(
+    _DeferredShareVideoFailure failure, {
+    int? uploadSizeLimitBytes,
+  }) {
     if (!mounted) return;
-    showTopToast(context, _deferredVideoFailureMessage(failure));
+    showTopToast(
+      context,
+      _deferredVideoFailureMessage(
+        failure,
+        uploadSizeLimitBytes: uploadSizeLimitBytes,
+      ),
+    );
   }
 
-  String _deferredVideoFailureMessage(_DeferredShareVideoFailure failure) {
+  String _deferredVideoFailureMessage(
+    _DeferredShareVideoFailure failure, {
+    int? uploadSizeLimitBytes,
+  }) {
     return switch (failure) {
       _DeferredShareVideoFailure.downloadFailed =>
         context.t.strings.shareClip.fallbackDownloadFailed,
       _DeferredShareVideoFailure.compressionFailed =>
         context.t.strings.shareClip.fallbackCompressionFailed,
       _DeferredShareVideoFailure.compressionStillTooLarge =>
-        context.t.strings.shareClip.fallbackCompressionStillTooLarge,
+        shareVideoAttachmentStillTooLargeMessage(
+          context.t,
+          maxBytes: uploadSizeLimitBytes,
+        ),
     };
   }
 
@@ -935,11 +960,6 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
         ),
       ),
     );
-  }
-
-  String _formatFileSize(int bytes) {
-    final mb = bytes / (1024 * 1024);
-    return '${mb.toStringAsFixed(1)} MB';
   }
 
   Future<_PendingAttachment> _stagePendingAttachment(

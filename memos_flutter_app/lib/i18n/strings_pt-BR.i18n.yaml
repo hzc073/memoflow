@@ -1768,13 +1768,13 @@ shareClip:
   xiaohongshuLabel: Xiaohongshu
   unsupportedDash: Fluxo DASH separado não é suportado
   unsupportedStream: O recurso somente streaming não é compatível
-  fileTooLargeTitle: O vídeo tem mais de 30 MB
-  fileTooLargeBody: Este vídeo é $size, que excede o limite de anexos do servidor.
+  fileTooLargeTitle: O vídeo tem mais de $limit
+  fileTooLargeBody: Este vídeo é $size, que excede o limite de anexos do servidor de $limit.
   compressAndSave: Compactar e salvar
   fallbackParseFailed: A análise do vídeo falhou, então o aplicativo salvou apenas o link.
   fallbackDownloadFailed: O download do vídeo falhou, então o aplicativo salvou apenas o link.
   fallbackCompressionFailed: Falha na compactação do vídeo, então o aplicativo salvou apenas o link.
-  fallbackCompressionStillTooLarge: O vídeo compactado ainda tem mais de 30 MB, então o aplicativo salvou apenas o link.
+  fallbackCompressionStillTooLarge: O vídeo compactado ainda tem mais de $limit, então o aplicativo salvou apenas o link.
   failureUnsupportedUrl: Esquema URL não suportado.
   failureLoadTimeout: Tempo limite esgotado ao carregar a página.
   failureWebView: WebView não conseguiu carregar a página.

@@ -1788,13 +1788,13 @@ shareClip:
   xiaohongshuLabel: 샤오홍슈
   unsupportedDash: 별도의 DASH 스트림은 지원되지 않습니다.
   unsupportedStream: 스트리밍 전용 리소스는 지원되지 않습니다.
-  fileTooLargeTitle: 비디오가 30MB보다 큽니다.
-  fileTooLargeBody: 본 영상은 $size로, 서버 첨부 제한을 초과하였습니다.
+  fileTooLargeTitle: 비디오가 $limit보다 큽니다.
+  fileTooLargeBody: 본 영상은 $size로, 서버 첨부 제한 $limit을 초과하였습니다.
   compressAndSave: 압축 및 저장
   fallbackParseFailed: 동영상 파싱에 실패하여 앱이 링크만 저장했습니다.
   fallbackDownloadFailed: 동영상 다운로드에 실패하여 앱에 링크만 저장되었습니다.
   fallbackCompressionFailed: 동영상 압축에 실패하여 앱에 링크만 저장되었습니다.
-  fallbackCompressionStillTooLarge: 압축된 비디오는 여전히 30MB보다 크기 때문에 앱은 링크만 저장했습니다.
+  fallbackCompressionStillTooLarge: 압축된 비디오는 여전히 $limit보다 크기 때문에 앱은 링크만 저장했습니다.
   failureUnsupportedUrl: 지원되지 않는 URL 체계입니다.
   failureLoadTimeout: 페이지를 로드하는 동안 시간이 초과되었습니다.
   failureWebView: WebView가 페이지를 로드하지 못했습니다.

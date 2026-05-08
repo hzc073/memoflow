@@ -6,7 +6,7 @@
 /// Locales: 7
 /// Strings: 13910 (1987 per locale)
 ///
-/// Built on 2026-05-04 at 01:14 UTC
+/// Built on 2026-05-07 at 13:16 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1781,13 +1781,13 @@ class _StringsStringsShareClipEn {
 	String get xiaohongshuLabel => 'Xiaohongshu';
 	String get unsupportedDash => 'Separate DASH stream is not supported';
 	String get unsupportedStream => 'Streaming-only resource is not supported';
-	String get fileTooLargeTitle => 'Video is larger than 30 MB';
-	String fileTooLargeBody({required Object size}) => 'This video is ${size}, which exceeds the server attachment limit.';
+	String fileTooLargeTitle({required Object limit}) => 'Video is larger than ${limit}';
+	String fileTooLargeBody({required Object size, required Object limit}) => 'This video is ${size}, which exceeds the server attachment limit of ${limit}.';
 	String get compressAndSave => 'Compress & Save';
 	String get fallbackParseFailed => 'Video parsing failed, so the app saved the link only.';
 	String get fallbackDownloadFailed => 'Video download failed, so the app saved the link only.';
 	String get fallbackCompressionFailed => 'Video compression failed, so the app saved the link only.';
-	String get fallbackCompressionStillTooLarge => 'Compressed video is still larger than 30 MB, so the app saved the link only.';
+	String fallbackCompressionStillTooLarge({required Object limit}) => 'Compressed video is still larger than ${limit}, so the app saved the link only.';
 	String get failureUnsupportedUrl => 'Unsupported URL scheme.';
 	String get failureLoadTimeout => 'Timed out while loading the page.';
 	String get failureWebView => 'WebView failed to load the page.';
@@ -9355,13 +9355,13 @@ class _StringsStringsShareClipKo extends _StringsStringsShareClipEn {
 	@override String get xiaohongshuLabel => '샤오홍슈';
 	@override String get unsupportedDash => '별도의 DASH 스트림은 지원되지 않습니다.';
 	@override String get unsupportedStream => '스트리밍 전용 리소스는 지원되지 않습니다.';
-	@override String get fileTooLargeTitle => '비디오가 30MB보다 큽니다.';
-	@override String fileTooLargeBody({required Object size}) => '본 영상은 ${size}로, 서버 첨부 제한을 초과하였습니다.';
+	@override String fileTooLargeTitle({required Object limit}) => '비디오가 ${limit}보다 큽니다.';
+	@override String fileTooLargeBody({required Object size, required Object limit}) => '본 영상은 ${size}로, 서버 첨부 제한 ${limit}을 초과하였습니다.';
 	@override String get compressAndSave => '압축 및 저장';
 	@override String get fallbackParseFailed => '동영상 파싱에 실패하여 앱이 링크만 저장했습니다.';
 	@override String get fallbackDownloadFailed => '동영상 다운로드에 실패하여 앱에 링크만 저장되었습니다.';
 	@override String get fallbackCompressionFailed => '동영상 압축에 실패하여 앱에 링크만 저장되었습니다.';
-	@override String get fallbackCompressionStillTooLarge => '압축된 비디오는 여전히 30MB보다 크기 때문에 앱은 링크만 저장했습니다.';
+	@override String fallbackCompressionStillTooLarge({required Object limit}) => '압축된 비디오는 여전히 ${limit}보다 크기 때문에 앱은 링크만 저장했습니다.';
 	@override String get failureUnsupportedUrl => '지원되지 않는 URL 체계입니다.';
 	@override String get failureLoadTimeout => '페이지를 로드하는 동안 시간이 초과되었습니다.';
 	@override String get failureWebView => 'WebView가 페이지를 로드하지 못했습니다.';
@@ -11957,13 +11957,13 @@ class _StringsStringsShareClipPtBr extends _StringsStringsShareClipEn {
 	@override String get xiaohongshuLabel => 'Xiaohongshu';
 	@override String get unsupportedDash => 'Fluxo DASH separado não é suportado';
 	@override String get unsupportedStream => 'O recurso somente streaming não é compatível';
-	@override String get fileTooLargeTitle => 'O vídeo tem mais de 30 MB';
-	@override String fileTooLargeBody({required Object size}) => 'Este vídeo é ${size}, que excede o limite de anexos do servidor.';
+	@override String fileTooLargeTitle({required Object limit}) => 'O vídeo tem mais de ${limit}';
+	@override String fileTooLargeBody({required Object size, required Object limit}) => 'Este vídeo é ${size}, que excede o limite de anexos do servidor de ${limit}.';
 	@override String get compressAndSave => 'Compactar e salvar';
 	@override String get fallbackParseFailed => 'A análise do vídeo falhou, então o aplicativo salvou apenas o link.';
 	@override String get fallbackDownloadFailed => 'O download do vídeo falhou, então o aplicativo salvou apenas o link.';
 	@override String get fallbackCompressionFailed => 'Falha na compactação do vídeo, então o aplicativo salvou apenas o link.';
-	@override String get fallbackCompressionStillTooLarge => 'O vídeo compactado ainda tem mais de 30 MB, então o aplicativo salvou apenas o link.';
+	@override String fallbackCompressionStillTooLarge({required Object limit}) => 'O vídeo compactado ainda tem mais de ${limit}, então o aplicativo salvou apenas o link.';
 	@override String get failureUnsupportedUrl => 'Esquema URL não suportado.';
 	@override String get failureLoadTimeout => 'Tempo limite esgotado ao carregar a página.';
 	@override String get failureWebView => 'WebView não conseguiu carregar a página.';
@@ -14559,13 +14559,13 @@ class _StringsStringsShareClipZhHans extends _StringsStringsShareClipEn {
 	@override String get xiaohongshuLabel => '小红书';
 	@override String get unsupportedDash => 'DASH 音视频分离资源暂不支持';
 	@override String get unsupportedStream => '仅流媒体资源暂不支持';
-	@override String get fileTooLargeTitle => '视频大小超过 30MB';
-	@override String fileTooLargeBody({required Object size}) => '当前视频大小为 ${size}，已超过服务器附件限制。';
+	@override String fileTooLargeTitle({required Object limit}) => '视频大小超过 ${limit}';
+	@override String fileTooLargeBody({required Object size, required Object limit}) => '当前视频大小为 ${size}，已超过服务器附件限制 ${limit}。';
 	@override String get compressAndSave => '压缩后保存';
 	@override String get fallbackParseFailed => '视频解析失败，已回退为仅保存链接。';
 	@override String get fallbackDownloadFailed => '视频下载失败，已回退为仅保存链接。';
 	@override String get fallbackCompressionFailed => '视频压缩失败，已回退为仅保存链接。';
-	@override String get fallbackCompressionStillTooLarge => '压缩后视频仍超过 30MB，已回退为仅保存链接。';
+	@override String fallbackCompressionStillTooLarge({required Object limit}) => '压缩后视频仍超过 ${limit}，已回退为仅保存链接。';
 	@override String get failureUnsupportedUrl => '不支持的 URL 类型。';
 	@override String get failureLoadTimeout => '加载页面超时。';
 	@override String get failureWebView => 'WebView 加载页面失败。';
@@ -19778,13 +19778,13 @@ extension on Translations {
 			case 'strings.shareClip.xiaohongshuLabel': return 'Xiaohongshu';
 			case 'strings.shareClip.unsupportedDash': return 'Separate DASH stream is not supported';
 			case 'strings.shareClip.unsupportedStream': return 'Streaming-only resource is not supported';
-			case 'strings.shareClip.fileTooLargeTitle': return 'Video is larger than 30 MB';
-			case 'strings.shareClip.fileTooLargeBody': return ({required Object size}) => 'This video is ${size}, which exceeds the server attachment limit.';
+			case 'strings.shareClip.fileTooLargeTitle': return ({required Object limit}) => 'Video is larger than ${limit}';
+			case 'strings.shareClip.fileTooLargeBody': return ({required Object size, required Object limit}) => 'This video is ${size}, which exceeds the server attachment limit of ${limit}.';
 			case 'strings.shareClip.compressAndSave': return 'Compress & Save';
 			case 'strings.shareClip.fallbackParseFailed': return 'Video parsing failed, so the app saved the link only.';
 			case 'strings.shareClip.fallbackDownloadFailed': return 'Video download failed, so the app saved the link only.';
 			case 'strings.shareClip.fallbackCompressionFailed': return 'Video compression failed, so the app saved the link only.';
-			case 'strings.shareClip.fallbackCompressionStillTooLarge': return 'Compressed video is still larger than 30 MB, so the app saved the link only.';
+			case 'strings.shareClip.fallbackCompressionStillTooLarge': return ({required Object limit}) => 'Compressed video is still larger than ${limit}, so the app saved the link only.';
 			case 'strings.shareClip.failureUnsupportedUrl': return 'Unsupported URL scheme.';
 			case 'strings.shareClip.failureLoadTimeout': return 'Timed out while loading the page.';
 			case 'strings.shareClip.failureWebView': return 'WebView failed to load the page.';
@@ -25662,13 +25662,13 @@ extension on _StringsKo {
 			case 'strings.shareClip.xiaohongshuLabel': return '샤오홍슈';
 			case 'strings.shareClip.unsupportedDash': return '별도의 DASH 스트림은 지원되지 않습니다.';
 			case 'strings.shareClip.unsupportedStream': return '스트리밍 전용 리소스는 지원되지 않습니다.';
-			case 'strings.shareClip.fileTooLargeTitle': return '비디오가 30MB보다 큽니다.';
-			case 'strings.shareClip.fileTooLargeBody': return ({required Object size}) => '본 영상은 ${size}로, 서버 첨부 제한을 초과하였습니다.';
+			case 'strings.shareClip.fileTooLargeTitle': return ({required Object limit}) => '비디오가 ${limit}보다 큽니다.';
+			case 'strings.shareClip.fileTooLargeBody': return ({required Object size, required Object limit}) => '본 영상은 ${size}로, 서버 첨부 제한 ${limit}을 초과하였습니다.';
 			case 'strings.shareClip.compressAndSave': return '압축 및 저장';
 			case 'strings.shareClip.fallbackParseFailed': return '동영상 파싱에 실패하여 앱이 링크만 저장했습니다.';
 			case 'strings.shareClip.fallbackDownloadFailed': return '동영상 다운로드에 실패하여 앱에 링크만 저장되었습니다.';
 			case 'strings.shareClip.fallbackCompressionFailed': return '동영상 압축에 실패하여 앱에 링크만 저장되었습니다.';
-			case 'strings.shareClip.fallbackCompressionStillTooLarge': return '압축된 비디오는 여전히 30MB보다 크기 때문에 앱은 링크만 저장했습니다.';
+			case 'strings.shareClip.fallbackCompressionStillTooLarge': return ({required Object limit}) => '압축된 비디오는 여전히 ${limit}보다 크기 때문에 앱은 링크만 저장했습니다.';
 			case 'strings.shareClip.failureUnsupportedUrl': return '지원되지 않는 URL 체계입니다.';
 			case 'strings.shareClip.failureLoadTimeout': return '페이지를 로드하는 동안 시간이 초과되었습니다.';
 			case 'strings.shareClip.failureWebView': return 'WebView가 페이지를 로드하지 못했습니다.';
@@ -27694,13 +27694,13 @@ extension on _StringsPtBr {
 			case 'strings.shareClip.xiaohongshuLabel': return 'Xiaohongshu';
 			case 'strings.shareClip.unsupportedDash': return 'Fluxo DASH separado não é suportado';
 			case 'strings.shareClip.unsupportedStream': return 'O recurso somente streaming não é compatível';
-			case 'strings.shareClip.fileTooLargeTitle': return 'O vídeo tem mais de 30 MB';
-			case 'strings.shareClip.fileTooLargeBody': return ({required Object size}) => 'Este vídeo é ${size}, que excede o limite de anexos do servidor.';
+			case 'strings.shareClip.fileTooLargeTitle': return ({required Object limit}) => 'O vídeo tem mais de ${limit}';
+			case 'strings.shareClip.fileTooLargeBody': return ({required Object size, required Object limit}) => 'Este vídeo é ${size}, que excede o limite de anexos do servidor de ${limit}.';
 			case 'strings.shareClip.compressAndSave': return 'Compactar e salvar';
 			case 'strings.shareClip.fallbackParseFailed': return 'A análise do vídeo falhou, então o aplicativo salvou apenas o link.';
 			case 'strings.shareClip.fallbackDownloadFailed': return 'O download do vídeo falhou, então o aplicativo salvou apenas o link.';
 			case 'strings.shareClip.fallbackCompressionFailed': return 'Falha na compactação do vídeo, então o aplicativo salvou apenas o link.';
-			case 'strings.shareClip.fallbackCompressionStillTooLarge': return 'O vídeo compactado ainda tem mais de 30 MB, então o aplicativo salvou apenas o link.';
+			case 'strings.shareClip.fallbackCompressionStillTooLarge': return ({required Object limit}) => 'O vídeo compactado ainda tem mais de ${limit}, então o aplicativo salvou apenas o link.';
 			case 'strings.shareClip.failureUnsupportedUrl': return 'Esquema URL não suportado.';
 			case 'strings.shareClip.failureLoadTimeout': return 'Tempo limite esgotado ao carregar a página.';
 			case 'strings.shareClip.failureWebView': return 'WebView não conseguiu carregar a página.';
@@ -29726,13 +29726,13 @@ extension on _StringsZhHans {
 			case 'strings.shareClip.xiaohongshuLabel': return '小红书';
 			case 'strings.shareClip.unsupportedDash': return 'DASH 音视频分离资源暂不支持';
 			case 'strings.shareClip.unsupportedStream': return '仅流媒体资源暂不支持';
-			case 'strings.shareClip.fileTooLargeTitle': return '视频大小超过 30MB';
-			case 'strings.shareClip.fileTooLargeBody': return ({required Object size}) => '当前视频大小为 ${size}，已超过服务器附件限制。';
+			case 'strings.shareClip.fileTooLargeTitle': return ({required Object limit}) => '视频大小超过 ${limit}';
+			case 'strings.shareClip.fileTooLargeBody': return ({required Object size, required Object limit}) => '当前视频大小为 ${size}，已超过服务器附件限制 ${limit}。';
 			case 'strings.shareClip.compressAndSave': return '压缩后保存';
 			case 'strings.shareClip.fallbackParseFailed': return '视频解析失败，已回退为仅保存链接。';
 			case 'strings.shareClip.fallbackDownloadFailed': return '视频下载失败，已回退为仅保存链接。';
 			case 'strings.shareClip.fallbackCompressionFailed': return '视频压缩失败，已回退为仅保存链接。';
-			case 'strings.shareClip.fallbackCompressionStillTooLarge': return '压缩后视频仍超过 30MB，已回退为仅保存链接。';
+			case 'strings.shareClip.fallbackCompressionStillTooLarge': return ({required Object limit}) => '压缩后视频仍超过 ${limit}，已回退为仅保存链接。';
 			case 'strings.shareClip.failureUnsupportedUrl': return '不支持的 URL 类型。';
 			case 'strings.shareClip.failureLoadTimeout': return '加载页面超时。';
 			case 'strings.shareClip.failureWebView': return 'WebView 加载页面失败。';
