@@ -76,11 +76,14 @@ class _DraftBoxMemoCardState extends State<DraftBoxMemoCard> {
         : MemoFlowPalette.audioSurfaceLight;
     final snapshot = widget.draft.snapshot;
     final language = context.appLanguage;
-    final previewText = buildMemoCardPreviewText(
+    final contentPreviewText = buildMemoCardPreviewText(
       snapshot.content,
       collapseReferences: false,
       language: language,
     );
+    final previewText = contentPreviewText.trim().isEmpty
+        ? snapshot.previewText
+        : contentPreviewText;
     final preview = truncateMemoCardPreview(
       previewText,
       collapseLongContent: true,
@@ -143,6 +146,20 @@ class _DraftBoxMemoCardState extends State<DraftBoxMemoCard> {
                                   borderColor: primaryColor.withValues(
                                     alpha: isDark ? 0.42 : 0.24,
                                   ),
+                                ),
+                              if (widget.draft.isEditMemoDraft)
+                                _DraftBoxBadge(
+                                  label: context.tr(
+                                    zh: '编辑草稿',
+                                    en: 'Edit draft',
+                                  ),
+                                  foreground: const Color(0xFFB26A2B),
+                                  background: const Color(
+                                    0xFFB26A2B,
+                                  ).withValues(alpha: isDark ? 0.18 : 0.1),
+                                  borderColor: const Color(
+                                    0xFFB26A2B,
+                                  ).withValues(alpha: isDark ? 0.35 : 0.18),
                                 ),
                               Text(
                                 _dateFormatter.format(

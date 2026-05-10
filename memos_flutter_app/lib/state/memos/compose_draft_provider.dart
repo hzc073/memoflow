@@ -56,10 +56,10 @@ class ComposeDraftRepository {
     ComposeDraftMutationService? mutations,
     NoteDraftRepository? legacyNoteDraftRepository,
   }) : _database = database,
-        _workspaceKey = workspaceKey.trim(),
-        _attachmentStager = attachmentStager,
-        _mutations = mutations ?? ComposeDraftMutationService(db: database),
-        _legacyNoteDraftRepository = legacyNoteDraftRepository;
+       _workspaceKey = workspaceKey.trim(),
+       _attachmentStager = attachmentStager,
+       _mutations = mutations ?? ComposeDraftMutationService(db: database),
+       _legacyNoteDraftRepository = legacyNoteDraftRepository;
 
   final AppDatabase _database;
   final String _workspaceKey;
@@ -86,6 +86,13 @@ class ComposeDraftRepository {
     return ComposeDraftRecord.fromRow(row);
   }
 
+  Future<ComposeDraftRecord?> latestCreateDraft() async {
+    await _maybeImportLegacyDraft();
+    final row = await _latestCreateDraftRow();
+    if (row == null) return null;
+    return ComposeDraftRecord.fromRow(row);
+  }
+
   Future<ComposeDraftRecord?> getByUid(String uid) async {
     await _maybeImportLegacyDraft();
     return getByUidWithoutLegacyImport(uid);
@@ -102,13 +109,70 @@ class ComposeDraftRepository {
     return ComposeDraftRecord.fromRow(row);
   }
 
+  Future<ComposeDraftRecord?> getEditDraftForMemo(String targetMemoUid) async {
+    final normalizedUid = targetMemoUid.trim();
+    if (normalizedUid.isEmpty) return null;
+    final row = await _database.getComposeEditDraftRowForMemo(
+      workspaceKey: _workspaceKey,
+      targetMemoUid: normalizedUid,
+    );
+    if (row == null) return null;
+    return ComposeDraftRecord.fromRow(row);
+  }
+
   Future<String?> saveSnapshot({
     String? draftUid,
     required ComposeDraftSnapshot snapshot,
   }) async {
+    final uid = await _saveRecord(
+      draftUid: draftUid,
+      snapshot: snapshot,
+      kind: ComposeDraftKind.createMemo,
+      targetMemoUid: null,
+      targetMemoContentFingerprint: null,
+      targetMemoUpdateTime: null,
+      deleteExistingWhenEmpty: true,
+    );
+    if (uid != null) {
+      await _syncLegacyDraftMirror(snapshot.content);
+    }
+    return uid;
+  }
+
+  Future<String?> saveEditDraft({
+    required String targetMemoUid,
+    required ComposeDraftSnapshot snapshot,
+    String? targetMemoContentFingerprint,
+    DateTime? targetMemoUpdateTime,
+  }) async {
+    final normalizedTarget = targetMemoUid.trim();
+    if (normalizedTarget.isEmpty) return null;
+    final existing = await getEditDraftForMemo(normalizedTarget);
+    return _saveRecord(
+      draftUid: existing?.uid,
+      snapshot: snapshot,
+      kind: ComposeDraftKind.editMemo,
+      targetMemoUid: normalizedTarget,
+      targetMemoContentFingerprint: targetMemoContentFingerprint,
+      targetMemoUpdateTime: targetMemoUpdateTime,
+      deleteExistingWhenEmpty: true,
+    );
+  }
+
+  Future<String?> _saveRecord({
+    String? draftUid,
+    required ComposeDraftSnapshot snapshot,
+    required ComposeDraftKind kind,
+    required String? targetMemoUid,
+    required String? targetMemoContentFingerprint,
+    required DateTime? targetMemoUpdateTime,
+    required bool deleteExistingWhenEmpty,
+  }) async {
     final normalizedUid = draftUid?.trim();
     if (!snapshot.hasSavableContent) {
-      if (normalizedUid != null && normalizedUid.isNotEmpty) {
+      if (deleteExistingWhenEmpty &&
+          normalizedUid != null &&
+          normalizedUid.isNotEmpty) {
         await deleteDraft(normalizedUid);
       }
       return null;
@@ -127,9 +191,12 @@ class ComposeDraftRepository {
       snapshot: snapshot,
       createdTime: existing?.createdTime ?? now,
       updatedTime: now,
+      kind: kind,
+      targetMemoUid: targetMemoUid,
+      targetMemoContentFingerprint: targetMemoContentFingerprint,
+      targetMemoUpdateTime: targetMemoUpdateTime,
     );
     await _mutations.upsertDraftRow(record.toRow());
-    await _syncLegacyDraftMirror(snapshot.content);
     return uid;
   }
 
@@ -144,7 +211,15 @@ class ComposeDraftRepository {
       existing.snapshot.attachments,
       keepPaths: keepPaths,
     );
-    await _syncLegacyDraftMirrorFromLatest();
+    if (existing.isCreateMemoDraft) {
+      await _syncLegacyDraftMirrorFromLatestCreateDraft();
+    }
+  }
+
+  Future<void> deleteEditDraftForMemo(String targetMemoUid) async {
+    final existing = await getEditDraftForMemo(targetMemoUid);
+    if (existing == null) return;
+    await deleteDraft(existing.uid);
   }
 
   Future<void> clearDrafts() async {
@@ -169,7 +244,7 @@ class ComposeDraftRepository {
         .where((path) => path.isNotEmpty)
         .toSet();
     await _deleteDraftAttachmentFiles(existing, keepPaths: keepPaths);
-    await _syncLegacyDraftMirrorFromLatest();
+    await _syncLegacyDraftMirrorFromLatestCreateDraft();
   }
 
   Future<void> _maybeImportLegacyDraft() async {
@@ -178,9 +253,7 @@ class ComposeDraftRepository {
     final legacyRepository = _legacyNoteDraftRepository;
     if (legacyRepository == null) return;
 
-    final existing = await _database.getLatestComposeDraftRow(
-      workspaceKey: _workspaceKey,
-    );
+    final existing = await _latestCreateDraftRow();
     if (existing != null) return;
 
     final legacyText = await legacyRepository.read();
@@ -209,6 +282,14 @@ class ComposeDraftRepository {
     return rows.map(ComposeDraftRecord.fromRow).toList(growable: false);
   }
 
+  Future<Map<String, dynamic>?> _latestCreateDraftRow() async {
+    final rows = await _listDraftsFromDb();
+    for (final draft in rows) {
+      if (draft.isCreateMemoDraft) return draft.toRow();
+    }
+    return null;
+  }
+
   Future<void> _deleteDraftAttachmentFiles(
     List<ComposeDraftRecord> drafts, {
     Set<String> keepPaths = const <String>{},
@@ -234,10 +315,8 @@ class ComposeDraftRepository {
     }
   }
 
-  Future<void> _syncLegacyDraftMirrorFromLatest() async {
-    final row = await _database.getLatestComposeDraftRow(
-      workspaceKey: _workspaceKey,
-    );
+  Future<void> _syncLegacyDraftMirrorFromLatestCreateDraft() async {
+    final row = await _latestCreateDraftRow();
     await _syncLegacyDraftMirror((row?['content'] as String?) ?? '');
   }
 

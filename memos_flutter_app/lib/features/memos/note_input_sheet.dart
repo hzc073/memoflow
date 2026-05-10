@@ -1067,18 +1067,28 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
     final currentDraftId = await _saveCurrentDraft();
     if (!mounted) return;
-    final selectedDraftId = await DraftBoxScreen.show(
+    final selection = await DraftBoxScreen.show(
       context,
       activeDraftId: _activeDraftId,
     );
     if (!mounted) return;
 
-    if (selectedDraftId != null && selectedDraftId.trim().isNotEmpty) {
+    if (selection != null && selection.isCreateMemoDraft) {
       final selectedDraft = await ref
           .read(composeDraftRepositoryProvider)
-          .getByUid(selectedDraftId);
+          .getByUid(selection.draftUid);
       if (!mounted || selectedDraft == null) return;
       _restoreComposeDraft(selectedDraft);
+      return;
+    }
+    if (selection != null && selection.isEditMemoDraft) {
+      showTopToast(
+        context,
+        context.tr(
+          zh: '请从草稿箱页面打开编辑草稿',
+          en: 'Open edit drafts from the Draft Box page.',
+        ),
+      );
       return;
     }
 

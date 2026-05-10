@@ -28,7 +28,7 @@ class AppDatabase {
   final DesktopDbWriteGateway? _writeGateway;
   late final AppDatabaseWriteDao _writeDao = AppDatabaseWriteDao(db: this);
   static const Object _displayTimeUnspecified = Object();
-  static const _dbVersion = 27;
+  static const _dbVersion = 28;
   static const int outboxStatePending = 0;
   static const int outboxStateRunning = 1;
   static const int outboxStateRetry = 2;
@@ -229,8 +229,13 @@ CREATE TABLE IF NOT EXISTS compose_drafts (
   workspace_key TEXT NOT NULL,
   content TEXT NOT NULL,
   visibility TEXT NOT NULL,
+  draft_kind TEXT NOT NULL DEFAULT 'create_memo',
+  target_memo_uid TEXT,
+  target_memo_content_fingerprint TEXT,
+  target_memo_update_time INTEGER,
   relations_json TEXT NOT NULL DEFAULT '[]',
   attachments_json TEXT NOT NULL DEFAULT '[]',
+  existing_attachments_json TEXT NOT NULL DEFAULT '[]',
   location_placeholder TEXT,
   location_lat REAL,
   location_lng REAL,
@@ -240,6 +245,9 @@ CREATE TABLE IF NOT EXISTS compose_drafts (
 ''');
           await db.execute(
             'CREATE INDEX IF NOT EXISTS idx_compose_drafts_workspace_updated ON compose_drafts(workspace_key, updated_time DESC);',
+          );
+          await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_compose_drafts_workspace_edit_target ON compose_drafts(workspace_key, target_memo_uid) WHERE draft_kind = 'edit_memo' AND target_memo_uid IS NOT NULL AND target_memo_uid <> '';",
           );
 
           await _ensureCollectionTables(db);
@@ -410,8 +418,13 @@ CREATE TABLE IF NOT EXISTS compose_drafts (
   workspace_key TEXT NOT NULL,
   content TEXT NOT NULL,
   visibility TEXT NOT NULL,
+  draft_kind TEXT NOT NULL DEFAULT 'create_memo',
+  target_memo_uid TEXT,
+  target_memo_content_fingerprint TEXT,
+  target_memo_update_time INTEGER,
   relations_json TEXT NOT NULL DEFAULT '[]',
   attachments_json TEXT NOT NULL DEFAULT '[]',
+  existing_attachments_json TEXT NOT NULL DEFAULT '[]',
   location_placeholder TEXT,
   location_lat REAL,
   location_lng REAL,
@@ -421,6 +434,9 @@ CREATE TABLE IF NOT EXISTS compose_drafts (
 ''');
             await db.execute(
               'CREATE INDEX IF NOT EXISTS idx_compose_drafts_workspace_updated ON compose_drafts(workspace_key, updated_time DESC);',
+            );
+            await db.execute(
+              "CREATE UNIQUE INDEX IF NOT EXISTS idx_compose_drafts_workspace_edit_target ON compose_drafts(workspace_key, target_memo_uid) WHERE draft_kind = 'edit_memo' AND target_memo_uid IS NOT NULL AND target_memo_uid <> '';",
             );
           }
           if (oldVersion < 19) {
@@ -533,6 +549,9 @@ CREATE TABLE IF NOT EXISTS outbox (
           }
           if (oldVersion < 27) {
             await _ensureMemoSearchIndex(db, rebuild: true);
+          }
+          if (oldVersion < 28) {
+            await _ensureComposeDraftEditColumns(db);
           }
         },
         onOpen: (db) async {
@@ -3475,6 +3494,28 @@ WHERE id = 1;
     return rows.first;
   }
 
+  Future<Map<String, dynamic>?> getComposeEditDraftRowForMemo({
+    required String workspaceKey,
+    required String targetMemoUid,
+  }) async {
+    final normalizedWorkspaceKey = workspaceKey.trim();
+    final normalizedTargetMemoUid = targetMemoUid.trim();
+    if (normalizedWorkspaceKey.isEmpty || normalizedTargetMemoUid.isEmpty) {
+      return null;
+    }
+    final db = await this.db;
+    final rows = await db.query(
+      'compose_drafts',
+      where:
+          "workspace_key = ? AND draft_kind = 'edit_memo' AND target_memo_uid = ?",
+      whereArgs: [normalizedWorkspaceKey, normalizedTargetMemoUid],
+      orderBy: 'updated_time DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
   Future<Map<String, dynamic>?> getLatestComposeDraftRow({
     required String workspaceKey,
   }) async {
@@ -5062,6 +5103,14 @@ ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC;
     return rows.any((row) => row['name'] == column);
   }
 
+  static Future<bool> _tableExists(Database db, String table) async {
+    final rows = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1;",
+      [table],
+    );
+    return rows.isNotEmpty;
+  }
+
   static Future<void> _ensureColumnExists(
     Database db, {
     required String table,
@@ -5073,6 +5122,45 @@ ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC;
     }
     await db.execute(
       'ALTER TABLE ${_quoteIdentifier(table)} ADD COLUMN $definition;',
+    );
+  }
+
+  static Future<void> _ensureComposeDraftEditColumns(Database db) async {
+    if (!await _tableExists(db, 'compose_drafts')) {
+      return;
+    }
+    await _ensureColumnExists(
+      db,
+      table: 'compose_drafts',
+      column: 'draft_kind',
+      definition: "draft_kind TEXT NOT NULL DEFAULT 'create_memo'",
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'compose_drafts',
+      column: 'target_memo_uid',
+      definition: 'target_memo_uid TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'compose_drafts',
+      column: 'target_memo_content_fingerprint',
+      definition: 'target_memo_content_fingerprint TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'compose_drafts',
+      column: 'target_memo_update_time',
+      definition: 'target_memo_update_time INTEGER',
+    );
+    await _ensureColumnExists(
+      db,
+      table: 'compose_drafts',
+      column: 'existing_attachments_json',
+      definition: "existing_attachments_json TEXT NOT NULL DEFAULT '[]'",
+    );
+    await db.execute(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_compose_drafts_workspace_edit_target ON compose_drafts(workspace_key, target_memo_uid) WHERE draft_kind = 'edit_memo' AND target_memo_uid IS NOT NULL AND target_memo_uid <> '';",
     );
   }
 

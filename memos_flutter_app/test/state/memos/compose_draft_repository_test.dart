@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:memos_flutter_app/application/attachments/queued_attachment_stager.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
+import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/compose_draft.dart';
 import 'package:memos_flutter_app/data/models/memo_location.dart';
 import 'package:memos_flutter_app/state/memos/compose_draft_provider.dart';
@@ -66,6 +67,25 @@ void main() {
 
     final latest = await harness.repository.latestDraft();
     expect(latest?.uid, draftId);
+  });
+
+  test('missing new draft columns decode as create drafts', () {
+    final draft = ComposeDraftRecord.fromRow(<String, dynamic>{
+      'uid': 'legacy-draft',
+      'workspace_key': 'workspace-1',
+      'content': 'legacy content',
+      'visibility': 'PRIVATE',
+      'relations_json': '[]',
+      'attachments_json': '[]',
+      'created_time': 10,
+      'updated_time': 20,
+    });
+
+    expect(draft.kind, ComposeDraftKind.createMemo);
+    expect(draft.isCreateMemoDraft, isTrue);
+    expect(draft.isEditMemoDraft, isFalse);
+    expect(draft.targetMemoUid, isNull);
+    expect(draft.snapshot.existingAttachments, isEmpty);
   });
 
   test(
@@ -200,6 +220,132 @@ void main() {
       legacyNoteDraftRepository: legacyRepository,
     );
     expect(await reopenedRepository.latestDraft(), isNull);
+  });
+
+  test(
+    'edit draft upserts by target memo without touching create mirror',
+    () async {
+      final legacyRepository = _FakeNoteDraftRepository('');
+      final harness = await _createHarness(
+        support,
+        legacyNoteDraftRepository: legacyRepository,
+      );
+      addTearDown(harness.dispose);
+
+      final createId = await harness.repository.saveSnapshot(
+        snapshot: const ComposeDraftSnapshot(
+          content: 'create draft',
+          visibility: 'PRIVATE',
+        ),
+      );
+      expect(createId, isNotNull);
+      expect(await legacyRepository.read(), 'create draft');
+
+      final targetUpdate = DateTime.utc(2025, 1, 2, 3, 4, 5);
+      final firstEditId = await harness.repository.saveEditDraft(
+        targetMemoUid: 'memo-1',
+        targetMemoContentFingerprint: 'fingerprint-1',
+        targetMemoUpdateTime: targetUpdate,
+        snapshot: const ComposeDraftSnapshot(
+          content: 'first edit',
+          visibility: 'PUBLIC',
+        ),
+      );
+      final secondEditId = await harness.repository.saveEditDraft(
+        targetMemoUid: 'memo-1',
+        targetMemoContentFingerprint: 'fingerprint-2',
+        targetMemoUpdateTime: targetUpdate.add(const Duration(minutes: 1)),
+        snapshot: const ComposeDraftSnapshot(
+          content: 'second edit',
+          visibility: 'PROTECTED',
+        ),
+      );
+
+      expect(secondEditId, firstEditId);
+      expect(await legacyRepository.read(), 'create draft');
+
+      final drafts = await harness.repository.listDrafts();
+      expect(drafts.where((draft) => draft.isEditMemoDraft), hasLength(1));
+      final editDraft = await harness.repository.getEditDraftForMemo('memo-1');
+      expect(editDraft, isNotNull);
+      expect(editDraft!.uid, firstEditId);
+      expect(editDraft.snapshot.content, 'second edit');
+      expect(editDraft.snapshot.visibility, 'PROTECTED');
+      expect(editDraft.targetMemoUid, 'memo-1');
+      expect(editDraft.targetMemoContentFingerprint, 'fingerprint-2');
+      expect(
+        editDraft.targetMemoUpdateTime,
+        targetUpdate.add(const Duration(minutes: 1)),
+      );
+      expect((await harness.repository.latestCreateDraft())?.uid, createId);
+    },
+  );
+
+  test('deleteEditDraftForMemo removes only the visible edit draft', () async {
+    final legacyRepository = _FakeNoteDraftRepository('');
+    final harness = await _createHarness(
+      support,
+      legacyNoteDraftRepository: legacyRepository,
+    );
+    addTearDown(harness.dispose);
+
+    final createId = await harness.repository.saveSnapshot(
+      snapshot: const ComposeDraftSnapshot(
+        content: 'create draft',
+        visibility: 'PRIVATE',
+      ),
+    );
+    final editId = await harness.repository.saveEditDraft(
+      targetMemoUid: 'memo-1',
+      snapshot: const ComposeDraftSnapshot(
+        content: 'edit draft',
+        visibility: 'PRIVATE',
+      ),
+    );
+    expect(createId, isNotNull);
+    expect(editId, isNotNull);
+
+    await harness.repository.deleteEditDraftForMemo('memo-1');
+
+    expect(await harness.repository.getEditDraftForMemo('memo-1'), isNull);
+    expect(
+      (await harness.repository.getByUid(createId!))?.snapshot.content,
+      'create draft',
+    );
+    expect(await legacyRepository.read(), 'create draft');
+  });
+
+  test('edit drafts serialize existing memo attachments', () async {
+    final harness = await _createHarness(support);
+    addTearDown(harness.dispose);
+    const existingAttachment = Attachment(
+      name: 'attachments/existing-1',
+      filename: 'existing.png',
+      type: 'image/png',
+      size: 123,
+      externalLink: 'https://example.com/existing.png',
+      width: 640,
+      height: 480,
+      hash: 'hash-existing',
+    );
+
+    final draftId = await harness.repository.saveEditDraft(
+      targetMemoUid: 'memo-1',
+      snapshot: const ComposeDraftSnapshot(
+        content: 'edit with existing attachment',
+        visibility: 'PRIVATE',
+        existingAttachments: <Attachment>[existingAttachment],
+      ),
+    );
+
+    expect(draftId, isNotNull);
+    final restored = await harness.repository.getEditDraftForMemo('memo-1');
+    expect(restored?.snapshot.existingAttachments, hasLength(1));
+    expect(
+      restored?.snapshot.existingAttachments.single.toJson(),
+      existingAttachment.toJson(),
+    );
+    expect(restored?.snapshot.previewText, 'edit with existing attachment');
   });
 
   test(

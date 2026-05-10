@@ -13,6 +13,29 @@ import '../home/desktop/windows_desktop_page_shell.dart';
 import '../home/home_navigation_host.dart';
 import 'widgets/draft_box_memo_card.dart';
 
+class DraftBoxSelection {
+  const DraftBoxSelection({
+    required this.draftUid,
+    required this.kind,
+    this.targetMemoUid,
+  });
+
+  factory DraftBoxSelection.fromDraft(ComposeDraftRecord draft) {
+    return DraftBoxSelection(
+      draftUid: draft.uid,
+      kind: draft.kind,
+      targetMemoUid: draft.targetMemoUid,
+    );
+  }
+
+  final String draftUid;
+  final ComposeDraftKind kind;
+  final String? targetMemoUid;
+
+  bool get isCreateMemoDraft => kind == ComposeDraftKind.createMemo;
+  bool get isEditMemoDraft => kind == ComposeDraftKind.editMemo;
+}
+
 class DraftBoxScreen extends ConsumerWidget {
   const DraftBoxScreen({
     super.key,
@@ -35,11 +58,14 @@ class DraftBoxScreen extends ConsumerWidget {
   final VoidCallback? onOpenNotifications;
   final HomeScreenPresentation presentation;
   final HomeEmbeddedNavigationHost? embeddedNavigationHost;
-  final ValueChanged<String>? onDraftSelected;
+  final ValueChanged<DraftBoxSelection>? onDraftSelected;
 
-  static Future<String?> show(BuildContext context, {String? activeDraftId}) {
-    return Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
+  static Future<DraftBoxSelection?> show(
+    BuildContext context, {
+    String? activeDraftId,
+  }) {
+    return Navigator.of(context).push<DraftBoxSelection>(
+      MaterialPageRoute<DraftBoxSelection>(
         builder: (_) => DraftBoxScreen(activeDraftId: activeDraftId),
       ),
     );
@@ -68,12 +94,13 @@ class DraftBoxScreen extends ConsumerWidget {
         : null;
 
     void selectDraft(ComposeDraftRecord draft) {
+      final selection = DraftBoxSelection.fromDraft(draft);
       final handler = onDraftSelected;
       if (handler != null) {
-        handler(draft.uid);
+        handler(selection);
         return;
       }
-      Navigator.of(context).pop(draft.uid);
+      Navigator.of(context).pop(selection);
     }
 
     final body = draftsAsync.when(
@@ -205,7 +232,7 @@ class DraftBoxScreen extends ConsumerWidget {
     try {
       final repository = ref.read(composeDraftRepositoryProvider);
       await repository.deleteDraft(draft.uid);
-      final latestDraft = await repository.latestDraft();
+      final latestDraft = await repository.latestCreateDraft();
       final noteDraftController = ref.read(noteDraftProvider.notifier);
       if (latestDraft == null) {
         await noteDraftController.clear();

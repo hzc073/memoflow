@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../data/models/compose_draft.dart';
+import '../../data/models/attachment.dart';
 import '../../data/models/memo_location.dart';
 import '../attachments/queued_attachment_stager.dart';
 
@@ -72,6 +73,7 @@ class ComposeDraftTransferBundle {
           visibility: 'PRIVATE',
           relations: const <Map<String, dynamic>>[],
           attachments: const <ComposeDraftTransferAttachment>[],
+          existingAttachments: const <Attachment>[],
           createdTime: now,
           updatedTime: now,
         ),
@@ -85,21 +87,29 @@ List<ComposeDraftRecord> mergeComposeDraftRecords({
   required Iterable<ComposeDraftRecord> incoming,
   required String workspaceKey,
 }) {
-  final mergedByUid = <String, ComposeDraftRecord>{};
+  final mergedByKey = <String, ComposeDraftRecord>{};
+
+  String mergeKey(ComposeDraftRecord draft) {
+    final target = draft.targetMemoUid?.trim() ?? '';
+    if (draft.isEditMemoDraft && target.isNotEmpty) {
+      return 'edit:$target';
+    }
+    return 'uid:${draft.uid.trim()}';
+  }
 
   for (final draft in existing) {
     final uid = draft.uid.trim();
     if (uid.isEmpty) continue;
-    mergedByUid[uid] = draft.copyWith(workspaceKey: workspaceKey);
+    mergedByKey[mergeKey(draft)] = draft.copyWith(workspaceKey: workspaceKey);
   }
 
   for (final draft in incoming) {
     final uid = draft.uid.trim();
     if (uid.isEmpty) continue;
-    mergedByUid[uid] = draft.copyWith(workspaceKey: workspaceKey);
+    mergedByKey[mergeKey(draft)] = draft.copyWith(workspaceKey: workspaceKey);
   }
 
-  final merged = mergedByUid.values.toList(growable: false);
+  final merged = mergedByKey.values.toList(growable: false);
   merged.sort((a, b) => b.updatedTime.compareTo(a.updatedTime));
   return merged;
 }
@@ -111,8 +121,13 @@ class ComposeDraftTransferRecord {
     required this.visibility,
     required this.relations,
     required this.attachments,
+    required this.existingAttachments,
     required this.createdTime,
     required this.updatedTime,
+    this.kind = ComposeDraftKind.createMemo,
+    this.targetMemoUid,
+    this.targetMemoContentFingerprint,
+    this.targetMemoUpdateTime,
     this.location,
   });
 
@@ -121,17 +136,29 @@ class ComposeDraftTransferRecord {
   final String visibility;
   final List<Map<String, dynamic>> relations;
   final List<ComposeDraftTransferAttachment> attachments;
+  final List<Attachment> existingAttachments;
   final MemoLocation? location;
   final DateTime createdTime;
   final DateTime updatedTime;
+  final ComposeDraftKind kind;
+  final String? targetMemoUid;
+  final String? targetMemoContentFingerprint;
+  final DateTime? targetMemoUpdateTime;
 
   factory ComposeDraftTransferRecord.fromJson(Map<String, dynamic> json) {
     final rawRelations = json['relations'];
     final rawAttachments = json['attachments'];
+    final rawExistingAttachments = json['existingAttachments'];
     return ComposeDraftTransferRecord(
       uid: (json['uid'] as String? ?? '').trim(),
       content: (json['content'] as String? ?? ''),
       visibility: (json['visibility'] as String? ?? 'PRIVATE').trim(),
+      kind: ComposeDraftKind.fromStorageValue(json['draftKind']),
+      targetMemoUid: _readNullableString(json['targetMemoUid']),
+      targetMemoContentFingerprint: _readNullableString(
+        json['targetMemoContentFingerprint'],
+      ),
+      targetMemoUpdateTime: _readOptionalTime(json['targetMemoUpdateTime']),
       relations: rawRelations is List
           ? rawRelations
                 .whereType<Map>()
@@ -148,6 +175,14 @@ class ComposeDraftTransferRecord {
                 )
                 .toList(growable: false)
           : const <ComposeDraftTransferAttachment>[],
+      existingAttachments: rawExistingAttachments is List
+          ? rawExistingAttachments
+                .whereType<Map>()
+                .map(
+                  (item) => Attachment.fromJson(item.cast<String, dynamic>()),
+                )
+                .toList(growable: false)
+          : const <Attachment>[],
       location: _readLocation(json['location']),
       createdTime: DateTime.fromMillisecondsSinceEpoch(
         _readInt(json['createdTime']),
@@ -167,6 +202,10 @@ class ComposeDraftTransferRecord {
       uid: record.uid,
       content: record.snapshot.content,
       visibility: record.snapshot.visibility,
+      kind: record.kind,
+      targetMemoUid: record.targetMemoUid,
+      targetMemoContentFingerprint: record.targetMemoContentFingerprint,
+      targetMemoUpdateTime: record.targetMemoUpdateTime,
       relations: record.snapshot.relations,
       attachments: record.snapshot.attachments
           .map(
@@ -176,6 +215,7 @@ class ComposeDraftTransferRecord {
             ),
           )
           .toList(growable: false),
+      existingAttachments: record.snapshot.existingAttachments,
       location: record.snapshot.location,
       createdTime: record.createdTime,
       updatedTime: record.updatedTime,
@@ -184,10 +224,21 @@ class ComposeDraftTransferRecord {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'uid': uid,
+    'draftKind': kind.storageValue,
+    if (targetMemoUid != null) 'targetMemoUid': targetMemoUid,
+    if (targetMemoContentFingerprint != null)
+      'targetMemoContentFingerprint': targetMemoContentFingerprint,
+    if (targetMemoUpdateTime != null)
+      'targetMemoUpdateTime': targetMemoUpdateTime!
+          .toUtc()
+          .millisecondsSinceEpoch,
     'content': content,
     'visibility': visibility,
     'relations': relations,
     'attachments': attachments
+        .map((attachment) => attachment.toJson())
+        .toList(growable: false),
+    'existingAttachments': existingAttachments
         .map((attachment) => attachment.toJson())
         .toList(growable: false),
     if (location != null) 'location': location!.toJson(),
@@ -344,10 +395,15 @@ Future<List<ComposeDraftRecord>> materializeComposeDraftTransferBundle({
           visibility: draft.visibility,
           relations: draft.relations,
           attachments: attachments,
+          existingAttachments: draft.existingAttachments,
           location: draft.location,
         ),
         createdTime: draft.createdTime,
         updatedTime: draft.updatedTime,
+        kind: draft.kind,
+        targetMemoUid: draft.targetMemoUid,
+        targetMemoContentFingerprint: draft.targetMemoContentFingerprint,
+        targetMemoUpdateTime: draft.targetMemoUpdateTime,
       ),
     );
   }
@@ -365,6 +421,12 @@ int _readInt(Object? value, {int fallback = 0}) {
   if (value is num) return value.toInt();
   if (value is String) return int.tryParse(value.trim()) ?? fallback;
   return fallback;
+}
+
+DateTime? _readOptionalTime(Object? value) {
+  final millis = _readInt(value);
+  if (millis <= 0) return null;
+  return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
 }
 
 bool _readBool(Object? value) {

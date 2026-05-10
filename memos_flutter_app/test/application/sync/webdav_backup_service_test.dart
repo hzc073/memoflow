@@ -10,6 +10,7 @@ import 'package:memos_flutter_app/application/sync/webdav_vault_service.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/local_library/local_attachment_store.dart';
 import 'package:memos_flutter_app/data/logs/debug_log_store.dart';
+import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/compose_draft.dart';
 import 'package:memos_flutter_app/data/models/image_bed_settings.dart';
 import 'package:memos_flutter_app/data/models/image_compression_settings.dart';
@@ -91,10 +92,8 @@ class _FakeWebDavVaultPasswordRepository extends WebDavVaultPasswordRepository {
 }
 
 class _FakeConfigAdapter implements WebDavSyncLocalAdapter {
-  _FakeConfigAdapter({
-    required this.snapshot,
-    List<ComposeDraftRecord>? drafts,
-  }) : _drafts = List<ComposeDraftRecord>.from(drafts ?? const []);
+  _FakeConfigAdapter({required this.snapshot, List<ComposeDraftRecord>? drafts})
+    : _drafts = List<ComposeDraftRecord>.from(drafts ?? const []);
 
   final WebDavSyncLocalSnapshot snapshot;
   final String workspaceKey = 'workspace-1';
@@ -321,4 +320,82 @@ void main() {
       expect((payload['data'] as Map<String, dynamic>)['drafts'], isEmpty);
     },
   );
+
+  test('plain config backup includes edit draft metadata', () async {
+    final dbName = uniqueDbName('webdav_backup_edit_draft');
+    final database = AppDatabase(dbName: dbName);
+    addTearDown(() async {
+      await database.close();
+      await deleteTestDatabase(dbName);
+    });
+
+    const existingAttachment = Attachment(
+      name: 'attachments/existing-1',
+      filename: 'existing.png',
+      type: 'image/png',
+      size: 77,
+      externalLink: 'https://example.com/existing.png',
+    );
+    final adapter = _FakeConfigAdapter(
+      snapshot: _defaultSnapshot(),
+      drafts: <ComposeDraftRecord>[
+        ComposeDraftRecord(
+          uid: 'edit-draft',
+          workspaceKey: 'workspace-1',
+          kind: ComposeDraftKind.editMemo,
+          targetMemoUid: 'memo-1',
+          targetMemoContentFingerprint: 'fingerprint-1',
+          targetMemoUpdateTime: DateTime.utc(2025, 1, 2, 3, 4, 5),
+          snapshot: const ComposeDraftSnapshot(
+            content: 'edit draft content',
+            visibility: 'PUBLIC',
+            existingAttachments: <Attachment>[existingAttachment],
+          ),
+          createdTime: DateTime.fromMillisecondsSinceEpoch(10, isUtc: true),
+          updatedTime: DateTime.fromMillisecondsSinceEpoch(20, isUtc: true),
+        ),
+      ],
+    );
+    final client = _FakeWebDavClient(baseUrl: Uri.parse('https://example.com'));
+    final service = WebDavBackupService(
+      readDatabase: () => database,
+      attachmentStore: LocalAttachmentStore(),
+      stateRepository: _FakeWebDavBackupStateRepository(),
+      passwordRepository: _FakeWebDavBackupPasswordRepository(),
+      vaultService: WebDavVaultService(),
+      vaultPasswordRepository: _FakeWebDavVaultPasswordRepository(),
+      configAdapter: adapter,
+      clientFactory:
+          ({
+            required Uri baseUrl,
+            required WebDavSettings settings,
+            void Function(DebugLogEntry entry)? logWriter,
+          }) => client,
+    );
+
+    final result = await service.backupNow(
+      settings: _backupSettings(),
+      accountKey: 'account',
+      activeLocalLibrary: null,
+    );
+
+    expect(result, isA<WebDavBackupSuccess>());
+    final draftBoxPut = client.putCalls.firstWhere(
+      (call) => call.uri.path.endsWith('config/draft_box.json'),
+    );
+    final payload =
+        jsonDecode(utf8.decode(draftBoxPut.body!)) as Map<String, dynamic>;
+    final data = payload['data'] as Map<String, dynamic>;
+    final drafts = data['drafts'] as List<dynamic>;
+    final draft = drafts.single as Map<String, dynamic>;
+
+    expect(draft['draftKind'], 'edit_memo');
+    expect(draft['targetMemoUid'], 'memo-1');
+    expect(draft['targetMemoContentFingerprint'], 'fingerprint-1');
+    expect(draft['existingAttachments'], hasLength(1));
+    expect(
+      (draft['existingAttachments'] as List).single,
+      existingAttachment.toJson(),
+    );
+  });
 }

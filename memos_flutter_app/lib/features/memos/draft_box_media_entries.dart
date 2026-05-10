@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../../data/models/attachment.dart';
 import '../../data/models/compose_draft.dart';
 import 'memo_image_grid.dart';
 import 'memo_image_src_normalizer.dart';
@@ -51,10 +52,14 @@ List<MemoMediaEntry> buildDraftBoxMediaEntries(ComposeDraftSnapshot snapshot) {
 }
 
 int countDraftNonMediaAttachments(ComposeDraftSnapshot snapshot) {
-  return snapshot.attachments.where((attachment) {
+  final pendingCount = snapshot.attachments.where((attachment) {
     final mimeType = attachment.mimeType.trim().toLowerCase();
     return !mimeType.startsWith('image/') && !mimeType.startsWith('video/');
   }).length;
+  final existingCount = snapshot.existingAttachments
+      .where((attachment) => !attachment.isImage && !attachment.isVideo)
+      .length;
+  return pendingCount + existingCount;
 }
 
 MemoImageEntry? _imageEntryFromInlineUrl(String rawUrl, int index) {

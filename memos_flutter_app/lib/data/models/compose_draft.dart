@@ -1,7 +1,25 @@
 import 'dart:convert';
 
+import 'attachment.dart';
 import 'memo_location.dart';
 import '../../state/memos/memo_composer_state.dart';
+
+enum ComposeDraftKind {
+  createMemo('create_memo'),
+  editMemo('edit_memo');
+
+  const ComposeDraftKind(this.storageValue);
+
+  final String storageValue;
+
+  static ComposeDraftKind fromStorageValue(Object? value) {
+    final normalized = value is String ? value.trim().toLowerCase() : '';
+    for (final kind in values) {
+      if (kind.storageValue == normalized) return kind;
+    }
+    return ComposeDraftKind.createMemo;
+  }
+}
 
 class ComposeDraftAttachment {
   const ComposeDraftAttachment({
@@ -89,6 +107,7 @@ class ComposeDraftSnapshot {
     required this.visibility,
     this.relations = const <Map<String, dynamic>>[],
     this.attachments = const <ComposeDraftAttachment>[],
+    this.existingAttachments = const <Attachment>[],
     this.location,
   });
 
@@ -96,11 +115,13 @@ class ComposeDraftSnapshot {
   final String visibility;
   final List<Map<String, dynamic>> relations;
   final List<ComposeDraftAttachment> attachments;
+  final List<Attachment> existingAttachments;
   final MemoLocation? location;
 
   bool get hasSavableContent {
     return content.trim().isNotEmpty ||
         attachments.isNotEmpty ||
+        existingAttachments.isNotEmpty ||
         relations.isNotEmpty ||
         location != null;
   }
@@ -109,6 +130,9 @@ class ComposeDraftSnapshot {
     final normalized = content.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.isNotEmpty) return normalized;
     if (attachments.isNotEmpty) return '[${attachments.length} attachments]';
+    if (existingAttachments.isNotEmpty) {
+      return '[${existingAttachments.length} attachments]';
+    }
     if (relations.isNotEmpty) return '[${relations.length} linked memos]';
     if (location != null) return location!.displayText();
     return '';
@@ -119,6 +143,7 @@ class ComposeDraftSnapshot {
     String? visibility,
     List<Map<String, dynamic>>? relations,
     List<ComposeDraftAttachment>? attachments,
+    List<Attachment>? existingAttachments,
     Object? location = _composeDraftNoChange,
   }) {
     return ComposeDraftSnapshot(
@@ -126,6 +151,7 @@ class ComposeDraftSnapshot {
       visibility: visibility ?? this.visibility,
       relations: relations ?? this.relations,
       attachments: attachments ?? this.attachments,
+      existingAttachments: existingAttachments ?? this.existingAttachments,
       location: identical(location, _composeDraftNoChange)
           ? this.location
           : location as MemoLocation?,
@@ -140,6 +166,10 @@ class ComposeDraftRecord {
     required this.snapshot,
     required this.createdTime,
     required this.updatedTime,
+    this.kind = ComposeDraftKind.createMemo,
+    this.targetMemoUid,
+    this.targetMemoContentFingerprint,
+    this.targetMemoUpdateTime,
   });
 
   final String uid;
@@ -147,8 +177,14 @@ class ComposeDraftRecord {
   final ComposeDraftSnapshot snapshot;
   final DateTime createdTime;
   final DateTime updatedTime;
+  final ComposeDraftKind kind;
+  final String? targetMemoUid;
+  final String? targetMemoContentFingerprint;
+  final DateTime? targetMemoUpdateTime;
 
   int get attachmentCount => snapshot.attachments.length;
+  bool get isCreateMemoDraft => kind == ComposeDraftKind.createMemo;
+  bool get isEditMemoDraft => kind == ComposeDraftKind.editMemo;
 
   factory ComposeDraftRecord.fromRow(Map<String, dynamic> row) {
     return ComposeDraftRecord(
@@ -159,6 +195,9 @@ class ComposeDraftRecord {
         visibility: (row['visibility'] as String? ?? 'PRIVATE').trim(),
         relations: _decodeRelations(row['relations_json']),
         attachments: _decodeAttachments(row['attachments_json']),
+        existingAttachments: _decodeExistingAttachments(
+          row['existing_attachments_json'],
+        ),
         location: _decodeLocation(row),
       ),
       createdTime: DateTime.fromMillisecondsSinceEpoch(
@@ -169,17 +208,34 @@ class ComposeDraftRecord {
         _readInt(row['updated_time']),
         isUtc: true,
       ),
+      kind: ComposeDraftKind.fromStorageValue(row['draft_kind']),
+      targetMemoUid: _readNullableString(row['target_memo_uid']),
+      targetMemoContentFingerprint: _readNullableString(
+        row['target_memo_content_fingerprint'],
+      ),
+      targetMemoUpdateTime: _decodeOptionalTime(row['target_memo_update_time']),
     );
   }
 
   Map<String, Object?> toRow() => <String, Object?>{
     'uid': uid,
     'workspace_key': workspaceKey,
+    'draft_kind': kind.storageValue,
+    'target_memo_uid': targetMemoUid,
+    'target_memo_content_fingerprint': targetMemoContentFingerprint,
+    'target_memo_update_time': targetMemoUpdateTime
+        ?.toUtc()
+        .millisecondsSinceEpoch,
     'content': snapshot.content,
     'visibility': snapshot.visibility,
     'relations_json': _encodeJsonArray(snapshot.relations),
     'attachments_json': _encodeJsonArray(
       snapshot.attachments.map((attachment) => attachment.toJson()).toList(),
+    ),
+    'existing_attachments_json': _encodeJsonArray(
+      snapshot.existingAttachments
+          .map((attachment) => attachment.toJson())
+          .toList(),
     ),
     'location_placeholder': snapshot.location?.placeholder,
     'location_lat': snapshot.location?.latitude,
@@ -194,6 +250,10 @@ class ComposeDraftRecord {
     ComposeDraftSnapshot? snapshot,
     DateTime? createdTime,
     DateTime? updatedTime,
+    ComposeDraftKind? kind,
+    Object? targetMemoUid = _composeDraftNoChange,
+    Object? targetMemoContentFingerprint = _composeDraftNoChange,
+    Object? targetMemoUpdateTime = _composeDraftNoChange,
   }) {
     return ComposeDraftRecord(
       uid: uid ?? this.uid,
@@ -201,6 +261,18 @@ class ComposeDraftRecord {
       snapshot: snapshot ?? this.snapshot,
       createdTime: createdTime ?? this.createdTime,
       updatedTime: updatedTime ?? this.updatedTime,
+      kind: kind ?? this.kind,
+      targetMemoUid: identical(targetMemoUid, _composeDraftNoChange)
+          ? this.targetMemoUid
+          : targetMemoUid as String?,
+      targetMemoContentFingerprint:
+          identical(targetMemoContentFingerprint, _composeDraftNoChange)
+          ? this.targetMemoContentFingerprint
+          : targetMemoContentFingerprint as String?,
+      targetMemoUpdateTime:
+          identical(targetMemoUpdateTime, _composeDraftNoChange)
+          ? this.targetMemoUpdateTime
+          : targetMemoUpdateTime as DateTime?,
     );
   }
 
@@ -223,6 +295,14 @@ class ComposeDraftRecord {
         .toList(growable: false);
   }
 
+  static List<Attachment> _decodeExistingAttachments(Object? raw) {
+    final decoded = _decodeJsonList(raw);
+    return decoded
+        .whereType<Map>()
+        .map((item) => Attachment.fromJson(item.cast<String, dynamic>()))
+        .toList(growable: false);
+  }
+
   static MemoLocation? _decodeLocation(Map<String, dynamic> row) {
     final lat = _readDouble(row['location_lat']);
     final lng = _readDouble(row['location_lng']);
@@ -232,6 +312,12 @@ class ComposeDraftRecord {
       latitude: lat,
       longitude: lng,
     );
+  }
+
+  static DateTime? _decodeOptionalTime(Object? value) {
+    final millis = _readInt(value);
+    if (millis <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
   }
 
   static List<dynamic> _decodeJsonList(Object? raw) {

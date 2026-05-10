@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_localization.dart';
 import '../../core/drawer_navigation.dart';
+import '../../core/top_toast.dart';
 import '../../state/memos/compose_draft_provider.dart';
+import '../../state/memos/memos_list_providers.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/home_navigation_host.dart';
 import '../notifications/notifications_screen.dart';
 import 'draft_box_screen.dart';
+import 'memo_editor_screen.dart';
 import 'note_input_sheet.dart';
 
 class DraftBoxNavigationScreen extends ConsumerStatefulWidget {
@@ -53,14 +57,63 @@ class _DraftBoxNavigationScreenState
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
   }
 
-  Future<void> _handleDraftSelected(String draftUid) async {
-    final normalizedUid = draftUid.trim();
+  Future<void> _handleDraftSelected(DraftBoxSelection selection) async {
+    final normalizedUid = selection.draftUid.trim();
     if (_openingDraft || normalizedUid.isEmpty) return;
     setState(() => _openingDraft = true);
-    await NoteInputSheet.show(context, initialDraftUid: normalizedUid);
+    try {
+      if (selection.isCreateMemoDraft) {
+        await NoteInputSheet.show(context, initialDraftUid: normalizedUid);
+        return;
+      }
+      await _openEditDraft(selection);
+    } finally {
+      if (mounted) {
+        ref.invalidate(composeDraftsProvider);
+        setState(() => _openingDraft = false);
+      }
+    }
+  }
+
+  Future<void> _openEditDraft(DraftBoxSelection selection) async {
+    final repository = ref.read(composeDraftRepositoryProvider);
+    final draft = await repository.getByUid(selection.draftUid);
+    if (!mounted || draft == null) return;
+
+    final targetMemoUid = draft.targetMemoUid?.trim().isNotEmpty == true
+        ? draft.targetMemoUid!.trim()
+        : selection.targetMemoUid?.trim() ?? '';
+    if (targetMemoUid.isEmpty) {
+      _showTargetUnavailable();
+      return;
+    }
+
+    final resolved = await ref
+        .read(memosListControllerProvider)
+        .resolveMemoForOpen(uid: targetMemoUid);
     if (!mounted) return;
-    ref.invalidate(composeDraftsProvider);
-    setState(() => _openingDraft = false);
+    final memo = resolved.memo;
+    if (memo == null) {
+      _showTargetUnavailable();
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            MemoEditorScreen(existing: memo, initialEditDraft: draft),
+      ),
+    );
+  }
+
+  void _showTargetUnavailable() {
+    showTopToast(
+      context,
+      context.tr(
+        zh: '原笔记暂时无法打开，编辑草稿仍保留在草稿箱',
+        en: 'The original memo cannot be opened right now. The edit draft remains in Draft Box.',
+      ),
+    );
   }
 
   @override
@@ -73,7 +126,8 @@ class _DraftBoxNavigationScreenState
       onOpenNotifications: _openNotifications,
       presentation: widget.presentation,
       embeddedNavigationHost: widget.embeddedNavigationHost,
-      onDraftSelected: (draftUid) => unawaited(_handleDraftSelected(draftUid)),
+      onDraftSelected: (selection) =>
+          unawaited(_handleDraftSelected(selection)),
     );
   }
 }

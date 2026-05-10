@@ -28,6 +28,7 @@ import '../../core/uid.dart';
 import '../../core/url.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/attachment.dart';
+import '../../data/models/compose_draft.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
@@ -36,7 +37,9 @@ import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../state/settings/location_settings_provider.dart';
 import '../../state/attachments/queued_attachment_stager_provider.dart';
 import '../../state/memos/memo_composer_controller.dart';
+import '../../state/memos/compose_draft_provider.dart';
 import '../../state/memos/memo_editor_draft_provider.dart';
+import '../../state/memos/memo_editor_draft_session.dart';
 import '../../state/memos/memo_composer_state.dart';
 import '../../state/settings/image_compression_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
@@ -76,6 +79,7 @@ class MemoEditorScreen extends ConsumerStatefulWidget {
     super.key,
     this.existing,
     this.initialText,
+    this.initialEditDraft,
     this.initialAttachmentPaths = const [],
     this.ignoreDraft = false,
     this.autoFocus = true,
@@ -87,6 +91,7 @@ class MemoEditorScreen extends ConsumerStatefulWidget {
 
   final LocalMemo? existing;
   final String? initialText;
+  final ComposeDraftRecord? initialEditDraft;
   final List<String> initialAttachmentPaths;
   final bool ignoreDraft;
   final bool autoFocus;
@@ -101,9 +106,12 @@ class MemoEditorScreen extends ConsumerStatefulWidget {
 
 enum _TodoShortcutAction { checkbox, codeBlock }
 
+enum _EditorCloseDecision { continueEditing, discard, addToDraftBox }
+
 class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   late final MemoComposerController _composer;
   late final MemoEditorDraftRepository _draftRepository;
+  static const _editDraftSessionHelper = MemoEditorDraftSessionHelper();
   late final TextEditingController _contentController;
   late final FocusNode _editorFocusNode;
   final _editorFieldKey = GlobalKey();
@@ -129,10 +137,13 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   bool _relationsLoading = false;
   bool _relationsDirty = false;
   bool _skipDraftPersistOnDispose = false;
+  bool _openedFromVisibleEditDraft = false;
+  String? _activeVisibleEditDraftUid;
   Future<void>? _relationsLoadFuture;
   late String _visibility;
   late bool _pinned;
   var _saving = false;
+  bool _allowRoutePop = false;
   MemoLocation? _location;
   MemoLocation? _initialLocation;
   final _locating = false;
@@ -172,10 +183,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     _pinned = existing?.pinned ?? false;
     _location = existing?.location;
     _initialLocation = existing?.location;
-    if (existing != null) {
+    if (existing != null && _restoreInitialEditDraft(existing)) {
+      // The visible draft carries the relation state to save later.
+    } else if (existing != null) {
       _loadExistingRelations();
     }
-    if (!widget.ignoreDraft) {
+    if (!widget.ignoreDraft && widget.initialEditDraft == null) {
       unawaited(_restoreEditorDraftIfNeeded());
     }
     if (widget.autoFocus) {
@@ -256,7 +269,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         return KeyEventResult.handled;
       }
       if (_supportsDesktopSurfaceChrome) {
-        widget.onCloseRequested?.call();
+        unawaited(_requestCloseEditor());
         return KeyEventResult.handled;
       }
     }
@@ -295,6 +308,36 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     _draftTimer = Timer(const Duration(milliseconds: 250), () {
       unawaited(_persistEditorDraftNow());
     });
+  }
+
+  bool _restoreInitialEditDraft(LocalMemo existing) {
+    final draft = widget.initialEditDraft;
+    if (draft == null || !draft.isEditMemoDraft) return false;
+    final restored = _editDraftSessionHelper.restoreEditDraft(
+      draft,
+      targetMemo: existing,
+    );
+    _activeVisibleEditDraftUid = restored.draftUid;
+    _openedFromVisibleEditDraft = true;
+    _contentController.value = _contentController.value.copyWith(
+      text: restored.content,
+      selection: TextSelection.collapsed(offset: restored.content.length),
+      composing: TextRange.empty,
+    );
+    _visibility = restored.visibility;
+    _location = restored.location;
+    _existingAttachments
+      ..clear()
+      ..addAll(restored.existingAttachments);
+    _composer.setPendingAttachments(restored.pendingAttachments);
+    _composer.setLinkedMemos(restored.linkedMemos);
+    _attachmentsToDelete
+      ..clear()
+      ..addAll(restored.attachmentsToDelete);
+    _relationsLoaded = true;
+    _relationsDirty = true;
+    _composer.clearHistory();
+    return true;
   }
 
   String _attachmentKey(Attachment attachment) {
@@ -759,6 +802,138 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     await _draftRepository.clear(memoUid: memoUid);
   }
 
+  Future<void> _requestCloseEditor() async {
+    if (_saving) return;
+    final existing = widget.existing;
+    if (existing == null || !_hasUnsavedEditorState(existing)) {
+      _performCloseEditor();
+      return;
+    }
+
+    final decision = await _showUnsavedEditCloseDialog();
+    if (!mounted || decision == null) return;
+    switch (decision) {
+      case _EditorCloseDecision.continueEditing:
+        return;
+      case _EditorCloseDecision.discard:
+        await _discardEditorChangesAndClose();
+        return;
+      case _EditorCloseDecision.addToDraftBox:
+        await _saveVisibleEditDraftAndClose(existing);
+        return;
+    }
+  }
+
+  Future<_EditorCloseDecision?> _showUnsavedEditCloseDialog() {
+    return showDialog<_EditorCloseDecision>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.tr(zh: '保存编辑草稿？', en: 'Save edit draft?')),
+        content: Text(
+          dialogContext.tr(
+            zh: '这条笔记有未保存的修改。你可以继续编辑、放弃修改，或加入草稿箱稍后继续。',
+            en: 'This memo has unsaved changes. Continue editing, discard them, or add the edit to Draft Box.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                dialogContext.safePop(_EditorCloseDecision.continueEditing),
+            child: Text(dialogContext.tr(zh: '继续编辑', en: 'Continue editing')),
+          ),
+          TextButton(
+            onPressed: () =>
+                dialogContext.safePop(_EditorCloseDecision.discard),
+            child: Text(dialogContext.tr(zh: '放弃修改', en: 'Discard changes')),
+          ),
+          FilledButton(
+            onPressed: () =>
+                dialogContext.safePop(_EditorCloseDecision.addToDraftBox),
+            child: Text(dialogContext.tr(zh: '加入草稿箱', en: 'Add to Draft Box')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveVisibleEditDraftAndClose(LocalMemo existing) async {
+    if (!_relationsLoaded && !_relationsDirty) {
+      await _loadExistingRelations();
+    }
+    if (!mounted) return;
+    final snapshot = _editDraftSessionHelper.buildEditDraftSnapshot(
+      content: _contentController.text,
+      visibility: _visibility,
+      linkedMemos: List<_LinkedMemo>.from(_linkedMemos),
+      existingAttachments: List<Attachment>.from(_existingAttachments),
+      pendingAttachments: List<_PendingAttachment>.from(_pendingAttachments),
+      location: _location,
+    );
+    final draftUid = await ref
+        .read(composeDraftRepositoryProvider)
+        .saveEditDraft(
+          targetMemoUid: existing.uid,
+          snapshot: snapshot,
+          targetMemoContentFingerprint: existing.contentFingerprint,
+          targetMemoUpdateTime: existing.updateTime,
+        );
+    _activeVisibleEditDraftUid = draftUid ?? _activeVisibleEditDraftUid;
+    _skipDraftPersistOnDispose = true;
+    _draftTimer?.cancel();
+    try {
+      await _clearEditorDraft();
+    } catch (_) {}
+    if (!mounted) return;
+    _performCloseEditor();
+  }
+
+  Future<void> _discardEditorChangesAndClose() async {
+    _skipDraftPersistOnDispose = true;
+    _draftTimer?.cancel();
+    if (_openedFromVisibleEditDraft) {
+      try {
+        await _deleteActiveVisibleEditDraft();
+      } catch (_) {}
+    }
+    try {
+      await _clearEditorDraft();
+    } catch (_) {}
+    if (!mounted) return;
+    _performCloseEditor();
+  }
+
+  Future<void> _deleteActiveVisibleEditDraft({
+    Set<String> keepPaths = const <String>{},
+  }) async {
+    final repository = ref.read(composeDraftRepositoryProvider);
+    final draftUid = _activeVisibleEditDraftUid?.trim();
+    if (draftUid != null && draftUid.isNotEmpty) {
+      await repository.deleteDraft(draftUid, keepPaths: keepPaths);
+      return;
+    }
+    final targetUid = widget.existing?.uid.trim() ?? '';
+    if (targetUid.isNotEmpty) {
+      await repository.deleteEditDraftForMemo(targetUid);
+    }
+  }
+
+  void _performCloseEditor() {
+    _draftTimer?.cancel();
+    final onCloseRequested = widget.onCloseRequested;
+    if (onCloseRequested != null) {
+      onCloseRequested();
+      return;
+    }
+    if (!mounted) return;
+    if (!_allowRoutePop) {
+      setState(() => _allowRoutePop = true);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.safePop();
+    });
+  }
+
   Future<void> _loadTagStats() async {
     try {
       final tags = await ref.read(tagStatsProvider.future);
@@ -961,6 +1136,16 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       try {
         await _clearEditorDraft();
       } catch (_) {}
+      if (_openedFromVisibleEditDraft) {
+        try {
+          await _deleteActiveVisibleEditDraft(
+            keepPaths: pendingAttachments
+                .map((attachment) => attachment.filePath.trim())
+                .where((path) => path.isNotEmpty)
+                .toSet(),
+          );
+        } catch (_) {}
+      }
 
       if (!mounted) return;
       final onSaved = widget.onSaved;
@@ -968,7 +1153,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         onSaved();
         return;
       }
-      context.safePop();
+      _performCloseEditor();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2878,7 +3063,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                 saveAction,
                 IconButton(
                   tooltip: context.t.strings.legacy.msg_close,
-                  onPressed: widget.onCloseRequested,
+                  onPressed: _saving
+                      ? null
+                      : () => unawaited(_requestCloseEditor()),
                   icon: const Icon(Icons.close_rounded),
                 ),
               ],
@@ -2920,7 +3107,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                 IconButton(
                   key: const ValueKey<String>('memo-editor-close-button'),
                   tooltip: context.t.strings.legacy.msg_close,
-                  onPressed: widget.onCloseRequested,
+                  onPressed: _saving
+                      ? null
+                      : () => unawaited(_requestCloseEditor()),
                   icon: const Icon(Icons.close_rounded),
                 ),
               ],
@@ -2960,7 +3149,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
                   widget.onToggleFullscreen?.call();
                   return;
                 }
-                widget.onCloseRequested?.call();
+                unawaited(_requestCloseEditor());
               },
               const SingleActivator(
                 LogicalKeyboardKey.enter,
@@ -2988,7 +3177,7 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       return wrappedComposeSurface;
     }
 
-    return Scaffold(
+    final page = Scaffold(
       backgroundColor: background,
       appBar: AppBar(
         backgroundColor: background,
@@ -2999,6 +3188,14 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         actions: [saveAction],
       ),
       body: wrappedComposeSurface,
+    );
+    return PopScope(
+      canPop: _allowRoutePop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        unawaited(_requestCloseEditor());
+      },
+      child: page,
     );
   }
 }
