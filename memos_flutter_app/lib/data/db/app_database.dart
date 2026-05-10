@@ -11,6 +11,7 @@ import 'db_write_protocol.dart';
 import 'desktop_db_write_gateway.dart';
 import 'ai_db_persistence.dart';
 import 'app_database_write_dao.dart';
+import 'collection_db_persistence.dart';
 import 'compose_draft_db_persistence.dart';
 import 'memo_lifecycle_db_persistence.dart';
 import 'memo_search_db_persistence.dart';
@@ -156,8 +157,7 @@ CREATE TABLE IF NOT EXISTS import_history (
           await MemoLifecycleDbPersistence.ensureTables(db);
           await ComposeDraftDbPersistence.ensureTable(db);
 
-          await _ensureCollectionTables(db);
-          await _ensureCollectionReaderProgressTable(db);
+          await CollectionDbPersistence.ensureTables(db);
           await AiDbPersistence.ensureTables(db);
 
           await _ensureStatsCache(db, rebuild: true);
@@ -269,35 +269,17 @@ CREATE TABLE IF NOT EXISTS memo_reminders (
             );
           }
           if (oldVersion < 21) {
-            await _ensureCollectionTables(db);
+            await CollectionDbPersistence.ensureCollectionTables(db);
           }
           if (oldVersion < 22) {
-            await _ensureCollectionTables(db);
+            await CollectionDbPersistence.ensureCollectionTables(db);
           }
           if (oldVersion < 23) {
-            await _ensureCollectionReaderProgressTable(db);
+            await CollectionDbPersistence.ensureReaderProgressTable(db);
           }
           if (oldVersion < 24) {
-            await _ensureCollectionReaderProgressTable(db);
-            await _ensureColumnExists(
-              db,
-              table: 'collection_read_progress',
-              column: 'page_animation',
-              definition: "page_animation TEXT NOT NULL DEFAULT 'simulation'",
-            );
-            await _ensureColumnExists(
-              db,
-              table: 'collection_read_progress',
-              column: 'current_chapter_page_index',
-              definition:
-                  'current_chapter_page_index INTEGER NOT NULL DEFAULT 0',
-            );
-            await _ensureColumnExists(
-              db,
-              table: 'collection_read_progress',
-              column: 'current_match_char_offset',
-              definition: 'current_match_char_offset INTEGER',
-            );
+            await CollectionDbPersistence.ensureReaderProgressTable(db);
+            await CollectionDbPersistence.ensureReaderProgressPageColumns(db);
           }
           if (oldVersion < 25) {
             await _ensureMemoClipCardsTable(db);
@@ -2794,21 +2776,8 @@ WHERE id = 1;
   Future<Map<String, dynamic>?> getCollectionReaderProgressRow(
     String collectionId,
   ) async {
-    final normalizedCollectionId = collectionId.trim();
-    if (normalizedCollectionId.isEmpty) {
-      return null;
-    }
     final db = await this.db;
-    final rows = await db.query(
-      'collection_read_progress',
-      where: 'collection_id = ?',
-      whereArgs: <Object?>[normalizedCollectionId],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return null;
-    }
-    return rows.first;
+    return CollectionDbPersistence.getReaderProgressRow(db, collectionId);
   }
 
   Future<void> upsertCollectionReaderProgressRow(
@@ -3307,68 +3276,6 @@ CREATE TABLE IF NOT EXISTS tag_stats_cache (
     }
     await db.execute(
       'ALTER TABLE ${_quoteIdentifier(table)} ADD COLUMN $definition;',
-    );
-  }
-
-  static Future<void> _ensureCollectionTables(Database db) async {
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS memo_collections (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  type TEXT NOT NULL,
-  icon_key TEXT NOT NULL DEFAULT '',
-  accent_color_hex TEXT,
-  rules_json TEXT NOT NULL DEFAULT '{}',
-  cover_json TEXT NOT NULL DEFAULT '{}',
-  view_json TEXT NOT NULL DEFAULT '{}',
-  pinned INTEGER NOT NULL DEFAULT 0,
-  archived INTEGER NOT NULL DEFAULT 0,
-  hide_when_empty INTEGER NOT NULL DEFAULT 0,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_time INTEGER NOT NULL,
-  updated_time INTEGER NOT NULL
-);
-''');
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS memo_collection_items (
-  collection_id TEXT NOT NULL,
-  memo_uid TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_time INTEGER NOT NULL,
-  updated_time INTEGER NOT NULL,
-  PRIMARY KEY (collection_id, memo_uid),
-  FOREIGN KEY (collection_id) REFERENCES memo_collections(id) ON DELETE CASCADE ON UPDATE CASCADE,
-  FOREIGN KEY (memo_uid) REFERENCES memos(uid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_memo_collections_archived_pinned_order ON memo_collections(archived, pinned DESC, sort_order ASC);',
-    );
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_memo_collections_updated_time ON memo_collections(updated_time DESC);',
-    );
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_memo_collection_items_collection_order ON memo_collection_items(collection_id, sort_order ASC, created_time ASC);',
-    );
-  }
-
-  static Future<void> _ensureCollectionReaderProgressTable(Database db) async {
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS collection_read_progress (
-  collection_id TEXT NOT NULL PRIMARY KEY,
-  reader_mode TEXT NOT NULL,
-  page_animation TEXT NOT NULL DEFAULT 'simulation',
-  current_memo_uid TEXT,
-  current_memo_index INTEGER NOT NULL DEFAULT 0,
-  current_chapter_page_index INTEGER NOT NULL DEFAULT 0,
-  list_scroll_offset REAL NOT NULL DEFAULT 0,
-  current_match_char_offset INTEGER,
-  updated_time INTEGER NOT NULL
-);
-''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_collection_read_progress_updated ON collection_read_progress(updated_time DESC);',
     );
   }
 }

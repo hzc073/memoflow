@@ -13,6 +13,7 @@ import '../models/tag.dart';
 import '../models/tag_snapshot.dart';
 import 'ai_db_persistence.dart';
 import 'app_database.dart';
+import 'collection_db_persistence.dart';
 import 'compose_draft_db_persistence.dart';
 import 'memo_lifecycle_db_persistence.dart';
 import 'memo_search_db_persistence.dart';
@@ -725,20 +726,12 @@ class AppDatabaseWriteDao {
     Map<String, Object?> row,
   ) async {
     final sqlite = await _db.db;
-    await sqlite.insert(
-      'collection_read_progress',
-      row,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await CollectionDbPersistence.upsertReaderProgressRow(sqlite, row);
   }
 
   Future<void> deleteCollectionReaderProgress(String collectionId) async {
     final sqlite = await _db.db;
-    await sqlite.delete(
-      'collection_read_progress',
-      where: 'collection_id = ?',
-      whereArgs: <Object?>[collectionId],
-    );
+    await CollectionDbPersistence.deleteReaderProgress(sqlite, collectionId);
   }
 
   Future<int> insertRecycleBinItem({
