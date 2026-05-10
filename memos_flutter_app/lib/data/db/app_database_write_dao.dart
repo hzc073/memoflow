@@ -15,6 +15,7 @@ import 'app_database.dart';
 import 'compose_draft_db_persistence.dart';
 import 'memo_search_db_persistence.dart';
 import 'outbox_db_persistence.dart';
+import 'tag_db_persistence.dart';
 
 class AppDatabaseWriteDao {
   AppDatabaseWriteDao({required AppDatabase db}) : _db = db;
@@ -1200,12 +1201,12 @@ WHERE id IN (
     late TagEntity created;
     await sqlite.transaction((txn) async {
       if (parentId != null) {
-        final parent = await _loadTag(txn, parentId);
+        final parent = await TagDbPersistence.loadTag(txn, parentId);
         if (parent == null) {
           throw StateError('Parent tag not found');
         }
       }
-      await _ensureUniqueName(
+      await TagDbPersistence.ensureUniqueName(
         txn,
         name: normalizedName,
         parentId: parentId,
@@ -1213,7 +1214,7 @@ WHERE id IN (
       );
       final parentPath = parentId == null
           ? null
-          : (await _loadTag(txn, parentId))?.path;
+          : (await TagDbPersistence.loadTag(txn, parentId))?.path;
       if (parentId != null && (parentPath == null || parentPath.isEmpty)) {
         throw StateError('Parent tag not found');
       }
@@ -1221,15 +1222,16 @@ WHERE id IN (
           ? normalizedName
           : '$parentPath/$normalizedName';
       final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
-      final id = await txn.insert('tags', {
-        'name': normalizedName,
-        'parent_id': parentId,
-        'path': path,
-        'pinned': pinned ? 1 : 0,
-        'color_hex': normalizedColor,
-        'create_time': now,
-        'update_time': now,
-      });
+      final id = await TagDbPersistence.insertTagRow(
+        txn,
+        name: normalizedName,
+        parentId: parentId,
+        path: path,
+        pinned: pinned,
+        colorHex: normalizedColor,
+        createTimeSec: now,
+        updateTimeSec: now,
+      );
       created = TagEntity(
         id: id,
         name: normalizedName,
@@ -1255,7 +1257,7 @@ WHERE id IN (
     final sqlite = await _db.db;
     late TagEntity updated;
     await sqlite.transaction((txn) async {
-      final current = await _loadTag(txn, id);
+      final current = await TagDbPersistence.loadTag(txn, id);
       if (current == null) {
         throw StateError('Tag not found');
       }
@@ -1268,8 +1270,8 @@ WHERE id IN (
           ? current.colorHex
           : normalizeTagColorHex(colorHex);
 
-      await _assertNoCycle(txn, id, nextParentId);
-      await _ensureUniqueName(
+      await TagDbPersistence.assertNoCycle(txn, id, nextParentId);
+      await TagDbPersistence.ensureUniqueName(
         txn,
         name: nextName,
         parentId: nextParentId,
@@ -1278,7 +1280,7 @@ WHERE id IN (
 
       final parentPath = nextParentId == null
           ? null
-          : (await _loadTag(txn, nextParentId))?.path;
+          : (await TagDbPersistence.loadTag(txn, nextParentId))?.path;
       if (nextParentId != null && (parentPath == null || parentPath.isEmpty)) {
         throw StateError('Parent tag not found');
       }
@@ -1288,24 +1290,17 @@ WHERE id IN (
       final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
 
       if (newPath == current.path) {
-        await txn.update(
-          'tags',
-          {
-            'name': nextName,
-            'parent_id': nextParentId,
-            'pinned': nextPinned ? 1 : 0,
-            'color_hex': nextColor,
-            'update_time': now,
-          },
-          where: 'id = ?',
-          whereArgs: [id],
-        );
+        await TagDbPersistence.updateTagValues(txn, id, {
+          'name': nextName,
+          'parent_id': nextParentId,
+          'pinned': nextPinned ? 1 : 0,
+          'color_hex': nextColor,
+          'update_time': now,
+        });
       } else {
-        final descendants = await txn.query(
-          'tags',
-          columns: const ['id', 'path', 'parent_id'],
-          where: 'path = ? OR path LIKE ?',
-          whereArgs: [current.path, '${current.path}/%'],
+        final descendants = await TagDbPersistence.listSubtreeRows(
+          txn,
+          current.path,
         );
         final subtreeIds = <int>{};
         final newPaths = <int, String>{};
@@ -1322,16 +1317,10 @@ WHERE id IN (
         }
 
         for (final entry in newPaths.entries) {
-          final rows = await txn.query(
-            'tags',
-            columns: const ['id'],
-            where: 'path = ?',
-            whereArgs: [entry.value],
-            limit: 1,
+          final existingId = await TagDbPersistence.findTagIdByPath(
+            txn,
+            entry.value,
           );
-          final existingId = rows.isNotEmpty
-              ? (_readInt(rows.first['id']) ?? 0)
-              : 0;
           if (existingId > 0 && !subtreeIds.contains(existingId)) {
             throw StateError('Tag path already exists');
           }
@@ -1341,50 +1330,48 @@ WHERE id IN (
           final tagId = _readInt(row['id']) ?? 0;
           final oldPath = row['path'] as String? ?? '';
           if (tagId <= 0 || oldPath.isEmpty) continue;
-          await txn.insert('tag_aliases', {
-            'tag_id': tagId,
-            'alias': oldPath,
-            'created_time': now,
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          await TagDbPersistence.insertAliasRow(
+            txn,
+            tagId: tagId,
+            alias: oldPath,
+            createdTimeSec: now,
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
         }
 
         final newPathForTag = newPaths[id] ?? newPath;
-        await txn.update(
-          'tags',
-          {
-            'name': nextName,
-            'parent_id': nextParentId,
-            'path': newPathForTag,
-            'pinned': nextPinned ? 1 : 0,
-            'color_hex': nextColor,
-            'update_time': now,
-          },
-          where: 'id = ?',
-          whereArgs: [id],
-        );
+        await TagDbPersistence.updateTagValues(txn, id, {
+          'name': nextName,
+          'parent_id': nextParentId,
+          'path': newPathForTag,
+          'pinned': nextPinned ? 1 : 0,
+          'color_hex': nextColor,
+          'update_time': now,
+        });
 
         for (final entry in newPaths.entries) {
           final tagId = entry.key;
           if (tagId == id) continue;
-          await txn.update(
-            'tags',
-            {'path': entry.value, 'update_time': now},
-            where: 'id = ?',
-            whereArgs: [tagId],
-          );
+          await TagDbPersistence.updateTagValues(txn, tagId, {
+            'path': entry.value,
+            'update_time': now,
+          });
         }
 
-        final memoUids = await _db.listMemoUidsByTagIds(
+        final memoUids = await TagDbPersistence.listMemoUidsByTagIds(
           txn,
           subtreeIds.toList(growable: false),
         );
         for (final memoUid in memoUids) {
-          final paths = await _db.listTagPathsForMemo(txn, memoUid);
+          final paths = await TagDbPersistence.listTagPathsForMemo(
+            txn,
+            memoUid,
+          );
           await _db.updateMemoTagsText(txn, memoUid, paths);
         }
       }
 
-      updated = (await _loadTag(txn, id)) ?? current;
+      updated = (await TagDbPersistence.loadTag(txn, id)) ?? current;
     });
     _db.notifyDataChanged();
     return updated;
@@ -1393,18 +1380,16 @@ WHERE id IN (
   Future<void> deleteTag(int id) async {
     final sqlite = await _db.db;
     await sqlite.transaction((txn) async {
-      final current = await _loadTag(txn, id);
+      final current = await TagDbPersistence.loadTag(txn, id);
       if (current == null) return;
       final parentId = current.parentId;
       final parentPath = parentId == null
           ? ''
-          : (await _loadTag(txn, parentId))?.path ?? '';
+          : (await TagDbPersistence.loadTag(txn, parentId))?.path ?? '';
 
-      final descendants = await txn.query(
-        'tags',
-        columns: const ['id', 'path', 'parent_id'],
-        where: 'path LIKE ?',
-        whereArgs: ['${current.path}/%'],
+      final descendants = await TagDbPersistence.listDescendantRows(
+        txn,
+        current.path,
       );
 
       final affectedIds = <int>{id};
@@ -1420,16 +1405,10 @@ WHERE id IN (
       }
 
       for (final entry in newPaths.entries) {
-        final rows = await txn.query(
-          'tags',
-          columns: const ['id'],
-          where: 'path = ?',
-          whereArgs: [entry.value],
-          limit: 1,
+        final existingId = await TagDbPersistence.findTagIdByPath(
+          txn,
+          entry.value,
         );
-        final existingId = rows.isNotEmpty
-            ? (_readInt(rows.first['id']) ?? 0)
-            : 0;
         if (existingId > 0 && !affectedIds.contains(existingId)) {
           throw StateError('Tag path already exists');
         }
@@ -1440,11 +1419,13 @@ WHERE id IN (
         final tagId = _readInt(row['id']) ?? 0;
         final oldPath = row['path'] as String? ?? '';
         if (tagId <= 0 || oldPath.isEmpty) continue;
-        await txn.insert('tag_aliases', {
-          'tag_id': tagId,
-          'alias': oldPath,
-          'created_time': now,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await TagDbPersistence.insertAliasRow(
+          txn,
+          tagId: tagId,
+          alias: oldPath,
+          createdTimeSec: now,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
       }
 
       final directChildren = <int>{};
@@ -1458,27 +1439,22 @@ WHERE id IN (
       for (final entry in newPaths.entries) {
         final tagId = entry.key;
         final isDirectChild = directChildren.contains(tagId);
-        await txn.update(
-          'tags',
-          {
-            'path': entry.value,
-            'update_time': now,
-            if (isDirectChild) 'parent_id': parentId,
-          },
-          where: 'id = ?',
-          whereArgs: [tagId],
-        );
+        await TagDbPersistence.updateTagValues(txn, tagId, {
+          'path': entry.value,
+          'update_time': now,
+          if (isDirectChild) 'parent_id': parentId,
+        });
       }
 
-      final memoUids = await _db.listMemoUidsByTagIds(
+      final memoUids = await TagDbPersistence.listMemoUidsByTagIds(
         txn,
         affectedIds.toList(growable: false),
       );
 
-      await txn.delete('tags', where: 'id = ?', whereArgs: [id]);
+      await TagDbPersistence.deleteTagById(txn, id);
 
       for (final memoUid in memoUids) {
-        final paths = await _db.listTagPathsForMemo(txn, memoUid);
+        final paths = await TagDbPersistence.listTagPathsForMemo(txn, memoUid);
         await _db.updateMemoTagsText(txn, memoUid, paths);
       }
     });
@@ -1488,17 +1464,9 @@ WHERE id IN (
   Future<void> applyTagSnapshot(TagSnapshot snapshot) async {
     final sqlite = await _db.db;
     await sqlite.transaction((txn) async {
-      final existingTagRows = await txn.query('tags', orderBy: 'id ASC');
-      final existingAliasRows = await txn.query(
-        'tag_aliases',
-        orderBy: 'id ASC',
-      );
-      final existingTags = existingTagRows
-          .map(TagEntity.fromDb)
-          .toList(growable: false);
-      final existingAliases = existingAliasRows
-          .map(TagAliasRecord.fromDb)
-          .toList(growable: false);
+      final existingSnapshot = await TagDbPersistence.readSnapshot(txn);
+      final existingTags = existingSnapshot.tags;
+      final existingAliases = existingSnapshot.aliases;
       final existingTagsByPath = <String, TagEntity>{
         for (final tag in existingTags)
           if (tag.path.trim().isNotEmpty) tag.path: tag,
@@ -1516,28 +1484,21 @@ WHERE id IN (
             .add(alias);
       }
 
-      await txn.delete('memo_tags');
-      await txn.delete('tag_aliases');
-      await txn.delete('tags');
+      await TagDbPersistence.deleteAllRowsForSnapshot(txn);
 
       for (final tag in snapshot.tags) {
-        await txn.insert('tags', {
-          'id': tag.id,
-          'name': tag.name,
-          'parent_id': tag.parentId,
-          'path': tag.path,
-          'pinned': tag.pinned ? 1 : 0,
-          'color_hex': tag.colorHex,
-          'create_time': tag.createTimeSec,
-          'update_time': tag.updateTimeSec,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await TagDbPersistence.insertTagEntity(
+          txn,
+          tag,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       }
       for (final alias in snapshot.aliases) {
-        await txn.insert('tag_aliases', {
-          'tag_id': alias.tagId,
-          'alias': alias.alias,
-          'created_time': alias.createdTimeSec,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await TagDbPersistence.insertAliasRecord(
+          txn,
+          alias,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
       }
 
       final memos = await txn.query('memos', columns: const ['uid', 'tags']);
@@ -1552,25 +1513,20 @@ WHERE id IN (
             .toList(growable: false);
         final resolved = <String, int>{};
         for (final tag in tags) {
-          var entry = await _findResolvedTag(txn, tag);
-          entry ??= await _restoreTagFromExisting(
+          var entry = await TagDbPersistence.findResolvedTag(txn, tag);
+          entry ??= await TagDbPersistence.restoreTagFromExisting(
             txn,
             tag,
             existingTagsByPath: existingTagsByPath,
             existingTagsById: existingTagsById,
             existingAliasesByPath: existingAliasesByPath,
           );
-          if (entry == null) {
-            final created = await _db.resolveTagPath(txn, tag);
-            if (created != null) {
-              entry = _ResolvedTagRef(id: created.id, path: created.path);
-            }
-          }
+          entry ??= await TagDbPersistence.resolvePath(txn, tag);
           if (entry == null) continue;
           final resolvedEntry = entry;
           resolved.putIfAbsent(resolvedEntry.path, () => resolvedEntry.id);
         }
-        await _db.updateMemoTagsMapping(
+        await TagDbPersistence.updateMemoTagsMapping(
           txn,
           uid,
           resolved.values.toList(growable: false),
@@ -1585,133 +1541,6 @@ WHERE id IN (
     _db.notifyDataChanged();
   }
 
-  Future<_ResolvedTagRef?> _findResolvedTag(
-    DatabaseExecutor txn,
-    String rawTag,
-  ) async {
-    final normalized = normalizeTagPath(rawTag);
-    if (normalized.isEmpty) return null;
-
-    final directRows = await txn.query(
-      'tags',
-      columns: const ['id', 'path'],
-      where: 'path = ?',
-      whereArgs: [normalized],
-      limit: 1,
-    );
-    if (directRows.isNotEmpty) {
-      final row = directRows.first;
-      final id = _readInt(row['id']) ?? 0;
-      final path = row['path'] as String? ?? normalized;
-      if (id > 0 && path.trim().isNotEmpty) {
-        return _ResolvedTagRef(id: id, path: path);
-      }
-    }
-
-    final aliasRows = await txn.query(
-      'tag_aliases',
-      columns: const ['tag_id'],
-      where: 'alias = ?',
-      whereArgs: [normalized],
-      limit: 1,
-    );
-    if (aliasRows.isEmpty) return null;
-    final tagId = _readInt(aliasRows.first['tag_id']) ?? 0;
-    if (tagId <= 0) return null;
-    final tagRows = await txn.query(
-      'tags',
-      columns: const ['id', 'path'],
-      where: 'id = ?',
-      whereArgs: [tagId],
-      limit: 1,
-    );
-    if (tagRows.isEmpty) return null;
-    final row = tagRows.first;
-    final path = row['path'] as String? ?? normalized;
-    if (path.trim().isEmpty) return null;
-    return _ResolvedTagRef(id: tagId, path: path);
-  }
-
-  Future<_ResolvedTagRef?> _restoreTagFromExisting(
-    DatabaseExecutor txn,
-    String rawTag, {
-    required Map<String, TagEntity> existingTagsByPath,
-    required Map<int, TagEntity> existingTagsById,
-    required Map<String, List<TagAliasRecord>> existingAliasesByPath,
-  }) async {
-    final normalized = normalizeTagPath(rawTag);
-    if (normalized.isEmpty) return null;
-
-    final existing = existingTagsByPath[normalized];
-    if (existing == null) return null;
-
-    final resolved = await _findResolvedTag(txn, normalized);
-    if (resolved != null) return resolved;
-
-    _ResolvedTagRef? restoredParent;
-    final parentFromId = existing.parentId == null
-        ? null
-        : existingTagsById[existing.parentId!];
-    if (parentFromId != null) {
-      restoredParent = await _restoreTagFromExisting(
-        txn,
-        parentFromId.path,
-        existingTagsByPath: existingTagsByPath,
-        existingTagsById: existingTagsById,
-        existingAliasesByPath: existingAliasesByPath,
-      );
-    } else {
-      final slashIndex = existing.path.lastIndexOf('/');
-      if (slashIndex > 0) {
-        restoredParent = await _restoreTagFromExisting(
-          txn,
-          existing.path.substring(0, slashIndex),
-          existingTagsByPath: existingTagsByPath,
-          existingTagsById: existingTagsById,
-          existingAliasesByPath: existingAliasesByPath,
-        );
-      }
-    }
-
-    await txn.insert('tags', {
-      'name': existing.name,
-      'parent_id': restoredParent?.id,
-      'path': existing.path,
-      'pinned': existing.pinned ? 1 : 0,
-      'color_hex': existing.colorHex,
-      'create_time': existing.createTimeSec,
-      'update_time': existing.updateTimeSec,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-
-    final restored = await _findResolvedTag(txn, existing.path);
-    if (restored == null) return null;
-
-    final aliases =
-        existingAliasesByPath[existing.path] ?? const <TagAliasRecord>[];
-    for (final alias in aliases) {
-      final normalizedAlias = normalizeTagPath(alias.alias);
-      if (normalizedAlias.isEmpty || normalizedAlias == restored.path) continue;
-      await txn.insert('tag_aliases', {
-        'tag_id': restored.id,
-        'alias': normalizedAlias,
-        'created_time': alias.createdTimeSec,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-    return restored;
-  }
-
-  Future<TagEntity?> _loadTag(DatabaseExecutor txn, int id) async {
-    if (id <= 0) return null;
-    final rows = await txn.query(
-      'tags',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    return TagEntity.fromDb(rows.first);
-  }
-
   String _normalizeTagName(String raw) {
     final normalized = normalizeTagPath(raw);
     if (normalized.isEmpty) {
@@ -1721,54 +1550,6 @@ WHERE id IN (
       throw StateError('Tag name cannot contain "/"');
     }
     return normalized;
-  }
-
-  Future<void> _ensureUniqueName(
-    DatabaseExecutor txn, {
-    required String name,
-    required int? parentId,
-    required int? excludeId,
-  }) async {
-    final rows = await txn.query(
-      'tags',
-      columns: const ['id'],
-      where: parentId == null
-          ? 'name = ? AND parent_id IS NULL'
-          : 'name = ? AND parent_id = ?',
-      whereArgs: parentId == null ? [name] : [name, parentId],
-      limit: 1,
-    );
-    final existingId = rows.isNotEmpty ? (_readInt(rows.first['id']) ?? 0) : 0;
-    if (existingId > 0 && existingId != excludeId) {
-      throw StateError('Tag name already exists');
-    }
-  }
-
-  Future<void> _assertNoCycle(
-    DatabaseExecutor txn,
-    int id,
-    int? parentId,
-  ) async {
-    if (parentId == null) return;
-    if (parentId == id) {
-      throw StateError('Tag cannot be its own parent');
-    }
-    int? current = parentId;
-    final visited = <int>{};
-    while (current != null && visited.add(current)) {
-      if (current == id) {
-        throw StateError('Tag hierarchy cycle detected');
-      }
-      final rows = await txn.query(
-        'tags',
-        columns: const ['parent_id'],
-        where: 'id = ?',
-        whereArgs: [current],
-        limit: 1,
-      );
-      if (rows.isEmpty) break;
-      current = _readInt(rows.first['parent_id']);
-    }
   }
 
   int? _readInt(Object? value) {
@@ -1925,7 +1706,7 @@ WHERE id IN (
     final normalizedTags = _normalizeMemoTags(tags);
     final resolved = <String, int>{};
     for (final raw in normalizedTags) {
-      final resolvedTag = await _db.resolveTagPath(executor, raw);
+      final resolvedTag = await TagDbPersistence.resolvePath(executor, raw);
       if (resolvedTag == null) continue;
       resolved.putIfAbsent(resolvedTag.path, () => resolvedTag.id);
     }
@@ -2006,7 +1787,7 @@ WHERE id IN (
       memoUid: uid,
     );
 
-    await _db.updateMemoTagsMapping(
+    await TagDbPersistence.updateMemoTagsMapping(
       executor,
       uid,
       resolved.values.toList(growable: false),
@@ -2248,11 +2029,4 @@ WHERE id IN (
     }
     return normalized;
   }
-}
-
-class _ResolvedTagRef {
-  const _ResolvedTagRef({required this.id, required this.path});
-
-  final int id;
-  final String path;
 }

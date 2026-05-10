@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/tags.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/app_database_write_dao.dart';
 import '../../data/db/db_write_protocol.dart';
 import '../../data/db/desktop_db_write_gateway.dart';
+import '../../data/db/tag_db_persistence.dart';
 import '../../data/models/tag.dart';
 import '../../data/models/tag_snapshot.dart';
 import '../system/database_provider.dart';
@@ -33,22 +33,12 @@ class TagRepository {
 
   Future<List<TagEntity>> listTags() async {
     final sqlite = await _db.db;
-    final rows = await sqlite.query('tags', orderBy: 'path ASC');
-    return rows.map(TagEntity.fromDb).toList(growable: false);
+    return TagDbPersistence.listTags(sqlite);
   }
 
   Future<TagEntity?> getTagByPath(String path) async {
-    final normalized = normalizeTagPath(path);
-    if (normalized.isEmpty) return null;
     final sqlite = await _db.db;
-    final rows = await sqlite.query(
-      'tags',
-      where: 'path = ?',
-      whereArgs: [normalized],
-      limit: 1,
-    );
-    if (rows.isEmpty) return null;
-    return TagEntity.fromDb(rows.first);
+    return TagDbPersistence.getTagByPath(sqlite, path);
   }
 
   bool get _writeProxyEnabled => _writeGateway != null;
@@ -236,13 +226,7 @@ class TagRepository {
 
   Future<TagSnapshot> readSnapshot() async {
     final sqlite = await _db.db;
-    final tagRows = await sqlite.query('tags', orderBy: 'id ASC');
-    final aliasRows = await sqlite.query('tag_aliases', orderBy: 'id ASC');
-    final tags = tagRows.map(TagEntity.fromDb).toList(growable: false);
-    final aliases = aliasRows
-        .map(TagAliasRecord.fromDb)
-        .toList(growable: false);
-    return TagSnapshot(tags: tags, aliases: aliases);
+    return TagDbPersistence.readSnapshot(sqlite);
   }
 
   Future<void> applySnapshot(TagSnapshot snapshot) async {

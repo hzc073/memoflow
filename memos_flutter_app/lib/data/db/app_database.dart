@@ -13,8 +13,11 @@ import 'app_database_write_dao.dart';
 import 'compose_draft_db_persistence.dart';
 import 'memo_search_db_persistence.dart';
 import 'outbox_db_persistence.dart';
+import 'tag_db_persistence.dart';
 import '../models/memo_clip_card_metadata.dart';
 import '../models/memo_location.dart';
+
+export 'tag_db_persistence.dart' show ResolvedTag;
 
 class AppDatabase {
   AppDatabase({
@@ -98,7 +101,7 @@ CREATE TABLE IF NOT EXISTS memos (
 );
 ''');
 
-          await _ensureTagTables(db);
+          await TagDbPersistence.ensureTables(db);
 
           await db.execute('''
 CREATE TABLE IF NOT EXISTS memo_reminders (
@@ -322,7 +325,7 @@ CREATE TABLE IF NOT EXISTS recycle_bin_items (
             );
           }
           if (oldVersion < 13) {
-            await _ensureTagTables(db);
+            await TagDbPersistence.ensureTables(db);
             await _normalizeStoredTags(db);
             await _backfillTagsFromMemos(db);
             await _ensureStatsCache(db, rebuild: true);
@@ -1264,7 +1267,7 @@ CREATE TABLE IF NOT EXISTS memo_inline_image_sources (
   }
 
   Future<ResolvedTag?> resolveTagPath(DatabaseExecutor txn, String rawTag) {
-    return _resolveTagPath(txn, rawTag);
+    return TagDbPersistence.resolvePath(txn, rawTag);
   }
 
   Future<void> updateMemoTagsMapping(
@@ -1272,60 +1275,28 @@ CREATE TABLE IF NOT EXISTS memo_inline_image_sources (
     String memoUid,
     List<int> tagIds,
   ) async {
-    await _updateMemoTagsMapping(txn, memoUid, tagIds);
+    await TagDbPersistence.updateMemoTagsMapping(txn, memoUid, tagIds);
   }
 
   Future<List<String>> listMemoUidsByTagId(
     DatabaseExecutor txn,
     int tagId,
   ) async {
-    return listMemoUidsByTagIds(txn, [tagId]);
+    return TagDbPersistence.listMemoUidsByTagId(txn, tagId);
   }
 
   Future<List<String>> listMemoUidsByTagIds(
     DatabaseExecutor txn,
     List<int> tagIds,
   ) async {
-    if (tagIds.isEmpty) return const [];
-    final placeholders = List.filled(tagIds.length, '?').join(', ');
-    final rows = await txn.rawQuery(
-      'SELECT DISTINCT memo_uid FROM memo_tags WHERE tag_id IN ($placeholders);',
-      tagIds,
-    );
-    final result = <String>[];
-    for (final row in rows) {
-      final uid = row['memo_uid'];
-      if (uid is String && uid.trim().isNotEmpty) {
-        result.add(uid);
-      }
-    }
-    return result;
+    return TagDbPersistence.listMemoUidsByTagIds(txn, tagIds);
   }
 
   Future<List<String>> listTagPathsForMemo(
     DatabaseExecutor txn,
     String memoUid,
   ) async {
-    final normalized = memoUid.trim();
-    if (normalized.isEmpty) return const [];
-    final rows = await txn.rawQuery(
-      '''
-SELECT t.path
-FROM memo_tags mt
-JOIN tags t ON t.id = mt.tag_id
-WHERE mt.memo_uid = ?;
-''',
-      [normalized],
-    );
-    final paths = <String>[];
-    for (final row in rows) {
-      final path = row['path'];
-      if (path is String && path.trim().isNotEmpty) {
-        paths.add(path.trim());
-      }
-    }
-    paths.sort();
-    return paths;
+    return TagDbPersistence.listTagPathsForMemo(txn, memoUid);
   }
 
   Future<void> updateMemoTagsText(
@@ -3317,186 +3288,6 @@ LIMIT 20000;
     _notifyChanged();
   }
 
-  static Future<void> _ensureTagTables(Database db) async {
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS tags (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  parent_id INTEGER,
-  path TEXT NOT NULL UNIQUE,
-  pinned INTEGER NOT NULL DEFAULT 0,
-  color_hex TEXT,
-  create_time INTEGER NOT NULL,
-  update_time INTEGER NOT NULL,
-  FOREIGN KEY (parent_id) REFERENCES tags(id) ON DELETE SET NULL ON UPDATE CASCADE
-);
-''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_tags_parent_id ON tags(parent_id);',
-    );
-    await db.execute(
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_parent_name ON tags(parent_id, name);',
-    );
-
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS tag_aliases (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tag_id INTEGER NOT NULL,
-  alias TEXT NOT NULL UNIQUE,
-  created_time INTEGER NOT NULL,
-  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_tag_aliases_tag_id ON tag_aliases(tag_id);',
-    );
-
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS memo_tags (
-  memo_uid TEXT NOT NULL,
-  tag_id INTEGER NOT NULL,
-  PRIMARY KEY (memo_uid, tag_id),
-  FOREIGN KEY (memo_uid) REFERENCES memos(uid) ON DELETE CASCADE ON UPDATE CASCADE,
-  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_memo_tags_tag_id ON memo_tags(tag_id);',
-    );
-  }
-
-  static Future<ResolvedTag?> _resolveTagPath(
-    DatabaseExecutor txn,
-    String rawTag,
-  ) async {
-    final normalized = normalizeTagPath(rawTag);
-    if (normalized.isEmpty) return null;
-
-    final directRows = await txn.query(
-      'tags',
-      columns: const ['id', 'path'],
-      where: 'path = ?',
-      whereArgs: [normalized],
-      limit: 1,
-    );
-    if (directRows.isNotEmpty) {
-      final row = directRows.first;
-      final id = _readInt(row['id']) ?? 0;
-      final path = row['path'] as String? ?? normalized;
-      if (id > 0) return ResolvedTag(id: id, path: path);
-    }
-
-    final aliasRows = await txn.query(
-      'tag_aliases',
-      columns: const ['tag_id'],
-      where: 'alias = ?',
-      whereArgs: [normalized],
-      limit: 1,
-    );
-    if (aliasRows.isNotEmpty) {
-      final tagId = _readInt(aliasRows.first['tag_id']);
-      if (tagId != null && tagId > 0) {
-        final tagRows = await txn.query(
-          'tags',
-          columns: const ['id', 'path'],
-          where: 'id = ?',
-          whereArgs: [tagId],
-          limit: 1,
-        );
-        if (tagRows.isNotEmpty) {
-          final row = tagRows.first;
-          final path = row['path'] as String? ?? normalized;
-          return ResolvedTag(id: tagId, path: path);
-        }
-      }
-    }
-
-    final parts = normalized
-        .split('/')
-        .where((p) => p.trim().isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return null;
-    int? parentId;
-    var path = '';
-    final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
-    for (final part in parts) {
-      final name = part.trim();
-      if (name.isEmpty) continue;
-      final rows = await txn.query(
-        'tags',
-        columns: const ['id', 'path'],
-        where: parentId == null
-            ? 'name = ? AND parent_id IS NULL'
-            : 'name = ? AND parent_id = ?',
-        whereArgs: parentId == null ? [name] : [name, parentId],
-        limit: 1,
-      );
-      if (rows.isNotEmpty) {
-        final row = rows.first;
-        parentId = _readInt(row['id']);
-        path = row['path'] as String? ?? path;
-        continue;
-      }
-
-      path = path.isEmpty ? name : '$path/$name';
-      final insertedId = await txn.insert('tags', {
-        'name': name,
-        'parent_id': parentId,
-        'path': path,
-        'pinned': 0,
-        'color_hex': null,
-        'create_time': now,
-        'update_time': now,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-      if (insertedId == 0) {
-        final existing = await txn.query(
-          'tags',
-          columns: const ['id', 'path'],
-          where: parentId == null
-              ? 'name = ? AND parent_id IS NULL'
-              : 'name = ? AND parent_id = ?',
-          whereArgs: parentId == null ? [name] : [name, parentId],
-          limit: 1,
-        );
-        if (existing.isNotEmpty) {
-          final row = existing.first;
-          parentId = _readInt(row['id']);
-          path = row['path'] as String? ?? path;
-          continue;
-        }
-      }
-      parentId = insertedId;
-    }
-
-    if (parentId == null || path.isEmpty) return null;
-    return ResolvedTag(id: parentId, path: path);
-  }
-
-  static Future<void> _updateMemoTagsMapping(
-    DatabaseExecutor txn,
-    String memoUid,
-    List<int> tagIds,
-  ) async {
-    final normalizedUid = memoUid.trim();
-    if (normalizedUid.isEmpty) return;
-    await txn.delete(
-      'memo_tags',
-      where: 'memo_uid = ?',
-      whereArgs: [normalizedUid],
-    );
-    if (tagIds.isEmpty) return;
-    final batch = txn.batch();
-    final seen = <int>{};
-    for (final id in tagIds) {
-      if (id <= 0 || !seen.add(id)) continue;
-      batch.insert('memo_tags', {
-        'memo_uid': normalizedUid,
-        'tag_id': id,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-    await batch.commit(noResult: true);
-  }
-
   static Future<void> _backfillTagsFromMemos(Database db) async {
     var lastId = 0;
     while (true) {
@@ -3518,12 +3309,12 @@ CREATE TABLE IF NOT EXISTS memo_tags (
           final tags = _splitTagsText(tagsText);
           final resolved = <String, int>{};
           for (final tag in tags) {
-            final entry = await _resolveTagPath(txn, tag);
+            final entry = await TagDbPersistence.resolvePath(txn, tag);
             if (entry == null) continue;
             resolved[entry.path] = entry.id;
           }
           final canonicalTags = resolved.keys.toList(growable: false)..sort();
-          await _updateMemoTagsMapping(
+          await TagDbPersistence.updateMemoTagsMapping(
             txn,
             uid,
             resolved.values.toList(growable: false),
@@ -4076,13 +3867,6 @@ class _MemoSnapshot {
   final int createTimeSec;
   final String content;
   final List<String> tags;
-}
-
-class ResolvedTag {
-  const ResolvedTag({required this.id, required this.path});
-
-  final int id;
-  final String path;
 }
 
 extension _FirstOrNullExt<T> on List<T> {
