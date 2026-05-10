@@ -228,6 +228,7 @@ final annualInsightsProvider = StreamProvider.family<AnnualInsights, MonthKey>((
       if (value is String) return int.tryParse(value.trim()) ?? 0;
       return 0;
     }
+
     final endMonth = DateTime(monthKey.year, monthKey.month, 1);
     final startMonth = DateTime(endMonth.year, endMonth.month - 11, 1);
     final endExclusive = DateTime(endMonth.year, endMonth.month + 1, 1);
@@ -372,8 +373,6 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
   final mutations = ref.watch(statsCacheMutationServiceProvider);
 
   Future<LocalStats> load() async {
-    final sqlite = await db.db;
-
     int readInt(Object? value) {
       if (value is int) return value;
       if (value is num) return value.toInt();
@@ -391,32 +390,11 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
       return DateTime(y, m, d);
     }
 
-    var statsRows = await sqlite.query(
-      'stats_cache',
-      columns: const [
-        'total_memos',
-        'archived_memos',
-        'total_chars',
-        'min_create_time',
-      ],
-      where: 'id = 1',
-      limit: 1,
-    );
-    if (statsRows.isEmpty) {
+    var statsRow = await db.getStatsCacheRow();
+    if (statsRow == null) {
       await mutations.rebuildStatsCache();
-      statsRows = await sqlite.query(
-        'stats_cache',
-        columns: const [
-          'total_memos',
-          'archived_memos',
-          'total_chars',
-          'min_create_time',
-        ],
-        where: 'id = 1',
-        limit: 1,
-      );
+      statsRow = await db.getStatsCacheRow();
     }
-    final statsRow = statsRows.firstOrNull;
     final totalMemos = readInt(statsRow?['total_memos']);
     final archivedMemos = readInt(statsRow?['archived_memos']);
     final totalChars = readInt(statsRow?['total_chars']);
@@ -434,10 +412,7 @@ final localStatsProvider = StreamProvider<LocalStats>((ref) async* {
     }
 
     final dailyCounts = <DateTime, int>{};
-    final dailyRows = await sqlite.query(
-      'daily_counts_cache',
-      columns: const ['day', 'memo_count'],
-    );
+    final dailyRows = await db.listDailyCountRows();
     for (final row in dailyRows) {
       final dayRaw = row['day'];
       if (dayRaw is! String || dayRaw.trim().isEmpty) continue;
@@ -490,8 +465,4 @@ class _TagColorNode {
   final int? parentId;
   final String? colorHex;
   String? effectiveColorHex;
-}
-
-extension _FirstOrNullExt<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }
