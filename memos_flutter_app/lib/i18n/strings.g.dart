@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 7
-/// Strings: 13910 (1987 per locale)
+/// Strings: 13917 (1988 per locale)
 ///
-/// Built on 2026-05-07 at 13:16 UTC
+/// Built on 2026-05-12 at 15:56 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -1083,6 +1083,7 @@ class _StringsStringsLegacyEn {
 	String get msg_expand_2 => 'Expand';
 	String get msg_close => 'Close';
 	String msg_more_comments({required Object remainingComments}) => '${remainingComments} more comments';
+	String get msg_view_all_comments => 'View all comments';
 	String get msg_backing => 'Backing up…';
 	String get msg_view_debug_logs => 'View debug logs';
 	String get msg_location_permission_denied => 'Location permission denied';
@@ -2079,7 +2080,7 @@ class _StringsStringsSettingsPreferencesEn {
 	String loadFontsFailed({required Object error}) => 'Failed to load fonts: ${error}';
 	String get collapseLongContent => 'Collapse Long Content';
 	String get collapseReferences => 'Collapse References';
-	String get showEngagementInAllMemoDetails => 'Show likes and comments in all memo details';
+	String get showEngagementInAllMemoDetails => 'Show likes and comments on home cards and memo details';
 	String get launchAction => 'Launch Action';
 	String get quickInputKeyboard => 'Auto-open keyboard for Quick Input';
 	String get confirmExitOnBack => 'Confirm on Exit';
@@ -3693,6 +3694,7 @@ class _StringsStringsLegacyDe extends _StringsStringsLegacyEn {
 	@override String get msg_expand_2 => 'Erweitern';
 	@override String get msg_close => 'Schließen';
 	@override String msg_more_comments({required Object remainingComments}) => '${remainingComments} weitere Kommentare';
+	@override String get msg_view_all_comments => 'Alle Kommentare anzeigen';
 	@override String get msg_backing => 'Sicherung wird erstellt…';
 	@override String get msg_view_debug_logs => 'Debug-Protokolle anzeigen';
 	@override String get msg_location_permission_denied => 'Standortberechtigung verweigert';
@@ -4590,7 +4592,7 @@ class _StringsStringsSettingsPreferencesDe extends _StringsStringsSettingsPrefer
 	@override String loadFontsFailed({required Object error}) => 'Schriftarten konnten nicht geladen werden: ${error}';
 	@override String get collapseLongContent => 'Lange Inhalte einklappen';
 	@override String get collapseReferences => 'Referenzen einklappen';
-	@override String get showEngagementInAllMemoDetails => 'Likes und Kommentare in allen Memo-Details anzeigen';
+	@override String get showEngagementInAllMemoDetails => 'Likes und Kommentare auf Startkarten und in Memo-Details anzeigen';
 	@override String get launchAction => 'Aktion beim Start';
 	@override String get quickInputKeyboard => 'Tastatur bei Schnellnotiz automatisch öffnen';
 	@override String get confirmExitOnBack => 'Beenden bestätigen';
@@ -6179,6 +6181,7 @@ class _StringsStringsLegacyJa extends _StringsStringsLegacyEn {
 	@override String get msg_expand_2 => '展開';
 	@override String get msg_close => '閉じる';
 	@override String msg_more_comments({required Object remainingComments}) => 'コメントがあと${remainingComments}件';
+	@override String get msg_view_all_comments => 'すべてのコメントを見る';
 	@override String get msg_backing => 'バックアップ中…';
 	@override String get msg_view_debug_logs => 'デバッグログを表示';
 	@override String get msg_location_permission_denied => '位置情報の権限が拒否されました';
@@ -7076,7 +7079,7 @@ class _StringsStringsSettingsPreferencesJa extends _StringsStringsSettingsPrefer
 	@override String loadFontsFailed({required Object error}) => 'フォントの読み込みに失敗しました: ${error}';
 	@override String get collapseLongContent => '長文を折りたたむ';
 	@override String get collapseReferences => '参照を折りたたむ';
-	@override String get showEngagementInAllMemoDetails => 'すべてのメモ詳細でいいねとコメントを表示';
+	@override String get showEngagementInAllMemoDetails => 'ホームカードとメモ詳細でいいねとコメントを表示';
 	@override String get launchAction => '起動時の動作';
 	@override String get quickInputKeyboard => 'クイック入力で自動的にキーボードを開く';
 	@override String get confirmExitOnBack => '終了時に確認する';
@@ -8657,6 +8660,7 @@ class _StringsStringsLegacyKo extends _StringsStringsLegacyEn {
 	@override String get msg_expand_2 => '확장하다';
 	@override String get msg_close => '닫다';
 	@override String msg_more_comments({required Object remainingComments}) => '${remainingComments} 더 많은 댓글';
+	@override String get msg_view_all_comments => '모든 댓글 보기';
 	@override String get msg_backing => '백업 중…';
 	@override String get msg_view_debug_logs => '디버그 로그 보기';
 	@override String get msg_location_permission_denied => '위치 권한이 거부되었습니다.';
@@ -9653,7 +9657,7 @@ class _StringsStringsSettingsPreferencesKo extends _StringsStringsSettingsPrefer
 	@override String loadFontsFailed({required Object error}) => '글꼴을 로드하지 못했습니다: ${error}';
 	@override String get collapseLongContent => '긴 콘텐츠 접기';
 	@override String get collapseReferences => '참조 축소';
-	@override String get showEngagementInAllMemoDetails => '모든 메모 세부정보에 좋아요와 댓글 표시';
+	@override String get showEngagementInAllMemoDetails => '홈 카드와 메모 세부정보에 좋아요와 댓글 표시';
 	@override String get launchAction => '실행 작업';
 	@override String get quickInputKeyboard => '빠른 입력을 위한 자동 열기 키보드';
 	@override String get confirmExitOnBack => '종료 시 확인';
@@ -11259,6 +11263,7 @@ class _StringsStringsLegacyPtBr extends _StringsStringsLegacyEn {
 	@override String get msg_expand_2 => 'Expandir';
 	@override String get msg_close => 'Fechar';
 	@override String msg_more_comments({required Object remainingComments}) => '${remainingComments} mais comentários';
+	@override String get msg_view_all_comments => 'Ver todos os comentários';
 	@override String get msg_backing => 'Fazendo backup…';
 	@override String get msg_view_debug_logs => 'Ver registros de depuração';
 	@override String get msg_location_permission_denied => 'Permissão de localização negada';
@@ -12255,7 +12260,7 @@ class _StringsStringsSettingsPreferencesPtBr extends _StringsStringsSettingsPref
 	@override String loadFontsFailed({required Object error}) => 'Falha ao carregar fontes: ${error}';
 	@override String get collapseLongContent => 'Recolher conteúdo longo';
 	@override String get collapseReferences => 'Recolher referências';
-	@override String get showEngagementInAllMemoDetails => 'Mostrar curtidas e comentários em todos os detalhes do memorando';
+	@override String get showEngagementInAllMemoDetails => 'Mostrar curtidas e comentários nos cartões iniciais e nos detalhes do memorando';
 	@override String get launchAction => 'Ação de lançamento';
 	@override String get quickInputKeyboard => 'Teclado de abertura automática para entrada rápida';
 	@override String get confirmExitOnBack => 'Confirmar na saída';
@@ -13871,6 +13876,7 @@ class _StringsStringsLegacyZhHans extends _StringsStringsLegacyEn {
 	@override String get msg_expand_2 => '展开更多';
 	@override String get msg_close => '关闭';
 	@override String msg_more_comments({required Object remainingComments}) => '还有 ${remainingComments} 条评论';
+	@override String get msg_view_all_comments => '查看全部评论';
 	@override String get msg_backing => '备份中…';
 	@override String get msg_view_debug_logs => '查看调试记录';
 	@override String get msg_location_permission_denied => '定位权限被拒绝';
@@ -14857,7 +14863,7 @@ class _StringsStringsSettingsPreferencesZhHans extends _StringsStringsSettingsPr
 	@override String loadFontsFailed({required Object error}) => '字体加载失败：${error}';
 	@override String get collapseLongContent => '折叠长内容';
 	@override String get collapseReferences => '折叠引用';
-	@override String get showEngagementInAllMemoDetails => '在全部笔记详情中显示点赞和评论';
+	@override String get showEngagementInAllMemoDetails => '在首页卡片和笔记详情中显示点赞和评论';
 	@override String get launchAction => '启动动作';
 	@override String get quickInputKeyboard => '快速记录时唤醒键盘';
 	@override String get confirmExitOnBack => '退出时确认';
@@ -16472,6 +16478,7 @@ class _StringsStringsLegacyZhHantTw extends _StringsStringsLegacyEn {
 	@override String get msg_expand_2 => '展开更多';
 	@override String get msg_close => '关闭';
 	@override String msg_more_comments({required Object remainingComments}) => '还有 ${remainingComments} 条评论';
+	@override String get msg_view_all_comments => '查看全部評論';
 	@override String get msg_backing => '备份中…';
 	@override String get msg_view_debug_logs => '查看调试记录';
 	@override String get msg_location_permission_denied => '定位权限被拒绝';
@@ -17428,7 +17435,7 @@ class _StringsStringsSettingsPreferencesZhHantTw extends _StringsStringsSettings
 	@override String loadFontsFailed({required Object error}) => '字型載入失敗：${error}';
 	@override String get collapseLongContent => '折疊長內容';
 	@override String get collapseReferences => '折疊引用';
-	@override String get showEngagementInAllMemoDetails => '在全部筆記詳情中顯示按讚和評論';
+	@override String get showEngagementInAllMemoDetails => '在首頁卡片和筆記詳情中顯示按讚和評論';
 	@override String get launchAction => '啟動動作';
 	@override String get quickInputKeyboard => '快速記錄時自動開啟鍵盤';
 	@override String get confirmExitOnBack => '退出時確認';
@@ -18155,7 +18162,7 @@ extension on Translations {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'Failed to load fonts: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return 'Collapse Long Content';
 			case 'strings.settings.preferences.collapseReferences': return 'Collapse References';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Show likes and comments in all memo details';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Show likes and comments on home cards and memo details';
 			case 'strings.settings.preferences.launchAction': return 'Launch Action';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Auto-open keyboard for Quick Input';
 			case 'strings.settings.preferences.confirmExitOnBack': return 'Confirm on Exit';
@@ -19027,6 +19034,7 @@ extension on Translations {
 			case 'strings.legacy.msg_expand_2': return 'Expand';
 			case 'strings.legacy.msg_close': return 'Close';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => '${remainingComments} more comments';
+			case 'strings.legacy.msg_view_all_comments': return 'View all comments';
 			case 'strings.legacy.msg_backing': return 'Backing up…';
 			case 'strings.legacy.msg_view_debug_logs': return 'View debug logs';
 			case 'strings.legacy.msg_location_permission_denied': return 'Location permission denied';
@@ -20187,7 +20195,7 @@ extension on _StringsDe {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'Schriftarten konnten nicht geladen werden: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return 'Lange Inhalte einklappen';
 			case 'strings.settings.preferences.collapseReferences': return 'Referenzen einklappen';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Likes und Kommentare in allen Memo-Details anzeigen';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Likes und Kommentare auf Startkarten und in Memo-Details anzeigen';
 			case 'strings.settings.preferences.launchAction': return 'Aktion beim Start';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Tastatur bei Schnellnotiz automatisch öffnen';
 			case 'strings.settings.preferences.confirmExitOnBack': return 'Beenden bestätigen';
@@ -21052,6 +21060,7 @@ extension on _StringsDe {
 			case 'strings.legacy.msg_expand_2': return 'Erweitern';
 			case 'strings.legacy.msg_close': return 'Schließen';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => '${remainingComments} weitere Kommentare';
+			case 'strings.legacy.msg_view_all_comments': return 'Alle Kommentare anzeigen';
 			case 'strings.legacy.msg_backing': return 'Sicherung wird erstellt…';
 			case 'strings.legacy.msg_view_debug_logs': return 'Debug-Protokolle anzeigen';
 			case 'strings.legacy.msg_location_permission_denied': return 'Standortberechtigung verweigert';
@@ -22113,7 +22122,7 @@ extension on _StringsJa {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'フォントの読み込みに失敗しました: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '長文を折りたたむ';
 			case 'strings.settings.preferences.collapseReferences': return '参照を折りたたむ';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'すべてのメモ詳細でいいねとコメントを表示';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'ホームカードとメモ詳細でいいねとコメントを表示';
 			case 'strings.settings.preferences.launchAction': return '起動時の動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'クイック入力で自動的にキーボードを開く';
 			case 'strings.settings.preferences.confirmExitOnBack': return '終了時に確認する';
@@ -22978,6 +22987,7 @@ extension on _StringsJa {
 			case 'strings.legacy.msg_expand_2': return '展開';
 			case 'strings.legacy.msg_close': return '閉じる';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => 'コメントがあと${remainingComments}件';
+			case 'strings.legacy.msg_view_all_comments': return 'すべてのコメントを見る';
 			case 'strings.legacy.msg_backing': return 'バックアップ中…';
 			case 'strings.legacy.msg_view_debug_logs': return 'デバッグログを表示';
 			case 'strings.legacy.msg_location_permission_denied': return '位置情報の権限が拒否されました';
@@ -24039,7 +24049,7 @@ extension on _StringsKo {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => '글꼴을 로드하지 못했습니다: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '긴 콘텐츠 접기';
 			case 'strings.settings.preferences.collapseReferences': return '참조 축소';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '모든 메모 세부정보에 좋아요와 댓글 표시';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '홈 카드와 메모 세부정보에 좋아요와 댓글 표시';
 			case 'strings.settings.preferences.launchAction': return '실행 작업';
 			case 'strings.settings.preferences.quickInputKeyboard': return '빠른 입력을 위한 자동 열기 키보드';
 			case 'strings.settings.preferences.confirmExitOnBack': return '종료 시 확인';
@@ -24911,6 +24921,7 @@ extension on _StringsKo {
 			case 'strings.legacy.msg_expand_2': return '확장하다';
 			case 'strings.legacy.msg_close': return '닫다';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => '${remainingComments} 더 많은 댓글';
+			case 'strings.legacy.msg_view_all_comments': return '모든 댓글 보기';
 			case 'strings.legacy.msg_backing': return '백업 중…';
 			case 'strings.legacy.msg_view_debug_logs': return '디버그 로그 보기';
 			case 'strings.legacy.msg_location_permission_denied': return '위치 권한이 거부되었습니다.';
@@ -26071,7 +26082,7 @@ extension on _StringsPtBr {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => 'Falha ao carregar fontes: ${error}';
 			case 'strings.settings.preferences.collapseLongContent': return 'Recolher conteúdo longo';
 			case 'strings.settings.preferences.collapseReferences': return 'Recolher referências';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Mostrar curtidas e comentários em todos os detalhes do memorando';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return 'Mostrar curtidas e comentários nos cartões iniciais e nos detalhes do memorando';
 			case 'strings.settings.preferences.launchAction': return 'Ação de lançamento';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Teclado de abertura automática para entrada rápida';
 			case 'strings.settings.preferences.confirmExitOnBack': return 'Confirmar na saída';
@@ -26943,6 +26954,7 @@ extension on _StringsPtBr {
 			case 'strings.legacy.msg_expand_2': return 'Expandir';
 			case 'strings.legacy.msg_close': return 'Fechar';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => '${remainingComments} mais comentários';
+			case 'strings.legacy.msg_view_all_comments': return 'Ver todos os comentários';
 			case 'strings.legacy.msg_backing': return 'Fazendo backup…';
 			case 'strings.legacy.msg_view_debug_logs': return 'Ver registros de depuração';
 			case 'strings.legacy.msg_location_permission_denied': return 'Permissão de localização negada';
@@ -28103,7 +28115,7 @@ extension on _StringsZhHans {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => '字体加载失败：${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '折叠长内容';
 			case 'strings.settings.preferences.collapseReferences': return '折叠引用';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在全部笔记详情中显示点赞和评论';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在首页卡片和笔记详情中显示点赞和评论';
 			case 'strings.settings.preferences.launchAction': return '启动动作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速记录时唤醒键盘';
 			case 'strings.settings.preferences.confirmExitOnBack': return '退出时确认';
@@ -28985,6 +28997,7 @@ extension on _StringsZhHans {
 			case 'strings.legacy.msg_expand_2': return '展开更多';
 			case 'strings.legacy.msg_close': return '关闭';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => '还有 ${remainingComments} 条评论';
+			case 'strings.legacy.msg_view_all_comments': return '查看全部评论';
 			case 'strings.legacy.msg_backing': return '备份中…';
 			case 'strings.legacy.msg_view_debug_logs': return '查看调试记录';
 			case 'strings.legacy.msg_location_permission_denied': return '定位权限被拒绝';
@@ -30135,7 +30148,7 @@ extension on _StringsZhHantTw {
 			case 'strings.settings.preferences.loadFontsFailed': return ({required Object error}) => '字型載入失敗：${error}';
 			case 'strings.settings.preferences.collapseLongContent': return '折疊長內容';
 			case 'strings.settings.preferences.collapseReferences': return '折疊引用';
-			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在全部筆記詳情中顯示按讚和評論';
+			case 'strings.settings.preferences.showEngagementInAllMemoDetails': return '在首頁卡片和筆記詳情中顯示按讚和評論';
 			case 'strings.settings.preferences.launchAction': return '啟動動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速記錄時自動開啟鍵盤';
 			case 'strings.settings.preferences.confirmExitOnBack': return '退出時確認';
@@ -31001,6 +31014,7 @@ extension on _StringsZhHantTw {
 			case 'strings.legacy.msg_expand_2': return '展开更多';
 			case 'strings.legacy.msg_close': return '关闭';
 			case 'strings.legacy.msg_more_comments': return ({required Object remainingComments}) => '还有 ${remainingComments} 条评论';
+			case 'strings.legacy.msg_view_all_comments': return '查看全部評論';
 			case 'strings.legacy.msg_backing': return '备份中…';
 			case 'strings.legacy.msg_view_debug_logs': return '查看调试记录';
 			case 'strings.legacy.msg_location_permission_denied': return '定位权限被拒绝';

@@ -109,7 +109,7 @@ settings:
     loadFontsFailed: 'Falha ao carregar fontes: $error'
     collapseLongContent: Recolher conteúdo longo
     collapseReferences: Recolher referências
-    showEngagementInAllMemoDetails: Mostrar curtidas e comentários em todos os detalhes do memorando
+    showEngagementInAllMemoDetails: Mostrar curtidas e comentários nos cartões iniciais e nos detalhes do memorando
     launchAction: Ação de lançamento
     quickInputKeyboard: Teclado de abertura automática para entrada rápida
     confirmExitOnBack: Confirmar na saída
@@ -1003,6 +1003,7 @@ legacy:
   msg_expand_2: Expandir
   msg_close: Fechar
   msg_more_comments: $remainingComments mais comentários
+  msg_view_all_comments: "Ver todos os comentários"
   msg_backing: Fazendo backup…
   msg_view_debug_logs: Ver registros de depuração
   msg_location_permission_denied: Permissão de localização negada

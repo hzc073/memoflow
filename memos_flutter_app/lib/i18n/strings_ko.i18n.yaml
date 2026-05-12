@@ -110,7 +110,7 @@ settings:
     loadFontsFailed: '글꼴을 로드하지 못했습니다: $error'
     collapseLongContent: 긴 콘텐츠 접기
     collapseReferences: 참조 축소
-    showEngagementInAllMemoDetails: 모든 메모 세부정보에 좋아요와 댓글 표시
+    showEngagementInAllMemoDetails: 홈 카드와 메모 세부정보에 좋아요와 댓글 표시
     launchAction: 실행 작업
     quickInputKeyboard: 빠른 입력을 위한 자동 열기 키보드
     confirmExitOnBack: 종료 시 확인
@@ -1008,6 +1008,7 @@ legacy:
   msg_expand_2: 확장하다
   msg_close: 닫다
   msg_more_comments: $remainingComments 더 많은 댓글
+  msg_view_all_comments: "모든 댓글 보기"
   msg_backing: 백업 중…
   msg_view_debug_logs: 디버그 로그 보기
   msg_location_permission_denied: 위치 권한이 거부되었습니다.

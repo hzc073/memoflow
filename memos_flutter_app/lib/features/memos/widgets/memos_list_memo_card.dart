@@ -32,6 +32,7 @@ import '../memo_location_line.dart';
 import '../memo_markdown.dart';
 import '../memo_media_grid.dart';
 import 'audio_row.dart';
+import 'memo_engagement_surface.dart';
 import '../../../i18n/strings.g.dart';
 
 enum MemoSyncStatus { none, pending, failed }
@@ -280,6 +281,7 @@ class MemoListCard extends StatefulWidget {
     required this.highlightQuery,
     required this.collapseLongContent,
     required this.collapseReferences,
+    this.showEngagement = false,
     required this.isAudioPlaying,
     required this.isAudioLoading,
     required this.audioPositionListenable,
@@ -322,6 +324,7 @@ class MemoListCard extends StatefulWidget {
   final String? highlightQuery;
   final bool collapseLongContent;
   final bool collapseReferences;
+  final bool showEngagement;
   final bool isAudioPlaying;
   final bool isAudioLoading;
   final ValueListenable<Duration>? audioPositionListenable;
@@ -997,6 +1000,12 @@ class MemoListCardState extends State<MemoListCard> {
                 ),
               ),
             ],
+            if (widget.showEngagement)
+              MemoEngagementSurface(
+                memoUid: memo.uid,
+                memoVisibility: memo.visibility,
+                mode: MemoEngagementSurfaceMode.compact,
+              ),
           ],
         ),
         MemoRelationsSection(

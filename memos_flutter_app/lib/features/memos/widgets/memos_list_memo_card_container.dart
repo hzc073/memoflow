@@ -270,6 +270,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
       highlightQuery: trimmedSearchQuery.isEmpty ? null : trimmedSearchQuery,
       collapseLongContent: prefs.collapseLongContent,
       collapseReferences: prefs.collapseReferences,
+      showEngagement: prefs.showEngagementInAllMemoDetails && account != null,
       isAudioPlaying: removing ? false : isAudioPlaying,
       isAudioLoading: removing ? false : isAudioLoading,
       audioPositionListenable: removing || !isAudioActive

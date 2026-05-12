@@ -14,13 +14,17 @@ import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/data/models/memo.dart';
 import 'package:memos_flutter_app/data/models/memo_relation.dart';
+import 'package:memos_flutter_app/data/models/reaction.dart';
 import 'package:memos_flutter_app/features/memos/memo_detail_screen.dart';
 import 'package:memos_flutter_app/features/memos/memo_hero_flight.dart';
 import 'package:memos_flutter_app/features/memos/memo_inline_image_syntax.dart';
 import 'package:memos_flutter_app/features/memos/memo_markdown.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memo_engagement_surface.dart';
 import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/state/memos/memo_engagement_provider.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
@@ -461,28 +465,65 @@ void main() {
     final detailHero = tester.widget<Hero>(find.byType(Hero).last);
     expect(detailHero.tag, memoHeroTagForMemo(memo));
   });
+
+  testWidgets('detail engagement surface renders likes and comments', (
+    tester,
+  ) async {
+    final memo = _buildMemo(uid: 'memo-engagement');
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        memo: memo,
+        showEngagement: true,
+        engagementClient: _FakeMemoEngagementClient(
+          reactions: [_reaction()],
+          comments: [_comment('detail comment')],
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('open-detail')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(memoEngagementSurfaceKey), findsOneWidget);
+    expect(find.text('Like 1'), findsOneWidget);
+    expect(find.text('Comment 1'), findsOneWidget);
+    expect(
+      find.textContaining('detail comment', findRichText: true),
+      findsOneWidget,
+    );
+  });
 }
 
-Widget _buildTestApp({required LocalMemo memo}) {
+Widget _buildTestApp({
+  required LocalMemo memo,
+  bool showEngagement = false,
+  MemoEngagementClient? engagementClient,
+}) {
   LocaleSettings.setLocale(AppLocale.en);
+  final overrides = <Override>[
+    appSessionProvider.overrideWith((ref) => _TestSessionController()),
+    appPreferencesProvider.overrideWith(
+      (ref) => _TestAppPreferencesController(ref),
+    ),
+    tagColorLookupProvider.overrideWith((ref) => TagColorLookup(const [])),
+    memoRelationsProvider.overrideWith(
+      (ref, memoUid) =>
+          Stream<List<MemoRelation>>.value(const <MemoRelation>[]),
+    ),
+  ];
+  if (engagementClient != null) {
+    overrides.add(
+      memoEngagementClientProvider.overrideWithValue(engagementClient),
+    );
+  }
   return ProviderScope(
-    overrides: [
-      appSessionProvider.overrideWith((ref) => _TestSessionController()),
-      appPreferencesProvider.overrideWith(
-        (ref) => _TestAppPreferencesController(ref),
-      ),
-      tagColorLookupProvider.overrideWith((ref) => TagColorLookup(const [])),
-      memoRelationsProvider.overrideWith(
-        (ref, memoUid) =>
-            Stream<List<MemoRelation>>.value(const <MemoRelation>[]),
-      ),
-    ],
+    overrides: overrides,
     child: TranslationProvider(
       child: MaterialApp(
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: _DetailRouteLauncher(memo: memo),
+        home: _DetailRouteLauncher(memo: memo, showEngagement: showEngagement),
       ),
     ),
   );
@@ -518,9 +559,13 @@ Widget _buildPrimaryContentTestApp({
 }
 
 class _DetailRouteLauncher extends StatelessWidget {
-  const _DetailRouteLauncher({required this.memo});
+  const _DetailRouteLauncher({
+    required this.memo,
+    required this.showEngagement,
+  });
 
   final LocalMemo memo;
+  final bool showEngagement;
 
   @override
   Widget build(BuildContext context) {
@@ -541,7 +586,10 @@ class _DetailRouteLauncher extends StatelessWidget {
                       milliseconds: 400,
                     ),
                     pageBuilder: (context, animation, secondaryAnimation) =>
-                        MemoDetailScreen(initialMemo: memo),
+                        MemoDetailScreen(
+                          initialMemo: memo,
+                          showEngagement: showEngagement,
+                        ),
                     transitionsBuilder:
                         (context, animation, secondaryAnimation, child) {
                           return FadeTransition(
@@ -597,6 +645,95 @@ Attachment _imageAttachment(String externalLink) {
 
 String _tempPath(String filename) {
   return p.join(Directory.systemTemp.path, 'memo-detail-inline', filename);
+}
+
+Reaction _reaction({
+  String name = 'reactions/reaction-1',
+  String creator = 'users/me',
+  String reactionType = '❤️',
+}) {
+  return Reaction(
+    name: name,
+    creator: creator,
+    contentId: 'memos/memo-engagement',
+    reactionType: reactionType,
+  );
+}
+
+Memo _comment(String content) {
+  final now = DateTime.utc(2024, 1, 2, 3, 4, 5);
+  return Memo(
+    name: 'memos/comment-1',
+    creator: 'users/me',
+    content: content,
+    contentFingerprint: computeContentFingerprint(content),
+    visibility: 'PRIVATE',
+    pinned: false,
+    state: 'NORMAL',
+    createTime: now,
+    updateTime: now,
+    tags: const <String>[],
+    attachments: const <Attachment>[],
+  );
+}
+
+class _FakeMemoEngagementClient implements MemoEngagementClient {
+  _FakeMemoEngagementClient({
+    List<Reaction> reactions = const <Reaction>[],
+    List<Memo> comments = const <Memo>[],
+  }) : _reactions = List<Reaction>.from(reactions),
+       _comments = List<Memo>.from(comments);
+
+  List<Reaction> _reactions;
+  final List<Memo> _comments;
+
+  @override
+  Future<({List<Reaction> reactions, String nextPageToken, int totalSize})>
+  listMemoReactions({required String memoUid, int pageSize = 50}) async {
+    return (
+      reactions: List<Reaction>.from(_reactions),
+      nextPageToken: '',
+      totalSize: _reactions.length,
+    );
+  }
+
+  @override
+  Future<({List<Memo> memos, String nextPageToken, int totalSize})>
+  listMemoComments({required String memoUid, int pageSize = 50}) async {
+    return (
+      memos: List<Memo>.from(_comments),
+      nextPageToken: '',
+      totalSize: _comments.length,
+    );
+  }
+
+  @override
+  Future<Reaction> upsertMemoReaction({
+    required String memoUid,
+    required String reactionType,
+  }) async {
+    final reaction = _reaction(reactionType: reactionType);
+    _reactions.add(reaction);
+    return reaction;
+  }
+
+  @override
+  Future<void> deleteMemoReaction({required Reaction reaction}) async {
+    _reactions = _reactions
+        .where((item) => item.name != reaction.name)
+        .toList();
+  }
+
+  @override
+  Future<Memo> createMemoComment({
+    required String memoUid,
+    required String content,
+    required String visibility,
+  }) async {
+    final comment = _comment(content);
+    _comments.insert(0, comment);
+    return comment;
+  }
 }
 
 class _TestSessionController extends AppSessionController {
