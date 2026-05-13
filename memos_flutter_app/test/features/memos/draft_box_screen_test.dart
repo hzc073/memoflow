@@ -13,6 +13,7 @@ import 'package:memos_flutter_app/application/sync/webdav_backup_service.dart';
 import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/core/memoflow_palette.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
+import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/compose_draft.dart';
@@ -21,6 +22,7 @@ import 'package:memos_flutter_app/data/models/local_memo.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/memo_location.dart';
 import 'package:memos_flutter_app/data/models/memo_relation.dart';
+import 'package:memos_flutter_app/data/models/memo_collection.dart';
 import 'package:memos_flutter_app/data/models/shortcut.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
 import 'package:memos_flutter_app/data/models/user_setting.dart';
@@ -28,8 +30,12 @@ import 'package:memos_flutter_app/data/models/webdav_backup.dart';
 import 'package:memos_flutter_app/data/models/webdav_export_status.dart';
 import 'package:memos_flutter_app/data/models/webdav_settings.dart';
 import 'package:memos_flutter_app/data/models/webdav_sync_meta.dart';
+import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
+import 'package:memos_flutter_app/features/home/app_drawer.dart';
+import 'package:memos_flutter_app/features/home/home_entry_screen.dart';
 import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
+import 'package:memos_flutter_app/features/collections/collections_screen.dart';
 import 'package:memos_flutter_app/features/memos/draft_box_navigation_screen.dart';
 import 'package:memos_flutter_app/features/memos/memo_editor_screen.dart';
 import 'package:memos_flutter_app/features/memos/memo_markdown.dart';
@@ -37,6 +43,8 @@ import 'package:memos_flutter_app/features/memos/note_input_sheet.dart';
 import 'package:memos_flutter_app/features/memos/widgets/draft_box_memo_card.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/compose_draft_provider.dart';
+import 'package:memos_flutter_app/state/collections/collection_resolver.dart';
+import 'package:memos_flutter_app/state/collections/collections_provider.dart';
 import 'package:memos_flutter_app/state/memos/memo_composer_state.dart';
 import 'package:memos_flutter_app/state/memos/memo_editor_controller.dart';
 import 'package:memos_flutter_app/state/memos/memo_editor_draft_provider.dart';
@@ -48,12 +56,26 @@ import 'package:memos_flutter_app/state/settings/preferences_migration_service.d
 import 'package:memos_flutter_app/state/settings/user_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
 import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
+import 'package:memos_flutter_app/state/system/database_provider.dart';
+import 'package:memos_flutter_app/state/system/local_library_provider.dart';
+import 'package:memos_flutter_app/state/system/notifications_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
 import 'package:memos_flutter_app/state/tags/tag_color_lookup.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {
-  setUp(() => LocaleSettings.setLocale(AppLocale.en));
+  setUp(() {
+    LocaleSettings.setLocale(AppLocale.en);
+    HomeEntryScreen.debugClassicScreenBuilderOverride = (_) =>
+        const Text('classic-home');
+    HomeEntryScreen.debugBottomNavShellBuilderOverride = (_) =>
+        const Text('bottom-nav-home');
+  });
+
+  tearDown(() {
+    HomeEntryScreen.debugClassicScreenBuilderOverride = null;
+    HomeEntryScreen.debugBottomNavShellBuilderOverride = null;
+  });
 
   testWidgets('renders draft cards with delete buttons instead of more menu', (
     tester,
@@ -301,6 +323,149 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('standalone Draft Box back returns to HomeEntryScreen', (
+    tester,
+  ) async {
+    final repository = _FakeComposeDraftRepository([
+      _buildDraft(uid: 'draft-nav', content: 'Navigation draft content'),
+    ]);
+    addTearDown(repository.dispose);
+    final container = _buildNavigationContainer(repository);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: const MediaQuery(
+              data: MediaQueryData(size: Size(430, 900)),
+              child: DraftBoxNavigationScreen(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _pumpRouteFrames(tester);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('classic-home'), findsOneWidget);
+    expect(find.byType(DraftBoxNavigationScreen), findsNothing);
+    expect(find.text('bottom-nav-home'), findsNothing);
+  });
+
+  testWidgets('embedded Draft Box back delegates to host', (tester) async {
+    final repository = _FakeComposeDraftRepository([
+      _buildDraft(uid: 'draft-nav', content: 'Navigation draft content'),
+    ]);
+    addTearDown(repository.dispose);
+    final container = _buildNavigationContainer(repository);
+    addTearDown(container.dispose);
+    final host = _TestHomeEmbeddedNavigationHost();
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: MediaQuery(
+              data: const MediaQueryData(size: Size(430, 900)),
+              child: DraftBoxNavigationScreen(
+                presentation: HomeScreenPresentation.embeddedBottomNav,
+                embeddedNavigationHost: host,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _pumpRouteFrames(tester);
+
+    await tester.binding.handlePopRoute();
+    await _pumpRouteFrames(tester);
+
+    expect(host.backToPrimaryCount, 1);
+    expect(find.byType(DraftBoxNavigationScreen), findsOneWidget);
+    expect(find.text('classic-home'), findsNothing);
+    expect(find.text('bottom-nav-home'), findsNothing);
+  });
+
+  testWidgets('standalone Collections back returns to HomeEntryScreen', (
+    tester,
+  ) async {
+    final container = _buildNavigationContainer(
+      _FakeComposeDraftRepository(const []),
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: const MediaQuery(
+              data: MediaQueryData(size: Size(430, 900)),
+              child: CollectionsScreen(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('classic-home'), findsOneWidget);
+    expect(find.byType(CollectionsScreen), findsNothing);
+    expect(find.text('bottom-nav-home'), findsNothing);
+  });
+
+  testWidgets('embedded Collections back delegates to host', (tester) async {
+    final container = _buildNavigationContainer(
+      _FakeComposeDraftRepository(const []),
+    );
+    addTearDown(container.dispose);
+    final host = _TestHomeEmbeddedNavigationHost();
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: MediaQuery(
+              data: const MediaQueryData(size: Size(430, 900)),
+              child: CollectionsScreen(embeddedNavigationHost: host),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(host.backToPrimaryCount, 1);
+    expect(find.byType(CollectionsScreen), findsOneWidget);
+    expect(find.text('classic-home'), findsNothing);
+    expect(find.text('bottom-nav-home'), findsNothing);
   });
 
   testWidgets('edit drafts show label and open memo editor from navigation', (
@@ -578,21 +743,64 @@ ProviderContainer _buildNavigationContainer(
       noteDraftRepositoryProvider.overrideWith(
         (ref) => _FakeNoteDraftRepository(),
       ),
+      databaseProvider.overrideWithValue(_FakeAppDatabase()),
       currentWorkspacePreferencesProvider.overrideWith(
         (ref) => _TestWorkspacePreferencesController(ref),
       ),
       workspacePreferencesLoadedProvider.overrideWith((ref) => true),
+      currentLocalLibraryProvider.overrideWith((ref) => null),
       tagStatsProvider.overrideWith((ref) => Stream.value(const <TagStat>[])),
       tagColorLookupProvider.overrideWith(
         (ref) => TagColorLookup(const <TagStat>[]),
       ),
+      collectionsDashboardProvider.overrideWith(
+        (ref) => AsyncValue.data(<MemoCollectionDashboardItem>[
+          _buildCollectionDashboardItem(),
+        ]),
+      ),
       userGeneralSettingProvider.overrideWith(
         (ref) async => const UserGeneralSetting(),
       ),
+      unreadNotificationCountProvider.overrideWith((ref) => 0),
       appSessionProvider.overrideWith((ref) => _TestSessionController()),
       syncCoordinatorProvider.overrideWith((ref) => _NoopSyncFacade()),
     ],
   );
+}
+
+MemoCollectionDashboardItem _buildCollectionDashboardItem() {
+  return MemoCollectionDashboardItem(
+    collection: MemoCollection.createSmart(
+      id: 'smart-1',
+      title: 'Reading shelf',
+      rules: const CollectionRuleSet(
+        tagPaths: <String>['reading'],
+        tagMatchMode: CollectionTagMatchMode.any,
+        includeDescendants: true,
+        visibility: CollectionVisibilityScope.all,
+        dateRule: CollectionDateRule.defaults,
+        attachmentRule: CollectionAttachmentRule.any,
+        pinnedOnly: false,
+      ),
+    ),
+    preview: MemoCollectionPreview(
+      itemCount: 1,
+      imageItemCount: 0,
+      latestUpdateTime: DateTime(2024, 2, 1),
+      sampleItems: const [],
+      coverAttachment: null,
+      effectiveAccentColorHex: null,
+      ruleSummary: '#reading / Any tag',
+    ),
+    items: const [],
+  );
+}
+
+class _FakeAppDatabase extends AppDatabase {
+  _FakeAppDatabase() : super(dbName: 'fake.db');
+
+  @override
+  Future<int> countOutboxPending() async => 0;
 }
 
 class _FakeComposeDraftRepository implements ComposeDraftRepository {
@@ -945,6 +1153,36 @@ class _FakeMemosListController implements MemosListController {
       filter: filter,
     );
   }
+}
+
+class _TestHomeEmbeddedNavigationHost implements HomeEmbeddedNavigationHost {
+  int backToPrimaryCount = 0;
+
+  @override
+  void clearGlobalSwipeExclusionRects(HomeRootDestination destination) {}
+
+  @override
+  void handleBackToPrimaryDestination(BuildContext context) {
+    backToPrimaryCount += 1;
+  }
+
+  @override
+  void handleDrawerDestination(
+    BuildContext context,
+    AppDrawerDestination destination,
+  ) {}
+
+  @override
+  void handleDrawerTag(BuildContext context, String tag) {}
+
+  @override
+  void handleOpenNotifications(BuildContext context) {}
+
+  @override
+  void updateGlobalSwipeExclusionRects(
+    HomeRootDestination destination,
+    List<Rect> rects,
+  ) {}
 }
 
 class _TestWorkspacePreferencesRepository

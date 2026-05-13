@@ -22,6 +22,7 @@ import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../home/desktop/windows_desktop_page_shell.dart';
+import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memos_list_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -106,6 +107,23 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       return;
     }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
+  }
+
+  void _backToHome(BuildContext context) {
+    final host = widget.embeddedNavigationHost;
+    if (host != null) {
+      host.handleBackToPrimaryDestination(context);
+      return;
+    }
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const HomeEntryScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _openEditor(BuildContext context, {MemoCollection? initial}) {
@@ -372,7 +390,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
 
-    return Focus(
+    final content = Focus(
       focusNode: _keyboardFocusNode,
       child: CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
@@ -622,6 +640,15 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
                     : body,
               ),
       ),
+    );
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _backToHome(context);
+      },
+      child: content,
     );
   }
 

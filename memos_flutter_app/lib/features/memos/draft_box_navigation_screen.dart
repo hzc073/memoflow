@@ -10,6 +10,7 @@ import '../../state/memos/compose_draft_provider.dart';
 import '../../state/memos/memos_list_providers.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
+import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../notifications/notifications_screen.dart';
 import 'draft_box_screen.dart';
@@ -55,6 +56,23 @@ class _DraftBoxNavigationScreenState
       return;
     }
     closeDrawerThenPushReplacement(context, const NotificationsScreen());
+  }
+
+  void _handleBackToHome() {
+    final host = widget.embeddedNavigationHost;
+    if (host != null) {
+      host.handleBackToPrimaryDestination(context);
+      return;
+    }
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const HomeEntryScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _handleDraftSelected(DraftBoxSelection selection) async {
@@ -118,16 +136,23 @@ class _DraftBoxNavigationScreenState
 
   @override
   Widget build(BuildContext context) {
-    return DraftBoxScreen(
-      key: _screenKey,
-      selected: AppDrawerDestination.draftBox,
-      showDrawer: true,
-      onSelect: _navigateDrawer,
-      onOpenNotifications: _openNotifications,
-      presentation: widget.presentation,
-      embeddedNavigationHost: widget.embeddedNavigationHost,
-      onDraftSelected: (selection) =>
-          unawaited(_handleDraftSelected(selection)),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBackToHome();
+      },
+      child: DraftBoxScreen(
+        key: _screenKey,
+        selected: AppDrawerDestination.draftBox,
+        showDrawer: true,
+        onSelect: _navigateDrawer,
+        onOpenNotifications: _openNotifications,
+        presentation: widget.presentation,
+        embeddedNavigationHost: widget.embeddedNavigationHost,
+        onDraftSelected: (selection) =>
+            unawaited(_handleDraftSelected(selection)),
+      ),
     );
   }
 }
