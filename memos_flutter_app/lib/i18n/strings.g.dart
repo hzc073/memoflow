@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 7
-/// Strings: 14326 (2046 per locale)
+/// Strings: 14449 (2064 per locale)
 ///
-/// Built on 2026-05-15 at 10:05 UTC
+/// Built on 2026-05-15 at 14:07 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -3134,6 +3134,15 @@ class _StringsStringsCollectionsRssEn {
   String get fullContentEnabled => 'Fetch full articles';
   String get fullContentEnabledDescription =>
       'Try to fetch readable article pages during feed refresh.';
+  String get autoRefreshOnOpen => 'Refresh when opened';
+  String get autoRefreshOnOpenDescription =>
+      'After opening this RSS collection, refresh stale feeds without blocking reading.';
+  String get autoRefreshInterval => 'Refresh interval';
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      'Every ${minutes} min';
+  String autoRefreshIntervalHours({required Object hours}) =>
+      'Every ${hours} h';
+  String autoRefreshIntervalDays({required Object days}) => 'Every ${days} d';
   String get refreshing => 'Refreshing RSS feeds...';
   String get noFeeds => 'No RSS feeds in this collection';
   String get noArticles => 'No RSS articles yet';
@@ -8387,6 +8396,21 @@ class _StringsStringsCollectionsRssDe extends _StringsStringsCollectionsRssEn {
   String get fullContentEnabledDescription =>
       'Versucht, lesbare Artikelseiten beim Aktualisieren des Feeds abzurufen.';
   @override
+  String get autoRefreshOnOpen => 'Beim Oeffnen aktualisieren';
+  @override
+  String get autoRefreshOnOpenDescription =>
+      'Nach dem Oeffnen dieser RSS-Sammlung werden veraltete Feeds aktualisiert, ohne das Lesen zu blockieren.';
+  @override
+  String get autoRefreshInterval => 'Aktualisierungsintervall';
+  @override
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      'Alle ${minutes} Min.';
+  @override
+  String autoRefreshIntervalHours({required Object hours}) =>
+      'Alle ${hours} Std.';
+  @override
+  String autoRefreshIntervalDays({required Object days}) => 'Alle ${days} Tg.';
+  @override
   String get refreshing => 'RSS-Feeds werden aktualisiert...';
   @override
   String get noFeeds => 'Keine RSS-Feeds in dieser Sammlung';
@@ -12243,6 +12267,9 @@ class _StringsStringsCollectionsJa extends _StringsStringsCollectionsEn {
   late final _StringsStringsCollectionsRssJa rss =
       _StringsStringsCollectionsRssJa._(_root);
   @override
+  late final _StringsStringsCollectionsArticleFlowJa articleFlow =
+      _StringsStringsCollectionsArticleFlowJa._(_root);
+  @override
   String get createCollectionTooltip => 'Create collection';
   @override
   String get reorderShelf => 'Reorder shelf';
@@ -13587,6 +13614,20 @@ class _StringsStringsCollectionsRssJa extends _StringsStringsCollectionsRssEn {
   @override
   String get fullContentEnabledDescription => 'フィード更新時に読みやすい記事ページの取得を試みます。';
   @override
+  String get autoRefreshOnOpen => '開いたときに更新';
+  @override
+  String get autoRefreshOnOpenDescription =>
+      'このRSSコレクションを開いた後、閲覧を妨げずに古いフィードを更新します。';
+  @override
+  String get autoRefreshInterval => '更新間隔';
+  @override
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      '${minutes} 分ごと';
+  @override
+  String autoRefreshIntervalHours({required Object hours}) => '${hours} 時間ごと';
+  @override
+  String autoRefreshIntervalDays({required Object days}) => '${days} 日ごと';
+  @override
   String get refreshing => 'RSSフィードを更新しています...';
   @override
   String get noFeeds => 'このコレクションにはRSSフィードがありません';
@@ -13597,6 +13638,73 @@ class _StringsStringsCollectionsRssJa extends _StringsStringsCollectionsRssEn {
   @override
   String refreshComplete({required Object success, required Object failure}) =>
       'RSS更新完了: ${success} 件更新、${failure} 件失敗';
+}
+
+// Path: strings.collections.articleFlow
+class _StringsStringsCollectionsArticleFlowJa
+    extends _StringsStringsCollectionsArticleFlowEn {
+  _StringsStringsCollectionsArticleFlowJa._(_StringsJa root)
+    : this._root = root,
+      super._(root);
+
+  @override
+  final _StringsJa _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => '記事フロー';
+  @override
+  String get listActions => 'リスト操作';
+  @override
+  String get filterAll => 'すべて';
+  @override
+  String get filterUnread => '未読';
+  @override
+  String get filterRead => '既読';
+  @override
+  String get filterSaved => '保存済み';
+  @override
+  String get feedAll => 'すべてのフィード';
+  @override
+  String get dateAll => 'すべての日付';
+  @override
+  String get noItems => '現在のフィルターに一致する記事はありません。';
+  @override
+  String get noSelected => '記事を選択';
+  @override
+  String get share => '共有';
+  @override
+  String get nextArticle => '次の記事';
+  @override
+  String get markAboveRead => '上を既読にする';
+  @override
+  String get markBelowRead => '下を既読にする';
+  @override
+  String get readingExperience => '閲覧方法';
+  @override
+  String get switchExperience => '閲覧方法を切り替え';
+  @override
+  String get articleFlowExperience => '記事フロー';
+  @override
+  String get continuousReaderExperience => '連続リーダー';
+  @override
+  String get displaySettings => '記事フロー表示';
+  @override
+  String get showExcerpt => '抜粋を表示';
+  @override
+  String get showThumbnail => 'サムネイルを表示';
+  @override
+  String get showFeedIcon => 'フィードアイコンを表示';
+  @override
+  String get density => 'リスト密度';
+  @override
+  String get densityCompact => 'コンパクト';
+  @override
+  String get densityComfortable => 'ゆったり';
+  @override
+  String get autoHideToolbar => '記事ツールバーを自動的に隠す';
+  @override
+  String get fullContentFallback => 'フィード本文を表示しています。全文を再試行するか、元のページを開いてください。';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -17557,6 +17665,9 @@ class _StringsStringsCollectionsKo extends _StringsStringsCollectionsEn {
   late final _StringsStringsCollectionsRssKo rss =
       _StringsStringsCollectionsRssKo._(_root);
   @override
+  late final _StringsStringsCollectionsArticleFlowKo articleFlow =
+      _StringsStringsCollectionsArticleFlowKo._(_root);
+  @override
   String get createCollectionTooltip => '컬렉션 만들기';
   @override
   String get reorderShelf => '선반 재정렬';
@@ -18937,6 +19048,20 @@ class _StringsStringsCollectionsRssKo extends _StringsStringsCollectionsRssEn {
   @override
   String get fullContentEnabledDescription => '피드를 새로고침할 때 읽기 쉬운 글 페이지를 가져옵니다.';
   @override
+  String get autoRefreshOnOpen => '열 때 새로고침';
+  @override
+  String get autoRefreshOnOpenDescription =>
+      '이 RSS 컬렉션을 연 뒤 읽기를 방해하지 않고 오래된 피드를 새로고침합니다.';
+  @override
+  String get autoRefreshInterval => '새로고침 간격';
+  @override
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      '${minutes}분마다';
+  @override
+  String autoRefreshIntervalHours({required Object hours}) => '${hours}시간마다';
+  @override
+  String autoRefreshIntervalDays({required Object days}) => '${days}일마다';
+  @override
   String get refreshing => 'RSS 피드를 새로고침하는 중...';
   @override
   String get noFeeds => '이 컬렉션에 RSS 피드가 없습니다';
@@ -18947,6 +19072,74 @@ class _StringsStringsCollectionsRssKo extends _StringsStringsCollectionsRssEn {
   @override
   String refreshComplete({required Object success, required Object failure}) =>
       'RSS 새로고침 완료: ${success}개 업데이트, ${failure}개 실패';
+}
+
+// Path: strings.collections.articleFlow
+class _StringsStringsCollectionsArticleFlowKo
+    extends _StringsStringsCollectionsArticleFlowEn {
+  _StringsStringsCollectionsArticleFlowKo._(_StringsKo root)
+    : this._root = root,
+      super._(root);
+
+  @override
+  final _StringsKo _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => '글 흐름';
+  @override
+  String get listActions => '목록 작업';
+  @override
+  String get filterAll => '전체';
+  @override
+  String get filterUnread => '읽지 않음';
+  @override
+  String get filterRead => '읽음';
+  @override
+  String get filterSaved => '저장됨';
+  @override
+  String get feedAll => '모든 피드';
+  @override
+  String get dateAll => '모든 날짜';
+  @override
+  String get noItems => '현재 필터와 일치하는 글이 없습니다.';
+  @override
+  String get noSelected => '글 선택';
+  @override
+  String get share => '공유';
+  @override
+  String get nextArticle => '다음 글';
+  @override
+  String get markAboveRead => '위 항목을 읽음으로 표시';
+  @override
+  String get markBelowRead => '아래 항목을 읽음으로 표시';
+  @override
+  String get readingExperience => '읽기 방식';
+  @override
+  String get switchExperience => '읽기 방식 전환';
+  @override
+  String get articleFlowExperience => '글 흐름';
+  @override
+  String get continuousReaderExperience => '연속 리더';
+  @override
+  String get displaySettings => '글 흐름 표시';
+  @override
+  String get showExcerpt => '요약 표시';
+  @override
+  String get showThumbnail => '썸네일 표시';
+  @override
+  String get showFeedIcon => '피드 아이콘 표시';
+  @override
+  String get density => '목록 밀도';
+  @override
+  String get densityCompact => '촘촘하게';
+  @override
+  String get densityComfortable => '여유 있게';
+  @override
+  String get autoHideToolbar => '글 도구 모음 자동 숨김';
+  @override
+  String get fullContentFallback =>
+      '피드 내용을 표시하고 있습니다. 전체 글을 다시 가져오거나 원문 페이지를 여세요.';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -23109,6 +23302,9 @@ class _StringsStringsCollectionsPtBr extends _StringsStringsCollectionsEn {
   late final _StringsStringsCollectionsRssPtBr rss =
       _StringsStringsCollectionsRssPtBr._(_root);
   @override
+  late final _StringsStringsCollectionsArticleFlowPtBr articleFlow =
+      _StringsStringsCollectionsArticleFlowPtBr._(_root);
+  @override
   String get createCollectionTooltip => 'Criar coleção';
   @override
   String get reorderShelf => 'Reordenar estante';
@@ -24541,6 +24737,21 @@ class _StringsStringsCollectionsRssPtBr
   String get fullContentEnabledDescription =>
       'Tenta buscar páginas legíveis dos artigos durante a atualização do feed.';
   @override
+  String get autoRefreshOnOpen => 'Atualizar ao abrir';
+  @override
+  String get autoRefreshOnOpenDescription =>
+      'Após abrir esta coleção RSS, atualize feeds desatualizados sem bloquear a leitura.';
+  @override
+  String get autoRefreshInterval => 'Intervalo de atualização';
+  @override
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      'A cada ${minutes} min';
+  @override
+  String autoRefreshIntervalHours({required Object hours}) =>
+      'A cada ${hours} h';
+  @override
+  String autoRefreshIntervalDays({required Object days}) => 'A cada ${days} d';
+  @override
   String get refreshing => 'Atualizando feeds RSS...';
   @override
   String get noFeeds => 'Nenhum feed RSS nesta coleção';
@@ -24552,6 +24763,74 @@ class _StringsStringsCollectionsRssPtBr
   @override
   String refreshComplete({required Object success, required Object failure}) =>
       'Atualização RSS concluída: ${success} atualizados, ${failure} falharam';
+}
+
+// Path: strings.collections.articleFlow
+class _StringsStringsCollectionsArticleFlowPtBr
+    extends _StringsStringsCollectionsArticleFlowEn {
+  _StringsStringsCollectionsArticleFlowPtBr._(_StringsPtBr root)
+    : this._root = root,
+      super._(root);
+
+  @override
+  final _StringsPtBr _root; // ignore: unused_field
+
+  // Translations
+  @override
+  String get title => 'Fluxo de artigos';
+  @override
+  String get listActions => 'Ações da lista';
+  @override
+  String get filterAll => 'Todos';
+  @override
+  String get filterUnread => 'Não lidos';
+  @override
+  String get filterRead => 'Lidos';
+  @override
+  String get filterSaved => 'Salvos';
+  @override
+  String get feedAll => 'Todos os feeds';
+  @override
+  String get dateAll => 'Todas as datas';
+  @override
+  String get noItems => 'Nenhum artigo corresponde aos filtros atuais.';
+  @override
+  String get noSelected => 'Selecione um artigo';
+  @override
+  String get share => 'Compartilhar';
+  @override
+  String get nextArticle => 'Próximo artigo';
+  @override
+  String get markAboveRead => 'Marcar acima como lidos';
+  @override
+  String get markBelowRead => 'Marcar abaixo como lidos';
+  @override
+  String get readingExperience => 'Experiência de leitura';
+  @override
+  String get switchExperience => 'Alternar experiência de leitura';
+  @override
+  String get articleFlowExperience => 'Fluxo de artigos';
+  @override
+  String get continuousReaderExperience => 'Leitor contínuo';
+  @override
+  String get displaySettings => 'Exibição do fluxo de artigos';
+  @override
+  String get showExcerpt => 'Mostrar resumos';
+  @override
+  String get showThumbnail => 'Mostrar miniaturas';
+  @override
+  String get showFeedIcon => 'Mostrar ícones dos feeds';
+  @override
+  String get density => 'Densidade da lista';
+  @override
+  String get densityCompact => 'Compacta';
+  @override
+  String get densityComfortable => 'Confortável';
+  @override
+  String get autoHideToolbar => 'Ocultar barra do artigo automaticamente';
+  @override
+  String get fullContentFallback =>
+      'Exibindo conteúdo do feed. Tente buscar o artigo completo novamente ou abra a página original.';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -29848,6 +30127,19 @@ class _StringsStringsCollectionsRssZhHans
   @override
   String get noArticlesDescription => '刷新源或管理来源以加载文章。';
   @override
+  String get autoRefreshOnOpen => '打开时刷新';
+  @override
+  String get autoRefreshOnOpenDescription => '打开这个 RSS 合集后，在不阻塞阅读的情况下刷新过期来源。';
+  @override
+  String get autoRefreshInterval => '刷新间隔';
+  @override
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      '每 ${minutes} 分钟';
+  @override
+  String autoRefreshIntervalHours({required Object hours}) => '每 ${hours} 小时';
+  @override
+  String autoRefreshIntervalDays({required Object days}) => '每 ${days} 天';
+  @override
   String refreshComplete({required Object success, required Object failure}) =>
       'RSS 刷新完成：${success} 个已更新，${failure} 个失败';
 }
@@ -35086,6 +35378,19 @@ class _StringsStringsCollectionsRssZhHantTw
   @override
   String get noArticlesDescription => '重新整理來源或管理來源以載入文章。';
   @override
+  String get autoRefreshOnOpen => '開啟時重新整理';
+  @override
+  String get autoRefreshOnOpenDescription => '開啟這個 RSS 合集後，在不阻塞閱讀的情況下重新整理過期來源。';
+  @override
+  String get autoRefreshInterval => '重新整理間隔';
+  @override
+  String autoRefreshIntervalMinutes({required Object minutes}) =>
+      '每 ${minutes} 分鐘';
+  @override
+  String autoRefreshIntervalHours({required Object hours}) => '每 ${hours} 小時';
+  @override
+  String autoRefreshIntervalDays({required Object days}) => '每 ${days} 天';
+  @override
   String refreshComplete({required Object success, required Object failure}) =>
       'RSS 重新整理完成：${success} 個已更新，${failure} 個失敗';
 }
@@ -39470,6 +39775,18 @@ extension on Translations {
         return 'Fetch full articles';
       case 'strings.collections.rss.fullContentEnabledDescription':
         return 'Try to fetch readable article pages during feed refresh.';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return 'Refresh when opened';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return 'After opening this RSS collection, refresh stale feeds without blocking reading.';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return 'Refresh interval';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => 'Every ${minutes} min';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => 'Every ${hours} h';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => 'Every ${days} d';
       case 'strings.collections.rss.refreshing':
         return 'Refreshing RSS feeds...';
       case 'strings.collections.rss.noFeeds':
@@ -43563,6 +43880,18 @@ extension on _StringsDe {
         return 'Vollständige Artikel abrufen';
       case 'strings.collections.rss.fullContentEnabledDescription':
         return 'Versucht, lesbare Artikelseiten beim Aktualisieren des Feeds abzurufen.';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return 'Beim Oeffnen aktualisieren';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return 'Nach dem Oeffnen dieser RSS-Sammlung werden veraltete Feeds aktualisiert, ohne das Lesen zu blockieren.';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return 'Aktualisierungsintervall';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => 'Alle ${minutes} Min.';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => 'Alle ${hours} Std.';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => 'Alle ${days} Tg.';
       case 'strings.collections.rss.refreshing':
         return 'RSS-Feeds werden aktualisiert...';
       case 'strings.collections.rss.noFeeds':
@@ -47620,6 +47949,18 @@ extension on _StringsJa {
         return '全文を取得';
       case 'strings.collections.rss.fullContentEnabledDescription':
         return 'フィード更新時に読みやすい記事ページの取得を試みます。';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return '開いたときに更新';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return 'このRSSコレクションを開いた後、閲覧を妨げずに古いフィードを更新します。';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return '更新間隔';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => '${minutes} 分ごと';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => '${hours} 時間ごと';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => '${days} 日ごと';
       case 'strings.collections.rss.refreshing':
         return 'RSSフィードを更新しています...';
       case 'strings.collections.rss.noFeeds':
@@ -47631,6 +47972,60 @@ extension on _StringsJa {
       case 'strings.collections.rss.refreshComplete':
         return ({required Object success, required Object failure}) =>
             'RSS更新完了: ${success} 件更新、${failure} 件失敗';
+      case 'strings.collections.articleFlow.title':
+        return '記事フロー';
+      case 'strings.collections.articleFlow.listActions':
+        return 'リスト操作';
+      case 'strings.collections.articleFlow.filterAll':
+        return 'すべて';
+      case 'strings.collections.articleFlow.filterUnread':
+        return '未読';
+      case 'strings.collections.articleFlow.filterRead':
+        return '既読';
+      case 'strings.collections.articleFlow.filterSaved':
+        return '保存済み';
+      case 'strings.collections.articleFlow.feedAll':
+        return 'すべてのフィード';
+      case 'strings.collections.articleFlow.dateAll':
+        return 'すべての日付';
+      case 'strings.collections.articleFlow.noItems':
+        return '現在のフィルターに一致する記事はありません。';
+      case 'strings.collections.articleFlow.noSelected':
+        return '記事を選択';
+      case 'strings.collections.articleFlow.share':
+        return '共有';
+      case 'strings.collections.articleFlow.nextArticle':
+        return '次の記事';
+      case 'strings.collections.articleFlow.markAboveRead':
+        return '上を既読にする';
+      case 'strings.collections.articleFlow.markBelowRead':
+        return '下を既読にする';
+      case 'strings.collections.articleFlow.readingExperience':
+        return '閲覧方法';
+      case 'strings.collections.articleFlow.switchExperience':
+        return '閲覧方法を切り替え';
+      case 'strings.collections.articleFlow.articleFlowExperience':
+        return '記事フロー';
+      case 'strings.collections.articleFlow.continuousReaderExperience':
+        return '連続リーダー';
+      case 'strings.collections.articleFlow.displaySettings':
+        return '記事フロー表示';
+      case 'strings.collections.articleFlow.showExcerpt':
+        return '抜粋を表示';
+      case 'strings.collections.articleFlow.showThumbnail':
+        return 'サムネイルを表示';
+      case 'strings.collections.articleFlow.showFeedIcon':
+        return 'フィードアイコンを表示';
+      case 'strings.collections.articleFlow.density':
+        return 'リスト密度';
+      case 'strings.collections.articleFlow.densityCompact':
+        return 'コンパクト';
+      case 'strings.collections.articleFlow.densityComfortable':
+        return 'ゆったり';
+      case 'strings.collections.articleFlow.autoHideToolbar':
+        return '記事ツールバーを自動的に隠す';
+      case 'strings.collections.articleFlow.fullContentFallback':
+        return 'フィード本文を表示しています。全文を再試行するか、元のページを開いてください。';
       case 'strings.collections.createCollectionTooltip':
         return 'Create collection';
       case 'strings.collections.reorderShelf':
@@ -51842,6 +52237,18 @@ extension on _StringsKo {
         return '전체 글 가져오기';
       case 'strings.collections.rss.fullContentEnabledDescription':
         return '피드를 새로고침할 때 읽기 쉬운 글 페이지를 가져옵니다.';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return '열 때 새로고침';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return '이 RSS 컬렉션을 연 뒤 읽기를 방해하지 않고 오래된 피드를 새로고침합니다.';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return '새로고침 간격';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => '${minutes}분마다';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => '${hours}시간마다';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => '${days}일마다';
       case 'strings.collections.rss.refreshing':
         return 'RSS 피드를 새로고침하는 중...';
       case 'strings.collections.rss.noFeeds':
@@ -51853,6 +52260,60 @@ extension on _StringsKo {
       case 'strings.collections.rss.refreshComplete':
         return ({required Object success, required Object failure}) =>
             'RSS 새로고침 완료: ${success}개 업데이트, ${failure}개 실패';
+      case 'strings.collections.articleFlow.title':
+        return '글 흐름';
+      case 'strings.collections.articleFlow.listActions':
+        return '목록 작업';
+      case 'strings.collections.articleFlow.filterAll':
+        return '전체';
+      case 'strings.collections.articleFlow.filterUnread':
+        return '읽지 않음';
+      case 'strings.collections.articleFlow.filterRead':
+        return '읽음';
+      case 'strings.collections.articleFlow.filterSaved':
+        return '저장됨';
+      case 'strings.collections.articleFlow.feedAll':
+        return '모든 피드';
+      case 'strings.collections.articleFlow.dateAll':
+        return '모든 날짜';
+      case 'strings.collections.articleFlow.noItems':
+        return '현재 필터와 일치하는 글이 없습니다.';
+      case 'strings.collections.articleFlow.noSelected':
+        return '글 선택';
+      case 'strings.collections.articleFlow.share':
+        return '공유';
+      case 'strings.collections.articleFlow.nextArticle':
+        return '다음 글';
+      case 'strings.collections.articleFlow.markAboveRead':
+        return '위 항목을 읽음으로 표시';
+      case 'strings.collections.articleFlow.markBelowRead':
+        return '아래 항목을 읽음으로 표시';
+      case 'strings.collections.articleFlow.readingExperience':
+        return '읽기 방식';
+      case 'strings.collections.articleFlow.switchExperience':
+        return '읽기 방식 전환';
+      case 'strings.collections.articleFlow.articleFlowExperience':
+        return '글 흐름';
+      case 'strings.collections.articleFlow.continuousReaderExperience':
+        return '연속 리더';
+      case 'strings.collections.articleFlow.displaySettings':
+        return '글 흐름 표시';
+      case 'strings.collections.articleFlow.showExcerpt':
+        return '요약 표시';
+      case 'strings.collections.articleFlow.showThumbnail':
+        return '썸네일 표시';
+      case 'strings.collections.articleFlow.showFeedIcon':
+        return '피드 아이콘 표시';
+      case 'strings.collections.articleFlow.density':
+        return '목록 밀도';
+      case 'strings.collections.articleFlow.densityCompact':
+        return '촘촘하게';
+      case 'strings.collections.articleFlow.densityComfortable':
+        return '여유 있게';
+      case 'strings.collections.articleFlow.autoHideToolbar':
+        return '글 도구 모음 자동 숨김';
+      case 'strings.collections.articleFlow.fullContentFallback':
+        return '피드 내용을 표시하고 있습니다. 전체 글을 다시 가져오거나 원문 페이지를 여세요.';
       case 'strings.collections.createCollectionTooltip':
         return '컬렉션 만들기';
       case 'strings.collections.reorderShelf':
@@ -56088,6 +56549,18 @@ extension on _StringsPtBr {
         return 'Buscar artigos completos';
       case 'strings.collections.rss.fullContentEnabledDescription':
         return 'Tenta buscar páginas legíveis dos artigos durante a atualização do feed.';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return 'Atualizar ao abrir';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return 'Após abrir esta coleção RSS, atualize feeds desatualizados sem bloquear a leitura.';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return 'Intervalo de atualização';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => 'A cada ${minutes} min';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => 'A cada ${hours} h';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => 'A cada ${days} d';
       case 'strings.collections.rss.refreshing':
         return 'Atualizando feeds RSS...';
       case 'strings.collections.rss.noFeeds':
@@ -56099,6 +56572,60 @@ extension on _StringsPtBr {
       case 'strings.collections.rss.refreshComplete':
         return ({required Object success, required Object failure}) =>
             'Atualização RSS concluída: ${success} atualizados, ${failure} falharam';
+      case 'strings.collections.articleFlow.title':
+        return 'Fluxo de artigos';
+      case 'strings.collections.articleFlow.listActions':
+        return 'Ações da lista';
+      case 'strings.collections.articleFlow.filterAll':
+        return 'Todos';
+      case 'strings.collections.articleFlow.filterUnread':
+        return 'Não lidos';
+      case 'strings.collections.articleFlow.filterRead':
+        return 'Lidos';
+      case 'strings.collections.articleFlow.filterSaved':
+        return 'Salvos';
+      case 'strings.collections.articleFlow.feedAll':
+        return 'Todos os feeds';
+      case 'strings.collections.articleFlow.dateAll':
+        return 'Todas as datas';
+      case 'strings.collections.articleFlow.noItems':
+        return 'Nenhum artigo corresponde aos filtros atuais.';
+      case 'strings.collections.articleFlow.noSelected':
+        return 'Selecione um artigo';
+      case 'strings.collections.articleFlow.share':
+        return 'Compartilhar';
+      case 'strings.collections.articleFlow.nextArticle':
+        return 'Próximo artigo';
+      case 'strings.collections.articleFlow.markAboveRead':
+        return 'Marcar acima como lidos';
+      case 'strings.collections.articleFlow.markBelowRead':
+        return 'Marcar abaixo como lidos';
+      case 'strings.collections.articleFlow.readingExperience':
+        return 'Experiência de leitura';
+      case 'strings.collections.articleFlow.switchExperience':
+        return 'Alternar experiência de leitura';
+      case 'strings.collections.articleFlow.articleFlowExperience':
+        return 'Fluxo de artigos';
+      case 'strings.collections.articleFlow.continuousReaderExperience':
+        return 'Leitor contínuo';
+      case 'strings.collections.articleFlow.displaySettings':
+        return 'Exibição do fluxo de artigos';
+      case 'strings.collections.articleFlow.showExcerpt':
+        return 'Mostrar resumos';
+      case 'strings.collections.articleFlow.showThumbnail':
+        return 'Mostrar miniaturas';
+      case 'strings.collections.articleFlow.showFeedIcon':
+        return 'Mostrar ícones dos feeds';
+      case 'strings.collections.articleFlow.density':
+        return 'Densidade da lista';
+      case 'strings.collections.articleFlow.densityCompact':
+        return 'Compacta';
+      case 'strings.collections.articleFlow.densityComfortable':
+        return 'Confortável';
+      case 'strings.collections.articleFlow.autoHideToolbar':
+        return 'Ocultar barra do artigo automaticamente';
+      case 'strings.collections.articleFlow.fullContentFallback':
+        return 'Exibindo conteúdo do feed. Tente buscar o artigo completo novamente ou abra a página original.';
       case 'strings.collections.createCollectionTooltip':
         return 'Criar coleção';
       case 'strings.collections.reorderShelf':
@@ -60314,6 +60841,18 @@ extension on _StringsZhHans {
         return '暂无 RSS 文章';
       case 'strings.collections.rss.noArticlesDescription':
         return '刷新源或管理来源以加载文章。';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return '打开时刷新';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return '打开这个 RSS 合集后，在不阻塞阅读的情况下刷新过期来源。';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return '刷新间隔';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => '每 ${minutes} 分钟';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => '每 ${hours} 小时';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => '每 ${days} 天';
       case 'strings.collections.rss.refreshComplete':
         return ({required Object success, required Object failure}) =>
             'RSS 刷新完成：${success} 个已更新，${failure} 个失败';
@@ -64493,6 +65032,18 @@ extension on _StringsZhHantTw {
         return '暫無 RSS 文章';
       case 'strings.collections.rss.noArticlesDescription':
         return '重新整理來源或管理來源以載入文章。';
+      case 'strings.collections.rss.autoRefreshOnOpen':
+        return '開啟時重新整理';
+      case 'strings.collections.rss.autoRefreshOnOpenDescription':
+        return '開啟這個 RSS 合集後，在不阻塞閱讀的情況下重新整理過期來源。';
+      case 'strings.collections.rss.autoRefreshInterval':
+        return '重新整理間隔';
+      case 'strings.collections.rss.autoRefreshIntervalMinutes':
+        return ({required Object minutes}) => '每 ${minutes} 分鐘';
+      case 'strings.collections.rss.autoRefreshIntervalHours':
+        return ({required Object hours}) => '每 ${hours} 小時';
+      case 'strings.collections.rss.autoRefreshIntervalDays':
+        return ({required Object days}) => '每 ${days} 天';
       case 'strings.collections.rss.refreshComplete':
         return ({required Object success, required Object failure}) =>
             'RSS 重新整理完成：${success} 個已更新，${failure} 個失敗';

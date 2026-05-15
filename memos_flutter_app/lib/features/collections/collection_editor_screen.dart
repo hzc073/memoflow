@@ -70,6 +70,7 @@ class _CollectionEditorScreenState
   late bool _showStats;
   CollectionReadingExperience? _readingExperienceOverride;
   late CollectionArticleFlowDisplaySettings _articleFlowDisplay;
+  late CollectionRssRefreshPreferences _rssRefresh;
   late bool _hideWhenEmpty;
   bool _hasExplicitManualMemoSelection = false;
   bool _rssBusy = false;
@@ -147,6 +148,8 @@ class _CollectionEditorScreenState
     _articleFlowDisplay =
         collection?.view.articleFlowDisplay ??
         CollectionArticleFlowDisplaySettings.defaults;
+    _rssRefresh =
+        collection?.view.rssRefresh ?? CollectionRssRefreshPreferences.defaults;
     _hideWhenEmpty = collection?.hideWhenEmpty ?? false;
     if (!_isEditing && _type == MemoCollectionType.manual) {
       _initialManualMemoUids = _normalizeMemoUids(widget.initialManualMemoUids);
@@ -201,6 +204,7 @@ class _CollectionEditorScreenState
       showStats: _showStats,
       readingExperience: _readingExperienceOverride,
       articleFlowDisplay: _articleFlowDisplay,
+      rssRefresh: _rssRefresh,
     );
     return MemoCollection(
       id: initial?.id ?? generateUid(length: 16),
@@ -320,6 +324,18 @@ class _CollectionEditorScreenState
 
   void _updateState(VoidCallback update) {
     setState(update);
+  }
+
+  void _setRssRefreshEnabled(bool enabled) {
+    _updateState(() {
+      _rssRefresh = _rssRefresh.copyWith(enabled: enabled);
+    });
+  }
+
+  void _setRssRefreshInterval(int intervalMinutes) {
+    _updateState(() {
+      _rssRefresh = _rssRefresh.copyWith(intervalMinutes: intervalMinutes);
+    });
   }
 
   void _showMessage(String message) {
@@ -1268,6 +1284,16 @@ class _CollectionEditorScreenState
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: colors.textMuted),
+        ),
+        const SizedBox(height: 12),
+        _RssRefreshSettingsPanel(
+          enabled: _rssRefresh.enabled,
+          intervalMinutes: _rssRefresh.intervalMinutes,
+          colors: colors,
+          onEnabledChanged: _setRssRefreshEnabled,
+          onIntervalChanged: _rssRefresh.enabled
+              ? _setRssRefreshInterval
+              : null,
         ),
         const SizedBox(height: 12),
         _EditorFieldShell(
@@ -2537,6 +2563,95 @@ class _PreviewMemoRow extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _RssRefreshSettingsPanel extends StatelessWidget {
+  const _RssRefreshSettingsPanel({
+    required this.enabled,
+    required this.intervalMinutes,
+    required this.colors,
+    required this.onEnabledChanged,
+    required this.onIntervalChanged,
+  });
+
+  static const List<int> _intervalOptions = <int>[
+    5,
+    15,
+    30,
+    60,
+    180,
+    360,
+    720,
+    1440,
+  ];
+
+  final bool enabled;
+  final int intervalMinutes;
+  final _CollectionEditorColors colors;
+  final ValueChanged<bool> onEnabledChanged;
+  final ValueChanged<int>? onIntervalChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final rssStrings = context.t.strings.collections.rss;
+    final effectiveInterval = _intervalOptions.contains(intervalMinutes)
+        ? intervalMinutes
+        : CollectionRssRefreshPreferences.defaults.intervalMinutes;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+      decoration: BoxDecoration(
+        color: colors.fieldBackground,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(rssStrings.autoRefreshOnOpen),
+            subtitle: Text(rssStrings.autoRefreshOnOpenDescription),
+            value: enabled,
+            onChanged: onEnabledChanged,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  rssStrings.autoRefreshInterval,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              DropdownButton<int>(
+                value: effectiveInterval,
+                onChanged: onIntervalChanged == null
+                    ? null
+                    : (value) {
+                        if (value != null) onIntervalChanged!(value);
+                      },
+                items: [
+                  for (final minutes in _intervalOptions)
+                    DropdownMenuItem<int>(
+                      value: minutes,
+                      child: Text(_intervalLabel(rssStrings, minutes)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _intervalLabel(dynamic rssStrings, int minutes) {
+    if (minutes >= 1440 && minutes % 1440 == 0) {
+      return rssStrings.autoRefreshIntervalDays(days: minutes ~/ 1440);
+    }
+    if (minutes >= 60 && minutes % 60 == 0) {
+      return rssStrings.autoRefreshIntervalHours(hours: minutes ~/ 60);
+    }
+    return rssStrings.autoRefreshIntervalMinutes(minutes: minutes);
   }
 }
 

@@ -6,6 +6,7 @@ import '../../i18n/strings.g.dart';
 import '../../state/collections/collections_provider.dart';
 import 'collection_article_flow_screen.dart';
 import 'collection_reader_screen.dart';
+import 'collection_rss_open_refresh_gate.dart';
 
 class CollectionDetailScreen extends ConsumerWidget {
   const CollectionDetailScreen({super.key, required this.collectionId});
@@ -34,7 +35,7 @@ class CollectionDetailScreen extends ConsumerWidget {
       );
     }
     final experience = resolveCollectionReadingExperience(collection);
-    return switch (experience) {
+    final screen = switch (experience) {
       CollectionReadingExperience.articleFlow => CollectionArticleFlowScreen(
         collectionId: collectionId,
       ),
@@ -42,5 +43,13 @@ class CollectionDetailScreen extends ConsumerWidget {
         collectionId: collectionId,
       ),
     };
+    if (!collection.isRss) {
+      return screen;
+    }
+    return CollectionRssOpenRefreshGate(
+      collectionId: collection.id,
+      preferences: collection.view.rssRefresh,
+      child: screen,
+    );
   }
 }

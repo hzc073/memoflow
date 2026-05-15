@@ -112,6 +112,65 @@ class CollectionArticleFlowDisplaySettings {
   }
 }
 
+class CollectionRssRefreshPreferences {
+  const CollectionRssRefreshPreferences({
+    required this.enabled,
+    required this.intervalMinutes,
+  });
+
+  static const int minIntervalMinutes = 5;
+  static const int maxIntervalMinutes = 1440;
+
+  static const defaults = CollectionRssRefreshPreferences(
+    enabled: true,
+    intervalMinutes: 30,
+  );
+
+  final bool enabled;
+  final int intervalMinutes;
+
+  Duration get interval => Duration(minutes: intervalMinutes);
+
+  CollectionRssRefreshPreferences copyWith({
+    bool? enabled,
+    int? intervalMinutes,
+  }) {
+    return CollectionRssRefreshPreferences(
+      enabled: enabled ?? this.enabled,
+      intervalMinutes: intervalMinutes == null
+          ? this.intervalMinutes
+          : normalizeIntervalMinutes(intervalMinutes),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'enabled': enabled,
+    'intervalMinutes': intervalMinutes,
+  };
+
+  factory CollectionRssRefreshPreferences.fromJson(Map<String, dynamic> json) {
+    return CollectionRssRefreshPreferences(
+      enabled: (json['enabled'] as bool?) ?? defaults.enabled,
+      intervalMinutes: normalizeIntervalMinutes(json['intervalMinutes']),
+    );
+  }
+
+  static int normalizeIntervalMinutes(Object? raw) {
+    final parsed = _readNullableInt(raw) ?? defaults.intervalMinutes;
+    return parsed.clamp(minIntervalMinutes, maxIntervalMinutes).toInt();
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CollectionRssRefreshPreferences &&
+        other.enabled == enabled &&
+        other.intervalMinutes == intervalMinutes;
+  }
+
+  @override
+  int get hashCode => Object.hash(enabled, intervalMinutes);
+}
+
 class CollectionDateRule {
   const CollectionDateRule({
     required this.type,
@@ -355,6 +414,7 @@ class CollectionViewPreferences {
     required this.showStats,
     required this.readingExperience,
     required this.articleFlowDisplay,
+    required this.rssRefresh,
   });
 
   static const CollectionViewPreferences defaults = CollectionViewPreferences(
@@ -364,6 +424,7 @@ class CollectionViewPreferences {
     showStats: true,
     readingExperience: null,
     articleFlowDisplay: CollectionArticleFlowDisplaySettings.defaults,
+    rssRefresh: CollectionRssRefreshPreferences.defaults,
   );
 
   final CollectionLayoutMode defaultLayout;
@@ -372,6 +433,7 @@ class CollectionViewPreferences {
   final bool showStats;
   final CollectionReadingExperience? readingExperience;
   final CollectionArticleFlowDisplaySettings articleFlowDisplay;
+  final CollectionRssRefreshPreferences rssRefresh;
 
   CollectionViewPreferences copyWith({
     CollectionLayoutMode? defaultLayout,
@@ -380,6 +442,7 @@ class CollectionViewPreferences {
     bool? showStats,
     Object? readingExperience = _unset,
     CollectionArticleFlowDisplaySettings? articleFlowDisplay,
+    CollectionRssRefreshPreferences? rssRefresh,
   }) {
     return CollectionViewPreferences(
       defaultLayout: defaultLayout ?? this.defaultLayout,
@@ -390,6 +453,7 @@ class CollectionViewPreferences {
           ? this.readingExperience
           : readingExperience as CollectionReadingExperience?,
       articleFlowDisplay: articleFlowDisplay ?? this.articleFlowDisplay,
+      rssRefresh: rssRefresh ?? this.rssRefresh,
     );
   }
 
@@ -400,10 +464,12 @@ class CollectionViewPreferences {
     'showStats': showStats,
     'readingExperience': readingExperience?.name,
     'articleFlowDisplay': articleFlowDisplay.toJson(),
+    'rssRefresh': rssRefresh.toJson(),
   };
 
   factory CollectionViewPreferences.fromJson(Map<String, dynamic> json) {
     final articleFlowDisplayRaw = json['articleFlowDisplay'];
+    final rssRefreshRaw = json['rssRefresh'];
     return CollectionViewPreferences(
       defaultLayout: _readEnum(
         json['defaultLayout'],
@@ -432,6 +498,13 @@ class CollectionViewPreferences {
               articleFlowDisplayRaw.cast<String, dynamic>(),
             )
           : defaults.articleFlowDisplay,
+      rssRefresh: rssRefreshRaw is Map<String, dynamic>
+          ? CollectionRssRefreshPreferences.fromJson(rssRefreshRaw)
+          : rssRefreshRaw is Map
+          ? CollectionRssRefreshPreferences.fromJson(
+              rssRefreshRaw.cast<String, dynamic>(),
+            )
+          : defaults.rssRefresh,
     );
   }
 }
@@ -508,6 +581,7 @@ class MemoCollection {
       showStats: true,
       readingExperience: null,
       articleFlowDisplay: CollectionArticleFlowDisplaySettings.defaults,
+      rssRefresh: CollectionRssRefreshPreferences.defaults,
     ),
     bool pinned = false,
     bool archived = false,

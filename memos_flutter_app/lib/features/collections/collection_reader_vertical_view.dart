@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../data/models/collection_readable_item.dart';
 import '../../data/models/rss_article.dart';
@@ -8,6 +7,7 @@ import '../../i18n/strings.g.dart';
 import 'collection_reader_animation_delegate.dart';
 import 'collection_reader_no_anim_delegate.dart';
 import 'collection_reader_utils.dart';
+import 'collection_rss_html_content.dart';
 import '../memos/widgets/memo_reader_content.dart';
 
 class CollectionReaderVerticalView extends StatelessWidget {
@@ -174,10 +174,9 @@ class _ReadableItemContent extends StatelessWidget {
       );
     }
 
-    final body = HtmlWidget(
-      item.content,
+    final body = CollectionRssHtmlContent(
+      html: item.content,
       textStyle: contentTextStyle,
-      renderMode: RenderMode.column,
     );
     final saved = item.savedMemoUid?.trim().isNotEmpty == true;
     final article = item.rssArticle;

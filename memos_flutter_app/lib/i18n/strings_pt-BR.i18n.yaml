@@ -1993,11 +1993,45 @@ collections:
     fullContentSkipped: Artigo completo indisponível
     fullContentEnabled: Buscar artigos completos
     fullContentEnabledDescription: Tenta buscar páginas legíveis dos artigos durante a atualização do feed.
+    autoRefreshOnOpen: Atualizar ao abrir
+    autoRefreshOnOpenDescription: Após abrir esta coleção RSS, atualize feeds desatualizados sem bloquear a leitura.
+    autoRefreshInterval: Intervalo de atualização
+    autoRefreshIntervalMinutes: A cada $minutes min
+    autoRefreshIntervalHours: A cada $hours h
+    autoRefreshIntervalDays: A cada $days d
     refreshing: Atualizando feeds RSS...
     noFeeds: Nenhum feed RSS nesta coleção
     noArticles: Nenhum artigo RSS ainda
     noArticlesDescription: Atualize os feeds ou gerencie fontes para carregar artigos.
     refreshComplete: "Atualização RSS concluída: $success atualizados, $failure falharam"
+  articleFlow:
+    title: Fluxo de artigos
+    listActions: Ações da lista
+    filterAll: Todos
+    filterUnread: Não lidos
+    filterRead: Lidos
+    filterSaved: Salvos
+    feedAll: Todos os feeds
+    dateAll: Todas as datas
+    noItems: Nenhum artigo corresponde aos filtros atuais.
+    noSelected: Selecione um artigo
+    share: Compartilhar
+    nextArticle: Próximo artigo
+    markAboveRead: Marcar acima como lidos
+    markBelowRead: Marcar abaixo como lidos
+    readingExperience: Experiência de leitura
+    switchExperience: Alternar experiência de leitura
+    articleFlowExperience: Fluxo de artigos
+    continuousReaderExperience: Leitor contínuo
+    displaySettings: Exibição do fluxo de artigos
+    showExcerpt: Mostrar resumos
+    showThumbnail: Mostrar miniaturas
+    showFeedIcon: Mostrar ícones dos feeds
+    density: Densidade da lista
+    densityCompact: Compacta
+    densityComfortable: Confortável
+    autoHideToolbar: Ocultar barra do artigo automaticamente
+    fullContentFallback: Exibindo conteúdo do feed. Tente buscar o artigo completo novamente ou abra a página original.
   createCollectionTooltip: Criar coleção
   reorderShelf: Reordenar estante
   reorderShelfDescription: Arraste para ajustar a ordem mostrada em sua estante. As coleções fixadas ainda ficam acima das demais.

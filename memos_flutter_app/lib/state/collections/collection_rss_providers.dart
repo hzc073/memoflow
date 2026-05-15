@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../application/rss/rss_refresh_coordinator.dart';
 import '../../application/rss/rss_feed_fetch_service.dart';
 import '../../application/rss/rss_full_content_service.dart';
 import '../../core/uid.dart';
@@ -20,6 +21,13 @@ final rssFeedFetchServiceProvider = Provider<RssFeedFetchService>((ref) {
 
 final rssFullContentServiceProvider = Provider<RssFullContentService>((ref) {
   return RssFullContentService(repository: ref.watch(rssRepositoryProvider));
+});
+
+final rssRefreshCoordinatorProvider = Provider<RssRefreshCoordinator>((ref) {
+  return RssRefreshCoordinator(
+    repository: ref.watch(rssRepositoryProvider),
+    fetchService: ref.watch(rssFeedFetchServiceProvider),
+  );
 });
 
 final collectionRssSourcesProvider =

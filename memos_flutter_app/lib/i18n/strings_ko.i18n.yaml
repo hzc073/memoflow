@@ -2013,11 +2013,45 @@ collections:
     fullContentSkipped: 전체 글을 사용할 수 없습니다
     fullContentEnabled: 전체 글 가져오기
     fullContentEnabledDescription: 피드를 새로고침할 때 읽기 쉬운 글 페이지를 가져옵니다.
+    autoRefreshOnOpen: 열 때 새로고침
+    autoRefreshOnOpenDescription: 이 RSS 컬렉션을 연 뒤 읽기를 방해하지 않고 오래된 피드를 새로고침합니다.
+    autoRefreshInterval: 새로고침 간격
+    autoRefreshIntervalMinutes: $minutes분마다
+    autoRefreshIntervalHours: $hours시간마다
+    autoRefreshIntervalDays: $days일마다
     refreshing: RSS 피드를 새로고침하는 중...
     noFeeds: 이 컬렉션에 RSS 피드가 없습니다
     noArticles: 아직 RSS 글이 없습니다
     noArticlesDescription: 피드를 새로고침하거나 소스를 관리해 글을 불러오세요.
     refreshComplete: "RSS 새로고침 완료: $success개 업데이트, $failure개 실패"
+  articleFlow:
+    title: 글 흐름
+    listActions: 목록 작업
+    filterAll: 전체
+    filterUnread: 읽지 않음
+    filterRead: 읽음
+    filterSaved: 저장됨
+    feedAll: 모든 피드
+    dateAll: 모든 날짜
+    noItems: 현재 필터와 일치하는 글이 없습니다.
+    noSelected: 글 선택
+    share: 공유
+    nextArticle: 다음 글
+    markAboveRead: 위 항목을 읽음으로 표시
+    markBelowRead: 아래 항목을 읽음으로 표시
+    readingExperience: 읽기 방식
+    switchExperience: 읽기 방식 전환
+    articleFlowExperience: 글 흐름
+    continuousReaderExperience: 연속 리더
+    displaySettings: 글 흐름 표시
+    showExcerpt: 요약 표시
+    showThumbnail: 썸네일 표시
+    showFeedIcon: 피드 아이콘 표시
+    density: 목록 밀도
+    densityCompact: 촘촘하게
+    densityComfortable: 여유 있게
+    autoHideToolbar: 글 도구 모음 자동 숨김
+    fullContentFallback: 피드 내용을 표시하고 있습니다. 전체 글을 다시 가져오거나 원문 페이지를 여세요.
   createCollectionTooltip: 컬렉션 만들기
   reorderShelf: 선반 재정렬
   reorderShelfDescription: 선반에 표시된 순서를 드래그하여 조정하세요. 고정된 컬렉션은 여전히 ​​나머지 컬렉션보다 위에 있습니다.

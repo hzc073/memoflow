@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -22,6 +21,7 @@ import '../../state/collections/collections_provider.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../memos/widgets/memo_reader_content.dart';
 import 'collection_editor_screen.dart';
+import 'collection_rss_html_content.dart';
 import 'collection_rss_subscription_sheet.dart';
 
 class CollectionArticleFlowScreen extends ConsumerStatefulWidget {
@@ -279,41 +279,48 @@ class _CollectionArticleFlowScreenState
           appBar: AppBar(
             title: Text(title),
             actions: [
-              PopupMenuButton<_ArticleFlowBulkAction>(
+              PopupMenuButton<_ArticleFlowMenuAction>(
                 tooltip: articleFlowStrings.listActions,
                 onSelected: (action) async {
                   switch (action) {
-                    case _ArticleFlowBulkAction.markAboveRead:
+                    case _ArticleFlowMenuAction.markAboveRead:
                       await _markRelativeAsRead(listModel.items, true);
-                    case _ArticleFlowBulkAction.markBelowRead:
+                    case _ArticleFlowMenuAction.markBelowRead:
                       await _markRelativeAsRead(listModel.items, false);
+                    case _ArticleFlowMenuAction.articleFlowExperience:
+                      await ref
+                          .read(collectionViewPreferenceActionsProvider)
+                          .setReadingExperience(
+                            collection.id,
+                            CollectionReadingExperience.articleFlow,
+                          );
+                    case _ArticleFlowMenuAction.continuousReaderExperience:
+                      await ref
+                          .read(collectionViewPreferenceActionsProvider)
+                          .setReadingExperience(
+                            collection.id,
+                            CollectionReadingExperience.continuousReader,
+                          );
                   }
                 },
                 itemBuilder: (context) => [
                   PopupMenuItem(
-                    value: _ArticleFlowBulkAction.markAboveRead,
+                    value: _ArticleFlowMenuAction.markAboveRead,
                     enabled: _selectedUid != null,
                     child: Text(articleFlowStrings.markAboveRead),
                   ),
                   PopupMenuItem(
-                    value: _ArticleFlowBulkAction.markBelowRead,
+                    value: _ArticleFlowMenuAction.markBelowRead,
                     enabled: _selectedUid != null,
                     child: Text(articleFlowStrings.markBelowRead),
                   ),
-                ],
-              ),
-              PopupMenuButton<CollectionReadingExperience>(
-                tooltip: articleFlowStrings.switchExperience,
-                onSelected: (value) => ref
-                    .read(collectionViewPreferenceActionsProvider)
-                    .setReadingExperience(collection.id, value),
-                itemBuilder: (context) => [
+                  const PopupMenuDivider(),
                   PopupMenuItem(
-                    value: CollectionReadingExperience.articleFlow,
+                    value: _ArticleFlowMenuAction.articleFlowExperience,
                     child: Text(articleFlowStrings.articleFlowExperience),
                   ),
                   PopupMenuItem(
-                    value: CollectionReadingExperience.continuousReader,
+                    value: _ArticleFlowMenuAction.continuousReaderExperience,
                     child: Text(articleFlowStrings.continuousReaderExperience),
                   ),
                 ],
@@ -1489,10 +1496,9 @@ class _ArticleDetailBody extends StatelessWidget {
               onRetry: onRetryFullContent,
               onOpenOriginal: onOpenOriginal,
             ),
-          HtmlWidget(
-            item.content,
+          CollectionRssHtmlContent(
+            html: item.content,
             textStyle: bodyTextStyle,
-            renderMode: RenderMode.column,
           ),
         ],
       );
@@ -1577,4 +1583,9 @@ FontWeight _resolveReaderFontWeight(CollectionReaderFontWeightMode mode) {
   };
 }
 
-enum _ArticleFlowBulkAction { markAboveRead, markBelowRead }
+enum _ArticleFlowMenuAction {
+  markAboveRead,
+  markBelowRead,
+  articleFlowExperience,
+  continuousReaderExperience,
+}
