@@ -1,0 +1,66 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Flutter, Dart, Riverpod, SQLite, WebDAV sync, Windows desktop support
+  Architecture phase: evolve_modularity
+  Current modularity score: 4/10
+  Preserve-phase gate: score >= 8/10 and all critical items satisfied.
+  Critical checklist items: 1, 2, 3, 4
+
+  Current quantified modularity checklist assessment:
+  - [ ] 1. No `state -> features` reverse dependencies. Critical.
+  - [ ] 2. No `application -> features` reverse dependencies. Critical.
+  - [ ] 3. No `core -> state|application|features` upward dependencies except explicitly approved adapters. Critical.
+  - [ ] 4. No reused shared domain logic hidden inside screen or widget files. Critical.
+  - [ ] 5. `app.dart` and `main.dart` primarily act as composition roots.
+  - [ ] 6. Feature-to-feature collaboration prefers boundary or registry seams over direct screen imports.
+  - [x] 7. Touched write paths have clear owners such as services, repositories, or mutation seams.
+  - [x] 8. Architecture guardrail tests exist for the highest-risk dependency directions.
+  - [x] 9. OpenSpec artifacts document the active architecture phase and expected modularity behavior.
+  - [x] 10. Changes touching coupled areas are required to leave the touched area equal or better structured than before.
+
+  Assessment notes:
+  - `state -> features` imports still exist in `state/memos` and `state/settings`.
+  - `application -> features` imports still exist in `application/startup`, `application/updates`, `application/widgets`, and `application/desktop`.
+  - `core` still imports higher layers in a few files such as `desktop_window_controls.dart`, `drawer_navigation.dart`, and `sync_error_presenter.dart`.
+  - Shared reusable memo-document logic is still exposed from `features/memos/memo_detail_screen.dart`.
+
+  Planning rules by phase:
+  - While phase is `evolve_modularity`, changes touching a coupling hotspot MUST include at least one scoped modularity improvement or a guardrail that prevents the touched area from worsening.
+  - While phase is `preserve_modularity`, changes MUST preserve boundaries and MUST NOT introduce new reverse dependencies or architecture regressions.
+  - Never refer to "80%" without the quantified checklist and preserve-phase gate.
+
+rules:
+  proposal:
+    - State the active architecture phase and identify which modularity checklist items the change touches.
+    - If the phase is `evolve_modularity` and the change touches a coupling hotspot, include at least one scoped modularity improvement in the proposed work.
+    - If the phase is `preserve_modularity`, explain how the change preserves boundaries and avoids new reverse dependencies.
+  design:
+    - Describe the dependency direction before and after the change for every touched hotspot.
+    - Identify any seam extraction, registry contribution, provider boundary, repository owner, or guardrail added to improve or preserve modularity.
+    - If no modularity improvement is planned during `evolve_modularity`, justify why the touched area is not a relevant coupling hotspot.
+  specs:
+    - Update `modularity-governance` requirements whenever the checklist semantics, critical items, preserve-phase gate, or allowed boundary exceptions change.
+    - State architecture requirements in normative language that prevent new reverse dependencies and shared-logic leaks.
+  tasks:
+    - Include at least one task for touched-area modularity improvement or guardrail coverage when a change touches a coupling hotspot during `evolve_modularity`.
+    - Include verification tasks for any architecture guardrails, phase transitions, or boundary exceptions changed by the work.
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
