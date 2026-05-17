@@ -1,0 +1,9 @@
+splash:
+  background_color: "#F7F5F0"
+  brand_color: "#D17452"
+  logo_asset: "assets/splash/splash_logo_native.png"
+  ios_logo_asset: "assets/splash/splash_logo_native.png"
+  android_icon_drawable: "splash_icon_transparent"
+  icon_background_color: "#00000000"
+  startup_visible_min_ms: 3000
+  startup_fade_duration_ms: 220
