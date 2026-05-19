@@ -54,10 +54,10 @@ class PlatformRadio<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Radio.adaptive(
-      value: value,
+    return RadioGroup<T>(
       groupValue: groupValue,
-      onChanged: onChanged,
+      onChanged: onChanged ?? (_) {},
+      child: Radio<T>.adaptive(value: value, enabled: onChanged != null),
     );
   }
 }
@@ -69,12 +69,14 @@ class PlatformSlider extends StatelessWidget {
     required this.onChanged,
     this.min = 0,
     this.max = 1,
+    this.divisions,
   });
 
   final double value;
   final ValueChanged<double>? onChanged;
   final double min;
   final double max;
+  final int? divisions;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +85,7 @@ class PlatformSlider extends StatelessWidget {
       onChanged: onChanged,
       min: min,
       max: max,
+      divisions: divisions,
     );
   }
 }
@@ -101,36 +104,81 @@ class PlatformProgress extends StatelessWidget {
 class PlatformTextField extends StatelessWidget {
   const PlatformTextField({
     super.key,
+    this.textFieldKey,
     this.controller,
     this.focusNode,
     this.decoration,
     this.style,
+    this.minLines,
     this.maxLines = 1,
+    this.maxLength,
+    this.maxLengthEnforcement,
     this.inputFormatters,
+    this.autofocus = false,
+    this.enabled,
+    this.keyboardType,
+    this.expands = false,
+    this.textInputAction,
+    this.textAlign = TextAlign.start,
+    this.textAlignVertical,
+    this.obscureText = false,
+    this.readOnly = false,
+    this.enableInteractiveSelection,
     this.onChanged,
     this.onSubmitted,
+    this.onEditingComplete,
   });
 
+  final Key? textFieldKey;
   final TextEditingController? controller;
   final FocusNode? focusNode;
   final InputDecoration? decoration;
   final TextStyle? style;
+  final int? minLines;
   final int? maxLines;
+  final int? maxLength;
+  final MaxLengthEnforcement? maxLengthEnforcement;
   final List<TextInputFormatter>? inputFormatters;
+  final bool autofocus;
+  final bool? enabled;
+  final TextInputType? keyboardType;
+  final bool expands;
+  final TextInputAction? textInputAction;
+  final TextAlign textAlign;
+  final TextAlignVertical? textAlignVertical;
+  final bool obscureText;
+  final bool readOnly;
+  final bool? enableInteractiveSelection;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      key: textFieldKey,
       controller: controller,
       focusNode: focusNode,
       decoration: decoration,
       style: style,
+      enabled: enabled,
+      keyboardType: keyboardType,
+      minLines: minLines,
       maxLines: maxLines,
+      maxLength: maxLength,
+      maxLengthEnforcement: maxLengthEnforcement,
+      expands: expands,
       inputFormatters: inputFormatters,
+      autofocus: autofocus,
+      textInputAction: textInputAction,
+      textAlign: textAlign,
+      textAlignVertical: textAlignVertical,
+      obscureText: obscureText,
+      readOnly: readOnly,
+      enableInteractiveSelection: enableInteractiveSelection,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
+      onEditingComplete: onEditingComplete,
     );
   }
 }

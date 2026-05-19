@@ -13,6 +13,7 @@ class PlatformIcons {
   static IconData get delete => CupertinoIcons.trash;
   static IconData get settings => CupertinoIcons.settings;
   static IconData get search => CupertinoIcons.search;
+  static IconData get filter => CupertinoIcons.slider_horizontal_3;
   static IconData get notifications => CupertinoIcons.bell;
   static IconData get sidebar => CupertinoIcons.sidebar_left;
   static IconData get check => CupertinoIcons.check_mark;

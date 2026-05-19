@@ -32,6 +32,16 @@ bool isDesktopPlatform([TargetPlatform? platform]) {
       resolved == TargetPlatform.linux;
 }
 
+bool isWindowsPlatform([TargetPlatform? platform]) {
+  final resolved = platform ?? _resolvedTargetPlatform;
+  return resolved == TargetPlatform.windows;
+}
+
+bool isLinuxPlatform([TargetPlatform? platform]) {
+  final resolved = platform ?? _resolvedTargetPlatform;
+  return resolved == TargetPlatform.linux;
+}
+
 bool isTabletAppleLayout(BuildContext context) {
   if (kIsWeb) return false;
   if (_resolvedTargetPlatform != TargetPlatform.iOS) return false;

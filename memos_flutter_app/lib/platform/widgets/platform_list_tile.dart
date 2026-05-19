@@ -10,6 +10,7 @@ class PlatformListTile extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.trailing,
+    this.contentPadding,
     this.onTap,
     this.danger = false,
   });
@@ -18,6 +19,7 @@ class PlatformListTile extends StatelessWidget {
   final Widget title;
   final Widget? subtitle;
   final Widget? trailing;
+  final EdgeInsetsGeometry? contentPadding;
   final VoidCallback? onTap;
   final bool danger;
 
@@ -34,6 +36,7 @@ class PlatformListTile extends StatelessWidget {
       );
     }
     return ListTile(
+      contentPadding: contentPadding,
       leading: leading,
       title: title,
       subtitle: subtitle,

@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/platform/platform_route.dart';
 import 'package:memos_flutter_app/platform/platform_scroll_behavior.dart';
 import 'package:memos_flutter_app/platform/platform_target.dart';
+import 'package:memos_flutter_app/platform/widgets/platform_action_sheet.dart';
 import 'package:memos_flutter_app/platform/widgets/platform_controls.dart';
+import 'package:memos_flutter_app/platform/widgets/platform_dialog.dart';
 import 'package:memos_flutter_app/platform/widgets/platform_grouped_list.dart';
 import 'package:memos_flutter_app/platform/widgets/platform_page.dart';
 
@@ -130,6 +132,129 @@ void main() {
     );
 
     expect(find.byType(CupertinoSwitch), findsOneWidget);
+  });
+
+  testWidgets('platform alert dialog uses cupertino on apple mobile', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) => CupertinoButton(
+            onPressed: () => showPlatformAlertDialog<bool>(
+              context: context,
+              title: 'Delete memo',
+              message: 'This cannot be undone.',
+              actions: const [
+                PlatformDialogAction<bool>(value: false, label: 'Cancel'),
+                PlatformDialogAction<bool>(
+                  value: true,
+                  label: 'Delete',
+                  isDefault: true,
+                  isDestructive: true,
+                ),
+              ],
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CupertinoAlertDialog), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('platform alert dialog uses material fallback on desktop', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.windows);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showPlatformAlertDialog<bool>(
+              context: context,
+              title: 'Delete memo',
+              message: 'This cannot be undone.',
+              actions: const [
+                PlatformDialogAction<bool>(value: false, label: 'Cancel'),
+                PlatformDialogAction<bool>(
+                  value: true,
+                  label: 'Delete',
+                  isDefault: true,
+                  isDestructive: true,
+                ),
+              ],
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+  });
+
+  testWidgets('platform action sheet uses cupertino modal popup on iOS', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) => CupertinoButton(
+            onPressed: () => showPlatformActionSheet<void>(
+              context: context,
+              builder: (_) => const Text('Apple action'),
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Apple action'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+  });
+
+  testWidgets('platform action sheet uses material bottom sheet on desktop', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.windows);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showPlatformActionSheet<void>(
+              context: context,
+              builder: (_) => const Text('Desktop action'),
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Desktop action'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsOneWidget);
   });
 
   testWidgets(
