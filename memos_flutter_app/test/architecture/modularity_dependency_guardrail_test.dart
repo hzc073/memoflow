@@ -799,7 +799,8 @@ void main() {
         'AccessDecision',
         'paywall',
         'entitlement',
-        'StoreKit',
+        'Store'
+            'Kit',
         'billing',
         'receipt',
         'premium',

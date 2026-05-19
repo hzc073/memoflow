@@ -38,7 +38,8 @@ void main() {
       'access_boundary/',
       'AppCapability',
       'AccessDecision',
-      'StoreKit',
+      'Store'
+          'Kit',
       'productId',
       'receipt',
       'buyout',
@@ -83,7 +84,8 @@ void main() {
     }
 
     const forbiddenTerms = <String>[
-      'StoreKit',
+      'Store'
+          'Kit',
       'productId',
       'receipt',
       'buyout',
@@ -95,7 +97,10 @@ void main() {
     ];
 
     final violations = <String>[];
-    await for (final entry in platformDir.list(recursive: true, followLinks: false)) {
+    await for (final entry in platformDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entry is! File || !entry.path.endsWith('.dart')) continue;
       final contents = await entry.readAsString();
       final relativePath = entry.path.replaceAll('\\', '/');

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/features/home/app_drawer.dart';
+import 'package:memos_flutter_app/features/home/desktop/desktop_shell_host.dart';
 import 'package:memos_flutter_app/features/home/desktop/windows_desktop_page_shell.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 
@@ -61,6 +63,23 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('desktop shell host delegates macOS to apple shell', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildDesktopHostHarness(TargetPlatform.macOS));
+
+    expect(
+      find.byKey(const ValueKey<String>('apple-macos-page-shell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('apple-macos-toolbar')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('nav-expandedSidebar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('drawer-menu-button')), findsNothing);
+  });
 }
 
 Widget _buildHarness({
@@ -92,4 +111,30 @@ Widget _buildHarness({
       ),
     ),
   );
+}
+
+Widget _buildDesktopHostHarness(TargetPlatform platform) {
+  return ProviderScope(
+    child: TranslationProvider(
+      child: MaterialApp(
+        theme: ThemeData(platform: platform),
+        locale: AppLocale.en.flutterLocale,
+        supportedLocales: AppLocaleUtils.supportedLocales,
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: const MediaQuery(
+          data: MediaQueryData(size: Size(1200, 900)),
+          child: DesktopShellHost(
+            navigationBuilder: _testNavigationBuilder,
+            leadingTitle: Text('Title'),
+            body: SizedBox.expand(),
+            showWindowControls: false,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _testNavigationBuilder(AppDrawerViewMode viewMode, bool embedded) {
+  return Container(key: ValueKey('nav-${viewMode.name}'), color: Colors.blue);
 }

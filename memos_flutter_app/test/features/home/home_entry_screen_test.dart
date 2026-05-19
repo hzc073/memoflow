@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,9 @@ import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
 import 'package:memos_flutter_app/features/home/home_entry_screen.dart';
+import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
+import 'package:memos_flutter_app/features/home/home_root_destination_registry.dart';
+import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
 import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
 
@@ -14,16 +18,19 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    LocaleSettings.setLocale(AppLocale.en);
     HomeEntryScreen.debugClassicScreenBuilderOverride = (_) =>
         const Text('classic-home');
     HomeEntryScreen.debugBottomNavShellBuilderOverride = (_) =>
         const Text('bottom-nav-shell');
+    debugHomeRootScreenBuilderOverride = null;
     debugDefaultTargetPlatformOverride = null;
   });
 
   tearDown(() {
     HomeEntryScreen.debugClassicScreenBuilderOverride = null;
     HomeEntryScreen.debugBottomNavShellBuilderOverride = null;
+    debugHomeRootScreenBuilderOverride = null;
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -59,6 +66,45 @@ void main() {
 
     expect(find.text('bottom-nav-shell'), findsOneWidget);
     expect(find.text('classic-home'), findsNothing);
+  });
+
+  testWidgets('iPad target uses apple tablet shell with sidebar', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    debugHomeRootScreenBuilderOverride =
+        ({
+          required BuildContext context,
+          required HomeRootDestination destination,
+          required HomeScreenPresentation presentation,
+          required HomeEmbeddedNavigationHost? navigationHost,
+          String? memosTag,
+        }) => Text('page-${destination.name}-${presentation.name}');
+    final container = _buildContainer(
+      prefs: WorkspacePreferences.defaults.copyWith(
+        homeNavigationPreferences: HomeNavigationPreferences.defaults.copyWith(
+          mode: HomeNavigationMode.bottomBar,
+        ),
+      ),
+      loaded: true,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      _buildApp(
+        container,
+        home: const MediaQuery(
+          data: MediaQueryData(size: Size(1024, 768)),
+          child: HomeEntryScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('MemoFlow'), findsOneWidget);
+    expect(find.text('bottom-nav-shell'), findsNothing);
+    expect(find.text('classic-home'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('desktop still returns classic home in bottom navigation mode', (
@@ -110,10 +156,17 @@ void main() {
   });
 }
 
-Widget _buildApp(ProviderContainer container) {
+Widget _buildApp(ProviderContainer container, {Widget? home}) {
   return UncontrolledProviderScope(
     container: container,
-    child: const MaterialApp(home: HomeEntryScreen()),
+    child: TranslationProvider(
+      child: MaterialApp(
+        locale: AppLocale.en.flutterLocale,
+        supportedLocales: AppLocaleUtils.supportedLocales,
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: home ?? const HomeEntryScreen(),
+      ),
+    ),
   );
 }
 

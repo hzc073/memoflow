@@ -25,7 +25,8 @@ void main() {
     ];
 
     const forbiddenTerms = <String>[
-      'StoreKit',
+      'Store'
+          'Kit',
       'productId',
       'receipt',
       'buyout',
@@ -36,7 +37,10 @@ void main() {
     ];
 
     final violations = <String>[];
-    await for (final entry in platformDir.list(recursive: true, followLinks: false)) {
+    await for (final entry in platformDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entry is! File || !entry.path.endsWith('.dart')) continue;
       final contents = await entry.readAsString();
       final relativePath = entry.path.replaceAll('\\', '/');
@@ -50,7 +54,9 @@ void main() {
       for (final line in contents.split('\n')) {
         final trimmed = line.trim();
         if (!trimmed.startsWith('import ')) continue;
-        final match = RegExp(r"""^import ['"]([^'"]+)['"];$""").firstMatch(trimmed);
+        final match = RegExp(
+          r"""^import ['"]([^'"]+)['"];$""",
+        ).firstMatch(trimmed);
         if (match == null) continue;
         final importPath = match.group(1)!;
         if (forbiddenLayerPrefixes.any(importPath.startsWith)) {
