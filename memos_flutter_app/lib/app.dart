@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'application/app/app_sync_orchestrator.dart';
 import 'application/desktop/desktop_quick_input_controller.dart';
+import 'application/desktop/desktop_settings_window.dart';
 import 'application/desktop/desktop_window_resize_frame.dart';
 import 'application/desktop/desktop_window_manager.dart';
 import 'application/desktop/desktop_exit_coordinator.dart';
@@ -16,24 +18,50 @@ import 'application/desktop/single_instance_coordinator.dart';
 import 'application/quick_input/quick_input_service.dart';
 import 'application/startup/startup_coordinator.dart';
 import 'application/sync/sync_feedback_presenter.dart';
+import 'application/sync/sync_request.dart';
 import 'application/updates/update_announcement_runner.dart';
 import 'application/widgets/home_widgets_updater.dart';
 import 'core/app_localization.dart';
 import 'core/app_theme.dart';
+import 'core/macos_menu_command_channel.dart';
 import 'core/startup_timing.dart';
-import 'application/desktop/desktop_settings_window.dart';
 import 'core/font_loader.dart' as app_font;
 import 'core/memoflow_palette.dart';
+import 'data/logs/log_manager.dart';
 import 'data/models/device_preferences.dart';
 import 'data/models/local_library.dart';
-import 'data/logs/log_manager.dart';
 import 'features/home/main_home_page.dart';
+import 'features/import/import_flow_screens.dart';
 import 'features/image_editor/i18n.dart';
 import 'features/lock/app_lock_gate.dart';
+import 'features/memos/draft_box_navigation_screen.dart';
+import 'features/memos/memo_editor_screen.dart';
 import 'features/memos/memos_list_screen.dart';
+import 'features/memos/recycle_bin_screen.dart';
+import 'features/review/ai_insight_history_screen.dart';
+import 'features/review/ai_summary_screen.dart';
+import 'features/review/quick_prompt_editor_screen.dart';
+import 'features/settings/ai_provider_settings_screen.dart';
+import 'features/settings/ai_settings_screen.dart';
+import 'features/settings/desktop_shortcuts_overview_screen.dart';
+import 'features/settings/desktop_shortcuts_settings_screen.dart';
+import 'features/settings/export_logs_screen.dart';
+import 'features/settings/export_memos_screen.dart';
+import 'features/settings/feedback_screen.dart';
+import 'features/settings/image_bed_settings_screen.dart';
+import 'features/settings/image_compression_settings_screen.dart';
+import 'features/settings/local_network_migration_screen.dart';
+import 'features/settings/location_settings_screen.dart';
+import 'features/settings/memo_toolbar_settings_screen.dart';
+import 'features/settings/self_repair_screen.dart';
+import 'features/settings/template_settings_screen.dart';
+import 'features/settings/webdav_sync_screen.dart';
 import 'features/share/clipboard_share_detector.dart';
 import 'features/share/share_handler.dart';
+import 'features/sync/sync_queue_screen.dart';
+import 'features/tags/tags_screen.dart';
 import 'features/updates/announcement_dialog_presenter.dart';
+import 'features/updates/release_notes_screen.dart';
 import 'application/widgets/home_widget_service.dart';
 import 'i18n/strings.g.dart';
 import 'private_hooks/private_extension_bundle_provider.dart';
@@ -56,6 +84,9 @@ class App extends ConsumerStatefulWidget {
 
 class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  static const MethodChannel _macosMenuChannel = MethodChannel(
+    macosMenuCommandChannelName,
+  );
   late final AppNavigator _appNavigator = AppNavigator(_navigatorKey);
   final _mainHomePageKey = GlobalKey<State<StatefulWidget>>();
   late final AppBootstrapAdapter _bootstrapAdapter;
@@ -243,6 +274,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       );
     });
     _desktopWindowManager.configureTrayActions();
+    _bindMacosMenuCommandHandler();
     SingleInstanceCoordinator.setActivationHandler(
       DesktopExitCoordinator.activateMainWindow,
     );
@@ -303,6 +335,159 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       },
     );
     _scheduleHomeWidgetRefresh(force: true);
+  }
+
+  void _bindMacosMenuCommandHandler() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) return;
+    _macosMenuChannel.setMethodCallHandler(_handleMacosMenuMethodCall);
+  }
+
+  Future<dynamic> _handleMacosMenuMethodCall(MethodCall call) async {
+    if (call.method != macosMenuDispatchMethod) return null;
+    final command = call.arguments;
+    if (command is! String || command.trim().isEmpty) return false;
+    await _handleMacosMenuCommand(command.trim());
+    return true;
+  }
+
+  Future<void> _handleMacosMenuCommand(String command) async {
+    if (!mounted) return;
+    switch (command) {
+      case macosMenuCommandNewMemo:
+        await _pushMacosMenuRoute(const MemoEditorScreen());
+        return;
+      case macosMenuCommandQuickInput:
+      case macosMenuCommandFocusQuickInput:
+        final autoFocus = _bootstrapAdapter
+            .readDevicePreferences(ref)
+            .quickInputAutoFocus;
+        unawaited(_startupCoordinator.openQuickInput(autoFocus: autoFocus));
+        return;
+      case macosMenuCommandSearchMemos:
+        await _pushMacosMenuRoute(
+          const MemosListScreen(
+            title: 'MemoFlow',
+            state: 'NORMAL',
+            showDrawer: true,
+            enableCompose: true,
+          ),
+        );
+        return;
+      case macosMenuCommandDraftBox:
+        await _pushMacosMenuRoute(const DraftBoxNavigationScreen());
+        return;
+      case macosMenuCommandTags:
+        await _pushMacosMenuRoute(const TagsScreen());
+        return;
+      case macosMenuCommandRecycleBin:
+        await _pushMacosMenuRoute(const RecycleBinScreen());
+        return;
+      case macosMenuCommandSyncNow:
+        await ref
+            .read(syncCoordinatorProvider.notifier)
+            .requestSync(
+              const SyncRequest(
+                kind: SyncRequestKind.memos,
+                reason: SyncRequestReason.manual,
+                showFeedbackToast: true,
+              ),
+            );
+        return;
+      case macosMenuCommandSyncQueue:
+        await _pushMacosMenuRoute(const SyncQueueScreen());
+        return;
+      case macosMenuCommandWebDavBackup:
+        await _pushMacosMenuRoute(const WebDavSyncScreen());
+        return;
+      case macosMenuCommandImportFile:
+      case macosMenuCommandImportMarkdown:
+      case macosMenuCommandImportFlomo:
+      case macosMenuCommandImportSwashbucklerDiary:
+        await _pushMacosMenuRoute(const ImportSourceScreen());
+        return;
+      case macosMenuCommandExportMemos:
+        await _pushMacosMenuRoute(const ExportMemosScreen());
+        return;
+      case macosMenuCommandMigration:
+        await _pushMacosMenuRoute(const LocalNetworkMigrationScreen());
+        return;
+      case macosMenuCommandAiSummary:
+        await _pushMacosMenuRoute(const AiSummaryScreen());
+        return;
+      case macosMenuCommandAiReports:
+        await _pushMacosMenuRoute(const AiInsightHistoryScreen());
+        return;
+      case macosMenuCommandQuickPrompts:
+        await _pushMacosMenuRoute(const QuickPromptEditorScreen());
+        return;
+      case macosMenuCommandAiSettings:
+        await _pushMacosMenuRoute(const AiSettingsScreen());
+        return;
+      case macosMenuCommandAiProvider:
+        await _pushMacosMenuRoute(const AiProviderSettingsScreen());
+        return;
+      case macosMenuCommandShortcutSettings:
+        await _pushMacosMenuRoute(const DesktopShortcutsSettingsScreen());
+        return;
+      case macosMenuCommandDesktopShortcutsOverview:
+        final bindings = _bootstrapAdapter
+            .readDevicePreferences(ref)
+            .desktopShortcutBindings;
+        await _pushMacosMenuRoute(
+          DesktopShortcutsOverviewScreen(bindings: bindings),
+        );
+        return;
+      case macosMenuCommandTemplateSettings:
+        await _pushMacosMenuRoute(const TemplateSettingsScreen());
+        return;
+      case macosMenuCommandMemoToolbarSettings:
+        await _pushMacosMenuRoute(const MemoToolbarSettingsScreen());
+        return;
+      case macosMenuCommandLocationSettings:
+        await _pushMacosMenuRoute(const LocationSettingsScreen());
+        return;
+      case macosMenuCommandImageBedSettings:
+        await _pushMacosMenuRoute(const ImageBedSettingsScreen());
+        return;
+      case macosMenuCommandImageCompression:
+        await _pushMacosMenuRoute(const ImageCompressionSettingsScreen());
+        return;
+      case macosMenuCommandSelfRepair:
+        await _pushMacosMenuRoute(const SelfRepairScreen());
+        return;
+      case macosMenuCommandExportDiagnostics:
+        await _pushMacosMenuRoute(const ExportLogsScreen());
+        return;
+      case macosMenuCommandOpenSettingsWindow:
+        openDesktopSettingsWindowIfSupported(
+          feedbackContext: _navigatorKey.currentContext,
+        );
+        return;
+      case macosMenuCommandHelpCenter:
+        await _openExternalUrl('https://memoflow.hzc073.com/help/');
+        return;
+      case macosMenuCommandMemosBackendDocs:
+        await _openExternalUrl('https://usememos.com/docs');
+        return;
+      case macosMenuCommandReleaseNotes:
+        await _pushMacosMenuRoute(const ReleaseNotesScreen());
+        return;
+      case macosMenuCommandFeedback:
+        await _pushMacosMenuRoute(const FeedbackScreen());
+        return;
+    }
+  }
+
+  Future<void> _pushMacosMenuRoute(Widget route) async {
+    if (!mounted) return;
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    await navigator.push(MaterialPageRoute<void>(builder: (_) => route));
+  }
+
+  Future<void> _openExternalUrl(String value) async {
+    final uri = Uri.parse(value);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -739,6 +924,9 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     _startupCoordinator.removeListener(_handleStartupCoordinatorChanged);
     _startupCoordinator.dispose();
     _desktopWindowManager.unbindMethodHandler();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
+      _macosMenuChannel.setMethodCallHandler(null);
+    }
     _desktopWindowManager.dispose();
     unawaited(_desktopQuickInputController.unregisterHotKey());
     _homeWidgetsUpdater.dispose();

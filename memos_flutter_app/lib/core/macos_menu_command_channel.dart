@@ -1,0 +1,40 @@
+const String macosMenuCommandChannelName = 'memoflow/macos_menu';
+const String macosMenuDispatchMethod = 'dispatch';
+
+const String macosMenuCommandNewMemo = 'newMemo';
+const String macosMenuCommandQuickInput = 'quickInput';
+const String macosMenuCommandSearchMemos = 'searchMemos';
+const String macosMenuCommandDraftBox = 'draftBox';
+const String macosMenuCommandTags = 'tags';
+const String macosMenuCommandRecycleBin = 'recycleBin';
+const String macosMenuCommandSyncNow = 'syncNow';
+const String macosMenuCommandSyncQueue = 'syncQueue';
+const String macosMenuCommandWebDavBackup = 'webDavBackup';
+const String macosMenuCommandImportFile = 'importFile';
+const String macosMenuCommandImportMarkdown = 'importMarkdown';
+const String macosMenuCommandImportFlomo = 'importFlomo';
+const String macosMenuCommandImportSwashbucklerDiary =
+    'importSwashbucklerDiary';
+const String macosMenuCommandExportMemos = 'exportMemos';
+const String macosMenuCommandMigration = 'migration';
+const String macosMenuCommandAiSummary = 'aiSummary';
+const String macosMenuCommandAiReports = 'aiReports';
+const String macosMenuCommandQuickPrompts = 'quickPrompts';
+const String macosMenuCommandAiSettings = 'aiSettings';
+const String macosMenuCommandAiProvider = 'aiProvider';
+const String macosMenuCommandShortcutSettings = 'shortcutSettings';
+const String macosMenuCommandDesktopShortcutsOverview =
+    'desktopShortcutsOverview';
+const String macosMenuCommandTemplateSettings = 'templateSettings';
+const String macosMenuCommandMemoToolbarSettings = 'memoToolbarSettings';
+const String macosMenuCommandLocationSettings = 'locationSettings';
+const String macosMenuCommandImageBedSettings = 'imageBedSettings';
+const String macosMenuCommandImageCompression = 'imageCompression';
+const String macosMenuCommandSelfRepair = 'selfRepair';
+const String macosMenuCommandExportDiagnostics = 'exportDiagnostics';
+const String macosMenuCommandOpenSettingsWindow = 'openSettingsWindow';
+const String macosMenuCommandFocusQuickInput = 'focusQuickInput';
+const String macosMenuCommandHelpCenter = 'helpCenter';
+const String macosMenuCommandMemosBackendDocs = 'memosBackendDocs';
+const String macosMenuCommandReleaseNotes = 'releaseNotes';
+const String macosMenuCommandFeedback = 'feedback';
