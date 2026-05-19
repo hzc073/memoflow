@@ -4,11 +4,7 @@ import 'package:flutter/material.dart';
 import '../platform_target.dart';
 
 class PlatformGroupedList extends StatelessWidget {
-  const PlatformGroupedList({
-    super.key,
-    required this.children,
-    this.padding,
-  });
+  const PlatformGroupedList({super.key, required this.children, this.padding});
 
   final List<Widget> children;
   final EdgeInsetsGeometry? padding;
@@ -28,4 +24,3 @@ class PlatformGroupedList extends StatelessWidget {
     );
   }
 }
-

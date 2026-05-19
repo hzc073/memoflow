@@ -1,4 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../platform_target.dart';
 
 class PlatformSwitch extends StatelessWidget {
   const PlatformSwitch({
@@ -12,6 +16,10 @@ class PlatformSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final target = resolvePlatformTarget(context);
+    if (target == PlatformTarget.iPhone || target == PlatformTarget.iPad) {
+      return CupertinoSwitch(value: value, onChanged: onChanged);
+    }
     return Switch.adaptive(value: value, onChanged: onChanged);
   }
 }
@@ -46,7 +54,11 @@ class PlatformRadio<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Radio.adaptive(value: value, groupValue: groupValue, onChanged: onChanged);
+    return Radio.adaptive(
+      value: value,
+      groupValue: groupValue,
+      onChanged: onChanged,
+    );
   }
 }
 
@@ -92,7 +104,9 @@ class PlatformTextField extends StatelessWidget {
     this.controller,
     this.focusNode,
     this.decoration,
+    this.style,
     this.maxLines = 1,
+    this.inputFormatters,
     this.onChanged,
     this.onSubmitted,
   });
@@ -100,7 +114,9 @@ class PlatformTextField extends StatelessWidget {
   final TextEditingController? controller;
   final FocusNode? focusNode;
   final InputDecoration? decoration;
+  final TextStyle? style;
   final int? maxLines;
+  final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
 
@@ -110,7 +126,9 @@ class PlatformTextField extends StatelessWidget {
       controller: controller,
       focusNode: focusNode,
       decoration: decoration,
+      style: style,
       maxLines: maxLines,
+      inputFormatters: inputFormatters,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
     );

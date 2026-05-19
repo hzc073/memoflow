@@ -19,8 +19,8 @@ class PlatformIcons {
   static IconData get warning => CupertinoIcons.exclamationmark_triangle;
   static IconData get destructive => CupertinoIcons.exclamationmark_octagon;
   static IconData get cancel => CupertinoIcons.clear;
+  static IconData get chevronForward => CupertinoIcons.chevron_forward;
 
   static IconData get platformBack => Icons.arrow_back_ios_new_rounded;
   static IconData get platformClose => Icons.close_rounded;
 }
-

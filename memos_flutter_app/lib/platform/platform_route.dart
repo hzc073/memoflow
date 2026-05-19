@@ -26,4 +26,3 @@ Route<T> buildPlatformPageRoute<T>({
     maintainState: maintainState,
   );
 }
-

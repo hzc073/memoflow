@@ -43,4 +43,3 @@ class PlatformListTile extends StatelessWidget {
     );
   }
 }
-

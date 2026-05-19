@@ -24,4 +24,3 @@ Future<T?> showPlatformDialog<T>({
     builder: builder,
   );
 }
-

@@ -11,6 +11,8 @@ class PlatformPage extends StatelessWidget {
     this.leading,
     this.actions,
     this.bottomBar,
+    this.drawer,
+    this.drawerEnableOpenDragGesture = true,
     this.sidebar,
     this.toolbar,
     this.safeArea = true,
@@ -23,6 +25,8 @@ class PlatformPage extends StatelessWidget {
   final Widget? leading;
   final List<Widget>? actions;
   final Widget? bottomBar;
+  final Widget? drawer;
+  final bool drawerEnableOpenDragGesture;
   final Widget? sidebar;
   final Widget? toolbar;
   final bool safeArea;
@@ -37,17 +41,15 @@ class PlatformPage extends StatelessWidget {
     if (target == PlatformTarget.iPhone || target == PlatformTarget.iPad) {
       return CupertinoPageScaffold(
         backgroundColor: backgroundColor,
-        navigationBar: title == null && leading == null && (actions?.isEmpty ?? true)
+        navigationBar:
+            title == null && leading == null && (actions?.isEmpty ?? true)
             ? null
             : CupertinoNavigationBar(
                 middle: title,
                 leading: leading,
                 trailing: actions == null
                     ? null
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: actions!,
-                      ),
+                    : Row(mainAxisSize: MainAxisSize.min, children: actions!),
               ),
         child: Column(
           children: [
@@ -64,11 +66,9 @@ class PlatformPage extends StatelessWidget {
       extendBodyBehindAppBar: extendBodyBehindAppBar,
       appBar: title == null && leading == null && (actions?.isEmpty ?? true)
           ? null
-          : AppBar(
-              title: title,
-              leading: leading,
-              actions: actions,
-            ),
+          : AppBar(title: title, leading: leading, actions: actions),
+      drawer: drawer,
+      drawerEnableOpenDragGesture: drawerEnableOpenDragGesture,
       body: Column(
         children: [
           if (toolbar != null) toolbar!,
