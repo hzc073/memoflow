@@ -1,14 +1,19 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/window_chrome_safe_area.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/url.dart';
 import '../../core/version_probe_gate.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/widgets/platform_adaptive_layout.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/system/login_draft_provider.dart';
 import '../../state/system/home_loading_overlay_provider.dart';
 import '../../state/memos/login_provider.dart';
@@ -94,7 +99,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_isLoginOpActive(opId)) {
       return Future<T?>.value(null);
     }
-    return showDialog<T>(
+    return showPlatformDialog<T>(
       context: context,
       barrierDismissible: barrierDismissible,
       builder: builder,
@@ -311,7 +316,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     final confirmed =
-        await showDialog<bool>(
+        await showPlatformDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.login.dialogs.insecureHttpTitle),
@@ -1201,6 +1206,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final modeDescription = _loginMode == _LoginMode.password
         ? context.t.strings.login.mode.descPassword
         : context.t.strings.login.mode.descToken;
+    final chromeInsets = resolveDesktopWindowChromeInsets(
+      platform: defaultTargetPlatform,
+      contentExtendsIntoTitleBar: true,
+    );
 
     if (!_shownInitialError) {
       _shownInitialError = true;
@@ -1217,12 +1226,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        leading: IconButton(
-          tooltip: context.t.strings.common.back,
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () async {
-            await _handleBackPressed();
-          },
+        leadingWidth: kToolbarHeight + chromeInsets.leading,
+        leading: Padding(
+          padding: EdgeInsetsDirectional.only(start: chromeInsets.leading),
+          child: IconButton(
+            tooltip: context.t.strings.common.back,
+            icon: const Icon(Icons.arrow_back_ios_new),
+            onPressed: () async {
+              await _handleBackPressed();
+            },
+          ),
         ),
         title: Text(context.t.strings.login.title),
         centerTitle: false,
@@ -1232,242 +1245,233 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         surfaceTintColor: Colors.transparent,
       ),
       body: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
-              children: [
-                const SizedBox(height: 6),
-                Text(
-                  modeDescription,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: textMuted,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        context.t.strings.login.mode.signInMethod,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: textMain,
-                        ),
+        child: PlatformBoundedContent(
+          desktopMaxWidth: 620,
+          tabletMaxWidth: 560,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
+            children: [
+              const SizedBox(height: 6),
+              Text(
+                modeDescription,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textMuted, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 20),
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      context.t.strings.login.mode.signInMethod,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: textMain,
                       ),
-                      const SizedBox(height: 8),
-                      _buildLoginModeToggle(
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLoginModeToggle(
+                      enabled: !isBusy,
+                      isDark: isDark,
+                      card: card,
+                      textMain: textMain,
+                    ),
+                    const SizedBox(height: 14),
+                    _buildField(
+                      controller: _baseUrlController,
+                      label: context.t.strings.login.field.serverUrlLabel,
+                      hint: context.t.strings.login.field.serverUrlHint,
+                      enabled: !isBusy,
+                      obscureText: false,
+                      keyboardType: TextInputType.url,
+                      isDark: isDark,
+                      card: card,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      prefixText: _useHttps ? 'https://' : 'http://',
+                      suffixIcon: _buildProtocolShieldButton(
                         enabled: !isBusy,
-                        isDark: isDark,
-                        card: card,
-                        textMain: textMain,
+                        textMuted: textMuted,
                       ),
-                      const SizedBox(height: 14),
+                      onChanged: _syncBaseUrlDraft,
+                      validator: (v) {
+                        final raw = _normalizeBaseUrlSuffix(v ?? '');
+                        if (raw.isEmpty) {
+                          return context
+                              .t
+                              .strings
+                              .login
+                              .validation
+                              .serverUrlRequired;
+                        }
+                        final uri = Uri.tryParse(_composeBaseUrlString(raw));
+                        if (uri == null ||
+                            !(uri.hasScheme && uri.hasAuthority)) {
+                          return context
+                              .t
+                              .strings
+                              .login
+                              .validation
+                              .serverUrlInvalid;
+                        }
+                        return null;
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: _buildHttpSwitchHint(textMuted: textMuted),
+                    ),
+                    const SizedBox(height: 14),
+                    if (_loginMode == _LoginMode.password) ...[
                       _buildField(
-                        controller: _baseUrlController,
-                        label: context.t.strings.login.field.serverUrlLabel,
-                        hint: context.t.strings.login.field.serverUrlHint,
+                        controller: _usernameController,
+                        label: context.t.strings.login.field.usernameLabel,
+                        hint: context.t.strings.login.field.usernameHint,
                         enabled: !isBusy,
                         obscureText: false,
-                        keyboardType: TextInputType.url,
                         isDark: isDark,
                         card: card,
                         textMain: textMain,
                         textMuted: textMuted,
-                        prefixText: _useHttps ? 'https://' : 'http://',
-                        suffixIcon: _buildProtocolShieldButton(
-                          enabled: !isBusy,
-                          textMuted: textMuted,
-                        ),
-                        onChanged: _syncBaseUrlDraft,
                         validator: (v) {
-                          final raw = _normalizeBaseUrlSuffix(v ?? '');
-                          if (raw.isEmpty) {
+                          if ((v ?? '').trim().isEmpty) {
                             return context
                                 .t
                                 .strings
                                 .login
                                 .validation
-                                .serverUrlRequired;
-                          }
-                          final uri = Uri.tryParse(_composeBaseUrlString(raw));
-                          if (uri == null ||
-                              !(uri.hasScheme && uri.hasAuthority)) {
-                            return context
-                                .t
-                                .strings
-                                .login
-                                .validation
-                                .serverUrlInvalid;
+                                .usernameRequired;
                           }
                           return null;
                         },
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: _buildHttpSwitchHint(textMuted: textMuted),
-                      ),
                       const SizedBox(height: 14),
-                      if (_loginMode == _LoginMode.password) ...[
-                        _buildField(
-                          controller: _usernameController,
-                          label: context.t.strings.login.field.usernameLabel,
-                          hint: context.t.strings.login.field.usernameHint,
-                          enabled: !isBusy,
-                          obscureText: false,
-                          isDark: isDark,
-                          card: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          validator: (v) {
-                            if ((v ?? '').trim().isEmpty) {
-                              return context
-                                  .t
-                                  .strings
-                                  .login
-                                  .validation
-                                  .usernameRequired;
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                        _buildField(
-                          controller: _passwordController,
-                          label: context.t.strings.login.field.passwordLabel,
-                          hint: context.t.strings.login.field.passwordHint,
-                          enabled: !isBusy,
-                          obscureText: true,
-                          isDark: isDark,
-                          card: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          keyboardType: TextInputType.visiblePassword,
-                          validator: (v) {
-                            if ((v ?? '').isEmpty) {
-                              return context
-                                  .t
-                                  .strings
-                                  .login
-                                  .validation
-                                  .passwordRequired;
-                            }
-                            return null;
-                          },
-                        ),
-                      ] else ...[
-                        _buildField(
-                          controller: _tokenController,
-                          label: context.t.strings.login.field.tokenLabel,
-                          hint: context.t.strings.login.field.tokenHint,
-                          enabled: !isBusy,
-                          obscureText: true,
-                          isDark: isDark,
-                          card: card,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          validator: (v) {
-                            if ((v ?? '').trim().isEmpty) {
-                              return context
-                                  .t
-                                  .strings
-                                  .login
-                                  .validation
-                                  .tokenRequired;
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: card,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: isDark
-                              ? null
-                              : [
-                                  BoxShadow(
-                                    blurRadius: 18,
-                                    offset: const Offset(0, 10),
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                  ),
-                                ],
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              context.t.strings.common.serverVersion,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: textMain,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            _buildServerVersionSelector(
-                              enabled: !isBusy,
-                              isDark: isDark,
-                              card: card,
-                              textMain: textMain,
-                              textMuted: textMuted,
-                            ),
-                            if (isVersionProbeEnabled)
-                              Text(
-                                context.t.strings.common.serverVersionProbeHint,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: textMuted,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                          ],
-                        ),
+                      _buildField(
+                        controller: _passwordController,
+                        label: context.t.strings.login.field.passwordLabel,
+                        hint: context.t.strings.login.field.passwordHint,
+                        enabled: !isBusy,
+                        obscureText: true,
+                        isDark: isDark,
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        keyboardType: TextInputType.visiblePassword,
+                        validator: (v) {
+                          if ((v ?? '').isEmpty) {
+                            return context
+                                .t
+                                .strings
+                                .login
+                                .validation
+                                .passwordRequired;
+                          }
+                          return null;
+                        },
                       ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        height: 52,
-                        child: ElevatedButton.icon(
-                          onPressed: isBusy ? null : _connect,
-                          icon: isBusy
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.link),
-                          label: Text(
-                            isBusy
-                                ? context.t.strings.login.connect.connecting
-                                : context.t.strings.login.connect.action,
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: MemoFlowPalette.primary,
-                            foregroundColor: Colors.white,
-                            elevation: isDark ? 0 : 6,
-                            shape: const StadiumBorder(),
-                            textStyle: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
+                    ] else ...[
+                      _buildField(
+                        controller: _tokenController,
+                        label: context.t.strings.login.field.tokenLabel,
+                        hint: context.t.strings.login.field.tokenHint,
+                        enabled: !isBusy,
+                        obscureText: true,
+                        isDark: isDark,
+                        card: card,
+                        textMain: textMain,
+                        textMuted: textMuted,
+                        validator: (v) {
+                          if ((v ?? '').trim().isEmpty) {
+                            return context
+                                .t
+                                .strings
+                                .login
+                                .validation
+                                .tokenRequired;
+                          }
+                          return null;
+                        },
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 24),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: card,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: isDark
+                            ? null
+                            : [
+                                BoxShadow(
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 10),
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                ),
+                              ],
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.t.strings.common.serverVersion,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: textMain,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          _buildServerVersionSelector(
+                            enabled: !isBusy,
+                            isDark: isDark,
+                            card: card,
+                            textMain: textMain,
+                            textMuted: textMuted,
+                          ),
+                          if (isVersionProbeEnabled)
+                            Text(
+                              context.t.strings.common.serverVersionProbeHint,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: textMuted,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    PlatformPrimaryAction(
+                      key: const ValueKey<String>('login.connectAction'),
+                      onPressed: isBusy ? null : _connect,
+                      icon: isBusy
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.link),
+                      desktopMaxWidth: 280,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MemoFlowPalette.primary,
+                        foregroundColor: Colors.white,
+                        elevation: isDark ? 0 : 6,
+                        minimumSize: const Size(0, 52),
+                        shape: const StadiumBorder(),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      child: Text(
+                        isBusy
+                            ? context.t.strings.login.connect.connecting
+                            : context.t.strings.login.connect.action,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

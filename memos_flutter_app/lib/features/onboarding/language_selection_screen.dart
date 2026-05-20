@@ -8,7 +8,9 @@ import '../../data/logs/log_manager.dart';
 import '../../data/local_library/local_library_paths.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/local_library.dart';
+import '../../platform/widgets/platform_adaptive_layout.dart';
 import '../../platform/widgets/platform_page.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../settings/local_mode_setup_screen.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/system/local_library_provider.dart';
@@ -342,157 +344,167 @@ class _LanguageSelectionScreenState
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 76,
-                    height: 76,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                      boxShadow: [
-                        BoxShadow(
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                          color: MemoFlowPalette.primary.withValues(
-                            alpha: isDark ? 0.18 : 0.16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: Image.asset(
-                        _memoFlowOnboardingLogoAsset,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'MemoFlow',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    context.t.strings.onboarding.tagline,
-                    style: TextStyle(fontSize: 12, color: textMuted),
-                  ),
-                  const SizedBox(height: 24),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      context.t.strings.onboarding.selectLanguage,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: card,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: border),
-                      boxShadow: isDark
-                          ? null
-                          : [
-                              BoxShadow(
-                                blurRadius: 12,
-                                offset: const Offset(0, 6),
-                                color: Colors.black.withValues(alpha: 0.06),
-                              ),
-                            ],
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<AppLanguage>(
-                        value: _selected,
-                        isExpanded: true,
-                        items: dropdownItems,
-                        onChanged: _handleLanguageChanged,
-                        icon: Icon(
-                          Icons.expand_more,
-                          size: 20,
-                          color: textMuted,
-                        ),
-                        dropdownColor: card,
-                        selectedItemBuilder: (context) => [
-                          for (final language in _languageOptions)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: _languageLabel(
-                                language: language,
-                                textMain: textMain,
-                                textMuted: textMuted,
-                              ),
+              child: PlatformBoundedContent(
+                desktopMaxWidth: 560,
+                tabletMaxWidth: 560,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                            color: MemoFlowPalette.primary.withValues(
+                              alpha: isDark ? 0.18 : 0.16,
                             ),
+                          ),
                         ],
                       ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: Image.asset(
+                          _memoFlowOnboardingLogoAsset,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      context.t.strings.onboarding.selectMode,
+                    const SizedBox(height: 14),
+                    Text(
+                      'MemoFlow',
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: 24,
                         fontWeight: FontWeight.w700,
                         color: textMain,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      context.t.strings.onboarding.modeHint,
+                    const SizedBox(height: 4),
+                    Text(
+                      context.t.strings.onboarding.tagline,
                       style: TextStyle(fontSize: 12, color: textMuted),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _ModeCard(
-                    selected: _mode == OnboardingMode.local,
-                    background: card,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    title: context.t.strings.onboarding.modeLocalTitle,
-                    label: context.t.strings.onboarding.modeLocalLabel,
-                    description: context.t.strings.onboarding.modeLocalDesc,
-                    icon: Icons.folder_rounded,
-                    onTap: () => setState(() => _mode = OnboardingMode.local),
-                  ),
-                  const SizedBox(height: 14),
-                  _ModeCard(
-                    selected: _mode == OnboardingMode.server,
-                    background: card,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    title: context.t.strings.onboarding.modeServerTitle,
-                    label: context.t.strings.onboarding.modeServerLabel,
-                    description: context.t.strings.onboarding.modeServerDesc,
-                    icon: Icons.cloud_rounded,
-                    onTap: () => setState(() => _mode = OnboardingMode.server),
-                  ),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
+                    const SizedBox(height: 24),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.t.strings.onboarding.selectLanguage,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: textMain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: border),
+                        boxShadow: isDark
+                            ? null
+                            : [
+                                BoxShadow(
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 6),
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                ),
+                              ],
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<AppLanguage>(
+                          value: _selected,
+                          isExpanded: true,
+                          items: dropdownItems,
+                          onChanged: _handleLanguageChanged,
+                          icon: Icon(
+                            Icons.expand_more,
+                            size: 20,
+                            color: textMuted,
+                          ),
+                          dropdownColor: card,
+                          selectedItemBuilder: (context) => [
+                            for (final language in _languageOptions)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: _languageLabel(
+                                  language: language,
+                                  textMain: textMain,
+                                  textMuted: textMuted,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.t.strings.onboarding.selectMode,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: textMain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.t.strings.onboarding.modeHint,
+                        style: TextStyle(fontSize: 12, color: textMuted),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _ModeCard(
+                      selected: _mode == OnboardingMode.local,
+                      background: card,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      title: context.t.strings.onboarding.modeLocalTitle,
+                      label: context.t.strings.onboarding.modeLocalLabel,
+                      description: context.t.strings.onboarding.modeLocalDesc,
+                      icon: Icons.folder_rounded,
+                      onTap: () => setState(() => _mode = OnboardingMode.local),
+                    ),
+                    const SizedBox(height: 14),
+                    _ModeCard(
+                      selected: _mode == OnboardingMode.server,
+                      background: card,
+                      textMain: textMain,
+                      textMuted: textMuted,
+                      title: context.t.strings.onboarding.modeServerTitle,
+                      label: context.t.strings.onboarding.modeServerLabel,
+                      description: context.t.strings.onboarding.modeServerDesc,
+                      icon: Icons.cloud_rounded,
+                      onTap: () =>
+                          setState(() => _mode = OnboardingMode.server),
+                    ),
+                    const SizedBox(height: 22),
+                    PlatformPrimaryAction(
+                      key: const ValueKey<String>(
+                        'onboarding.getStartedAction',
+                      ),
                       onPressed: _submitting ? null : _confirmSelection,
+                      desktopAlignment: AlignmentDirectional.center,
+                      desktopMaxWidth: 260,
                       style: FilledButton.styleFrom(
                         backgroundColor: MemoFlowPalette.primary,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
@@ -513,8 +525,8 @@ class _LanguageSelectionScreenState
                               ),
                             ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
