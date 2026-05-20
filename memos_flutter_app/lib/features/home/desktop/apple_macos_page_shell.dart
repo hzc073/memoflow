@@ -1,14 +1,14 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/desktop/window_chrome_safe_area.dart';
 import '../../../core/platform_layout.dart'
-    show kWindowsDesktopSecondaryPaneDefaultWidth;
-import '../app_drawer.dart';
-import 'windows_desktop_workspace_shell.dart'
     show
-        WindowsDesktopModalSurfaceMotionSpec,
-        WindowsDesktopSecondaryPaneMotionSpec,
-        WindowsDesktopSecondaryPanePresentation;
+        kWindowsDesktopRailWidth,
+        kWindowsDesktopSecondaryPaneDefaultWidth,
+        kWindowsDesktopSidebarWidth;
+import '../app_drawer.dart';
+import 'desktop_shell_models.dart';
 
 typedef AppleMacosNavigationBuilder =
     Widget Function(AppDrawerViewMode viewMode, bool embedded);
@@ -26,7 +26,7 @@ class AppleMacosPageShell extends StatelessWidget {
     this.secondaryPaneVisible = false,
     this.secondaryPaneWidth = kWindowsDesktopSecondaryPaneDefaultWidth,
     this.secondaryPanePresentation =
-        WindowsDesktopSecondaryPanePresentation.inline,
+        DesktopShellSecondaryPanePresentation.inline,
     this.secondaryPaneMotionSpec,
     this.onSecondaryPaneWidthChanged,
     this.modalSurface,
@@ -46,20 +46,31 @@ class AppleMacosPageShell extends StatelessWidget {
   final Widget? secondaryPane;
   final bool secondaryPaneVisible;
   final double secondaryPaneWidth;
-  final WindowsDesktopSecondaryPanePresentation secondaryPanePresentation;
-  final WindowsDesktopSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
+  final DesktopShellSecondaryPanePresentation secondaryPanePresentation;
+  final DesktopShellSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
   final ValueChanged<double>? onSecondaryPaneWidthChanged;
   final Widget? modalSurface;
   final bool modalSurfaceVisible;
   final Color modalBarrierColor;
   final double modalBarrierBlurSigma;
-  final WindowsDesktopModalSurfaceMotionSpec? modalSurfaceMotionSpec;
+  final DesktopShellModalSurfaceMotionSpec? modalSurfaceMotionSpec;
   final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final useExpandedSidebar = width >= 1040;
+    final navigationWidth = useExpandedSidebar
+        ? kWindowsDesktopSidebarWidth
+        : kWindowsDesktopRailWidth;
+    final chromeInsets = resolveDesktopWindowChromeInsets(
+      platform: TargetPlatform.macOS,
+      contentExtendsIntoTitleBar: true,
+    );
+    final navigationChromeInset = chromeInsets.top;
+    final toolbarChromeInset = resolveMacosTrafficLightCompensation(
+      currentLeadingWidth: navigationWidth,
+    );
     final navigation = navigationBuilder(
       useExpandedSidebar
           ? AppDrawerViewMode.expandedSidebar
@@ -72,6 +83,7 @@ class AppleMacosPageShell extends StatelessWidget {
           leadingTitle: leadingTitle,
           center: center,
           trailing: trailing,
+          leadingChromeInset: toolbarChromeInset,
         );
     final resolvedBackground =
         backgroundColor ??
@@ -94,7 +106,13 @@ class AppleMacosPageShell extends StatelessWidget {
                     ),
                     border: Border(right: BorderSide(color: borderColor)),
                   ),
-                  child: navigation,
+                  child: SizedBox(
+                    width: navigationWidth,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: navigationChromeInset),
+                      child: navigation,
+                    ),
+                  ),
                 ),
                 Expanded(
                   child: Column(
@@ -143,11 +161,13 @@ class _AppleMacosToolbar extends StatelessWidget {
     required this.leadingTitle,
     required this.center,
     required this.trailing,
+    required this.leadingChromeInset,
   });
 
   final Widget leadingTitle;
   final Widget? center;
   final Widget? trailing;
+  final double leadingChromeInset;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +175,10 @@ class _AppleMacosToolbar extends StatelessWidget {
       key: const ValueKey<String>('apple-macos-toolbar'),
       height: 52,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: EdgeInsetsDirectional.only(
+          start: 16 + leadingChromeInset,
+          end: 16,
+        ),
         child: NavigationToolbar(
           leading: DefaultTextStyle.merge(
             maxLines: 1,
@@ -184,7 +207,7 @@ class _AppleMacosContentArea extends StatelessWidget {
   final Widget? secondaryPane;
   final bool secondaryPaneVisible;
   final double secondaryPaneWidth;
-  final WindowsDesktopSecondaryPanePresentation secondaryPanePresentation;
+  final DesktopShellSecondaryPanePresentation secondaryPanePresentation;
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +215,7 @@ class _AppleMacosContentArea extends StatelessWidget {
         secondaryPaneVisible &&
         secondaryPane != null &&
         secondaryPanePresentation ==
-            WindowsDesktopSecondaryPanePresentation.inline;
+            DesktopShellSecondaryPanePresentation.inline;
     return Row(
       children: [
         Expanded(child: body),

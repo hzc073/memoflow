@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../../core/desktop/window_chrome_safe_area.dart';
 import '../../../core/memoflow_palette.dart';
 import '../home_quick_actions.dart';
 import 'memos_list_search_widgets.dart';
 
-const double kMemosListMacosTitleBarHeight = 52;
-const double kMemosListMacosTrafficLightSafeInset = 92;
+const double kMemosListMacosTitleBarHeight = kMacosTitleBarHeight;
+const double kMemosListMacosTrafficLightSafeInset =
+    kMacosTrafficLightReservedWidth;
 const Key kMemosListMacosTitleBarKey = ValueKey<String>(
   'memos-list-macos-titlebar',
 );

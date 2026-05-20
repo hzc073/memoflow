@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/window_chrome_safe_area.dart';
 import '../../core/desktop_db_write_channel.dart';
 import '../../core/desktop/shortcuts.dart';
 import '../../core/desktop_sync_channel.dart';
@@ -927,6 +928,10 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
     final leftBg = isDark ? const Color(0xFF1D1D1D) : const Color(0xFFF7F5F2);
     final rightBg = isDark ? const Color(0xFF181818) : const Color(0xFFEFEBE6);
     final divider = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE0DBD3);
+    final chromeInsets = resolveDesktopWindowChromeInsets(
+      platform: Theme.of(context).platform,
+      contentExtendsIntoTitleBar: true,
+    );
     final items = <_DesktopPaneItem>[
       _DesktopPaneItem(
         pane: _DesktopSettingsPane.account,
@@ -1000,7 +1005,10 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
                 Expanded(
                   child: DragToMoveArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      padding: EdgeInsetsDirectional.only(
+                        start: 14 + chromeInsets.leading,
+                        end: 14,
+                      ),
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(

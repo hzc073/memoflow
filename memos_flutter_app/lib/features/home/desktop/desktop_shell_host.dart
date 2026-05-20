@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/platform_layout.dart';
 import '../app_drawer.dart';
 import 'apple_macos_page_shell.dart';
+import 'desktop_shell_models.dart';
 import 'windows_desktop_page_shell.dart';
-export 'windows_desktop_workspace_shell.dart'
+export 'desktop_shell_models.dart'
     show
-        WindowsDesktopModalSurfaceMotionSpec,
-        WindowsDesktopSecondaryPaneMotionSpec,
-        WindowsDesktopSecondaryPanePresentation;
+        DesktopShellModalSurfaceMotionSpec,
+        DesktopShellSecondaryPaneMotionSpec,
+        DesktopShellSecondaryPanePresentation;
 
 typedef DesktopShellNavigationBuilder =
     Widget Function(AppDrawerViewMode viewMode, bool embedded);
@@ -26,7 +27,7 @@ class DesktopShellHost extends StatelessWidget {
     this.secondaryPaneVisible = false,
     this.secondaryPaneWidth = kWindowsDesktopSecondaryPaneDefaultWidth,
     this.secondaryPanePresentation =
-        WindowsDesktopSecondaryPanePresentation.inline,
+        DesktopShellSecondaryPanePresentation.inline,
     this.secondaryPaneMotionSpec,
     this.onSecondaryPaneWidthChanged,
     this.modalSurface,
@@ -47,14 +48,14 @@ class DesktopShellHost extends StatelessWidget {
   final Widget? secondaryPane;
   final bool secondaryPaneVisible;
   final double secondaryPaneWidth;
-  final WindowsDesktopSecondaryPanePresentation secondaryPanePresentation;
-  final WindowsDesktopSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
+  final DesktopShellSecondaryPanePresentation secondaryPanePresentation;
+  final DesktopShellSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
   final ValueChanged<double>? onSecondaryPaneWidthChanged;
   final Widget? modalSurface;
   final bool modalSurfaceVisible;
   final Color modalBarrierColor;
   final double modalBarrierBlurSigma;
-  final WindowsDesktopModalSurfaceMotionSpec? modalSurfaceMotionSpec;
+  final DesktopShellModalSurfaceMotionSpec? modalSurfaceMotionSpec;
   final Color? backgroundColor;
   final bool showWindowControls;
 

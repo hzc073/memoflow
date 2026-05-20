@@ -14,6 +14,7 @@ import '../../../core/platform_layout.dart';
 import '../app_drawer.dart';
 import '../app_drawer_menu_button.dart';
 import '../../../i18n/strings.g.dart';
+import 'desktop_shell_models.dart';
 import 'windows_desktop_command_bar.dart';
 import 'windows_desktop_workspace_shell.dart';
 
@@ -33,7 +34,7 @@ class WindowsDesktopPageShell extends StatefulWidget {
     this.secondaryPaneVisible = false,
     this.secondaryPaneWidth = kWindowsDesktopSecondaryPaneDefaultWidth,
     this.secondaryPanePresentation =
-        WindowsDesktopSecondaryPanePresentation.inline,
+        DesktopShellSecondaryPanePresentation.inline,
     this.secondaryPaneMotionSpec,
     this.onSecondaryPaneWidthChanged,
     this.modalSurface,
@@ -54,14 +55,14 @@ class WindowsDesktopPageShell extends StatefulWidget {
   final Widget? secondaryPane;
   final bool secondaryPaneVisible;
   final double secondaryPaneWidth;
-  final WindowsDesktopSecondaryPanePresentation secondaryPanePresentation;
-  final WindowsDesktopSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
+  final DesktopShellSecondaryPanePresentation secondaryPanePresentation;
+  final DesktopShellSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
   final ValueChanged<double>? onSecondaryPaneWidthChanged;
   final Widget? modalSurface;
   final bool modalSurfaceVisible;
   final Color modalBarrierColor;
   final double modalBarrierBlurSigma;
-  final WindowsDesktopModalSurfaceMotionSpec? modalSurfaceMotionSpec;
+  final DesktopShellModalSurfaceMotionSpec? modalSurfaceMotionSpec;
   final Color? backgroundColor;
   final bool showWindowControls;
 

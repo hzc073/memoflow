@@ -40,6 +40,32 @@ private func ConfigureMemoFlowMainWindowChrome(_ window: NSWindow) {
   window.titlebarAppearsTransparent = true
   window.titleVisibility = .hidden
   window.isMovableByWindowBackground = true
+  window.minSize = NSSize(width: 960, height: 640)
+}
+
+private func ConfigureMemoFlowInitialMainWindowSize(_ window: NSWindow) {
+  let templateSize = NSSize(width: 800, height: 600)
+  let desiredContentSize = NSSize(width: 1360, height: 860)
+  let currentSize = window.frame.size
+  let stillUsingTemplateSize =
+    abs(currentSize.width - templateSize.width) < 1 &&
+    abs(currentSize.height - templateSize.height) < 1
+  if stillUsingTemplateSize {
+    var targetContentSize = desiredContentSize
+    if let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+      let margin: CGFloat = 48
+      targetContentSize.width = min(
+        desiredContentSize.width,
+        max(window.minSize.width, visibleFrame.width - margin)
+      )
+      targetContentSize.height = min(
+        desiredContentSize.height,
+        max(window.minSize.height, visibleFrame.height - margin)
+      )
+    }
+    window.setContentSize(targetContentSize)
+    window.center()
+  }
 }
 
 class MainFlutterWindow: NSWindow {
@@ -49,6 +75,7 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
     ConfigureMemoFlowMainWindowChrome(self)
+    ConfigureMemoFlowInitialMainWindowSize(self)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in

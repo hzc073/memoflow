@@ -2,11 +2,13 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/core/desktop/window_chrome_safe_area.dart';
 import 'package:memos_flutter_app/core/desktop_db_write_channel.dart';
 import 'package:memos_flutter_app/core/desktop_quick_input_channel.dart';
 import 'package:memos_flutter_app/core/desktop_runtime_role.dart';
@@ -398,6 +400,51 @@ void main() {
       expect(windowManagerCalls, isNot(contains('isVisible')));
     },
   );
+
+  testWidgets('macOS settings title avoids native traffic lights', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(windowId: 7),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final titleLeft = tester.getTopLeft(find.text('Settings').first).dx;
+
+      expect(titleLeft, greaterThan(kMacosTrafficLightReservedWidth));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('refreshSession reloads local workspace state before redraw', (
     tester,

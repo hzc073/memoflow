@@ -5,81 +5,14 @@ import 'package:flutter/material.dart';
 import '../../../core/app_motion.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart';
+import 'desktop_shell_models.dart';
 
-enum WindowsDesktopSecondaryPanePresentation { inline, overlay }
-
-@immutable
-class WindowsDesktopSecondaryPaneMotionSpec {
-  const WindowsDesktopSecondaryPaneMotionSpec({
-    required this.resizeDuration,
-    required this.surfaceEnterDuration,
-    required this.surfaceExitDuration,
-    required this.resizeCurve,
-    required this.surfaceEnterCurve,
-    required this.surfaceExitCurve,
-    required this.surfaceEntryOffset,
-    required this.surfaceEntryScale,
-  });
-
-  static const WindowsDesktopSecondaryPaneMotionSpec standard =
-      WindowsDesktopSecondaryPaneMotionSpec(
-        resizeDuration: AppMotion.desktopContent,
-        surfaceEnterDuration: AppMotion.desktopContent,
-        surfaceExitDuration: AppMotion.desktopOverlayExit,
-        resizeCurve: AppMotion.standardCurve,
-        surfaceEnterCurve: AppMotion.emphasizedEnterCurve,
-        surfaceExitCurve: AppMotion.emphasizedExitCurve,
-        surfaceEntryOffset: AppMotion.windowsPaneEntryOffset,
-        surfaceEntryScale: 0.985,
-      );
-
-  final Duration resizeDuration;
-  final Duration surfaceEnterDuration;
-  final Duration surfaceExitDuration;
-  final Curve resizeCurve;
-  final Curve surfaceEnterCurve;
-  final Curve surfaceExitCurve;
-  final Offset surfaceEntryOffset;
-  final double surfaceEntryScale;
-}
-
-@immutable
-class WindowsDesktopModalSurfaceMotionSpec {
-  const WindowsDesktopModalSurfaceMotionSpec({
-    required this.backdropEnterDuration,
-    required this.backdropExitDuration,
-    required this.surfaceEnterDuration,
-    required this.surfaceExitDuration,
-    required this.backdropCurve,
-    required this.surfaceEnterCurve,
-    required this.surfaceExitCurve,
-    required this.surfaceEntryOffset,
-    required this.surfaceEntryScale,
-  });
-
-  static const WindowsDesktopModalSurfaceMotionSpec standard =
-      WindowsDesktopModalSurfaceMotionSpec(
-        backdropEnterDuration: AppMotion.desktopEditorBackdropEnter,
-        backdropExitDuration: AppMotion.desktopEditorBackdropExit,
-        surfaceEnterDuration: AppMotion.desktopEditorModalEnter,
-        surfaceExitDuration: AppMotion.desktopEditorModalExit,
-        backdropCurve: AppMotion.standardCurve,
-        surfaceEnterCurve: AppMotion.emphasizedEnterCurve,
-        surfaceExitCurve: AppMotion.emphasizedExitCurve,
-        surfaceEntryOffset: Offset(0, 0.015),
-        surfaceEntryScale: 0.985,
-      );
-
-  final Duration backdropEnterDuration;
-  final Duration backdropExitDuration;
-  final Duration surfaceEnterDuration;
-  final Duration surfaceExitDuration;
-  final Curve backdropCurve;
-  final Curve surfaceEnterCurve;
-  final Curve surfaceExitCurve;
-  final Offset surfaceEntryOffset;
-  final double surfaceEntryScale;
-}
+typedef WindowsDesktopSecondaryPanePresentation =
+    DesktopShellSecondaryPanePresentation;
+typedef WindowsDesktopSecondaryPaneMotionSpec =
+    DesktopShellSecondaryPaneMotionSpec;
+typedef WindowsDesktopModalSurfaceMotionSpec =
+    DesktopShellModalSurfaceMotionSpec;
 
 class WindowsDesktopWorkspaceShell extends StatefulWidget {
   const WindowsDesktopWorkspaceShell({
@@ -93,7 +26,7 @@ class WindowsDesktopWorkspaceShell extends StatefulWidget {
     this.secondaryPaneVisible = false,
     this.secondaryPaneWidth = kWindowsDesktopSecondaryPaneDefaultWidth,
     this.secondaryPanePresentation =
-        WindowsDesktopSecondaryPanePresentation.inline,
+        DesktopShellSecondaryPanePresentation.inline,
     this.secondaryPaneMotionSpec,
     this.onSecondaryPaneWidthChanged,
     this.modalSurface,
@@ -111,14 +44,14 @@ class WindowsDesktopWorkspaceShell extends StatefulWidget {
   final Widget? secondaryPane;
   final bool secondaryPaneVisible;
   final double secondaryPaneWidth;
-  final WindowsDesktopSecondaryPanePresentation secondaryPanePresentation;
-  final WindowsDesktopSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
+  final DesktopShellSecondaryPanePresentation secondaryPanePresentation;
+  final DesktopShellSecondaryPaneMotionSpec? secondaryPaneMotionSpec;
   final ValueChanged<double>? onSecondaryPaneWidthChanged;
   final Widget? modalSurface;
   final bool modalSurfaceVisible;
   final Color modalBarrierColor;
   final double modalBarrierBlurSigma;
-  final WindowsDesktopModalSurfaceMotionSpec? modalSurfaceMotionSpec;
+  final DesktopShellModalSurfaceMotionSpec? modalSurfaceMotionSpec;
 
   @override
   State<WindowsDesktopWorkspaceShell> createState() =>
@@ -169,7 +102,7 @@ class _WindowsDesktopWorkspaceShellState
         widget.secondaryPane != null;
     final motionSpec =
         widget.secondaryPaneMotionSpec ??
-        WindowsDesktopSecondaryPaneMotionSpec.standard;
+        DesktopShellSecondaryPaneMotionSpec.standard;
     final resizeDuration = _draggingSecondaryPane
         ? Duration.zero
         : AppMotion.effectiveDuration(
@@ -193,10 +126,10 @@ class _WindowsDesktopWorkspaceShellState
         showSecondaryPane && widget.onSecondaryPaneWidthChanged != null;
     final useOverlaySecondaryPane =
         widget.secondaryPanePresentation ==
-        WindowsDesktopSecondaryPanePresentation.overlay;
+        DesktopShellSecondaryPanePresentation.overlay;
     final modalMotionSpec =
         widget.modalSurfaceMotionSpec ??
-        WindowsDesktopModalSurfaceMotionSpec.standard;
+        DesktopShellModalSurfaceMotionSpec.standard;
     final modalBackdropDuration = AppMotion.effectiveDuration(
       context,
       widget.modalSurfaceVisible
