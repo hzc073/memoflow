@@ -56,6 +56,11 @@ The macOS Runner SHALL register the plugins required by the settings sub-window 
 - **WHEN** the main window sends the settings sub-window health-check method
 - **THEN** the settings sub-window SHALL respond successfully after its runtime initialization completes
 
+#### Scenario: Settings sub-window visibility is queried on macOS
+- **WHEN** the main window queries a macOS settings sub-window for visibility or asks it to focus
+- **THEN** the settings sub-window SHALL NOT call `window_manager` APIs that require the plugin's `mainWindow`
+- **AND** the macOS Runner SHALL NOT register `WindowManagerPlugin` into the settings sub-window Flutter engine
+
 ### Requirement: macOS settings window SHALL preserve public repository boundaries
 The macOS settings window implementation SHALL remain public-shell safe and SHALL NOT include commercial App Store or entitlement behavior.
 

@@ -256,9 +256,13 @@ Future<dynamic> _dispatchIncomingMultiWindowMethod(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final windowManagerCalls = <String>[];
+
   setUp(() {
+    windowManagerCalls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_windowManagerChannel, (call) async {
+          windowManagerCalls.add(call.method);
           switch (call.method) {
             case 'ensureInitialized':
             case 'setAsFrameless':
@@ -344,6 +348,54 @@ void main() {
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'sub-window visibility and focus avoid window_manager visibility probe',
+    (tester) async {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(windowId: 7),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        await _dispatchIncomingMultiWindowMethod(
+          desktopSubWindowIsVisibleMethod,
+        ),
+        isTrue,
+      );
+      await _dispatchIncomingMultiWindowMethod(desktopSettingsFocusMethod);
+      await tester.pump();
+
+      expect(windowManagerCalls, isNot(contains('isVisible')));
     },
   );
 

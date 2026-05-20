@@ -131,6 +131,7 @@ class _DesktopQuickInputWindowScreenState
   bool _alwaysOnTopSupported = false;
   bool _pinning = false;
   bool _locating = false;
+  bool _windowVisible = false;
   Future<bool>? _mainWindowChannelProbe;
 
   MemoLocation? _location;
@@ -153,6 +154,7 @@ class _DesktopQuickInputWindowScreenState
 
   @override
   void dispose() {
+    _windowVisible = false;
     DesktopMultiWindow.setMethodHandler(null);
     if (isDesktopShortcutEnabled()) {
       HardwareKeyboard.instance.removeHandler(_handleDesktopEditorShortcuts);
@@ -170,15 +172,18 @@ class _DesktopQuickInputWindowScreenState
       (_controller.text.trim().isNotEmpty || _pendingAttachments.isNotEmpty);
 
   Future<void> _initializeWindowManager() async {
+    if (!Platform.isWindows) {
+      if (!mounted) return;
+      setState(() => _alwaysOnTopSupported = false);
+      return;
+    }
     try {
       await windowManager.ensureInitialized();
-      if (Platform.isWindows) {
-        await windowManager.setAsFrameless();
-        await windowManager.setHasShadow(false);
-        await windowManager.setBackgroundColor(const Color(0x00000000));
-        await windowManager.setMinimumSize(_quickInputMinWindowSize);
-        await windowManager.setMaximumSize(_quickInputMaxWindowSize);
-      }
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setBackgroundColor(const Color(0x00000000));
+      await windowManager.setMinimumSize(_quickInputMinWindowSize);
+      await windowManager.setMaximumSize(_quickInputMaxWindowSize);
       if (!mounted) return;
       await _syncAlwaysOnTop();
     } catch (_) {
@@ -251,12 +256,7 @@ class _DesktopQuickInputWindowScreenState
       return true;
     }
     if (call.method == desktopSubWindowIsVisibleMethod) {
-      try {
-        await windowManager.ensureInitialized();
-        return await windowManager.isVisible();
-      } catch (_) {
-        return true;
-      }
+      return _windowVisible;
     }
     if (call.method == desktopMainReloadPreferencesMethod) {
       await ref.read(devicePreferencesProvider.notifier).reloadFromStorage();
@@ -269,33 +269,38 @@ class _DesktopQuickInputWindowScreenState
   }
 
   Future<void> _closeWindowForExit() async {
-    try {
-      await windowManager.ensureInitialized();
-    } catch (_) {}
+    _windowVisible = false;
     try {
       await WindowController.fromWindowId(widget.windowId).close();
       return;
     } catch (_) {}
-    try {
-      await windowManager.close();
-    } catch (_) {}
+    if (Platform.isWindows) {
+      try {
+        await windowManager.close();
+      } catch (_) {}
+    }
   }
 
   Future<void> _bringWindowToFront() async {
+    final controller = WindowController.fromWindowId(widget.windowId);
     try {
-      await windowManager.ensureInitialized();
-      if (await windowManager.isMinimized()) {
-        await windowManager.restore();
-      }
-      if (!await windowManager.isVisible()) {
-        await windowManager.show();
-      } else {
-        // On Windows a visible window may still sit behind others.
-        await windowManager.show();
-      }
-      await windowManager.focus();
+      await controller.show();
+      _windowVisible = true;
+      unawaited(_notifyMainWindowVisibility(true));
     } catch (_) {
-      // Ignore platform/channel failures and still try to focus input field.
+      // Ignore platform/channel failures and still try platform-specific focus.
+    }
+    if (Platform.isWindows) {
+      try {
+        await windowManager.ensureInitialized();
+        if (await windowManager.isMinimized()) {
+          await windowManager.restore();
+        }
+        await windowManager.show();
+        await windowManager.focus();
+      } catch (_) {
+        // Ignore platform/channel failures and still try to focus input field.
+      }
     }
     _requestInputFocus();
   }
@@ -321,6 +326,7 @@ class _DesktopQuickInputWindowScreenState
   }
 
   Future<void> _closeWindow() async {
+    _windowVisible = false;
     await _notifyMainWindowVisibility(false);
     if (mounted) {
       setState(_resetComposerStateForReuse);

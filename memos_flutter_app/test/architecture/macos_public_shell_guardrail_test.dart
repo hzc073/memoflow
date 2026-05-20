@@ -77,6 +77,11 @@ void main() {
         ),
         isFalse,
       );
+      expect(mainFlutterWindow.contains('import window_manager'), isFalse);
+      expect(
+        mainFlutterWindow.contains('WindowManagerPlugin.register'),
+        isFalse,
+      );
       expect(app.contains('macosMenuCommandChannelName'), isTrue);
       expect(app.contains('macosMenuCommandOpenSettingsWindow'), isTrue);
 

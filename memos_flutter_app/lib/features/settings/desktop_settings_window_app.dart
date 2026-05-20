@@ -224,6 +224,7 @@ class _DesktopSettingsWindowScreenState
   Timer? _preferencesReloadDebounce;
   bool _workspaceListenersBound = false;
   bool _workspaceSnapshotLoading = true;
+  bool _windowVisible = true;
   String? _workspaceSnapshotError;
 
   @override
@@ -237,6 +238,7 @@ class _DesktopSettingsWindowScreenState
 
   @override
   void dispose() {
+    _windowVisible = false;
     unawaited(_notifyMainWindowVisibility(false));
     DesktopMultiWindow.setMethodHandler(null);
     _sessionKeySub?.close();
@@ -258,13 +260,12 @@ class _DesktopSettingsWindowScreenState
   }
 
   Future<void> _initializeWindowManager() async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
     try {
       await windowManager.ensureInitialized();
-      if (defaultTargetPlatform == TargetPlatform.windows) {
-        await windowManager.setAsFrameless();
-        await windowManager.setHasShadow(false);
-        await windowManager.setBackgroundColor(const Color(0x00000000));
-      }
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setBackgroundColor(const Color(0x00000000));
     } catch (_) {}
   }
 
@@ -630,12 +631,7 @@ class _DesktopSettingsWindowScreenState
       return true;
     }
     if (call.method == desktopSubWindowIsVisibleMethod) {
-      try {
-        await windowManager.ensureInitialized();
-        return await windowManager.isVisible();
-      } catch (_) {
-        return true;
-      }
+      return _windowVisible;
     }
     if (call.method == desktopSettingsRefreshSessionMethod) {
       await _reloadWorkspaceStateFromStorage();
@@ -649,16 +645,16 @@ class _DesktopSettingsWindowScreenState
   }
 
   Future<void> _closeWindowForExit() async {
-    try {
-      await windowManager.ensureInitialized();
-    } catch (_) {}
+    _windowVisible = false;
     try {
       await WindowController.fromWindowId(widget.windowId).close();
       return;
     } catch (_) {}
-    try {
-      await windowManager.close();
-    } catch (_) {}
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      try {
+        await windowManager.close();
+      } catch (_) {}
+    }
   }
 
   Future<DesktopWorkspaceSnapshot> _fetchWorkspaceSnapshot() async {
@@ -726,23 +722,30 @@ class _DesktopSettingsWindowScreenState
   }
 
   Future<void> _bringWindowToFront() async {
+    final controller = WindowController.fromWindowId(widget.windowId);
     try {
-      await windowManager.ensureInitialized();
-      if (await windowManager.isMinimized()) {
-        await windowManager.restore();
-      }
-      if (!await windowManager.isVisible()) {
-        await windowManager.show();
-      } else {
-        await windowManager.show();
-      }
-      await windowManager.focus();
+      await controller.show();
+      _windowVisible = true;
+      unawaited(_notifyMainWindowVisibility(true));
     } catch (_) {
       // Ignore platform/channel failures.
+    }
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      try {
+        await windowManager.ensureInitialized();
+        if (await windowManager.isMinimized()) {
+          await windowManager.restore();
+        }
+        await windowManager.show();
+        await windowManager.focus();
+      } catch (_) {
+        // Ignore platform/channel failures.
+      }
     }
   }
 
   Future<void> _closeWindow() async {
+    _windowVisible = false;
     await _notifyMainWindowVisibility(false);
     if (mounted) {
       final navigator = Navigator.of(context, rootNavigator: true);
@@ -752,12 +755,12 @@ class _DesktopSettingsWindowScreenState
     }
     // IMPORTANT: settings sub-window must stay warm for hot reopen.
     // Do NOT replace this with close(); always hide to preserve process state.
+    final controller = WindowController.fromWindowId(widget.windowId);
     try {
-      await windowManager.hide();
+      await controller.hide();
     } catch (_) {
       try {
-        final controller = WindowController.fromWindowId(widget.windowId);
-        await controller.hide();
+        await controller.close();
       } catch (_) {}
     }
   }

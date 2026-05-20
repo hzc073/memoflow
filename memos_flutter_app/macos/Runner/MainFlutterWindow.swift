@@ -15,7 +15,6 @@ import path_provider_foundation
 import screen_retriever_macos
 import sqflite_darwin
 import url_launcher_macos
-import window_manager
 
 private func RegisterMemoFlowSubWindowPlugins(registry: FlutterPluginRegistry) {
   ConnectivityPlusPlugin.register(with: registry.registrar(forPlugin: "ConnectivityPlusPlugin"))
@@ -32,7 +31,6 @@ private func RegisterMemoFlowSubWindowPlugins(registry: FlutterPluginRegistry) {
   ScreenRetrieverMacosPlugin.register(with: registry.registrar(forPlugin: "ScreenRetrieverMacosPlugin"))
   SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
-  WindowManagerPlugin.register(with: registry.registrar(forPlugin: "WindowManagerPlugin"))
 }
 
 private func ConfigureMemoFlowMainWindowChrome(_ window: NSWindow) {
