@@ -64,7 +64,9 @@ abstract interface class MemosListRouteDesktopAdapter {
   bool get supportsWindowControls;
   bool get supportsTaskbarVisibilityToggle;
 
-  bool openSettingsWindowIfSupported({required BuildContext feedbackContext});
+  Future<DesktopSettingsWindowOpenResult> openSettingsWindow({
+    required BuildContext feedbackContext,
+  });
 
   Future<bool> isWindowVisible();
   Future<void> hideToTray();
@@ -98,10 +100,10 @@ class DefaultMemosListRouteDesktopAdapter
       Platform.isWindows || Platform.isLinux;
 
   @override
-  bool openSettingsWindowIfSupported({required BuildContext feedbackContext}) {
-    return openDesktopSettingsWindowIfSupported(
-      feedbackContext: feedbackContext,
-    );
+  Future<DesktopSettingsWindowOpenResult> openSettingsWindow({
+    required BuildContext feedbackContext,
+  }) {
+    return openDesktopSettingsWindow(feedbackContext: feedbackContext);
   }
 
   @override
@@ -766,11 +768,13 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<void> openSettings() async {
     final context = _context;
-    if (_desktopAdapter.openSettingsWindowIfSupported(
+    final result = await _desktopAdapter.openSettingsWindow(
       feedbackContext: context,
-    )) {
+    );
+    if (result.opened) {
       return;
     }
+    if (!context.mounted) return;
     await _openSettingsFallback(context);
   }
 

@@ -38,6 +38,7 @@ import 'desktop_quick_input_controller.dart';
 
 typedef DesktopQuickInputLauncher =
     Future<void> Function({required bool autoFocus});
+typedef DesktopSettingsFallbackLauncher = Future<void> Function();
 
 class DesktopWindowManager {
   DesktopWindowManager({
@@ -46,6 +47,7 @@ class DesktopWindowManager {
     required GlobalKey<NavigatorState> navigatorKey,
     required DesktopQuickInputController quickInputController,
     required DesktopQuickInputLauncher openQuickInput,
+    DesktopSettingsFallbackLauncher? openSettingsFallback,
     required bool Function() isMounted,
     required VoidCallback onVisibilityChanged,
   }) : _bootstrapAdapter = bootstrapAdapter,
@@ -53,6 +55,7 @@ class DesktopWindowManager {
        _navigatorKey = navigatorKey,
        _quickInputController = quickInputController,
        _openQuickInput = openQuickInput,
+       _openSettingsFallback = openSettingsFallback,
        _isMounted = isMounted,
        _onVisibilityChanged = onVisibilityChanged;
 
@@ -61,6 +64,7 @@ class DesktopWindowManager {
   final GlobalKey<NavigatorState> _navigatorKey;
   final DesktopQuickInputController _quickInputController;
   final DesktopQuickInputLauncher _openQuickInput;
+  final DesktopSettingsFallbackLauncher? _openSettingsFallback;
   final bool Function() _isMounted;
   final VoidCallback _onVisibilityChanged;
 
@@ -1174,7 +1178,10 @@ class DesktopWindowManager {
   Future<void> _handleOpenSettingsFromTray() async {
     if (!_isMounted()) return;
     final context = _resolveDesktopUiContext();
-    openDesktopSettingsWindowIfSupported(feedbackContext: context);
+    final result = await openDesktopSettingsWindow(feedbackContext: context);
+    if (!result.opened && _isMounted()) {
+      await _openSettingsFallback?.call();
+    }
   }
 
   Future<void> _handleCreateMemoFromTray() async {

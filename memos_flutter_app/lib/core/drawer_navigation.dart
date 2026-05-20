@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -22,12 +24,13 @@ void closeDrawerThenPushReplacement(
     navigator.pop();
   }
 
-  void navigate() {
+  Future<void> navigate() async {
     if (!context.mounted) return;
-    if (route is DesktopSettingsWindowRouteIntent &&
-        openDesktopSettingsWindowIfSupported(feedbackContext: context)) {
-      return;
+    if (route is DesktopSettingsWindowRouteIntent) {
+      final result = await openDesktopSettingsWindow(feedbackContext: context);
+      if (result.opened) return;
     }
+    if (!context.mounted) return;
     final width = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(width);
     final isWindowsDesktop =
@@ -48,9 +51,9 @@ void closeDrawerThenPushReplacement(
   }
 
   if (hasOverlayToPop && closeDelay > Duration.zero) {
-    Future<void>.delayed(closeDelay, navigate);
+    unawaited(Future<void>.delayed(closeDelay, navigate));
     return;
   }
 
-  navigate();
+  unawaited(navigate());
 }

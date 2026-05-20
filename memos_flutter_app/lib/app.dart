@@ -240,6 +240,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       quickInputController: _desktopQuickInputController,
       openQuickInput: ({required bool autoFocus}) =>
           _startupCoordinator.openQuickInput(autoFocus: autoFocus),
+      openSettingsFallback: () => _pushMacosMenuRoute(const SettingsScreen()),
       isMounted: () => mounted,
       onVisibilityChanged: () {
         if (!mounted) return;
@@ -461,10 +462,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         await _pushMacosMenuRoute(const ExportLogsScreen());
         return;
       case macosMenuCommandOpenSettingsWindow:
-        final opened = openDesktopSettingsWindowIfSupported(
+        final result = await openDesktopSettingsWindow(
           feedbackContext: _navigatorKey.currentContext,
         );
-        if (!opened) {
+        if (result.shouldFallback) {
           await _pushMacosMenuRoute(const SettingsScreen());
         }
         return;

@@ -20,6 +20,7 @@ import '../memos_list_floating_collapse_controller.dart';
 import '../memos_list_screen_view_state.dart';
 import 'floating_collapse_button.dart';
 import 'memos_list_floating_actions.dart';
+import 'memos_list_macos_desktop_title_bar.dart';
 import 'memos_list_search_widgets.dart';
 import 'memos_list_windows_desktop_title_bar.dart';
 
@@ -542,6 +543,14 @@ class MemosListScreenBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final useWindowsDesktopHeader =
+        data.viewState.layout.useWindowsDesktopHeader;
+    final useMacosDesktopTitleBar =
+        data.viewState.layout.useMacosDesktopTitleBar;
+    final useExternalDesktopTitleBar =
+        useWindowsDesktopHeader || useMacosDesktopTitleBar;
+    final showHeaderPillActionsInScroll =
+        data.viewState.layout.showHeaderPillActions && !useMacosDesktopTitleBar;
     final statusTransitionDuration = AppMotion.effectiveDuration(
       context,
       AppMotion.medium,
@@ -594,25 +603,17 @@ class MemosListScreenBody extends StatelessWidget {
                             elevation: 0,
                             scrolledUnderElevation: 0,
                             surfaceTintColor: Colors.transparent,
-                            toolbarHeight:
-                                data.viewState.layout.useWindowsDesktopHeader &&
-                                    !data.searching
+                            toolbarHeight: useExternalDesktopTitleBar
                                 ? 0
                                 : kToolbarHeight,
-                            titleSpacing:
-                                data.viewState.layout.useWindowsDesktopHeader &&
-                                    !data.searching
+                            titleSpacing: useExternalDesktopTitleBar
                                 ? 0
                                 : NavigationToolbar.kMiddleSpacing,
                             automaticallyImplyLeading:
-                                !data
-                                    .viewState
-                                    .layout
-                                    .useWindowsDesktopHeader &&
+                                !useExternalDesktopTitleBar &&
                                 !data.searching &&
                                 drawerPanel == null,
-                            leading:
-                                data.viewState.layout.useWindowsDesktopHeader
+                            leading: useExternalDesktopTitleBar
                                 ? null
                                 : (data.searching
                                       ? IconButton(
@@ -647,16 +648,12 @@ class MemosListScreenBody extends StatelessWidget {
                                                     data.headerBackgroundColor,
                                               )
                                             : null)),
-                            title:
-                                data.viewState.layout.useWindowsDesktopHeader &&
-                                    !data.searching
+                            title: useExternalDesktopTitleBar
                                 ? null
                                 : (data.searching
                                       ? searchFieldChild
                                       : titleChild),
-                            actions:
-                                data.viewState.layout.useWindowsDesktopHeader &&
-                                    !data.searching
+                            actions: useExternalDesktopTitleBar
                                 ? null
                                 : [
                                     if (!data.searching &&
@@ -707,9 +704,7 @@ class MemosListScreenBody extends StatelessWidget {
                                         ),
                                     ],
                                   ],
-                            bottom:
-                                data.viewState.layout.useWindowsDesktopHeader &&
-                                    !data.searching
+                            bottom: useWindowsDesktopHeader && !data.searching
                                 ? null
                                 : data.searching
                                 ? (data.viewState.query.useShortcutFilter
@@ -740,10 +735,7 @@ class MemosListScreenBody extends StatelessWidget {
                                             ),
                                           ),
                                         ))
-                                : (data
-                                              .viewState
-                                              .layout
-                                              .showHeaderPillActions &&
+                                : (showHeaderPillActionsInScroll &&
                                           quickActions.isNotEmpty
                                       ? PreferredSize(
                                           preferredSize: const Size.fromHeight(
@@ -1096,8 +1088,7 @@ class MemosListScreenBody extends StatelessWidget {
         data.enableDrawerOpenDragGesture &&
         !data.viewState.layout.useDesktopSidePane &&
         !data.searching;
-    final scaffoldBody =
-        data.viewState.layout.useWindowsDesktopHeader && !data.searching
+    final scaffoldBody = useWindowsDesktopHeader && !data.searching
         ? Column(
             children: [
               MemosListWindowsDesktopTitleBar(
@@ -1125,6 +1116,29 @@ class MemosListScreenBody extends StatelessWidget {
                 maximizeTooltip: context.t.strings.legacy.msg_maximize,
                 restoreTooltip: context.t.strings.legacy.msg_restore_window,
                 closeTooltip: context.t.strings.legacy.msg_close,
+              ),
+              Expanded(child: bodyContent),
+            ],
+          )
+        : useMacosDesktopTitleBar
+        ? Column(
+            children: [
+              MemosListMacosDesktopTitleBar(
+                isDark: isDark,
+                searching: data.searching,
+                showPillActions: data.viewState.layout.showHeaderPillActions,
+                enableHomeSort: data.viewState.query.enableHomeSort,
+                enableSearch: data.enableSearch,
+                titleChild: data.enableTitleMenu
+                    ? titleChild
+                    : IgnorePointer(child: titleChild),
+                searchFieldChild: searchFieldChild,
+                sortButton: sortButton,
+                quickActions: quickActions,
+                onOpenSearch: onOpenSearch,
+                onCloseSearch: onCloseSearch,
+                searchTooltip: context.t.strings.legacy.msg_search,
+                cancelTooltip: context.t.strings.legacy.msg_cancel_2,
               ),
               Expanded(child: bodyContent),
             ],

@@ -325,6 +325,44 @@ void main() {
     expect(layoutState.headerBottomHeight, 0);
   });
 
+  test('macOS layout moves home pills into titlebar chrome', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    final queryState = buildMemosListScreenQueryState(
+      searchQuery: '',
+      filterDay: null,
+      state: 'NORMAL',
+      pageSize: 40,
+      shortcuts: const <Shortcut>[],
+      selectedShortcutId: null,
+      selectedQuickSearchKind: null,
+      resolvedTag: null,
+      advancedFilters: AdvancedSearchFilters.empty,
+      searching: false,
+      showDrawer: true,
+    );
+    final layoutState = buildMemosListScreenLayoutState(
+      query: queryState,
+      state: 'NORMAL',
+      showDrawer: true,
+      showPillActions: true,
+      showFilterTagChip: false,
+      enableCompose: true,
+      hidePrimaryComposeFab: false,
+      searching: false,
+      screenWidth: 1280,
+      isWindowsDesktop: false,
+      isMacosDesktop: true,
+    );
+
+    expect(layoutState.useMacosDesktopTitleBar, isTrue);
+    expect(layoutState.useWindowsDesktopHeader, isFalse);
+    expect(layoutState.showHeaderPillActions, isTrue);
+    expect(layoutState.headerToolbarHeight, 0);
+    expect(layoutState.headerBottomHeight, 0);
+    expect(layoutState.listTopPadding, 16);
+    expect(layoutState.listVisualOffset, 0);
+  });
+
   test('windows wide layout enables desktop preview pane at 1360', () {
     final queryState = buildMemosListScreenQueryState(
       searchQuery: '',

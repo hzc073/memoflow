@@ -24,6 +24,10 @@ void main() {
         'memos_flutter_app/macos/Runner/Base.lproj/MainMenu.strings',
       );
       final app = readRepoFile('memos_flutter_app/lib/app.dart');
+      final macosTitleBar = readRepoFile(
+        'memos_flutter_app/lib/features/memos/widgets/'
+        'memos_list_macos_desktop_title_bar.dart',
+      );
 
       expect(appDelegate.contains('NSApp.mainMenu = buildMainMenu()'), isTrue);
       expect(
@@ -51,6 +55,28 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        mainFlutterWindow.contains(
+          'FlutterMultiWindowPlugin.setOnWindowCreatedCallback',
+        ),
+        isTrue,
+      );
+      expect(
+        mainFlutterWindow.contains('RegisterMemoFlowSubWindowPlugins'),
+        isTrue,
+      );
+      expect(mainFlutterWindow.contains('fullSizeContentView'), isTrue);
+      expect(
+        mainFlutterWindow.contains('titlebarAppearsTransparent = true'),
+        isTrue,
+      );
+      expect(mainFlutterWindow.contains('titleVisibility = .hidden'), isTrue);
+      expect(
+        mainFlutterWindow.contains(
+          'RegisterGeneratedPlugins(registry: controller)',
+        ),
+        isFalse,
+      );
       expect(app.contains('macosMenuCommandChannelName'), isTrue);
       expect(app.contains('macosMenuCommandOpenSettingsWindow'), isTrue);
 
@@ -61,6 +87,17 @@ void main() {
       );
       expect(menuStrings.contains('"window.minimize" = "Minimize";'), isTrue);
       expect(menuStrings.contains('"window.zoom" = "Zoom";'), isTrue);
+      expect(macosTitleBar.contains('MemosListPillRow'), isTrue);
+      expect(
+        macosTitleBar.contains('kMemosListMacosTrafficLightSafeInset'),
+        isTrue,
+      );
+      expect(macosTitleBar.contains('Icons.minimize_rounded'), isFalse);
+      expect(macosTitleBar.contains('Icons.crop_square_rounded'), isFalse);
+      expect(macosTitleBar.contains('Icons.filter_none_rounded'), isFalse);
+      expect(macosTitleBar.contains('Icons.close_rounded'), isFalse);
+      expect(macosTitleBar.contains('onMinimize'), isFalse);
+      expect(macosTitleBar.contains('onToggleMaximize'), isFalse);
 
       const forbiddenPatterns = <String>[
         'StoreKit',
@@ -90,6 +127,11 @@ void main() {
           menuStrings,
         ),
         MapEntry('memos_flutter_app/lib/app.dart', app),
+        MapEntry(
+          'memos_flutter_app/lib/features/memos/widgets/'
+          'memos_list_macos_desktop_title_bar.dart',
+          macosTitleBar,
+        ),
       ]) {
         for (final pattern in forbiddenPatterns) {
           if (file.value.contains(pattern)) {

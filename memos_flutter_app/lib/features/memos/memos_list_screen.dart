@@ -323,6 +323,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   bool get _isWindowsDesktopTarget =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
+  bool get _isMacosDesktopTarget =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
+
   DesktopHomeLayoutPreference get _desktopHomeLayoutPreference =>
       ref.read(devicePreferencesProvider).desktopHomeLayoutPreference;
 
@@ -2997,6 +3000,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       searching: _searching,
       screenWidth: screenWidth,
       isWindowsDesktop: _isWindowsDesktopTarget,
+      isMacosDesktop: _isMacosDesktopTarget,
     );
     final resolvedTag = queryState.resolvedTag;
     final useShortcutFilter = queryState.useShortcutFilter;

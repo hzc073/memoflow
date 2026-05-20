@@ -21,6 +21,8 @@ import 'package:memos_flutter_app/features/memos/memos_list_floating_collapse_co
 import 'package:memos_flutter_app/features/memos/memos_list_screen_view_state.dart';
 import 'package:memos_flutter_app/features/memos/widgets/floating_collapse_button.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memos_list_macos_desktop_title_bar.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memos_list_search_widgets.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_screen_body.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -67,6 +69,39 @@ void main() {
 
       expect(find.byType(BackButton), findsOneWidget);
       expect(find.byKey(const ValueKey('drawer-menu-button')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'macOS titlebar shows quick action pills without duplicating header pills',
+    (tester) async {
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            theme: ThemeData(platform: TargetPlatform.macOS),
+            home: _buildBodyScreen(
+              data: _buildBodyData(
+                visibleMemos: <LocalMemo>[_buildMemo('memo-1')],
+                layout: _buildLayout(
+                  showHeaderPillActions: true,
+                  useMacosDesktopTitleBar: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MemosListMacosDesktopTitleBar), findsOneWidget);
+      expect(find.byType(MemosListPillRow), findsOneWidget);
+      expect(find.byIcon(Icons.minimize_rounded), findsNothing);
+      expect(find.byIcon(Icons.crop_square_rounded), findsNothing);
+      expect(find.byIcon(Icons.filter_none_rounded), findsNothing);
+      expect(find.byIcon(Icons.close_rounded), findsNothing);
     },
   );
 
@@ -836,9 +871,14 @@ MemosListScreenBodyData _buildBodyData({
   );
 }
 
-MemosListScreenLayoutState _buildLayout({bool useDesktopSidePane = false}) {
+MemosListScreenLayoutState _buildLayout({
+  bool showHeaderPillActions = false,
+  bool useDesktopSidePane = false,
+  bool useWindowsDesktopHeader = false,
+  bool useMacosDesktopTitleBar = false,
+}) {
   return MemosListScreenLayoutState(
-    showHeaderPillActions: false,
+    showHeaderPillActions: showHeaderPillActions,
     listTopPadding: 0,
     listVisualOffset: 0,
     supportsDesktopSidePane: useDesktopSidePane,
@@ -846,7 +886,8 @@ MemosListScreenLayoutState _buildLayout({bool useDesktopSidePane = false}) {
     supportsDesktopPreviewPane: false,
     useDesktopPreviewPane: false,
     useInlineCompose: false,
-    useWindowsDesktopHeader: false,
+    useWindowsDesktopHeader: useWindowsDesktopHeader,
+    useMacosDesktopTitleBar: useMacosDesktopTitleBar,
     headerToolbarHeight: kToolbarHeight,
     headerBottomHeight: 0,
     floatingCollapseTopPadding: 0,

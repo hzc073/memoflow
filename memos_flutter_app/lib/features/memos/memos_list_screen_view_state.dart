@@ -84,6 +84,7 @@ class MemosListScreenLayoutState {
     required this.useDesktopPreviewPane,
     required this.useInlineCompose,
     required this.useWindowsDesktopHeader,
+    required this.useMacosDesktopTitleBar,
     required this.headerToolbarHeight,
     required this.headerBottomHeight,
     required this.floatingCollapseTopPadding,
@@ -100,6 +101,7 @@ class MemosListScreenLayoutState {
   final bool useDesktopPreviewPane;
   final bool useInlineCompose;
   final bool useWindowsDesktopHeader;
+  final bool useMacosDesktopTitleBar;
   final double headerToolbarHeight;
   final double headerBottomHeight;
   final double floatingCollapseTopPadding;
@@ -277,10 +279,14 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
   required bool searching,
   required double screenWidth,
   required bool isWindowsDesktop,
+  bool isMacosDesktop = false,
 }) {
   final showHeaderPillActions = showPillActions && state == 'NORMAL';
-  final listTopPadding = showHeaderPillActions ? 0.0 : 16.0;
-  final listVisualOffset = showHeaderPillActions ? 6.0 : 0.0;
+  final useMacosDesktopTitleBar = isMacosDesktop && showDrawer;
+  final showHeaderPillActionsInScroll =
+      showHeaderPillActions && !useMacosDesktopTitleBar;
+  final listTopPadding = showHeaderPillActionsInScroll ? 0.0 : 16.0;
+  final listVisualOffset = showHeaderPillActionsInScroll ? 6.0 : 0.0;
   final supportsDesktopSidePane =
       showDrawer && shouldUseDesktopSidePaneLayout(screenWidth);
   final useDesktopSidePane = supportsDesktopSidePane;
@@ -305,14 +311,15 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
       !searching &&
       shouldUseInlineComposeLayout(screenWidth);
   final useWindowsDesktopHeader = isWindowsDesktop;
-  final headerToolbarHeight = useWindowsDesktopHeader && !searching
+  final headerToolbarHeight =
+      (useWindowsDesktopHeader && !searching) || useMacosDesktopTitleBar
       ? 0.0
       : kToolbarHeight;
   final headerBottomHeight = useWindowsDesktopHeader && !searching
       ? 0.0
       : searching
       ? (query.useShortcutFilter ? 0.0 : 46.0)
-      : (showHeaderPillActions
+      : (showHeaderPillActionsInScroll
             ? 46.0
             : (showFilterTagChip &&
                       (query.resolvedTag?.trim().isNotEmpty ?? false)
@@ -341,6 +348,7 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
     useDesktopPreviewPane: useDesktopPreviewPane,
     useInlineCompose: useInlineCompose,
     useWindowsDesktopHeader: useWindowsDesktopHeader,
+    useMacosDesktopTitleBar: useMacosDesktopTitleBar,
     headerToolbarHeight: headerToolbarHeight,
     headerBottomHeight: headerBottomHeight,
     floatingCollapseTopPadding: floatingCollapseTopPadding,

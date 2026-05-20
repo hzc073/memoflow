@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/application/desktop/desktop_settings_window.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_route_delegate.dart';
 import 'package:memos_flutter_app/features/voice/voice_record_screen.dart';
 
@@ -11,7 +12,7 @@ void main() {
   ) async {
     final harness = await _pumpRouteDelegateHarness(tester);
     final desktopAdapter = _FakeRouteDesktopAdapter(
-      openSettingsWindowIfSupportedResult: true,
+      openSettingsWindowResult: const DesktopSettingsWindowOpenResult.opened(),
     );
     var fallbackOpenCount = 0;
     final delegate = harness.buildDelegate(
@@ -23,7 +24,7 @@ void main() {
 
     await delegate.openSettings();
 
-    expect(desktopAdapter.openSettingsWindowIfSupportedCount, 1);
+    expect(desktopAdapter.openSettingsWindowCount, 1);
     expect(fallbackOpenCount, 0);
   });
 
@@ -32,7 +33,8 @@ void main() {
     (tester) async {
       final harness = await _pumpRouteDelegateHarness(tester);
       final desktopAdapter = _FakeRouteDesktopAdapter(
-        openSettingsWindowIfSupportedResult: false,
+        openSettingsWindowResult:
+            const DesktopSettingsWindowOpenResult.unsupported(),
       );
       var fallbackOpenCount = 0;
       final delegate = harness.buildDelegate(
@@ -44,10 +46,33 @@ void main() {
 
       await delegate.openSettings();
 
-      expect(desktopAdapter.openSettingsWindowIfSupportedCount, 1);
+      expect(desktopAdapter.openSettingsWindowCount, 1);
       expect(fallbackOpenCount, 1);
     },
   );
+
+  testWidgets('openSettings falls back when desktop settings window fails', (
+    tester,
+  ) async {
+    final harness = await _pumpRouteDelegateHarness(tester);
+    final desktopAdapter = _FakeRouteDesktopAdapter(
+      openSettingsWindowResult: DesktopSettingsWindowOpenResult.failed(
+        StateError('settings window failed'),
+      ),
+    );
+    var fallbackOpenCount = 0;
+    final delegate = harness.buildDelegate(
+      desktopAdapter: desktopAdapter,
+      openSettingsFallback: (_) async {
+        fallbackOpenCount++;
+      },
+    );
+
+    await delegate.openSettings();
+
+    expect(desktopAdapter.openSettingsWindowCount, 1);
+    expect(fallbackOpenCount, 1);
+  });
 
   testWidgets('openSettings falls back on macOS', (tester) async {
     final previousPlatformOverride = debugDefaultTargetPlatformOverride;
@@ -58,8 +83,14 @@ void main() {
         tester,
         platform: TargetPlatform.macOS,
       );
+      final desktopAdapter = _FakeRouteDesktopAdapter(
+        openSettingsWindowResult: DesktopSettingsWindowOpenResult.failed(
+          StateError('macOS settings window unavailable in test'),
+        ),
+      );
       var fallbackOpenCount = 0;
       final delegate = harness.buildDelegate(
+        desktopAdapter: desktopAdapter,
         openSettingsFallback: (_) async {
           fallbackOpenCount++;
         },
@@ -67,6 +98,7 @@ void main() {
 
       await delegate.openSettings();
 
+      expect(desktopAdapter.openSettingsWindowCount, 1);
       expect(fallbackOpenCount, 1);
     } finally {
       debugDefaultTargetPlatformOverride = previousPlatformOverride;
@@ -369,7 +401,8 @@ class _FakeRouteDesktopAdapter implements MemosListRouteDesktopAdapter {
     this.traySupported = false,
     this.supportsWindowControls = false,
     this.supportsTaskbarVisibilityToggle = false,
-    this.openSettingsWindowIfSupportedResult = false,
+    this.openSettingsWindowResult =
+        const DesktopSettingsWindowOpenResult.unsupported(),
     this.isWindowVisibleResult = false,
     this.isWindowMaximizedResult = false,
   });
@@ -386,11 +419,11 @@ class _FakeRouteDesktopAdapter implements MemosListRouteDesktopAdapter {
   @override
   final bool supportsTaskbarVisibilityToggle;
 
-  final bool openSettingsWindowIfSupportedResult;
+  final DesktopSettingsWindowOpenResult openSettingsWindowResult;
   bool isWindowVisibleResult;
   bool isWindowMaximizedResult;
 
-  int openSettingsWindowIfSupportedCount = 0;
+  int openSettingsWindowCount = 0;
   int hideToTrayCount = 0;
   int showFromTrayCount = 0;
   final List<bool> setSkipTaskbarValues = <bool>[];
@@ -403,9 +436,11 @@ class _FakeRouteDesktopAdapter implements MemosListRouteDesktopAdapter {
   int requestCloseWindowCount = 0;
 
   @override
-  bool openSettingsWindowIfSupported({required BuildContext feedbackContext}) {
-    openSettingsWindowIfSupportedCount++;
-    return openSettingsWindowIfSupportedResult;
+  Future<DesktopSettingsWindowOpenResult> openSettingsWindow({
+    required BuildContext feedbackContext,
+  }) async {
+    openSettingsWindowCount++;
+    return openSettingsWindowResult;
   }
 
   @override
