@@ -27,6 +27,7 @@
 - Follow current repository commit style (preferred): `feat: ...`, `fix: ...`, `chore: ...`.
 - For release publishing, use a `v*` tag (for example `v1.0.16`); APK and Windows release workflows trigger from tags.
 - Always run `flutter analyze` and `flutter test` before pushing.
+- Before every commit, inspect the staged and unstaged changes for private, commercial, subscription, billing, entitlement, paywall, StoreKit, or other paid-feature code introduced into the public repository. If any is present, stop and alert the user instead of committing.
 
 ## Collaboration constraints
 - Any change to API-related code requires explicit user approval before editing or committing. This includes request/response models, route adapters, version compatibility logic, and files under `memos_flutter_app/lib/data/api` and `memos_flutter_app/test/data/api`.
