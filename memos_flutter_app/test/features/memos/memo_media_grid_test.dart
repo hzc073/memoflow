@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -195,5 +196,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ImagePreviewGalleryBody), findsOneWidget);
+  });
+
+  testWidgets('macOS height-limited media grid preserves square tiles', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+
+    try {
+      await tester.pumpWidget(
+        _buildTestApp(
+          Center(
+            child: SizedBox(
+              width: 760,
+              child: MemoMediaGrid(
+                entries: List<MemoMediaEntry>.generate(
+                  9,
+                  (index) => MemoMediaEntry.image(_image('img-$index')),
+                ),
+                columns: 3,
+                maxCount: 9,
+                maxHeight: 300,
+                preserveSquareTilesWhenHeightLimited: true,
+                radius: 0,
+                spacing: 4,
+                borderColor: Colors.white24,
+                backgroundColor: Colors.black,
+                textColor: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tileRect = tester.getRect(find.byType(ImagePreviewTile).first);
+      final gridRect = tester.getRect(find.byType(GridView).first);
+      expect(tileRect.width, closeTo(tileRect.height, 0.1));
+      expect(tileRect.width, lessThan(200));
+      expect(gridRect.width, lessThan(760));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }

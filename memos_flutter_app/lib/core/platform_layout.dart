@@ -138,8 +138,9 @@ bool shouldUseDesktopSidePaneLayout(
 bool shouldUseDesktopPreviewPaneLayout(
   double width, {
   double breakpoint = kMemoFlowDesktopPreviewPaneBreakpoint,
+  TargetPlatform? platform,
 }) {
-  return defaultTargetPlatform == TargetPlatform.windows && width >= breakpoint;
+  return isDesktopTargetPlatform(platform) && width >= breakpoint;
 }
 
 bool shouldUseInlineComposeLayout(

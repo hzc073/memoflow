@@ -90,10 +90,7 @@ void main() {
       expect(shouldUseWindowsRailNav(1600), isFalse);
       expect(shouldUseWindowsExpandedSidebar(1600), isFalse);
       expect(shouldUseWindowsSecondaryPane(1600), isFalse);
-      expect(
-        resolveWindowsDesktopLayout(1600).supportsSecondaryPane,
-        isFalse,
-      );
+      expect(resolveWindowsDesktopLayout(1600).supportsSecondaryPane, isFalse);
     });
 
     test('legacy desktop helpers stay intact during batch 1', () {
@@ -104,6 +101,25 @@ void main() {
       expect(shouldUseDesktopSidePaneLayout(1100), isTrue);
       expect(shouldUseDesktopPreviewPaneLayout(1439), isFalse);
       expect(shouldUseDesktopPreviewPaneLayout(1440), isTrue);
+    });
+
+    test('desktop preview helper is shared across desktop targets', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      expect(shouldUseDesktopPreviewPaneLayout(1439), isFalse);
+      expect(shouldUseDesktopPreviewPaneLayout(1440), isTrue);
+      expect(
+        shouldUseDesktopPreviewPaneLayout(1440, platform: TargetPlatform.linux),
+        isTrue,
+      );
+      expect(
+        shouldUseDesktopPreviewPaneLayout(
+          1440,
+          platform: TargetPlatform.android,
+        ),
+        isFalse,
+      );
     });
 
     test('inline compose layout uses the shared 760 breakpoint', () {

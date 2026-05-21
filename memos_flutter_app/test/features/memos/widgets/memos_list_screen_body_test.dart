@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/core/app_motion_widgets.dart';
 import 'package:memos_flutter_app/core/memoflow_palette.dart';
+import 'package:memos_flutter_app/core/platform_layout.dart';
 import 'package:memos_flutter_app/core/theme_colors.dart';
 import 'package:memos_flutter_app/data/ai/ai_semantic_memo_search_service.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
@@ -452,6 +453,48 @@ void main() {
       expect(find.byType(Drawer), findsNothing);
     },
   );
+
+  testWidgets('macOS desktop side pane keeps memo body bounded', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1800, 1000);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    const bodyProbeKey = ValueKey<String>('desktop-body-width-probe');
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData(platform: TargetPlatform.macOS),
+          home: _buildBodyScreen(
+            drawerPanel: const SizedBox(child: Text('desktop drawer')),
+            data: _buildBodyData(
+              visibleMemos: <LocalMemo>[_buildMemo('memo-1')],
+              layout: _buildLayout(useDesktopSidePane: true),
+            ),
+            animatedItemBuilder: (_, _, _) => const SizedBox(
+              key: bodyProbeKey,
+              height: 24,
+              width: double.infinity,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MemosListDesktopSplitLayout), findsOneWidget);
+    expect(
+      tester.getRect(find.byKey(bodyProbeKey)).width,
+      lessThanOrEqualTo(kMemoFlowDesktopContentMaxWidth),
+    );
+  });
 
   testWidgets('keyword empty state offers explicit AI search CTA', (
     tester,

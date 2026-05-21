@@ -19,6 +19,7 @@ import 'package:memos_flutter_app/application/sync/sync_types.dart';
 import 'package:memos_flutter_app/application/sync/webdav_backup_service.dart';
 import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/core/app_motion.dart';
+import 'package:memos_flutter_app/core/platform_layout.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/ai/ai_provider_adapter.dart';
 import 'package:memos_flutter_app/data/ai/ai_semantic_memo_search_service.dart';
@@ -960,6 +961,88 @@ void main() {
     expect(find.text('Copy'), findsOneWidget);
     expect(find.text('Edit'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('macOS desktop memo cards use shared desktop max width', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1600, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1600, 1200),
+        showDrawer: true,
+      ),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'macOS bounded memo card'),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    expect(
+      tester.getRect(find.byType(MemoListCard).first).width,
+      lessThanOrEqualTo(kMemoFlowDesktopMemoCardMaxWidth),
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('macOS wide layout opens desktop preview pane on memo tap', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1600, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1600, 1800),
+        showDrawer: true,
+      ),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'macOS desktop preview memo'),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    await tester.tap(find.byType(MemoListCard).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 32));
+
+    final paneFinder = find.byKey(
+      const ValueKey<String>('desktop-memo-preview-pane'),
+    );
+    expect(paneFinder, findsOneWidget);
+    expect(find.byType(MemoDetailScreen), findsNothing);
+
+    await tester.pump(AppMotion.desktopPreviewInitialLoaderMin);
+    await tester.pump(AppMotion.desktopPreviewContentReveal);
+    await _pumpScreenFrames(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MemosListScreen)),
+    );
+    final previewSession = container.read(desktopMemoPreviewSessionProvider);
+    expect(previewSession.phase, DesktopMemoPreviewPhase.ready);
+    expect(previewSession.data?.memo.uid, 'memo-1');
+    expect(
+      tester.widget<MemoListCard>(find.byType(MemoListCard).first).selected,
+      isTrue,
+    );
     debugDefaultTargetPlatformOverride = null;
   });
 

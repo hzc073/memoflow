@@ -1146,6 +1146,45 @@ void main() {
   );
 
   testWidgets(
+    'macOS memo card media grid keeps square tiles when height limited',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+
+      try {
+        final images = List<MemoImageEntry>.generate(
+          9,
+          (index) => MemoImageEntry(
+            id: 'attachments/att-$index',
+            title: 'attachment-$index',
+            mimeType: 'image/jpeg',
+            previewUrl: 'https://example.com/att-$index.jpg',
+            fullUrl: 'https://example.com/att-$index.jpg',
+            isAttachment: true,
+          ),
+        );
+
+        await tester.pumpWidget(
+          _buildDirectCardHarness(
+            memo: _buildMemo(content: 'macOS media grid memo'),
+            imageEntries: images,
+            mediaEntries: images.map(MemoMediaEntry.image).toList(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final tileRect = tester.getRect(find.byType(ImagePreviewTile).first);
+        final gridRect = tester.getRect(find.byType(MemoMediaGrid).first);
+        expect(tileRect.width, closeTo(tileRect.height, 0.1));
+        expect(gridRect.width, lessThan(420));
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
+  testWidgets(
     'MemosListMemoCardContainer publishes floating geometry and clears it after floating collapse',
     (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));

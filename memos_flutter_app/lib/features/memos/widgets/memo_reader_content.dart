@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/attachment_toast.dart';
 import '../../../core/location_launcher.dart';
 import '../../../core/memoflow_palette.dart';
+import '../../../core/platform_layout.dart';
 import '../../../core/url.dart';
 import '../../../data/models/attachment.dart';
 import '../../../data/models/local_memo.dart';
@@ -258,7 +257,7 @@ class MemoReaderContent extends ConsumerWidget {
               maxCount: mediaMaxCount,
               maxHeight:
                   MediaQuery.of(context).size.height * mediaMaxHeightFactor,
-              preserveSquareTilesWhenHeightLimited: Platform.isWindows,
+              preserveSquareTilesWhenHeightLimited: isDesktopTargetPlatform(),
               borderColor: borderColor.withValues(alpha: 0.65),
               backgroundColor: imageBg,
               textColor: textMain,

@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +11,7 @@ import '../../../core/attachment_toast.dart';
 import '../../../core/location_launcher.dart';
 import '../../../core/memo_content_diagnostics.dart';
 import '../../../core/memoflow_palette.dart';
+import '../../../core/platform_layout.dart';
 import '../../../data/models/app_preferences.dart';
 import '../../../data/models/location_settings.dart';
 import '../../../data/models/local_memo.dart';
@@ -701,7 +700,7 @@ class MemoListCardState extends State<MemoListCard> {
         columns: 3,
         maxCount: 9,
         maxHeight: maxHeight,
-        preserveSquareTilesWhenHeightLimited: Platform.isWindows,
+        preserveSquareTilesWhenHeightLimited: isDesktopTargetPlatform(),
         radius: 0,
         spacing: 4,
         borderColor: previewBorder,
@@ -787,7 +786,7 @@ class MemoListCardState extends State<MemoListCard> {
               cacheKey: markdownCacheKey,
               data: displayText,
               highlightQuery: highlightQuery,
-              maxLines: showCollapsed ? 6 : null,
+              maxLines: showCollapsed ? kMemoCardPreviewMaxLines : null,
               textStyle: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: textMain),

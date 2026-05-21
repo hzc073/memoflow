@@ -3502,10 +3502,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final devicePreferencesLoaded = ref.watch(devicePreferencesLoadedProvider);
     final shouldEnableResizableHomeInlineCompose =
         _enableResizableHomeInlineCompose && viewState.layout.useInlineCompose;
-    final windowsDesktopLayout = _resolveCurrentWindowsDesktopLayout();
     final supportsDesktopSecondaryPane =
-        viewState.layout.supportsDesktopPreviewPane &&
-        windowsDesktopLayout.supportsSecondaryPane;
+        viewState.layout.supportsDesktopPreviewPane;
     final enableDesktopPreviewInteraction =
         supportsDesktopSecondaryPane &&
         (viewState.layout.useDesktopPreviewPane ||

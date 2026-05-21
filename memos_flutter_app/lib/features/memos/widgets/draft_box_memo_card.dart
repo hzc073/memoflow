@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app_localization.dart';
 import '../../../core/location_launcher.dart';
 import '../../../core/memoflow_palette.dart';
+import '../../../core/platform_layout.dart';
 import '../../../data/models/compose_draft.dart';
 import '../../../i18n/strings.g.dart';
 import '../draft_box_media_entries.dart';
@@ -278,7 +277,8 @@ class _DraftBoxMemoCardState extends State<DraftBoxMemoCard> {
                     columns: 3,
                     maxCount: 9,
                     maxHeight: MediaQuery.of(context).size.height * 0.4,
-                    preserveSquareTilesWhenHeightLimited: Platform.isWindows,
+                    preserveSquareTilesWhenHeightLimited:
+                        isDesktopTargetPlatform(),
                     radius: 0,
                     spacing: 4,
                     borderColor: previewBorder,

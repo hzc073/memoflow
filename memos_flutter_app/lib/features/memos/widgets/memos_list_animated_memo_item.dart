@@ -176,7 +176,7 @@ class MemosListAnimatedMemoItem extends StatelessWidget {
       onFloatingGeometryChanged: onFloatingGeometryChanged,
       onAction: onAction,
     );
-    if (Platform.isWindows) {
+    if (!kIsWeb && isDesktopTargetPlatform()) {
       memoCard = Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
