@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/app_motion.dart';
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/measure_size.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/uid.dart';
@@ -600,11 +601,20 @@ class _CollectionEditorScreenState
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () =>
-                _requestClose(persistedManualMemoUids: persistedManualMemoUids),
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+          leading: resolveDesktopRouteDismissalLeading(
+            context: context,
+            leading: IconButton(
+              tooltip: context.t.strings.legacy.msg_back,
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => _requestClose(
+                persistedManualMemoUids: persistedManualMemoUids,
+              ),
+            ),
           ),
           title: Text(
             _isEditing
@@ -3018,6 +3028,10 @@ class _ManualMemoPickerScreenState
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(context.tr(zh: '选择 memo', en: 'Select memos')),
       ),
       bottomNavigationBar: SafeArea(

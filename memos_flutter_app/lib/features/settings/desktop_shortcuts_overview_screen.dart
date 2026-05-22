@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/desktop/shortcuts.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../i18n/strings.g.dart';
 
@@ -118,6 +119,10 @@ class DesktopShortcutsOverviewScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(context.t.strings.legacy.msg_shortcuts_overview),
         centerTitle: false,
       ),

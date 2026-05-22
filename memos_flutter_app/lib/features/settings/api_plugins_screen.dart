@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/windows_adaptive_surface.dart';
@@ -388,14 +389,20 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: widget.showBackButton,
-        leading: widget.showBackButton
-            ? IconButton(
-                tooltip: context.t.strings.legacy.msg_back,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: widget.showBackButton,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: widget.showBackButton
+              ? IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                )
+              : null,
+        ),
         title: Text(context.t.strings.legacy.msg_api_plugins),
         centerTitle: false,
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import 'customize_home_shortcuts_screen.dart';
 import 'customize_drawer_screen.dart';
@@ -36,14 +37,20 @@ class LaboratoryScreen extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: showBackButton,
-        leading: showBackButton
-            ? IconButton(
-                tooltip: context.t.strings.legacy.msg_back,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: showBackButton,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: showBackButton
+              ? IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                )
+              : null,
+        ),
         title: Text(context.t.strings.legacy.msg_laboratory),
         centerTitle: false,
       ),

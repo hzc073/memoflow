@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
@@ -130,9 +131,7 @@ class _SystemLogsScreenState extends ConsumerState<SystemLogsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             context.t.strings.legacy.msg_failed_export_logs(error: e),
@@ -163,10 +162,17 @@ class _SystemLogsScreenState extends ConsumerState<SystemLogsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: IconButton(
+            tooltip: context.t.strings.legacy.msg_back,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
         ),
         title: Text(context.t.strings.legacy.msg_system_logs),
         centerTitle: false,

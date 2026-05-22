@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/repositories/ai_settings_repository.dart';
@@ -52,14 +53,20 @@ class AiSettingsScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: showBackButton,
-        leading: showBackButton
-            ? IconButton(
-                tooltip: context.t.strings.legacy.msg_back,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: showBackButton,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: showBackButton
+              ? IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                )
+              : null,
+        ),
         title: Text(context.t.strings.legacy.msg_ai_settings),
         actions: [
           if (useDesktopAddAction)
@@ -68,9 +75,7 @@ class AiSettingsScreen extends ConsumerWidget {
               child: FilledButton.icon(
                 onPressed: openAddService,
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(
-                  isZh ? '\u6dfb\u52a0\u670d\u52a1' : 'Add Service',
-                ),
+                label: Text(isZh ? '\u6dfb\u52a0\u670d\u52a1' : 'Add Service'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,

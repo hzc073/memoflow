@@ -469,10 +469,17 @@ class _VaultSecurityStatusScreenState
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.tr(zh: '返回', en: 'Back'),
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: IconButton(
+            tooltip: context.tr(zh: '返回', en: 'Back'),
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
         ),
         title: Text(context.tr(zh: '安全状态检查', en: 'Vault security status')),
         centerTitle: false,

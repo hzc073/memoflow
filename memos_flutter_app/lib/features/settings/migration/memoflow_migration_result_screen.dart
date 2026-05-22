@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../application/sync/migration/memoflow_migration_models.dart';
 import '../../../core/app_localization.dart';
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../i18n/strings.g.dart';
 
 class MemoFlowMigrationResultScreen extends StatelessWidget {
@@ -25,7 +26,13 @@ class MemoFlowMigrationResultScreen extends StatelessWidget {
         .join('、');
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        title: Text(title),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

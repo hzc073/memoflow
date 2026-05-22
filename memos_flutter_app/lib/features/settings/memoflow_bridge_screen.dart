@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/memoflow_bridge_settings.dart';
@@ -486,10 +487,17 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: tr.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: IconButton(
+            tooltip: tr.msg_back,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
         ),
         title: Text(tr.msg_bridge_title),
         centerTitle: false,
@@ -835,7 +843,14 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
     final hintText = widget.hintText ?? tr.msg_bridge_scan_hint;
     if (!_supportsScanner) {
       return Scaffold(
-        appBar: AppBar(title: Text(titleText)),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+          title: Text(titleText),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -865,7 +880,13 @@ class _MemoFlowPairQrScanScreenState extends State<MemoFlowPairQrScanScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(titleText)),
+      appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        title: Text(titleText),
+      ),
       body: Stack(
         children: [
           MobileScanner(controller: _controller!, onDetect: _onDetect),

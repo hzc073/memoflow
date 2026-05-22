@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/settings/device_preferences_provider.dart';
@@ -43,6 +44,10 @@ class MemoFlowMigrationRoleScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(tr.msg_memoflow_migration),
       ),
       body: ListView(

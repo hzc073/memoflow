@@ -6,6 +6,7 @@ import '../../state/sync/sync_coordinator_provider.dart';
 import '../../state/sync/memo_sync_service.dart';
 import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../application/sync/sync_feedback_presenter.dart';
@@ -316,10 +317,18 @@ class SyncQueueScreen extends ConsumerWidget {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
-          leading: IconButton(
-            tooltip: context.t.strings.legacy.msg_back,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => _handleBack(context),
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+          leading: resolveDesktopRouteDismissalLeading(
+            context: context,
+            leading: IconButton(
+              tooltip: context.t.strings.legacy.msg_back,
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => _handleBack(context),
+            ),
           ),
           actions: [
             IconButton(

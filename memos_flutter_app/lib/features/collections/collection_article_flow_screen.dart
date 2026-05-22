@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../data/models/collection_article_flow.dart';
 import '../../data/models/collection_readable_item.dart';
 import '../../data/models/collection_reader.dart';
@@ -242,20 +243,38 @@ class _CollectionArticleFlowScreenState
     }
     if (collectionAsync.hasError) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+        ),
         body: Center(child: Text('${collectionAsync.error}')),
       );
     }
     if (itemsAsync.hasError) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+        ),
         body: Center(child: Text('${itemsAsync.error}')),
       );
     }
     final collection = collectionAsync.valueOrNull;
     if (collection == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+        ),
         body: Center(child: Text(collectionsStrings.collectionNotFound)),
       );
     }
@@ -277,6 +296,11 @@ class _CollectionArticleFlowScreenState
         final selectedItem = _resolveSelectedItem(listModel.items, twoPane);
         return Scaffold(
           appBar: AppBar(
+            automaticallyImplyLeading:
+                resolveDesktopRouteAutomaticallyImplyLeading(
+                  context: context,
+                  automaticallyImplyLeading: true,
+                ),
             title: Text(title),
             actions: [
               PopupMenuButton<_ArticleFlowMenuAction>(
@@ -1013,7 +1037,13 @@ class _CollectionArticleDetailPageState
         : null;
     if (item == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+        ),
         body: Center(
           child: Text(context.t.strings.collections.articleFlow.noItems),
         ),

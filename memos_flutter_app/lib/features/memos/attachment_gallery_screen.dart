@@ -19,6 +19,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/image_formats.dart';
 import '../../core/image_error_logger.dart';
 import '../../core/scene_micro_guide_widgets.dart';
@@ -584,7 +585,8 @@ class _AttachmentGalleryScreenState
     required int? cacheWidth,
     required int? cacheHeight,
   }) {
-    final hasLocalFile = source.localFile != null && source.localFile!.existsSync();
+    final hasLocalFile =
+        source.localFile != null && source.localFile!.existsSync();
     final mode = preferDirectRender ? 'direct' : 'progressive';
     final signature =
         'mode=$mode'
@@ -666,7 +668,9 @@ class _AttachmentGalleryScreenState
           );
         }
       }
-      final providerResolved = await _resolveAttachmentGalleryIntrinsicSize(source);
+      final providerResolved = await _resolveAttachmentGalleryIntrinsicSize(
+        source,
+      );
       final resolved = chooseAttachmentGalleryResolvedIntrinsicSize(
         fileResolved: fileResolved,
         providerResolved: providerResolved,
@@ -1207,10 +1211,7 @@ class _AttachmentGalleryScreenState
             return Stack(
               fit: StackFit.expand,
               alignment: Alignment.center,
-              children: [
-                _buildLoadingIndicator(context),
-                child,
-              ],
+              children: [_buildLoadingIndicator(context), child],
             );
           },
           errorBuilder: (context, error, stackTrace) {
@@ -1310,10 +1311,7 @@ class _AttachmentGalleryScreenState
             return Stack(
               fit: StackFit.expand,
               alignment: Alignment.center,
-              children: [
-                _buildLoadingIndicator(context),
-                child,
-              ],
+              children: [_buildLoadingIndicator(context), child],
             );
           },
           errorBuilder: (context, error, stackTrace) {
@@ -1326,7 +1324,8 @@ class _AttachmentGalleryScreenState
                 'sourceId': source.id,
                 'mimeType': source.mimeType,
                 'hasAuthHeader':
-                    source.headers?['Authorization']?.trim().isNotEmpty ?? false,
+                    source.headers?['Authorization']?.trim().isNotEmpty ??
+                    false,
               },
             );
             return const Icon(Icons.broken_image, color: Colors.white);
@@ -1469,8 +1468,9 @@ class _AttachmentGalleryScreenState
           final previewHint = previewSize == null
               ? null
               : resolveAttachmentGalleryDecodeHint(previewSize);
-          final preferDirectRender =
-              shouldUseDirectAttachmentGalleryRender(intrinsicSize);
+          final preferDirectRender = shouldUseDirectAttachmentGalleryRender(
+            intrinsicSize,
+          );
           final displaySize = intrinsicSize == null
               ? null
               : applyBoxFit(
@@ -1589,14 +1589,16 @@ class _AttachmentGalleryScreenState
 
   @override
   Widget build(BuildContext context) {
-    final imageOnlyItems = _items.where((item) => item.isImage).toList(
-      growable: false,
-    );
+    final imageOnlyItems = _items
+        .where((item) => item.isImage)
+        .toList(growable: false);
     if (imageOnlyItems.length == _items.length) {
       return ImagePreviewGalleryBody(
         request: ImagePreviewOpenRequest(
           items: imageOnlyItems
-              .map((item) => _attachmentImageSourceToImagePreviewItem(item.image!))
+              .map(
+                (item) => _attachmentImageSourceToImagePreviewItem(item.image!),
+              )
               .toList(growable: false),
           initialIndex: widget.initialIndex.clamp(
             0,
@@ -1646,6 +1648,11 @@ class _AttachmentGalleryScreenState
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
               elevation: 0,
+              automaticallyImplyLeading:
+                  resolveDesktopRouteAutomaticallyImplyLeading(
+                    context: context,
+                    automaticallyImplyLeading: true,
+                  ),
             ),
             body: Center(
               child: Text(
@@ -1660,6 +1667,11 @@ class _AttachmentGalleryScreenState
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
               elevation: 0,
+              automaticallyImplyLeading:
+                  resolveDesktopRouteAutomaticallyImplyLeading(
+                    context: context,
+                    automaticallyImplyLeading: true,
+                  ),
               title: Text(
                 '${_index + 1}/${_items.length}',
                 style: const TextStyle(color: Colors.white),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/ai/adapters/_ai_provider_http.dart';
 import '../../data/ai/ai_settings_log.dart';
@@ -84,6 +85,11 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
           title: Text(isZh ? '服务详情' : 'Service Details'),
         ),
         body: Center(child: Text(isZh ? '服务不存在。' : 'Service not found.')),
@@ -104,6 +110,10 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(isZh ? '服务详情' : 'Service Details'),
         actions: [
           TextButton(

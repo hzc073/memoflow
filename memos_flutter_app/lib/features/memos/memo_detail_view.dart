@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
+
 class MemoDetailView extends StatelessWidget {
   const MemoDetailView({
     super.key,
@@ -41,6 +43,10 @@ class MemoDetailView extends StatelessWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: title,
         actions: actions,
       ),

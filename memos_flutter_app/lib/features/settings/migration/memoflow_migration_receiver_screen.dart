@@ -4,6 +4,7 @@ import 'package:pretty_qr_code/pretty_qr_code.dart';
 
 import '../../../application/sync/migration/memoflow_migration_models.dart';
 import '../../../core/app_localization.dart';
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_state.dart';
@@ -29,7 +30,13 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
         const <MemoFlowMigrationConfigType>[];
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr.msg_memoflow_migration_receiver)),
+      appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        title: Text(tr.msg_memoflow_migration_receiver),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

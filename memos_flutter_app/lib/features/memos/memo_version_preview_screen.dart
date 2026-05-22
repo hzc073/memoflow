@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../data/models/memo_version.dart';
 import '../../state/memos/memo_timeline_provider.dart';
 import '../../i18n/strings.g.dart';
@@ -83,6 +84,10 @@ class _MemoVersionPreviewScreenState
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(title),
         actions: [
           TextButton(

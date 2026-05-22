@@ -6,6 +6,7 @@ import '../../application/sync/sync_error.dart';
 import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../application/desktop/desktop_settings_window.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
@@ -414,14 +415,20 @@ class AccountSecurityScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: showBackButton,
-        leading: showBackButton
-            ? IconButton(
-                tooltip: context.t.strings.legacy.msg_back,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: showBackButton,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: showBackButton
+              ? IconButton(
+                  tooltip: context.t.strings.legacy.msg_back,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                )
+              : null,
+        ),
         title: Text(context.t.strings.legacy.msg_account_security),
         centerTitle: false,
       ),

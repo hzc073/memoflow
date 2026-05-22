@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../data/models/recycle_bin_item.dart';
 import '../../state/memos/memo_timeline_provider.dart';
 import '../../i18n/strings.g.dart';
@@ -103,6 +104,10 @@ class _RecycleBinPreviewScreenState
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(title),
         actions: [
           TextButton(

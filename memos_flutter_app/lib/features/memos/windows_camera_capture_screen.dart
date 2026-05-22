@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../i18n/strings.g.dart';
 
 class WindowsCameraCaptureScreen extends StatefulWidget {
@@ -170,7 +171,13 @@ class _WindowsCameraCaptureScreenState
   Widget build(BuildContext context) {
     final controller = _controller;
     return Scaffold(
-      appBar: AppBar(title: Text(context.t.strings.legacy.msg_capture_photo)),
+      appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        title: Text(context.t.strings.legacy.msg_capture_photo),
+      ),
       body: _initializing
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null

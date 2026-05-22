@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/video_thumbnail_cache.dart';
 
 class AttachmentVideoScreen extends StatefulWidget {
@@ -73,13 +74,16 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
     _controller = controller;
     _lastIsPlaying = controller.value.isPlaying;
     controller.addListener(_handleControllerUpdate);
-    _initFuture = controller.initialize().then((_) {
-      if (!mounted) return;
-      setState(() {});
-    }).catchError((error) {
-      if (!mounted) return;
-      setState(() => _error = error.toString());
-    });
+    _initFuture = controller
+        .initialize()
+        .then((_) {
+          if (!mounted) return;
+          setState(() {});
+        })
+        .catchError((error) {
+          if (!mounted) return;
+          setState(() => _error = error.toString());
+        });
   }
 
   void _handleControllerUpdate() {
@@ -112,7 +116,9 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
   Future<void> _loadThumbnail() async {
     if (_thumbLoading) return;
     _thumbLoading = true;
-    final id = (widget.cacheId?.trim().isNotEmpty ?? false) ? widget.cacheId!.trim() : widget.title;
+    final id = (widget.cacheId?.trim().isNotEmpty ?? false)
+        ? widget.cacheId!.trim()
+        : widget.title;
     final size = widget.cacheSize ?? 0;
     try {
       final file = await VideoThumbnailCache.getThumbnailFile(
@@ -160,7 +166,10 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
     }
   }
 
-  Widget _buildControls(VideoPlayerController controller, {required bool visible}) {
+  Widget _buildControls(
+    VideoPlayerController controller, {
+    required bool visible,
+  }) {
     final isPlaying = controller.value.isPlaying;
     return Positioned.fill(
       child: IgnorePointer(
@@ -182,7 +191,11 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
                     iconSize: 64,
                     color: Colors.white,
                     onPressed: _togglePlay,
-                    icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                    icon: Icon(
+                      isPlaying
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_fill,
+                    ),
                   ),
                   Positioned(
                     left: 0,
@@ -191,7 +204,10 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
                     child: VideoProgressIndicator(
                       controller,
                       allowScrubbing: true,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       colors: VideoProgressColors(
                         playedColor: Colors.white,
                         bufferedColor: Colors.white.withValues(alpha: 0.4),
@@ -245,80 +261,78 @@ class _AttachmentVideoScreenState extends State<AttachmentVideoScreen> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
         ),
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: SafeArea(
         child: Center(
           child: error != null
-              ? Text(
-                  error,
-                  style: const TextStyle(color: Colors.white70),
-                )
+              ? Text(error, style: const TextStyle(color: Colors.white70))
               : controller == null
-                  ? Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: _buildPoster(),
-                        ),
-                        const CircularProgressIndicator(),
-                      ],
-                    )
-                  : FutureBuilder<void>(
-                      future: _initFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done) {
-                          return Stack(
+              ? Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AspectRatio(aspectRatio: 16 / 9, child: _buildPoster()),
+                    const CircularProgressIndicator(),
+                  ],
+                )
+              : FutureBuilder<void>(
+                  future: _initFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: _buildPoster(),
+                          ),
+                          const CircularProgressIndicator(),
+                        ],
+                      );
+                    }
+                    return ValueListenableBuilder<VideoPlayerValue>(
+                      valueListenable: controller,
+                      builder: (context, value, child) {
+                        final aspect = value.aspectRatio > 0
+                            ? value.aspectRatio
+                            : (16 / 9);
+                        final showPoster =
+                            value.position == Duration.zero && !value.isPlaying;
+                        final showBuffer = value.isBuffering;
+                        return GestureDetector(
+                          onTap: _toggleControls,
+                          child: Stack(
                             alignment: Alignment.center,
                             children: [
                               AspectRatio(
-                                aspectRatio: 16 / 9,
-                                child: _buildPoster(),
+                                aspectRatio: aspect,
+                                child: VideoPlayer(controller),
                               ),
-                              const CircularProgressIndicator(),
-                            ],
-                          );
-                        }
-                        return ValueListenableBuilder<VideoPlayerValue>(
-                          valueListenable: controller,
-                          builder: (context, value, child) {
-                            final aspect = value.aspectRatio > 0 ? value.aspectRatio : (16 / 9);
-                            final showPoster = value.position == Duration.zero && !value.isPlaying;
-                            final showBuffer = value.isBuffering;
-                            return GestureDetector(
-                              onTap: _toggleControls,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  AspectRatio(
-                                    aspectRatio: aspect,
-                                    child: VideoPlayer(controller),
+                              if (showPoster)
+                                Positioned.fill(child: _buildPoster())
+                              else if (showBuffer)
+                                Positioned.fill(
+                                  child: Container(
+                                    color: Colors.black.withValues(alpha: 0.2),
+                                    alignment: Alignment.center,
+                                    child: const CircularProgressIndicator(),
                                   ),
-                                  if (showPoster)
-                                    Positioned.fill(
-                                      child: _buildPoster(),
-                                    )
-                                  else if (showBuffer)
-                                    Positioned.fill(
-                                      child: Container(
-                                        color: Colors.black.withValues(alpha: 0.2),
-                                        alignment: Alignment.center,
-                                        child: const CircularProgressIndicator(),
-                                      ),
-                                    ),
-                                  _buildControls(controller, visible: _showControls),
-                                ],
+                                ),
+                              _buildControls(
+                                controller,
+                                visible: _showControls,
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         );
                       },
-                    ),
+                    );
+                  },
+                ),
         ),
       ),
     );

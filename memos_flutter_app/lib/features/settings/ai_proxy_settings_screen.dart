@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/ai/adapters/_ai_provider_http.dart';
@@ -82,6 +83,10 @@ class _AiProxySettingsScreenState extends ConsumerState<AiProxySettingsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(t.title),
         actions: [
           TextButton(
@@ -116,7 +121,9 @@ class _AiProxySettingsScreenState extends ConsumerState<AiProxySettingsScreen> {
                         .map(
                           (value) => DropdownMenuItem<AiProxyProtocol>(
                             value: value,
-                            child: Text(value == AiProxyProtocol.http ? 'HTTP' : 'SOCKS5'),
+                            child: Text(
+                              value == AiProxyProtocol.http ? 'HTTP' : 'SOCKS5',
+                            ),
                           ),
                         )
                         .toList(growable: false),
@@ -266,7 +273,9 @@ class _AiProxySettingsScreenState extends ConsumerState<AiProxySettingsScreen> {
         return;
       }
 
-      await ref.read(aiSettingsProvider.notifier).setProxySettings(
+      await ref
+          .read(aiSettingsProvider.notifier)
+          .setProxySettings(
             AiProxySettings(
               protocol: _protocol,
               host: host,
@@ -354,7 +363,9 @@ class _AiProxySettingsScreenState extends ConsumerState<AiProxySettingsScreen> {
           : error.toString().replaceFirst('Exception: ', '').trim();
       setState(() {
         _testSuccess = false;
-        _testResult = t.testFailure(message: message.isEmpty ? 'Unknown error.' : message);
+        _testResult = t.testFailure(
+          message: message.isEmpty ? 'Unknown error.' : message,
+        );
       });
     } finally {
       dio?.close(force: true);

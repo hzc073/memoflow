@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/windows_adaptive_surface.dart';
@@ -176,13 +177,20 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: TextButton(
-          onPressed: () => context.safePop(),
-          child: Text(
-            context.t.strings.legacy.msg_cancel_2,
-            style: TextStyle(
-              color: MemoFlowPalette.primary,
-              fontWeight: FontWeight.w600,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: TextButton(
+            onPressed: () => context.safePop(),
+            child: Text(
+              context.t.strings.legacy.msg_cancel_2,
+              style: TextStyle(
+                color: MemoFlowPalette.primary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),

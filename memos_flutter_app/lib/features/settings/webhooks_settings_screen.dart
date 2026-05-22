@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/user_setting.dart';
@@ -16,14 +17,18 @@ class WebhooksSettingsScreen extends ConsumerStatefulWidget {
   const WebhooksSettingsScreen({super.key});
 
   @override
-  ConsumerState<WebhooksSettingsScreen> createState() => _WebhooksSettingsScreenState();
+  ConsumerState<WebhooksSettingsScreen> createState() =>
+      _WebhooksSettingsScreenState();
 }
 
-class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen> {
+class _WebhooksSettingsScreenState
+    extends ConsumerState<WebhooksSettingsScreen> {
   var _saving = false;
 
   Future<void> _openEditor({UserWebhook? webhook}) async {
-    final nameController = TextEditingController(text: webhook?.displayName ?? '');
+    final nameController = TextEditingController(
+      text: webhook?.displayName ?? '',
+    );
     final urlController = TextEditingController(text: webhook?.url ?? '');
     final isEditing = webhook != null;
 
@@ -31,14 +36,18 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          isEditing ? context.t.strings.legacy.msg_edit_webhook : context.t.strings.legacy.msg_add_webhook,
+          isEditing
+              ? context.t.strings.legacy.msg_edit_webhook
+              : context.t.strings.legacy.msg_add_webhook,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              decoration: InputDecoration(labelText: context.t.strings.legacy.msg_display_name),
+              decoration: InputDecoration(
+                labelText: context.t.strings.legacy.msg_display_name,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -92,18 +101,21 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
       if (webhook == null) {
         await api.createUserWebhook(displayName: displayName, url: url);
       } else {
-        await api.updateUserWebhook(webhook: webhook, displayName: displayName, url: url);
+        await api.updateUserWebhook(
+          webhook: webhook,
+          displayName: displayName,
+          url: url,
+        );
       }
       ref.invalidate(userWebhooksProvider);
       if (!mounted) return;
-      showTopToast(
-        context,
-        context.t.strings.legacy.msg_saved_2,
-      );
+      showTopToast(context, context.t.strings.legacy.msg_saved_2);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_save_failed_3(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -114,11 +126,14 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
 
   Future<void> _deleteWebhook(UserWebhook webhook) async {
     if (_saving) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(context.t.strings.legacy.msg_delete_webhook),
-            content: Text(context.t.strings.legacy.msg_sure_want_delete_webhook),
+            content: Text(
+              context.t.strings.legacy.msg_sure_want_delete_webhook,
+            ),
             actions: [
               TextButton(
                 onPressed: () => context.safePop(false),
@@ -141,7 +156,9 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_delete_failed(e: e))),
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_delete_failed(e: e)),
+        ),
       );
     } finally {
       if (mounted) {
@@ -171,11 +188,17 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.06);
     final hapticsEnabled = ref.watch(
       devicePreferencesProvider.select((p) => p.hapticsEnabled),
     );
@@ -195,10 +218,17 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: IconButton(
+            tooltip: context.t.strings.legacy.msg_back,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
         ),
         title: Text(context.t.strings.legacy.msg_webhooks),
         centerTitle: false,
@@ -224,11 +254,7 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -237,7 +263,10 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
             data: (webhooks) {
               if (webhooks.isEmpty) {
                 return Center(
-                  child: Text(context.t.strings.legacy.msg_no_webhooks_configured, style: TextStyle(color: textMuted)),
+                  child: Text(
+                    context.t.strings.legacy.msg_no_webhooks_configured,
+                    style: TextStyle(color: textMuted),
+                  ),
                 );
               }
 
@@ -277,7 +306,10 @@ class _WebhooksSettingsScreenState extends ConsumerState<WebhooksSettingsScreen>
                   children: [
                     Text(
                       context.t.strings.legacy.msg_failed_load_2,
-                      style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textMain,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -329,7 +361,13 @@ class _WebhookRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: textMain)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(url, style: TextStyle(fontSize: 12, color: textMuted)),
               ],
@@ -392,10 +430,7 @@ class _Group extends StatelessWidget {
 }
 
 class _WebhookDraft {
-  const _WebhookDraft({
-    required this.displayName,
-    required this.url,
-  });
+  const _WebhookDraft({required this.displayName, required this.url});
 
   final String displayName;
   final String url;

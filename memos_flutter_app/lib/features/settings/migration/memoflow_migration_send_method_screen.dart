@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_localization.dart';
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../i18n/strings.g.dart';
 import '../memoflow_bridge_screen.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
@@ -55,7 +56,13 @@ class _MemoFlowMigrationSendMethodScreenState
     final packageResult = state.packageResult;
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr.msg_memoflow_migration_send_method)),
+      appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        title: Text(tr.msg_memoflow_migration_send_method),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

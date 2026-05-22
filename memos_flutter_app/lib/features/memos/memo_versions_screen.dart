@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../state/memos/memo_timeline_provider.dart';
 import '../../i18n/strings.g.dart';
 import 'memo_version_preview_screen.dart';
@@ -43,6 +44,10 @@ class MemoVersionsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(context.t.strings.settings.preferences.history),
       ),
       body: asyncVersions.when(

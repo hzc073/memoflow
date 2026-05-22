@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../data/models/memo_collection.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/collections/collections_provider.dart';
@@ -21,14 +22,26 @@ class CollectionDetailScreen extends ConsumerWidget {
     }
     if (collectionAsync.hasError) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+        ),
         body: Center(child: Text('${collectionAsync.error}')),
       );
     }
     final collection = collectionAsync.valueOrNull;
     if (collection == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
+        ),
         body: Center(
           child: Text(context.t.strings.collections.collectionNotFound),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/ai/ai_settings_log.dart';
 import '../../data/logs/log_manager.dart';
@@ -53,6 +54,11 @@ class AiServiceModelScreen extends ConsumerWidget {
           elevation: 0,
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
+          automaticallyImplyLeading:
+              resolveDesktopRouteAutomaticallyImplyLeading(
+                context: context,
+                automaticallyImplyLeading: true,
+              ),
           title: Text(isZh ? '模型管理' : 'Models'),
         ),
         body: missing,
@@ -71,6 +77,10 @@ class AiServiceModelScreen extends ConsumerWidget {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(isZh ? '模型管理' : 'Models'),
       ),
       body: content,
@@ -709,10 +719,14 @@ class _AiServiceModelPanelState extends ConsumerState<_AiServiceModelPanel> {
 
   String _sourceFilterLabel(_ModelSourceFilter filter, bool isZh) {
     return switch (filter) {
-      _ModelSourceFilter.all => isZh ? '\u5168\u90e8\u6a21\u578b' : 'All Models',
-      _ModelSourceFilter.manual => isZh ? '\u624b\u52a8\u6dfb\u52a0' : 'Manual Added',
-      _ModelSourceFilter.discovered => isZh ? '\u63a5\u53e3\u540c\u6b65' : 'Synced',
-      _ModelSourceFilter.migrated => isZh ? '\u5386\u53f2\u8fc1\u79fb' : 'Imported',
+      _ModelSourceFilter.all =>
+        isZh ? '\u5168\u90e8\u6a21\u578b' : 'All Models',
+      _ModelSourceFilter.manual =>
+        isZh ? '\u624b\u52a8\u6dfb\u52a0' : 'Manual Added',
+      _ModelSourceFilter.discovered =>
+        isZh ? '\u63a5\u53e3\u540c\u6b65' : 'Synced',
+      _ModelSourceFilter.migrated =>
+        isZh ? '\u5386\u53f2\u8fc1\u79fb' : 'Imported',
       _ModelSourceFilter.disabled => isZh ? '\u5df2\u5173\u95ed' : 'Disabled',
     };
   }

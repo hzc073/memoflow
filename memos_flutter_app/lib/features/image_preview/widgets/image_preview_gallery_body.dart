@@ -18,6 +18,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/image_error_logger.dart';
 import '../../../core/image_formats.dart';
 import '../../../core/scene_micro_guide_widgets.dart';
@@ -986,10 +987,7 @@ class ImagePreviewGalleryBodyState
             }
             return Stack(
               alignment: Alignment.center,
-              children: [
-                _buildLoadingIndicator(context),
-                child,
-              ],
+              children: [_buildLoadingIndicator(context), child],
             );
           },
           errorBuilder: (context, error, stackTrace) {
@@ -1088,10 +1086,7 @@ class ImagePreviewGalleryBodyState
             }
             return Stack(
               alignment: Alignment.center,
-              children: [
-                _buildLoadingIndicator(context),
-                child,
-              ],
+              children: [_buildLoadingIndicator(context), child],
             );
           },
           errorBuilder: (context, error, stackTrace) {
@@ -1203,8 +1198,9 @@ class ImagePreviewGalleryBodyState
           final previewHint = previewSize == null
               ? null
               : resolveImagePreviewDecodeHint(previewSize);
-          final preferDirectRender =
-              shouldUseDirectImagePreviewRender(intrinsicSize);
+          final preferDirectRender = shouldUseDirectImagePreviewRender(
+            intrinsicSize,
+          );
           final displaySize = intrinsicSize == null
               ? null
               : applyBoxFit(
@@ -1548,6 +1544,11 @@ class ImagePreviewGalleryBodyState
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
               elevation: 0,
+              automaticallyImplyLeading:
+                  resolveDesktopRouteAutomaticallyImplyLeading(
+                    context: context,
+                    automaticallyImplyLeading: true,
+                  ),
             ),
             body: Center(
               child: Text(
@@ -1580,6 +1581,11 @@ class ImagePreviewGalleryBodyState
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
               elevation: 0,
+              automaticallyImplyLeading:
+                  resolveDesktopRouteAutomaticallyImplyLeading(
+                    context: context,
+                    automaticallyImplyLeading: true,
+                  ),
               title: Text(
                 '${_index + 1}/${widget.request.items.length}',
                 style: const TextStyle(color: Colors.white),

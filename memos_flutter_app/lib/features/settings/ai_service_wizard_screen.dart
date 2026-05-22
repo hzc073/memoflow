@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../data/ai/ai_settings_log.dart';
@@ -86,6 +87,10 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
         title: Text(isZh ? '添加服务' : 'Add Service'),
       ),
       body: Stepper(
@@ -834,7 +839,10 @@ class _ProxyWarningCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, color: colorScheme.onSecondaryContainer),
+          Icon(
+            Icons.warning_amber_rounded,
+            color: colorScheme.onSecondaryContainer,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

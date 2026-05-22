@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/memoflow_palette.dart';
 import '../../data/updates/update_config.dart';
 import '../../state/system/update_config_provider.dart';
@@ -26,11 +27,17 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight;
+    final bg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
     final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight;
+    final textMain = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
     final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final lineColor = isDark ? MemoFlowPalette.primaryDark : MemoFlowPalette.primary;
+    final lineColor = isDark
+        ? MemoFlowPalette.primaryDark
+        : MemoFlowPalette.primary;
 
     return Scaffold(
       backgroundColor: bg,
@@ -39,10 +46,17 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          tooltip: context.t.strings.legacy.msg_back,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        leading: resolveDesktopRouteDismissalLeading(
+          context: context,
+          leading: IconButton(
+            tooltip: context.t.strings.legacy.msg_back,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
         ),
         title: Text(context.t.strings.legacy.msg_release_notes_2),
         centerTitle: false,
@@ -56,11 +70,7 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      const Color(0xFF0B0B0B),
-                      bg,
-                      bg,
-                    ],
+                    colors: [const Color(0xFF0B0B0B), bg, bg],
                   ),
                 ),
               ),
@@ -68,7 +78,9 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
           FutureBuilder<UpdateAnnouncementConfig?>(
             future: _configFuture,
             builder: (context, snapshot) {
-              final entries = buildVersionAnnouncementEntries(snapshot.data?.releaseNotes ?? const []);
+              final entries = buildVersionAnnouncementEntries(
+                snapshot.data?.releaseNotes ?? const [],
+              );
               if (entries.isEmpty) {
                 return Center(
                   child: Text(
@@ -105,9 +117,17 @@ class _ReleaseNotesScreenState extends ConsumerState<ReleaseNotesScreen> {
                       const SizedBox(height: 14),
                       Center(
                         child: Text(
-                          context.t.strings.legacy.msg_all_history_so_far_memoflow_since,
+                          context
+                              .t
+                              .strings
+                              .legacy
+                              .msg_all_history_so_far_memoflow_since,
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, height: 1.4, color: textMuted),
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.4,
+                            color: textMuted,
+                          ),
                         ),
                       ),
                     ],
@@ -153,7 +173,9 @@ class _TimelineEntry extends StatelessWidget {
               width: 10,
               height: 10,
               decoration: BoxDecoration(
-                color: isDark ? MemoFlowPalette.backgroundDark : MemoFlowPalette.backgroundLight,
+                color: isDark
+                    ? MemoFlowPalette.backgroundDark
+                    : MemoFlowPalette.backgroundLight,
                 shape: BoxShape.circle,
                 border: Border.all(color: lineColor, width: 2),
               ),
@@ -184,7 +206,11 @@ class _TimelineEntry extends StatelessWidget {
                   children: [
                     Text(
                       'v${entry.version}',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: lineColor),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: lineColor,
+                      ),
                     ),
                     const Spacer(),
                     if (entry.dateLabel.trim().isNotEmpty)
@@ -243,10 +269,7 @@ class _TimelineItem extends StatelessWidget {
 }
 
 class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({
-    required this.category,
-    required this.isDark,
-  });
+  const _CategoryBadge({required this.category, required this.isDark});
 
   final ReleaseNoteCategory category;
   final bool isDark;
@@ -263,7 +286,11 @@ class _CategoryBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }

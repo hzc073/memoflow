@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../application/sync/migration/memoflow_migration_models.dart';
 import '../../../core/app_localization.dart';
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_sender_controller.dart';
@@ -45,7 +46,13 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
     final tr = context.t.strings.legacy;
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr.msg_memoflow_migration_sender)),
+      appBar: AppBar(
+        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
+          context: context,
+          automaticallyImplyLeading: true,
+        ),
+        title: Text(tr.msg_memoflow_migration_sender),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
