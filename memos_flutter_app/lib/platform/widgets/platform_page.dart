@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../platform_target.dart';
 
 class PlatformPage extends StatelessWidget {
@@ -18,6 +19,8 @@ class PlatformPage extends StatelessWidget {
     this.safeArea = true,
     this.backgroundColor,
     this.extendBodyBehindAppBar = false,
+    this.desktopNavigationMode,
+    this.desktopNavigationContext,
   });
 
   final Widget body;
@@ -32,6 +35,8 @@ class PlatformPage extends StatelessWidget {
   final bool safeArea;
   final Color? backgroundColor;
   final bool extendBodyBehindAppBar;
+  final DesktopTitlebarNavigationMode? desktopNavigationMode;
+  final DesktopTitlebarNavigationContext? desktopNavigationContext;
 
   @override
   Widget build(BuildContext context) {
@@ -61,12 +66,58 @@ class PlatformPage extends StatelessWidget {
       );
     }
 
+    final navigationContext =
+        desktopNavigationContext ??
+        resolveDesktopTitlebarNavigationContext(context);
+    final navigationMode =
+        desktopNavigationMode ?? DesktopTitlebarNavigationMode.hidden;
+    final platform = target == PlatformTarget.macOS
+        ? TargetPlatform.macOS
+        : Theme.of(context).platform;
+    final effectiveTitle = resolveDesktopTopLevelTitle(
+      platform: platform,
+      navigationMode: navigationMode,
+      navigationContext: navigationContext,
+      title: title,
+    );
+    final topLevelChromeOmitted = shouldOmitDesktopTopLevelChrome(
+      platform: platform,
+      navigationMode: navigationMode,
+      navigationContext: navigationContext,
+    );
+    final omitRouteDismissalControl =
+        target == PlatformTarget.macOS &&
+        shouldOmitDesktopRouteDismissalControl(
+          platform: TargetPlatform.macOS,
+          navigationContext: navigationContext,
+        );
+    final effectiveLeading = omitRouteDismissalControl || topLevelChromeOmitted
+        ? null
+        : leading;
+    final automaticallyImplyLeading =
+        !omitRouteDismissalControl && !topLevelChromeOmitted;
+    final effectiveToolbarHeight = resolveDesktopTopLevelToolbarHeight(
+      platform: platform,
+      navigationMode: navigationMode,
+      navigationContext: navigationContext,
+    );
+
     return Scaffold(
       backgroundColor: backgroundColor,
       extendBodyBehindAppBar: extendBodyBehindAppBar,
-      appBar: title == null && leading == null && (actions?.isEmpty ?? true)
+      appBar:
+          !topLevelChromeOmitted &&
+              effectiveTitle == null &&
+              effectiveLeading == null &&
+              (actions?.isEmpty ?? true)
           ? null
-          : AppBar(title: title, leading: leading, actions: actions),
+          : AppBar(
+              toolbarHeight: effectiveToolbarHeight,
+              title: effectiveTitle,
+              leading: effectiveLeading,
+              automaticallyImplyLeading: automaticallyImplyLeading,
+              actions: actions,
+            ),
       drawer: drawer,
       drawerEnableOpenDragGesture: drawerEnableOpenDragGesture,
       body: Column(

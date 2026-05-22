@@ -80,6 +80,21 @@ void main() {
     expect(find.text('MemoFlow'), findsNothing);
     expect(find.byIcon(Icons.search), findsOneWidget);
   });
+
+  testWidgets('can omit bottom divider for hidden top-level chrome spacer', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildHarness(width: 900, child: _buildTitleBar(showDivider: false)),
+    );
+
+    final titleBar = tester.widget<Container>(
+      find.byKey(kMemosListMacosTitleBarKey),
+    );
+    final decoration = titleBar.decoration as BoxDecoration;
+
+    expect(decoration.border, isNull);
+  });
 }
 
 Widget _buildHarness({required double width, required Widget child}) {
@@ -101,6 +116,7 @@ Widget _buildHarness({required double width, required Widget child}) {
 
 Widget _buildTitleBar({
   bool searching = false,
+  bool showDivider = true,
   List<HomeQuickActionChipData>? quickActions,
   VoidCallback? onOpenSearch,
   VoidCallback? onCloseSearch,
@@ -111,6 +127,8 @@ Widget _buildTitleBar({
     showPillActions: true,
     enableHomeSort: true,
     enableSearch: true,
+    showLeadingTitle: true,
+    showDivider: showDivider,
     titleChild: const Text('MemoFlow'),
     searchFieldChild: const SizedBox(key: Key('macos-search-field')),
     quickActions: quickActions ?? _buildQuickActions(),

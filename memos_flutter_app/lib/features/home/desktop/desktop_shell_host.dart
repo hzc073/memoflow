@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/platform_layout.dart';
 import '../app_drawer.dart';
 import 'apple_macos_page_shell.dart';
@@ -10,6 +11,17 @@ export 'desktop_shell_models.dart'
         DesktopShellModalSurfaceMotionSpec,
         DesktopShellSecondaryPaneMotionSpec,
         DesktopShellSecondaryPanePresentation;
+export '../../../core/desktop/desktop_titlebar_navigation_policy.dart'
+    show
+        DesktopTitlebarNavigationContext,
+        DesktopTitlebarNavigationMode,
+        resolveDesktopTopLevelLeading,
+        resolveDesktopTopLevelTitle,
+        resolveDesktopTopLevelToolbarHeight,
+        resolveDesktopRouteAutomaticallyImplyLeading,
+        resolveDesktopRouteDismissalLeading,
+        shouldOmitDesktopTopLevelChrome,
+        shouldRenderDesktopTopLevelToolbarDivider;
 
 typedef DesktopShellNavigationBuilder =
     Widget Function(AppDrawerViewMode viewMode, bool embedded);
@@ -37,6 +49,7 @@ class DesktopShellHost extends StatelessWidget {
     this.modalSurfaceMotionSpec,
     this.backgroundColor,
     this.showWindowControls = true,
+    this.navigationContext,
   });
 
   final DesktopShellNavigationBuilder navigationBuilder;
@@ -58,6 +71,7 @@ class DesktopShellHost extends StatelessWidget {
   final DesktopShellModalSurfaceMotionSpec? modalSurfaceMotionSpec;
   final Color? backgroundColor;
   final bool showWindowControls;
+  final DesktopTitlebarNavigationContext? navigationContext;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +80,9 @@ class DesktopShellHost extends StatelessWidget {
         navigationBuilder: navigationBuilder,
         leadingTitle: leadingTitle,
         body: body,
+        navigationContext:
+            navigationContext ??
+            resolveDesktopTitlebarNavigationContext(context),
         commandBar: commandBar,
         center: center,
         trailing: trailing,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import '../../../core/app_motion.dart';
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart';
 import '../../../core/scene_micro_guide_widgets.dart';
@@ -1031,6 +1032,12 @@ class MemosListScreenBody extends StatelessWidget {
         data.enableDrawerOpenDragGesture &&
         !data.viewState.layout.useDesktopSidePane &&
         !data.searching;
+    final macosNavigationMode = data.viewState.layout.useDesktopSidePane
+        ? DesktopTitlebarNavigationMode.expandedSidebar
+        : DesktopTitlebarNavigationMode.hidden;
+    final macosNavigationContext = resolveDesktopTitlebarNavigationContext(
+      context,
+    );
     final scaffoldBody = useWindowsDesktopHeader && !data.searching
         ? Column(
             children: [
@@ -1072,6 +1079,16 @@ class MemosListScreenBody extends StatelessWidget {
                 showPillActions: data.viewState.layout.showHeaderPillActions,
                 enableHomeSort: data.viewState.query.enableHomeSort,
                 enableSearch: data.enableSearch,
+                showLeadingTitle: shouldRenderDesktopTitlebarLeadingTitle(
+                  platform: TargetPlatform.macOS,
+                  navigationMode: macosNavigationMode,
+                  navigationContext: macosNavigationContext,
+                ),
+                showDivider: shouldRenderDesktopTopLevelToolbarDivider(
+                  platform: TargetPlatform.macOS,
+                  navigationMode: macosNavigationMode,
+                  navigationContext: macosNavigationContext,
+                ),
                 titleChild: data.enableTitleMenu
                     ? titleChild
                     : IgnorePointer(child: titleChild),

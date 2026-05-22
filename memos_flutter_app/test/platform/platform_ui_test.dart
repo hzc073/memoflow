@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/core/desktop/desktop_titlebar_navigation_policy.dart';
+import 'package:memos_flutter_app/core/desktop/window_chrome_safe_area.dart';
 import 'package:memos_flutter_app/platform/platform_route.dart';
 import 'package:memos_flutter_app/platform/platform_scroll_behavior.dart';
 import 'package:memos_flutter_app/platform/platform_target.dart';
@@ -88,6 +90,127 @@ void main() {
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.byType(AppBar), findsOneWidget);
     expect(find.text('Body'), findsOneWidget);
+  });
+
+  testWidgets('macOS secondary pages omit app-level leading dismissal', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.macOS);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PlatformPage(
+                      title: const Text('Details'),
+                      leading: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {},
+                      ),
+                      body: const Text('Body'),
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Open'),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Details'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsNothing);
+    expect(find.byType(BackButton), findsNothing);
+  });
+
+  testWidgets('macOS expanded sidebar top-level page omits title and leading', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.macOS);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlatformPage(
+          desktopNavigationMode: DesktopTitlebarNavigationMode.expandedSidebar,
+          desktopNavigationContext:
+              DesktopTitlebarNavigationContext.topLevelDestination,
+          title: const Text('Top Level'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {},
+          ),
+          actions: const [Icon(Icons.search)],
+          body: const Text('Body'),
+        ),
+      ),
+    );
+
+    expect(find.text('Top Level'), findsNothing);
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(tester.getSize(find.byType(AppBar)).height, kMacosTitleBarHeight);
+  });
+
+  testWidgets('macOS expanded sidebar top-level page keeps titlebar spacer', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.macOS);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PlatformPage(
+          desktopNavigationMode: DesktopTitlebarNavigationMode.expandedSidebar,
+          desktopNavigationContext:
+              DesktopTitlebarNavigationContext.topLevelDestination,
+          title: const Text('Top Level'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {},
+          ),
+          body: const Text('Body'),
+        ),
+      ),
+    );
+
+    expect(find.text('Top Level'), findsNothing);
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(tester.getSize(find.byType(AppBar)).height, kMacosTitleBarHeight);
+  });
+
+  test('macOS expanded sidebar top-level page omits toolbar divider', () {
+    expect(
+      shouldRenderDesktopTopLevelToolbarDivider(
+        platform: TargetPlatform.macOS,
+        navigationMode: DesktopTitlebarNavigationMode.expandedSidebar,
+        navigationContext: DesktopTitlebarNavigationContext.topLevelDestination,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRenderDesktopTopLevelToolbarDivider(
+        platform: TargetPlatform.macOS,
+        navigationMode: DesktopTitlebarNavigationMode.hidden,
+        navigationContext: DesktopTitlebarNavigationContext.topLevelDestination,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRenderDesktopTopLevelToolbarDivider(
+        platform: TargetPlatform.macOS,
+        navigationMode: DesktopTitlebarNavigationMode.expandedSidebar,
+        navigationContext: DesktopTitlebarNavigationContext.secondaryTask,
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('platform route selects cupertino on apple mobile', (

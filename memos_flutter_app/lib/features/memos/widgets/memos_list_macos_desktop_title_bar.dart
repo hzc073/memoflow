@@ -24,6 +24,8 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
     required this.showPillActions,
     required this.enableHomeSort,
     required this.enableSearch,
+    required this.showLeadingTitle,
+    required this.showDivider,
     required this.titleChild,
     required this.searchFieldChild,
     required this.quickActions,
@@ -39,6 +41,8 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
   final bool showPillActions;
   final bool enableHomeSort;
   final bool enableSearch;
+  final bool showLeadingTitle;
+  final bool showDivider;
   final Widget titleChild;
   final Widget searchFieldChild;
   final List<HomeQuickActionChipData> quickActions;
@@ -67,7 +71,9 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
         height: kMemosListMacosTitleBarHeight,
         decoration: BoxDecoration(
           color: backgroundColor,
-          border: Border(bottom: BorderSide(color: dividerColor)),
+          border: showDivider
+              ? Border(bottom: BorderSide(color: dividerColor))
+              : null,
         ),
         child: Stack(
           fit: StackFit.expand,
@@ -93,7 +99,7 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
                           ),
                         )
                       else ...[
-                        if (!compact) ...[
+                        if (!compact && showLeadingTitle) ...[
                           Flexible(
                             flex: 2,
                             child: DefaultTextStyle.merge(

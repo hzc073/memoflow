@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/desktop/window_chrome_safe_area.dart';
 import '../../../core/platform_layout.dart'
     show
@@ -19,6 +20,8 @@ class AppleMacosPageShell extends StatelessWidget {
     required this.navigationBuilder,
     required this.leadingTitle,
     required this.body,
+    this.navigationContext =
+        DesktopTitlebarNavigationContext.topLevelDestination,
     this.commandBar,
     this.center,
     this.trailing,
@@ -40,6 +43,7 @@ class AppleMacosPageShell extends StatelessWidget {
   final AppleMacosNavigationBuilder navigationBuilder;
   final Widget leadingTitle;
   final Widget body;
+  final DesktopTitlebarNavigationContext navigationContext;
   final Widget? commandBar;
   final Widget? center;
   final Widget? trailing;
@@ -77,10 +81,19 @@ class AppleMacosPageShell extends StatelessWidget {
           : AppDrawerViewMode.rail,
       true,
     );
+    final navigationMode = useExpandedSidebar
+        ? DesktopTitlebarNavigationMode.expandedSidebar
+        : DesktopTitlebarNavigationMode.rail;
+    final showLeadingTitle = shouldRenderDesktopTitlebarLeadingTitle(
+      platform: TargetPlatform.macOS,
+      navigationMode: navigationMode,
+      navigationContext: navigationContext,
+    );
     final toolbar =
         commandBar ??
         _AppleMacosToolbar(
           leadingTitle: leadingTitle,
+          showLeadingTitle: showLeadingTitle,
           center: center,
           trailing: trailing,
           leadingChromeInset: toolbarChromeInset,
@@ -110,7 +123,10 @@ class AppleMacosPageShell extends StatelessWidget {
                     width: navigationWidth,
                     child: Padding(
                       padding: EdgeInsets.only(top: navigationChromeInset),
-                      child: navigation,
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: navigation,
+                      ),
                     ),
                   ),
                 ),
@@ -159,12 +175,14 @@ class AppleMacosPageShell extends StatelessWidget {
 class _AppleMacosToolbar extends StatelessWidget {
   const _AppleMacosToolbar({
     required this.leadingTitle,
+    required this.showLeadingTitle,
     required this.center,
     required this.trailing,
     required this.leadingChromeInset,
   });
 
   final Widget leadingTitle;
+  final bool showLeadingTitle;
   final Widget? center;
   final Widget? trailing;
   final double leadingChromeInset;
@@ -184,7 +202,7 @@ class _AppleMacosToolbar extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            child: leadingTitle,
+            child: showLeadingTitle ? leadingTitle : const SizedBox.shrink(),
           ),
           middle: center,
           trailing: trailing,
@@ -218,7 +236,9 @@ class _AppleMacosContentArea extends StatelessWidget {
             DesktopShellSecondaryPanePresentation.inline;
     return Row(
       children: [
-        Expanded(child: body),
+        Expanded(
+          child: Material(type: MaterialType.transparency, child: body),
+        ),
         if (inlineSecondaryPane)
           SizedBox(
             width: secondaryPaneWidth,
@@ -230,7 +250,10 @@ class _AppleMacosContentArea extends StatelessWidget {
                   ),
                 ),
               ),
-              child: secondaryPane!,
+              child: Material(
+                type: MaterialType.transparency,
+                child: secondaryPane!,
+              ),
             ),
           ),
       ],
