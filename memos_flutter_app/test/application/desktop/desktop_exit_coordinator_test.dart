@@ -76,6 +76,40 @@ void main() {
     );
   });
 
+  test('macOS close request distinguishes route pop from native close', () {
+    expect(
+      DesktopExitCoordinator.debugMacosCloseRequestAction(
+        hasSecondaryRoute: true,
+      ),
+      'popSecondaryRoute',
+    );
+    expect(
+      DesktopExitCoordinator.debugMacosCloseRequestAction(
+        hasSecondaryRoute: false,
+      ),
+      'nativeClose',
+    );
+  });
+
+  test('secondary route close callback keeps guarded routes open', () async {
+    var attempted = false;
+
+    final handled =
+        await DesktopExitCoordinator.debugInvokeSecondaryRouteCloseCallback(
+          () async {
+            attempted = true;
+            return true;
+          },
+        );
+
+    expect(attempted, isTrue);
+    expect(handled, isTrue);
+    expect(
+      await DesktopExitCoordinator.debugInvokeSecondaryRouteCloseCallback(null),
+      isFalse,
+    );
+  });
+
   test('desktop sub-window plugin registration excludes WebView plugins', () {
     final runner = File('windows/runner/flutter_window.cpp').readAsStringSync();
     final functionMatch = RegExp(

@@ -254,6 +254,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       quickInputController: _desktopQuickInputController,
       prepareForExit: () =>
           ref.read(syncCoordinatorProvider.notifier).prepareForAppExit(),
+      closeSecondaryRoute: _closeMacosMainWindowSecondaryRoute,
     );
     unawaited(_exitCoordinator?.attachWindowListener());
     _updateAnnouncementRunner = UpdateAnnouncementRunner(
@@ -489,6 +490,18 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
     await navigator.push(MaterialPageRoute<void>(builder: (_) => route));
+  }
+
+  Future<bool> _closeMacosMainWindowSecondaryRoute() async {
+    if (!mounted || kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) {
+      return false;
+    }
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null || !navigator.canPop()) {
+      return false;
+    }
+    await navigator.maybePop();
+    return true;
   }
 
   Future<void> _openExternalUrl(String value) async {

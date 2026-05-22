@@ -62,4 +62,43 @@ void main() {
       );
     },
   );
+
+  test('feature pages do not intercept native window close directly', () async {
+    const forbiddenCloseInterceptionPatterns = <String>[
+      'onWindowClose(',
+      'setPreventClose(',
+    ];
+
+    final violations = <String>[];
+    final featuresDir = Directory('lib/features');
+    await for (final entry in featuresDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entry is! File || p.extension(entry.path) != '.dart') continue;
+      final relativePath = p
+          .relative(entry.path, from: Directory.current.path)
+          .replaceAll('\\', '/');
+      if (relativePath.startsWith('lib/features/home/desktop/')) {
+        continue;
+      }
+
+      final contents = await entry.readAsString();
+      for (final pattern in forbiddenCloseInterceptionPatterns) {
+        if (contents.contains(pattern)) {
+          violations.add('$relativePath: contains $pattern');
+        }
+      }
+    }
+
+    expect(
+      violations,
+      isEmpty,
+      reason: violations.isEmpty
+          ? null
+          : 'macOS/native close dispatch must stay in the desktop shell '
+                'or application-level close coordinator:\n'
+                '${violations.join('\n')}',
+    );
+  });
 }

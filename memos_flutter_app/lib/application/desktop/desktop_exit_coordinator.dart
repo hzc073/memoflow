@@ -14,8 +14,14 @@ import 'desktop_quick_input_controller.dart';
 import 'desktop_tray_controller.dart';
 
 typedef DesktopExitPrepareCallback = FutureOr<void> Function();
+typedef DesktopSecondaryRouteCloseCallback = FutureOr<bool> Function();
 
-enum DesktopCloseRequestAction { nativeClose, hideToTray, fullExit }
+enum DesktopCloseRequestAction {
+  nativeClose,
+  hideToTray,
+  fullExit,
+  popSecondaryRoute,
+}
 
 class DesktopExitCoordinator with WindowListener {
   static const Duration _closeSubWindowsStepTimeout = Duration(seconds: 2);
@@ -45,11 +51,13 @@ class DesktopExitCoordinator with WindowListener {
     required Future<void> Function() closeDatabases,
     required Duration mainWindowTeardownDelay,
     required DesktopExitPrepareCallback? prepareForExit,
+    required DesktopSecondaryRouteCloseCallback? closeSecondaryRoute,
   }) : _ref = ref,
        _quickInputController = quickInputController,
        _closeDatabases = closeDatabases,
        _mainWindowTeardownDelayOverride = mainWindowTeardownDelay,
-       _prepareForExit = prepareForExit;
+       _prepareForExit = prepareForExit,
+       _closeSecondaryRoute = closeSecondaryRoute;
 
   static DesktopExitCoordinator? _instance;
 
@@ -58,6 +66,7 @@ class DesktopExitCoordinator with WindowListener {
   final Future<void> Function() _closeDatabases;
   final Duration _mainWindowTeardownDelayOverride;
   final DesktopExitPrepareCallback? _prepareForExit;
+  final DesktopSecondaryRouteCloseCallback? _closeSecondaryRoute;
   bool _listenerAttached = false;
   bool _exiting = false;
   Completer<void>? _exitCompleter;
@@ -72,6 +81,7 @@ class DesktopExitCoordinator with WindowListener {
     Future<void> Function()? closeDatabases,
     Duration mainWindowTeardownDelay = _mainWindowTeardownDelay,
     DesktopExitPrepareCallback? prepareForExit,
+    DesktopSecondaryRouteCloseCallback? closeSecondaryRoute,
   }) {
     _instance = DesktopExitCoordinator._(
       ref: ref,
@@ -79,6 +89,7 @@ class DesktopExitCoordinator with WindowListener {
       closeDatabases: closeDatabases ?? DatabaseRegistry.closeAll,
       mainWindowTeardownDelay: mainWindowTeardownDelay,
       prepareForExit: prepareForExit,
+      closeSecondaryRoute: closeSecondaryRoute,
     );
     return _instance!;
   }
@@ -109,6 +120,22 @@ class DesktopExitCoordinator with WindowListener {
   }
 
   @visibleForTesting
+  static String debugMacosCloseRequestAction({
+    required bool hasSecondaryRoute,
+  }) {
+    return hasSecondaryRoute
+        ? DesktopCloseRequestAction.popSecondaryRoute.name
+        : DesktopCloseRequestAction.nativeClose.name;
+  }
+
+  @visibleForTesting
+  static Future<bool> debugInvokeSecondaryRouteCloseCallback(
+    DesktopSecondaryRouteCloseCallback? closeSecondaryRoute,
+  ) {
+    return _invokeSecondaryRouteCloseCallback(closeSecondaryRoute);
+  }
+
+  @visibleForTesting
   Future<void> debugPerformExit({String? reason, bool force = false}) {
     return _performExit(reason: reason, force: force);
   }
@@ -132,7 +159,11 @@ class DesktopExitCoordinator with WindowListener {
   }
 
   Future<void> attachWindowListener() async {
-    if (_listenerAttached || kIsWeb || !Platform.isWindows) return;
+    if (_listenerAttached ||
+        kIsWeb ||
+        (!Platform.isWindows && !Platform.isMacOS)) {
+      return;
+    }
     await windowManager.ensureInitialized();
     windowManager.addListener(this);
     await windowManager.setPreventClose(true);
@@ -154,7 +185,19 @@ class DesktopExitCoordinator with WindowListener {
   }
 
   Future<void> _requestClose({String? source}) async {
-    if (kIsWeb || !Platform.isWindows) {
+    if (kIsWeb) {
+      return;
+    }
+    if (Platform.isMacOS) {
+      if (_exiting) return;
+      if (await _maybeCloseSecondaryRoute()) {
+        return;
+      }
+      await windowManager.setPreventClose(false);
+      await windowManager.close();
+      return;
+    }
+    if (!Platform.isWindows) {
       await windowManager.close();
       return;
     }
@@ -189,6 +232,21 @@ class DesktopExitCoordinator with WindowListener {
       }
     }
     await _requestExit(reason: source ?? 'close', force: false);
+  }
+
+  Future<bool> _maybeCloseSecondaryRoute() async {
+    return _invokeSecondaryRouteCloseCallback(_closeSecondaryRoute);
+  }
+
+  static Future<bool> _invokeSecondaryRouteCloseCallback(
+    DesktopSecondaryRouteCloseCallback? closeSecondaryRoute,
+  ) async {
+    if (closeSecondaryRoute == null) return false;
+    try {
+      return await Future<bool>.sync(closeSecondaryRoute);
+    } catch (_) {
+      return true;
+    }
   }
 
   Future<void> _requestExit({String? reason, bool force = false}) async {
