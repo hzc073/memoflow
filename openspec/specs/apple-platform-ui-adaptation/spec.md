@@ -27,21 +27,12 @@ The system SHALL provide a public platform UI adapter layer for Apple platform p
 
 The system SHALL provide differentiated Apple shell strategies for iOS, iPadOS, and macOS while reusing existing business state and destination models.
 
-#### Scenario: iPhone shell
-- **WHEN** the app runs on iPhone-sized iOS devices
-- **THEN** the primary shell MUST present Apple-native mobile navigation behavior, including Apple-style tab or primary navigation chrome, iOS route transition expectations, safe-area handling, and natural back navigation
-
-#### Scenario: iPadOS shell
-- **WHEN** the app runs on iPadOS or tablet-sized Apple layouts
-- **THEN** the primary shell MUST prefer sidebar or split-view navigation over Android-style drawer presentation, with a responsive fallback for narrow layouts
-
-#### Scenario: macOS shell
-- **WHEN** the app runs on macOS
-- **THEN** the primary shell MUST use an independent macOS desktop presentation with sidebar, toolbar, menu / shortcut / window semantics, and MUST NOT rely on Windows window controls as the final macOS UI
-
-#### Scenario: Destination reuse
-- **WHEN** Apple shells navigate among home, settings, memos, collections, review, resources, stats, and other existing app destinations
-- **THEN** they MUST reuse existing destination models or boundary registries where practical instead of duplicating business routing state
+#### Scenario: macOS memo list uses desktop card and preview behavior
+- **WHEN** the app runs on macOS in a wide desktop home memo list layout
+- **THEN** memo cards MUST remain bounded to the shared desktop memo card maximum width
+- **AND** memo card media tiles MUST avoid height-limited horizontal stretching by preserving desktop square tile proportions when the media grid is capped by available height
+- **AND** tapping a memo card SHOULD open or update the desktop preview pane instead of navigating directly to the full detail route
+- **AND** the implementation MUST reuse the existing memo list preview state and desktop layout seams instead of creating macOS-only memo state
 
 ### Requirement: Platform page and route behavior
 
@@ -122,4 +113,87 @@ The system SHALL preserve public/private boundaries and modularity constraints w
 #### Scenario: Coupling hotspot touched
 - **WHEN** a migration batch touches an existing coupled area such as `home`, `settings`, `memos`, `core`, or desktop shell code
 - **THEN** the touched area MUST remain equal or better structured by extracting platform behavior into a seam, reducing platform-specific feature-page branching, or tightening a guardrail
+
+### Requirement: macOS shell SHALL avoid redundant top-leading titles in expanded sidebar mode
+The macOS Apple shell SHALL treat the expanded sidebar selected state as the page context for top-level drawer destinations and SHALL NOT place duplicate destination titles in the native traffic-light titlebar area.
+
+#### Scenario: Top-level destination uses sidebar context
+- **WHEN** the app runs on macOS, the main shell shows an expanded sidebar, and the selected page is a top-level drawer destination such as memos, explore, review, collections, resources, tags, stats, settings, or about
+- **THEN** the macOS shell SHALL use the sidebar selected state as the current-page indicator instead of rendering the same destination label in the top-leading titlebar region
+
+#### Scenario: Expanded sidebar navigation remains vertically stable
+- **WHEN** the app runs on macOS with an expanded sidebar and switches between top-level drawer destinations that omit duplicated titlebar content
+- **THEN** the macOS shell SHALL keep a consistent titlebar or toolbar spacer height so the sidebar menu position does not jump between destinations
+
+#### Scenario: Apple shell still supports compact context
+- **WHEN** the app runs on macOS with rail, overlay, narrow, or otherwise hidden navigation labels
+- **THEN** the macOS shell SHALL allow the current destination title to appear only in a region that is outside native traffic-light reserved space
+
+#### Scenario: Secondary Apple pages preserve task titles
+- **WHEN** a macOS page represents a secondary task, detail, editor, subwindow, modal surface, or route with back semantics
+- **THEN** the Apple shell SHALL preserve meaningful title or navigation context outside native window-control reserved space
+
+### Requirement: macOS main-window close control SHALL dismiss secondary routes
+The macOS Apple shell SHALL use the native red close control to dismiss secondary routes inside the main app window before applying normal root-window close or hide behavior.
+
+#### Scenario: Secondary route uses native close as route dismissal
+- **WHEN** the macOS main window displays a pushed secondary route such as release notes, diagnostics, detail, editor, or settings subsection and that route can be popped
+- **THEN** activating the native red close control SHALL pop that route and return to the previous app context while keeping the main window open
+
+#### Scenario: Root route keeps native window behavior
+- **WHEN** the macOS main window displays a root or top-level route
+- **THEN** activating the native red close control SHALL keep the normal macOS window close or hide behavior
+
+#### Scenario: App-level route dismissal controls are omitted
+- **WHEN** the macOS main window displays a secondary route whose dismissal is handled by native close dispatch
+- **THEN** the Apple shell SHALL NOT render an additional app-level back button, close button, or done button for that route
+
+### Requirement: Apple titlebar context SHALL use centralized shell policy
+The macOS Apple shell SHALL derive title visibility from a centralized desktop shell or platform adapter policy rather than feature-page-specific traffic-light padding or page-by-page title suppression.
+
+#### Scenario: Feature page does not own traffic-light decisions
+- **WHEN** a feature page passes `leadingTitle`, command-bar content, or navigation content to a macOS desktop shell
+- **THEN** the feature page SHALL NOT hard-code macOS traffic-light offsets, native close interception, or expanded-sidebar title hiding rules
+
+#### Scenario: macOS policy remains public-shell safe
+- **WHEN** Apple titlebar context rules are added or changed in the public repository
+- **THEN** they MUST NOT include StoreKit, subscription, entitlement, receipt, price, product ID, paywall, private overlay, or `AccessDecision.source` business branching
+
+### Requirement: macOS Apple shell SHALL respect native traffic-light chrome
+The system SHALL treat macOS native traffic lights as reserved window chrome when Apple shell content is drawn into a transparent or full-size titlebar region.
+
+#### Scenario: Apple shell titlebar content is offset
+- **WHEN** `AppleMacosPageShell` or an equivalent macOS shell renders top-leading titlebar, toolbar, navigation, or command content
+- **THEN** that content MUST be offset, constrained, or otherwise laid out so it does not overlap native red/yellow/green window controls
+
+#### Scenario: Apple shell uses centralized chrome metrics
+- **WHEN** macOS shell code needs traffic-light spacing
+- **THEN** it SHALL use the desktop window chrome safe-area seam rather than embedding unrelated page-specific padding in feature widgets
+
+### Requirement: macOS settings window SHALL be treated as a high-perception Apple UI surface
+The Apple platform UI adaptation SHALL treat the macOS settings window as a high-perception Apple UI surface that must look and behave intentionally on macOS while reusing shared settings state and pages.
+
+#### Scenario: macOS settings surface is opened
+- **WHEN** the user opens settings on macOS
+- **THEN** the system SHALL prefer a macOS-appropriate independent settings window or equivalent native-feeling settings surface
+- **AND** it SHALL NOT rely on an Android-style drawer transition as the primary macOS settings experience
+
+#### Scenario: Settings window cannot be opened
+- **WHEN** the macOS independent settings window cannot be opened
+- **THEN** the fallback settings page SHALL still use existing platform page, route, grouped list, and Apple shell adaptations where available
+
+### Requirement: macOS settings adaptation SHALL avoid duplicate feature page trees
+The macOS settings adaptation SHALL reuse existing feature screens, platform adapters, and settings composition seams instead of creating a parallel Apple settings feature tree.
+
+#### Scenario: macOS-specific settings behavior is added
+- **WHEN** macOS-specific settings window behavior, chrome, routes, or entry handling is added
+- **THEN** it SHALL be implemented through platform, desktop window, shell, or composition seams
+- **AND** it MUST NOT create a full duplicate `features_macos/`, `features_ios/`, or Apple-only settings page hierarchy
+
+### Requirement: macOS settings adaptation SHALL preserve public/private boundaries
+The macOS settings adaptation SHALL remain public-shell safe and SHALL NOT introduce commercial branching into shared Apple UI or settings code.
+
+#### Scenario: macOS settings UI code is changed
+- **WHEN** macOS settings UI, shell, menu, route, or window code is added or changed in the public repository
+- **THEN** it MUST NOT branch on subscription, paid feature, entitlement, receipt, product, price, Family Sharing, StoreKit, or `AccessDecision.source`
 
