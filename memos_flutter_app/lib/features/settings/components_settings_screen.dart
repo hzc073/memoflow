@@ -7,8 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_localization.dart';
-import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
-import '../../core/memoflow_palette.dart';
+import '../../data/models/image_bed_settings.dart';
+import '../../data/models/location_settings.dart';
+import '../../data/models/webdav_settings.dart';
 import '../../state/settings/image_bed_settings_provider.dart';
 import '../../state/settings/image_compression_settings_provider.dart';
 import '../../state/settings/location_settings_provider.dart';
@@ -24,6 +25,7 @@ import 'location_settings_screen.dart';
 import 'template_settings_screen.dart';
 import 'webdav_sync_screen.dart';
 import '../../i18n/strings.g.dart';
+import 'settings_ui.dart';
 
 class ComponentsSettingsScreen extends ConsumerWidget {
   const ComponentsSettingsScreen({super.key, this.showBackButton = true});
@@ -41,209 +43,223 @@ class ComponentsSettingsScreen extends ConsumerWidget {
     final locationSettings = ref.watch(locationSettingsProvider);
     final templateSettings = ref.watch(memoTemplateSettingsProvider);
     final webDavSettings = ref.watch(webDavSettingsProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
-          context: context,
-          automaticallyImplyLeading: showBackButton,
-        ),
-        leading: resolveDesktopRouteDismissalLeading(
-          context: context,
-          leading: showBackButton
-              ? IconButton(
-                  tooltip: context.t.strings.legacy.msg_back,
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                )
-              : null,
-        ),
-        title: Text(context.t.strings.legacy.msg_components),
-        centerTitle: false,
+    return SettingsPage(
+      showBackButton: showBackButton,
+      title: SettingsTitleWithHelp(
+        label: context.t.strings.legacy.msg_components,
+        tooltip: _componentsStatusTooltip(context),
       ),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFF0B0B0B), bg, bg],
-                  ),
-                ),
-              ),
+      contentKey: const ValueKey<String>('components.boundedContent'),
+      children: [
+        SettingsFeatureModule(
+          title: context.t.strings.legacy.msg_memo_reminders_2,
+          tooltip: context.t.strings.legacy.msg_enable_reminders_memos,
+          status: _enabledStatus(reminderSettings.enabled),
+          value: reminderSettings.enabled,
+          onChanged: (v) async {
+            if (v) {
+              final granted = await _requestReminderPermissions(context);
+              if (!granted) return;
+            }
+            ref.read(reminderSettingsProvider.notifier).setEnabled(v);
+            await ref.read(reminderSchedulerProvider).rescheduleAll();
+          },
+          onOpen: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ReminderSettingsScreen(),
             ),
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            children: [
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_memo_reminders_2,
-                description:
-                    context.t.strings.legacy.msg_enable_reminders_memos,
-                value: reminderSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) async {
-                  if (v) {
-                    final granted = await _requestReminderPermissions(context);
-                    if (!granted) return;
-                  }
-                  ref.read(reminderSettingsProvider.notifier).setEnabled(v);
-                  await ref.read(reminderSchedulerProvider).rescheduleAll();
-                },
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ReminderSettingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_third_party_share,
-                description: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_allow_sharing_links_images_other_apps,
-                value: prefs.thirdPartyShareEnabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (nextValue) async {
-                  if (!nextValue) {
-                    ref
-                        .read(devicePreferencesProvider.notifier)
-                        .setThirdPartyShareEnabled(false);
-                    return;
-                  }
-                  final acknowledged = await _confirmThirdPartyShareEnable(
-                    context,
-                  );
-                  if (!acknowledged) return;
-                  ref
-                      .read(devicePreferencesProvider.notifier)
-                      .setThirdPartyShareEnabled(true);
-                },
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_image_bed_2,
-                description: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_upload_images_image_bed_append_links,
-                value: imageBedSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) =>
-                    ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ImageBedSettingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_image_compression,
-                description:
-                    context.t.strings.legacy.msg_image_compression_desc,
-                value: imageCompressionSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) => ref
-                    .read(imageCompressionSettingsProvider.notifier)
-                    .setEnabled(v),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ImageCompressionSettingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_location_2,
-                description: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_attach_location_info_memos_show_subtle,
-                value: locationSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) =>
-                    ref.read(locationSettingsProvider.notifier).setEnabled(v),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const LocationSettingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_template,
-                description:
-                    context.t.strings.legacy.msg_template_feature_manage_desc,
-                value: templateSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) => ref
-                    .read(memoTemplateSettingsProvider.notifier)
-                    .setEnabled(v),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const TemplateSettingsScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ToggleCard(
-                card: card,
-                label: context.t.strings.legacy.msg_webdav_sync,
-                description: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_sync_settings_webdav_across_devices,
-                value: webDavSettings.enabled,
-                textMain: textMain,
-                textMuted: textMuted,
-                onChanged: (v) =>
-                    ref.read(webDavSettingsProvider.notifier).setEnabled(v),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const WebDavSyncScreen(),
-                  ),
-                ),
-              ),
-            ],
           ),
-        ],
-      ),
+        ),
+        SettingsFeatureModule(
+          title: context.t.strings.legacy.msg_third_party_share,
+          tooltip: context
+              .t
+              .strings
+              .legacy
+              .msg_allow_sharing_links_images_other_apps,
+          status: _enabledStatus(prefs.thirdPartyShareEnabled),
+          value: prefs.thirdPartyShareEnabled,
+          onChanged: (nextValue) async {
+            if (!nextValue) {
+              ref
+                  .read(devicePreferencesProvider.notifier)
+                  .setThirdPartyShareEnabled(false);
+              return;
+            }
+            final acknowledged = await _confirmThirdPartyShareEnable(context);
+            if (!acknowledged) return;
+            ref
+                .read(devicePreferencesProvider.notifier)
+                .setThirdPartyShareEnabled(true);
+          },
+        ),
+        SettingsFeatureModule(
+          title: context.t.strings.legacy.msg_image_bed_2,
+          tooltip:
+              context.t.strings.legacy.msg_upload_images_image_bed_append_links,
+          status: _configuredStatus(
+            enabled: imageBedSettings.enabled,
+            configured: _imageBedConfigured(imageBedSettings),
+          ),
+          value: imageBedSettings.enabled,
+          onChanged: (v) =>
+              ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
+          onOpen: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ImageBedSettingsScreen(),
+            ),
+          ),
+        ),
+        SettingsFeatureModule(
+          title: context.t.strings.legacy.msg_image_compression,
+          tooltip: context.t.strings.legacy.msg_image_compression_desc,
+          status: _enabledStatus(imageCompressionSettings.enabled),
+          value: imageCompressionSettings.enabled,
+          onChanged: (v) =>
+              ref.read(imageCompressionSettingsProvider.notifier).setEnabled(v),
+          onOpen: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ImageCompressionSettingsScreen(),
+            ),
+          ),
+        ),
+        SettingsFeatureModule(
+          title: _componentActionLabel(
+            context,
+            english: 'Location permission',
+            chinese: '\u4f4d\u7f6e\u6743\u9650',
+          ),
+          tooltip: context
+              .t
+              .strings
+              .legacy
+              .msg_attach_location_info_memos_show_subtle,
+          status: _configuredStatus(
+            enabled: locationSettings.enabled,
+            configured: _locationConfigured(locationSettings),
+          ),
+          value: locationSettings.enabled,
+          onChanged: (v) =>
+              ref.read(locationSettingsProvider.notifier).setEnabled(v),
+          onOpen: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const LocationSettingsScreen(),
+            ),
+          ),
+        ),
+        SettingsFeatureModule(
+          title: _componentActionLabel(
+            context,
+            english: 'Manage templates',
+            chinese: '\u7ba1\u7406\u6a21\u677f',
+          ),
+          tooltip: context.t.strings.legacy.msg_template_feature_manage_desc,
+          status: _enabledStatus(templateSettings.enabled),
+          value: templateSettings.enabled,
+          onChanged: (v) =>
+              ref.read(memoTemplateSettingsProvider.notifier).setEnabled(v),
+          onOpen: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const TemplateSettingsScreen(),
+            ),
+          ),
+        ),
+        SettingsFeatureModule(
+          title: _componentActionLabel(
+            context,
+            english: 'Connection settings (WebDAV Backup)',
+            chinese:
+                '\u8bbe\u7f6e\u4e0e\u8fde\u63a5\uff08WebDAV \u5907\u4efd\uff09',
+          ),
+          tooltip:
+              context.t.strings.legacy.msg_sync_settings_webdav_across_devices,
+          status: _configuredStatus(
+            enabled: webDavSettings.enabled,
+            configured: _webDavConfigured(webDavSettings),
+          ),
+          value: webDavSettings.enabled,
+          onChanged: (v) =>
+              ref.read(webDavSettingsProvider.notifier).setEnabled(v),
+          onOpen: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const WebDavSyncScreen()),
+          ),
+        ),
+      ],
     );
   }
+}
+
+String _componentsStatusTooltip(BuildContext context) {
+  if (_useChineseComponentCopy(context)) {
+    return '\u6307\u793a\u706f\u72b6\u6001\uff1a\n'
+        '\u7a7a\u5fc3\uff1a\u672a\u914d\u7f6e\n'
+        '\u7070\u8272\uff1a\u5df2\u914d\u7f6e\u4f46\u672a\u542f\u7528\n'
+        '\u7eff\u8272\uff1a\u5df2\u542f\u7528\u4e14\u72b6\u6001\u6b63\u5e38\n'
+        '\u9ec4\u8272\uff1a\u7f3a\u5c11\u6743\u9650\n'
+        '\u7ea2\u8272\uff1a\u9519\u8bef\u6216\u5931\u8d25\n'
+        '\u95ea\u70c1\u7eff\u8272\uff1a\u6b63\u5728\u5de5\u4f5c';
+  }
+  return 'Indicator status:\n'
+      'Hollow: not configured\n'
+      'Gray: configured but disabled\n'
+      'Green: enabled and healthy\n'
+      'Yellow: permission missing\n'
+      'Red: error or failure\n'
+      'Blinking green: working';
+}
+
+SettingsFeatureStatus _enabledStatus(bool enabled) {
+  return enabled
+      ? SettingsFeatureStatus.enabledHealthy
+      : SettingsFeatureStatus.disabledConfigured;
+}
+
+SettingsFeatureStatus _configuredStatus({
+  required bool enabled,
+  required bool configured,
+}) {
+  if (!configured) return SettingsFeatureStatus.notConfigured;
+  return enabled
+      ? SettingsFeatureStatus.enabledHealthy
+      : SettingsFeatureStatus.disabledConfigured;
+}
+
+bool _imageBedConfigured(ImageBedSettings settings) {
+  final hasEndpoint = settings.baseUrl.trim().isNotEmpty;
+  final hasToken = settings.authToken?.trim().isNotEmpty ?? false;
+  final hasPasswordLogin =
+      settings.email.trim().isNotEmpty && settings.password.trim().isNotEmpty;
+  return hasEndpoint && (hasToken || hasPasswordLogin);
+}
+
+bool _locationConfigured(LocationSettings settings) {
+  return switch (settings.provider) {
+    LocationServiceProvider.amap =>
+      settings.amapWebKey.trim().isNotEmpty &&
+          settings.amapSecurityKey.trim().isNotEmpty,
+    LocationServiceProvider.baidu => settings.baiduWebKey.trim().isNotEmpty,
+    LocationServiceProvider.google => settings.googleApiKey.trim().isNotEmpty,
+  };
+}
+
+bool _webDavConfigured(WebDavSettings settings) {
+  return settings.serverUrl.trim().isNotEmpty &&
+      settings.username.trim().isNotEmpty &&
+      settings.password.trim().isNotEmpty;
+}
+
+String _componentActionLabel(
+  BuildContext context, {
+  required String english,
+  required String chinese,
+}) {
+  return _useChineseComponentCopy(context) ? chinese : english;
+}
+
+bool _useChineseComponentCopy(BuildContext context) {
+  final languageCode = Localizations.localeOf(context).languageCode;
+  return languageCode.toLowerCase().startsWith('zh');
 }
 
 Future<bool> _requestReminderPermissions(BuildContext context) async {
@@ -448,85 +464,4 @@ String _thirdPartyShareEnableActionLabel(BuildContext context) {
     return '\u786e\u8ba4\u5f00\u542f';
   }
   return 'Enable';
-}
-
-class _ToggleCard extends StatelessWidget {
-  const _ToggleCard({
-    required this.card,
-    required this.label,
-    required this.description,
-    required this.value,
-    required this.textMain,
-    required this.textMuted,
-    required this.onChanged,
-    this.onTap,
-  });
-
-  final Color card;
-  final String label;
-  final String description;
-  final bool value;
-  final Color textMain;
-  final Color textMuted;
-  final ValueChanged<bool> onChanged;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: card,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                      color: Colors.black.withValues(alpha: 0.06),
-                    ),
-                  ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
-                      ),
-                    ),
-                  ),
-                  Switch(value: value, onChanged: onChanged),
-                ],
-              ),
-              if (description.trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, right: 44),
-                  child: Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: textMuted,
-                      height: 1.3,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

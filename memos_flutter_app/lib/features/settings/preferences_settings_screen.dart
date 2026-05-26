@@ -10,13 +10,10 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/system_fonts.dart';
 import '../../core/theme_colors.dart';
-import '../../platform/platform_icons.dart';
 import '../../platform/platform_route.dart';
-import '../../platform/widgets/platform_adaptive_layout.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_list_section.dart';
-import '../../platform/widgets/platform_page.dart';
 import '../../platform/widgets/platform_picker.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/device_preferences.dart';
@@ -25,6 +22,7 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/resolved_preferences_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/system_fonts_provider.dart';
+import 'settings_ui.dart';
 import 'memo_toolbar_settings_screen.dart';
 
 class PreferencesSettingsScreen extends ConsumerWidget {
@@ -198,396 +196,189 @@ class PreferencesSettingsScreen extends ConsumerWidget {
       fontsAsync.valueOrNull ?? const [],
     );
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
+    final tokens = settingsPageTokens(context);
 
-    return PlatformPage(
-      backgroundColor: bg,
-      leading: showBackButton
-          ? IconButton(
-              tooltip: context.t.strings.common.back,
-              icon: Icon(PlatformIcons.back),
-              onPressed: () => Navigator.of(context).maybePop(),
-            )
-          : null,
+    return SettingsPage(
+      showBackButton: showBackButton,
       title: Text(context.t.strings.settings.preferences.title),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFF0B0B0B), bg, bg],
-                  ),
+      contentKey: const ValueKey<String>('preferences.boundedContent'),
+      children: [
+        SettingsSection(
+          children: [
+            SettingsValueRow(
+              label: context.t.strings.settings.preferences.language,
+              value: devicePrefs.language.labelFor(devicePrefs.language),
+              icon: Icons.expand_more,
+              onTap: () => _selectEnum<AppLanguage>(
+                context: context,
+                title: context.t.strings.settings.preferences.language,
+                values: AppLanguage.values,
+                label: (v) => v.labelFor(devicePrefs.language),
+                selected: devicePrefs.language,
+                onSelect: deviceNotifier.setLanguage,
+              ),
+            ),
+            SettingsValueRow(
+              label: context.t.strings.settings.preferences.fontSize,
+              value: devicePrefs.fontSize.labelFor(devicePrefs.language),
+              onTap: () => _selectEnum<AppFontSize>(
+                context: context,
+                title: context.t.strings.settings.preferences.fontSize,
+                values: AppFontSize.values,
+                label: (v) => v.labelFor(devicePrefs.language),
+                selected: devicePrefs.fontSize,
+                onSelect: deviceNotifier.setFontSize,
+              ),
+            ),
+            SettingsValueRow(
+              label: context.t.strings.settings.preferences.lineHeight,
+              value: devicePrefs.lineHeight.labelFor(devicePrefs.language),
+              onTap: () => _selectEnum<AppLineHeight>(
+                context: context,
+                title: context.t.strings.settings.preferences.lineHeight,
+                values: AppLineHeight.values,
+                label: (v) => v.labelFor(devicePrefs.language),
+                selected: devicePrefs.lineHeight,
+                onSelect: deviceNotifier.setLineHeight,
+              ),
+            ),
+            SettingsValueRow(
+              label: context.t.strings.settings.preferences.font,
+              value: fontLabel,
+              onTap: () async {
+                try {
+                  final List<SystemFontInfo> fonts =
+                      fontsAsync.valueOrNull ??
+                      await ref.read(systemFontsProvider.future);
+                  if (!context.mounted) return;
+                  await _selectFont(
+                    context: context,
+                    ref: ref,
+                    prefs: devicePrefs,
+                    fonts: fonts,
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        context.t.strings.settings.preferences.loadFontsFailed(
+                          error: e.toString(),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+            SettingsToggleRow(
+              label: context.t.strings.settings.preferences.collapseLongContent,
+              value: workspacePrefs.collapseLongContent,
+              onChanged: workspaceNotifier.setCollapseLongContent,
+            ),
+            SettingsToggleRow(
+              label: context.t.strings.settings.preferences.collapseReferences,
+              value: workspacePrefs.collapseReferences,
+              onChanged: workspaceNotifier.setCollapseReferences,
+            ),
+            SettingsToggleRow(
+              label: context
+                  .t
+                  .strings
+                  .settings
+                  .preferences
+                  .showEngagementInAllMemoDetails,
+              value: workspacePrefs.showEngagementInAllMemoDetails,
+              onChanged: workspaceNotifier.setShowEngagementInAllMemoDetails,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            SettingsValueRow(
+              label: context.t.strings.settings.preferences.launchAction,
+              value: devicePrefs.launchAction.labelFor(devicePrefs.language),
+              icon: Icons.expand_more,
+              onTap: () => _selectEnum<LaunchAction>(
+                context: context,
+                title: context.t.strings.settings.preferences.launchAction,
+                values: LaunchAction.values
+                    .where((v) => v != LaunchAction.sync)
+                    .toList(growable: false),
+                label: (v) => v.labelFor(devicePrefs.language),
+                selected: devicePrefs.launchAction,
+                onSelect: deviceNotifier.setLaunchAction,
+              ),
+            ),
+            SettingsToggleRow(
+              label: context.t.strings.settings.preferences.confirmExitOnBack,
+              value: devicePrefs.confirmExitOnBack,
+              onChanged: deviceNotifier.setConfirmExitOnBack,
+            ),
+            SettingsValueRow(
+              key: const ValueKey('preferences-editor-toolbar-entry'),
+              label: context.t.strings.settings.preferences.editorToolbar.title,
+              value: context
+                  .t
+                  .strings
+                  .settings
+                  .preferences
+                  .editorToolbar
+                  .dragToSort,
+              onTap: () => Navigator.of(context).push(
+                buildPlatformPageRoute<void>(
+                  context: context,
+                  builder: (_) => const MemoToolbarSettingsScreen(),
                 ),
               ),
             ),
-          ListView(
-            children: [
-              PlatformBoundedContent(
-                desktopMaxWidth: 760,
-                tabletMaxWidth: 680,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                child: Column(
-                  key: const ValueKey<String>('preferences.boundedContent'),
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Group(
-                      children: [
-                        _SelectRow(
-                          label:
-                              context.t.strings.settings.preferences.language,
-                          value: devicePrefs.language.labelFor(
-                            devicePrefs.language,
-                          ),
-                          icon: Icons.expand_more,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () => _selectEnum<AppLanguage>(
-                            context: context,
-                            title:
-                                context.t.strings.settings.preferences.language,
-                            values: AppLanguage.values,
-                            label: (v) => v.labelFor(devicePrefs.language),
-                            selected: devicePrefs.language,
-                            onSelect: deviceNotifier.setLanguage,
-                          ),
-                        ),
-                        _SelectRow(
-                          label:
-                              context.t.strings.settings.preferences.fontSize,
-                          value: devicePrefs.fontSize.labelFor(
-                            devicePrefs.language,
-                          ),
-                          icon: Icons.chevron_right,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () => _selectEnum<AppFontSize>(
-                            context: context,
-                            title:
-                                context.t.strings.settings.preferences.fontSize,
-                            values: AppFontSize.values,
-                            label: (v) => v.labelFor(devicePrefs.language),
-                            selected: devicePrefs.fontSize,
-                            onSelect: deviceNotifier.setFontSize,
-                          ),
-                        ),
-                        _SelectRow(
-                          label:
-                              context.t.strings.settings.preferences.lineHeight,
-                          value: devicePrefs.lineHeight.labelFor(
-                            devicePrefs.language,
-                          ),
-                          icon: Icons.chevron_right,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () => _selectEnum<AppLineHeight>(
-                            context: context,
-                            title: context
-                                .t
-                                .strings
-                                .settings
-                                .preferences
-                                .lineHeight,
-                            values: AppLineHeight.values,
-                            label: (v) => v.labelFor(devicePrefs.language),
-                            selected: devicePrefs.lineHeight,
-                            onSelect: deviceNotifier.setLineHeight,
-                          ),
-                        ),
-                        _SelectRow(
-                          label: context.t.strings.settings.preferences.font,
-                          value: fontLabel,
-                          icon: Icons.chevron_right,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () async {
-                            try {
-                              final List<SystemFontInfo> fonts =
-                                  fontsAsync.valueOrNull ??
-                                  await ref.read(systemFontsProvider.future);
-                              if (!context.mounted) return;
-                              await _selectFont(
-                                context: context,
-                                ref: ref,
-                                prefs: devicePrefs,
-                                fonts: fonts,
-                              );
-                            } catch (e) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    context.t.strings.settings.preferences
-                                        .loadFontsFailed(error: e.toString()),
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                        _ToggleRow(
-                          label: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .collapseLongContent,
-                          value: workspacePrefs.collapseLongContent,
-                          textMain: textMain,
-                          onChanged: workspaceNotifier.setCollapseLongContent,
-                        ),
-                        _ToggleRow(
-                          label: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .collapseReferences,
-                          value: workspacePrefs.collapseReferences,
-                          textMain: textMain,
-                          onChanged: workspaceNotifier.setCollapseReferences,
-                        ),
-                        _ToggleRow(
-                          label: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .showEngagementInAllMemoDetails,
-                          value: workspacePrefs.showEngagementInAllMemoDetails,
-                          textMain: textMain,
-                          onChanged: workspaceNotifier
-                              .setShowEngagementInAllMemoDetails,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _Group(
-                      children: [
-                        _SelectRow(
-                          label: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .launchAction,
-                          value: devicePrefs.launchAction.labelFor(
-                            devicePrefs.language,
-                          ),
-                          icon: Icons.expand_more,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () => _selectEnum<LaunchAction>(
-                            context: context,
-                            title: context
-                                .t
-                                .strings
-                                .settings
-                                .preferences
-                                .launchAction,
-                            values: LaunchAction.values
-                                .where((v) => v != LaunchAction.sync)
-                                .toList(growable: false),
-                            label: (v) => v.labelFor(devicePrefs.language),
-                            selected: devicePrefs.launchAction,
-                            onSelect: deviceNotifier.setLaunchAction,
-                          ),
-                        ),
-                        _ToggleRow(
-                          label: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .confirmExitOnBack,
-                          value: devicePrefs.confirmExitOnBack,
-                          textMain: textMain,
-                          onChanged: deviceNotifier.setConfirmExitOnBack,
-                        ),
-                        _SelectRow(
-                          rowKey: const ValueKey(
-                            'preferences-editor-toolbar-entry',
-                          ),
-                          label: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .editorToolbar
-                              .title,
-                          value: context
-                              .t
-                              .strings
-                              .settings
-                              .preferences
-                              .editorToolbar
-                              .dragToSort,
-                          icon: Icons.chevron_right,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () => Navigator.of(context).push(
-                            buildPlatformPageRoute<void>(
-                              context: context,
-                              builder: (_) => const MemoToolbarSettingsScreen(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _Group(
-                      children: [
-                        _SelectRow(
-                          label:
-                              context.t.strings.settings.preferences.appearance,
-                          value: themeModeLabel,
-                          icon: Icons.expand_more,
-                          textMain: textMain,
-                          textMuted: textMuted,
-                          onTap: () => _selectEnum<AppThemeMode>(
-                            context: context,
-                            title: context
-                                .t
-                                .strings
-                                .settings
-                                .preferences
-                                .appearance,
-                            values: const [
-                              AppThemeMode.system,
-                              AppThemeMode.light,
-                              AppThemeMode.dark,
-                            ],
-                            label: (v) => v.labelFor(devicePrefs.language),
-                            selected: themeMode,
-                            onSelect: deviceNotifier.setThemeMode,
-                          ),
-                        ),
-                        _ThemeColorRow(
-                          label:
-                              context.t.strings.settings.preferences.themeColor,
-                          selected: themeColor,
-                          textMain: textMain,
-                          isDark: isDark,
-                          onSelect: setThemeColor,
-                          onCustomTap: () async {
-                            final next = await CustomThemeDialog.show(
-                              context: context,
-                              initial: customTheme,
-                            );
-                            if (next == null || !context.mounted) return;
-                            setCustomTheme(next);
-                            setThemeColor(AppThemeColor.custom);
-                          },
-                        ),
-                        _ToggleRow(
-                          label: context.t.strings.settings.preferences.haptics,
-                          value: devicePrefs.hapticsEnabled,
-                          textMain: textMain,
-                          onChanged: deviceNotifier.setHapticsEnabled,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            SettingsValueRow(
+              label: context.t.strings.settings.preferences.appearance,
+              value: themeModeLabel,
+              icon: Icons.expand_more,
+              onTap: () => _selectEnum<AppThemeMode>(
+                context: context,
+                title: context.t.strings.settings.preferences.appearance,
+                values: const [
+                  AppThemeMode.system,
+                  AppThemeMode.light,
+                  AppThemeMode.dark,
+                ],
+                label: (v) => v.labelFor(devicePrefs.language),
+                selected: themeMode,
+                onSelect: deviceNotifier.setThemeMode,
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Group extends StatelessWidget {
-  const _Group({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlatformListSection(padding: EdgeInsets.zero, children: children);
-  }
-}
-
-class _SelectRow extends StatelessWidget {
-  const _SelectRow({
-    this.rowKey,
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.textMain,
-    required this.textMuted,
-    required this.onTap,
-  });
-
-  final Key? rowKey;
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color textMain;
-  final Color textMuted;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxTrailingWidth = MediaQuery.sizeOf(context).width * 0.42;
-    return PlatformListSectionRow(
-      key: rowKey,
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxTrailingWidth),
-            child: Text(
-              value,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
             ),
-          ),
-          const SizedBox(width: 6),
-          Icon(icon, size: 18, color: textMuted),
-        ],
-      ),
-      onTap: onTap,
-    );
-  }
-}
-
-class _ToggleRow extends StatelessWidget {
-  const _ToggleRow({
-    required this.label,
-    required this.value,
-    required this.textMain,
-    required this.onChanged,
-  });
-
-  final String label;
-  final bool value;
-  final Color textMain;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlatformListSectionRow(
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      trailing: PlatformSwitch(value: value, onChanged: onChanged),
+            _ThemeColorRow(
+              label: context.t.strings.settings.preferences.themeColor,
+              selected: themeColor,
+              textMain: tokens.textMain,
+              isDark: tokens.isDark,
+              onSelect: setThemeColor,
+              onCustomTap: () async {
+                final next = await CustomThemeDialog.show(
+                  context: context,
+                  initial: customTheme,
+                );
+                if (next == null || !context.mounted) return;
+                setCustomTheme(next);
+                setThemeColor(AppThemeColor.custom);
+              },
+            ),
+            SettingsToggleRow(
+              label: context.t.strings.settings.preferences.haptics,
+              value: devicePrefs.hapticsEnabled,
+              onChanged: deviceNotifier.setHapticsEnabled,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
