@@ -101,12 +101,11 @@ function(SEED_MEDIA_KIT_MPV_FALLBACK)
   set(LIBMPV_ARCHIVE_DST "${CMAKE_BINARY_DIR}/${LIBMPV}")
 
   file(GLOB LIBMPV_ARCHIVE_CANDIDATES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/windows_native_deps/${LIBMPV}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/${LIBMPV}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/*/${LIBMPV}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/${LIBMPV}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/*/${LIBMPV}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../参考项目/${LIBMPV}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../*/${LIBMPV}"
   )
 
   COPY_VERIFIED_ARCHIVE_IF_NEEDED(
@@ -119,11 +118,12 @@ endfunction()
 function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
   set(ANGLE_ARCHIVE_DST "${CMAKE_BINARY_DIR}/ANGLE.7z")
   set(ANGLE_DIR_DST "${CMAKE_BINARY_DIR}/ANGLE")
-  set(ANGLE_INCLUDE_MARKER "${ANGLE_DIR_DST}/include/EGL/egl.h")
-  set(ANGLE_EGL_LIB_MARKER "${ANGLE_DIR_DST}/lib/libEGL.dll.lib")
-  set(ANGLE_GLES_LIB_MARKER "${ANGLE_DIR_DST}/lib/libGLESv2.dll.lib")
+  set(ANGLE_URL "https://github.com/alexmercerind/flutter-windows-ANGLE-OpenGL-ES/releases/download/v1.0.1/ANGLE.7z")
   set(ANGLE_MD5 "e866f13e8d552348058afaafe869b1ed")
   set(ANGLE_REQUIRED_FILES
+    "include/EGL/egl.h"
+    "lib/libEGL.dll.lib"
+    "lib/libGLESv2.dll.lib"
     "d3dcompiler_47.dll"
     "libEGL.dll"
     "libGLESv2.dll"
@@ -133,11 +133,11 @@ function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
   )
 
   file(GLOB ANGLE_ARCHIVE_CANDIDATES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/windows_native_deps/ANGLE.7z"
     "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/ANGLE.7z"
     "${CMAKE_CURRENT_SOURCE_DIR}/../tool/*/*/ANGLE.7z"
     "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/ANGLE.7z"
     "${CMAKE_CURRENT_SOURCE_DIR}/../dist/*/*/ANGLE.7z"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../*/ANGLE.7z"
   )
 
   COPY_VERIFIED_ARCHIVE_IF_NEEDED(
@@ -146,32 +146,36 @@ function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
     ${ANGLE_ARCHIVE_CANDIDATES}
   )
 
-  if(
-    EXISTS "${ANGLE_ARCHIVE_DST}"
-    AND (
-      NOT EXISTS "${ANGLE_INCLUDE_MARKER}"
-      OR NOT EXISTS "${ANGLE_EGL_LIB_MARKER}"
-      OR NOT EXISTS "${ANGLE_GLES_LIB_MARKER}"
-    )
-  )
-    find_program(ANGLE_ARCHIVER
-      NAMES 7z 7z.exe 7za 7za.exe 7zr 7zr.exe
-      HINTS
-        "$ENV{ProgramFiles}/7-Zip"
-        "C:/Program Files (x86)/7-Zip"
-        "$ENV{ProgramFiles}/NVIDIA Corporation/NVIDIA app"
-        "$ENV{ProgramFiles}/VMware"
-    )
-
-    if(ANGLE_ARCHIVER)
-      file(MAKE_DIRECTORY "${ANGLE_DIR_DST}")
-      execute_process(
-        COMMAND "${ANGLE_ARCHIVER}" x "-o${ANGLE_DIR_DST}" -y "${ANGLE_ARCHIVE_DST}"
-        RESULT_VARIABLE ANGLE_EXTRACT_RESULT
+  if(NOT EXISTS "${ANGLE_ARCHIVE_DST}")
+    set(ANGLE_DOWNLOAD_SUCCESS FALSE)
+    foreach(ANGLE_DOWNLOAD_ATTEMPT RANGE 1 3)
+      message(STATUS "Downloading ANGLE archive from ${ANGLE_URL} (attempt ${ANGLE_DOWNLOAD_ATTEMPT}/3)...")
+      file(REMOVE "${ANGLE_ARCHIVE_DST}")
+      file(DOWNLOAD
+        "${ANGLE_URL}"
+        "${ANGLE_ARCHIVE_DST}"
+        STATUS ANGLE_DOWNLOAD_STATUS
+        SHOW_PROGRESS
+        TIMEOUT 900
+        INACTIVITY_TIMEOUT 120
       )
-      if(NOT ANGLE_EXTRACT_RESULT EQUAL 0)
-        message(WARNING "Failed to extract ${ANGLE_ARCHIVE_DST} with ${ANGLE_ARCHIVER}.")
+      list(GET ANGLE_DOWNLOAD_STATUS 0 ANGLE_DOWNLOAD_CODE)
+      list(GET ANGLE_DOWNLOAD_STATUS 1 ANGLE_DOWNLOAD_MESSAGE)
+      if(ANGLE_DOWNLOAD_CODE EQUAL 0 AND EXISTS "${ANGLE_ARCHIVE_DST}")
+        file(MD5 "${ANGLE_ARCHIVE_DST}" ANGLE_ARCHIVE_MD5)
+        if(ANGLE_ARCHIVE_MD5 STREQUAL ANGLE_MD5)
+          set(ANGLE_DOWNLOAD_SUCCESS TRUE)
+          break()
+        endif()
+        message(STATUS "Downloaded ANGLE archive MD5 mismatch; retrying.")
+      else()
+        message(STATUS "ANGLE archive download failed: ${ANGLE_DOWNLOAD_MESSAGE}")
       endif()
+    endforeach()
+
+    if(NOT ANGLE_DOWNLOAD_SUCCESS)
+      file(REMOVE "${ANGLE_ARCHIVE_DST}")
+      message(FATAL_ERROR "Failed to download a valid ANGLE archive after 3 attempts.")
     endif()
   endif()
 
@@ -181,6 +185,50 @@ function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
       set(ANGLE_DIR_COMPLETE FALSE)
     endif()
   endforeach()
+
+  if(NOT ANGLE_DIR_COMPLETE)
+    find_program(ANGLE_ARCHIVER
+      NAMES 7z 7z.exe 7za 7za.exe 7zr 7zr.exe
+      HINTS
+        "$ENV{ProgramFiles}/7-Zip"
+        "C:/Program Files (x86)/7-Zip"
+        "$ENV{LOCALAPPDATA}/Programs/7-Zip"
+        "$ENV{ProgramFiles}/NVIDIA Corporation/NVIDIA app"
+        "$ENV{ProgramFiles}/VMware"
+    )
+
+    file(REMOVE_RECURSE "${ANGLE_DIR_DST}")
+    file(MAKE_DIRECTORY "${ANGLE_DIR_DST}")
+
+    if(ANGLE_ARCHIVER)
+      execute_process(
+        COMMAND "${ANGLE_ARCHIVER}" x "-o${ANGLE_DIR_DST}" -y "${ANGLE_ARCHIVE_DST}"
+        RESULT_VARIABLE ANGLE_EXTRACT_RESULT
+        OUTPUT_VARIABLE ANGLE_EXTRACT_OUTPUT
+        ERROR_VARIABLE ANGLE_EXTRACT_ERROR
+      )
+    else()
+      execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E tar xzf "${ANGLE_ARCHIVE_DST}"
+        WORKING_DIRECTORY "${ANGLE_DIR_DST}"
+        RESULT_VARIABLE ANGLE_EXTRACT_RESULT
+        OUTPUT_VARIABLE ANGLE_EXTRACT_OUTPUT
+        ERROR_VARIABLE ANGLE_EXTRACT_ERROR
+      )
+    endif()
+
+    if(NOT ANGLE_EXTRACT_RESULT EQUAL 0)
+      file(REMOVE_RECURSE "${ANGLE_DIR_DST}")
+      message(WARNING "Failed to extract ${ANGLE_ARCHIVE_DST}: ${ANGLE_EXTRACT_OUTPUT}${ANGLE_EXTRACT_ERROR}")
+    endif()
+
+    set(ANGLE_DIR_COMPLETE TRUE)
+    foreach(ANGLE_REQUIRED_FILE IN LISTS ANGLE_REQUIRED_FILES)
+      if(NOT EXISTS "${ANGLE_DIR_DST}/${ANGLE_REQUIRED_FILE}")
+        set(ANGLE_DIR_COMPLETE FALSE)
+      endif()
+    endforeach()
+  endif()
 
   if(NOT ANGLE_DIR_COMPLETE)
     file(GLOB ANGLE_MARKER_CANDIDATES
@@ -202,11 +250,18 @@ function(SEED_MEDIA_KIT_ANGLE_FALLBACK)
       if(ANGLE_MARKER_DIR_VALID)
         file(MAKE_DIRECTORY "${ANGLE_DIR_DST}")
         foreach(ANGLE_REQUIRED_FILE IN LISTS ANGLE_REQUIRED_FILES)
-          file(COPY "${ANGLE_MARKER_DIR}/${ANGLE_REQUIRED_FILE}" DESTINATION "${ANGLE_DIR_DST}")
+          get_filename_component(ANGLE_REQUIRED_DIR "${ANGLE_DIR_DST}/${ANGLE_REQUIRED_FILE}" DIRECTORY)
+          file(MAKE_DIRECTORY "${ANGLE_REQUIRED_DIR}")
+          file(COPY "${ANGLE_MARKER_DIR}/${ANGLE_REQUIRED_FILE}" DESTINATION "${ANGLE_REQUIRED_DIR}")
         endforeach()
+        set(ANGLE_DIR_COMPLETE TRUE)
         break()
       endif()
     endforeach()
+  endif()
+
+  if(NOT ANGLE_DIR_COMPLETE)
+    message(FATAL_ERROR "ANGLE archive exists, but required Windows video runtime files are incomplete in ${ANGLE_DIR_DST}.")
   endif()
 endfunction()
 
