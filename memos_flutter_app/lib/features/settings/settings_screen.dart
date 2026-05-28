@@ -26,7 +26,7 @@ import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memos_list_screen.dart';
@@ -500,78 +500,69 @@ class SettingsScreen extends ConsumerWidget
       ],
     );
 
+    final platformPage = PlatformPage(
+      backgroundColor: bg,
+      drawer: drawerPanel,
+      drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
+      desktopNavigationMode: useDesktopSidePane
+          ? DesktopTitlebarNavigationMode.expandedSidebar
+          : DesktopTitlebarNavigationMode.hidden,
+      desktopNavigationContext:
+          DesktopTitlebarNavigationContext.topLevelDestination,
+      leading: showAppBar
+          ? (useEmbeddedBottomNav
+                ? AppDrawerMenuButton(
+                    tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                    iconColor: textMain,
+                    badgeBorderColor: bg,
+                  )
+                : IconButton(
+                    tooltip: context.t.strings.legacy.msg_close,
+                    icon: Icon(closeIcon),
+                    onPressed: () => _close(context),
+                  ))
+          : null,
+      title: showAppBar
+          ? IgnorePointer(
+              ignoring: enableAppBarDragToMove,
+              child: Text(context.t.strings.legacy.msg_settings),
+            )
+          : null,
+      toolbar: enableAppBarDragToMove
+          ? const DragToMoveArea(child: SizedBox(height: 0))
+          : null,
+      body: pageBody,
+    );
+
     return PopScope(
       canPop: useEmbeddedBottomNav,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop || useEmbeddedBottomNav) return;
         _close(context);
       },
-      child: isWindowsDesktop && showAppBar
-          ? DesktopShellHost(
+      child: showAppBar
+          ? DesktopDestinationShell(
+              selectedDestination: AppDrawerDestination.settings,
+              onSelectDestination: (destination) =>
+                  _navigate(context, destination),
+              onSelectTag: (tag) => _openTag(context, tag),
+              onOpenNotifications: () => _openNotifications(context),
               backgroundColor: bg,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.settings,
-                onSelect: (destination) => _navigate(context, destination),
-                onSelectTag: (tag) => _openTag(context, tag),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
+              title: Text(
+                context.t.strings.legacy.msg_settings,
+                overflow: TextOverflow.ellipsis,
               ),
-              leadingTitle: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!useEmbeddedBottomNav) ...[
-                    IconButton(
+              dismissalIntent: useEmbeddedBottomNav
+                  ? null
+                  : DesktopDestinationDismissalIntent(
                       tooltip: context.t.strings.legacy.msg_close,
-                      icon: Icon(closeIcon),
+                      icon: closeIcon,
                       onPressed: () => _close(context),
                     ),
-                    const SizedBox(width: 4),
-                  ],
-                  Flexible(
-                    child: Text(
-                      context.t.strings.legacy.msg_settings,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
               body: pageBody,
+              fallback: platformPage,
             )
-          : PlatformPage(
-              backgroundColor: bg,
-              drawer: drawerPanel,
-              drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
-              desktopNavigationMode: useDesktopSidePane
-                  ? DesktopTitlebarNavigationMode.expandedSidebar
-                  : DesktopTitlebarNavigationMode.hidden,
-              desktopNavigationContext:
-                  DesktopTitlebarNavigationContext.topLevelDestination,
-              leading: showAppBar
-                  ? (useEmbeddedBottomNav
-                        ? AppDrawerMenuButton(
-                            tooltip:
-                                context.t.strings.legacy.msg_toggle_sidebar,
-                            iconColor: textMain,
-                            badgeBorderColor: bg,
-                          )
-                        : IconButton(
-                            tooltip: context.t.strings.legacy.msg_close,
-                            icon: Icon(closeIcon),
-                            onPressed: () => _close(context),
-                          ))
-                  : null,
-              title: showAppBar
-                  ? IgnorePointer(
-                      ignoring: enableAppBarDragToMove,
-                      child: Text(context.t.strings.legacy.msg_settings),
-                    )
-                  : null,
-              toolbar: enableAppBarDragToMove
-                  ? const DragToMoveArea(child: SizedBox(height: 0))
-                  : null,
-              body: pageBody,
-            ),
+          : platformPage,
     );
   }
 }

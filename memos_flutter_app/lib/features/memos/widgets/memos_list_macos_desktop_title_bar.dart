@@ -33,6 +33,7 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
     required this.onCloseSearch,
     required this.searchTooltip,
     required this.cancelTooltip,
+    this.navigationButton,
     this.sortButton,
   });
 
@@ -50,6 +51,7 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
   final VoidCallback onCloseSearch;
   final String searchTooltip;
   final String cancelTooltip;
+  final Widget? navigationButton;
   final Widget? sortButton;
 
   @override
@@ -91,6 +93,10 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
                         key: kMemosListMacosTrafficSafeInsetKey,
                         width: kMemosListMacosTrafficLightSafeInset,
                       ),
+                      if (navigationButton != null) ...[
+                        navigationButton!,
+                        const SizedBox(width: 4),
+                      ],
                       if (searching)
                         Expanded(
                           child: Padding(

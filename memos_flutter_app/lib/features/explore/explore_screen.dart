@@ -32,7 +32,7 @@ import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_navigation_host.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../memos/memo_detail_screen.dart';
@@ -1695,135 +1695,126 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: bg,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.explore,
-                onSelect: (d) => _navigate(context, d),
-                onSelectTag: (t) => _openTag(context, t),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(
-                context.t.strings.legacy.msg_explore,
-                style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: showSearchBar
-                        ? context.t.strings.legacy.msg_close_search
-                        : context.t.strings.legacy.msg_search,
-                    icon: Icon(
-                      showSearchBar ? Icons.close : Icons.search,
-                      color: textMain,
-                    ),
-                    onPressed: _toggleSearch,
-                  ),
-                ],
-              ),
-              body: desktopBodyContent,
-              secondaryPane: supportsDesktopPreviewPane ? previewPane : null,
-              secondaryPaneVisible: previewPaneVisible,
-              secondaryPaneWidth: previewPaneWidth,
-            )
-          : Scaffold(
-              backgroundColor: bg,
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              drawerEnableOpenDragGesture:
-                  widget.presentation !=
-                  HomeScreenPresentation.embeddedBottomNav,
-              appBar: AppBar(
-                backgroundColor: bg,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
-                automaticallyImplyLeading:
-                    !omitTopLevelChrome && !useDesktopSidePane,
-                toolbarHeight:
-                    resolveDesktopTopLevelToolbarHeight(
-                      platform: desktopPlatform,
-                      navigationMode: desktopNavigationMode,
-                      navigationContext: desktopNavigationContext,
-                    ) ??
-                    46,
-                iconTheme: IconThemeData(color: textMain),
-                flexibleSpace: enableWindowsDragToMove
-                    ? const DragToMoveArea(child: SizedBox.expand())
-                    : null,
-                leading: resolveDesktopTopLevelLeading(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  leading: useDesktopSidePane
-                      ? null
-                      : AppDrawerMenuButton(
-                          tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                          iconColor: textMain,
-                          badgeBorderColor: bg,
-                        ),
-                ),
-                title: resolveDesktopTopLevelTitle(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  title: IgnorePointer(
-                    ignoring: enableWindowsDragToMove,
-                    child: Text(
-                      context.t.strings.legacy.msg_explore,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
-                      ),
-                    ),
-                  ),
-                ),
-                actions: [
-                  IconButton(
-                    tooltip: showSearchBar
-                        ? context.t.strings.legacy.msg_close_search
-                        : context.t.strings.legacy.msg_search,
-                    icon: Icon(
-                      showSearchBar ? Icons.close : Icons.search,
-                      color: textMain,
-                    ),
-                    onPressed: _toggleSearch,
-                  ),
-                  if (enableWindowsDragToMove) const DesktopWindowControls(),
-                ],
-              ),
-              body: useDesktopSidePane
-                  ? Row(
-                      children: [
-                        SizedBox(
-                          width: kMemoFlowDesktopDrawerWidth,
-                          child: drawerPanel,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        Expanded(child: desktopBodyContent),
-                        if (previewPaneVisible) ...[
-                          VerticalDivider(
-                            width: 1,
-                            thickness: 1,
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.08)
-                                : Colors.black.withValues(alpha: 0.08),
-                          ),
-                          SizedBox(width: previewPaneWidth, child: previewPane),
-                        ],
-                      ],
-                    )
-                  : pageBody,
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.explore,
+        onSelectDestination: (d) => _navigate(context, d),
+        onSelectTag: (t) => _openTag(context, t),
+        onOpenNotifications: () => _openNotifications(context),
+        backgroundColor: bg,
+        title: Text(
+          context.t.strings.legacy.msg_explore,
+          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
+        ),
+        actions: [
+          IconButton(
+            tooltip: showSearchBar
+                ? context.t.strings.legacy.msg_close_search
+                : context.t.strings.legacy.msg_search,
+            icon: Icon(
+              showSearchBar ? Icons.close : Icons.search,
+              color: textMain,
             ),
+            onPressed: _toggleSearch,
+          ),
+        ],
+        body: desktopBodyContent,
+        secondaryPane: supportsDesktopPreviewPane ? previewPane : null,
+        secondaryPaneVisible: previewPaneVisible,
+        secondaryPaneWidth: previewPaneWidth,
+        fallback: Scaffold(
+          backgroundColor: bg,
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          drawerEnableOpenDragGesture:
+              widget.presentation != HomeScreenPresentation.embeddedBottomNav,
+          appBar: AppBar(
+            backgroundColor: bg,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            automaticallyImplyLeading:
+                !omitTopLevelChrome && !useDesktopSidePane,
+            toolbarHeight:
+                resolveDesktopTopLevelToolbarHeight(
+                  platform: desktopPlatform,
+                  navigationMode: desktopNavigationMode,
+                  navigationContext: desktopNavigationContext,
+                ) ??
+                46,
+            iconTheme: IconThemeData(color: textMain),
+            flexibleSpace: enableWindowsDragToMove
+                ? const DragToMoveArea(child: SizedBox.expand())
+                : null,
+            leading: resolveDesktopTopLevelLeading(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              leading: useDesktopSidePane
+                  ? null
+                  : AppDrawerMenuButton(
+                      tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                      iconColor: textMain,
+                      badgeBorderColor: bg,
+                    ),
+            ),
+            title: resolveDesktopTopLevelTitle(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              title: IgnorePointer(
+                ignoring: enableWindowsDragToMove,
+                child: Text(
+                  context.t.strings.legacy.msg_explore,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textMain,
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              IconButton(
+                tooltip: showSearchBar
+                    ? context.t.strings.legacy.msg_close_search
+                    : context.t.strings.legacy.msg_search,
+                icon: Icon(
+                  showSearchBar ? Icons.close : Icons.search,
+                  color: textMain,
+                ),
+                onPressed: _toggleSearch,
+              ),
+              if (enableWindowsDragToMove) const DesktopWindowControls(),
+            ],
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: desktopBodyContent),
+                    if (previewPaneVisible) ...[
+                      VerticalDivider(
+                        width: 1,
+                        thickness: 1,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.black.withValues(alpha: 0.08),
+                      ),
+                      SizedBox(width: previewPaneWidth, child: previewPane),
+                    ],
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 }

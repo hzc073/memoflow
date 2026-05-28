@@ -10,7 +10,7 @@ import '../../state/settings/workspace_preferences_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memos_list_screen.dart';
@@ -278,122 +278,114 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
         if (didPop || useEmbeddedBottomNav) return;
         _backToAllMemos(context);
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.tags,
-                onSelect: (destination) => _navigate(context, destination),
-                onSelectTag: (tag) => _openTag(context, tag),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(context.t.strings.legacy.msg_tags),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TagListModeMenuButton(
-                    mode: tagListMode,
-                    onSelected: (value) {
-                      if (value == tagListMode) return;
-                      ref
-                          .read(currentWorkspacePreferencesProvider.notifier)
-                          .setTagListMode(value);
-                    },
-                    iconColor:
-                        Theme.of(context).appBarTheme.iconTheme?.color ??
-                        IconTheme.of(context).color ??
-                        Theme.of(context).colorScheme.onSurface,
-                  ),
-                  IconButton(
-                    tooltip: context.t.strings.legacy.msg_create_tag,
-                    onPressed: () => _openTagEditor(context, null),
-                    icon: const Icon(Icons.add),
-                  ),
-                ],
-              ),
-              body: pageBody,
-            )
-          : Scaffold(
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              appBar: AppBar(
-                toolbarHeight: resolveDesktopTopLevelToolbarHeight(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                ),
-                flexibleSpace: enableWindowsDragToMove
-                    ? const DragToMoveArea(child: SizedBox.expand())
-                    : null,
-                leading: resolveDesktopTopLevelLeading(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  leading: useDesktopSidePane
-                      ? null
-                      : AppDrawerMenuButton(
-                          tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                          iconColor:
-                              Theme.of(context).appBarTheme.iconTheme?.color ??
-                              IconTheme.of(context).color ??
-                              Theme.of(context).colorScheme.onSurface,
-                          badgeBorderColor: Theme.of(
-                            context,
-                          ).scaffoldBackgroundColor,
-                        ),
-                ),
-                title: resolveDesktopTopLevelTitle(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  title: IgnorePointer(
-                    ignoring: enableWindowsDragToMove,
-                    child: Text(context.t.strings.legacy.msg_tags),
-                  ),
-                ),
-                automaticallyImplyLeading:
-                    !omitTopLevelChrome && !useDesktopSidePane,
-                actions: [
-                  TagListModeMenuButton(
-                    mode: tagListMode,
-                    onSelected: (value) {
-                      if (value == tagListMode) return;
-                      ref
-                          .read(currentWorkspacePreferencesProvider.notifier)
-                          .setTagListMode(value);
-                    },
-                    iconColor:
-                        Theme.of(context).appBarTheme.iconTheme?.color ??
-                        IconTheme.of(context).color ??
-                        Theme.of(context).colorScheme.onSurface,
-                  ),
-                  IconButton(
-                    tooltip: context.t.strings.legacy.msg_create_tag,
-                    onPressed: () => _openTagEditor(context, null),
-                    icon: const Icon(Icons.add),
-                  ),
-                ],
-              ),
-              body: useDesktopSidePane
-                  ? Row(
-                      children: [
-                        SizedBox(
-                          width: kMemoFlowDesktopDrawerWidth,
-                          child: drawerPanel,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        Expanded(child: pageBody),
-                      ],
-                    )
-                  : pageBody,
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.tags,
+        onSelectDestination: (destination) => _navigate(context, destination),
+        onSelectTag: (tag) => _openTag(context, tag),
+        onOpenNotifications: () => _openNotifications(context),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        title: Text(context.t.strings.legacy.msg_tags),
+        actions: [
+          TagListModeMenuButton(
+            mode: tagListMode,
+            onSelected: (value) {
+              if (value == tagListMode) return;
+              ref
+                  .read(currentWorkspacePreferencesProvider.notifier)
+                  .setTagListMode(value);
+            },
+            iconColor:
+                Theme.of(context).appBarTheme.iconTheme?.color ??
+                IconTheme.of(context).color ??
+                Theme.of(context).colorScheme.onSurface,
+          ),
+          IconButton(
+            tooltip: context.t.strings.legacy.msg_create_tag,
+            onPressed: () => _openTagEditor(context, null),
+            icon: const Icon(Icons.add),
+          ),
+        ],
+        body: pageBody,
+        fallback: Scaffold(
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          appBar: AppBar(
+            toolbarHeight: resolveDesktopTopLevelToolbarHeight(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
             ),
+            flexibleSpace: enableWindowsDragToMove
+                ? const DragToMoveArea(child: SizedBox.expand())
+                : null,
+            leading: resolveDesktopTopLevelLeading(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              leading: useDesktopSidePane
+                  ? null
+                  : AppDrawerMenuButton(
+                      tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                      iconColor:
+                          Theme.of(context).appBarTheme.iconTheme?.color ??
+                          IconTheme.of(context).color ??
+                          Theme.of(context).colorScheme.onSurface,
+                      badgeBorderColor: Theme.of(
+                        context,
+                      ).scaffoldBackgroundColor,
+                    ),
+            ),
+            title: resolveDesktopTopLevelTitle(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              title: IgnorePointer(
+                ignoring: enableWindowsDragToMove,
+                child: Text(context.t.strings.legacy.msg_tags),
+              ),
+            ),
+            automaticallyImplyLeading:
+                !omitTopLevelChrome && !useDesktopSidePane,
+            actions: [
+              TagListModeMenuButton(
+                mode: tagListMode,
+                onSelected: (value) {
+                  if (value == tagListMode) return;
+                  ref
+                      .read(currentWorkspacePreferencesProvider.notifier)
+                      .setTagListMode(value);
+                },
+                iconColor:
+                    Theme.of(context).appBarTheme.iconTheme?.color ??
+                    IconTheme.of(context).color ??
+                    Theme.of(context).colorScheme.onSurface,
+              ),
+              IconButton(
+                tooltip: context.t.strings.legacy.msg_create_tag,
+                onPressed: () => _openTagEditor(context, null),
+                icon: const Icon(Icons.add),
+              ),
+            ],
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: pageBody),
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 }

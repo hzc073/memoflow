@@ -36,7 +36,7 @@ import '../../platform/platform_route.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
@@ -1366,8 +1366,6 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
         _selectedSource != RandomWalkSourceScope.allMemos ||
         (_sourceSupportsTagFilter && _selectedTags.isNotEmpty) ||
         _selectedDateRange != null;
-    final isWindowsDesktop =
-        Theme.of(context).platform == TargetPlatform.windows;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
     final desktopPlatform = Theme.of(context).platform;
@@ -1733,22 +1731,7 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
           return Center(child: Text(message));
         },
       );
-      if (!useDesktopSidePane || isWindowsDesktop) {
-        return pageBody;
-      }
-      return Row(
-        children: [
-          SizedBox(width: kMemoFlowDesktopDrawerWidth, child: drawerPanel),
-          VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.08),
-          ),
-          Expanded(child: pageBody),
-        ],
-      );
+      return pageBody;
     }();
 
     return PopScope(
@@ -1757,26 +1740,82 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
         if (didPop || !shouldInterceptPop) return;
         _back();
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: bg,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.dailyReview,
-                onSelect: _navigate,
-                onSelectTag: _openTag,
-                onOpenNotifications: _openNotifications,
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.dailyReview,
+        onSelectDestination: _navigate,
+        onSelectTag: _openTag,
+        onOpenNotifications: _openNotifications,
+        backgroundColor: bg,
+        title: Text(
+          context.t.strings.legacy.msg_random_review,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        actions: [
+          IconButton(
+            tooltip: context.t.strings.legacy.msg_filter,
+            icon: Icon(
+              Icons.tune_rounded,
+              color: hasActiveFilter ? MemoFlowPalette.primary : null,
+            ),
+            onPressed: _openFilterSheet,
+          ),
+        ],
+        body: pageBody,
+        fallback: Scaffold(
+          backgroundColor: bg,
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          drawerEnableOpenDragGesture:
+              widget.presentation != HomeScreenPresentation.embeddedBottomNav,
+          appBar: AppBar(
+            backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            automaticallyImplyLeading:
+                !omitTopLevelChrome && !useDesktopSidePane,
+            toolbarHeight:
+                resolveDesktopTopLevelToolbarHeight(
+                  platform: desktopPlatform,
+                  navigationMode: desktopNavigationMode,
+                  navigationContext: desktopNavigationContext,
+                ) ??
+                46,
+            iconTheme: IconThemeData(color: textMain),
+            leading: resolveDesktopTopLevelLeading(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              leading: useDesktopSidePane
+                  ? null
+                  : widget.presentation ==
+                        HomeScreenPresentation.embeddedBottomNav
+                  ? AppDrawerMenuButton(
+                      tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                      iconColor: textMain,
+                      badgeBorderColor: bg,
+                    )
+                  : IconButton(
+                      tooltip: context.t.strings.legacy.msg_back,
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: _back,
+                    ),
+            ),
+            title: resolveDesktopTopLevelTitle(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              title: Text(
                 context.t.strings.legacy.msg_random_review,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
               ),
-              trailing: IconButton(
+            ),
+            centerTitle: !useDesktopSidePane,
+            actions: [
+              IconButton(
                 tooltip: context.t.strings.legacy.msg_filter,
                 icon: Icon(
                   Icons.tune_rounded,
@@ -1784,74 +1823,28 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
                 ),
                 onPressed: _openFilterSheet,
               ),
-              body: pageBody,
-            )
-          : Scaffold(
-              backgroundColor: bg,
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              drawerEnableOpenDragGesture:
-                  widget.presentation !=
-                  HomeScreenPresentation.embeddedBottomNav,
-              appBar: AppBar(
-                backgroundColor: useDesktopSidePane ? bg : Colors.transparent,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
-                automaticallyImplyLeading:
-                    !omitTopLevelChrome && !useDesktopSidePane,
-                toolbarHeight:
-                    resolveDesktopTopLevelToolbarHeight(
-                      platform: desktopPlatform,
-                      navigationMode: desktopNavigationMode,
-                      navigationContext: desktopNavigationContext,
-                    ) ??
-                    46,
-                iconTheme: IconThemeData(color: textMain),
-                leading: resolveDesktopTopLevelLeading(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  leading: useDesktopSidePane
-                      ? null
-                      : widget.presentation ==
-                            HomeScreenPresentation.embeddedBottomNav
-                      ? AppDrawerMenuButton(
-                          tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                          iconColor: textMain,
-                          badgeBorderColor: bg,
-                        )
-                      : IconButton(
-                          tooltip: context.t.strings.legacy.msg_back,
-                          icon: const Icon(Icons.arrow_back),
-                          onPressed: _back,
-                        ),
-                ),
-                title: resolveDesktopTopLevelTitle(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  title: Text(
-                    context.t.strings.legacy.msg_random_review,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: textMain,
+            ],
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
                     ),
-                  ),
-                ),
-                centerTitle: !useDesktopSidePane,
-                actions: [
-                  IconButton(
-                    tooltip: context.t.strings.legacy.msg_filter,
-                    icon: Icon(
-                      Icons.tune_rounded,
-                      color: hasActiveFilter ? MemoFlowPalette.primary : null,
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
                     ),
-                    onPressed: _openFilterSheet,
-                  ),
-                ],
-              ),
-              body: pageBody,
-            ),
+                    Expanded(child: pageBody),
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 }

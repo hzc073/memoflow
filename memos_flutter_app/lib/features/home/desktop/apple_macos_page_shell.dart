@@ -1,13 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/desktop/window_chrome_safe_area.dart';
+import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart'
     show
+        kMemoFlowDesktopDrawerWidth,
+        kMemoFlowDesktopSidePaneBreakpoint,
         kWindowsDesktopRailWidth,
-        kWindowsDesktopSecondaryPaneDefaultWidth,
-        kWindowsDesktopSidebarWidth;
+        kWindowsDesktopSecondaryPaneDefaultWidth;
 import '../app_drawer.dart';
 import 'desktop_shell_models.dart';
 
@@ -63,18 +66,19 @@ class AppleMacosPageShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final useExpandedSidebar = width >= 1040;
+    final useExpandedSidebar = width >= kMemoFlowDesktopSidePaneBreakpoint;
     final navigationWidth = useExpandedSidebar
-        ? kWindowsDesktopSidebarWidth
+        ? kMemoFlowDesktopDrawerWidth
         : kWindowsDesktopRailWidth;
     final chromeInsets = resolveDesktopWindowChromeInsets(
       platform: TargetPlatform.macOS,
       contentExtendsIntoTitleBar: true,
     );
-    final navigationChromeInset = chromeInsets.top;
-    final toolbarChromeInset = resolveMacosTrafficLightCompensation(
-      currentLeadingWidth: navigationWidth,
-    );
+    final trafficLightSafeInset =
+        chromeInsets.leading +
+        resolveMacosTrafficLightCompensation(
+          currentLeadingWidth: chromeInsets.leading,
+        );
     final navigation = navigationBuilder(
       useExpandedSidebar
           ? AppDrawerViewMode.expandedSidebar
@@ -89,19 +93,31 @@ class AppleMacosPageShell extends StatelessWidget {
       navigationMode: navigationMode,
       navigationContext: navigationContext,
     );
+    final showToolbarDivider = shouldRenderDesktopTopLevelToolbarDivider(
+      platform: TargetPlatform.macOS,
+      navigationMode: navigationMode,
+      navigationContext: navigationContext,
+    );
     final toolbar =
         commandBar ??
         _AppleMacosToolbar(
           leadingTitle: leadingTitle,
           showLeadingTitle: showLeadingTitle,
+          showDivider: showToolbarDivider,
+          titleBarHeight: chromeInsets.top,
+          trafficLightSafeInset: trafficLightSafeInset,
           center: center,
           trailing: trailing,
-          leadingChromeInset: toolbarChromeInset,
         );
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final resolvedBackground =
         backgroundColor ??
-        CupertinoColors.systemBackground.resolveFrom(context);
-    final borderColor = CupertinoColors.separator.resolveFrom(context);
+        (isDark
+            ? MemoFlowPalette.backgroundDark
+            : MemoFlowPalette.backgroundLight);
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
 
     return ColoredBox(
       key: const ValueKey<String>('apple-macos-page-shell'),
@@ -110,39 +126,23 @@ class AppleMacosPageShell extends StatelessWidget {
         bottom: false,
         child: Stack(
           children: [
-            Row(
+            Column(
               children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.systemGroupedBackground.resolveFrom(
-                      context,
-                    ),
-                    border: Border(right: BorderSide(color: borderColor)),
-                  ),
-                  child: SizedBox(
-                    width: navigationWidth,
-                    child: Padding(
-                      padding: EdgeInsets.only(top: navigationChromeInset),
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: navigation,
-                      ),
-                    ),
-                  ),
-                ),
+                toolbar,
                 Expanded(
-                  child: Column(
+                  child: Row(
                     children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: CupertinoColors.systemBackground.resolveFrom(
-                            context,
-                          ),
-                          border: Border(
-                            bottom: BorderSide(color: borderColor),
-                          ),
+                      SizedBox(
+                        width: navigationWidth,
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: navigation,
                         ),
-                        child: toolbar,
+                      ),
+                      VerticalDivider(
+                        width: 1,
+                        thickness: 1,
+                        color: dividerColor,
                       ),
                       Expanded(
                         child: _AppleMacosContentArea(
@@ -176,36 +176,92 @@ class _AppleMacosToolbar extends StatelessWidget {
   const _AppleMacosToolbar({
     required this.leadingTitle,
     required this.showLeadingTitle,
+    required this.showDivider,
+    required this.titleBarHeight,
+    required this.trafficLightSafeInset,
     required this.center,
     required this.trailing,
-    required this.leadingChromeInset,
   });
 
   final Widget leadingTitle;
   final bool showLeadingTitle;
+  final bool showDivider;
+  final double titleBarHeight;
+  final double trafficLightSafeInset;
   final Widget? center;
   final Widget? trailing;
-  final double leadingChromeInset;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      key: const ValueKey<String>('apple-macos-toolbar'),
-      height: 52,
-      child: Padding(
-        padding: EdgeInsetsDirectional.only(
-          start: 16 + leadingChromeInset,
-          end: 16,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
+    final textColor = isDark
+        ? MemoFlowPalette.textDark
+        : MemoFlowPalette.textLight;
+
+    return Material(
+      color: backgroundColor,
+      child: Container(
+        key: const ValueKey<String>('apple-macos-toolbar'),
+        height: titleBarHeight,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          border: showDivider
+              ? Border(bottom: BorderSide(color: dividerColor))
+              : null,
         ),
-        child: NavigationToolbar(
-          leading: DefaultTextStyle.merge(
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            child: showLeadingTitle ? leadingTitle : const SizedBox.shrink(),
-          ),
-          middle: center,
-          trailing: trailing,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const DragToMoveArea(child: SizedBox.expand()),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Row(
+                children: [
+                  SizedBox(width: trafficLightSafeInset),
+                  if (showLeadingTitle) ...[
+                    Flexible(
+                      flex: 2,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: DefaultTextStyle.merge(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          child: leadingTitle,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    flex: 5,
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: center ?? const SizedBox.shrink(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [trailing ?? const SizedBox.shrink()],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

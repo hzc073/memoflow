@@ -5,6 +5,7 @@ import '../../../core/app_motion_widgets.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart';
 import '../app_drawer_model.dart';
+import 'desktop_navigation_sidebar.dart';
 
 class DesktopNavigationRail extends StatelessWidget {
   const DesktopNavigationRail({
@@ -15,6 +16,118 @@ class DesktopNavigationRail extends StatelessWidget {
 
   final AppDrawerModel model;
   final WidgetBuilder? tagsPanelBuilder;
+
+  Future<void> _showNavigationPanel(BuildContext context) {
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.08),
+      transitionDuration: const Duration(milliseconds: 160),
+      pageBuilder: (dialogContext, _, _) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(dialogContext).maybePop(),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  kWindowsDesktopRailWidth + 12,
+                  8,
+                  12,
+                  8,
+                ),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: _RailNavigationPanel(
+                    model: _dismissibleModel(dialogContext),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(-0.02, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  AppDrawerModel _dismissibleModel(BuildContext dialogContext) {
+    VoidCallback wrap(VoidCallback callback) {
+      return () {
+        Navigator.of(dialogContext).maybePop();
+        callback();
+      };
+    }
+
+    return AppDrawerModel(
+      title: model.title,
+      selected: model.selected,
+      selectedTagPath: model.selectedTagPath,
+      destinations: model.destinations
+          .map(
+            (item) => AppDrawerDestinationItem(
+              id: item.id,
+              label: item.label,
+              icon: item.icon,
+              selected: item.selected,
+              onTap: wrap(item.onTap),
+              tooltip: item.tooltip,
+              showBadge: item.showBadge,
+            ),
+          )
+          .toList(growable: false),
+      quickActions: model.quickActions
+          .map(
+            (item) => AppDrawerQuickActionItem(
+              id: item.id,
+              label: item.label,
+              tooltip: item.tooltip,
+              icon: item.icon,
+              onTap: wrap(item.onTap),
+              iconColor: item.iconColor,
+              showBadge: item.showBadge,
+            ),
+          )
+          .toList(growable: false),
+      tags: model.tags
+          .map(
+            (item) => AppDrawerTagItem(
+              label: item.label,
+              path: item.path,
+              count: item.count,
+              selected: item.selected,
+              onTap: wrap(item.onTap),
+            ),
+          )
+          .toList(growable: false),
+      stats: model.stats,
+      versionText: model.versionText,
+      hasUnreadNotifications: model.hasUnreadNotifications,
+      isLocalLibraryMode: model.isLocalLibraryMode,
+    );
+  }
 
   Future<void> _showTagsPanel(BuildContext context) {
     final builder = tagsPanelBuilder;
@@ -97,6 +210,25 @@ class DesktopNavigationRail extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 8),
+              _RailButton(
+                buttonKey: const ValueKey<String>(
+                  'desktop-navigation-rail-button-menu',
+                ),
+                tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+                icon: Icons.menu_rounded,
+                selected: false,
+                showBadge: false,
+                iconColor: iconColor,
+                hoverColor: hoverColor,
+                onTap: () => _showNavigationPanel(context),
+              ),
+              Divider(
+                height: 1,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+              const SizedBox(height: 8),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -146,6 +278,47 @@ class DesktopNavigationRail extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RailNavigationPanel extends StatelessWidget {
+  const _RailNavigationPanel({required this.model});
+
+  final AppDrawerModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      key: const ValueKey<String>('desktop-navigation-rail-menu-panel'),
+      color: Colors.transparent,
+      child: Container(
+        width: kMemoFlowDesktopDrawerWidth,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height - 16,
+        ),
+        decoration: BoxDecoration(
+          color: isDark
+              ? MemoFlowPalette.cardDark
+              : MemoFlowPalette.backgroundLight,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.08),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.12),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: DesktopNavigationSidebar(model: model),
       ),
     );
   }

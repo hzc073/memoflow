@@ -21,7 +21,7 @@ import '../../state/memos/memos_providers.dart';
 import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/attachment_video_screen.dart';
@@ -1410,7 +1410,6 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
     final platform = Theme.of(context).platform;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final isWindowsDesktop = platform == TargetPlatform.windows;
     final useDesktopResourcesTable = isDesktopTargetPlatform(platform);
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1493,103 +1492,95 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
         if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.resources,
-                onSelect: (d) => _navigate(context, d),
-                onSelectTag: (t) => _openTag(context, t),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.resources,
+        onSelectDestination: (d) => _navigate(context, d),
+        onSelectTag: (t) => _openTag(context, t),
+        onOpenNotifications: () => _openNotifications(context),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        title: Text(
+          context.t.strings.legacy.msg_attachments,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: useDesktopResourcesTable
+                    ? 1180
+                    : kMemoFlowDesktopContentMaxWidth,
               ),
-              leadingTitle: Text(
-                context.t.strings.legacy.msg_attachments,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              body: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: useDesktopResourcesTable
-                          ? 1180
-                          : kMemoFlowDesktopContentMaxWidth,
-                    ),
-                    child: pageBody,
-                  ),
-                ),
-              ),
-            )
-          : PlatformPage(
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              drawerEnableOpenDragGesture:
-                  widget.presentation !=
-                  HomeScreenPresentation.embeddedBottomNav,
-              desktopNavigationMode: useDesktopSidePane
-                  ? DesktopTitlebarNavigationMode.expandedSidebar
-                  : DesktopTitlebarNavigationMode.hidden,
-              desktopNavigationContext:
-                  DesktopTitlebarNavigationContext.topLevelDestination,
-              title: Text(
-                context.t.strings.legacy.msg_attachments,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              leading: useDesktopSidePane
-                  ? null
-                  : AppDrawerMenuButton(
-                      tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                      iconColor: colorScheme.onSurface,
-                      badgeBorderColor: Theme.of(
-                        context,
-                      ).scaffoldBackgroundColor,
-                    ),
-              body: (() {
-                if (!useDesktopSidePane) {
-                  return pageBody;
-                }
-
-                final desktopContent = Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: useDesktopResourcesTable
-                            ? 1180
-                            : kMemoFlowDesktopContentMaxWidth,
-                      ),
-                      child: pageBody,
-                    ),
-                  ),
-                );
-
-                return Row(
-                  children: [
-                    SizedBox(
-                      width: kMemoFlowDesktopDrawerWidth,
-                      child: drawerPanel,
-                    ),
-                    VerticalDivider(
-                      width: 1,
-                      thickness: 1,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : Colors.black.withValues(alpha: 0.08),
-                    ),
-                    Expanded(child: desktopContent),
-                  ],
-                );
-              })(),
+              child: pageBody,
             ),
+          ),
+        ),
+        fallback: PlatformPage(
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          drawerEnableOpenDragGesture:
+              widget.presentation != HomeScreenPresentation.embeddedBottomNav,
+          desktopNavigationMode: useDesktopSidePane
+              ? DesktopTitlebarNavigationMode.expandedSidebar
+              : DesktopTitlebarNavigationMode.hidden,
+          desktopNavigationContext:
+              DesktopTitlebarNavigationContext.topLevelDestination,
+          title: Text(
+            context.t.strings.legacy.msg_attachments,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          leading: useDesktopSidePane
+              ? null
+              : AppDrawerMenuButton(
+                  tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                  iconColor: colorScheme.onSurface,
+                  badgeBorderColor: Theme.of(context).scaffoldBackgroundColor,
+                ),
+          body: (() {
+            if (!useDesktopSidePane) {
+              return pageBody;
+            }
+
+            final desktopContent = Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: useDesktopResourcesTable
+                        ? 1180
+                        : kMemoFlowDesktopContentMaxWidth,
+                  ),
+                  child: pageBody,
+                ),
+              ),
+            );
+
+            return Row(
+              children: [
+                SizedBox(
+                  width: kMemoFlowDesktopDrawerWidth,
+                  child: drawerPanel,
+                ),
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.08),
+                ),
+                Expanded(child: desktopContent),
+              ],
+            );
+          })(),
+        ),
+      ),
     );
   }
 }

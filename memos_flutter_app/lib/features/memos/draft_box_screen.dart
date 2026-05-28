@@ -9,7 +9,7 @@ import '../../state/memos/compose_draft_provider.dart';
 import '../../state/memos/note_draft_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_menu_button.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_navigation_host.dart';
 import 'widgets/draft_box_memo_card.dart';
 
@@ -150,22 +150,20 @@ class DraftBoxScreen extends ConsumerWidget {
       ),
     );
 
-    if (isWindowsDesktop && showDrawer) {
+    if ((isWindowsDesktop || desktopPlatform == TargetPlatform.macOS) &&
+        showDrawer) {
       final bg = isDark
           ? MemoFlowPalette.backgroundDark
           : MemoFlowPalette.backgroundLight;
-      return DesktopShellHost(
+      return DesktopDestinationShell(
+        selectedDestination: effectiveSelected,
+        onSelectDestination: onSelect ?? (_) {},
+        onSelectTag: onSelectTag,
+        onOpenNotifications: onOpenNotifications,
         backgroundColor: bg,
-        navigationBuilder: (viewMode, embedded) => AppDrawer(
-          selected: effectiveSelected,
-          onSelect: onSelect ?? (_) {},
-          onSelectTag: onSelectTag,
-          onOpenNotifications: onOpenNotifications,
-          embedded: embedded,
-          viewMode: viewMode,
-        ),
-        leadingTitle: Text(title),
+        title: Text(title),
         body: body,
+        fallback: const SizedBox.shrink(),
       );
     }
 

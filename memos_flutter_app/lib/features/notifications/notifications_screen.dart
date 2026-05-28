@@ -23,7 +23,7 @@ import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/desktop/desktop_embedded_utility_surface.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
@@ -117,8 +117,6 @@ class NotificationsScreen extends ConsumerWidget {
     final useEmbeddedBottomNav =
         presentation == HomeScreenPresentation.embeddedBottomNav;
     final shouldInterceptPop = !useEmbeddedBottomNav;
-    final isWindowsDesktop =
-        Theme.of(context).platform == TargetPlatform.windows;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.memos,
       onSelect: (d) => _navigate(context, d),
@@ -224,49 +222,50 @@ class NotificationsScreen extends ConsumerWidget {
         if (didPop || !shouldInterceptPop) return;
         _backToHome(context);
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.memos,
-                onSelect: (destination) => _navigate(context, destination),
-                onSelectTag: (tag) => _openTag(context, tag),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(context.t.strings.legacy.msg_notifications),
-              body: pageBody,
-            )
-          : PlatformPage(
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
-              desktopWindowChromeSafeArea: true,
-              title: Text(context.t.strings.legacy.msg_notifications),
-              leading: IconButton(
-                tooltip: context.t.strings.legacy.msg_back,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => _backToHome(context),
-              ),
-              body: useDesktopSidePane
-                  ? Row(
-                      children: [
-                        SizedBox(
-                          width: kMemoFlowDesktopDrawerWidth,
-                          child: drawerPanel,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        Expanded(child: pageBody),
-                      ],
-                    )
-                  : pageBody,
-            ),
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.memos,
+        onSelectDestination: (destination) => _navigate(context, destination),
+        onSelectTag: (tag) => _openTag(context, tag),
+        onOpenNotifications: () => _openNotifications(context),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        title: Text(context.t.strings.legacy.msg_notifications),
+        dismissalIntent: DesktopDestinationDismissalIntent(
+          tooltip: context.t.strings.legacy.msg_back,
+          icon: Icons.arrow_back,
+          onPressed: () => _backToHome(context),
+        ),
+        navigationContext: DesktopTitlebarNavigationContext.secondaryTask,
+        body: pageBody,
+        fallback: PlatformPage(
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          drawerEnableOpenDragGesture: !useEmbeddedBottomNav,
+          desktopWindowChromeSafeArea: true,
+          title: Text(context.t.strings.legacy.msg_notifications),
+          leading: IconButton(
+            tooltip: context.t.strings.legacy.msg_back,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _backToHome(context),
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: pageBody),
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 

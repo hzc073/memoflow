@@ -994,8 +994,9 @@ class MemosListScreenBody extends StatelessWidget {
           },
         );
 
-    final isWindowsDesktop =
-        Theme.of(context).platform == TargetPlatform.windows;
+    final platform = Theme.of(context).platform;
+    final isWindowsDesktop = platform == TargetPlatform.windows;
+    final isMacosDesktop = platform == TargetPlatform.macOS;
     final showDesktopPreview =
         !desktopPrimaryContentOverridden &&
         data.viewState.layout.supportsDesktopPreviewPane &&
@@ -1031,18 +1032,71 @@ class MemosListScreenBody extends StatelessWidget {
       );
     }();
 
-    if (isWindowsDesktop && desktopDrawerPanelBuilder != null) {
+    final macosNavigationMode = data.viewState.layout.useDesktopSidePane
+        ? DesktopTitlebarNavigationMode.expandedSidebar
+        : desktopDrawerPanelBuilder != null
+        ? DesktopTitlebarNavigationMode.rail
+        : DesktopTitlebarNavigationMode.hidden;
+    final macosNavigationContext = resolveDesktopTitlebarNavigationContext(
+      context,
+    );
+
+    if ((isWindowsDesktop || isMacosDesktop) &&
+        desktopDrawerPanelBuilder != null) {
+      final macosCommandBar = isMacosDesktop
+          ? MemosListMacosDesktopTitleBar(
+              isDark: isDark,
+              searching: data.searching,
+              showPillActions:
+                  data.viewState.layout.showHeaderPillActions &&
+                  !desktopPrimaryContentOverridden,
+              enableHomeSort:
+                  data.viewState.query.enableHomeSort &&
+                  !desktopPrimaryContentOverridden,
+              enableSearch:
+                  data.enableSearch && !desktopPrimaryContentOverridden,
+              showLeadingTitle: shouldRenderDesktopTitlebarLeadingTitle(
+                platform: TargetPlatform.macOS,
+                navigationMode: macosNavigationMode,
+                navigationContext: macosNavigationContext,
+              ),
+              showDivider: shouldRenderDesktopTopLevelToolbarDivider(
+                platform: TargetPlatform.macOS,
+                navigationMode: macosNavigationMode,
+                navigationContext: macosNavigationContext,
+              ),
+              titleChild: data.enableTitleMenu
+                  ? titleChild
+                  : IgnorePointer(child: titleChild),
+              searchFieldChild: desktopPrimaryContentOverridden
+                  ? const SizedBox.shrink()
+                  : searchFieldChild,
+              sortButton: desktopPrimaryContentOverridden ? null : sortButton,
+              quickActions: desktopPrimaryContentOverridden
+                  ? const <HomeQuickActionChipData>[]
+                  : quickActions,
+              onOpenSearch: onOpenSearch,
+              onCloseSearch: onCloseSearch,
+              searchTooltip: context.t.strings.legacy.msg_search,
+              cancelTooltip: context.t.strings.legacy.msg_cancel_2,
+            )
+          : null;
       return DesktopShellHost(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         navigationBuilder: desktopDrawerPanelBuilder!,
         leadingTitle: data.enableTitleMenu
             ? titleChild
             : IgnorePointer(child: titleChild),
-        center: desktopPrimaryContentOverridden ? null : searchFieldChild,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: windowsDesktopTrailingActions,
-        ),
+        commandBar: macosCommandBar,
+        center: isMacosDesktop || desktopPrimaryContentOverridden
+            ? null
+            : searchFieldChild,
+        trailing: isMacosDesktop
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: windowsDesktopTrailingActions,
+              ),
         body: desktopBodyContent,
         secondaryPane: desktopPreviewPane,
         secondaryPaneVisible: showDesktopPreview,
@@ -1058,12 +1112,6 @@ class MemosListScreenBody extends StatelessWidget {
         data.enableDrawerOpenDragGesture &&
         !data.viewState.layout.useDesktopSidePane &&
         !data.searching;
-    final macosNavigationMode = data.viewState.layout.useDesktopSidePane
-        ? DesktopTitlebarNavigationMode.expandedSidebar
-        : DesktopTitlebarNavigationMode.hidden;
-    final macosNavigationContext = resolveDesktopTitlebarNavigationContext(
-      context,
-    );
     final scaffoldBody = useWindowsDesktopHeader && !data.searching
         ? Column(
             children: [
@@ -1135,6 +1183,19 @@ class MemosListScreenBody extends StatelessWidget {
                 searchFieldChild: desktopPrimaryContentOverridden
                     ? const SizedBox.shrink()
                     : searchFieldChild,
+                navigationButton:
+                    drawerPanel != null &&
+                        !data.viewState.layout.useDesktopSidePane &&
+                        !data.searching
+                    ? AppDrawerMenuButton(
+                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                        iconColor:
+                            Theme.of(context).appBarTheme.iconTheme?.color ??
+                            IconTheme.of(context).color ??
+                            Theme.of(context).colorScheme.onSurface,
+                        badgeBorderColor: data.headerBackgroundColor,
+                      )
+                    : null,
                 sortButton: desktopPrimaryContentOverridden ? null : sortButton,
                 quickActions: desktopPrimaryContentOverridden
                     ? const <HomeQuickActionChipData>[]

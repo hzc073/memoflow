@@ -15,7 +15,7 @@ import '../../state/memos/memo_timeline_provider.dart';
 import '../../i18n/strings.g.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import 'memos_list_screen.dart';
@@ -275,92 +275,83 @@ class _RecycleBinScreenState extends ConsumerState<RecycleBinScreen> {
         if (didPop || useEmbeddedBottomNav) return;
         _handleBack();
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.recycleBin,
-                onSelect: _navigate,
-                onSelectTag: _openTag,
-                onOpenNotifications: _openNotifications,
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(context.t.strings.legacy.msg_recycle_bin),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[])
-                      .isNotEmpty)
-                    IconButton(
-                      tooltip: context.t.strings.legacy.msg_clear,
-                      onPressed: handleClearAll,
-                      icon: const Icon(Icons.delete_sweep_outlined),
-                    ),
-                ],
-              ),
-              body: pageBody,
-            )
-          : Scaffold(
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              appBar: AppBar(
-                toolbarHeight: resolveDesktopTopLevelToolbarHeight(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                ),
-                flexibleSpace: enableWindowsDragToMove
-                    ? const DragToMoveArea(child: SizedBox.expand())
-                    : null,
-                automaticallyImplyLeading: !omitTopLevelChrome,
-                leading: resolveDesktopTopLevelLeading(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  leading: IconButton(
-                    tooltip: context.t.strings.legacy.msg_back,
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: _handleBack,
-                  ),
-                ),
-                title: resolveDesktopTopLevelTitle(
-                  platform: desktopPlatform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  title: IgnorePointer(
-                    ignoring: enableWindowsDragToMove,
-                    child: Text(context.t.strings.legacy.msg_recycle_bin),
-                  ),
-                ),
-                actions: [
-                  if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[])
-                      .isNotEmpty)
-                    IconButton(
-                      tooltip: context.t.strings.legacy.msg_clear,
-                      onPressed: handleClearAll,
-                      icon: const Icon(Icons.delete_sweep_outlined),
-                    ),
-                ],
-              ),
-              body: useDesktopSidePane
-                  ? Row(
-                      children: [
-                        SizedBox(
-                          width: kMemoFlowDesktopDrawerWidth,
-                          child: drawerPanel,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        Expanded(child: pageBody),
-                      ],
-                    )
-                  : pageBody,
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.recycleBin,
+        onSelectDestination: _navigate,
+        onSelectTag: _openTag,
+        onOpenNotifications: _openNotifications,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        title: Text(context.t.strings.legacy.msg_recycle_bin),
+        actions: [
+          if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[]).isNotEmpty)
+            IconButton(
+              tooltip: context.t.strings.legacy.msg_clear,
+              onPressed: handleClearAll,
+              icon: const Icon(Icons.delete_sweep_outlined),
             ),
+        ],
+        body: pageBody,
+        fallback: Scaffold(
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          appBar: AppBar(
+            toolbarHeight: resolveDesktopTopLevelToolbarHeight(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+            ),
+            flexibleSpace: enableWindowsDragToMove
+                ? const DragToMoveArea(child: SizedBox.expand())
+                : null,
+            automaticallyImplyLeading: !omitTopLevelChrome,
+            leading: resolveDesktopTopLevelLeading(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              leading: IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _handleBack,
+              ),
+            ),
+            title: resolveDesktopTopLevelTitle(
+              platform: desktopPlatform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              title: IgnorePointer(
+                ignoring: enableWindowsDragToMove,
+                child: Text(context.t.strings.legacy.msg_recycle_bin),
+              ),
+            ),
+            actions: [
+              if ((asyncItems.valueOrNull ?? const <RecycleBinItem>[])
+                  .isNotEmpty)
+                IconButton(
+                  tooltip: context.t.strings.legacy.msg_clear,
+                  onPressed: handleClearAll,
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                ),
+            ],
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: pageBody),
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 }

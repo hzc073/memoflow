@@ -27,7 +27,7 @@ import '../../state/system/session_provider.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
 import '../home/app_drawer_menu_button.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memos_list_screen.dart';
@@ -271,10 +271,8 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final currentAccount = ref.watch(
       appSessionProvider.select((state) => state.valueOrNull?.currentAccount),
     );
-    final platform = Theme.of(context).platform;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final isWindowsDesktop = platform == TargetPlatform.windows;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.collections,
@@ -415,235 +413,215 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
             SingleActivator(LogicalKeyboardKey.keyR, meta: true): () =>
                 _openReorderSheet(context, reorderItems),
         },
-        child: isWindowsDesktop
-            ? DesktopShellHost(
-                backgroundColor: bg,
-                navigationBuilder: (viewMode, embedded) => AppDrawer(
-                  selected: AppDrawerDestination.collections,
-                  onSelect: (destination) => _navigate(context, destination),
-                  onSelectTag: (tag) => _openTag(context, tag),
-                  onOpenNotifications: () => _openNotifications(context),
-                  embedded: embedded,
-                  viewMode: viewMode,
-                ),
-                leadingTitle: Text(context.t.strings.collections.title),
-                center: _searchExpanded
-                    ? Container(
-                        key: const ValueKey<String>('search-field'),
-                        height: 40,
-                        alignment: Alignment.center,
-                        child: PlatformTextField(
-                          controller: _searchController,
-                          focusNode: _searchFocusNode,
-                          onChanged: (_) => setState(() {}),
-                          autofocus: true,
-                          textInputAction: TextInputAction.search,
-                          decoration: InputDecoration(
-                            hintText:
-                                context.t.strings.collections.searchCollections,
-                            border: InputBorder.none,
-                            isDense: true,
-                          ),
-                        ),
-                      )
-                    : null,
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: _searchExpanded
-                      ? [
-                          IconButton(
-                            tooltip: _searchController.text.trim().isEmpty
-                                ? context.t.strings.legacy.msg_close_search
-                                : context.t.strings.legacy.msg_clear_2,
-                            onPressed: _collapseSearch,
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ]
-                      : [
-                          IconButton(
-                            key: const ValueKey<String>('search-button'),
-                            tooltip:
-                                context.t.strings.collections.searchCollections,
-                            onPressed: _expandSearch,
-                            icon: const Icon(Icons.search_rounded),
-                          ),
-                          PopupMenuButton<_CollectionsFilter>(
-                            tooltip: _filterTooltip(context),
-                            icon: Icon(
-                              _filter == _CollectionsFilter.all
-                                  ? Icons.filter_list_rounded
-                                  : Icons.filter_alt_rounded,
-                            ),
-                            initialValue: _filter,
-                            onSelected: (value) {
-                              setState(() => _filter = value);
-                            },
-                            itemBuilder: (context) => [
-                              for (final filter in _CollectionsFilter.values)
-                                PopupMenuItem<_CollectionsFilter>(
-                                  value: filter,
-                                  child: Row(
-                                    children: [
-                                      if (filter == _filter)
-                                        const Padding(
-                                          padding: EdgeInsets.only(right: 8),
-                                          child: Icon(
-                                            Icons.check_rounded,
-                                            size: 18,
-                                          ),
-                                        )
-                                      else
-                                        const SizedBox(width: 26),
-                                      Text(_filterLabel(context, filter)),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                          IconButton(
-                            tooltip: context.t.strings.collections.reorderShelf,
-                            onPressed: reorderItems.length < 2
-                                ? null
-                                : () =>
-                                      _openReorderSheet(context, reorderItems),
-                            icon: const Icon(Icons.reorder_rounded),
-                          ),
-                          IconButton(
-                            tooltip:
-                                context.t.strings.collections.createCollection,
-                            onPressed: () => _openEditor(context),
-                            icon: const Icon(Icons.add_rounded),
-                          ),
-                        ],
-                ),
-                body: body,
-              )
-            : PlatformPage(
-                backgroundColor: bg,
-                drawer: useDesktopSidePane ? null : drawerPanel,
-                desktopNavigationMode: useDesktopSidePane && !_searchExpanded
-                    ? DesktopTitlebarNavigationMode.expandedSidebar
-                    : DesktopTitlebarNavigationMode.hidden,
-                desktopNavigationContext:
-                    DesktopTitlebarNavigationContext.topLevelDestination,
-                leading: useDesktopSidePane
-                    ? null
-                    : AppDrawerMenuButton(
-                        tooltip: context.t.strings.legacy.msg_toggle_sidebar,
-                        iconColor:
-                            Theme.of(context).appBarTheme.iconTheme?.color ??
-                            IconTheme.of(context).color ??
-                            Theme.of(context).colorScheme.onSurface,
-                        badgeBorderColor: bg,
+        child: DesktopDestinationShell(
+          selectedDestination: AppDrawerDestination.collections,
+          onSelectDestination: (destination) => _navigate(context, destination),
+          onSelectTag: (tag) => _openTag(context, tag),
+          onOpenNotifications: () => _openNotifications(context),
+          backgroundColor: bg,
+          title: Text(context.t.strings.collections.title),
+          center: _searchExpanded
+              ? Container(
+                  key: const ValueKey<String>('search-field'),
+                  height: 40,
+                  alignment: Alignment.center,
+                  child: PlatformTextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onChanged: (_) => setState(() {}),
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: context.t.strings.collections.searchCollections,
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                  ),
+                )
+              : null,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: _searchExpanded
+                ? [
+                    IconButton(
+                      tooltip: _searchController.text.trim().isEmpty
+                          ? context.t.strings.legacy.msg_close_search
+                          : context.t.strings.legacy.msg_clear_2,
+                      onPressed: _collapseSearch,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ]
+                : [
+                    IconButton(
+                      key: const ValueKey<String>('search-button'),
+                      tooltip: context.t.strings.collections.searchCollections,
+                      onPressed: _expandSearch,
+                      icon: const Icon(Icons.search_rounded),
+                    ),
+                    PopupMenuButton<_CollectionsFilter>(
+                      tooltip: _filterTooltip(context),
+                      icon: Icon(
+                        _filter == _CollectionsFilter.all
+                            ? Icons.filter_list_rounded
+                            : Icons.filter_alt_rounded,
                       ),
-                title: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  child: _searchExpanded
-                      ? Container(
-                          key: const ValueKey<String>('search-field'),
-                          height: 40,
-                          alignment: Alignment.center,
-                          child: PlatformTextField(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            onChanged: (_) => setState(() {}),
-                            autofocus: true,
-                            textInputAction: TextInputAction.search,
-                            decoration: InputDecoration(
-                              hintText: context
-                                  .t
-                                  .strings
-                                  .collections
-                                  .searchCollections,
-                              border: InputBorder.none,
-                              isDense: true,
+                      initialValue: _filter,
+                      onSelected: (value) {
+                        setState(() => _filter = value);
+                      },
+                      itemBuilder: (context) => [
+                        for (final filter in _CollectionsFilter.values)
+                          PopupMenuItem<_CollectionsFilter>(
+                            value: filter,
+                            child: Row(
+                              children: [
+                                if (filter == _filter)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 8),
+                                    child: Icon(Icons.check_rounded, size: 18),
+                                  )
+                                else
+                                  const SizedBox(width: 26),
+                                Text(_filterLabel(context, filter)),
+                              ],
                             ),
                           ),
-                        )
-                      : Text(context.t.strings.collections.title),
-                ),
-                actions: _searchExpanded
-                    ? [
-                        IconButton(
-                          tooltip: _searchController.text.trim().isEmpty
-                              ? context.t.strings.legacy.msg_close_search
-                              : context.t.strings.legacy.msg_clear_2,
-                          onPressed: _collapseSearch,
-                          icon: Icon(PlatformIcons.platformClose),
-                        ),
-                      ]
-                    : [
-                        IconButton(
-                          key: const ValueKey<String>('search-button'),
-                          tooltip:
-                              context.t.strings.collections.searchCollections,
-                          onPressed: _expandSearch,
-                          icon: const Icon(Icons.search_rounded),
-                        ),
-                        PopupMenuButton<_CollectionsFilter>(
-                          tooltip: _filterTooltip(context),
-                          icon: Icon(
-                            _filter == _CollectionsFilter.all
-                                ? Icons.filter_list_rounded
-                                : Icons.filter_alt_rounded,
-                          ),
-                          initialValue: _filter,
-                          onSelected: (value) {
-                            setState(() => _filter = value);
-                          },
-                          itemBuilder: (context) => [
-                            for (final filter in _CollectionsFilter.values)
-                              PopupMenuItem<_CollectionsFilter>(
-                                value: filter,
-                                child: Row(
-                                  children: [
-                                    if (filter == _filter)
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 8),
-                                        child: Icon(
-                                          Icons.check_rounded,
-                                          size: 18,
-                                        ),
-                                      )
-                                    else
-                                      const SizedBox(width: 26),
-                                    Text(_filterLabel(context, filter)),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                        IconButton(
-                          tooltip: context.t.strings.collections.reorderShelf,
-                          onPressed: reorderItems.length < 2
-                              ? null
-                              : () => _openReorderSheet(context, reorderItems),
-                          icon: const Icon(Icons.reorder_rounded),
-                        ),
-                        IconButton(
-                          tooltip:
-                              context.t.strings.collections.createCollection,
-                          onPressed: () => _openEditor(context),
-                          icon: const Icon(Icons.add_rounded),
-                        ),
                       ],
-                body: useDesktopSidePane
-                    ? Row(
-                        children: [
-                          SizedBox(
-                            width: kMemoFlowDesktopDrawerWidth,
-                            child: drawerPanel,
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.collections.reorderShelf,
+                      onPressed: reorderItems.length < 2
+                          ? null
+                          : () => _openReorderSheet(context, reorderItems),
+                      icon: const Icon(Icons.reorder_rounded),
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.collections.createCollection,
+                      onPressed: () => _openEditor(context),
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ],
+          ),
+          body: body,
+          fallback: PlatformPage(
+            backgroundColor: bg,
+            drawer: useDesktopSidePane ? null : drawerPanel,
+            desktopNavigationMode: useDesktopSidePane && !_searchExpanded
+                ? DesktopTitlebarNavigationMode.expandedSidebar
+                : DesktopTitlebarNavigationMode.hidden,
+            desktopNavigationContext:
+                DesktopTitlebarNavigationContext.topLevelDestination,
+            leading: useDesktopSidePane
+                ? null
+                : AppDrawerMenuButton(
+                    tooltip: context.t.strings.legacy.msg_toggle_sidebar,
+                    iconColor:
+                        Theme.of(context).appBarTheme.iconTheme?.color ??
+                        IconTheme.of(context).color ??
+                        Theme.of(context).colorScheme.onSurface,
+                    badgeBorderColor: bg,
+                  ),
+            title: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: _searchExpanded
+                  ? Container(
+                      key: const ValueKey<String>('search-field'),
+                      height: 40,
+                      alignment: Alignment.center,
+                      child: PlatformTextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        onChanged: (_) => setState(() {}),
+                        autofocus: true,
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText:
+                              context.t.strings.collections.searchCollections,
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                      ),
+                    )
+                  : Text(context.t.strings.collections.title),
+            ),
+            actions: _searchExpanded
+                ? [
+                    IconButton(
+                      tooltip: _searchController.text.trim().isEmpty
+                          ? context.t.strings.legacy.msg_close_search
+                          : context.t.strings.legacy.msg_clear_2,
+                      onPressed: _collapseSearch,
+                      icon: Icon(PlatformIcons.platformClose),
+                    ),
+                  ]
+                : [
+                    IconButton(
+                      key: const ValueKey<String>('search-button'),
+                      tooltip: context.t.strings.collections.searchCollections,
+                      onPressed: _expandSearch,
+                      icon: const Icon(Icons.search_rounded),
+                    ),
+                    PopupMenuButton<_CollectionsFilter>(
+                      tooltip: _filterTooltip(context),
+                      icon: Icon(
+                        _filter == _CollectionsFilter.all
+                            ? Icons.filter_list_rounded
+                            : Icons.filter_alt_rounded,
+                      ),
+                      initialValue: _filter,
+                      onSelected: (value) {
+                        setState(() => _filter = value);
+                      },
+                      itemBuilder: (context) => [
+                        for (final filter in _CollectionsFilter.values)
+                          PopupMenuItem<_CollectionsFilter>(
+                            value: filter,
+                            child: Row(
+                              children: [
+                                if (filter == _filter)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 8),
+                                    child: Icon(Icons.check_rounded, size: 18),
+                                  )
+                                else
+                                  const SizedBox(width: 26),
+                                Text(_filterLabel(context, filter)),
+                              ],
+                            ),
                           ),
-                          VerticalDivider(
-                            width: 1,
-                            thickness: 1,
-                            color: dividerColor,
-                          ),
-                          Expanded(child: body),
-                        ],
-                      )
-                    : body,
-              ),
+                      ],
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.collections.reorderShelf,
+                      onPressed: reorderItems.length < 2
+                          ? null
+                          : () => _openReorderSheet(context, reorderItems),
+                      icon: const Icon(Icons.reorder_rounded),
+                    ),
+                    IconButton(
+                      tooltip: context.t.strings.collections.createCollection,
+                      onPressed: () => _openEditor(context),
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ],
+            body: useDesktopSidePane
+                ? Row(
+                    children: [
+                      SizedBox(
+                        width: kMemoFlowDesktopDrawerWidth,
+                        child: drawerPanel,
+                      ),
+                      VerticalDivider(
+                        width: 1,
+                        thickness: 1,
+                        color: dividerColor,
+                      ),
+                      Expanded(child: body),
+                    ],
+                  )
+                : body,
+          ),
+        ),
       ),
     );
 

@@ -5,7 +5,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/platform_layout.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_entry_screen.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memos_list_screen.dart';
@@ -109,83 +109,78 @@ class AboutScreen extends StatelessWidget {
         if (didPop || useEmbeddedBottomNav) return;
         _backToAllMemos(context);
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: bg,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.about,
-                onSelect: (d) => _navigate(context, d),
-                onSelectTag: (t) => _openTag(context, t),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(
-                context.t.strings.legacy.msg_about,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              body: pageBody,
-            )
-          : Scaffold(
-              backgroundColor: bg,
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              appBar: AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                surfaceTintColor: Colors.transparent,
-                toolbarHeight: resolveDesktopTopLevelToolbarHeight(
-                  platform: platform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                ),
-                flexibleSpace: enableWindowsDragToMove
-                    ? const DragToMoveArea(child: SizedBox.expand())
-                    : null,
-                automaticallyImplyLeading: !omitTopLevelChrome,
-                leading: resolveDesktopTopLevelLeading(
-                  platform: platform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  leading: IconButton(
-                    tooltip: context.t.strings.legacy.msg_back,
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => _backToAllMemos(context),
-                  ),
-                ),
-                title: resolveDesktopTopLevelTitle(
-                  platform: platform,
-                  navigationMode: desktopNavigationMode,
-                  navigationContext: desktopNavigationContext,
-                  title: IgnorePointer(
-                    ignoring: enableWindowsDragToMove,
-                    child: Text(context.t.strings.legacy.msg_about),
-                  ),
-                ),
-                centerTitle: false,
-              ),
-              body: useDesktopSidePane
-                  ? Row(
-                      children: [
-                        SizedBox(
-                          width: kMemoFlowDesktopDrawerWidth,
-                          child: drawerPanel,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        Expanded(child: pageBody),
-                      ],
-                    )
-                  : pageBody,
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.about,
+        onSelectDestination: (d) => _navigate(context, d),
+        onSelectTag: (t) => _openTag(context, t),
+        onOpenNotifications: () => _openNotifications(context),
+        backgroundColor: bg,
+        title: Text(
+          context.t.strings.legacy.msg_about,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        body: pageBody,
+        fallback: Scaffold(
+          backgroundColor: bg,
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            toolbarHeight: resolveDesktopTopLevelToolbarHeight(
+              platform: platform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
             ),
+            flexibleSpace: enableWindowsDragToMove
+                ? const DragToMoveArea(child: SizedBox.expand())
+                : null,
+            automaticallyImplyLeading: !omitTopLevelChrome,
+            leading: resolveDesktopTopLevelLeading(
+              platform: platform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              leading: IconButton(
+                tooltip: context.t.strings.legacy.msg_back,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => _backToAllMemos(context),
+              ),
+            ),
+            title: resolveDesktopTopLevelTitle(
+              platform: platform,
+              navigationMode: desktopNavigationMode,
+              navigationContext: desktopNavigationContext,
+              title: IgnorePointer(
+                ignoring: enableWindowsDragToMove,
+                child: Text(context.t.strings.legacy.msg_about),
+              ),
+            ),
+            centerTitle: false,
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: pageBody),
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 }

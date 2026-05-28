@@ -31,7 +31,7 @@ import '../../data/models/local_memo.dart';
 import '../../state/memos/memo_mutation_service.dart';
 import '../home/app_drawer.dart';
 import '../home/app_drawer_destination_builder.dart';
-import '../home/desktop/desktop_shell_host.dart';
+import '../home/desktop/desktop_destination_shell.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../home/home_navigation_host.dart';
 import '../memos/memo_detail_screen.dart';
@@ -1006,8 +1006,6 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final isReport = _view == _AiSummaryView.report;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final useDesktopSidePane = shouldUseDesktopSidePaneLayout(screenWidth);
-    final isWindowsDesktop =
-        Theme.of(context).platform == TargetPlatform.windows;
     final drawerPanel = AppDrawer(
       selected: AppDrawerDestination.aiSummary,
       onSelect: (d) => _navigate(context, d),
@@ -1058,57 +1056,51 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
         if (didPop || !shouldInterceptPop) return;
         _backToAllMemos(context);
       },
-      child: isWindowsDesktop
-          ? DesktopShellHost(
-              backgroundColor: bg,
-              navigationBuilder: (viewMode, embedded) => AppDrawer(
-                selected: AppDrawerDestination.aiSummary,
-                onSelect: (d) => _navigate(context, d),
-                onSelectTag: (t) => _openTag(context, t),
-                onOpenNotifications: () => _openNotifications(context),
-                embedded: embedded,
-                viewMode: viewMode,
-              ),
-              leadingTitle: Text(context.t.strings.legacy.msg_ai_summary),
-              trailing: _buildWindowsTitleBarActions(
-                isReport: isReport,
-                textMain: textMain,
-              ),
-              body: pageBody,
-            )
-          : Scaffold(
-              backgroundColor: bg,
-              drawer: useDesktopSidePane ? null : drawerPanel,
-              drawerEnableOpenDragGesture:
-                  widget.presentation !=
-                  HomeScreenPresentation.embeddedBottomNav,
-              appBar: _buildAppBar(
-                context: context,
-                isReport: isReport,
-                bg: bg,
-                border: border,
-                textMain: textMain,
-                useDesktopSidePane: useDesktopSidePane,
-              ),
-              body: useDesktopSidePane
-                  ? Row(
-                      children: [
-                        SizedBox(
-                          width: kMemoFlowDesktopDrawerWidth,
-                          child: drawerPanel,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.08)
-                              : Colors.black.withValues(alpha: 0.08),
-                        ),
-                        Expanded(child: pageBody),
-                      ],
-                    )
-                  : pageBody,
-            ),
+      child: DesktopDestinationShell(
+        selectedDestination: AppDrawerDestination.aiSummary,
+        onSelectDestination: (d) => _navigate(context, d),
+        onSelectTag: (t) => _openTag(context, t),
+        onOpenNotifications: () => _openNotifications(context),
+        backgroundColor: bg,
+        title: Text(context.t.strings.legacy.msg_ai_summary),
+        trailing: _buildWindowsTitleBarActions(
+          isReport: isReport,
+          textMain: textMain,
+        ),
+        body: pageBody,
+        fallback: Scaffold(
+          backgroundColor: bg,
+          drawer: useDesktopSidePane ? null : drawerPanel,
+          drawerEnableOpenDragGesture:
+              widget.presentation != HomeScreenPresentation.embeddedBottomNav,
+          appBar: _buildAppBar(
+            context: context,
+            isReport: isReport,
+            bg: bg,
+            border: border,
+            textMain: textMain,
+            useDesktopSidePane: useDesktopSidePane,
+          ),
+          body: useDesktopSidePane
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: kMemoFlowDesktopDrawerWidth,
+                      child: drawerPanel,
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    Expanded(child: pageBody),
+                  ],
+                )
+              : pageBody,
+        ),
+      ),
     );
   }
 
