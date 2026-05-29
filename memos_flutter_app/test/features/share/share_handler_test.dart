@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/features/share/clipboard_share_detector.dart';
 import 'package:memos_flutter_app/features/share/share_handler.dart';
 
 void main() {
@@ -125,5 +126,41 @@ void main() {
     final url = extractShareUrl(raw);
 
     expect(url, 'https://example.com/one');
+  });
+
+  test('clipboard prompt tracker allows a different URL after a prompt', () {
+    final tracker = ClipboardSharePromptTracker();
+    const first = SharePayload(
+      type: SharePayloadType.text,
+      text: 'A https://example.com/a',
+    );
+    const second = SharePayload(
+      type: SharePayloadType.text,
+      text: 'B https://example.com/b',
+    );
+
+    expect(tracker.wasPrompted(first), isFalse);
+    expect(tracker.markPrompted(first), 'https://example.com/a');
+    expect(tracker.wasPrompted(first), isTrue);
+    expect(tracker.wasPrompted(second), isFalse);
+  });
+
+  test('clipboard prompt tracker normalizes equivalent URL strings', () {
+    final tracker = ClipboardSharePromptTracker();
+    const payload = SharePayload(
+      type: SharePayloadType.text,
+      text: '  https://example.com/path  ',
+    );
+
+    expect(tracker.markPrompted(payload), 'https://example.com/path');
+    expect(
+      tracker.wasPrompted(
+        const SharePayload(
+          type: SharePayloadType.text,
+          text: 'https://example.com/path',
+        ),
+      ),
+      isTrue,
+    );
   });
 }

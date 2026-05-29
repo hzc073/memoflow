@@ -102,10 +102,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
   late final UpdateAnnouncementRunner _updateAnnouncementRunner;
   late final SyncFeedbackPresenter _syncFeedbackPresenter;
   late final ClipboardShareDetector _clipboardShareDetector;
+  late final ClipboardSharePromptTracker _clipboardSharePromptTracker;
   final app_font.FontLoader _fontLoader = app_font.FontLoader();
   int _clipboardCheckBurstId = 0;
   int? _clipboardHandledBurstId;
-  String? _lastClipboardPromptedUrl;
   ProviderSubscription<bool>? _prefsLoadedSub;
   ProviderSubscription<AsyncValue<AppSessionState>>? _sessionSub;
   ProviderSubscription<LocalLibrary?>? _localLibrarySub;
@@ -173,6 +173,11 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  void _handleShareFlowReleased(String source) {
+    if (!mounted) return;
+    _scheduleClipboardShareChecks(source: 'share_flow_released_$source');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -202,6 +207,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       showProgressToast: _syncFeedbackPresenter.showAutoSyncProgressToast,
     );
     _clipboardShareDetector = ClipboardShareDetector();
+    _clipboardSharePromptTracker = ClipboardSharePromptTracker();
     _startupCoordinator = StartupCoordinator(
       bootstrapAdapter: _bootstrapAdapter,
       syncOrchestrator: _syncOrchestrator,
@@ -209,6 +215,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       navigatorKey: _navigatorKey,
       ref: ref,
       isMounted: () => mounted,
+      onShareFlowReleased: _handleShareFlowReleased,
     );
     _startupCoordinator.addListener(_handleStartupCoordinatorChanged);
     final quickInputService = QuickInputService(
@@ -649,8 +656,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     }
     final payload = detection.payload;
     if (payload == null) return;
-    final normalizedUrl = _normalizedClipboardUrl(payload);
-    if (normalizedUrl != null && normalizedUrl == _lastClipboardPromptedUrl) {
+    final normalizedUrl = _clipboardSharePromptTracker.normalizedUrl(payload);
+    if (_clipboardSharePromptTracker.wasPrompted(payload)) {
       LogManager.instance.debug(
         'ClipboardShare: check_skip',
         context: {
@@ -669,7 +676,7 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
       );
       return;
     }
-    _lastClipboardPromptedUrl = normalizedUrl;
+    _clipboardSharePromptTracker.markPrompted(payload);
     _clipboardHandledBurstId = burstId;
     LogManager.instance.info(
       'ClipboardShare: candidate_prompted',
@@ -703,14 +710,8 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     await _startupCoordinator.handleShareLaunch(payload);
   }
 
-  String? _normalizedClipboardUrl(SharePayload payload) {
-    final rawUrl = extractShareUrl((payload.text ?? '').trim());
-    if (rawUrl == null || rawUrl.isEmpty) return null;
-    return Uri.tryParse(rawUrl)?.toString() ?? rawUrl;
-  }
-
   void _markClipboardUrlPrompted(SharePayload payload) {
-    _lastClipboardPromptedUrl = _normalizedClipboardUrl(payload);
+    _clipboardSharePromptTracker.markPrompted(payload);
   }
 
   Future<bool> _confirmClipboardShareCandidate(

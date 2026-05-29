@@ -69,3 +69,23 @@ class ClipboardShareDetector {
     return text;
   }
 }
+
+class ClipboardSharePromptTracker {
+  String? _lastPromptedUrl;
+
+  String? normalizedUrl(SharePayload payload) {
+    final rawUrl = extractShareUrl((payload.text ?? '').trim());
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+    return Uri.tryParse(rawUrl)?.toString() ?? rawUrl;
+  }
+
+  bool wasPrompted(SharePayload payload) {
+    final normalized = normalizedUrl(payload);
+    return normalized != null && normalized == _lastPromptedUrl;
+  }
+
+  String? markPrompted(SharePayload payload) {
+    _lastPromptedUrl = normalizedUrl(payload);
+    return _lastPromptedUrl;
+  }
+}

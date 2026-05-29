@@ -53,6 +53,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       _pendingSharePayload = null;
       _clearStartupShareLaunchUi();
       _setShareFlowActive(false);
+      _notifyShareFlowReleased(source: 'share_disabled');
       _notifyShareDisabled();
       return hasWorkspace;
     }
@@ -286,6 +287,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
     _flushDeferredQuickClipRecoveryIfNeeded(source: source);
     scheduleQuickClipRecovery(source: source);
     await _flushDeferredLaunchSyncIfNeeded();
+    _notifyShareFlowReleased(source: source);
   }
 
   Future<void> _openShareQuickClipFlow(SharePayload payload) async {
@@ -368,6 +370,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       _flushDeferredQuickClipRecoveryIfNeeded(source: 'share_flow_completed');
       scheduleQuickClipRecovery(source: 'share_flow_completed');
       unawaited(_flushDeferredLaunchSyncIfNeeded());
+      _notifyShareFlowReleased(source: 'share_flow_completed');
     }
   }
 
@@ -408,6 +411,7 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       _flushDeferredQuickClipRecoveryIfNeeded(source: 'share_flow_completed');
       scheduleQuickClipRecovery(source: 'share_flow_completed');
       unawaited(_flushDeferredLaunchSyncIfNeeded());
+      _notifyShareFlowReleased(source: 'share_flow_completed');
     }
   }
 

@@ -61,6 +61,7 @@ Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
   DesktopShareTaskWindowOpener? desktopShareTaskWindowOpenerOverride,
   DesktopShareTaskRequestIdFactory? desktopShareTaskRequestIdFactory,
   DesktopMainWindowForegrounder? desktopMainWindowForegrounderOverride,
+  ShareFlowReleasedCallback? onShareFlowReleased,
   AppNavigator? appNavigator,
   AppNavigator Function(GlobalKey<NavigatorState> navigatorKey)?
   appNavigatorBuilder,
@@ -108,6 +109,7 @@ Future<StartupCoordinatorTestHarness> pumpStartupCoordinatorHarness(
     desktopShareTaskRequestIdFactory: desktopShareTaskRequestIdFactory,
     desktopMainWindowForegrounderOverride:
         desktopMainWindowForegrounderOverride,
+    onShareFlowReleased: onShareFlowReleased,
   );
   addTearDown(coordinator.dispose);
   return StartupCoordinatorTestHarness(

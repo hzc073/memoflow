@@ -51,6 +51,7 @@ typedef DesktopShareTaskWindowOpener =
     });
 typedef DesktopShareTaskRequestIdFactory = String Function();
 typedef DesktopMainWindowForegrounder = Future<void> Function();
+typedef ShareFlowReleasedCallback = void Function(String source);
 
 class StartupCoordinator extends ChangeNotifier {
   StartupCoordinator({
@@ -74,6 +75,7 @@ class StartupCoordinator extends ChangeNotifier {
     DesktopShareTaskRequestIdFactory? desktopShareTaskRequestIdFactory,
     @visibleForTesting
     DesktopMainWindowForegrounder? desktopMainWindowForegrounderOverride,
+    ShareFlowReleasedCallback? onShareFlowReleased,
   }) : _bootstrapAdapter = bootstrapAdapter,
        _syncOrchestrator = syncOrchestrator,
        _appNavigator = appNavigator,
@@ -91,7 +93,8 @@ class StartupCoordinator extends ChangeNotifier {
        _desktopShareTaskRequestIdFactory = desktopShareTaskRequestIdFactory,
        _desktopMainWindowForegrounder =
            desktopMainWindowForegrounderOverride ??
-           foregroundDesktopMainWindowForShareResult;
+           foregroundDesktopMainWindowForShareResult,
+       _onShareFlowReleased = onShareFlowReleased;
 
   final AppBootstrapAdapter _bootstrapAdapter;
   final AppSyncOrchestrator _syncOrchestrator;
@@ -108,9 +111,14 @@ class StartupCoordinator extends ChangeNotifier {
   final DesktopShareTaskWindowOpener _desktopShareTaskWindowOpener;
   final DesktopShareTaskRequestIdFactory? _desktopShareTaskRequestIdFactory;
   final DesktopMainWindowForegrounder _desktopMainWindowForegrounder;
+  ShareFlowReleasedCallback? _onShareFlowReleased;
 
   set onQuickInputRequested(ValueChanged<String>? value) {
     _onQuickInputRequested = value;
+  }
+
+  set onShareFlowReleased(ShareFlowReleasedCallback? value) {
+    _onShareFlowReleased = value;
   }
 
   bool _showTopToast(BuildContext context, String message) {

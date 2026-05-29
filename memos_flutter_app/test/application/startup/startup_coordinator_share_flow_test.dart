@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/application/desktop/desktop_share_window.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
+import 'package:memos_flutter_app/features/share/clipboard_share_detector.dart';
 import 'package:memos_flutter_app/features/share/share_clip_models.dart';
 import 'package:memos_flutter_app/features/share/share_handler.dart';
 import 'package:memos_flutter_app/features/share/share_quick_clip_models.dart';
@@ -88,6 +89,7 @@ void main() {
       'preview flow opens desktop share task window when opener accepts',
       (tester) async {
         final opened = <Map<String, Object?>>[];
+        final releasedSources = <String>[];
         var foregroundCalls = 0;
         ShareComposeRequest? presented;
         final bootstrapAdapter = FakeBootstrapAdapter(
@@ -118,6 +120,7 @@ void main() {
           shareComposeRequestPresenterOverride: (context, request) {
             presented = request;
           },
+          onShareFlowReleased: releasedSources.add,
         );
 
         await harness.coordinator.handleShareLaunch(buildPreviewSharePayload());
@@ -149,6 +152,7 @@ void main() {
         expect(presented!.showLocalSaveSuccessToast, isTrue);
         expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
         expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
+        expect(releasedSources, <String>['share_task_result']);
       },
     );
 
@@ -156,6 +160,7 @@ void main() {
       tester,
     ) async {
       final openedRequestIds = <String>[];
+      final releasedSources = <String>[];
       final requestIds = <String>['first-share', 'second-share'];
       final presentedTexts = <String>[];
       final bootstrapAdapter = FakeBootstrapAdapter(
@@ -181,6 +186,7 @@ void main() {
         shareComposeRequestPresenterOverride: (context, request) {
           presentedTexts.add(request.text);
         },
+        onShareFlowReleased: releasedSources.add,
       );
 
       await harness.coordinator.handleShareLaunch(buildPreviewSharePayload());
@@ -211,6 +217,7 @@ void main() {
       expect(secondAccepted, isTrue);
       expect(presentedTexts, <String>['second-result']);
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isTrue);
+      expect(releasedSources, isEmpty);
 
       final firstCanceled = await harness.coordinator
           .handleDesktopShareTaskCanceled(
@@ -221,11 +228,13 @@ void main() {
       expect(firstCanceled, isTrue);
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
       expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
+      expect(releasedSources, <String>['share_task_canceled']);
     });
 
-    testWidgets('preview sheet can be dismissed without clipping', (
+    testWidgets('unknown desktop share task ids do not release active flow', (
       tester,
     ) async {
+      final releasedSources = <String>[];
       final bootstrapAdapter = FakeBootstrapAdapter(
         preferences: AppPreferences.defaults.copyWith(
           thirdPartyShareEnabled: true,
@@ -236,6 +245,131 @@ void main() {
       final harness = await pumpStartupCoordinatorHarness(
         tester,
         bootstrapAdapter: bootstrapAdapter,
+        appNavigatorBuilder: TestMemosAppNavigator.new,
+        desktopShareTaskRequestIdFactory: () => 'known-share',
+        desktopShareTaskWindowOpenerOverride:
+            ({required requestId, required payloadJson}) async {
+              return const DesktopShareTaskWindowOpenResult.opened(windowId: 7);
+            },
+        onShareFlowReleased: releasedSources.add,
+      );
+
+      await harness.coordinator.handleShareLaunch(buildPreviewSharePayload());
+      await tester.pumpAndSettle();
+
+      final unknownCanceled = await harness.coordinator
+          .handleDesktopShareTaskCanceled(
+            desktopShareTaskCanceledToJson('unknown-share'),
+            9,
+          );
+      final unknownResult = await harness.coordinator
+          .handleDesktopShareTaskResult(
+            DesktopShareTaskResult(
+              requestId: 'unknown-share',
+              request: const ShareComposeRequest(
+                text: 'ignored',
+                selectionOffset: 7,
+              ),
+            ).toJson(),
+            9,
+          );
+
+      expect(unknownCanceled, isFalse);
+      expect(unknownResult, isFalse);
+      expect(harness.coordinator.shouldDeferHeavyStartupWork, isTrue);
+      expect(releasedSources, isEmpty);
+    });
+
+    testWidgets(
+      'share-flow release lets a changed clipboard URL become promptable without resume',
+      (tester) async {
+        final tracker = ClipboardSharePromptTracker();
+        final promptableClipboardUrls = <String>[];
+        final releasedSources = <String>[];
+        const firstPayload = SharePayload(
+          type: SharePayloadType.text,
+          text: 'URL A https://example.com/articles/1',
+          title: 'URL A',
+        );
+        const nextClipboardPayload = SharePayload(
+          type: SharePayloadType.text,
+          text: 'URL B https://example.com/articles/2',
+          title: 'URL B',
+        );
+        final bootstrapAdapter = FakeBootstrapAdapter(
+          preferences: AppPreferences.defaults.copyWith(
+            thirdPartyShareEnabled: true,
+          ),
+          preferencesLoaded: true,
+          session: buildTestSessionWithAccount(),
+        );
+        final harness = await pumpStartupCoordinatorHarness(
+          tester,
+          bootstrapAdapter: bootstrapAdapter,
+          appNavigatorBuilder: TestMemosAppNavigator.new,
+          desktopShareTaskRequestIdFactory: () => 'retry-share',
+          desktopShareTaskWindowOpenerOverride:
+              ({required requestId, required payloadJson}) async {
+                return const DesktopShareTaskWindowOpenResult.opened(
+                  windowId: 11,
+                );
+              },
+          desktopMainWindowForegrounderOverride: () async {},
+          onShareFlowReleased: (source) {
+            releasedSources.add(source);
+            if (tracker.wasPrompted(nextClipboardPayload)) return;
+            final url = tracker.markPrompted(nextClipboardPayload);
+            if (url != null) {
+              promptableClipboardUrls.add(url);
+            }
+          },
+        );
+
+        expect(
+          tracker.markPrompted(firstPayload),
+          'https://example.com/articles/1',
+        );
+        await harness.coordinator.handleShareLaunch(firstPayload);
+        await tester.pumpAndSettle();
+
+        expect(harness.coordinator.shouldDeferHeavyStartupWork, isTrue);
+        expect(tracker.wasPrompted(nextClipboardPayload), isFalse);
+        expect(promptableClipboardUrls, isEmpty);
+
+        final accepted = await harness.coordinator.handleDesktopShareTaskResult(
+          DesktopShareTaskResult(
+            requestId: 'retry-share',
+            request: const ShareComposeRequest(
+              text: 'first-result',
+              selectionOffset: 12,
+            ),
+          ).toJson(),
+          11,
+        );
+
+        expect(accepted, isTrue);
+        expect(releasedSources, <String>['share_task_result']);
+        expect(promptableClipboardUrls, <String>[
+          'https://example.com/articles/2',
+        ]);
+      },
+    );
+
+    testWidgets('preview sheet can be dismissed without clipping', (
+      tester,
+    ) async {
+      final releasedSources = <String>[];
+      final bootstrapAdapter = FakeBootstrapAdapter(
+        preferences: AppPreferences.defaults.copyWith(
+          thirdPartyShareEnabled: true,
+        ),
+        preferencesLoaded: true,
+        session: buildTestSessionWithAccount(),
+      );
+      final harness = await pumpStartupCoordinatorHarness(
+        tester,
+        bootstrapAdapter: bootstrapAdapter,
+        onShareFlowReleased: releasedSources.add,
       );
 
       await harness.coordinator.handleShareLaunch(buildPreviewSharePayload());
@@ -249,6 +383,7 @@ void main() {
       expect(harness.coordinator.startupSharePreviewPayload, isNull);
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
       expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
+      expect(releasedSources, <String>['share_flow_completed']);
     });
 
     testWidgets('quick clip link-only success shows local-save toast', (
@@ -256,6 +391,7 @@ void main() {
     ) async {
       ShareQuickClipSubmission? submitted;
       String? toastMessage;
+      final releasedSources = <String>[];
       final bootstrapAdapter = FakeBootstrapAdapter(
         preferences: AppPreferences.defaults.copyWith(
           thirdPartyShareEnabled: true,
@@ -274,6 +410,7 @@ void main() {
           toastMessage = message;
           return true;
         },
+        onShareFlowReleased: releasedSources.add,
       );
 
       await harness.coordinator.handleShareLaunch(buildPreviewSharePayload());
@@ -288,6 +425,7 @@ void main() {
       expect(find.text('Clip now'), findsNothing);
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
       expect(harness.syncOrchestrator.maybeSyncOnLaunchCount, 1);
+      expect(releasedSources, <String>['share_flow_completed']);
     });
 
     testWidgets(
